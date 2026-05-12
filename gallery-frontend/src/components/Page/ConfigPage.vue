@@ -1,19 +1,43 @@
 <template>
-  <PageTemplate preset="card" width="narrow" :ready="initializedStore.initialized">
+  <PageTemplate
+    preset="card"
+    width="narrow"
+    card-class="config-page-surface overflow-y-auto w-100"
+    :ready="initializedStore.initialized"
+  >
     <template #content>
-      <v-row class="ma-0">
-        <ChangePassword v-model:has-password="localSettings.hasPassword" />
-        <StorageAndSync v-model:sync-paths="localSettings.syncPaths" />
-        <FolderImport />
-        <AdvancedConfig
-          v-model:auth-key="localSettings.authKey"
-          v-model:has-auth-key="localSettings.hasAuthKey"
-          v-model:discord-hook-url="localSettings.discordHookUrl"
-          v-model:read-only-mode="localSettings.readOnlyMode"
-          v-model:disable-img="localSettings.disableImg"
-          v-model:has-discord-hook="localSettings.hasDiscordHook"
-        />
-      </v-row>
+      <div class="config-stack">
+        <div class="config-block">
+          <v-row class="ma-0">
+            <ChangePassword v-model:has-password="localSettings.hasPassword" />
+          </v-row>
+        </div>
+
+        <div class="config-block">
+          <v-row class="ma-0">
+            <StorageAndSync v-model:sync-paths="localSettings.syncPaths" />
+          </v-row>
+        </div>
+
+        <div class="config-block">
+          <v-row class="ma-0">
+            <FolderImport />
+          </v-row>
+        </div>
+
+        <div class="config-block">
+          <v-row class="ma-0">
+            <AdvancedConfig
+              v-model:auth-key="localSettings.authKey"
+              v-model:has-auth-key="localSettings.hasAuthKey"
+              v-model:discord-hook-url="localSettings.discordHookUrl"
+              v-model:read-only-mode="localSettings.readOnlyMode"
+              v-model:disable-img="localSettings.disableImg"
+              v-model:has-discord-hook="localSettings.hasDiscordHook"
+            />
+          </v-row>
+        </div>
+      </div>
     </template>
   </PageTemplate>
 </template>
@@ -79,3 +103,26 @@ onBeforeUnmount(() => {
   initializedStore.initialized = false
 })
 </script>
+
+<style scoped>
+.config-stack {
+  background-color: rgb(var(--v-theme-surface-light));
+}
+
+.config-block {
+  padding-bottom: 24px;
+}
+
+.config-block:last-child {
+  padding-bottom: 0;
+}
+
+.config-block :deep(.v-col) {
+  padding-bottom: 0;
+  padding-top: 0;
+}
+
+:deep(.config-page-surface) {
+  background-color: transparent !important;
+}
+</style>
