@@ -4,6 +4,7 @@
       <v-row class="ma-0">
         <ChangePassword v-model:has-password="localSettings.hasPassword" />
         <StorageAndSync v-model:sync-paths="localSettings.syncPaths" />
+        <FolderImport />
         <AdvancedConfig
           v-model:auth-key="localSettings.authKey"
           v-model:has-auth-key="localSettings.hasAuthKey"
@@ -25,6 +26,7 @@ import type { AppConfig } from '@/api/config'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 import ChangePassword from './Config/ChangePassword.vue'
 import StorageAndSync from './Config/StorageAndSync.vue'
+import FolderImport from './Config/FolderImport.vue'
 import AdvancedConfig from './Config/AdvancedConfig.vue'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 

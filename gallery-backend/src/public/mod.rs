@@ -2,6 +2,7 @@ pub mod constant;
 pub mod db;
 pub mod error;
 pub mod error_data;
+pub mod media;
 pub mod structure;
 pub mod tui;
 

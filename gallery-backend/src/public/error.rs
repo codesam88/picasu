@@ -10,6 +10,7 @@ pub enum ErrorKind {
     PermissionDenied,
     InvalidInput,
     Internal,
+    Conflict,
     Database,
     IO,
     #[allow(dead_code)]
@@ -25,6 +26,7 @@ impl ErrorKind {
             ErrorKind::PermissionDenied => "Permission Denied",
             ErrorKind::InvalidInput => "Invalid Input",
             ErrorKind::Internal => "Internal Error",
+            ErrorKind::Conflict => "Conflict",
             ErrorKind::Database => "Database Error",
             ErrorKind::IO => "I/O Error",
             ErrorKind::Serialization => "Serialization Error",
@@ -103,6 +105,7 @@ impl AppError {
             ErrorKind::PermissionDenied => Status::Forbidden,
             ErrorKind::Auth => Status::Unauthorized,
             ErrorKind::InvalidInput => Status::BadRequest,
+            ErrorKind::Conflict => Status::Conflict,
             ErrorKind::ReadOnlyMode => Status::MethodNotAllowed,
             _ => Status::InternalServerError,
         }
@@ -137,13 +140,7 @@ impl From<anyhow::Error> for AppError {
 // Rocket Responder
 impl<'r> Responder<'r, 'static> for AppError {
     fn respond_to(self, req: &'r Request<'_>) -> response::Result<'static> {
-        let status = match self.kind {
-            ErrorKind::NotFound => Status::NotFound,
-            ErrorKind::PermissionDenied => Status::Forbidden,
-            ErrorKind::Auth => Status::Unauthorized,
-            ErrorKind::InvalidInput => Status::BadRequest,
-            _ => Status::InternalServerError,
-        };
+        let status = self.http_status();
 
         // Log the error
         log::error!("API Error: {self}");

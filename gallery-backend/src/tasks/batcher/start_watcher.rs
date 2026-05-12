@@ -1,5 +1,5 @@
 use crate::public::constant::runtime::INDEX_RUNTIME;
-use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
+use crate::public::media::is_valid_media_file;
 use crate::public::structure::config::APP_CONFIG;
 use crate::{public::error_data::handle_error, workflow::index_for_watch};
 use anyhow::Result;
@@ -8,7 +8,7 @@ use mini_executor::BatchTask;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{
         LazyLock, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -120,16 +120,6 @@ fn start_watcher_task_internal() -> Result<()> {
     // Store it globally to keep it alive.
     *WATCHER_HANDLE.lock().unwrap() = Some(watcher);
     Ok(())
-}
-
-fn is_valid_media_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|ext| ext.to_str())
-        .map(str::to_lowercase)
-        .is_some_and(|ext| {
-            VALID_IMAGE_EXTENSIONS.contains(&ext.as_str())
-                || VALID_VIDEO_EXTENSIONS.contains(&ext.as_str())
-        })
 }
 
 fn submit_to_debounce_pool(path: PathBuf) {

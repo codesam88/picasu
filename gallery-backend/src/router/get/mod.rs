@@ -6,6 +6,7 @@ pub mod get_data;
 pub mod get_export;
 pub mod get_fs_completion;
 pub mod get_img;
+pub mod get_import;
 pub mod get_list;
 pub mod get_page;
 pub mod get_prefetch;
@@ -50,6 +51,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_export::get_export,
         get_config::get_config_handler,
         get_config::export_config_handler,
-        get_fs_completion::get_fs_completion
+        get_fs_completion::get_fs_completion,
+        get_import::get_folder_import_status
     ]
 }
