@@ -8,49 +8,81 @@
     transition="dialog-bottom-transition"
   >
     <v-card :height="isMobile ? '100%' : 600" class="d-flex flex-column">
-      <v-toolbar density="compact" class="border-b">
-        <v-container fluid class="fill-height py-0">
-          <v-row no-gutters align="center" class="ga-2">
-            <v-col cols="auto">
-              <v-btn
-                icon="mdi-arrow-left"
-                variant="text"
-                :disabled="!currentPath"
-                @click="navigateUp"
-              />
-            </v-col>
+      <div class="folder-picker-header border-b">
+        <div class="d-flex align-center ga-2 px-3 pt-3">
+          <v-btn
+            icon="mdi-arrow-left"
+            variant="text"
+            density="comfortable"
+            title="Go up"
+            :disabled="!currentPath"
+            @click="navigateUp"
+          />
 
-            <v-col>
-              <v-text-field
-                v-model="currentPath"
-                placeholder="Path..."
-                hide-details
-                density="compact"
-                variant="outlined"
-                single-line
-                :error="!!errorMsg"
-                @keyup.enter="loadItems(currentPath).catch(console.error)"
-              >
-                <template #append-inner>
-                  <v-fade-transition>
-                    <v-icon
-                      v-if="currentPath"
-                      icon="mdi-arrow-right"
-                      class="cursor-pointer"
-                      @click="loadItems(currentPath).catch(console.error)"
-                    />
-                  </v-fade-transition>
-                </template>
-              </v-text-field>
+          <div class="path-breadcrumbs flex-grow-1 min-w-0">
+            <template v-if="breadcrumbs.length > 0">
+              <template v-for="(crumb, index) in breadcrumbs" :key="crumb.path">
+                <v-btn
+                  variant="text"
+                  size="small"
+                  class="breadcrumb-btn text-none"
+                  :title="crumb.path"
+                  @click="navigateToPath(crumb.path)"
+                >
+                  {{ crumb.label }}
+                </v-btn>
+                <v-icon
+                  v-if="index < breadcrumbs.length - 1"
+                  icon="mdi-chevron-right"
+                  size="small"
+                  class="text-medium-emphasis"
+                />
+              </template>
+            </template>
+            <v-btn
+              v-else
+              variant="text"
+              size="small"
+              class="breadcrumb-btn text-none"
+              @click="navigateToPath('')"
+            >
+              Root
+            </v-btn>
+          </div>
 
-            </v-col>
+          <v-btn
+            icon="mdi-close"
+            variant="text"
+            density="comfortable"
+            title="Close"
+            @click="modelValue = false"
+          />
+        </div>
 
-            <v-col cols="auto">
-              <v-btn icon="mdi-close" variant="text" @click="modelValue = false" />
-            </v-col>
-          </v-row>
-        </v-container>
-      </v-toolbar>
+        <div class="px-3 pb-3 pt-2">
+          <v-text-field
+            v-model="currentPath"
+            placeholder="Path..."
+            hide-details
+            density="compact"
+            variant="outlined"
+            single-line
+            :error="!!errorMsg"
+            @keyup.enter="loadCurrentPath"
+          >
+            <template #append-inner>
+              <v-fade-transition>
+                <v-icon
+                  v-if="currentPath"
+                  icon="mdi-arrow-right"
+                  class="cursor-pointer"
+                  @click="loadCurrentPath"
+                />
+              </v-fade-transition>
+            </template>
+          </v-text-field>
+        </div>
+      </div>
 
       <v-card-text class="pa-0 d-flex flex-column">
         <v-list v-if="loading" disabled>
@@ -117,7 +149,7 @@
             <v-col>
               <div class="text-body-small text-medium-emphasis text-truncate">
                 Selected:
-                <span class="text-high-emphasis">{{ currentPath || 'Root' }}</span>
+                <span class="text-high-emphasis">{{ selectedPathLabel }}</span>
               </div>
             </v-col>
 
@@ -139,6 +171,11 @@ import { useDisplay } from 'vuetify'
 import { fetchFsCompletion } from '@/api/fs'
 import axios from 'axios'
 
+interface Breadcrumb {
+  label: string
+  path: string
+}
+
 // --- Props & Emits ---
 const modelValue = defineModel<boolean>({ required: true })
 
@@ -146,9 +183,7 @@ const props = defineProps<{
   initialPath?: string
 }>()
 
- 
 const emit = defineEmits<(e: 'select', path: string) => void>()
-
 
 // --- Responsiveness ---
 const { mobile } = useDisplay()
@@ -167,9 +202,12 @@ const emptyStateIcon = computed(() => {
   return 'mdi-folder-open-outline'
 })
 
+const selectedPathLabel = computed(() => currentPath.value || 'Root')
+
+const breadcrumbs = computed<Breadcrumb[]>(() => buildBreadcrumbs(currentPath.value))
+
 // Utilities
 const getFolderName = (fullPath: string) => {
-   
   if (!fullPath) return ''
   const separator = fullPath.includes('\\') ? '\\' : '/'
   if (fullPath.endsWith(separator)) return fullPath
@@ -177,6 +215,78 @@ const getFolderName = (fullPath: string) => {
   return fullPath.split(separator).pop() || fullPath
 }
 
+const ensureTrailingSeparator = (path: string) => {
+  if (!path) return ''
+  const isWindows = path.includes('\\')
+  const separator = isWindows ? '\\' : '/'
+  return path.endsWith(separator) ? path : `${path}${separator}`
+}
+
+const appendTrailingSeparator = (path: string, separator: '\\' | '/') => {
+  return path.endsWith(separator) ? path : `${path}${separator}`
+}
+
+const buildWindowsBreadcrumbs = (path: string): Breadcrumb[] => {
+  const normalized = path.replace(/\//g, '\\')
+  const driveMatch = /^[A-Za-z]:\\?/.exec(normalized)
+  const crumbs: Breadcrumb[] = []
+
+  if (driveMatch !== null) {
+    const drive = driveMatch[0].endsWith('\\') ? driveMatch[0] : `${driveMatch[0]}\\`
+    crumbs.push({ label: drive, path: drive })
+
+    const rest = normalized.slice(drive.length)
+    const parts = rest.split('\\').filter((part) => part.length > 0)
+    let accumulated = drive
+
+    for (const part of parts) {
+      accumulated = appendTrailingSeparator(`${accumulated}${part}`, '\\')
+      crumbs.push({ label: part, path: accumulated })
+    }
+
+    return crumbs
+  }
+
+  return buildRelativeBreadcrumbs(normalized, '\\')
+}
+
+const buildUnixBreadcrumbs = (path: string): Breadcrumb[] => {
+  if (path.startsWith('/')) {
+    const crumbs: Breadcrumb[] = [{ label: '/', path: '/' }]
+    const parts = path
+      .slice(1)
+      .split('/')
+      .filter((part) => part.length > 0)
+    let accumulated = '/'
+
+    for (const part of parts) {
+      accumulated = appendTrailingSeparator(`${accumulated}${part}`, '/')
+      crumbs.push({ label: part, path: accumulated })
+    }
+
+    return crumbs
+  }
+
+  return buildRelativeBreadcrumbs(path, '/')
+}
+
+const buildRelativeBreadcrumbs = (path: string, separator: '\\' | '/') => {
+  const parts = path.split(separator).filter((part) => part.length > 0)
+  const crumbs: Breadcrumb[] = []
+  let accumulated = ''
+
+  for (const part of parts) {
+    accumulated = appendTrailingSeparator(accumulated ? `${accumulated}${part}` : part, separator)
+    crumbs.push({ label: part, path: accumulated })
+  }
+
+  return crumbs
+}
+
+const buildBreadcrumbs = (path: string) => {
+  if (!path) return []
+  return path.includes('\\') ? buildWindowsBreadcrumbs(path) : buildUnixBreadcrumbs(path)
+}
 
 // --- Logic ---
 const loadItems = async (path: string) => {
@@ -202,18 +312,17 @@ const loadItems = async (path: string) => {
   }
 }
 
+const loadCurrentPath = () => {
+  loadItems(currentPath.value).catch(console.error)
+}
+
+const navigateToPath = (path: string) => {
+  currentPath.value = ensureTrailingSeparator(path)
+  loadItems(currentPath.value).catch(console.error)
+}
 
 const navigateDown = (path: string) => {
-  const isWindows = path.includes('\\')
-  const separator = isWindows ? '\\' : '/'
-
-  let target = path
-  if (!target.endsWith(separator)) {
-    target += separator
-  }
-
-  currentPath.value = target
-  loadItems(target).catch(console.error)
+  navigateToPath(path)
 }
 
 const navigateUp = () => {
@@ -222,13 +331,11 @@ const navigateUp = () => {
   const isWindows = currentPath.value.includes('\\')
   const separator = isWindows ? '\\' : '/'
 
-    // clean up existing path to handle parsing
-    const cleanPath = currentPath.value.endsWith(separator)
-      ? currentPath.value.slice(0, -1)
-      : currentPath.value
-
-    const parts = cleanPath.split(separator)
-
+  // clean up existing path to handle parsing
+  const cleanPath = currentPath.value.endsWith(separator)
+    ? currentPath.value.slice(0, -1)
+    : currentPath.value
+  const parts = cleanPath.split(separator)
 
   // Go to root logic
   if (parts.length <= 1) {
@@ -246,7 +353,6 @@ const navigateUp = () => {
     }
 
     // Ensure trailing slash for intermediate directories to avoid "searching" mode
-    const separator = isWindows ? '\\' : '/'
     if (!currentPath.value.endsWith(separator)) {
       currentPath.value += separator
     }
@@ -263,11 +369,9 @@ const confirmSelection = () => {
     const separator = isWindows ? '\\' : '/'
 
     // Normalize root check
-     
     const isRoot = (isWindows && selected.length <= 3) || (!isWindows && selected === '/')
 
     // Remove trailing slash if not root
-     
     if (!isRoot && selected.endsWith(separator)) {
       selected = selected.slice(0, -1)
     }
@@ -286,5 +390,35 @@ watch(modelValue, (isOpen) => {
     })
   }
 })
-
 </script>
+
+<style scoped>
+.folder-picker-header {
+  flex: 0 0 auto;
+}
+
+.path-breadcrumbs {
+  align-items: center;
+  display: flex;
+  min-height: 36px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+
+.path-breadcrumbs::-webkit-scrollbar {
+  display: none;
+}
+
+.breadcrumb-btn {
+  flex: 0 0 auto;
+  max-width: 180px;
+}
+
+.breadcrumb-btn :deep(.v-btn__content) {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>
