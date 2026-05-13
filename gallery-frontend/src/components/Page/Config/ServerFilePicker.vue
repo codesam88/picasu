@@ -143,23 +143,20 @@
 
       <v-divider />
 
-      <v-card-actions>
-        <v-container fluid>
-          <v-row align="center" dense>
-            <v-col>
-              <div class="text-body-small text-medium-emphasis text-truncate">
-                Selected:
-                <span class="text-high-emphasis">{{ selectedPathLabel }}</span>
-              </div>
-            </v-col>
+      <v-card-actions class="folder-picker-actions">
+        <div class="selected-path text-body-small text-medium-emphasis">
+          Selected:
+          <span class="text-high-emphasis">{{ selectedFolderLabel }}</span>
+        </div>
 
-            <v-col cols="auto">
-              <v-btn variant="tonal" @click="confirmSelection" :disabled="!currentPath">
-                Select Folder
-              </v-btn>
-            </v-col>
-          </v-row>
-        </v-container>
+        <v-btn
+          variant="tonal"
+          class="text-none"
+          @click="confirmSelection"
+          :disabled="!currentPath"
+        >
+          Select Folder
+        </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -203,6 +200,7 @@ const emptyStateIcon = computed(() => {
 })
 
 const selectedPathLabel = computed(() => currentPath.value || 'Root')
+const selectedFolderLabel = computed(() => getFolderName(currentPath.value) || selectedPathLabel.value)
 
 const breadcrumbs = computed<Breadcrumb[]>(() => buildBreadcrumbs(currentPath.value))
 
@@ -210,9 +208,11 @@ const breadcrumbs = computed<Breadcrumb[]>(() => buildBreadcrumbs(currentPath.va
 const getFolderName = (fullPath: string) => {
   if (!fullPath) return ''
   const separator = fullPath.includes('\\') ? '\\' : '/'
-  if (fullPath.endsWith(separator)) return fullPath
+  const trimmedPath = fullPath.endsWith(separator) ? fullPath.slice(0, -1) : fullPath
+  if (!trimmedPath) return fullPath
+  if (/^[A-Za-z]:$/.test(trimmedPath)) return `${trimmedPath}\\`
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/strict-boolean-expressions
-  return fullPath.split(separator).pop() || fullPath
+  return trimmedPath.split(separator).pop() || fullPath
 }
 
 const ensureTrailingSeparator = (path: string) => {
@@ -395,6 +395,22 @@ watch(modelValue, (isOpen) => {
 <style scoped>
 .folder-picker-header {
   flex: 0 0 auto;
+}
+
+.folder-picker-actions {
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 24px;
+}
+
+.selected-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .path-breadcrumbs {
