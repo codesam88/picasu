@@ -21,18 +21,50 @@
 
           <div class="path-breadcrumbs flex-grow-1 min-w-0">
             <template v-if="breadcrumbs.length > 0">
-              <template v-for="(crumb, index) in breadcrumbs" :key="crumb.path">
+              <template
+                v-for="(item, index) in breadcrumbDisplayItems"
+                :key="getBreadcrumbDisplayKey(item, index)"
+              >
+                <v-menu v-if="item.kind === 'overflow'" location="bottom start">
+                  <template #activator="{ props: menuProps }">
+                    <v-btn
+                      v-bind="menuProps"
+                      icon="mdi-dots-horizontal"
+                      variant="text"
+                      density="comfortable"
+                      size="small"
+                      title="Show hidden folders"
+                    />
+                  </template>
+
+                  <v-list density="compact" class="breadcrumb-menu">
+                    <v-list-item
+                      v-for="crumb in hiddenBreadcrumbs"
+                      :key="crumb.path"
+                      :title="crumb.label"
+                      :subtitle="crumb.path"
+                      @click="navigateToPath(crumb.path)"
+                    />
+                  </v-list>
+                </v-menu>
+
                 <v-btn
+                  v-else
                   variant="text"
                   size="small"
-                  class="breadcrumb-btn text-none"
-                  :title="crumb.path"
-                  @click="navigateToPath(crumb.path)"
+                  :class="[
+                    'breadcrumb-btn',
+                    'text-none',
+                    { 'breadcrumb-btn--fixed': isFixedBreadcrumb(item.crumb) }
+                  ]"
+                  :title="item.crumb.path"
+                  @click="navigateToPath(item.crumb.path)"
                 >
-                  {{ crumb.label }}
+                  {{ item.crumb.label }}
                 </v-btn>
+
                 <v-icon
-                  v-if="index < breadcrumbs.length - 1"
+                  v-if="index < breadcrumbDisplayItems.length - 1"
                   icon="mdi-chevron-right"
                   size="small"
                   class="text-medium-emphasis"
@@ -173,6 +205,15 @@ interface Breadcrumb {
   path: string
 }
 
+type BreadcrumbDisplayItem =
+  | {
+      kind: 'crumb'
+      crumb: Breadcrumb
+    }
+  | {
+      kind: 'overflow'
+    }
+
 // --- Props & Emits ---
 const modelValue = defineModel<boolean>({ required: true })
 
@@ -203,8 +244,33 @@ const selectedPathLabel = computed(() => currentPath.value || 'Root')
 const selectedFolderLabel = computed(() => getFolderName(currentPath.value) || selectedPathLabel.value)
 
 const breadcrumbs = computed<Breadcrumb[]>(() => buildBreadcrumbs(currentPath.value))
+const hiddenBreadcrumbs = computed<Breadcrumb[]>(() => {
+  if (breadcrumbs.value.length <= 5) return []
+  return breadcrumbs.value.slice(1, -3)
+})
+
+const breadcrumbDisplayItems = computed<BreadcrumbDisplayItem[]>(() => {
+  if (hiddenBreadcrumbs.value.length === 0) {
+    return breadcrumbs.value.map((crumb) => ({ kind: 'crumb' as const, crumb }))
+  }
+
+  const firstCrumb = breadcrumbs.value[0]
+  if (firstCrumb === undefined) return []
+
+  return [
+    { kind: 'crumb', crumb: firstCrumb },
+    { kind: 'overflow' },
+    ...breadcrumbs.value.slice(-3).map((crumb) => ({ kind: 'crumb' as const, crumb }))
+  ]
+})
 
 // Utilities
+const getBreadcrumbDisplayKey = (item: BreadcrumbDisplayItem, index: number) => {
+  return item.kind === 'crumb' ? item.crumb.path : `overflow-${index}`
+}
+
+const isFixedBreadcrumb = (crumb: Breadcrumb) => /^[A-Za-z]:\\$/.test(crumb.label) || crumb.label === '/'
+
 const getFolderName = (fullPath: string) => {
   if (!fullPath) return ''
   const separator = fullPath.includes('\\') ? '\\' : '/'
@@ -417,7 +483,7 @@ watch(modelValue, (isOpen) => {
   align-items: center;
   display: flex;
   min-height: 36px;
-  overflow-x: auto;
+  overflow: hidden;
   scrollbar-width: none;
   white-space: nowrap;
 }
@@ -431,10 +497,23 @@ watch(modelValue, (isOpen) => {
   max-width: 180px;
 }
 
+.breadcrumb-btn--fixed {
+  max-width: none;
+}
+
 .breadcrumb-btn :deep(.v-btn__content) {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.breadcrumb-btn--fixed :deep(.v-btn__content) {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.breadcrumb-menu {
+  max-width: 420px;
 }
 </style>
