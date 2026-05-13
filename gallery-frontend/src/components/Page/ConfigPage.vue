@@ -2,7 +2,7 @@
   <PageTemplate
     preset="card"
     width="narrow"
-    card-class="config-page-surface overflow-y-auto w-100"
+    card-class="config-page-surface bg-transparent overflow-y-auto w-100"
     :ready="initializedStore.initialized"
   >
     <template #content>
@@ -104,9 +104,9 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
+<style>
 .config-stack {
-  background-color: rgb(var(--v-theme-surface-light));
+  background-color: transparent;
 }
 
 .config-block {
@@ -122,7 +122,7 @@ onBeforeUnmount(() => {
   padding-top: 0;
 }
 
-:deep(.config-page-surface) {
-  background-color: transparent !important;
+.config-page-surface {
+  background: transparent !important;
 }
 </style>
