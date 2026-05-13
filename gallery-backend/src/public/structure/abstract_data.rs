@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone};
-use rand::Rng;
+use rand::RngExt;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -308,7 +308,7 @@ impl AbstractData {
     /// Generate random `AbstractData` (image) for testing
     pub fn generate_random_data() -> Self {
         use crate::operations::hash::generate_random_hash;
-        use rand::Rng;
+        use rand::RngExt;
 
         let hash = generate_random_hash();
         let width = rand::rng().random_range(300..=600);

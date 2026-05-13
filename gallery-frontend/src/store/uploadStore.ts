@@ -9,7 +9,7 @@ import { IsolationId } from '@type/types'
 export const useUploadStore = (isolationId: IsolationId) =>
   defineStore('uploadStore' + isolationId, {
     state: () => ({
-      status: 'Canceled' as 'Uploading' | 'Processing' | 'Canceled' | 'Completed',
+      status: 'Canceled',
       total: undefined as number | undefined,
       loaded: undefined as number | undefined,
       startTime: undefined as number | undefined,

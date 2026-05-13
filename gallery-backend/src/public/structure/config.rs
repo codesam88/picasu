@@ -3,7 +3,7 @@
 use anyhow::Context;
 use base64::{Engine as _, engine::general_purpose};
 use log::{info, warn};
-use rand::{TryRngCore, rngs::OsRng};
+use rand::{TryRng, rngs::SysRng};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
@@ -17,7 +17,7 @@ pub static FALLBACK_SECRET_KEY: OnceLock<String> = OnceLock::new();
 
 fn generate_secret_key() -> String {
     let mut secret = vec![0u8; 32];
-    OsRng
+    SysRng
         .try_fill_bytes(&mut secret)
         .expect("Failed to generate random secret key");
     general_purpose::STANDARD.encode(secret)

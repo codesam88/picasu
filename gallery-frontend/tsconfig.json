@@ -1,18 +1,18 @@
 {
   "include": ["src/**/*"],
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@Menu/*": ["src/components/Menu/*"],
-      "@worker/*": ["src/worker/*"],
-      "@utils/*": ["src/script/utils/*"],
-      "@type/*": ["src/type/*"]
+      "@/*": ["./src/*"],
+      "@Menu/*": ["./src/components/Menu/*"],
+      "@worker/*": ["./src/worker/*"],
+      "@utils/*": ["./src/script/utils/*"],
+      "@type/*": ["./src/type/*"]
     },
     "target": "ES2023",
     "useDefineForClassFields": true,
     "module": "ESNext",
     "lib": ["ES2023", "DOM", "DOM.Iterable", "webworker"],
+    "types": ["node"],
     "skipLibCheck": true,
 
     /* Bundler mode */

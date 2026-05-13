@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use blake3::Hasher;
-use rand::{Rng, distr::Alphanumeric};
+use rand::{RngExt, distr::Alphanumeric};
 use std::{fs::File, io::Read};
 
 pub fn blake3_hasher(mut file: File) -> Result<ArrayString<64>> {

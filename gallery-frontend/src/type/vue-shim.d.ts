@@ -5,6 +5,10 @@ declare module '*.vue' {
   export default component
 }
 
+declare module '*.css'
+
+declare module '*.scss'
+
 declare module '*/dataWorker?worker&inline' {
   const workerConstructor: new () => Worker
   export default workerConstructor
