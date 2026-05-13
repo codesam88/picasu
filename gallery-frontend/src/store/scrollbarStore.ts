@@ -37,8 +37,14 @@ export const useScrollbarStore = (isolationId: IsolationId) =>
           this.scrollbarDataArrayYear.push(lastDataForYear)
         }
 
-
         this.initialized = true
+      },
+      clearAll() {
+        this.scrollbarDataArray = []
+        this.scrollbarDataArrayYear = []
+        this.initialized = false
+        this.isDragging = false
+        this.isHovering = false
       }
     }
   })()

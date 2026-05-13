@@ -71,6 +71,7 @@ import { useRerenderStore } from '@/store/rerenderStore'
 import { useTagStore } from '@/store/tagStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useConstStore } from '@/store/constStore'
+import { useScrollbarStore } from '@/store/scrollbarStore'
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -91,6 +92,7 @@ const queueStore = useQueueStore(props.isolationId)
 const imgStore = useImgStore(props.isolationId)
 const locationStore = useLocationStore(props.isolationId)
 const optimisticUpateStore = useOptimisticStore(props.isolationId)
+const scrollbarStore = useScrollbarStore(props.isolationId)
 // albumStore should not use 'mainId'; otherwise clearAll will be called when the 'props.isolationId' component is unmounted.
 const albumStore = useAlbumStore(props.isolationId)
 const rerenderStore = useRerenderStore('mainId')
@@ -193,6 +195,7 @@ onBeforeUnmount(() => {
   imgStore.clearAll()
   offsetStore.clearAll()
   rowStore.clearAll()
+  scrollbarStore.clearAll()
   locationStore.clearAll()
   optimisticUpateStore.clearAll()
   tagStore.clearAll()
