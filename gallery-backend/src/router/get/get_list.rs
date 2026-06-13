@@ -26,6 +26,8 @@ pub struct AlbumInfo {
     pub album_id: String,
     pub album_name: Option<String>,
     pub share_list: HashMap<ArrayString<64>, Share>,
+    /// Set only for filesystem-hierarchy albums; `None` for user-created albums.
+    pub dir_path: Option<String>,
 }
 
 #[get("/get/get-albums")]
@@ -41,6 +43,7 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
                 album_id: album.object.id.to_string(),
                 album_name: album.metadata.title,
                 share_list: album.metadata.share_list,
+                dir_path: album.metadata.dir_path,
             })
             .collect();
         Ok(Json(album_info_list))

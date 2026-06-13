@@ -79,6 +79,7 @@ impl Album {
             item_count: self.item_count,
             item_size: self.item_size,
             share_list: self.share_list,
+            dir_path: None, // user-created albums are never filesystem-hierarchy albums
         };
 
         AbstractData::Album(AlbumCombined { object, metadata })

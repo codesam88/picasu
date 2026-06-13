@@ -1,9 +1,12 @@
+use crate::operations::dir_album::drain_pending_album_updates;
 use crate::operations::open_db::open_data_table;
 use crate::public::db::tree::TREE;
 use crate::public::structure::response::database_timestamp::DatabaseTimestamp;
 use crate::tasks::BATCH_COORDINATOR;
+use crate::tasks::actor::album::album_task;
 use crate::tasks::batcher::update_expire::UpdateExpireTask;
 use chrono::Utc;
+use log::warn;
 use mini_executor::BatchTask;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use rayon::prelude::ParallelSliceMut;
@@ -34,6 +37,20 @@ pub struct UpdateTreeTask;
 impl BatchTask for UpdateTreeTask {
     async fn batch_run(_: Vec<Self>) {
         update_tree_task();
+
+        // Run self-updates for any albums whose members were recently changed.
+        let pending = drain_pending_album_updates();
+        if !pending.is_empty() {
+            for album_id in pending {
+                if let Err(e) =
+                    tokio::task::spawn_blocking(move || album_task(album_id)).await
+                {
+                    warn!("Album self-update task panicked for {album_id}: {e}");
+                }
+            }
+            // Refresh the in-memory tree so updated album stats are visible.
+            update_tree_task();
+        }
     }
 }
 

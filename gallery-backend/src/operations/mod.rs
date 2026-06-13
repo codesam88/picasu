@@ -1,5 +1,6 @@
 use crate::public::structure::album::ResolvedShare;
 
+pub mod dir_album;
 pub mod hash;
 pub mod indexation;
 pub mod initialization;

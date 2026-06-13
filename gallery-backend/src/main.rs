@@ -11,6 +11,7 @@ mod router;
 mod tasks;
 mod workflow;
 
+use crate::operations::dir_album::init_dir_album_cache;
 use crate::operations::initialization::logger::initialize_logger;
 use crate::process::initialization::initialize;
 use crate::public::constant::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
@@ -55,6 +56,9 @@ fn main() {
 
     // Initialize core subsystems (Config, DB, FFmpeg checks)
     initialize();
+
+    // Load the directory→album mapping cache from disk (must run after initialize()).
+    init_dir_album_cache();
 
     #[cfg(feature = "embed-frontend")]
     info!("Frontend Configuration: EMBEDDED (Assets compiled into binary)");

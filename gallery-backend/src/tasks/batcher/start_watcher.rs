@@ -1,3 +1,4 @@
+use crate::operations::utils::sync_paths::resolve_sync_paths;
 use crate::public::constant::runtime::INDEX_RUNTIME;
 use crate::public::media::is_valid_media_file;
 use crate::public::structure::config::APP_CONFIG;
@@ -52,32 +53,6 @@ pub fn reload_watcher() {
     if let Err(e) = start_watcher_task_internal() {
         error!("Failed to reload watcher: {e}");
     }
-}
-
-/// Resolve relative paths in the config file to absolute paths
-/// If `UROCISSA_PATH` is set, use it as the base, otherwise use the current working directory as the base
-fn resolve_sync_paths(paths: HashSet<PathBuf>) -> HashSet<PathBuf> {
-    let (base_path, append_subdir) = match std::env::var("UROCISSA_PATH") {
-        Ok(p) => (PathBuf::from(p), true),
-        Err(_) => (std::env::current_dir().unwrap_or_default(), false),
-    };
-
-    paths
-        .into_iter()
-        .map(|p| {
-            if p.is_relative() {
-                let mut resolved = base_path.clone();
-                if append_subdir {
-                    resolved.push("gallery-backend");
-                }
-                resolved.push(&p);
-                // Try to canonicalize (normalize . and ..), fall back to resolved path
-                resolved.canonicalize().unwrap_or(resolved)
-            } else {
-                p
-            }
-        })
-        .collect()
 }
 
 fn start_watcher_task_internal() -> Result<()> {

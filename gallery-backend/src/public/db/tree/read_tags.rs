@@ -2,11 +2,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{
     public::constant::redb::DATA_TABLE,
-    public::error::{AppError, ErrorKind, ResultExt}, // Import AppError stuff
-    public::structure::{abstract_data::AbstractData, album::AlbumCombined},
+    public::error::{AppError, ErrorKind, ResultExt},
+    public::structure::{abstract_data::AbstractData, album::AlbumCombined, config::APP_CONFIG},
 };
-use anyhow::Result; // Use standard Result or alias? Standard Result<T, E> is fine.
-// But we want to return Result<Vec<...>, AppError>
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
 use redb::{ReadableDatabase, ReadableTable};
@@ -53,7 +51,24 @@ impl Tree {
         tag_infos
     }
 
+    /// Return the albums that are active under the current mode.
+    ///
+    /// - `album_paths_from_filesystem: true`  → filesystem-hierarchy albums only
+    ///   (`dir_path.is_some()`)
+    /// - `album_paths_from_filesystem: false` → user-created albums only
+    ///   (`dir_path.is_none()`)
+    ///
+    /// The two sets are kept completely independent: switching between modes
+    /// never mutates the other set's records.
     pub fn read_albums(&self) -> Result<Vec<AlbumCombined>, AppError> {
+        let dir_mode = APP_CONFIG
+            .get()
+            .unwrap()
+            .read()
+            .unwrap()
+            .public
+            .album_paths_from_filesystem;
+
         self.in_disk
             .begin_read()
             .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?
@@ -72,7 +87,14 @@ impl Tree {
                     .map(|(_, guard)| {
                         let abstract_data = guard.value();
                         match abstract_data {
-                            AbstractData::Album(album) => Some(album),
+                            AbstractData::Album(album) => {
+                                let is_dir_album = album.metadata.dir_path.is_some();
+                                if is_dir_album == dir_mode {
+                                    Some(album)
+                                } else {
+                                    None
+                                }
+                            }
                             _ => None,
                         }
                     })

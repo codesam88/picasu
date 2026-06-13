@@ -168,11 +168,34 @@ impl Expression {
             }
             Expression::Album(album_id) => match album_id {
                 AlbumFilterValue::Value(album_id) => {
-                    Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                        AbstractData::Image(img) => img.metadata.albums.contains(&album_id),
-                        AbstractData::Video(vid) => vid.metadata.albums.contains(&album_id),
-                        AbstractData::Album(_) => false,
-                    })
+                    // For filesystem-hierarchy albums, membership is path-based
+                    // rather than stored in img.metadata.albums.  Look up the
+                    // dir_path from the cache (separate Mutex from the in-memory
+                    // tree, so no deadlock even when called inside filter_items).
+                    let dir_path =
+                        crate::operations::dir_album::get_dir_path_for_album(album_id);
+                    if let Some(dir) = dir_path {
+                        let dir_str = dir.to_string_lossy().into_owned();
+                        Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                            AbstractData::Image(img) => img
+                                .metadata
+                                .alias
+                                .iter()
+                                .any(|a| std::path::Path::new(&a.file).starts_with(&dir_str)),
+                            AbstractData::Video(vid) => vid
+                                .metadata
+                                .alias
+                                .iter()
+                                .any(|a| std::path::Path::new(&a.file).starts_with(&dir_str)),
+                            AbstractData::Album(_) => false,
+                        })
+                    } else {
+                        Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                            AbstractData::Image(img) => img.metadata.albums.contains(&album_id),
+                            AbstractData::Video(vid) => vid.metadata.albums.contains(&album_id),
+                            AbstractData::Album(_) => false,
+                        })
+                    }
                 }
                 AlbumFilterValue::Exists(exists) => {
                     Box::new(move |abstract_data: &AbstractData| match abstract_data {

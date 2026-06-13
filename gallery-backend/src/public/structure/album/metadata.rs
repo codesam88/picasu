@@ -19,4 +19,8 @@ pub struct AlbumMetadata {
     pub item_count: usize,
     pub item_size: u64,
     pub share_list: HashMap<ArrayString<64>, Share>,
+    /// Set for filesystem-hierarchy albums; `None` for all user-created albums.
+    /// When present, album membership is derived from source file paths rather than
+    /// the `albums` set on each media item — the two album types are fully independent.
+    pub dir_path: Option<String>,
 }

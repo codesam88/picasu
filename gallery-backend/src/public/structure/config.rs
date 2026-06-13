@@ -32,6 +32,8 @@ pub struct PublicConfig {
     pub sync_paths: HashSet<PathBuf>,
     pub read_only_mode: bool,
     pub disable_img: bool,
+    #[serde(default)]
+    pub album_paths_from_filesystem: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -64,6 +66,7 @@ impl Default for AppConfig {
                 sync_paths: HashSet::new(),
                 read_only_mode: false,
                 disable_img: false,
+                album_paths_from_filesystem: false,
             },
 
             private: PrivateConfig {

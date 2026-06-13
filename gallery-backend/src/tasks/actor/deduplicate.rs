@@ -12,19 +12,19 @@ use tokio::task::spawn_blocking;
 pub struct DeduplicateTask {
     pub path: PathBuf,
     pub hash: ArrayString<64>,
-    pub presigned_album_id_opt: Option<ArrayString<64>>,
+    pub presigned_album_id: Option<ArrayString<64>>,
 }
 
 impl DeduplicateTask {
     pub fn new(
         path: PathBuf,
         hash: ArrayString<64>,
-        presigned_album_id_opt: Option<ArrayString<64>>,
+        presigned_album_id: Option<ArrayString<64>>,
     ) -> Self {
         Self {
             path,
             hash,
-            presigned_album_id_opt,
+            presigned_album_id,
         }
     }
 }
@@ -36,7 +36,6 @@ impl Task for DeduplicateTask {
         spawn_blocking(move || deduplicate_task(&self))
             .await
             .expect("blocking task panicked")
-            // convert Err into your crate‑error via `handle_error`
             .map_err(|err| handle_error(err.context("Failed to run deduplicate task")))
     }
 }
@@ -45,7 +44,6 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
     let mut abstract_data = AbstractData::new(&task.path, task.hash)?;
 
     let data_table = open_data_table();
-    // File already in persistent database
 
     if let Some(guard) = data_table.get(&*task.hash).unwrap() {
         let mut data_exist = guard.value();
@@ -55,19 +53,19 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
                 exist_alias.push(file_modify);
             }
         }
-        if let Some(album_id) = task.presigned_album_id_opt
-            && let Some(albums) = data_exist.albums_mut()
-        {
-            albums.insert(album_id);
+        if let Some(album_id) = task.presigned_album_id {
+            if let Some(albums) = data_exist.albums_mut() {
+                albums.insert(album_id);
+            }
         }
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![data_exist]));
         warn!("File already exists in the database:\n{:#?}", abstract_data);
         Ok(None)
     } else {
-        if let Some(album_id) = task.presigned_album_id_opt
-            && let Some(albums) = abstract_data.albums_mut()
-        {
-            albums.insert(album_id);
+        if let Some(album_id) = task.presigned_album_id {
+            if let Some(albums) = abstract_data.albums_mut() {
+                albums.insert(album_id);
+            }
         }
         Ok(Some(abstract_data))
     }

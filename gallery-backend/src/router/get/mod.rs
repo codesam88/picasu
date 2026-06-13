@@ -52,6 +52,6 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_config::get_config_handler,
         get_config::export_config_handler,
         get_fs_completion::get_fs_completion,
-        get_import::get_folder_import_status
+        get_import::get_folder_import_status,
     ]
 }

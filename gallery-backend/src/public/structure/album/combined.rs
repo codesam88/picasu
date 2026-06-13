@@ -3,6 +3,7 @@ use bitcode::{Decode, Encode};
 use chrono::Utc;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 use super::metadata::AlbumMetadata;
 use crate::public::db::tree::TREE;
@@ -39,43 +40,60 @@ impl AlbumCombined {
     }
 
     pub fn self_update(&mut self) {
-        // Acquire a read lock on the in-memory tree
         let ref_data = TREE.in_memory.read().unwrap();
 
-        // Collect relevant media items (Image/Video) along with their info
+        // Extract fields needed inside the closure to avoid borrowing `self`.
+        let album_id = self.object.id;
+        let dir_path = self.metadata.dir_path.clone();
+
+        let belongs_to_album = move |alias: &[crate::public::structure::common::FileModify],
+                                     albums: &std::collections::HashSet<ArrayString<64>>|
+              -> bool {
+            if let Some(ref dir) = dir_path {
+                // Directory album: membership is path-based — at least one source
+                // file must live under the album's directory.
+                alias
+                    .iter()
+                    .any(|a| Path::new(&a.file).starts_with(dir.as_str()))
+            } else {
+                // Manual album: membership is stored on the media item.
+                albums.contains(&album_id)
+            }
+        };
+
         let mut data_in_album: Vec<MediaItemInfo> = ref_data
             .par_iter()
-            .filter_map(
-                |database_timestamp| match &database_timestamp.abstract_data {
-                    AbstractData::Image(img) => {
-                        // Check if in this album and not trashed
-                        if img.metadata.albums.contains(&self.object.id) && !img.object.is_trashed {
-                            Some(MediaItemInfo {
-                                hash: img.object.id,
-                                size: img.metadata.size,
-                                thumbhash: img.object.thumbhash.clone(),
-                                timestamp: database_timestamp.timestamp,
-                            })
-                        } else {
-                            None
-                        }
+            .filter_map(|database_timestamp| match &database_timestamp.abstract_data {
+                AbstractData::Image(img) => {
+                    if !img.object.is_trashed
+                        && belongs_to_album(&img.metadata.alias, &img.metadata.albums)
+                    {
+                        Some(MediaItemInfo {
+                            hash: img.object.id,
+                            size: img.metadata.size,
+                            thumbhash: img.object.thumbhash.clone(),
+                            timestamp: database_timestamp.timestamp,
+                        })
+                    } else {
+                        None
                     }
-                    AbstractData::Video(vid) => {
-                        // Check if in this album and not trashed
-                        if vid.metadata.albums.contains(&self.object.id) && !vid.object.is_trashed {
-                            Some(MediaItemInfo {
-                                hash: vid.object.id,
-                                size: vid.metadata.size,
-                                thumbhash: vid.object.thumbhash.clone(),
-                                timestamp: database_timestamp.timestamp,
-                            })
-                        } else {
-                            None
-                        }
+                }
+                AbstractData::Video(vid) => {
+                    if !vid.object.is_trashed
+                        && belongs_to_album(&vid.metadata.alias, &vid.metadata.albums)
+                    {
+                        Some(MediaItemInfo {
+                            hash: vid.object.id,
+                            size: vid.metadata.size,
+                            thumbhash: vid.object.thumbhash.clone(),
+                            timestamp: database_timestamp.timestamp,
+                        })
+                    } else {
+                        None
                     }
-                    AbstractData::Album(_) => None,
-                },
-            )
+                }
+                AbstractData::Album(_) => None,
+            })
             .collect();
 
         // If there are no items in the album, there's nothing to set
