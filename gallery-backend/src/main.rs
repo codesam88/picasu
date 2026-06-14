@@ -159,3 +159,4 @@ fn open_browser(port: u16) {
         error!("Failed to open browser: {}", e);
     }
 }
+// test

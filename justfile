@@ -82,6 +82,19 @@ test: backend-test frontend-test
 [group('global')]
 audit: backend-audit frontend-audit
 
-# Full pre-commit check: format + check + test
+# Pre-commit check: format + check + test for each modified component
 [group('global')]
-precommit: format check test
+precommit:
+    #!/usr/bin/env sh
+    set -e
+    changed=$(git diff --cached --name-only)
+    if echo "$changed" | grep -q '^gallery-backend/'; then
+        just backend-format
+        just backend-check
+        just backend-test
+    fi
+    if echo "$changed" | grep -q '^gallery-frontend/'; then
+        just frontend-format
+        just frontend-check
+        just frontend-test
+    fi
