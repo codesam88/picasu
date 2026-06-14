@@ -38,6 +38,11 @@ backend-deny:
 backend-audit:
     cd gallery-backend && cargo audit
 
+# cargo build --release --features embed-frontend
+[group('backend')]
+backend-build:
+    cd gallery-backend && cargo build --release --features embed-frontend
+
 # ── Frontend ───────────────────────────────────────────────────────────────────
 
 # prettier --check
@@ -59,6 +64,11 @@ frontend-check:
 [group('frontend')]
 frontend-test:
     @echo "[ frontend-test ] no tests yet — add vitest"
+
+# npm run build (npm ci + vue-tsc + vite build)
+[group('frontend')]
+frontend-build:
+    cd gallery-frontend && npm run build
 
 # npm audit
 [group('frontend')]
@@ -82,6 +92,10 @@ check: backend-check frontend-check
 # Run tests (backend + frontend)
 [group('global')]
 test: backend-test frontend-test
+
+# Build frontend then backend with embedded assets (release)
+[group('global')]
+build: frontend-build backend-build
 
 # Run security audits (backend + frontend)
 [group('global')]
