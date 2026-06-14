@@ -95,7 +95,6 @@ onMounted(() => {
   })
 })
 
-
 const share = shareStore.resolvedShare?.share ?? null
 </script>
 <style scoped>

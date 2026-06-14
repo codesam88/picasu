@@ -181,12 +181,7 @@
           <span class="text-high-emphasis">{{ selectedFolderLabel }}</span>
         </div>
 
-        <v-btn
-          variant="tonal"
-          class="text-none"
-          @click="confirmSelection"
-          :disabled="!currentPath"
-        >
+        <v-btn variant="tonal" class="text-none" @click="confirmSelection" :disabled="!currentPath">
           Select Folder
         </v-btn>
       </v-card-actions>
@@ -241,7 +236,9 @@ const emptyStateIcon = computed(() => {
 })
 
 const selectedPathLabel = computed(() => currentPath.value || 'Root')
-const selectedFolderLabel = computed(() => getFolderName(currentPath.value) || selectedPathLabel.value)
+const selectedFolderLabel = computed(
+  () => getFolderName(currentPath.value) || selectedPathLabel.value
+)
 
 const breadcrumbs = computed<Breadcrumb[]>(() => buildBreadcrumbs(currentPath.value))
 const hiddenBreadcrumbs = computed<Breadcrumb[]>(() => {
@@ -269,7 +266,8 @@ const getBreadcrumbDisplayKey = (item: BreadcrumbDisplayItem, index: number) => 
   return item.kind === 'crumb' ? item.crumb.path : `overflow-${index}`
 }
 
-const isFixedBreadcrumb = (crumb: Breadcrumb) => /^[A-Za-z]:\\$/.test(crumb.label) || crumb.label === '/'
+const isFixedBreadcrumb = (crumb: Breadcrumb) =>
+  /^[A-Za-z]:\\$/.test(crumb.label) || crumb.label === '/'
 
 const getFolderName = (fullPath: string) => {
   if (!fullPath) return ''
@@ -426,7 +424,6 @@ const navigateUp = () => {
 
   loadItems(currentPath.value).catch(console.error)
 }
-
 
 const confirmSelection = () => {
   if (currentPath.value) {

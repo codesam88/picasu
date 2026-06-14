@@ -541,4 +541,3 @@ export async function deleteViewBarOverlay(): Promise<void> {
     }
   })
 }
-

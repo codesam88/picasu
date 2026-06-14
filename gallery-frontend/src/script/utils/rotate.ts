@@ -7,10 +7,7 @@ import { IsolationId } from '@/type/types'
  * Common handler for rotating an image.
  * This logic is shared between the UI menu item and keyboard shortcuts.
  */
-export const handleRotateImage = async (
-  hash: string,
-  isolationId: IsolationId
-): Promise<void> => {
+export const handleRotateImage = async (hash: string, isolationId: IsolationId): Promise<void> => {
   const editStore = useEditStore('mainId')
 
   // 1. Optimistic Update (Immediate visual feedback)

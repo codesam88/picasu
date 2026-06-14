@@ -9,7 +9,6 @@
   >
     <!-- Overlay toolbar positioned absolutely within the column scope -->
     <ViewBar
-
       :abstract-data="abstractData"
       :index="index"
       :hash="hash"
@@ -19,7 +18,6 @@
     <DisplayMobile
       class="flex-grow-1 position-relative view-content"
       v-if="configStore.isMobile"
-
       :isolation-id="isolationId"
       :hash="hash"
       :index="index"
@@ -33,7 +31,6 @@
     <DisplayDesktop
       class="flex-grow-1 position-relative view-content"
       v-if="!configStore.isMobile"
-
       :isolation-id="isolationId"
       :hash="hash"
       :index="index"
@@ -248,7 +245,6 @@ const handleKeyDown = (event: KeyboardEvent) => {
         console.error('Rotate Error:', error)
       })
     }
-
   }
 }
 
@@ -281,5 +277,4 @@ onUnmounted(() => {
   bottom: 0;
   overflow: hidden;
 }
-
 </style>

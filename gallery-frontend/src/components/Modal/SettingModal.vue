@@ -153,7 +153,4 @@ const onViewBarOverlayUpdate = (newValue: boolean | null) => {
     })
   }
 }
-
-
-
 </script>

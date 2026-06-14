@@ -17,7 +17,6 @@ import {
   getViewBarOverlay
 } from '@/db/settingsDb'
 
-
 export const useConstStore = (isolationId: IsolationId) =>
   defineStore('constStore' + isolationId, {
     state: (): {
@@ -137,4 +136,3 @@ export const useConstStore = (isolationId: IsolationId) =>
       }
     }
   })()
-

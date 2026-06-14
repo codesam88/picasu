@@ -12,7 +12,10 @@
       <div class="position-relative w-100 h-100 parent">
         <div
           id="click-handler"
-          :class="['w-100 h-100 position-absolute', { 'locate-highlight': locationStore.highlightedIndex === row.start + subIndex }]"
+          :class="[
+            'w-100 h-100 position-absolute',
+            { 'locate-highlight': locationStore.highlightedIndex === row.start + subIndex }
+          ]"
           :style="{
             pointerEvents: 'none',
             zIndex: 100,

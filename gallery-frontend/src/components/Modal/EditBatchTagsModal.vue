@@ -204,8 +204,7 @@ const addTagsRule = (arr: ModelValue[]) => {
 const removeTagsRule = (arr: ModelValue[]) => {
   const addKeys = new Set(changedTags.value.add.map(getTagString))
   return (
-    arr.every((t) => !addKeys.has(getTagString(t))) ||
-    'Some items are already selected in Add Tags'
+    arr.every((t) => !addKeys.has(getTagString(t))) || 'Some items are already selected in Add Tags'
   )
 }
 

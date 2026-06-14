@@ -38,12 +38,7 @@
 
       <v-divider></v-divider>
 
-      <v-list-item
-        title="Status"
-        :subtitle="statusSubtitle"
-        :prepend-icon="statusIcon"
-        lines="two"
-      >
+      <v-list-item title="Status" :subtitle="statusSubtitle" :prepend-icon="statusIcon" lines="two">
         <template #append>
           <v-btn
             v-if="isRunning"
@@ -147,9 +142,7 @@ const statusSubtitle = computed(() => {
   const label = stateLabel[status.value.state]
   if (status.value.state === 'idle') return 'No import has run yet'
   if (status.value.state === 'running') {
-    return status.value.cancelRequested
-      ? `Canceling ${root ?? ''}`
-      : `Scanning ${root ?? ''}`
+    return status.value.cancelRequested ? `Canceling ${root ?? ''}` : `Scanning ${root ?? ''}`
   }
 
   const finished = formatTime(status.value.finishedAt)

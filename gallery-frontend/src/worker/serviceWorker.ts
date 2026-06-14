@@ -14,7 +14,6 @@ function extractShareIdsFromReferer(referer: string): {
     if (match?.[1] && match[2]) {
       return { albumId: match[1], shareId: match[2] }
     }
-
   } catch {
     // Invalid URL
   }
@@ -133,7 +132,6 @@ async function handleMediaRequest(request: Request): Promise<Response> {
       }
     }
   }
-
 
   // Only override the mode and headers to preserve all other browser-generated settings (e.g., Range)
   const modifiedRequest = new Request(request, {

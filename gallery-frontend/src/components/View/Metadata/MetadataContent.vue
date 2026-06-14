@@ -17,19 +17,22 @@
         auto-grow
         @blur="
           !isShareMode &&
-            editUserDefinedDescription(
-              props.abstractData,
-              userDefinedDescriptionModel,
-              props.index,
-              props.isolationId
-            )
+          editUserDefinedDescription(
+            props.abstractData,
+            userDefinedDescriptionModel,
+            props.index,
+            props.isolationId
+          )
         "
         :placeholder="
           !isShareMode && userDefinedDescriptionModel === '' ? 'Add description' : undefined
         "
       />
     </v-card-item>
-    <div v-if="abstractData.type === 'image' || abstractData.type === 'video'" class="w-100 metadata-body">
+    <div
+      v-if="abstractData.type === 'image' || abstractData.type === 'video'"
+      class="w-100 metadata-body"
+    >
       <v-list class="pa-0 metadata-list" lines="two" :density="compact ? 'compact' : 'default'">
         <ItemSize :database="abstractData" />
         <ItemPath v-if="showMetadata" :database="abstractData" />

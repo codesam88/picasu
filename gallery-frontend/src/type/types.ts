@@ -73,4 +73,3 @@ export interface ShareFormData {
   showDownload: boolean
   showMetadata: boolean
 }
-

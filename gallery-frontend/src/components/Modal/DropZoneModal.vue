@@ -149,7 +149,9 @@ onUnmounted(() => {
   background-color: rgba(0, 0, 0, 0.4);
   visibility: hidden;
   opacity: 0;
-  transition: visibility 200ms, opacity 200ms;
+  transition:
+    visibility 200ms,
+    opacity 200ms;
 }
 
 .vue-full-screen-file-drop--visible {

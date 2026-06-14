@@ -9,10 +9,12 @@
     <BufferPlaceholder
       id="placeholderTop"
       v-if="visibleRows[0] !== undefined && !(prefetchStore.totalHeight <= windowHeight)"
-      :top-pixel="visibleRows[0].topPixelAccumulated! -
+      :top-pixel="
+        visibleRows[0].topPixelAccumulated! -
         scrollTopStore.scrollTop +
         bufferHeight / 3 +
-        visibleRows[0].offset"
+        visibleRows[0].offset
+      "
       :modify-top-pixel="true"
     />
     <div
@@ -31,14 +33,18 @@
     <BufferPlaceholder
       id="placeholderBottom"
       v-if="visibleRows.length > 0 && !(prefetchStore.totalHeight <= windowHeight)"
-      :top-pixel="(()=>{
-        const lastData = getArrayValue(visibleRows, visibleRows.length - 1)
-        return lastData.topPixelAccumulated! -
-        scrollTopStore.scrollTop +
-        bufferHeight / 3 +
-        lastData.offset +
-        lastData.rowHeight
-      })()"
+      :top-pixel="
+        (() => {
+          const lastData = getArrayValue(visibleRows, visibleRows.length - 1)
+          return (
+            lastData.topPixelAccumulated! -
+            scrollTopStore.scrollTop +
+            bufferHeight / 3 +
+            lastData.offset +
+            lastData.rowHeight
+          )
+        })()
+      "
       :modify-top-pixel="false"
     />
     <BufferPlaceholder

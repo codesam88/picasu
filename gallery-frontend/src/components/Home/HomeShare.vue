@@ -50,9 +50,7 @@ onBeforeMount(async () => {
       shareStore.password = savedInfo.password
     }
 
-
     basicString.value = `and(trashed:false, album:"${albumIdOpt}")`
-
 
     // Sync to IndexedDB for Service Worker
     await shareStore.syncShareInfoToIndexedDB()

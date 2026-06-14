@@ -28,7 +28,6 @@ const ChipsContainer: FunctionalComponent<ChipsContainerProps> = (props) => {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     const duration = data.exif?.duration
     if (duration !== undefined) {
-
       const formattedDuration = formatDuration(duration)
       chips.push(h(DurationChip, { label: formattedDuration }))
     }

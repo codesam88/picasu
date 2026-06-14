@@ -1,4 +1,3 @@
-
 import { watchDebounced } from '@vueuse/core'
 import { Ref } from 'vue'
 import { IsolationId, PrefetchReturn } from '@type/types'
@@ -90,7 +89,6 @@ async function processPrefetchChain(
 
   dependentPromises.push(fetchScrollbar(isolationId))
 
-
   if (route.meta.baseName !== 'share') {
     const tagStore = useTagStore('mainId')
     if (!tagStore.fetched) {
@@ -114,10 +112,7 @@ async function processPrefetchChain(
 /**
  * Helper to update stores with data from prefetch response.
  */
-function syncStoreFromPrefetch(
-  prefetchReturn: PrefetchReturn,
-  isolationId: IsolationId
-) {
+function syncStoreFromPrefetch(prefetchReturn: PrefetchReturn, isolationId: IsolationId) {
   const prefetchStore = usePrefetchStore(isolationId)
   const initializedStore = useInitializedStore(isolationId)
   const tokenStore = useTokenStore(isolationId)

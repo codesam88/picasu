@@ -42,4 +42,3 @@ type BaseName =
   | 'share'
   | 'links'
   | 'config'
-

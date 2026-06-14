@@ -146,10 +146,7 @@ export class MyParser extends CstParser {
 
   public tagExpression = this.RULE('tagExpression', () => {
     this.CONSUME1(Tag)
-    this.OR([
-      { ALT: () => this.CONSUME(Identifier) },
-      { ALT: () => this.CONSUME(BooleanValue) }
-    ])
+    this.OR([{ ALT: () => this.CONSUME(Identifier) }, { ALT: () => this.CONSUME(BooleanValue) }])
   })
 
   public typeExpression = this.RULE('typeExpression', () => {
@@ -162,24 +159,15 @@ export class MyParser extends CstParser {
   })
   public makeExpression = this.RULE('makeExpression', () => {
     this.CONSUME1(Make)
-    this.OR([
-      { ALT: () => this.CONSUME(Identifier) },
-      { ALT: () => this.CONSUME(BooleanValue) }
-    ])
+    this.OR([{ ALT: () => this.CONSUME(Identifier) }, { ALT: () => this.CONSUME(BooleanValue) }])
   })
   public modelExpression = this.RULE('modelExpression', () => {
     this.CONSUME1(Model)
-    this.OR([
-      { ALT: () => this.CONSUME(Identifier) },
-      { ALT: () => this.CONSUME(BooleanValue) }
-    ])
+    this.OR([{ ALT: () => this.CONSUME(Identifier) }, { ALT: () => this.CONSUME(BooleanValue) }])
   })
   public albumExpression = this.RULE('albumExpression', () => {
     this.CONSUME1(Album)
-    this.OR([
-      { ALT: () => this.CONSUME(Identifier) },
-      { ALT: () => this.CONSUME(BooleanValue) }
-    ])
+    this.OR([{ ALT: () => this.CONSUME(Identifier) }, { ALT: () => this.CONSUME(BooleanValue) }])
   })
   public pathExpression = this.RULE('pathExpression', () => {
     this.CONSUME1(Path)

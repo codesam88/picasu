@@ -79,8 +79,8 @@ router.afterEach((to) => {
     typeof to.meta.baseName === 'string'
       ? to.meta.baseName
       : typeof to.name === 'string'
-      ? to.name
-      : undefined
+        ? to.name
+        : undefined
 
   const baseTitleMap: Record<string, string> = {
     home: 'Home',
@@ -114,8 +114,8 @@ router.afterEach((to) => {
       typeof to.params.subhash === 'string'
         ? to.params.subhash
         : typeof to.params.hash === 'string'
-        ? to.params.hash
-        : undefined
+          ? to.params.hash
+          : undefined
     if (maybeHash != null && maybeHash !== '') {
       suffix = `View ${maybeHash}`
     } else {

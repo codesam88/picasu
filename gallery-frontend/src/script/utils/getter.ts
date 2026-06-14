@@ -124,7 +124,7 @@ export function extractHashFromPath(path: string): string | null {
 export function getSrc(hash: string, original: boolean, ext: string, updatedAt: number) {
   const compressedOrImported = original ? 'imported' : 'compressed'
   const basePath = `/object/${compressedOrImported}/${hash.slice(0, 2)}/${hash}.${ext}`
-  
+
   return `${basePath}?updated_at=${updatedAt}`
 }
 

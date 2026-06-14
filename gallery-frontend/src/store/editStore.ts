@@ -45,6 +45,5 @@ export const useEditStore = (isolationId: IsolationId) =>
         const count = this.rotationCounts.get(hash) || 0
         this.rotationCounts.set(hash, count + 1)
       }
-
     }
   })()

@@ -36,5 +36,4 @@ const isVertical = computed(() => {
   // If count is odd (1, 3, 5...), it is 90 or 270 degrees
   return Math.abs(rotationCount % 2) === 1
 })
-
 </script>

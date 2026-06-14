@@ -9,7 +9,9 @@
             :class="{ 'hover-cursor': ui.hasHoverEffect }"
             :style="{
               border:
-                ui.hasHoverEffect && isHovering ? '2px solid rgb(var(--v-border-color))' : '2px solid transparent'
+                ui.hasHoverEffect && isHovering
+                  ? '2px solid rgb(var(--v-border-color))'
+                  : '2px solid transparent'
             }"
             :elevation="ui.hasHoverEffect && isHovering ? 12 : 2"
             rounded="lg"
@@ -39,7 +41,9 @@
           <v-card
             class="pa-4 text-center mx-auto"
             :class="{ 'hover-cursor': true }"
-            :style="{ border: isHovering ? '2px solid rgb(var(--v-border-color))' : '2px solid transparent' }"
+            :style="{
+              border: isHovering ? '2px solid rgb(var(--v-border-color))' : '2px solid transparent'
+            }"
             :elevation="isHovering ? 12 : 2"
             rounded="lg"
             width="100%"
@@ -62,7 +66,9 @@
             :class="{ 'hover-cursor': ui.hasHoverEffect }"
             :style="{
               border:
-                ui.hasHoverEffect && isHovering ? '2px solid rgb(var(--v-border-color))' : '2px solid transparent'
+                ui.hasHoverEffect && isHovering
+                  ? '2px solid rgb(var(--v-border-color))'
+                  : '2px solid transparent'
             }"
             :elevation="ui.hasHoverEffect && isHovering ? 12 : 2"
             rounded="lg"

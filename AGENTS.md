@@ -6,7 +6,7 @@
 - Clarify ambiguous requirements with the user before starting.
 - Always present the proposed solution and its trade-offs for review before implementing.
 - After implementation, give the user a chance to review before moving on.
-- Run all available checks and tests before committing (`cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`; do not rely on pre-commit hook to catch everything).
+- Run all available checks and tests before committing: `just precommit` (runs format, check, and test for both frontend and backend); do not rely on the pre-commit hook to catch everything.
 
 ## Code documentation
 

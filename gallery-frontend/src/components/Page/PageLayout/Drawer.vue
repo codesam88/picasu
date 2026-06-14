@@ -52,5 +52,4 @@ const modalStore = useModalStore('mainId')
 const initializedStore = useInitializedStore('mainId')
 </script>
 
-<style scoped>
-</style>
+<style scoped></style>

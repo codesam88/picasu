@@ -54,6 +54,5 @@ export const useShareStore = (isolationId: IsolationId) =>
           await clearShareInfo(this.albumId, this.shareId)
         }
       }
-
     }
   })()

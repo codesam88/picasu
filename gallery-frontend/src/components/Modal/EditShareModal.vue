@@ -44,11 +44,10 @@ const formState = ref<ShareFormData>({
 watchEffect(() => {
   const share = props.editShareData.share
   formState.value = {
-     
     description: share.description || '',
     // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
     passwordRequired: !!share.password,
-     
+
     password: share.password ?? '',
     expireEnabled: share.exp > 0,
     // In edit mode, default to null (unchanged)
@@ -88,7 +87,6 @@ const saveChanges = async (formData: ShareFormData) => {
       Object.assign(props.editShareData.share, updatedShare)
       album.shareList.set(updatedShare.url, { ...props.editShareData.share, ...updatedShare })
     }
-
 
     await tryWithMessageStore('mainId', async () => {
       await axios.put('/put/edit_share', {
