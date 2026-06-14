@@ -37,6 +37,7 @@ const SCHEMA_VERSION: u8 = 2;
 // ── v1 schema types (AlbumMetadata without dir_path) ──────────────────────────
 
 #[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
 struct AlbumMetadataV1 {
     id: ArrayString<64>,
     title: Option<String>,
@@ -51,12 +52,14 @@ struct AlbumMetadataV1 {
 }
 
 #[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
 struct AlbumCombinedV1 {
     object: ObjectSchema,
     metadata: AlbumMetadataV1,
 }
 
 #[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
 enum AbstractDataV1 {
     Image(ImageCombined),
     Video(VideoCombined),
@@ -228,6 +231,104 @@ impl Value for Album {
 
     fn type_name() -> TypeName {
         TypeName::new("Album")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::public::structure::{
+        image::{combined::ImageCombined, metadata::ImageMetadata},
+        object::ObjectType,
+    };
+
+    fn make_image_v2() -> AbstractData {
+        let id = ArrayString::from("test").unwrap();
+        AbstractData::Image(ImageCombined {
+            object: ObjectSchema::new(id, ObjectType::Image),
+            metadata: ImageMetadata::new(id, 1024, 800, 600, "jpg".to_string()),
+        })
+    }
+
+    fn make_album_v1() -> AbstractDataV1 {
+        let id = ArrayString::from("alb").unwrap();
+        AbstractDataV1::Album(AlbumCombinedV1 {
+            object: ObjectSchema::new(id, ObjectType::Album),
+            metadata: AlbumMetadataV1 {
+                id,
+                title: Some("Holiday".to_string()),
+                created_time: 1000,
+                start_time: Some(500),
+                end_time: Some(2000),
+                last_modified_time: 1500,
+                cover: None,
+                item_count: 3,
+                item_size: 9000,
+                share_list: HashMap::new(),
+            },
+        })
+    }
+
+    #[test]
+    fn v2_round_trip_image() {
+        let original = make_image_v2();
+        let bytes = AbstractData::as_bytes(&original);
+        let decoded = AbstractData::from_bytes(&bytes);
+        match (original, decoded) {
+            (AbstractData::Image(orig), AbstractData::Image(dec)) => {
+                assert_eq!(orig.object.id, dec.object.id);
+                assert_eq!(orig.metadata.ext, dec.metadata.ext);
+            }
+            _ => panic!("variant mismatch after v2 round-trip"),
+        }
+    }
+
+    #[test]
+    fn v2_bytes_have_correct_prefix() {
+        let bytes = AbstractData::as_bytes(&make_image_v2());
+        assert_eq!(bytes[0], 0xFF, "magic marker must be 0xFF");
+        assert_eq!(bytes[1], 2, "version byte must match SCHEMA_VERSION");
+    }
+
+    #[test]
+    fn v1_album_migrates_dir_path_to_none() {
+        // Encode a v1 album record and verify it is promoted with dir_path = None.
+        let mut bytes = vec![0xFF, 1u8];
+        bytes.extend(bitcode::encode(&make_album_v1()));
+
+        let decoded = AbstractData::from_bytes(&bytes);
+        match decoded {
+            AbstractData::Album(alb) => {
+                assert_eq!(alb.metadata.title, Some("Holiday".to_string()));
+                assert_eq!(alb.metadata.item_count, 3);
+                assert_eq!(alb.metadata.dir_path, None);
+            }
+            _ => panic!("expected Album variant after v1 migration"),
+        }
+    }
+
+    #[test]
+    fn legacy_unversioned_decodes_as_v1_schema() {
+        // A record with no 0xFF prefix is treated as the legacy v1 schema.
+        let id = ArrayString::from("img").unwrap();
+        let v1_img = AbstractDataV1::Image(ImageCombined {
+            object: ObjectSchema::new(id, ObjectType::Image),
+            metadata: ImageMetadata::new(id, 0, 0, 0, "png".to_string()),
+        });
+        let bytes = bitcode::encode(&v1_img); // no versioning prefix
+        assert_ne!(bytes[0], 0xFF, "legacy record must not start with 0xFF");
+
+        let decoded = AbstractData::from_bytes(&bytes);
+        match decoded {
+            AbstractData::Image(img) => assert_eq!(img.metadata.ext, "png"),
+            _ => panic!("expected Image variant from legacy bytes"),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Unknown AbstractData schema version")]
+    fn unknown_version_panics() {
+        AbstractData::from_bytes(&[0xFF, 99, 0, 0, 0]);
     }
 }
 

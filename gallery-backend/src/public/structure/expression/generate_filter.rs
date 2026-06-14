@@ -278,3 +278,246 @@ impl Expression {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::public::structure::{
+        common::FileModify,
+        image::{combined::ImageCombined, metadata::ImageMetadata},
+        object::{ObjectSchema, ObjectType},
+    };
+    use arrayvec::ArrayString;
+
+    fn img() -> ImageCombined {
+        let id = ArrayString::from("test").unwrap();
+        ImageCombined {
+            object: ObjectSchema::new(id, ObjectType::Image),
+            metadata: ImageMetadata::new(id, 0, 0, 0, "jpg".to_string()),
+        }
+    }
+
+    fn run(expr: Expression, data: &AbstractData) -> bool {
+        expr.generate_filter()(data)
+    }
+
+    // ── Tag ──────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn tag_value_matches_and_misses() {
+        let mut i = img();
+        i.object.tags.insert("nature".to_string());
+        let data = AbstractData::Image(i);
+
+        assert!(run(
+            Expression::Tag(FilterValue::Value("nature".to_string())),
+            &data
+        ));
+        assert!(!run(
+            Expression::Tag(FilterValue::Value("city".to_string())),
+            &data
+        ));
+    }
+
+    #[test]
+    fn tag_exists_reflects_emptiness() {
+        let empty = AbstractData::Image(img());
+        let mut with_tag = img();
+        with_tag.object.tags.insert("x".to_string());
+        let tagged = AbstractData::Image(with_tag);
+
+        assert!(!run(Expression::Tag(FilterValue::Exists(true)), &empty));
+        assert!(run(Expression::Tag(FilterValue::Exists(false)), &empty));
+        assert!(run(Expression::Tag(FilterValue::Exists(true)), &tagged));
+    }
+
+    // ── Boolean flags ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn favorite_matches_flag() {
+        let mut i = img();
+        i.object.is_favorite = true;
+        let data = AbstractData::Image(i);
+
+        assert!(run(Expression::Favorite(true), &data));
+        assert!(!run(Expression::Favorite(false), &data));
+    }
+
+    #[test]
+    fn archived_matches_flag() {
+        let data = AbstractData::Image(img()); // is_archived = false by default
+        assert!(run(Expression::Archived(false), &data));
+        assert!(!run(Expression::Archived(true), &data));
+    }
+
+    #[test]
+    fn trashed_matches_flag() {
+        let mut i = img();
+        i.object.is_trashed = true;
+        let data = AbstractData::Image(i);
+
+        assert!(run(Expression::Trashed(true), &data));
+        assert!(!run(Expression::Trashed(false), &data));
+    }
+
+    // ── Ext / ExtType ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn ext_is_case_insensitive() {
+        let data = AbstractData::Image(img()); // ext = "jpg"
+
+        assert!(run(Expression::Ext("jpg".to_string()), &data));
+        assert!(run(Expression::Ext("JPG".to_string()), &data));
+        assert!(!run(Expression::Ext("png".to_string()), &data));
+    }
+
+    #[test]
+    fn ext_type_discriminates_variants() {
+        let data = AbstractData::Image(img());
+
+        assert!(run(Expression::ExtType("image".to_string()), &data));
+        assert!(!run(Expression::ExtType("video".to_string()), &data));
+        assert!(!run(Expression::ExtType("album".to_string()), &data));
+    }
+
+    // ── Path ──────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn path_matches_alias_case_insensitively() {
+        let mut i = img();
+        i.metadata.alias.push(FileModify {
+            file: "/Photos/Vacation/IMG_001.jpg".to_string(),
+            modified: 0,
+            scan_time: 0,
+        });
+        let data = AbstractData::Image(i);
+
+        assert!(run(Expression::Path("vacation".to_string()), &data));
+        assert!(run(Expression::Path("VACATION".to_string()), &data));
+        assert!(!run(Expression::Path("work".to_string()), &data));
+    }
+
+    // ── Make / Model ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn make_value_matches_exif_case_insensitively() {
+        let mut i = img();
+        i.metadata
+            .exif_vec
+            .insert("Make".to_string(), "Apple".to_string());
+        let data = AbstractData::Image(i);
+
+        assert!(run(
+            Expression::Make(FilterValue::Value("apple".to_string())),
+            &data
+        ));
+        assert!(run(
+            Expression::Make(FilterValue::Value("Apple".to_string())),
+            &data
+        ));
+        assert!(!run(
+            Expression::Make(FilterValue::Value("Samsung".to_string())),
+            &data
+        ));
+    }
+
+    #[test]
+    fn model_exists_reflects_exif_presence() {
+        let without = AbstractData::Image(img());
+        let mut i = img();
+        i.metadata
+            .exif_vec
+            .insert("Model".to_string(), "iPhone 14".to_string());
+        let with_model = AbstractData::Image(i);
+
+        assert!(!run(Expression::Model(FilterValue::Exists(true)), &without));
+        assert!(run(
+            Expression::Model(FilterValue::Exists(true)),
+            &with_model
+        ));
+    }
+
+    // ── Album (manual) ────────────────────────────────────────────────────────
+
+    #[test]
+    fn album_value_matches_stored_membership() {
+        // DIR_ALBUM_CACHE is empty in tests, so the filter falls through to the
+        // manual-album path that checks img.metadata.albums.
+        let album_id = ArrayString::from("aabbccdd").unwrap();
+        let mut i = img();
+        i.metadata.albums.insert(album_id);
+        let member = AbstractData::Image(i);
+        let non_member = AbstractData::Image(img());
+
+        assert!(run(
+            Expression::Album(AlbumFilterValue::Value(album_id)),
+            &member
+        ));
+        assert!(!run(
+            Expression::Album(AlbumFilterValue::Value(album_id)),
+            &non_member
+        ));
+    }
+
+    #[test]
+    fn album_exists_reflects_membership_emptiness() {
+        let album_id = ArrayString::from("aabbccdd").unwrap();
+        let empty = AbstractData::Image(img());
+        let mut i = img();
+        i.metadata.albums.insert(album_id);
+        let member = AbstractData::Image(i);
+
+        assert!(!run(
+            Expression::Album(AlbumFilterValue::Exists(true)),
+            &empty
+        ));
+        assert!(run(
+            Expression::Album(AlbumFilterValue::Exists(true)),
+            &member
+        ));
+    }
+
+    // ── Logical operators ─────────────────────────────────────────────────────
+
+    #[test]
+    fn and_requires_all_predicates() {
+        let mut i = img();
+        i.object.is_favorite = true;
+        i.object.is_archived = true;
+        let data = AbstractData::Image(i);
+
+        let both = Expression::And(vec![Expression::Favorite(true), Expression::Archived(true)]);
+        let one_false =
+            Expression::And(vec![Expression::Favorite(true), Expression::Trashed(true)]);
+
+        assert!(run(both, &data));
+        assert!(!run(one_false, &data));
+    }
+
+    #[test]
+    fn or_requires_at_least_one_predicate() {
+        let mut i = img();
+        i.object.is_favorite = true;
+        let data = AbstractData::Image(i);
+
+        let either = Expression::Or(vec![Expression::Favorite(true), Expression::Trashed(true)]);
+        let neither = Expression::Or(vec![Expression::Favorite(false), Expression::Trashed(true)]);
+
+        assert!(run(either, &data));
+        assert!(!run(neither, &data));
+    }
+
+    #[test]
+    fn not_inverts_predicate() {
+        let data = AbstractData::Image(img()); // is_favorite = false
+
+        assert!(run(
+            Expression::Not(Box::new(Expression::Favorite(true))),
+            &data
+        ));
+        assert!(!run(
+            Expression::Not(Box::new(Expression::Favorite(false))),
+            &data
+        ));
+    }
+}
