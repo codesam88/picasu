@@ -45,7 +45,6 @@ mod tests {
         // 3. Create DATA_TABLE so read handlers don't get "table does not exist".
         //    In normal operation this happens on the first write (FlushTreeTask).
         {
-            use redb::ReadableDatabase;
             let write_txn = TREE.in_disk.begin_write().expect("begin write txn");
             write_txn.open_table(DATA_TABLE).expect("create DATA_TABLE");
             write_txn.commit().expect("commit DATA_TABLE creation");
