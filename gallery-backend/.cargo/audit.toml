@@ -1,0 +1,7 @@
+[advisories]
+# rsa 0.9.x: Marvin Attack timing side-channel. No upstream fix available.
+# Not exploitable: app uses HS256 (HMAC) only; RSA code compiled in via
+# jsonwebtoken's rust_crypto feature but never invoked at runtime.
+#
+# paste 1.0.x: proc-macro unmaintained; build-time only via rav1e/image.
+ignore = ["RUSTSEC-2023-0071", "RUSTSEC-2024-0436"]

@@ -21,18 +21,12 @@ allow = [
     "BSD-3-Clause",
     "MPL-2.0",
     "Unicode-3.0",
-    "Unicode-DFS-2016",
-    "OpenSSL",
     "Zlib",
     "CC0-1.0",
     "NCSA",
-    "WTFPL",
+    "OpenSSL",           # ring's custom license (see clarify block below)
+    "CDLA-Permissive-2.0", # webpki-roots (TLS root certificates), via ureq v3
 ]
-
-# bzip2-1.0.6 is a permissive custom license (BSD-like); not an SPDX identifier
-[[licenses.exceptions]]
-allow = ["bzip2-1.0.6"]
-name = "libbz2-rs-sys"
 
 [[licenses.clarify]]
 crate = "ring"
