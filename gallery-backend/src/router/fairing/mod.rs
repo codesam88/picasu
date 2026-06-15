@@ -26,3 +26,25 @@ static VALIDATION_ALLOW_EXPIRED: LazyLock<Validation> = LazyLock::new(|| {
     validation.validate_exp = false; // Disable expiration validation
     validation
 });
+
+#[cfg(test)]
+mod tests {
+    use jsonwebtoken::{Algorithm, Header};
+
+    use super::{VALIDATION, VALIDATION_ALLOW_EXPIRED};
+
+    // RUSTSEC-2023-0071: rsa 0.9.x has a Marvin Attack timing side-channel.
+    // We suppress the advisory in audit.toml because the app exclusively uses
+    // HS256 (HMAC). These tests enforce that assumption — if the algorithm
+    // is ever changed to an RSA variant, the advisory becomes exploitable.
+    #[test]
+    fn jwt_default_header_is_hs256() {
+        assert_eq!(Header::default().alg, Algorithm::HS256);
+    }
+
+    #[test]
+    fn jwt_validation_uses_hs256_only() {
+        assert_eq!(VALIDATION.algorithms, vec![Algorithm::HS256]);
+        assert_eq!(VALIDATION_ALLOW_EXPIRED.algorithms, vec![Algorithm::HS256]);
+    }
+}
