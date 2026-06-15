@@ -7,14 +7,13 @@ use dashmap::DashMap;
 use std::{
     mem,
     sync::{
-        Arc, LazyLock, OnceLock,
+        Arc, LazyLock,
         atomic::{AtomicU64, Ordering},
     },
     time::Instant,
 };
 use superconsole::{Component, Dimensions, DrawMode, Line, Lines};
 use terminal_size::{Width, terminal_size};
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::public::constant::runtime::CURRENT_NUM_THREADS;
@@ -23,20 +22,11 @@ use crate::public::constant::runtime::CURRENT_NUM_THREADS;
 pub async fn tui_task(
     mut sc: superconsole::SuperConsole,
     dashboard: std::sync::Arc<Dashboard>,
-    mut rx: UnboundedReceiver<String>,
 ) -> Result<()> {
     let mut tick = tokio::time::interval(std::time::Duration::from_millis(50));
-
     loop {
-        tokio::select! {
-            Some(line) = rx.recv() => {
-                let colored = Lines::from_colored_multiline_string(&line);
-                sc.emit(colored);
-            }
-            _ = tick.tick() => {
-                sc.render(&*dashboard)?;
-            }
-        }
+        tick.tick().await;
+        sc.render(&*dashboard)?;
     }
 }
 
@@ -181,7 +171,6 @@ pub struct Dashboard {
     total_duration: AtomicU64,
 }
 
-pub static LOGGER_TX: OnceLock<UnboundedSender<String>> = OnceLock::new();
 pub static DASHBOARD: LazyLock<Arc<Dashboard>> = LazyLock::new(|| Arc::new(Dashboard::new()));
 
 impl Dashboard {

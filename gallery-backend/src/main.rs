@@ -51,7 +51,7 @@ fn migration() {
 
 fn main() {
     // Initialize logger first thing
-    let tui_events_rx = initialize_logger();
+    initialize_logger();
 
     migration();
 
@@ -104,7 +104,7 @@ fn main() {
 
             if let Some(console) = superconsole::SuperConsole::new() {
                 INDEX_RUNTIME.spawn(async move {
-                    if let Err(e) = tui_task(console, DASHBOARD.clone(), tui_events_rx)
+                    if let Err(e) = tui_task(console, DASHBOARD.clone())
                         .await
                         .map_err(|error| handle_error(error.context("TUI error.")))
                     {
