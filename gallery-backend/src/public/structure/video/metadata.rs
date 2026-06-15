@@ -1,7 +1,7 @@
 use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 
 use crate::public::structure::common::FileModify;
 
@@ -15,7 +15,7 @@ pub struct VideoMetadata {
     pub height: u32,
     pub ext: String,
     pub duration: f64,
-    pub albums: HashSet<ArrayString<64>>,
+    pub album: Option<ArrayString<64>>,
     pub exif_vec: BTreeMap<String, String>,
     pub alias: Vec<FileModify>,
 }
@@ -29,7 +29,7 @@ impl VideoMetadata {
             height,
             ext,
             duration: 0.0,
-            albums: HashSet::new(),
+            album: None,
             exif_vec: BTreeMap::new(),
             alias: Vec::new(),
         }

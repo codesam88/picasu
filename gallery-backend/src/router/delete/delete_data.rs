@@ -83,8 +83,8 @@ fn process_deletes(
             })?;
 
         let affected_albums = match &abstract_data {
-            AbstractData::Image(img) => img.metadata.albums.iter().copied().collect(),
-            AbstractData::Video(vid) => vid.metadata.albums.iter().copied().collect(),
+            AbstractData::Image(img) => img.metadata.album.iter().copied().collect(),
+            AbstractData::Video(vid) => vid.metadata.album.iter().copied().collect(),
             AbstractData::Album(alb) => vec![alb.object.id],
         };
 

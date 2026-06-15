@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::{
     public::constant::redb::DATA_TABLE,
     public::error::{AppError, ErrorKind, ResultExt},
-    public::structure::{abstract_data::AbstractData, album::AlbumCombined, config::APP_CONFIG},
+    public::structure::{abstract_data::AbstractData, album::AlbumCombined},
 };
 use dashmap::DashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelBridge, ParallelIterator};
@@ -51,24 +51,8 @@ impl Tree {
         tag_infos
     }
 
-    /// Return the albums that are active under the current mode.
-    ///
-    /// - `album_paths_from_filesystem: true`  → filesystem-hierarchy albums only
-    ///   (`dir_path.is_some()`)
-    /// - `album_paths_from_filesystem: false` → user-created albums only
-    ///   (`dir_path.is_none()`)
-    ///
-    /// The two sets are kept completely independent: switching between modes
-    /// never mutates the other set's records.
+    /// Return all filesystem-backed (dir) albums.
     pub fn read_albums(&self) -> Result<Vec<AlbumCombined>, AppError> {
-        let dir_mode = APP_CONFIG
-            .get()
-            .unwrap()
-            .read()
-            .unwrap()
-            .public
-            .album_paths_from_filesystem;
-
         self.in_disk
             .begin_read()
             .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?
@@ -84,19 +68,11 @@ impl Tree {
             .par_bridge()
             .filter_map(|entry| {
                 entry
-                    .map(|(_, guard)| {
-                        let abstract_data = guard.value();
-                        match abstract_data {
-                            AbstractData::Album(album) => {
-                                let is_dir_album = album.metadata.dir_path.is_some();
-                                if is_dir_album == dir_mode {
-                                    Some(album)
-                                } else {
-                                    None
-                                }
-                            }
-                            _ => None,
+                    .map(|(_, guard)| match guard.value() {
+                        AbstractData::Album(album) if album.metadata.dir_path.is_some() => {
+                            Some(album)
                         }
+                        _ => None,
                     })
                     .transpose()
             })

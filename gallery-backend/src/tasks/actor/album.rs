@@ -65,22 +65,20 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
             let hash_list: Vec<_> = ref_data
                 .par_iter()
                 .filter_map(|dt| match &dt.abstract_data {
-                    AbstractData::Image(img) if img.metadata.albums.contains(&*album_id) => {
+                    AbstractData::Image(img) if img.metadata.album == Some(album_id) => {
                         Some(img.object.id)
                     }
-                    AbstractData::Video(vid) if vid.metadata.albums.contains(&*album_id) => {
+                    AbstractData::Video(vid) if vid.metadata.album == Some(album_id) => {
                         Some(vid.object.id)
                     }
                     _ => None,
                 })
                 .collect();
 
-            // Remove this album from these data
+            // Clear album membership from these items
             for hash in hash_list {
                 let mut abstract_data = data_table.get(&*hash).unwrap().unwrap().value();
-                if let Some(albums) = abstract_data.albums_mut() {
-                    albums.remove(&*album_id);
-                }
+                abstract_data.set_album(None);
                 data_table.insert(&*hash, abstract_data).unwrap();
             }
         }

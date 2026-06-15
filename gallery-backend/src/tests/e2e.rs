@@ -1,9 +1,7 @@
 /// Scenario-based end-to-end API tests.
 ///
-/// Five scenarios exercise realistic usage configurations.  Each scenario is
-/// self-contained: it injects its own fixtures with unique namespaced paths /
-/// tags and asserts only on what it created.  Scenarios that mutate global
-/// config (album_paths_from_filesystem) serialise via CONFIG_MUTEX.
+/// Self-contained scenarios that inject their own fixtures with unique
+/// namespaced paths/tags and assert only on what they created.
 ///
 /// Scenario A checks the initial empty state and must run before any data is
 /// inserted; it does so atomically inside the TEST_ENV LazyLock initialiser
@@ -12,10 +10,10 @@
 mod tests {
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
-    use std::sync::{LazyLock, Mutex, RwLock};
+    use std::sync::{LazyLock, RwLock};
 
     use arrayvec::ArrayString;
-    use redb::ReadableDatabase;
+    use redb::{ReadableDatabase, ReadableTable};
     use rocket::http::{ContentType, Cookie, Status};
     use rocket::local::blocking::Client;
     use serde_json::Value;
@@ -35,10 +33,6 @@ mod tests {
     use crate::public::structure::response::database_timestamp::DatabaseTimestamp;
     use crate::router::builder::build_rocket_with_config;
     use crate::tasks::actor::album::album_task;
-
-    // ─── Mutex for tests that change app-wide config ──────────────────────────
-
-    static CONFIG_MUTEX: Mutex<()> = Mutex::new(());
 
     // ─── One-time test environment ────────────────────────────────────────────
 
@@ -60,7 +54,6 @@ mod tests {
             .expect("DATA_PATH already set");
 
         // No password → GuardAuth auto-succeeds; read_only_mode = false.
-        // album_paths_from_filesystem starts as false (manual-album mode).
         APP_CONFIG
             .set(RwLock::new(AppConfig::default()))
             .expect("APP_CONFIG already set");
@@ -209,7 +202,6 @@ mod tests {
     /// Re-read all redb records into TREE.in_memory.
     /// Replicates the synchronous core of `update_tree_task` without async.
     fn refresh_in_memory() {
-        use redb::ReadableTable;
         let txn = TREE.in_disk.begin_read().expect("begin read");
         let table = txn.open_table(DATA_TABLE).expect("open table");
         let priority_list = &["DateTimeOriginal", "filename", "modified", "scan_time"];
@@ -228,17 +220,6 @@ mod tests {
     /// Create a dir album for `dir_path` and return its album ID.
     fn make_dir_album(dir_path: &Path) -> ArrayString<64> {
         get_or_create_dir_album(dir_path.to_path_buf()).expect("create dir album")
-    }
-
-    fn set_dir_album_mode(enabled: bool) {
-        let _ = &*TEST_ENV;
-        APP_CONFIG
-            .get()
-            .unwrap()
-            .write()
-            .unwrap()
-            .public
-            .album_paths_from_filesystem = enabled;
     }
 
     // ─── Scenario A: initial empty state ─────────────────────────────────────
@@ -313,85 +294,15 @@ mod tests {
         }
     }
 
-    // ─── Scenario C: API-created albums with titles ───────────────────────────
-
-    /// Create two albums via the API, rename one, and verify the listing returns
-    /// the correct fields — including that dirPath and parentAlbumId are null
-    /// for user-created albums.
-    #[test]
-    fn scenario_c_api_albums_have_correct_structure() {
-        let _guard = CONFIG_MUTEX.lock().unwrap();
-        let client = make_client();
-        let cookie = auth_cookie(&client);
-
-        let id_a = client
-            .post("/post/create_empty_album")
-            .cookie(cookie.clone())
-            .dispatch()
-            .into_string()
-            .expect("album id");
-
-        let id_b = client
-            .post("/post/create_empty_album")
-            .cookie(cookie.clone())
-            .dispatch()
-            .into_string()
-            .expect("album id");
-
-        // Rename album A
-        let payload = serde_json::json!({ "albumId": id_a, "title": "Summer Highlights" });
-        let r = client
-            .put("/put/set_album_title")
-            .header(ContentType::JSON)
-            .cookie(cookie.clone())
-            .body(payload.to_string())
-            .dispatch();
-        assert_eq!(r.status(), Status::Ok, "set_album_title failed");
-
-        let albums: Vec<Value> =
-            serde_json::from_value(json_get(&client, "/get/get-albums")).expect("array");
-        let find = |id: &str| {
-            albums
-                .iter()
-                .find(|a| a["albumId"].as_str().unwrap_or("") == id)
-                .unwrap_or_else(|| panic!("album {id} not in listing"))
-                .clone()
-        };
-
-        let a = find(&id_a);
-        assert_eq!(a["albumName"], "Summer Highlights");
-        assert_eq!(
-            a["dirPath"],
-            Value::Null,
-            "user album: dirPath must be null"
-        );
-        assert_eq!(
-            a["parentAlbumId"],
-            Value::Null,
-            "user album: parentAlbumId must be null"
-        );
-
-        let b = find(&id_b);
-        assert_eq!(
-            b["albumName"],
-            Value::Null,
-            "untitled album: albumName must be null"
-        );
-        assert_eq!(b["dirPath"], Value::Null);
-        assert_eq!(b["parentAlbumId"], Value::Null);
-    }
-
     // ─── Scenario D: directory-based photo hierarchy ──────────────────────────
 
-    /// Switch to filesystem-album mode and verify that the parent→child
-    /// relationship is correctly exposed via parentAlbumId and dirPath.
+    /// Verify that the parent→child relationship is correctly exposed via
+    /// parentAlbumId and dirPath.
     ///
     /// Uses a unique base path (/e2e_d/) so this test does not conflict with
     /// Scenario E's generated tree.
     #[test]
     fn scenario_d_dir_album_parent_child_relationship() {
-        let _guard = CONFIG_MUTEX.lock().unwrap();
-
         let parent_dir = PathBuf::from("/e2e_d/vacation");
         let child_dir = PathBuf::from("/e2e_d/vacation/day1");
 
@@ -407,8 +318,6 @@ mod tests {
                 exif_date: None,
             },
         ]);
-
-        set_dir_album_mode(true);
 
         let parent_id = make_dir_album(&parent_dir);
         let child_id = make_dir_album(&child_dir);
@@ -434,7 +343,6 @@ mod tests {
             .get(child_dir.to_str().unwrap())
             .expect("day1 album missing");
 
-        // Parent sits at the root of this sub-tree
         assert_eq!(
             parent["parentAlbumId"],
             Value::Null,
@@ -442,7 +350,6 @@ mod tests {
         );
         assert_eq!(parent["albumId"].as_str().unwrap(), parent_id.as_str());
 
-        // Child points back to parent
         assert_eq!(
             child["parentAlbumId"].as_str().unwrap(),
             parent_id.as_str(),
@@ -451,8 +358,6 @@ mod tests {
         assert_eq!(child["albumId"].as_str().unwrap(), child_id.as_str());
 
         // The parent album counts only its direct photo (img1.jpg), not day1/img2.jpg.
-        // Read from redb directly — background UpdateTreeTask only writes to
-        // TREE.in_memory, not to the on-disk DB, so redb is race-free here.
         {
             let txn = TREE.in_disk.begin_read().expect("begin read");
             let table = txn.open_table(DATA_TABLE).expect("open table");
@@ -468,8 +373,6 @@ mod tests {
                 "vacation album must count only its direct photo (not day1/img2)"
             );
         }
-
-        set_dir_album_mode(false);
     }
 
     // ─── Scenario E: generated multi-level dir tree ───────────────────────────
@@ -481,9 +384,6 @@ mod tests {
     ///   - no album is its own parent.
     #[test]
     fn scenario_e_generated_dir_tree_hierarchy_properties() {
-        let _guard = CONFIG_MUTEX.lock().unwrap();
-
-        // (dir_path, parent_dir_path)
         let dirs: &[(&str, Option<&str>)] = &[
             ("/e2e_e/root", None),
             ("/e2e_e/root/alpha", Some("/e2e_e/root")),
@@ -491,7 +391,6 @@ mod tests {
             ("/e2e_e/root/alpha/deep", Some("/e2e_e/root/alpha")),
         ];
 
-        // One photo per directory to make them non-empty
         let photo_paths: Vec<String> = dirs
             .iter()
             .map(|(dir, _)| format!("{dir}/e2e_e_photo.jpg"))
@@ -505,8 +404,6 @@ mod tests {
             })
             .collect();
         insert_photos(&specs);
-
-        set_dir_album_mode(true);
 
         let mut id_by_dir: HashMap<&str, ArrayString<64>> = HashMap::new();
         for (dir, _) in dirs {
@@ -549,47 +446,310 @@ mod tests {
                 }
             }
         }
-
-        set_dir_album_mode(false);
     }
 
-    // ─── Scenario F: empty manual album properties ────────────────────────────
+    /// Insert a photo backed by an actual file on disk and return its hash.
+    fn insert_photo_with_real_file(file_path: &Path) -> ArrayString<64> {
+        let _ = &*TEST_ENV; // ensure DATA_PATH and APP_CONFIG are initialised
+        assert!(file_path.exists(), "source file must exist: {file_path:?}");
+        let hash = generate_random_hash();
+        let txn = TREE.in_disk.begin_write().expect("begin write");
+        {
+            let mut table = txn.open_table(DATA_TABLE).expect("open table");
+            let obj = ObjectSchema::new(hash, ObjectType::Image);
+            let mut meta = ImageMetadata::new(hash, 1, 1, 1, "jpg".into());
+            meta.alias = vec![FileModify {
+                file: file_path.to_string_lossy().into_owned(),
+                modified: 0,
+                scan_time: 0,
+            }];
+            table
+                .insert(
+                    hash.as_str(),
+                    &AbstractData::Image(ImageCombined {
+                        object: obj,
+                        metadata: meta,
+                    }),
+                )
+                .expect("insert");
+        }
+        txn.commit().expect("commit");
+        refresh_in_memory();
+        hash
+    }
 
-    /// A freshly created album must have zero items and no cover.
-    /// Verified in in_memory after the create handler flushes and syncs.
+    // ─── Scenario G: PUT /put/assign_album endpoint registered ───────────────
+
+    /// The new assign_album endpoint must be registered.
+    /// Dummy IDs are sent so the route itself can respond with any non-routing
+    /// error.  Currently the route is absent → 404; this test fails until it
+    /// is registered.
     #[test]
-    fn scenario_f_new_album_starts_empty() {
+    fn scenario_g_assign_album_endpoint_is_registered() {
         let client = make_client();
         let cookie = auth_cookie(&client);
+        let resp = client
+            .put("/put/assign_album")
+            .cookie(cookie)
+            .header(ContentType::JSON)
+            .body(r#"{"hash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","albumId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}"#)
+            .dispatch();
+        assert_ne!(
+            resp.status(),
+            Status::NotFound,
+            "PUT /put/assign_album must be a registered route (currently absent — 404)"
+        );
+    }
 
-        let album_id = client
+    // ─── Scenario H: assign_album moves file and updates alias + membership ───
+
+    /// Full workflow: file on disk → DB record → assign_album → file moved to
+    /// album directory → alias in DB updated → album item_count is 1.
+    #[test]
+    fn scenario_h_assign_album_moves_file_and_updates_membership() {
+        let data = {
+            let _ = &*TEST_ENV;
+            DATA_PATH.get().expect("DATA_PATH initialised")
+        };
+
+        let import_dir = data.join("e2e_h_import");
+        std::fs::create_dir_all(&import_dir).expect("create import dir");
+        let src = import_dir.join("e2e_h_photo.jpg");
+        std::fs::write(&src, b"\xff\xd8\xff fake jpeg").expect("write source file");
+
+        let album_dir = data.join("e2e_h_album");
+        std::fs::create_dir_all(&album_dir).expect("create album dir");
+        let album_id = make_dir_album(&album_dir);
+
+        let hash = insert_photo_with_real_file(&src);
+
+        let client = make_client();
+        let cookie = auth_cookie(&client);
+        let resp = client
+            .put("/put/assign_album")
+            .cookie(cookie)
+            .header(ContentType::JSON)
+            .body(format!(r#"{{"hash":"{hash}","albumId":"{album_id}"}}"#))
+            .dispatch();
+
+        assert_eq!(
+            resp.status(),
+            Status::Ok,
+            "assign_album must return 200 (currently 404 — not yet implemented)"
+        );
+
+        // File must be at new location, gone from source
+        let dst = album_dir.join("e2e_h_photo.jpg");
+        assert!(dst.exists(), "file must be moved into album dir: {dst:?}");
+        assert!(!src.exists(), "source path must be vacated: {src:?}");
+
+        // Alias in DB must reflect the new path
+        {
+            let txn = TREE.in_disk.begin_read().expect("begin read");
+            let table = txn.open_table(DATA_TABLE).expect("open table");
+            let guard = table
+                .get(hash.as_str())
+                .expect("redb get")
+                .expect("image in redb");
+            let AbstractData::Image(img) = guard.value() else {
+                panic!("not an image")
+            };
+            assert_eq!(
+                img.metadata.alias[0].file,
+                dst.to_string_lossy().as_ref(),
+                "alias must point to new path after move"
+            );
+        }
+
+        // Album item_count must be 1 (read redb directly — race-free)
+        refresh_in_memory();
+        album_task(album_id).expect("album_task");
+        {
+            let txn = TREE.in_disk.begin_read().expect("begin read");
+            let table = txn.open_table(DATA_TABLE).expect("open table");
+            let guard = table
+                .get(album_id.as_str())
+                .expect("redb get")
+                .expect("album in redb");
+            let AbstractData::Album(alb) = guard.value() else {
+                panic!("not an album")
+            };
+            assert_eq!(alb.metadata.item_count, 1, "album must count 1 item");
+        }
+    }
+
+    // ─── Scenario I: album membership is singular ─────────────────────────────
+
+    /// Reassigning an image from album A to album B must leave A with 0 items
+    /// and B with 1.  The old HashSet model would leave it in both.
+    #[test]
+    fn scenario_i_album_membership_is_singular() {
+        let data = {
+            let _ = &*TEST_ENV;
+            DATA_PATH.get().expect("DATA_PATH initialised")
+        };
+
+        let import_dir = data.join("e2e_i_import");
+        std::fs::create_dir_all(&import_dir).expect("create import dir");
+        let src = import_dir.join("e2e_i_photo.jpg");
+        std::fs::write(&src, b"\xff\xd8\xff fake").expect("write source file");
+
+        let album_a_dir = data.join("e2e_i_album_a");
+        let album_b_dir = data.join("e2e_i_album_b");
+        std::fs::create_dir_all(&album_a_dir).expect("create album A dir");
+        std::fs::create_dir_all(&album_b_dir).expect("create album B dir");
+        let album_a = make_dir_album(&album_a_dir);
+        let album_b = make_dir_album(&album_b_dir);
+
+        let hash = insert_photo_with_real_file(&src);
+        let client = make_client();
+
+        // Assign to A
+        let r = client
+            .put("/put/assign_album")
+            .cookie(auth_cookie(&client))
+            .header(ContentType::JSON)
+            .body(format!(r#"{{"hash":"{hash}","albumId":"{album_a}"}}"#))
+            .dispatch();
+        assert_eq!(r.status(), Status::Ok, "assign → A must return 200");
+
+        // Reassign to B (file is now in A's directory)
+        let r = client
+            .put("/put/assign_album")
+            .cookie(auth_cookie(&client))
+            .header(ContentType::JSON)
+            .body(format!(r#"{{"hash":"{hash}","albumId":"{album_b}"}}"#))
+            .dispatch();
+        assert_eq!(r.status(), Status::Ok, "assign → B must return 200");
+
+        // Read item_counts directly from redb (race-free)
+        refresh_in_memory();
+        album_task(album_a).expect("album_task A");
+        album_task(album_b).expect("album_task B");
+        {
+            let txn = TREE.in_disk.begin_read().expect("begin read");
+            let table = txn.open_table(DATA_TABLE).expect("open table");
+
+            let ga = table
+                .get(album_a.as_str())
+                .expect("get A")
+                .expect("A in redb");
+            let AbstractData::Album(alb_a) = ga.value() else {
+                panic!("A not an album")
+            };
+            assert_eq!(
+                alb_a.metadata.item_count, 0,
+                "album A must have 0 items after image reassigned to B"
+            );
+
+            let gb = table
+                .get(album_b.as_str())
+                .expect("get B")
+                .expect("B in redb");
+            let AbstractData::Album(alb_b) = gb.value() else {
+                panic!("B not an album")
+            };
+            assert_eq!(
+                alb_b.metadata.item_count, 1,
+                "album B must have 1 item after reassign"
+            );
+        }
+    }
+
+    // ─── Scenario J: assign_album with stale alias path returns error ─────────
+
+    /// If the file is not at the path recorded in the DB, assign_album must
+    /// return a 4xx error and leave the DB unchanged.
+    #[test]
+    fn scenario_j_assign_album_rejects_stale_file_path() {
+        let data = {
+            let _ = &*TEST_ENV;
+            DATA_PATH.get().expect("DATA_PATH initialised")
+        };
+        let album_dir = data.join("e2e_j_album");
+        std::fs::create_dir_all(&album_dir).expect("create album dir");
+        let album_id = make_dir_album(&album_dir);
+
+        // Insert an image whose alias points at a non-existent file
+        let ghost = data.join("e2e_j_ghost_does_not_exist.jpg");
+        assert!(!ghost.exists(), "ghost path must not exist for this test");
+        let hash = generate_random_hash();
+        {
+            let txn = TREE.in_disk.begin_write().expect("begin write");
+            {
+                let mut table = txn.open_table(DATA_TABLE).expect("open table");
+                let obj = ObjectSchema::new(hash, ObjectType::Image);
+                let mut meta = ImageMetadata::new(hash, 0, 1, 1, "jpg".into());
+                meta.alias = vec![FileModify {
+                    file: ghost.to_string_lossy().into_owned(),
+                    modified: 0,
+                    scan_time: 0,
+                }];
+                table
+                    .insert(
+                        hash.as_str(),
+                        &AbstractData::Image(ImageCombined {
+                            object: obj,
+                            metadata: meta,
+                        }),
+                    )
+                    .expect("insert");
+            }
+            txn.commit().expect("commit");
+        }
+        refresh_in_memory();
+
+        let client = make_client();
+        let cookie = auth_cookie(&client);
+        let resp = client
+            .put("/put/assign_album")
+            .cookie(cookie)
+            .header(ContentType::JSON)
+            .body(format!(r#"{{"hash":"{hash}","albumId":"{album_id}"}}"#))
+            .dispatch();
+
+        assert!(
+            resp.status().code >= 400,
+            "must return 4xx when file is missing (got {:?})",
+            resp.status()
+        );
+
+        // DB alias must be unchanged
+        {
+            let txn = TREE.in_disk.begin_read().expect("begin read");
+            let table = txn.open_table(DATA_TABLE).expect("open table");
+            let guard = table
+                .get(hash.as_str())
+                .expect("get")
+                .expect("image still in redb");
+            let AbstractData::Image(img) = guard.value() else {
+                panic!("not an image")
+            };
+            assert_eq!(
+                img.metadata.alias[0].file,
+                ghost.to_string_lossy().as_ref(),
+                "alias must be unchanged after failed assign"
+            );
+        }
+    }
+
+    // ─── Scenario K: manual album creation endpoint removed ───────────────────
+
+    /// POST /post/create_empty_album must not exist in the new design — dir
+    /// albums are created implicitly by the indexer, not via API.
+    /// Currently returns 200; this test fails until the endpoint is removed.
+    #[test]
+    fn scenario_k_create_empty_album_endpoint_removed() {
+        let client = make_client();
+        let cookie = auth_cookie(&client);
+        let resp = client
             .post("/post/create_empty_album")
             .cookie(cookie)
-            .dispatch()
-            .into_string()
-            .expect("album id");
-
-        let in_memory = TREE.in_memory.read().unwrap();
-        let album = in_memory
-            .iter()
-            .find_map(|ts| {
-                if let AbstractData::Album(a) = &ts.abstract_data {
-                    if a.object.id.as_str() == album_id.as_str() {
-                        return Some(a.clone());
-                    }
-                }
-                None
-            })
-            .expect("new album not found in in_memory");
-
-        assert_eq!(album.metadata.item_count, 0, "new album must have 0 items");
-        assert!(
-            album.metadata.cover.is_none(),
-            "new album must have no cover"
-        );
-        assert!(
-            album.metadata.dir_path.is_none(),
-            "API album must have no dir_path"
+            .dispatch();
+        assert_eq!(
+            resp.status(),
+            Status::NotFound,
+            "POST /post/create_empty_album must be removed (currently returns 200)"
         );
     }
 }

@@ -1,6 +1,5 @@
 use crate::operations::dir_album::get_or_create_dir_album;
 use crate::operations::utils::sync_paths::get_resolved_sync_paths;
-use crate::public::structure::config::APP_CONFIG;
 use crate::tasks::{
     INDEX_COORDINATOR,
     actor::{
@@ -33,24 +32,8 @@ fn try_acquire(hash: ArrayString<64>) -> Option<ProcessingGuard> {
 }
 
 /// Ensure directory albums exist for every directory level between the nearest
-/// sync root and the file's parent.  Only runs when `album_paths_from_filesystem`
-/// is enabled.
-///
-/// Does NOT return album IDs — directory album membership is path-based and
-/// entirely independent from `img.metadata.albums` (the manual-assignment set).
+/// sync root and the file's parent.
 async fn ensure_dir_albums(file_path: &std::path::Path) {
-    let enabled = APP_CONFIG
-        .get()
-        .unwrap()
-        .read()
-        .unwrap()
-        .public
-        .album_paths_from_filesystem;
-
-    if !enabled {
-        return;
-    }
-
     let sync_paths = get_resolved_sync_paths();
 
     let Some(file_dir) = file_path.parent() else {

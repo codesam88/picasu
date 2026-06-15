@@ -38,7 +38,7 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
             }
 
             if !show_metadata {
-                img.metadata.albums.clear();
+                img.metadata.album = None;
                 img.object.tags.clear();
                 img.metadata.alias.clear();
                 img.metadata.exif_vec.clear();
@@ -53,7 +53,7 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
             }
 
             if !show_metadata {
-                vid.metadata.albums.clear();
+                vid.metadata.album = None;
                 vid.object.tags.clear();
                 vid.metadata.alias.clear();
                 vid.metadata.exif_vec.clear();

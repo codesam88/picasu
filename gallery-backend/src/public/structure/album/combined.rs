@@ -42,24 +42,21 @@ impl AlbumCombined {
     pub fn self_update(&mut self) {
         let ref_data = TREE.in_memory.read().unwrap();
 
-        // Extract fields needed inside the closure to avoid borrowing `self`.
         let album_id = self.object.id;
         let dir_path = self.metadata.dir_path.clone();
 
+        // For dir albums, membership is path-based (file's immediate parent == dir_path).
+        // For non-dir albums, membership is stored explicitly in item.metadata.album.
         let belongs_to_album = move |alias: &[crate::public::structure::common::FileModify],
-                                     albums: &std::collections::HashSet<ArrayString<64>>|
+                                     item_album: Option<ArrayString<64>>|
               -> bool {
             if let Some(ref dir) = dir_path {
-                // Directory album: a file belongs to this album only when its
-                // immediate parent directory equals the album's directory.
-                // Files in sub-directories belong to the corresponding child album.
                 let dir_path = Path::new(dir.as_str());
                 alias
                     .iter()
                     .any(|a| Path::new(&a.file).parent() == Some(dir_path))
             } else {
-                // Manual album: membership is stored on the media item.
-                albums.contains(&album_id)
+                item_album == Some(album_id)
             }
         };
 
@@ -69,7 +66,7 @@ impl AlbumCombined {
                 |database_timestamp| match &database_timestamp.abstract_data {
                     AbstractData::Image(img) => {
                         if !img.object.is_trashed
-                            && belongs_to_album(&img.metadata.alias, &img.metadata.albums)
+                            && belongs_to_album(&img.metadata.alias, img.metadata.album)
                         {
                             Some(MediaItemInfo {
                                 hash: img.object.id,
@@ -83,7 +80,7 @@ impl AlbumCombined {
                     }
                     AbstractData::Video(vid) => {
                         if !vid.object.is_trashed
-                            && belongs_to_album(&vid.metadata.alias, &vid.metadata.albums)
+                            && belongs_to_album(&vid.metadata.alias, vid.metadata.album)
                         {
                             Some(MediaItemInfo {
                                 hash: vid.object.id,
@@ -100,7 +97,6 @@ impl AlbumCombined {
             )
             .collect();
 
-        // If there are no items in the album, there's nothing to set
         if data_in_album.is_empty() {
             self.metadata.start_time = None;
             self.metadata.end_time = None;
@@ -111,25 +107,19 @@ impl AlbumCombined {
             return;
         }
 
-        // Sort by timestamp descending (newest first)
         data_in_album.sort_by_key(|info| std::cmp::Reverse(info.timestamp));
 
-        // Set metadata from the sorted list
         self.metadata.start_time = data_in_album.last().map(|info| info.timestamp);
         self.metadata.end_time = data_in_album.first().map(|info| info.timestamp);
         self.metadata.item_count = data_in_album.len();
         self.metadata.item_size = data_in_album.iter().map(|info| info.size).sum();
-
-        // Update last_modified_time
         self.metadata.last_modified_time = Utc::now().timestamp_millis();
 
-        // Set cover if not already set
         if self.metadata.cover.is_none() {
             if let Some(first_info) = data_in_album.first() {
                 self.set_cover_from_info(first_info);
             }
         } else {
-            // Check if current cover is still in the album, if not update it
             let current_cover = self.metadata.cover.unwrap();
             let cover_still_in_album = data_in_album.iter().any(|info| info.hash == current_cover);
             if !cover_still_in_album && let Some(first_info) = data_in_album.first() {
@@ -141,17 +131,15 @@ impl AlbumCombined {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
     use std::path::Path;
 
     use arrayvec::ArrayString;
 
     use crate::public::structure::common::FileModify;
 
-    // Mirrors the belongs_to_album closure in self_update.
     fn belongs_to_album(
         alias: &[FileModify],
-        albums: &HashSet<ArrayString<64>>,
+        item_album: Option<ArrayString<64>>,
         dir_path: Option<&str>,
         album_id: ArrayString<64>,
     ) -> bool {
@@ -161,7 +149,7 @@ mod tests {
                 .iter()
                 .any(|a| Path::new(&a.file).parent() == Some(dir_path))
         } else {
-            albums.contains(&album_id)
+            item_album == Some(album_id)
         }
     }
 
@@ -181,7 +169,7 @@ mod tests {
         let a = alias(&["/photos/vacation/img.jpg"]);
         assert!(belongs_to_album(
             &a,
-            &HashSet::new(),
+            None,
             Some("/photos/vacation"),
             ArrayString::new()
         ));
@@ -189,11 +177,10 @@ mod tests {
 
     #[test]
     fn dir_album_does_not_match_file_in_subdirectory() {
-        // Files in sub-directories belong to the child album, not the parent.
         let a = alias(&["/photos/vacation/day1/img.jpg"]);
         assert!(!belongs_to_album(
             &a,
-            &HashSet::new(),
+            None,
             Some("/photos/vacation"),
             ArrayString::new()
         ));
@@ -204,7 +191,7 @@ mod tests {
         let a = alias(&["/photos/vacation/day1/img.jpg"]);
         assert!(belongs_to_album(
             &a,
-            &HashSet::new(),
+            None,
             Some("/photos/vacation/day1"),
             ArrayString::new()
         ));
@@ -215,7 +202,7 @@ mod tests {
         let a = alias(&["/photos/other/img.jpg"]);
         assert!(!belongs_to_album(
             &a,
-            &HashSet::new(),
+            None,
             Some("/photos/vacation"),
             ArrayString::new()
         ));
@@ -223,11 +210,10 @@ mod tests {
 
     #[test]
     fn dir_album_does_not_match_partial_name_prefix() {
-        // "/photos/vacation2" must not match dir "/photos/vacation"
         let a = alias(&["/photos/vacation2/img.jpg"]);
         assert!(!belongs_to_album(
             &a,
-            &HashSet::new(),
+            None,
             Some("/photos/vacation"),
             ArrayString::new()
         ));
@@ -236,17 +222,13 @@ mod tests {
     #[test]
     fn manual_album_matches_stored_id() {
         let id = ArrayString::from("abc").unwrap();
-        let mut albums = HashSet::new();
-        albums.insert(id);
-        assert!(belongs_to_album(&alias(&[]), &albums, None, id));
+        assert!(belongs_to_album(&alias(&[]), Some(id), None, id));
     }
 
     #[test]
     fn manual_album_does_not_match_different_id() {
         let id = ArrayString::from("abc").unwrap();
         let other = ArrayString::from("xyz").unwrap();
-        let mut albums = HashSet::new();
-        albums.insert(other);
-        assert!(!belongs_to_album(&alias(&[]), &albums, None, id));
+        assert!(!belongs_to_album(&alias(&[]), Some(other), None, id));
     }
 }

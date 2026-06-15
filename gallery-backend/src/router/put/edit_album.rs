@@ -1,5 +1,3 @@
-use crate::operations::open_db::{open_data_table, open_tree_snapshot_table};
-use crate::process::transitor::index_to_abstract_data;
 use crate::public::constant::redb::DATA_TABLE;
 use crate::public::db::tree::TREE;
 use crate::public::error::{AppError, ErrorKind, ResultExt};
@@ -8,112 +6,13 @@ use crate::router::fairing::guard_auth::GuardAuth;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_share::GuardShare;
 use crate::router::{AppResult, GuardResult};
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
-use crate::tasks::batcher::flush_tree::FlushTreeTask;
+use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use anyhow::Result;
 use arrayvec::ArrayString;
-use futures::{StreamExt, TryStreamExt, stream};
 use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
-use std::collections::HashSet;
-
-/// Payload for batch editing album associations for multiple items.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EditAlbumsData {
-    /// List of item indices to modify.
-    index_array: Vec<usize>,
-    /// List of album IDs to add these items to.
-    add_albums_array: Vec<ArrayString<64>>,
-    /// List of album IDs to remove these items from.
-    remove_albums_array: Vec<ArrayString<64>>,
-    /// Snapshot timestamp to ensure data consistency during the read-modify-write cycle.
-    timestamp: i64,
-}
-
-/// Batches modifications to album associations for multiple media items.
-///
-/// This performs a read-modify-write operation using a specific DB snapshot
-/// to ensure consistency, then triggers background updates for affected albums.
-#[put("/put/edit_album", format = "json", data = "<json_data>")]
-pub async fn edit_album(
-    auth: GuardResult<GuardAuth>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
-    json_data: Json<EditAlbumsData>,
-) -> AppResult<()> {
-    const MAX_CONCURRENT_UPDATES: usize = 8;
-    let _ = auth?;
-    let _ = read_only_mode?;
-
-    let (to_flush, unique_affected_albums) = tokio::task::spawn_blocking(
-        move || -> Result<(Vec<_>, Vec<ArrayString<64>>), AppError> {
-            let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
-                .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
-            let data_table = open_data_table();
-
-            let mut to_flush = Vec::with_capacity(json_data.index_array.len());
-            for &index in &json_data.index_array {
-                let mut abstract_data = index_to_abstract_data(&tree_snapshot, &data_table, index)
-                    .or_raise(|| {
-                        (
-                            ErrorKind::Database,
-                            format!("Failed to retrieve data at index {index}"),
-                        )
-                    })?;
-
-                if let Some(albums) = abstract_data.albums_mut() {
-                    for album_id in &json_data.add_albums_array {
-                        albums.insert(*album_id);
-                    }
-                    for album_id in &json_data.remove_albums_array {
-                        albums.remove(album_id);
-                    }
-                }
-                to_flush.push(abstract_data);
-            }
-
-            // Deduplicate affected albums to prevent redundant update tasks.
-            let unique_affected_albums = json_data
-                .add_albums_array
-                .iter()
-                .chain(json_data.remove_albums_array.iter())
-                .copied()
-                .collect::<HashSet<_>>()
-                .into_iter()
-                .collect();
-
-            Ok((to_flush, unique_affected_albums))
-        },
-    )
-    .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-
-    BATCH_COORDINATOR
-        .execute_batch_waiting(FlushTreeTask::insert(to_flush))
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to execute flush tree task"))?;
-
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to execute update tree task"))?;
-
-    stream::iter(unique_affected_albums)
-        .map(|album_id| async move {
-            INDEX_COORDINATOR
-                .execute_waiting(AlbumSelfUpdateTask::new(album_id))
-                .await
-        })
-        .buffer_unordered(MAX_CONCURRENT_UPDATES)
-        .try_collect::<Vec<_>>()
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update albums"))?;
-
-    Ok(())
-}
 
 /// Payload for updating a specific album's cover image.
 #[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]

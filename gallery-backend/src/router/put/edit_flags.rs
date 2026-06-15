@@ -62,11 +62,9 @@ pub async fn edit_flags(
                 {
                     let mut abstract_data = guard.value();
 
-                    // If trashed is involved, record the albums this data belongs to
-                    if is_trashed_involved && let Some(albums) = abstract_data.albums() {
-                        for album_id in albums {
-                            affected_album_ids.insert(*album_id);
-                        }
+                    // If trashed is involved, record the album this data belongs to
+                    if is_trashed_involved && let Some(album_id) = abstract_data.album() {
+                        affected_album_ids.insert(album_id);
                     }
 
                     // Apply flag changes

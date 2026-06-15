@@ -39,8 +39,8 @@ impl Expression {
                 AlbumFilterValue::Value(album_id) => {
                     if album_id == shared_album_id {
                         Box::new(move |data| match data {
-                            AbstractData::Image(img) => img.metadata.albums.contains(&album_id),
-                            AbstractData::Video(vid) => vid.metadata.albums.contains(&album_id),
+                            AbstractData::Image(img) => img.metadata.album == Some(album_id),
+                            AbstractData::Video(vid) => vid.metadata.album == Some(album_id),
                             AbstractData::Album(_) => false,
                         })
                     } else {

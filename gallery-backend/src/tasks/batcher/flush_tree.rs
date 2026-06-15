@@ -3,11 +3,7 @@ use std::path::Path;
 
 use crate::{
     operations::dir_album::{mark_album_for_update, mark_dir_albums_for_path},
-    public::{
-        constant::redb::DATA_TABLE,
-        db::tree::TREE,
-        structure::{abstract_data::AbstractData, config::APP_CONFIG},
-    },
+    public::{constant::redb::DATA_TABLE, db::tree::TREE, structure::abstract_data::AbstractData},
     tasks::{BATCH_COORDINATOR, batcher::update_tree::UpdateTreeTask},
 };
 
@@ -60,27 +56,12 @@ fn flush_tree_task(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
     };
     write_txn.commit().unwrap();
 
-    let filesystem_albums_enabled = APP_CONFIG
-        .get()
-        .unwrap()
-        .read()
-        .unwrap()
-        .public
-        .album_paths_from_filesystem;
-
     for abstract_data in insert_list.iter().chain(remove_list.iter()) {
-        // Manual album membership: mark those albums for a stats update.
-        if let Some(albums) = abstract_data.albums() {
-            for album_id in albums {
-                mark_album_for_update(*album_id);
-            }
+        if let Some(album_id) = abstract_data.album() {
+            mark_album_for_update(album_id);
         }
-        // Directory album membership: path-prefix lookup — mark any dir album
-        // whose directory is an ancestor of one of this item's source paths.
-        if filesystem_albums_enabled {
-            for file_modify in abstract_data.alias() {
-                mark_dir_albums_for_path(Path::new(&file_modify.file));
-            }
+        for file_modify in abstract_data.alias() {
+            mark_dir_albums_for_path(Path::new(&file_modify.file));
         }
     }
 

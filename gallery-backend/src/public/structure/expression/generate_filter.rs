@@ -187,16 +187,16 @@ impl Expression {
                         })
                     } else {
                         Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                            AbstractData::Image(img) => img.metadata.albums.contains(&album_id),
-                            AbstractData::Video(vid) => vid.metadata.albums.contains(&album_id),
+                            AbstractData::Image(img) => img.metadata.album == Some(album_id),
+                            AbstractData::Video(vid) => vid.metadata.album == Some(album_id),
                             AbstractData::Album(_) => false,
                         })
                     }
                 }
                 AlbumFilterValue::Exists(exists) => {
                     Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                        AbstractData::Image(img) => img.metadata.albums.is_empty() != exists,
-                        AbstractData::Video(vid) => vid.metadata.albums.is_empty() != exists,
+                        AbstractData::Image(img) => img.metadata.album.is_some() == exists,
+                        AbstractData::Video(vid) => vid.metadata.album.is_some() == exists,
                         AbstractData::Album(_) => false,
                     })
                 }
@@ -456,7 +456,7 @@ mod tests {
         // manual-album path that checks img.metadata.albums.
         let album_id = ArrayString::from("aabbccdd").unwrap();
         let mut i = img();
-        i.metadata.albums.insert(album_id);
+        i.metadata.album = Some(album_id);
         let member = AbstractData::Image(i);
         let non_member = AbstractData::Image(img());
 
@@ -475,7 +475,7 @@ mod tests {
         let album_id = ArrayString::from("aabbccdd").unwrap();
         let empty = AbstractData::Image(img());
         let mut i = img();
-        i.metadata.albums.insert(album_id);
+        i.metadata.album = Some(album_id);
         let member = AbstractData::Image(i);
 
         assert!(!run(

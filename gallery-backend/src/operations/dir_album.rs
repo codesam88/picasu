@@ -14,7 +14,6 @@ use crate::public::db::tree::TREE;
 use crate::public::structure::abstract_data::AbstractData;
 use crate::public::structure::album::combined::AlbumCombined;
 use crate::public::structure::album::metadata::AlbumMetadata;
-use crate::public::structure::config::APP_CONFIG;
 use crate::public::structure::object::{ObjectSchema, ObjectType};
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -50,15 +49,7 @@ pub fn init_dir_album_cache() {
 
     info!("Loaded {} dir album mappings from database", cache.len());
 
-    let enabled = APP_CONFIG
-        .get()
-        .unwrap()
-        .read()
-        .unwrap()
-        .public
-        .album_paths_from_filesystem;
-
-    if enabled && !cache.is_empty() {
+    if !cache.is_empty() {
         let mut pending = PENDING_ALBUM_UPDATES.lock().unwrap();
         for &id in cache.values() {
             pending.insert(id);

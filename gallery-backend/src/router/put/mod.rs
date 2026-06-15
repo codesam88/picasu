@@ -1,6 +1,7 @@
 // src/router/put/mod.rs
 use rocket::Route;
 
+pub mod assign_album;
 pub mod edit_album;
 pub mod edit_config;
 pub mod edit_description;
@@ -13,7 +14,7 @@ pub mod reindex;
 pub mod rotate_image;
 pub fn generate_put_routes() -> Vec<Route> {
     routes![
-        edit_album::edit_album,
+        assign_album::assign_album,
         edit_album::set_album_cover,
         edit_album::set_album_title,
         edit_description::set_user_defined_description,

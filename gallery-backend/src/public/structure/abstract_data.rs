@@ -220,21 +220,21 @@ impl AbstractData {
         }
     }
 
-    /// Get albums that this item belongs to
-    pub fn albums(&self) -> Option<&HashSet<ArrayString<64>>> {
+    /// Get the single album this item belongs to (None if unassigned)
+    pub fn album(&self) -> Option<ArrayString<64>> {
         match self {
-            AbstractData::Image(img) => Some(&img.metadata.albums),
-            AbstractData::Video(vid) => Some(&vid.metadata.albums),
+            AbstractData::Image(img) => img.metadata.album,
+            AbstractData::Video(vid) => vid.metadata.album,
             AbstractData::Album(_) => None,
         }
     }
 
-    /// Get albums mutable
-    pub fn albums_mut(&mut self) -> Option<&mut HashSet<ArrayString<64>>> {
+    /// Set the single album this item belongs to
+    pub fn set_album(&mut self, album: Option<ArrayString<64>>) {
         match self {
-            AbstractData::Image(img) => Some(&mut img.metadata.albums),
-            AbstractData::Video(vid) => Some(&mut vid.metadata.albums),
-            AbstractData::Album(_) => None,
+            AbstractData::Image(img) => img.metadata.album = album,
+            AbstractData::Video(vid) => vid.metadata.album = album,
+            AbstractData::Album(_) => {}
         }
     }
 
@@ -334,7 +334,7 @@ impl AbstractData {
             height,
             ext: "jpg".to_string(),
             phash: None,
-            albums: HashSet::new(),
+            album: None,
             exif_vec: BTreeMap::new(),
             alias: vec![FileModify {
                 file: String::from("/"),
@@ -554,7 +554,7 @@ impl AbstractData {
                 height: vid.metadata.height,
                 ext: vid.metadata.ext.clone(),
                 phash: None,
-                albums: vid.metadata.albums.clone(),
+                album: vid.metadata.album,
                 exif_vec: vid.metadata.exif_vec.clone(),
                 alias: vid.metadata.alias.clone(),
             };

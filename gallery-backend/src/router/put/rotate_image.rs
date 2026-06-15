@@ -84,10 +84,7 @@ pub async fn rotate_image(
             abstract_data.set_phash(generate_phash(&dyn_img));
             abstract_data.update_update_at();
 
-            let album_ids: Vec<_> = abstract_data
-                .albums()
-                .map(|albums| albums.iter().copied().collect())
-                .unwrap_or_default();
+            let album_ids: Vec<_> = abstract_data.album().into_iter().collect();
 
             let mut result_vec = vec![abstract_data];
 
