@@ -9,5 +9,5 @@
 <script setup lang="ts">
 import HomeMain from '@/components/Home/HomeMain.vue'
 import PageTemplate from './PageLayout/PageTemplate.vue'
-const basicString = 'and(type:"album", trashed:false)'
+const basicString = 'and(type:"album", trashed:false, root_album:true)'
 </script>

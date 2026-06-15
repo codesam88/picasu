@@ -35,4 +35,7 @@ pub enum Expression {
     Favorite(bool),
     Archived(bool),
     Trashed(bool),
+    /// Matches album objects with no parent (top-level dir albums + all manual albums).
+    /// Always false for image/video items.
+    RootAlbum(bool),
 }

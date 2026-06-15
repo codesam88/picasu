@@ -201,6 +201,20 @@ impl Expression {
                     })
                 }
             },
+            Expression::RootAlbum(value) => {
+                Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                    AbstractData::Album(alb) => {
+                        let is_root = alb.metadata.dir_path.as_deref().is_none_or(|dir| {
+                            crate::operations::dir_album::get_parent_album_id(std::path::Path::new(
+                                dir,
+                            ))
+                            .is_none()
+                        });
+                        is_root == value
+                    }
+                    AbstractData::Image(_) | AbstractData::Video(_) => false,
+                })
+            }
             Expression::Any(any_identifier) => {
                 let any_lower = any_identifier.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {

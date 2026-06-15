@@ -13,6 +13,7 @@ import {
   NotExpressionCstChildren,
   OrExpressionCstChildren,
   PathExpressionCstChildren,
+  RootAlbumExpressionCstChildren,
   TagExpressionCstChildren,
   TrashedExpressionCstChildren,
   TypeExpressionCstChildren
@@ -41,6 +42,7 @@ const Any: TokenType = createToken({ name: 'Any', pattern: /any:/ })
 const Favorite: TokenType = createToken({ name: 'Favorite', pattern: /favorite:/ })
 const Archived: TokenType = createToken({ name: 'Archived', pattern: /archived:/ })
 const Trashed: TokenType = createToken({ name: 'Trashed', pattern: /trashed:/ })
+const RootAlbum: TokenType = createToken({ name: 'RootAlbum', pattern: /root_album:/ })
 const Comma: TokenType = createToken({ name: 'Comma', pattern: /,/ })
 
 const BooleanValue: TokenType = createToken({
@@ -77,6 +79,7 @@ const allTokens: TokenType[] = [
   Favorite,
   Archived,
   Trashed,
+  RootAlbum,
   Comma,
   BooleanValue,
   Identifier
@@ -133,7 +136,8 @@ export class MyParser extends CstParser {
       { ALT: () => this.SUBRULE(this.anyExpression) },
       { ALT: () => this.SUBRULE(this.favoriteExpression) },
       { ALT: () => this.SUBRULE(this.archivedExpression) },
-      { ALT: () => this.SUBRULE(this.trashedExpression) }
+      { ALT: () => this.SUBRULE(this.trashedExpression) },
+      { ALT: () => this.SUBRULE(this.rootAlbumExpression) }
     ])
   })
 
@@ -187,6 +191,10 @@ export class MyParser extends CstParser {
   })
   public trashedExpression = this.RULE('trashedExpression', () => {
     this.CONSUME1(Trashed)
+    this.CONSUME2(BooleanValue)
+  })
+  public rootAlbumExpression = this.RULE('rootAlbumExpression', () => {
+    this.CONSUME1(RootAlbum)
     this.CONSUME2(BooleanValue)
   })
 }
@@ -267,6 +275,9 @@ export class MyVisitor extends BaseVisitor {
     if (children.trashedExpression) {
       return this.visit(children.trashedExpression)
     }
+    if (children.rootAlbumExpression) {
+      return this.visit(children.rootAlbumExpression)
+    }
   }
 
   // Visit a tagExpression node
@@ -324,5 +335,8 @@ export class MyVisitor extends BaseVisitor {
   }
   trashedExpression(children: TrashedExpressionCstChildren) {
     return { Trashed: getArrayValue(children.BooleanValue, 0).image === 'true' }
+  }
+  rootAlbumExpression(children: RootAlbumExpressionCstChildren) {
+    return { RootAlbum: getArrayValue(children.BooleanValue, 0).image === 'true' }
   }
 }
