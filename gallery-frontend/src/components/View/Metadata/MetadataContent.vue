@@ -54,7 +54,7 @@
           v-if="route.meta.baseName !== 'share'"
           :isolation-id="props.isolationId"
           :index="props.index"
-          :albums="abstractData.albums"
+          :album="abstractData.album"
         />
       </v-list>
     </div>

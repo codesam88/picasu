@@ -6,8 +6,8 @@ export const useModalStore = (isolationId: IsolationId) =>
     state: (): {
       showEditTagsModal: boolean
       showBatchEditTagsModal: boolean
-      showEditAlbumsModal: boolean
-      showBatchEditAlbumsModal: boolean
+      showAssignAlbumModal: boolean
+      assignAlbumBatch: boolean
       showUploadModal: boolean
       showIsolatedHomeModal: boolean
       showHomeTempModal: boolean
@@ -19,8 +19,8 @@ export const useModalStore = (isolationId: IsolationId) =>
     } => ({
       showEditTagsModal: false,
       showBatchEditTagsModal: false,
-      showEditAlbumsModal: false,
-      showBatchEditAlbumsModal: false,
+      showAssignAlbumModal: false,
+      assignAlbumBatch: false,
       showUploadModal: false,
       showIsolatedHomeModal: false,
       showHomeTempModal: false,

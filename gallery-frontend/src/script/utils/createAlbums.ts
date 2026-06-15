@@ -1,62 +1,7 @@
 import axios from 'axios'
-import { useMessageStore } from '@/store/messageStore'
 import { useAlbumStore } from '@/store/albumStore'
-import { GalleryAlbum, IsolationId } from '@type/types'
+import { GalleryAlbum } from '@type/types'
 import { useDataStore } from '@/store/dataStore'
-import { usePrefetchStore } from '@/store/prefetchStore'
-import { tryWithMessageStore } from './try_catch'
-
-export async function createNonEmptyAlbum(
-  elementsIndex: number[],
-  isolationId: IsolationId
-): Promise<string | undefined> {
-  const albumStore = useAlbumStore('mainId')
-  const prefetchStore = usePrefetchStore(isolationId)
-
-  return await tryWithMessageStore('mainId', async () => {
-    const createNonEmptyAlbumData = {
-      title: null,
-      elementsIndex: elementsIndex,
-      timestamp: prefetchStore.timestamp
-    }
-
-    const response = await axios.post<string>(
-      '/post/create_non_empty_album',
-      createNonEmptyAlbumData,
-      {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    )
-
-    const messageStore = useMessageStore('mainId')
-    messageStore.success('Album created successfully.')
-
-    const newAlbumId = response.data
-    await albumStore.fetchAlbums()
-    return newAlbumId
-  })
-}
-
-export async function createEmptyAlbum(): Promise<string | undefined> {
-  const albumStore = useAlbumStore('mainId')
-
-  return await tryWithMessageStore('mainId', async () => {
-    const response = await axios.post<string>('/post/create_empty_album', {
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    })
-
-    const messageStore = useMessageStore('mainId')
-    messageStore.success('Album created successfully.')
-
-    const newAlbumId = response.data
-    await albumStore.fetchAlbums()
-    return newAlbumId
-  })
-}
 
 export async function editTitle(album: GalleryAlbum, titleModelValue: string) {
   const albumStore = useAlbumStore('mainId')

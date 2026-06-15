@@ -42,32 +42,14 @@ export const useDataStore = (isolationId: IsolationId) =>
         data.tags = data.tags.filter((tag) => !tags.includes(tag))
         return true
       },
-      addAlbums(index: number, albums: string[]): boolean {
-        const data = this.data.get(index)
-        if (!data) {
-          return false
-        }
-
-        // Albums are only applicable to Images/Videos, not nested Albums
-        if (data.type === 'image' || data.type === 'video') {
-          albums.forEach((album) => {
-            if (!data.albums.includes(album)) {
-              data.albums.push(album)
-            }
-          })
-          return true
-        }
-
-        return false
-      },
-      removeAlbums(index: number, albums: string[]): boolean {
+      setAlbum(index: number, album: string | null): boolean {
         const data = this.data.get(index)
         if (!data) {
           return false
         }
 
         if (data.type === 'image' || data.type === 'video') {
-          data.albums = data.albums.filter((album) => !albums.includes(album))
+          data.album = album
           return true
         }
 

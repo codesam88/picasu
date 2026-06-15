@@ -2,21 +2,21 @@
   <v-list-item>
     <template #prepend>
       <v-avatar>
-        <v-icon>mdi-image-album</v-icon>
+        <v-icon>mdi-folder</v-icon>
       </v-avatar>
     </template>
     <v-list-item-subtitle class="text-wrap">
       <v-chip
+        v-if="props.album"
         variant="flat"
         color="primary"
-        v-for="albumId in props.albums"
-        :key="albumId"
         link
         class="ma-1"
-        @click="navigateToAlbum(albumId, router)"
+        @click="navigateToAlbum(props.album, router)"
       >
-        {{ albumStore.albums.get(albumId)?.displayName }}
+        {{ albumStore.albums.get(props.album)?.displayName ?? props.album }}
       </v-chip>
+      <span v-else class="text-medium-emphasis text-caption ml-1">No album</span>
     </v-list-item-subtitle>
     <v-list-item-subtitle>
       <v-chip
@@ -25,8 +25,8 @@
         variant="outlined"
         class="ma-1"
         link
-        @click="openEditAlbumsModal"
-        >edit</v-chip
+        @click="openAssignAlbumModal"
+        >assign</v-chip
       >
     </v-list-item-subtitle>
   </v-list-item>
@@ -42,14 +42,15 @@ import { navigateToAlbum } from '@/route/navigator'
 const props = defineProps<{
   isolationId: IsolationId
   index: number
-  albums: string[]
+  album: string | null
 }>()
 
 const modalStore = useModalStore('mainId')
 const albumStore = useAlbumStore('mainId')
 const router = useRouter()
 
-function openEditAlbumsModal() {
-  modalStore.showEditAlbumsModal = true
+function openAssignAlbumModal() {
+  modalStore.assignAlbumBatch = false
+  modalStore.showAssignAlbumModal = true
 }
 </script>

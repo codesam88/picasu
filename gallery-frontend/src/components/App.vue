@@ -12,9 +12,8 @@
       </router-view> </v-main
     ><v-snackbar-queue v-model="messageStore.queue" timeout="2500" :close-on-back="false" />
     <EditTagsModal v-if="modalStore.showEditTagsModal" />
-    <EditAlbumsModal v-if="modalStore.showEditAlbumsModal" />
+    <AssignAlbumModal v-if="modalStore.showAssignAlbumModal" />
     <EditBatchTagsModal v-if="modalStore.showBatchEditTagsModal" />
-    <EditBatchAlbumsModal v-if="modalStore.showBatchEditAlbumsModal" />
     <UploadModal v-if="modalStore.showUploadModal" />
     <SettingModal v-if="modalStore.showSettingModal" />
   </v-app>
@@ -33,8 +32,7 @@ import { useConfigStore } from '@/store/configStore'
 import EditTagsModal from '@/components/Modal/EditTagsModal.vue'
 import EditBatchTagsModal from '@/components/Modal/EditBatchTagsModal.vue'
 import UploadModal from '@/components/Modal/UploadModal.vue'
-import EditAlbumsModal from '@/components/Modal/EditAlbumsModal.vue'
-import EditBatchAlbumsModal from '@/components/Modal/EditBatchAlbumsModal.vue'
+import AssignAlbumModal from '@/components/Modal/AssignAlbumModal.vue'
 import SettingModal from '@/components/Modal/SettingModal.vue'
 import { useModalStore } from '@/store/modalStore'
 

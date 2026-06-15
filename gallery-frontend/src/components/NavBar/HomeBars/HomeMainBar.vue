@@ -50,7 +50,6 @@
           :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
           @click="themeIsLight = !themeIsLight"
         />
-        <BtnCreateAlbum v-if="route.meta.level === 1" v-model="loading" />
         <v-btn
           v-if="route.meta.level === 1"
           icon="mdi-upload"
@@ -72,7 +71,6 @@ import { useUploadStore } from '@/store/uploadStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useConstStore } from '@/store/constStore'
 import EditBar from '@/components/NavBar/EditBar.vue'
-import BtnCreateAlbum from '@Menu/MenuButton/BtnCreateAlbum.vue'
 import { useTheme } from 'vuetify'
 import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
 

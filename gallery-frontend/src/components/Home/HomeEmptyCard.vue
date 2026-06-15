@@ -89,12 +89,10 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useModalStore } from '@/store/modalStore'
 import { useUploadStore } from '@/store/uploadStore'
-import { createEmptyAlbum } from '@utils/createAlbums'
-import { navigateToAlbum } from '@/route/navigator'
 import type { IsolationId } from '@type/types'
 
 const props = defineProps<{
@@ -102,7 +100,6 @@ const props = defineProps<{
 }>()
 
 const route = useRoute()
-const router = useRouter()
 
 const uploadStore = useUploadStore('mainId')
 const collectionStore = useCollectionStore(props.isolationId)
@@ -187,15 +184,10 @@ const ui = computed<UIState>(() => {
       return {
         isSearchEmpty: false,
         showUploadCard: false,
-        hasHoverEffect: true,
-        message: 'Create some albums here!',
-        icon: 'mdi-image-album',
-        onClick: async () => {
-          const newAlbumId = await createEmptyAlbum()
-          if (typeof newAlbumId === 'string') {
-            await navigateToAlbum(newAlbumId, router)
-          }
-        }
+        hasHoverEffect: false,
+        message: 'Albums are created automatically from your synced directory hierarchy.',
+        icon: 'mdi-folder-multiple',
+        onClick: undefined
       }
 
     case 'favorite':
