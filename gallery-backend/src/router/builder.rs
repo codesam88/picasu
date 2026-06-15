@@ -16,9 +16,6 @@ use rocket::fs::FileServer;
 use rocket::info;
 use std::path::PathBuf;
 
-// Use alias to avoid conflict with Rocket's ByteUnit
-use ubyte::ByteUnit as HumanBytes;
-
 #[cfg(test)]
 fn create_dummy_config() -> AppConfig {
     let mut config = AppConfig::default();
@@ -65,12 +62,9 @@ fn extract_limit(app_config: &AppConfig, key: &str, default_val: &str) -> ByteUn
         .get(key)
         .map_or(default_val, String::as_str);
 
-    let bytes = raw_val
-        .parse::<HumanBytes>()
-        .unwrap_or_else(|_| panic!("Invalid limit format for key '{key}': {raw_val}"))
-        .as_u64();
-
-    ByteUnit::from(bytes)
+    raw_val.parse::<ByteUnit>().unwrap_or_else(|_| {
+        panic!("Invalid limit format for key '{key}': '{raw_val}' (example: \"10GiB\")")
+    })
 }
 
 #[cfg(test)]

@@ -3803,7 +3803,6 @@ dependencies = [
  "tokio",
  "tokio-rayon",
  "toml 1.1.2+spec-1.1.0",
- "ubyte",
  "unicode-width",
  "ureq",
  "uuid",

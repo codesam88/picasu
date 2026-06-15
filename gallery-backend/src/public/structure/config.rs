@@ -23,6 +23,26 @@ fn generate_secret_key() -> String {
     general_purpose::STANDARD.encode(secret)
 }
 
+/// Network and feature configuration written to `config.json`.
+///
+/// # Upload size limits (`limits`)
+///
+/// Controls the maximum body size Rocket will accept for each request type.
+/// Keys follow Rocket's naming convention; values are human-readable byte
+/// strings such as `"10GiB"` or `"512MiB"`.
+///
+/// | Key         | Default  | Purpose                                      |
+/// |-------------|----------|----------------------------------------------|
+/// | `json`      | 10MiB    | JSON API request bodies (config edits, etc.) |
+/// | `file`      | 10GiB    | Single file upload via `TempFile` guard      |
+/// | `data-form` | 10GiB    | Multipart form upload (photo/video import)   |
+///
+/// The defaults are intentionally large to accommodate high-resolution photos
+/// and video files. Reduce them if you want to cap individual upload size.
+///
+/// Additional Rocket tuning (workers, TLS, keep-alive, reverse-proxy headers)
+/// can be set via `Rocket.toml` or `ROCKET_*` environment variables without
+/// touching this file. See <https://rocket.rs/guide/configuration/>.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicConfig {
