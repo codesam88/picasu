@@ -37,6 +37,24 @@ in-process e2e suite. One follow-up still open, not part of this fix: `UROCISSA_
 (splitting `cache_db.redb`/`temp_db.redb`/`expire_db.redb` out of `DATA_HOME` into a true
 disposable-state dir) — see the standalone item further down.
 
+### Follow-up (2026-06-16): force-reindex existing files, not just new ones — DONE
+
+Gap found after the fix above: "Scan Image Path" (`start_image_home_scan`) only processes
+*newly-discovered* hashes — `deduplicate_task` short-circuits for already-known content, so it
+could never fix an inconsistent/stale record or properly index a pre-existing file repo whose
+files were indexed under older/incomplete logic. The only other reindex path was per-selection in
+the gallery (select items → "Reindex" in the batch/right-click menu → `PUT /put/reindex`), with no
+bulk admin-level action.
+
+Added `force` end-to-end: `workflow::index_for_watch_full` (new, `index_for_watch` now a thin
+`force: false` wrapper) → `DeduplicateTask.force` (returns the merged record for full
+reprocessing instead of stopping) → `FolderImportTask`/`FolderImportFileTask` → `start_image_home_scan(force: bool)`
+→ `POST /post/import/image-home?force=true`. Frontend: a checkbox on the existing "Scan Image
+Path" action ("Also refresh metadata for files already indexed"). `start_folder_import` (arbitrary
+external paths) intentionally does *not* get a force option — it's a "bulk add" action, not a
+reindex one. Test: `scenario_z` (non-forced scan leaves a stale record untouched; forced scan
+refreshes dimensions/tags/album).
+
 ### Problem (confirmed by code audit, not just the symptom)
 
 `object/imported/<hash>.<ext>` is a full-resolution **copy** of every indexed file, content-addressed,
