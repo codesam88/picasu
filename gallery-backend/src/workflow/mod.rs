@@ -66,9 +66,28 @@ async fn ensure_dir_albums(file_path: &std::path::Path) -> Option<ArrayString<64
     deepest_album_id
 }
 
+/// Index `path`, skipping reprocessing if its content hash is already
+/// known (the common watcher/upload/one-time-import case). See
+/// [`index_for_watch_full`] to force reprocessing of already-known content
+/// too (e.g. a bulk "reindex everything" action).
 pub async fn index_for_watch(
     path: PathBuf,
     presigned_album_id_opt: Option<ArrayString<64>>,
+) -> Result<()> {
+    index_for_watch_full(path, presigned_album_id_opt, false).await
+}
+
+/// Like [`index_for_watch`], but with `force`: if `true` and the file's
+/// content hash is already known, re-run full metadata extraction
+/// (EXIF/tags/dimensions/thumbnail/hashes) on the existing record instead
+/// of just merging the alias/album and stopping — used by "reindex
+/// existing files" style bulk actions to fix inconsistencies (e.g. after a
+/// metadata-extraction bug fix, or files that were already present in
+/// `imagePath` before the app ever indexed them under the current logic).
+pub async fn index_for_watch_full(
+    path: PathBuf,
+    presigned_album_id_opt: Option<ArrayString<64>>,
+    force: bool,
 ) -> Result<()> {
     let path = path.clean();
 
@@ -103,7 +122,12 @@ pub async fn index_for_watch(
     };
 
     let abstract_data_opt = INDEX_COORDINATOR
-        .execute_waiting(DeduplicateTask::new(path.clone(), hash, album_id_opt))
+        .execute_waiting(DeduplicateTask::new(
+            path.clone(),
+            hash,
+            album_id_opt,
+            force,
+        ))
         .await??;
 
     // If the file is already in the database, we can skip further processing.

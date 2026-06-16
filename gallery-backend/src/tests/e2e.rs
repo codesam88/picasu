@@ -21,7 +21,7 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::operations::dir_album::get_or_create_dir_album;
-    use crate::operations::hash::generate_random_hash;
+    use crate::operations::hash::{blake3_hasher, generate_random_hash};
     use crate::public::constant::redb::DATA_TABLE;
     use crate::public::constant::storage::DATA_PATH;
     use crate::public::db::tree::TREE;
@@ -561,6 +561,39 @@ mod tests {
         txn.commit().expect("commit");
         refresh_in_memory();
         hash
+    }
+
+    /// Like `insert_photo_with_real_file`, but with an explicit hash and
+    /// deliberately stale/placeholder metadata (`width`/`height` 1x1, no
+    /// tags) — simulating a pre-existing, incomplete index entry (e.g. one
+    /// written before a metadata-extraction feature existed, or by an
+    /// older/buggy version). The hash must match `file_path`'s real content
+    /// hash (computed with the same hasher `HashTask` uses) for a
+    /// force-reindex to recognise it as "already known" rather than new.
+    fn insert_stale_photo_record(file_path: &Path, hash: ArrayString<64>) {
+        assert!(file_path.exists(), "source file must exist: {file_path:?}");
+        let txn = TREE.in_disk.begin_write().expect("begin write");
+        {
+            let mut table = txn.open_table(DATA_TABLE).expect("open table");
+            let obj = ObjectSchema::new(hash, ObjectType::Image);
+            let mut meta = ImageMetadata::new(hash, 1, 1, 1, "jpg".into());
+            meta.alias = vec![FileModify {
+                file: file_path.to_string_lossy().into_owned(),
+                modified: 0,
+                scan_time: 0,
+            }];
+            table
+                .insert(
+                    hash.as_str(),
+                    &AbstractData::Image(ImageCombined {
+                        object: obj,
+                        metadata: meta,
+                    }),
+                )
+                .expect("insert");
+        }
+        txn.commit().expect("commit");
+        refresh_in_memory();
     }
 
     /// Block until every `FlushTreeTask` queued before this call has been
@@ -1467,7 +1500,7 @@ mod tests {
             config.public.image_path = Some(image_home.clone());
         }
 
-        start_image_home_scan().expect("start_image_home_scan must accept the job");
+        start_image_home_scan(false).expect("start_image_home_scan must accept the job");
 
         let rt = tokio::runtime::Runtime::new().expect("build runtime");
         rt.block_on(async {
@@ -1859,5 +1892,122 @@ mod tests {
         );
         body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
         (boundary, body)
+    }
+
+    // ─── Scenario Z: force-reindexing a Scan Image Path run refreshes
+    // already-known files, not just newly-discovered ones ──────────────────
+
+    /// `start_image_home_scan(force: false)` (the default) only processes
+    /// brand-new hashes — it can't fix an already-indexed record with
+    /// stale/incomplete metadata (e.g. one written before a metadata
+    /// extraction feature existed). `force: true` re-runs full metadata
+    /// extraction for every matched file regardless of whether its hash is
+    /// already known, so this is the action exposed for "fix
+    /// inconsistencies" / "launching with an existing file repo".
+    #[test]
+    fn scenario_z_force_reindex_refreshes_already_known_files() {
+        let data = {
+            let _ = &*TEST_ENV;
+            DATA_PATH.get().expect("DATA_PATH initialised")
+        };
+
+        let image_home = data.join("e2e_z_image_home");
+        let album_dir = image_home.join("vacation");
+        std::fs::create_dir_all(&album_dir).expect("create album dir");
+
+        let photo_path = album_dir.join("e2e_z_photo.jpg");
+        write_real_jpeg_with_xmp_keywords(&photo_path, [80, 90, 100], &["e2e_z_sunset"]);
+
+        let real_hash =
+            blake3_hasher(std::fs::File::open(&photo_path).expect("open fixture for hashing"))
+                .expect("compute real content hash");
+        insert_stale_photo_record(&photo_path, real_hash);
+
+        {
+            let mut config = APP_CONFIG.get().unwrap().write().unwrap();
+            config.public.image_path = Some(image_home.clone());
+        }
+
+        let rt = tokio::runtime::Runtime::new().expect("build runtime");
+
+        // Non-forced scan: the hash is already known, so it must be left
+        // untouched (still the stale 1x1 placeholder, no tags).
+        start_image_home_scan(false).expect("start_image_home_scan (no force) must accept the job");
+        rt.block_on(async {
+            for _ in 0..100 {
+                if folder_import_status().state != FolderImportState::Running {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            wait_for_flush().await;
+        });
+
+        {
+            let txn = TREE.in_disk.begin_read().expect("begin read");
+            let table = txn.open_table(DATA_TABLE).expect("open table");
+            let abstract_data = table
+                .get(real_hash.as_str())
+                .expect("redb get")
+                .expect("still in redb")
+                .value();
+            assert_eq!(
+                abstract_data.width(),
+                1,
+                "non-forced scan must not touch an already-known record's metadata"
+            );
+            assert!(
+                abstract_data.tag().is_empty(),
+                "non-forced scan must not discover tags for an already-known record"
+            );
+        }
+
+        // Forced scan: must refresh the existing record's metadata.
+        start_image_home_scan(true).expect("start_image_home_scan (force) must accept the job");
+        rt.block_on(async {
+            for _ in 0..100 {
+                if folder_import_status().state != FolderImportState::Running {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            wait_for_flush().await;
+        });
+
+        {
+            let mut config = APP_CONFIG.get().unwrap().write().unwrap();
+            config.public.image_path = None;
+        }
+
+        let status = folder_import_status();
+        assert_eq!(
+            status.state,
+            FolderImportState::Completed,
+            "forced scan must complete: {status:?}"
+        );
+
+        let txn = TREE.in_disk.begin_read().expect("begin read");
+        let table = txn.open_table(DATA_TABLE).expect("open table");
+        let abstract_data = table
+            .get(real_hash.as_str())
+            .expect("redb get")
+            .expect("still in redb")
+            .value();
+
+        assert_eq!(
+            abstract_data.width(),
+            4,
+            "forced scan must refresh dimensions from the real file (got {:?})",
+            abstract_data.width()
+        );
+        assert!(
+            abstract_data.tag().contains("e2e_z_sunset"),
+            "forced scan must (re-)discover tags from the file's XMP packet (got {:?})",
+            abstract_data.tag()
+        );
+        assert!(
+            abstract_data.album().is_some(),
+            "forced scan must also (re-)assign the album from the directory hierarchy"
+        );
     }
 }

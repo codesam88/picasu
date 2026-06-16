@@ -29,6 +29,14 @@
         </template>
       </v-list-item>
 
+      <v-checkbox
+        v-model="forceReindex"
+        density="compact"
+        hide-details
+        class="px-4 pb-2"
+        label="Also refresh metadata for files already indexed (fix inconsistencies / first scan of an existing repo)"
+      ></v-checkbox>
+
       <v-divider></v-divider>
 
       <v-list-item
@@ -134,6 +142,7 @@ const selectedPath = ref('')
 const showFilePicker = ref(false)
 const loading = ref(false)
 const scanLoading = ref(false)
+const forceReindex = ref(false)
 const cancelLoading = ref(false)
 const status = ref<FolderImportStatus>(emptyStatus())
 let pollTimer: ReturnType<typeof setInterval> | undefined
@@ -219,7 +228,7 @@ const startScan = async () => {
 
   scanLoading.value = true
   const success = await tryWithMessageStore('mainId', async () => {
-    await startImageHomeScan()
+    await startImageHomeScan(forceReindex.value)
     return true
   })
 

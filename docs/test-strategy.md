@@ -40,7 +40,7 @@ feedback — see `just run` in the justfile, which uses `UROCISSA_CONFIG_HOME`/
 | Backend format | `cargo fmt --check` | ✅ in precommit |
 | Backend lint | `cargo clippy -- -D warnings` | ✅ in precommit |
 | Unsafe code | `#![deny(unsafe_code)]` in `main.rs` | ✅ enforced at compile time |
-| Backend unit + scenario tests | `cargo nextest run` (~70 tests, `src/tests/e2e.rs` scenarios A–U + unit tests) | ✅ full suite required on `main`; informational elsewhere (see `justfile`) |
+| Backend unit + scenario tests | `cargo nextest run` (~75 tests, `src/tests/e2e.rs` scenarios A–Z + unit tests) | ✅ full suite required on `main`; informational elsewhere (see `justfile`) |
 | Frontend format | `prettier --check` | ✅ in precommit |
 | Frontend types | `vue-tsc --noEmit` | ✅ in precommit |
 | Frontend lint | `eslint` (strictTypeChecked + vue strongly-recommended) | ✅ in precommit |
@@ -72,7 +72,7 @@ regression-matrix sections below.
 |---|---|---|---|
 | Filesystem watcher `Create`/`Modify` event under the configured `imagePath` root | `start_watcher.rs` → debounced → `workflow::index_for_watch(path, None)` | `DATA_TABLE` (new or merged record), dir-album `DATA_TABLE` entries via `ensure_dir_albums` | none (background task, not a route) |
 | `POST /post/import/folder` | `import_folder.rs` → `tasks/actor/folder_import.rs::start_folder_import` → walks an arbitrary user-supplied dir, calls `index_for_watch` per file | same as above, batched; albums only get created if the path happens to be under `imagePath` — `ensure_dir_albums` doesn't know about paths outside it | `GuardAuth` + `GuardReadOnlyMode` |
-| `POST /post/import/image-home` | `import_folder.rs` → `folder_import.rs::start_image_home_scan` → same walk, but root is always the configured `imagePath` (errors if unset) | same as above; shares the same job slot/status as `/post/import/folder` (only one import-like job at a time) | `GuardAuth` + `GuardReadOnlyMode` |
+| `POST /post/import/image-home?<force>` | `import_folder.rs` → `folder_import.rs::start_image_home_scan` → same walk, but root is always the configured `imagePath` (errors if unset) | same as above; with `force=true`, also re-runs full metadata extraction for already-known hashes via `workflow::index_for_watch_full` (not just newly-discovered files); shares the same job slot/status as `/post/import/folder` (only one import-like job at a time) | `GuardAuth` + `GuardReadOnlyMode` |
 | `POST /post/import/folder/cancel` | `import_folder.rs::cancel_folder_import_handler` | cancels in-flight folder import or image-home scan (shared job) | `GuardAuth` |
 | `GET /get/import/folder/status` | `get_import.rs` | read-only (progress poll); reflects whichever of the two import-like jobs is active | `GuardAuth` |
 | `POST /upload?<presigned_album_id_opt>` | `post_upload.rs` → `index_for_watch(path, Some(album_id))` | `DATA_TABLE`; sets `album` field via `presigned_album_id` (the *one* path where indexing-time album assignment already exists) | `GuardUpload` (admin JWT **or** a share's `show_upload` token) + `GuardReadOnlyMode` |

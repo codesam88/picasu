@@ -14,6 +14,10 @@ pub struct DeduplicateTask {
     pub path: PathBuf,
     pub hash: ArrayString<64>,
     pub presigned_album_id: Option<ArrayString<64>>,
+    /// If `true` and the hash is already known, return the merged record
+    /// for full reprocessing instead of stopping after the alias/album
+    /// merge — see `workflow::index_for_watch_full`.
+    pub force: bool,
 }
 
 impl DeduplicateTask {
@@ -21,11 +25,13 @@ impl DeduplicateTask {
         path: PathBuf,
         hash: ArrayString<64>,
         presigned_album_id: Option<ArrayString<64>>,
+        force: bool,
     ) -> Self {
         Self {
             path,
             hash,
             presigned_album_id,
+            force,
         }
     }
 }
@@ -91,6 +97,14 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
         if let Some(album_id) = task.presigned_album_id {
             data_exist.set_album(Some(album_id));
         }
+
+        if task.force {
+            // Hand the merged record back for full reprocessing instead of
+            // stopping here — the caller will re-run metadata extraction
+            // and flush the result itself.
+            return Ok(Some(data_exist));
+        }
+
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![data_exist]));
         Ok(None)
     } else {

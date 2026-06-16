@@ -37,9 +37,13 @@ export const startFolderImport = async (path: string): Promise<void> => {
  * startFolderImport, takes no path — always targets the configured root, so
  * albums/hierarchy are reliably discovered. Shares the same job slot/status
  * as a regular folder import (see getFolderImportStatus).
+ *
+ * `force` (default false): also re-run full metadata extraction for files
+ * whose content hash is already indexed, not just newly-discovered ones —
+ * for fixing inconsistencies or properly indexing a pre-existing file repo.
  */
-export const startImageHomeScan = async (): Promise<void> => {
-  await axios.post('/post/import/image-home')
+export const startImageHomeScan = async (force = false): Promise<void> => {
+  await axios.post('/post/import/image-home', null, { params: { force } })
 }
 
 export const getFolderImportStatus = async (): Promise<FolderImportStatus> => {

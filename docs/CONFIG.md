@@ -55,6 +55,15 @@ Image Path** to index what's already there; unlike importing an arbitrary
 external folder, this always targets the configured `imagePath` itself, so
 album hierarchy is built from the directory structure correctly.
 
+By default, Scan Image Path only processes files whose content hash isn't
+indexed yet — fast, safe to re-run routinely. Check **"Also refresh
+metadata for files already indexed"** to additionally re-run full metadata
+extraction (EXIF, tags, dimensions, thumbnail, perceptual hashes) for
+already-known files too. Use this to fix inconsistencies (e.g. after a
+metadata-extraction bug fix) or the first time you point `imagePath` at a
+pre-existing file repo, since files already indexed under older/incomplete
+logic won't otherwise get refreshed.
+
 ## Private Settings
 
 These settings handle sensitive security and authentication data.

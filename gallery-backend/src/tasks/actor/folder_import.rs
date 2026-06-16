@@ -23,7 +23,7 @@ use crate::{
     },
     router::AppResult,
     tasks::INDEX_COORDINATOR,
-    workflow::index_for_watch,
+    workflow::index_for_watch_full,
 };
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -92,7 +92,7 @@ pub fn folder_import_status() -> FolderImportStatus {
 
 pub fn start_folder_import(path: &str) -> AppResult<()> {
     let root = canonicalize_import_root(path)?;
-    start_import_job(root)
+    start_import_job(root, false)
 }
 
 /// Scan the currently configured `imagePath` for files the watcher hasn't
@@ -105,9 +105,18 @@ pub fn start_folder_import(path: &str) -> AppResult<()> {
 /// configured `imagePath` itself, so `ensure_dir_albums` (which only
 /// creates albums for files under that root) reliably builds the album
 /// hierarchy from the directory structure, and XMP/EXIF tag discovery runs
-/// the same way it does for any indexed file. Safe to re-run: already-known
-/// hashes short-circuit to `DeduplicateTask`'s merge branch.
-pub fn start_image_home_scan() -> AppResult<()> {
+/// the same way it does for any indexed file.
+///
+/// With `force: false` (the default — fast, for routine catch-up scans),
+/// already-known hashes short-circuit to `DeduplicateTask`'s merge branch:
+/// only brand-new files get (re-)processed. With `force: true`, every
+/// matched file gets full metadata extraction re-run — EXIF, tags,
+/// dimensions, thumbnail, perceptual hashes — even if its hash is already
+/// indexed. Use this to fix inconsistencies (e.g. after a metadata
+/// extraction bug fix) or to properly index a pre-existing file repo
+/// pointed at for the first time, since hashes computed before this
+/// feature existed may already be present with stale/incomplete metadata.
+pub fn start_image_home_scan(force: bool) -> AppResult<()> {
     let root = get_resolved_image_path().ok_or_else(|| {
         AppError::new(
             ErrorKind::InvalidInput,
@@ -125,10 +134,10 @@ pub fn start_image_home_scan() -> AppResult<()> {
         ));
     }
 
-    start_import_job(root)
+    start_import_job(root, force)
 }
 
-fn start_import_job(root: PathBuf) -> AppResult<()> {
+fn start_import_job(root: PathBuf, force: bool) -> AppResult<()> {
     let internal_roots = internal_subtree_roots();
 
     if is_inside_internal_subtree(&root, &internal_roots) {
@@ -169,7 +178,13 @@ fn start_import_job(root: PathBuf) -> AppResult<()> {
         cancel: cancel.clone(),
     });
 
-    INDEX_COORDINATOR.execute_detached(FolderImportTask::new(job_id, root, internal_roots, cancel));
+    INDEX_COORDINATOR.execute_detached(FolderImportTask::new(
+        job_id,
+        root,
+        internal_roots,
+        cancel,
+        force,
+    ));
 
     Ok(())
 }
@@ -303,6 +318,7 @@ pub struct FolderImportTask {
     root: PathBuf,
     internal_roots: Vec<PathBuf>,
     cancel: Arc<AtomicBool>,
+    force: bool,
 }
 
 impl FolderImportTask {
@@ -311,12 +327,14 @@ impl FolderImportTask {
         root: PathBuf,
         internal_roots: Vec<PathBuf>,
         cancel: Arc<AtomicBool>,
+        force: bool,
     ) -> Self {
         Self {
             job_id,
             root,
             internal_roots,
             cancel,
+            force,
         }
     }
 }
@@ -360,7 +378,11 @@ impl Task for FolderImportTask {
 
             increment_matched(self.job_id);
             handles.push(
-                INDEX_COORDINATOR.execute_detached(FolderImportFileTask::new(self.job_id, path)),
+                INDEX_COORDINATOR.execute_detached(FolderImportFileTask::new(
+                    self.job_id,
+                    path,
+                    self.force,
+                )),
             );
         }
 
@@ -386,11 +408,16 @@ impl Task for FolderImportTask {
 pub struct FolderImportFileTask {
     job_id: u64,
     path: PathBuf,
+    force: bool,
 }
 
 impl FolderImportFileTask {
-    fn new(job_id: u64, path: PathBuf) -> Self {
-        Self { job_id, path }
+    fn new(job_id: u64, path: PathBuf, force: bool) -> Self {
+        Self {
+            job_id,
+            path,
+            force,
+        }
     }
 }
 
@@ -398,7 +425,7 @@ impl Task for FolderImportFileTask {
     type Output = ();
 
     async fn run(self) -> Self::Output {
-        match index_for_watch(self.path, None).await {
+        match index_for_watch_full(self.path, None, self.force).await {
             Ok(()) => increment_processed(self.job_id),
             Err(err) => {
                 handle_error(err);

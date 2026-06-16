@@ -31,13 +31,19 @@ pub fn start_folder_import_handler(
 /// `start_folder_import_handler`, takes no path — always targets the
 /// configured root, so albums/hierarchy are reliably discovered. Shares the
 /// same job slot/status as a regular folder import.
-#[post("/post/import/image-home")]
+///
+/// `force` (default `false`): if `true`, also re-run full metadata
+/// extraction for files whose content hash is already indexed, not just
+/// newly-discovered ones — for fixing inconsistencies or properly indexing
+/// a pre-existing file repo. See `start_image_home_scan`'s doc comment.
+#[post("/post/import/image-home?<force>")]
 pub fn start_image_home_scan_handler(
     _auth: GuardAuth,
     read_only: GuardResult<GuardReadOnlyMode>,
+    force: Option<bool>,
 ) -> AppResult<Status> {
     let _ = read_only?;
-    start_image_home_scan()?;
+    start_image_home_scan(force.unwrap_or(false))?;
     Ok(Status::Accepted)
 }
 
