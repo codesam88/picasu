@@ -13,6 +13,24 @@ pub struct FsCompletion {
     is_default: bool,
 }
 
+/// The cwd, absolutized. Used everywhere this module would otherwise list
+/// `"."` directly: entries read via a relative `fs::read_dir(".")` come back
+/// as relative paths (e.g. `./photos`), and if a caller saves one of those
+/// (e.g. as `imagePath`) it gets resolved against `UROCISSA_IMAGE_HOME`
+/// later, not the cwd it was actually picked from — a silent path mismatch.
+/// The picker should only ever hand back unambiguous absolute paths.
+fn absolute_cwd() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))
+}
+
+fn absolutize(p: &Path) -> PathBuf {
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        absolute_cwd().join(p)
+    }
+}
+
 #[get("/get/path-completion?<path>")]
 pub fn get_fs_completion(_auth: GuardAuth, path: Option<String>) -> AppResult<Json<FsCompletion>> {
     let query = path.unwrap_or_default();
@@ -22,9 +40,10 @@ pub fn get_fs_completion(_auth: GuardAuth, path: Option<String>) -> AppResult<Js
         let roots = get_roots();
         let mut children = Vec::new();
 
-        // Add contents of current directory (./)
+        // Add contents of current directory, as absolute paths (see
+        // `absolute_cwd`'s doc comment).
         // We ignore errors here as we have a fallback (roots)
-        if let Ok(entries) = fs::read_dir(".") {
+        if let Ok(entries) = fs::read_dir(absolute_cwd()) {
             for entry in entries.filter_map(std::result::Result::ok) {
                 let path = entry.path();
                 if path.is_dir()
@@ -46,6 +65,11 @@ pub fn get_fs_completion(_auth: GuardAuth, path: Option<String>) -> AppResult<Js
         }));
     }
 
+    // Branching below is decided from the raw (possibly relative) query, to
+    // preserve the original bare-name-vs-path-with-separator distinction;
+    // only the directory actually handed to `fs::read_dir`/returned to the
+    // caller gets absolutized (see `absolute_cwd`'s doc comment) — at the
+    // point of use, not before.
     let path_obj = PathBuf::from(&query);
 
     // Determine directory to list and the prefix to filter by
@@ -53,11 +77,11 @@ pub fn get_fs_completion(_auth: GuardAuth, path: Option<String>) -> AppResult<Js
     // If not, we list the parent directory and filter by the file name
     let (dir_to_read, prefix) = if query.ends_with('/') || (cfg!(windows) && query.ends_with('\\'))
     {
-        (path_obj.as_path(), "")
+        (path_obj.clone(), "")
     } else {
         match path_obj.parent() {
             Some(p) if !p.as_os_str().is_empty() => (
-                p,
+                p.to_path_buf(),
                 path_obj.file_name().and_then(|s| s.to_str()).unwrap_or(""),
             ),
             _ => {
@@ -75,7 +99,7 @@ pub fn get_fs_completion(_auth: GuardAuth, path: Option<String>) -> AppResult<Js
                 }
 
                 // 2. Search Current Directory
-                if let Ok(entries) = fs::read_dir(".") {
+                if let Ok(entries) = fs::read_dir(absolute_cwd()) {
                     for entry in entries.filter_map(std::result::Result::ok) {
                         let path = entry.path();
                         if path.is_dir() {
@@ -109,8 +133,9 @@ pub fn get_fs_completion(_auth: GuardAuth, path: Option<String>) -> AppResult<Js
             }
         }
     };
+    let dir_to_read = absolutize(&dir_to_read);
 
-    let entries = fs::read_dir(dir_to_read).map_err(|e| {
+    let entries = fs::read_dir(&dir_to_read).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             AppError::new(ErrorKind::NotFound, "Directory not found")
         } else {

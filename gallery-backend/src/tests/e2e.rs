@@ -1385,4 +1385,52 @@ mod tests {
             "reindex must not lose previously added tags: {tags:?}"
         );
     }
+
+    // ─── Scenario T: path-completion always returns absolute paths ──────────
+
+    /// Regression test: `/get/path-completion` used to list the server's
+    /// cwd via a literal `"."`, so its default (no-query) view and the
+    /// bare-name search branch returned *relative* paths (e.g. `./photos`).
+    /// If a caller saves one of those as `imagePath` (the "Image Path"
+    /// settings field, or "One-Time Import"'s folder picker — both use this
+    /// endpoint), it gets resolved against `UROCISSA_IMAGE_HOME` later, not
+    /// the cwd it was actually picked from — a silent path mismatch that
+    /// made `ensure_dir_albums` never match, so imported photos showed up
+    /// with no album assigned. The picker must only ever return absolute
+    /// paths so a saved `imagePath` always means what it appeared to mean
+    /// when picked.
+    #[test]
+    fn scenario_t_path_completion_returns_absolute_paths() {
+        let client = make_client();
+
+        // Default view (empty query) lists cwd contents under `children`.
+        let default_view = json_get(&client, "/get/path-completion");
+        let children = default_view["children"].as_array().expect("children array");
+        assert!(!children.is_empty(), "expected at least one cwd entry");
+        for child in children {
+            let path = child.as_str().expect("child is a string");
+            assert!(
+                Path::new(path).is_absolute(),
+                "default view must return absolute paths, got {path:?}"
+            );
+        }
+
+        // Bare-name query (no path separator) hits the "search roots +
+        // current directory" branch.
+        let bare_name_view = json_get(&client, "/get/path-completion?path=src");
+        let bare_name_children = bare_name_view["children"]
+            .as_array()
+            .expect("children array");
+        assert!(
+            !bare_name_children.is_empty(),
+            "expected at least one match for 'src'"
+        );
+        for child in bare_name_children {
+            let path = child.as_str().expect("child is a string");
+            assert!(
+                Path::new(path).is_absolute(),
+                "bare-name search must return absolute paths, got {path:?}"
+            );
+        }
+    }
 }
