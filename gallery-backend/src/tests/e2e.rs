@@ -1606,4 +1606,73 @@ mod tests {
         );
         resp.into_bytes().expect("response body bytes")
     }
+
+    // ─── Scenario W: identical content at two simultaneously-existing
+    // paths is tracked as two live aliases, not silently merged ───────────
+
+    /// Unlike Scenario M/R (the old path is gone by the time the duplicate
+    /// is discovered), this is the genuinely-new-alias path through
+    /// `deduplicate_task`: both copies exist on disk at once. Regression
+    /// test for the storage-architecture-fix follow-up (`TODO.md`): this
+    /// branch used to fire a generic warning on *every* re-index
+    /// (including routine same-path ones); it's now a distinct
+    /// duplicate-content warning that only fires here. Covering the
+    /// behavioral side (both aliases recorded and live) since asserting on
+    /// log output isn't practical with this project's current test setup.
+    #[test]
+    fn scenario_w_duplicate_content_at_two_live_paths_tracked_as_two_aliases() {
+        let data = {
+            let _ = &*TEST_ENV;
+            DATA_PATH.get().expect("DATA_PATH initialised")
+        };
+
+        let dir_a = data.join("e2e_w_a");
+        let dir_b = data.join("e2e_w_b");
+        std::fs::create_dir_all(&dir_a).expect("create dir a");
+        std::fs::create_dir_all(&dir_b).expect("create dir b");
+
+        let path_a = dir_a.join("e2e_w_photo.jpg");
+        write_real_jpeg(&path_a, [77, 88, 99]);
+        let path_b = dir_b.join("e2e_w_photo.jpg");
+        std::fs::copy(&path_a, &path_b).expect("duplicate fixture file");
+
+        let rt = tokio::runtime::Runtime::new().expect("build runtime");
+        rt.block_on(async {
+            index_for_watch(path_a.clone(), None)
+                .await
+                .expect("index path_a must succeed");
+            wait_for_flush().await;
+            index_for_watch(path_b.clone(), None)
+                .await
+                .expect("index path_b (duplicate content) must succeed");
+            wait_for_flush().await;
+        });
+
+        let hash = find_hash_by_alias_path(&path_a);
+        let txn = TREE.in_disk.begin_read().expect("begin read");
+        let table = txn.open_table(DATA_TABLE).expect("open table");
+        let guard = table
+            .get(hash.as_str())
+            .expect("redb get")
+            .expect("still in redb");
+        let AbstractData::Image(img) = guard.value() else {
+            panic!("not an image")
+        };
+
+        let aliased_files: Vec<&str> = img.metadata.alias.iter().map(|a| a.file.as_str()).collect();
+        assert_eq!(
+            img.metadata.alias.len(),
+            2,
+            "identical content at two still-existing paths must be tracked \
+             as two live aliases (got {aliased_files:?})"
+        );
+        assert!(
+            aliased_files.contains(&path_a.to_string_lossy().as_ref()),
+            "must keep the first path: {aliased_files:?}"
+        );
+        assert!(
+            aliased_files.contains(&path_b.to_string_lossy().as_ref()),
+            "must record the duplicate's path: {aliased_files:?}"
+        );
+    }
 }

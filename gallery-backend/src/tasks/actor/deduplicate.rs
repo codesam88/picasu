@@ -5,6 +5,7 @@ use crate::{
 };
 use anyhow::Result;
 use arrayvec::ArrayString;
+use log::warn;
 use mini_executor::Task;
 use std::{mem, path::Path, path::PathBuf};
 use tokio::task::spawn_blocking;
@@ -51,13 +52,38 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
             let file_modify = mem::take(&mut alias_mut[0]);
             if let Some(exist_alias) = data_exist.alias_mut() {
                 // Drop any recorded alias whose file no longer exists on
-                // disk (e.g. the file was moved away from that path since
-                // it was last indexed), then add the current path only if
-                // it isn't already present — otherwise rediscovering the
-                // same file at its current, unchanged path would duplicate
-                // the entry on every watcher re-index.
-                exist_alias.retain(|a| Path::new(&a.file).exists());
+                // disk. With no content-addressed copy backing each alias
+                // (see TODO.md "Storage architecture fix"), a missing
+                // aliased file is a real file/DB inconsistency -- external
+                // manipulation or data loss outside the app, e.g. the file
+                // was moved/deleted without going through assign_album --
+                // so surface it instead of pruning silently.
+                let (still_present, missing): (Vec<_>, Vec<_>) = mem::take(exist_alias)
+                    .into_iter()
+                    .partition(|a| Path::new(&a.file).exists());
+                if !missing.is_empty() {
+                    warn!(
+                        "Pruning {} missing alias path(s) for hash {}, no longer on disk: {:?}",
+                        missing.len(),
+                        task.hash,
+                        missing.iter().map(|a| &a.file).collect::<Vec<_>>()
+                    );
+                }
+                *exist_alias = still_present;
+
+                // Add the current path only if it isn't already present --
+                // rediscovering the same file at its current, unchanged
+                // path on every watcher re-index is routine, not a
+                // duplicate. A genuinely new path for already-known
+                // content is real duplicate-content detection, worth
+                // calling out distinctly.
                 if !exist_alias.iter().any(|a| a.file == file_modify.file) {
+                    warn!(
+                        "Duplicate content detected: {} has the same hash ({}) as already-indexed {:?}",
+                        file_modify.file,
+                        task.hash,
+                        exist_alias.iter().map(|a| &a.file).collect::<Vec<_>>()
+                    );
                     exist_alias.push(file_modify);
                 }
             }
@@ -66,7 +92,6 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
             data_exist.set_album(Some(album_id));
         }
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![data_exist]));
-        warn!("File already exists in the database:\n{:#?}", abstract_data);
         Ok(None)
     } else {
         if let Some(album_id) = task.presigned_album_id {
