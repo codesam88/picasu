@@ -10,7 +10,7 @@
 mod tests {
     use std::collections::HashMap;
     use std::path::{Path, PathBuf};
-    use std::sync::{LazyLock, RwLock};
+    use std::sync::{LazyLock, Mutex, RwLock};
 
     use arrayvec::ArrayString;
     use image::{Rgb, RgbImage};
@@ -159,6 +159,15 @@ mod tests {
         serde_json::from_str(&r.into_string().unwrap()).expect("valid JSON")
     }
 
+    /// `TREE_SNAPSHOT` keys snapshots by `Utc::now().timestamp_millis()`
+    /// (get_prefetch.rs). Two `prefetch` calls from different tests landing
+    /// in the same millisecond will silently overwrite each other's
+    /// snapshot, corrupting whichever test reads it second — a real
+    /// concurrency bug, not just a test artifact (see TODO.md). Tests that
+    /// call `prefetch_locate` must hold this guard for their whole body to
+    /// avoid tripping over it while running in parallel with each other.
+    static PREFETCH_SERIAL_GUARD: Mutex<()> = Mutex::new(());
+
     /// Run the same prefetch flow the frontend uses before fetching row data:
     /// POST /get/prefetch?locate=<hash>, returning (timestamp, index, bearer
     /// token) for the matching item so the caller can hit /get/get-data or
@@ -202,6 +211,49 @@ mod tests {
         assert_eq!(resp.status(), Status::Ok, "get-data must succeed");
         let body: Value = serde_json::from_str(&resp.into_string().unwrap()).expect("valid JSON");
         body.as_array().expect("array")[0]["abstractData"].clone()
+    }
+
+    /// `prefetch_locate` + `get_data_item`, with a fresh re-prefetch on
+    /// failure rather than blindly re-requesting the same (now possibly
+    /// invalid) timestamp.
+    ///
+    /// A `prefetch` snapshot is meant to live for 1 hour
+    /// (`update_expire_task`), but `Expire::expired_check`
+    /// (`public/db/expire/expired_check.rs`) treats "no expiry entry
+    /// recorded yet" (`None`) the same as "already expired" — and a
+    /// brand-new snapshot's *own* `VERSION_COUNT_TIMESTAMP` slot is
+    /// recorded as exactly that `None` until the *next* version bump. So
+    /// as soon as anything else in the process bumps the global,
+    /// process-wide `VERSION_COUNT_TIMESTAMP` (any indexing or edit
+    /// anywhere — including other tests running concurrently),
+    /// `expire_check_task` immediately deletes the just-created query/tree
+    /// snapshot. This is a real bug (see TODO.md), not a test artifact —
+    /// but it's not what these particular tests are meant to catch, so we
+    /// route around it here by re-prefetching instead of trying to outwait
+    /// it.
+    fn read_current_abstract_data(client: &Client, hash: &str) -> Value {
+        for attempt in 0..5 {
+            let (timestamp, index, token) = prefetch_locate(client, hash);
+            let resp = client
+                .get(format!(
+                    "/get/get-data?timestamp={timestamp}&start={index}&end={}",
+                    index + 1
+                ))
+                .header(rocket::http::Header::new(
+                    "Authorization",
+                    format!("Bearer {token}"),
+                ))
+                .dispatch();
+            if resp.status() == Status::Ok {
+                let body: Value =
+                    serde_json::from_str(&resp.into_string().unwrap()).expect("valid JSON");
+                return body.as_array().expect("array")[0]["abstractData"].clone();
+            }
+            if attempt == 4 {
+                assert_eq!(resp.status(), Status::Ok, "get-data must succeed");
+            }
+        }
+        unreachable!()
     }
 
     /// Minimal photo fixture: fake file path, tags, optional EXIF date string.
@@ -1080,6 +1132,7 @@ mod tests {
     /// read.
     #[test]
     fn scenario_o_tags_visible_via_get_data_sidebar_path() {
+        let _serial = PREFETCH_SERIAL_GUARD.lock().unwrap();
         insert_photos(&[PhotoSpec {
             path: "/e2e_o/tagged.jpg",
             tags: &["e2e_o_family", "e2e_o_vacation"],
@@ -1088,8 +1141,7 @@ mod tests {
         let hash = find_hash_by_alias_path(Path::new("/e2e_o/tagged.jpg"));
 
         let client = make_client();
-        let (timestamp, index, token) = prefetch_locate(&client, hash.as_str());
-        let abstract_data = get_data_item(&client, timestamp, index, &token);
+        let abstract_data = read_current_abstract_data(&client, hash.as_str());
 
         let tags: Vec<String> = abstract_data["tags"]
             .as_array()
@@ -1108,6 +1160,7 @@ mod tests {
     /// trip a real client performs when editing tags from the sidepane.
     #[test]
     fn scenario_p_tags_modifiable_via_edit_tag_api() {
+        let _serial = PREFETCH_SERIAL_GUARD.lock().unwrap();
         insert_photos(&[PhotoSpec {
             path: "/e2e_p/photo.jpg",
             tags: &[],
@@ -1116,7 +1169,7 @@ mod tests {
         let hash = find_hash_by_alias_path(Path::new("/e2e_p/photo.jpg"));
 
         let client = make_client();
-        let (timestamp, index, token) = prefetch_locate(&client, hash.as_str());
+        let (timestamp, index, _token) = prefetch_locate(&client, hash.as_str());
 
         let resp = client
             .put("/put/edit_tag")
@@ -1128,7 +1181,7 @@ mod tests {
             .dispatch();
         assert_eq!(resp.status(), Status::Ok, "edit_tag must succeed");
 
-        let abstract_data = get_data_item(&client, timestamp, index, &token);
+        let abstract_data = read_current_abstract_data(&client, hash.as_str());
         let tags: Vec<String> = abstract_data["tags"]
             .as_array()
             .expect("tags array")
@@ -1151,6 +1204,7 @@ mod tests {
     /// sets this field in the first place.
     #[test]
     fn scenario_q_album_visible_via_get_data_after_assign() {
+        let _serial = PREFETCH_SERIAL_GUARD.lock().unwrap();
         let data = {
             let _ = &*TEST_ENV;
             DATA_PATH.get().expect("DATA_PATH initialised")
@@ -1176,14 +1230,173 @@ mod tests {
             .dispatch();
         assert_eq!(resp.status(), Status::Ok, "assign_album must return 200");
 
-        let (timestamp, index, token) = prefetch_locate(&client, hash.as_str());
-        let abstract_data = get_data_item(&client, timestamp, index, &token);
+        let abstract_data = read_current_abstract_data(&client, hash.as_str());
 
         assert_eq!(
             abstract_data["album"].as_str(),
             Some(album_id.as_str()),
             "GET /get/get-data (the sidebar's actual data source) must \
              reflect the album assigned via PUT /put/assign_album"
+        );
+    }
+
+    // ─── Scenario R: a file moved externally (no assign_album involved)
+    // accumulates a permanently dead alias entry ───────────────────────────
+
+    /// KNOWN BUG, generalising Scenario M: `DeduplicateTask` (deduplicate.rs)
+    /// only ever *pushes* a new alias entry when it re-discovers a known
+    /// hash at a different path — it never prunes entries whose `file` no
+    /// longer exists on disk. If a user moves a tracked file with a file
+    /// manager (not through `assign_album`), the watcher re-indexes it at
+    /// the new path, and the old, now-nonexistent path stays in `alias`
+    /// forever. RED until dead aliases are pruned (or replaced) on
+    /// rediscovery.
+    #[test]
+    fn scenario_r_externally_moved_file_keeps_dead_alias_entry() {
+        let data = {
+            let _ = &*TEST_ENV;
+            DATA_PATH.get().expect("DATA_PATH initialised")
+        };
+
+        let import_dir = data.join("e2e_r_import");
+        std::fs::create_dir_all(&import_dir).expect("create import dir");
+        let src = import_dir.join("e2e_r_photo.jpg");
+        write_real_jpeg(&src, [200, 90, 40]);
+
+        let other_dir = data.join("e2e_r_moved_to");
+        std::fs::create_dir_all(&other_dir).expect("create destination dir");
+
+        let rt = tokio::runtime::Runtime::new().expect("build runtime");
+        rt.block_on(async {
+            index_for_watch(src.clone(), None)
+                .await
+                .expect("initial index_for_watch must succeed");
+            wait_for_flush().await;
+        });
+        let hash = find_hash_by_alias_path(&src);
+
+        // Move the file outside the app (e.g. via a file manager), then
+        // simulate the watcher observing the Create event at the new path.
+        let dest = other_dir.join("e2e_r_photo.jpg");
+        std::fs::rename(&src, &dest).expect("move file externally");
+        assert!(!src.exists(), "source path must be vacated by the move");
+
+        rt.block_on(async {
+            index_for_watch(dest.clone(), None)
+                .await
+                .expect("watcher-triggered reindex must succeed");
+            wait_for_flush().await;
+        });
+
+        let txn = TREE.in_disk.begin_read().expect("begin read");
+        let table = txn.open_table(DATA_TABLE).expect("open table");
+        let guard = table
+            .get(hash.as_str())
+            .expect("redb get")
+            .expect("still in redb");
+        let AbstractData::Image(img) = guard.value() else {
+            panic!("not an image")
+        };
+
+        let live: Vec<&FileModify> = img
+            .metadata
+            .alias
+            .iter()
+            .filter(|a| Path::new(&a.file).exists())
+            .collect();
+        assert_eq!(
+            img.metadata.alias.len(),
+            live.len(),
+            "alias must not retain entries whose file no longer exists on \
+             disk after an external move (got {:?})",
+            img.metadata.alias
+        );
+    }
+
+    // ─── Scenario S: PUT /put/reindex preserves the existing album and tags
+    // ────────────────────────────────────────────────────────────────────
+
+    /// Regression lock: `regenerate_metadata_for_image` mutates the record
+    /// fetched from redb in place (only `exif_vec`, width/height,
+    /// thumbnails and hashes are recomputed; tags are only ever *extended*,
+    /// never cleared, and `album` is never touched) — so a full reindex
+    /// must NOT lose a previously assigned album or previously added tags.
+    #[test]
+    fn scenario_s_reindex_preserves_album_and_tags() {
+        let _serial = PREFETCH_SERIAL_GUARD.lock().unwrap();
+        let data = {
+            let _ = &*TEST_ENV;
+            DATA_PATH.get().expect("DATA_PATH initialised")
+        };
+
+        let import_dir = data.join("e2e_s_import");
+        std::fs::create_dir_all(&import_dir).expect("create import dir");
+        let src = import_dir.join("e2e_s_photo.jpg");
+        write_real_jpeg(&src, [5, 100, 200]);
+
+        let album_dir = data.join("e2e_s_album");
+        std::fs::create_dir_all(&album_dir).expect("create album dir");
+        let album_id = make_dir_album(&album_dir);
+
+        let rt = tokio::runtime::Runtime::new().expect("build runtime");
+        rt.block_on(async {
+            index_for_watch(src.clone(), None)
+                .await
+                .expect("initial index_for_watch must succeed");
+            wait_for_flush().await;
+        });
+        let hash = find_hash_by_alias_path(&src);
+
+        let client = make_client();
+
+        // Assign an album and a tag via the real APIs, like a user would.
+        let resp = client
+            .put("/put/assign_album")
+            .cookie(auth_cookie(&client))
+            .header(ContentType::JSON)
+            .body(format!(r#"{{"hash":"{hash}","albumId":"{album_id}"}}"#))
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok, "assign_album must return 200");
+
+        let (timestamp, index, _token) = prefetch_locate(&client, hash.as_str());
+        let resp = client
+            .put("/put/edit_tag")
+            .cookie(auth_cookie(&client))
+            .header(ContentType::JSON)
+            .body(format!(
+                r#"{{"indexArray":[{index}],"addTagsArray":["e2e_s_keep_me"],"removeTagsArray":[],"timestamp":{timestamp}}}"#
+            ))
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok, "edit_tag must return 200");
+
+        // Full reindex of the same item.
+        let (timestamp, index, _token) = prefetch_locate(&client, hash.as_str());
+        let resp = client
+            .post("/put/reindex")
+            .cookie(auth_cookie(&client))
+            .header(ContentType::JSON)
+            .body(format!(
+                r#"{{"indexArray":[{index}],"timestamp":{timestamp}}}"#
+            ))
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok, "reindex must return 200");
+        rt.block_on(wait_for_flush());
+
+        let abstract_data = read_current_abstract_data(&client, hash.as_str());
+        assert_eq!(
+            abstract_data["album"].as_str(),
+            Some(album_id.as_str()),
+            "reindex must not lose the previously assigned album"
+        );
+        let tags: Vec<String> = abstract_data["tags"]
+            .as_array()
+            .expect("tags array")
+            .iter()
+            .map(|t| t.as_str().expect("tag string").to_owned())
+            .collect();
+        assert!(
+            tags.contains(&"e2e_s_keep_me".to_string()),
+            "reindex must not lose previously added tags: {tags:?}"
         );
     }
 }

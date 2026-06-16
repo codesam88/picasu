@@ -79,6 +79,13 @@ pub fn process_video_info(abstract_data: &mut AbstractData) -> Result<()> {
         *exif_vec = exif;
     }
 
+    // Discover keyword tags embedded in the file's XMP packet, mirroring
+    // process_image_info (non‑fallible; extract_keywords_from_xmp is not
+    // yet implemented, so this is a no-op today — see TODO.md "tags
+    // discovered at index time").
+    let discovered_tags = extract_keywords_from_file(&abstract_data.source_path());
+    abstract_data.tag_mut().extend(discovered_tags);
+
     // Get logical dimensions and fix if rotated
     let (width, height) = generate_video_width_height(abstract_data)
         .context("failed to obtain video width/height")?;
