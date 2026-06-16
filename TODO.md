@@ -26,6 +26,143 @@
   3. on tag or other metadata changes, first store to db and then to xmp sidecar
   4. on album assignment (causing the original file to be moved), xmp sidecar files are moved together with the originals 
   5. we can provide a separate helper script to merge metadata from sidecar files back into originals. major photo apps probably also support such files.
+  - DEFERRED — not part of the storage-architecture fix below; xmp sidecars are a separate
+    future step.
+
+## Storage architecture fix: stop duplicating originals into DATA_HOME (2026-06-16)
+
+### Problem (confirmed by code audit, not just the symptom)
+
+`object/imported/<hash>.<ext>` is a full-resolution **copy** of every indexed file, content-addressed,
+living under `DATA_HOME`. This contradicts the agreed design (`docs/design.md`): `IMAGE_HOME` should
+be the single copy of originals, addressed by their real hierarchical path; only *derived* artifacts
+(`object/compressed/` thumbnails/previews) should be content-addressed, and only those belong in
+`DATA_HOME`.
+
+Concrete consequences found while auditing every `imported_path()`/`imported_path_string()` call site:
+
+- Every original is duplicated on disk (2x storage) for no architectural reason — nothing requires
+  the duplicate to exist *except* the code that was written to read from it instead of the real file.
+- **Uploads never land in `IMAGE_HOME` at all.** `post_upload.rs` writes to `DATA_HOME/upload/`,
+  `CopyTask` duplicates into `object/imported/`, then `DeleteTask` deletes the `upload/` staging
+  copy. The uploaded photo's only persistent representation is the `DATA_HOME` CAS blob; there is no
+  file under `IMAGE_HOME`, so it has no real directory/album membership — `presigned_album_id` is
+  just a DB label, not where the bytes live.
+- **This breaks `assign_album` for every uploaded photo**: `fs::rename(alias[0].file, …)` 422s
+  because `alias[0].file` is the `upload/` staging path, already deleted by `DeleteTask`.
+- Thumbnail/video pipelines read the duplicate, not the original: `generate_dynamic_image.rs`,
+  `generate_thumbnail.rs` (video frame extraction), `generate_compressed_video.rs`,
+  `generate_width_height.rs` (video ffprobe), `process/info.rs`'s `regenerate_metadata_for_*` (file
+  size). EXIF extraction and hashing already correctly read the live file — no change needed there.
+- Already correct, no change needed: `rotate_image.rs` only ever touches the compressed thumbnail,
+  never the original. `delete_data.rs` only removes the DB record, never touches files on disk
+  (pre-existing, separate, lower-priority gap: this currently orphans the `object/compressed`
+  thumbnail on delete; not folded into this fix, track separately if it matters).
+
+### Decisions (made 2026-06-16)
+
+- **Upload ingress**: a configurable ingress subfolder under `IMAGE_HOME` (default e.g. `uploads/`)
+  for uploads with no `presignedAlbumId`; it becomes its own top-level album automatically (album =
+  directory). Uploads *with* a `presignedAlbumId` write straight into that album's real directory.
+- **Migration**: none, automatic. Stop writing/reading `object/imported/`; pre-existing installs keep
+  whatever's already there as harmless, manually-deletable orphaned data. Document in `CONFIG.md`.
+- **Multiple aliases / missing files**: keep `source_path()`/serving on `alias[0]` only — no
+  fallback-through-the-list logic. But: a missing aliased file is a real file/DB inconsistency
+  (external manipulation or data loss outside the app), so make detection of it loud instead of
+  silent:
+  - `deduplicate_task` already does `exist_alias.retain(|a| Path::new(&a.file).exists())` —
+    currently silent. Add a `warn!` naming exactly which alias path(s) got pruned and why.
+  - Add a distinct, specific `warn!` when a *new* alias is actually added for already-known content
+    (genuine duplicate-content detection), replacing today's generic
+    `"File already exists in the database"` warning that fires even on a routine same-path re-index
+    (i.e. make the warning fire only when something actually changed, and say what).
+
+### File-by-file change inventory (backend)
+
+**Remove the original-duplication path:**
+- `tasks/actor/copy.rs` — delete `CopyTask` entirely.
+- `process/io.rs` — `copy_with_retry` becomes unused; remove (confirm no other caller first).
+- `workflow/mod.rs::index_for_watch` — drop the `CopyTask::new(...)` step.
+- `public/structure/abstract_data.rs` — remove `imported_path()`/`imported_path_string()`.
+
+**Switch readers from `imported_path()` to `source_path()`:**
+- `operations/indexation/generate_dynamic_image.rs` (image branch)
+- `operations/indexation/generate_thumbnail.rs` (video frame extraction ffmpeg `-i` arg)
+- `operations/indexation/generate_compressed_video.rs` (ffprobe duration + ffmpeg input)
+- `operations/indexation/generate_width_height.rs` (video ffprobe width/height)
+- `process/info.rs::regenerate_metadata_for_image/_video` (file size via `metadata(...)`)
+
+**Rework serving:**
+- `router/get/get_img.rs::imported_file` — instead of joining a literal CAS path, look up the
+  `AbstractData` by the hash already extracted/validated by `GuardHashOriginal`, then
+  `NamedFile::open(abstract_data.source_path())`. 404/410 if the hash isn't found or the file is
+  missing (mirrors the existing stale-alias handling pattern in `assign_album.rs`/scenario_j).
+
+**Rework uploads to write into `IMAGE_HOME`:**
+- `router/post/post_upload.rs::save_file` — write directly into the target directory (resolved
+  album dir via `get_dir_path_for_album` if `presignedAlbumId` given, else the configured ingress
+  subfolder under the resolved `imagePath`) using the same tmp-suffix-then-atomic-rename trick,
+  relocated. New: ingress-subfolder name/config (decide where this is configured — likely a new
+  `PublicConfig` field or a fixed convention name under `imagePath`; create it at startup like the
+  default `images/` dir is created today).
+- `public/structure/config.rs` — possible new field for the ingress subfolder name, if made
+  configurable rather than fixed.
+
+**Remove now-dead upload-staging machinery** (nothing should write to `DATA_HOME/upload/` anymore):
+- `tasks/actor/delete_in_update.rs` — whole file (the `path_starts_with_upload` check on the original
+  `path` passed to `DeleteTask` in `index_for_watch` becomes permanently false for everything once
+  uploads stop staging through `upload/`).
+- `workflow/mod.rs::index_for_watch` — drop the `DeleteTask::new(...)` call.
+- `operations/initialization/folder.rs` — stop creating `upload/`.
+- `tasks/actor/folder_import.rs::internal_subtree_roots` — drop `"upload"` from the excluded-name
+  list (keep `"db"`/`"object"` — still relevant for the legacy single-folder layout where
+  `IMAGE_HOME`/`DATA_HOME` coincide).
+
+**Alias-pruning visibility (the third decision above):**
+- `tasks/actor/deduplicate.rs::deduplicate_task` — add the two targeted `warn!`s described above.
+
+**Docs/comments to fix** (currently describe the wrong architecture, written earlier this session
+before this was caught):
+- `public/constant/storage.rs` — `get_data_path`'s doc comment lists `object/imported/` as
+  irreplaceable data; remove that mention once it no longer exists.
+- `TODO.md`'s `UROCISSA_STATE_HOME` note (same file, search `object/imported/`) — update once this
+  lands.
+- `docs/CONFIG.md` — note the no-migration decision (existing `object/imported/` is now dead,
+  harmless, manually-deletable); document the upload-ingress-subfolder setting.
+
+### Test plan
+
+- Update/extend `gallery-backend/src/tests/e2e.rs`:
+  - New scenario: upload with no `presignedAlbumId` lands in the ingress subfolder under `imagePath`
+    and is reachable via `assign_album` afterward (regression-locks the bug found above).
+  - New scenario: upload *with* `presignedAlbumId` writes directly into that album's real directory
+    (not a staging dir), and the file persists (not deleted) after indexing.
+  - New scenario: `GET /object/imported/<hash>.<ext>` serves the live file at its current
+    `source_path()`/`alias[0]`, including after `assign_album` has moved it (path changed, same
+    hash, must still serve correctly).
+  - New scenario: re-discovering the same file at an unchanged path does *not* emit the
+    duplicate-content warning; discovering identical content at a genuinely new path does (assert on
+    log output or refactor the warning into an observable side effect if cleaner to test); a pruned
+    stale alias emits its own distinct warning.
+  - Audit existing scenarios for incidental dependence on `object/imported/` existing — confirmed
+    via grep that none currently reference it directly, but re-run the full suite after each step
+    below to catch indirect breakage (e.g. thumbnail generation silently depending on copy timing).
+- Manual/live verification (no docker daemon in this dev environment, same caveat as the earlier
+  Docker rework): build, run against a real `imagePath` with subdirectories, upload with and without
+  a target album, confirm files appear under `imagePath` in the right place, confirm
+  `object/imported/` is never created, confirm download/view-original works, confirm `assign_album`
+  works for an uploaded photo.
+
+### Suggested sequencing (separate, reviewable commits)
+
+1. Switch all `imported_path()` readers to `source_path()` (no behavior change yet — `object/imported`
+   still gets written by `CopyTask`, just nothing reads it). Run full suite.
+2. Remove `CopyTask` + the `imported_path()` methods + rework `get_img.rs` serving. Run full suite.
+3. Add the alias-pruning/duplicate-detection warnings to `deduplicate_task`.
+4. Rework `post_upload.rs` to write into `IMAGE_HOME` (ingress subfolder + presigned-album-dir
+   cases); remove the now-dead upload-staging machinery (`delete_in_update.rs`,
+   `folder.rs`'s `upload/` creation, the `internal_subtree_roots` entry).
+5. Docs pass (`storage.rs`, `CONFIG.md`, this `TODO.md` entry marked resolved).
 
 - wrap image repo file operations and DB updates into a single transaction
   - the idea is to extend the DB consistency assurance to the photo repo
