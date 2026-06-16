@@ -1,0 +1,37 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": ["AGENTS.md"],
+  "command": {
+    "build": {
+      "description": "Build frontend then backend release with embedded assets",
+      "template": "Run `just build`"
+    },
+    "test": {
+      "description": "Run format + lint + tests for modified components",
+      "template": "Run `just format-fix check test`"
+    },
+    "backend-check": {
+      "description": "Lint the Rust backend (cargo clippy)",
+      "template": "Run `just backend-check`"
+    },
+    "backend-test": {
+      "description": "Run Rust backend tests (cargo nextest)",
+      "template": "Run `just backend-test`"
+    },
+    "frontend-check": {
+      "description": "Type-check and lint the Vue frontend (vue-tsc + eslint)",
+      "template": "Run `just frontend-check`"
+    },
+    "frontend-test": {
+      "description": "Run Vue frontend tests (vitest)",
+      "template": "Run `just frontend-test`"
+    },
+    "format": {
+      "description": "Auto-fix formatting for both backend and frontend",
+      "template": "Run `just format-fix`"
+    }
+  },
+  "plugin": [
+    "./plugin/auto-check.ts"
+  ]
+}
