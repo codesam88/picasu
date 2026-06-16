@@ -1,6 +1,8 @@
-use crate::public::constant::storage::get_data_path;
+use crate::operations::dir_album::get_dir_path_for_album;
+use crate::operations::utils::image_path::get_resolved_image_path;
 use crate::public::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::public::error::{AppError, ErrorKind, ResultExt};
+use crate::public::structure::config::APP_CONFIG;
 use crate::router::fairing::guard_read_only_mode::GuardReadOnlyMode;
 use crate::router::fairing::guard_upload::GuardUpload;
 use crate::router::{AppResult, GuardResult};
@@ -29,6 +31,48 @@ fn get_filename(file: &TempFile<'_>) -> String {
     file.name()
         .map(std::string::ToString::to_string)
         .unwrap_or_default()
+}
+
+/// Resolve where uploaded files for this request should land on disk, under
+/// `IMAGE_HOME` -- there is no staging area; uploads write directly into
+/// their real, final location (see `TODO.md` "Storage architecture fix").
+///
+/// With a target album, that's the album's own directory (resolved the same
+/// way `assign_album` resolves it). With no target album, it's the
+/// configured `uploadFolder` subdirectory under the resolved `imagePath`
+/// (created if missing) -- it becomes its own top-level album automatically,
+/// since album = directory.
+fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBuf, AppError> {
+    if let Some(album_id) = album_id {
+        return get_dir_path_for_album(album_id)
+            .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Target album not found"));
+    }
+
+    let image_root = get_resolved_image_path().ok_or_else(|| {
+        AppError::new(
+            ErrorKind::InvalidInput,
+            "No imagePath configured -- set one in Settings before uploading without a target album",
+        )
+    })?;
+
+    let upload_folder = APP_CONFIG
+        .get()
+        .unwrap()
+        .read()
+        .unwrap()
+        .public
+        .upload_folder
+        .clone();
+    let target_dir = image_root.join(upload_folder);
+
+    std::fs::create_dir_all(&target_dir).map_err(|e| {
+        AppError::new(
+            ErrorKind::IO,
+            format!("Failed to create upload ingress folder: {e}"),
+        )
+    })?;
+
+    Ok(target_dir)
 }
 
 #[post("/upload?<presigned_album_id_opt>", data = "<form>")]
@@ -70,6 +114,8 @@ pub async fn upload(
         ));
     }
 
+    let target_dir = resolve_upload_target_dir(album_id)?;
+
     for (i, file) in inner_form.files.iter_mut().enumerate() {
         let last_modified = inner_form.last_modified[i];
         let filename = get_filename(file);
@@ -78,7 +124,8 @@ pub async fn upload(
         if VALID_IMAGE_EXTENSIONS.contains(&extension.as_str())
             || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str())
         {
-            let final_path = save_file(file, filename, extension, last_modified).await?;
+            let final_path =
+                save_file(file, &target_dir, filename, extension, last_modified).await?;
             index_for_watch(PathBuf::from(final_path), album_id)
                 .await
                 .or_raise(|| (ErrorKind::Internal, "Failed to index file"))?;
@@ -94,29 +141,25 @@ pub async fn upload(
     Ok(())
 }
 
-/// Persists the temporary file to disk with the correct modification time.
+/// Persists the temporary file directly into `target_dir` (its real, final
+/// location under `IMAGE_HOME`) with the correct modification time.
 ///
 /// Returns the absolute path of the saved file.
 async fn save_file(
     file: &mut TempFile<'_>,
+    target_dir: &Path,
     filename: String,
     extension: String,
     last_modified_ms: u64,
 ) -> Result<String, AppError> {
     let unique_id = Uuid::new_v4();
-    let root = get_data_path();
-    let upload_dir = root.join("upload");
+    let target_dir = target_dir.to_path_buf();
 
-    // Ensure upload directory exists (though it should be created at init)
-    if !upload_dir.exists() {
-        std::fs::create_dir_all(&upload_dir).map_err(|e| {
-            AppError::new(ErrorKind::IO, format!("Failed to create upload dir: {e}"))
-        })?;
-    }
+    let tmp_path = target_dir.join(format!("{filename}-{unique_id}.tmp"));
 
-    let tmp_path = upload_dir.join(format!("{filename}-{unique_id}.tmp"));
-
-    // Move to a temp location first to avoid blocking the async runtime with IO
+    // Move to a temp location first to avoid blocking the async runtime with IO.
+    // The watcher ignores ".tmp" (not a recognised media extension), so this
+    // is safe even though target_dir is itself inside the watched tree.
     file.move_copy_to(&tmp_path)
         .await
         .or_raise(|| (ErrorKind::IO, "Failed to move temporary file"))?;
@@ -129,7 +172,7 @@ async fn save_file(
     // 2. Atomic rename to .ext (final state).
     // This ensures the file watcher (workflow) only picks up the file once it is fully written and has the correct timestamp.
     let final_path = spawn_blocking(move || -> Result<String, AppError> {
-        let final_path = upload_dir.join(format!("{filename_owned}-{unique_id}.{extension}"));
+        let final_path = target_dir.join(format!("{filename_owned}-{unique_id}.{extension}"));
 
         set_last_modified_time(&tmp_path_owned, last_modified_ms)?;
         std::fs::rename(&tmp_path_owned, &final_path)

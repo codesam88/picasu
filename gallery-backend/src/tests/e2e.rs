@@ -1675,4 +1675,189 @@ mod tests {
             "must record the duplicate's path: {aliased_files:?}"
         );
     }
+
+    // ─── Scenario X: upload with no target album lands in the ingress
+    // folder under imagePath, and is then reachable via assign_album ──────
+
+    /// Regression test for the bug found while planning the storage
+    /// architecture fix (`TODO.md`): uploads used to write only to a
+    /// `DATA_HOME`-resident staging dir, which got deleted after indexing,
+    /// leaving no file under `imagePath` for `assign_album` to move. Now
+    /// uploads write directly into their final location.
+    #[test]
+    fn scenario_x_upload_with_no_album_lands_in_ingress_folder() {
+        let data = {
+            let _ = &*TEST_ENV;
+            DATA_PATH.get().expect("DATA_PATH initialised")
+        };
+
+        let image_home = data.join("e2e_x_image_home");
+        std::fs::create_dir_all(&image_home).expect("create image home");
+
+        {
+            let mut config = APP_CONFIG.get().unwrap().write().unwrap();
+            config.public.image_path = Some(image_home.clone());
+        }
+
+        let fixture_path = data.join("e2e_x_fixture.jpg");
+        write_real_jpeg(&fixture_path, [11, 22, 33]);
+        let file_bytes = std::fs::read(&fixture_path).expect("read fixture bytes");
+
+        let client = make_client();
+        let (boundary, body) =
+            build_upload_multipart_body("e2e_x_photo.jpg", &file_bytes, "image/jpeg", 0);
+        let resp = client
+            .post("/upload")
+            .cookie(auth_cookie(&client))
+            .header(
+                ContentType::parse_flexible(&format!("multipart/form-data; boundary={boundary}"))
+                    .expect("valid content type"),
+            )
+            .body(body)
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok, "upload must return 200");
+
+        // index_for_watch enqueues its DB write via execute_batch_detached
+        // (see wait_for_flush's doc comment) -- wait for it before querying.
+        let rt = tokio::runtime::Runtime::new().expect("build runtime");
+        rt.block_on(wait_for_flush());
+
+        {
+            let mut config = APP_CONFIG.get().unwrap().write().unwrap();
+            config.public.image_path = None;
+        }
+
+        let uploads_dir = image_home.join("uploads");
+        let uploaded_files: Vec<_> = std::fs::read_dir(&uploads_dir)
+            .expect("read uploads dir")
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(
+            uploaded_files.len(),
+            1,
+            "exactly one file must land in the default ingress folder under imagePath"
+        );
+        let uploaded_path = uploaded_files[0].path();
+        assert_eq!(
+            std::fs::read(&uploaded_path).expect("read uploaded file"),
+            file_bytes,
+            "uploaded file content must match what was sent"
+        );
+
+        let hash = find_hash_by_alias_path(&uploaded_path);
+
+        // The ingress folder itself became a top-level dir-album; confirm
+        // assign_album (which requires the recorded alias path to exist on
+        // disk) now works for an uploaded photo.
+        let album_dir = data.join("e2e_x_album");
+        std::fs::create_dir_all(&album_dir).expect("create album dir");
+        let album_id = make_dir_album(&album_dir);
+
+        let resp = client
+            .put("/put/assign_album")
+            .cookie(auth_cookie(&client))
+            .header(ContentType::JSON)
+            .body(format!(r#"{{"hash":"{hash}","albumId":"{album_id}"}}"#))
+            .dispatch();
+        assert_eq!(
+            resp.status(),
+            Status::Ok,
+            "assign_album must succeed for an uploaded photo now that it \
+             has a real file under imagePath"
+        );
+    }
+
+    // ─── Scenario Y: upload with a target album writes directly into that
+    // album's real directory ────────────────────────────────────────────
+
+    #[test]
+    fn scenario_y_upload_with_album_writes_into_album_directory() {
+        let data = {
+            let _ = &*TEST_ENV;
+            DATA_PATH.get().expect("DATA_PATH initialised")
+        };
+
+        let album_dir = data.join("e2e_y_album");
+        std::fs::create_dir_all(&album_dir).expect("create album dir");
+        let album_id = make_dir_album(&album_dir);
+
+        let fixture_path = data.join("e2e_y_fixture.jpg");
+        write_real_jpeg(&fixture_path, [44, 55, 66]);
+        let file_bytes = std::fs::read(&fixture_path).expect("read fixture bytes");
+
+        let client = make_client();
+        let (boundary, body) =
+            build_upload_multipart_body("e2e_y_photo.jpg", &file_bytes, "image/jpeg", 0);
+        let resp = client
+            .post(format!("/upload?presigned_album_id_opt={album_id}"))
+            .cookie(auth_cookie(&client))
+            .header(
+                ContentType::parse_flexible(&format!("multipart/form-data; boundary={boundary}"))
+                    .expect("valid content type"),
+            )
+            .body(body)
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok, "upload must return 200");
+
+        let rt = tokio::runtime::Runtime::new().expect("build runtime");
+        rt.block_on(wait_for_flush());
+
+        let uploaded_files: Vec<_> = std::fs::read_dir(&album_dir)
+            .expect("read album dir")
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(
+            uploaded_files.len(),
+            1,
+            "the uploaded file must land directly in the target album's \
+             real directory, not a staging dir"
+        );
+        assert_eq!(
+            std::fs::read(uploaded_files[0].path()).expect("read uploaded file"),
+            file_bytes,
+            "uploaded file content must match what was sent"
+        );
+
+        let hash = find_hash_by_alias_path(&uploaded_files[0].path());
+        let txn = TREE.in_disk.begin_read().expect("begin read");
+        let table = txn.open_table(DATA_TABLE).expect("open table");
+        let guard = table
+            .get(hash.as_str())
+            .expect("redb get")
+            .expect("indexed record must be in redb");
+        assert_eq!(
+            guard.value().album(),
+            Some(album_id),
+            "uploaded photo must have the presigned album set"
+        );
+    }
+
+    /// Build a `multipart/form-data` body for `POST /upload`: one `file`
+    /// part (binary, with the given filename/content-type) and one
+    /// `lastModified` text part, matching what the frontend sends.
+    fn build_upload_multipart_body(
+        filename: &str,
+        file_bytes: &[u8],
+        content_type: &str,
+        last_modified_ms: u64,
+    ) -> (String, Vec<u8>) {
+        let boundary = "e2eUploadBoundary".to_string();
+        let mut body = Vec::new();
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: {content_type}\r\n\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(file_bytes);
+        body.extend_from_slice(b"\r\n");
+        body.extend_from_slice(
+            format!(
+                "--{boundary}\r\nContent-Disposition: form-data; name=\"lastModified\"\r\n\r\n{last_modified_ms}\r\n"
+            )
+            .as_bytes(),
+        );
+        body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+        (boundary, body)
+    }
 }

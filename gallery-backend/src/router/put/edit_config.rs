@@ -25,6 +25,8 @@ pub struct PartialUpdateConfigRequest {
     pub limits: Option<HashMap<String, String>>,
     /// `None` = don't touch; `Some("")` = clear; `Some(path)` = set.
     pub image_path: Option<String>,
+    /// `None` = don't touch; `Some("")` resets to the default ("uploads").
+    pub upload_folder: Option<String>,
     pub read_only_mode: Option<bool>,
     pub disable_img: Option<bool>,
     pub auth_key: Option<String>,
@@ -64,6 +66,11 @@ pub async fn update_config_handler(
             } else {
                 Some(PathBuf::from(trimmed))
             };
+        }
+        if let Some(upload_folder) = req_data.upload_folder {
+            // Final sanitization/empty-fallback happens in AppConfig::update;
+            // here we just pass the raw value through.
+            current_config.public.upload_folder = upload_folder;
         }
         if let Some(read_only_mode) = req_data.read_only_mode {
             current_config.public.read_only_mode = read_only_mode;

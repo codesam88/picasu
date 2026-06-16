@@ -7,7 +7,6 @@ pub fn initialize_folder() {
     std::fs::create_dir_all(root.join("db")).unwrap();
 
     std::fs::create_dir_all(root.join("object/compressed")).unwrap();
-    std::fs::create_dir_all(root.join("upload")).unwrap();
 
     // Pre-create the default UROCISSA_IMAGE_HOME (see operations::utils::image_path)
     // so it's discoverable with zero configuration, even before `imagePath` is set.

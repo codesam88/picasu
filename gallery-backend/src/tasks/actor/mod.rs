@@ -1,6 +1,5 @@
 pub mod album;
 pub mod deduplicate;
-pub mod delete_in_update;
 pub mod folder_import;
 pub mod hash;
 pub mod index;

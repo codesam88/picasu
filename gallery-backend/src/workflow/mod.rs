@@ -3,8 +3,8 @@ use crate::operations::utils::image_path::get_resolved_image_path;
 use crate::tasks::{
     INDEX_COORDINATOR,
     actor::{
-        deduplicate::DeduplicateTask, delete_in_update::DeleteTask, hash::HashTask,
-        index::IndexTask, open_file::OpenFileTask, video::VideoTask,
+        deduplicate::DeduplicateTask, hash::HashTask, index::IndexTask, open_file::OpenFileTask,
+        video::VideoTask,
     },
 };
 use anyhow::Result;
@@ -108,7 +108,6 @@ pub async fn index_for_watch(
 
     // If the file is already in the database, we can skip further processing.
     let Some(mut abstract_data) = abstract_data_opt else {
-        INDEX_COORDINATOR.execute_detached(DeleteTask::new(path));
         return Ok(());
     };
 
@@ -116,7 +115,6 @@ pub async fn index_for_watch(
         .execute_waiting(IndexTask::new(abstract_data))
         .await??;
 
-    INDEX_COORDINATOR.execute_detached(DeleteTask::new(PathBuf::from(&path)));
     if abstract_data.is_video() {
         INDEX_COORDINATOR
             .execute_waiting(VideoTask::new(abstract_data))

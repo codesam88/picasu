@@ -23,6 +23,10 @@ fn generate_secret_key() -> String {
     general_purpose::STANDARD.encode(secret)
 }
 
+fn default_upload_folder() -> String {
+    "uploads".to_string()
+}
+
 /// Network and feature configuration written to `config.json`.
 ///
 /// # Upload size limits (`limits`)
@@ -56,6 +60,12 @@ pub struct PublicConfig {
     /// (bind mounts/symlinks under this one root) rather than configured
     /// here as a list.
     pub image_path: Option<PathBuf>,
+    /// Subfolder name (relative to the resolved `imagePath`) that uploads
+    /// with no target album land in — it becomes its own top-level album
+    /// automatically (album = directory). Uploads *with* a target album
+    /// write directly into that album's real directory instead.
+    #[serde(default = "default_upload_folder")]
+    pub upload_folder: String,
     pub read_only_mode: bool,
     pub disable_img: bool,
 }
@@ -88,6 +98,7 @@ impl Default for AppConfig {
                 port: 5673,
                 limits,
                 image_path: None,
+                upload_folder: default_upload_folder(),
                 read_only_mode: false,
                 disable_img: false,
             },
@@ -191,6 +202,16 @@ impl AppConfig {
                 Some(PathBuf::from(cleaned))
             }
         });
+
+        // An empty upload_folder isn't a valid directory name; fall back to
+        // the default instead of writing uploads directly into imagePath's
+        // root with no subfolder of their own.
+        let trimmed_upload_folder = new_config.public.upload_folder.trim().to_string();
+        new_config.public.upload_folder = if trimmed_upload_folder.is_empty() {
+            default_upload_folder()
+        } else {
+            trimmed_upload_folder
+        };
 
         if new_config
             .private

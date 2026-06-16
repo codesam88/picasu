@@ -229,7 +229,11 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
         }
     });
 
-    ["object", "db", "upload"]
+    // "upload" is gone -- uploads now write directly into their final
+    // location under IMAGE_HOME (see TODO.md "Storage architecture fix").
+    // "object"/"db" remain relevant for the legacy single-folder layout
+    // where IMAGE_HOME and DATA_HOME coincide.
+    ["object", "db"]
         .into_iter()
         .map(|name| {
             let path = data_root.join(name);
