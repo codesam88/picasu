@@ -83,14 +83,15 @@ pub fn get_config_dir() -> &'static PathBuf {
     })
 }
 
-/// Directory holding `db/`, `object/`, and `upload/`. Override with
-/// `UROCISSA_DATA_HOME`. This is real, back-up-worthy user data — not all of
-/// it is disposable: `db/index_v5.redb` is the only store of record for
-/// tags/album-assignments/flags on synced (non-uploaded) media, and
-/// `object/imported/` holds the actual bytes for uploaded media. (A handful
-/// of files under `db/` — `cache_db.redb`, `temp_db.redb`, `expire_db.redb`
-/// — plus `upload/` *are* safely disposable; splitting those into a
-/// dedicated `UROCISSA_STATE_HOME` is a possible follow-up, not yet done.)
+/// Directory holding `db/` and `object/compressed/` — derived index and
+/// thumbnail/preview cache only. Override with `UROCISSA_DATA_HOME`.
+/// Originals are never duplicated here; `IMAGE_HOME` is the single copy
+/// (see `TODO.md` "Storage architecture fix"). This is still real,
+/// back-up-worthy data — `db/index_v5.redb` is the only store of record for
+/// tags/album-assignments/flags. (A handful of files under `db/` —
+/// `cache_db.redb`, `temp_db.redb`, `expire_db.redb` — *are* safely
+/// disposable; splitting those into a dedicated `UROCISSA_STATE_HOME` is a
+/// possible follow-up, not yet done.)
 pub fn get_data_path() -> &'static PathBuf {
     DATA_PATH
         .get_or_init(|| resolve_root("UROCISSA_DATA_HOME", "data", |p| p.data_dir().to_path_buf()))

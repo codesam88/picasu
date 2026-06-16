@@ -15,7 +15,10 @@
 
         <div class="config-block">
           <v-row class="ma-0">
-            <StorageAndSync v-model:image-path="localSettings.imagePath" />
+            <StorageAndSync
+              v-model:image-path="localSettings.imagePath"
+              v-model:upload-folder="localSettings.uploadFolder"
+            />
           </v-row>
         </div>
 
@@ -70,6 +73,7 @@ const localSettings = reactive<AppConfig>({
   authKey: '',
   discordHookUrl: '',
   imagePath: null,
+  uploadFolder: 'uploads',
   address: '',
 
   port: 0,

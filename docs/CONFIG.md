@@ -19,6 +19,7 @@ The configuration is divided into `public` and `private` sections.
       "data-form": "10GiB"
     },
     "imagePath": null,
+    "uploadFolder": "uploads",
     "readOnlyMode": false,
     "disableImg": false
   },
@@ -42,6 +43,7 @@ These settings control the server's public-facing behavior.
 | `limits.json`      | string         | `"10MiB"`    | Maximum size for JSON request bodies.                                                                                                                                |
 | `limits.data-form` | string         | `"10GiB"`    | Maximum size for multipart form submissions (used for photo/video import).                                                                                           |
 | `imagePath`        | string \| null | `null`       | Single root directory to watch for new or changed media files. Example: `"/mnt/photos"`. If relative, resolved against `UROCISSA_IMAGE_HOME`. Aggregate multiple physical libraries under this one root at the filesystem level (bind mounts/symlinks) rather than configuring several paths — the OS already handles that. |
+| `uploadFolder`     | string         | `"uploads"`  | Subfolder name (relative to `imagePath`) that uploads with no target album land in. Becomes its own top-level album automatically (album = directory). Uploads *with* a target album write directly into that album's real directory instead. |
 | `readOnlyMode`     | boolean        | `false`      | If `true`, the gallery runs in read-only mode — uploads, edits, and deletions are disabled.                                                                          |
 | `disableImg`       | boolean        | `false`      | If `true`, disables image processing in the frontend. **Intended for debugging only; do not use in production.**                                                     |
 
@@ -112,11 +114,16 @@ directories onto them. See the README's Docker quick-setup section.
 
 > **Note:** the data directory holds real, back-up-worthy data, not disposable
 > cache — `db/index_v5.redb` is the only store of record for tags/album
-> assignments/flags on synced media, and `object/imported/` holds the actual
-> bytes for uploaded media. A handful of files (`cache_db.redb`,
-> `temp_db.redb`, `expire_db.redb`, `upload/`) *are* safely disposable;
-> splitting those into a dedicated state directory is a possible future
-> change, not yet done (see `TODO.md`).
+> assignments/flags. `IMAGE_HOME` holds the originals themselves (never
+> duplicated into `DATA_HOME`); `object/compressed/` here is only a
+> regenerable thumbnail/preview cache. A handful of files (`cache_db.redb`,
+> `temp_db.redb`, `expire_db.redb`) *are* safely disposable; splitting those
+> into a dedicated state directory is a possible future change, not yet
+> done (see `TODO.md`).
+>
+> If you're upgrading from before this was fixed, any pre-existing
+> `object/imported/` directory under your old data path is now unused —
+> safe to delete manually, nothing reads or writes it anymore.
 
 ## Advanced: Rocket Web Server Configuration
 

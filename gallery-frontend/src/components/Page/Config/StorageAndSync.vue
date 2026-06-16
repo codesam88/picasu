@@ -44,6 +44,26 @@
         text="Choose a directory to start monitoring your files. Aggregate multiple libraries under one root at the filesystem level (bind mounts or symlinks) rather than configuring several paths here."
       ></v-empty-state>
 
+      <v-divider></v-divider>
+
+      <v-list-item
+        title="Upload Folder"
+        subtitle="Subfolder under Image Path that uploads with no target album land in"
+        prepend-icon="mdi-tray-arrow-up"
+        lines="two"
+      >
+        <template #append>
+          <v-text-field
+            v-model="uploadFolder"
+            density="compact"
+            variant="outlined"
+            hide-details
+            placeholder="uploads"
+            style="max-width: 160px"
+          ></v-text-field>
+        </template>
+      </v-list-item>
+
       <v-card-actions class="justify-end px-4 pb-4">
         <v-btn color="primary" variant="flat" :loading="loading" @click="save" class="text-none">
           Save Changes
@@ -61,6 +81,7 @@ import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
 
 const imagePath = defineModel<string | null>('imagePath', { required: true })
+const uploadFolder = defineModel<string>('uploadFolder', { required: true })
 const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
 
@@ -78,7 +99,8 @@ const onFilePickerSelect = (path: string) => {
 const save = async () => {
   loading.value = true
   const success = await configStore.updateConfig({
-    imagePath: imagePath.value
+    imagePath: imagePath.value,
+    uploadFolder: uploadFolder.value
   })
 
   if (success === true) {

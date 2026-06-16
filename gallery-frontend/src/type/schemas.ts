@@ -216,6 +216,7 @@ export const PublicConfigSchema = z.object({
   port: z.number(),
   limits: z.record(z.string(), z.string()), // HashMap<String, String>
   imagePath: z.string().nullable(), // Option<PathBuf>
+  uploadFolder: z.string(),
   discordHookUrl: z.string().nullable().optional(),
   readOnlyMode: z.boolean(),
   disableImg: z.boolean()
