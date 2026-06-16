@@ -6,20 +6,9 @@ license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[profile.release]
-lto = true
-
-[profile.dev-release]
-inherits = "release"
-lto = false
-
-[profile.static-release]
+[profile.lto]
 inherits = "release"
 lto = true
-
-[profile.static-dev]
-inherits = "release"
-lto = false
 
 [dependencies]
 anyhow = "1.0.102"
