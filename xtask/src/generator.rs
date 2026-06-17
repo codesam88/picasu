@@ -184,30 +184,64 @@ fn emit_api_test(name: &str, scenario: &serde_json::Value) -> String {
         }
     }
 
-    // Process when block
-    let call = when["call"].as_str().expect("when.call is required");
-    let body_val = when.get("body");
-    let auth = when.get("auth").and_then(|v| v.as_bool()).unwrap_or(true);
+    // Process when/then blocks
+    let is_multi = when.is_array();
 
-    let parts: Vec<&str> = call.splitn(2, ' ').collect();
+    if is_multi {
+        let calls = when.as_array().expect("when array");
+        let mut client_emitted = false;
+        for (i, call) in calls.iter().enumerate() {
+            let resp_var = format!("resp_{i}");
+            emit_single_call(call, &vars, &mut lines, &resp_var, !client_emitted);
+            client_emitted = true;
+
+            if let Some(call_then) = call.get("then").and_then(|v| v.as_array()) {
+                emit_then_assertions(call_then, &resp_var, &vars, &mut lines);
+            }
+        }
+        let last_resp = format!("resp_{}", calls.len().saturating_sub(1));
+        emit_then_assertions(then, &last_resp, &vars, &mut lines);
+    } else {
+        emit_single_call(when, &vars, &mut lines, "resp", true);
+        emit_then_assertions(then, "resp", &vars, &mut lines);
+    }
+
+    let body = lines.join("\n    ");
+    format!(
+        "#[test]\n\
+         fn {fn_name}() {{\n\
+             {body}\n\
+         }}"
+    )
+}
+
+fn emit_single_call(
+    call: &serde_json::Value,
+    vars: &VarMap,
+    lines: &mut Vec<String>,
+    resp_var: &str,
+    emit_client: bool,
+) {
+    let call_str = call["call"].as_str().expect("when.call is required");
+    let body_val = call.get("body");
+    let auth = call.get("auth").and_then(|v| v.as_bool()).unwrap_or(true);
+
+    let parts: Vec<&str> = call_str.splitn(2, ' ').collect();
     let method = parts[0];
-    let path = parts[1];
+    let _path = parts[1];
 
     let body_str = body_val
-        .map(|b| body_to_json_expr(b, &vars))
+        .map(|b| body_to_json_expr(b, vars))
         .unwrap_or_default();
 
-    if auth {
-        lines.push("let client = make_client();".to_string());
-        lines.push("let cookie = auth_cookie(&client);".to_string());
-    } else {
+    if emit_client {
         lines.push("let client = make_client();".to_string());
     }
 
     let method_lower = method.to_lowercase();
-    let mut req = format!("let resp = client\n    .{method_lower}(\"{path}\")");
+    let mut req = format!("let {resp_var} = client\n    .{method_lower}(\"{_path}\")");
     if auth {
-        req.push_str("\n    .cookie(cookie)");
+        req.push_str("\n    .cookie(auth_cookie(&client))");
     }
     if !body_str.is_empty() && method != "GET" {
         req.push_str("\n    .header(ContentType::JSON)");
@@ -215,16 +249,22 @@ fn emit_api_test(name: &str, scenario: &serde_json::Value) -> String {
     }
     req.push_str("\n    .dispatch();");
     lines.push(req);
+}
 
-    // Process then assertions
-    for item in then {
+fn emit_then_assertions(
+    then_items: &[serde_json::Value],
+    resp_var: &str,
+    vars: &VarMap,
+    lines: &mut Vec<String>,
+) {
+    for item in then_items {
         if let Some(code) = item["response.status"].as_i64() {
             lines.push(format!(
-                "assert_eq!(resp.status(), Status::from_code({code}).unwrap(), \"{path} failed\");"
+                "assert_eq!({resp_var}.status(), Status::from_code({code}).unwrap(), \"call {resp_var} status\");"
             ));
         } else if let Some(code) = item["response.status_not"].as_i64() {
             lines.push(format!(
-                "assert_ne!(resp.status(), Status::from_code({code}).unwrap(), \"{path} must not return {code}\");"
+                "assert_ne!({resp_var}.status(), Status::from_code({code}).unwrap(), \"call {resp_var} must not return {code}\");"
             ));
         } else if let Some(file_path) = item["file_exists"].as_str() {
             let trimmed = file_path.trim_start_matches('/');
@@ -295,14 +335,6 @@ fn emit_api_test(name: &str, scenario: &serde_json::Value) -> String {
             ));
         }
     }
-
-    let body = lines.join("\n    ");
-    format!(
-        "#[test]\n\
-         fn {fn_name}() {{\n\
-             {body}\n\
-         }}"
-    )
 }
 
 fn fresh_var(vars: &mut VarMap, item: &serde_json::Value, prefix: &str) -> String {

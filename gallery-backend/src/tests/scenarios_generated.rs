@@ -8,6 +8,88 @@ mod scenarios_generated {
     use rocket::http::{ContentType, Status};
 
     #[test]
+    fn album_membership_is_singular() {
+        let data = {
+            let _ = &*TEST_ENV;
+            DATA_PATH.get().expect("DATA_PATH initialised")
+        };
+        std::fs::create_dir_all(&data.join("gen_e2e_i_album_a")).expect("create album dir");
+        let album_a = make_dir_album(&data.join("gen_e2e_i_album_a"));
+        std::fs::create_dir_all(&data.join("gen_e2e_i_album_b")).expect("create album dir");
+        let album_b = make_dir_album(&data.join("gen_e2e_i_album_b"));
+        std::fs::create_dir_all(&data.join("gen_e2e_i_import")).expect("create dir");
+        std::fs::write(
+            &data.join("gen_e2e_i_import/gen_e2e_i_photo.jpg"),
+            b"\xff\xd8\xff fake jpeg",
+        )
+        .expect("write source file");
+        let photo = {
+            let src = data.join("gen_e2e_i_import/gen_e2e_i_photo.jpg");
+            insert_photos(&[PhotoSpec {
+                path: src.to_str().unwrap(),
+                tags: &[],
+                exif_date: None,
+            }]);
+            find_hash_by_alias_path(&src)
+        };
+        let client = make_client();
+        let resp_0 = client
+            .put("/put/assign_album")
+            .cookie(auth_cookie(&client))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({"albumId": album_a, "hash": photo}).to_string())
+            .dispatch();
+        assert_eq!(
+            resp_0.status(),
+            Status::from_code(200).unwrap(),
+            "call resp_0 status"
+        );
+        let resp_1 = client
+            .put("/put/assign_album")
+            .cookie(auth_cookie(&client))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({"albumId": album_b, "hash": photo}).to_string())
+            .dispatch();
+        assert_eq!(
+            resp_1.status(),
+            Status::from_code(200).unwrap(),
+            "call resp_1 status"
+        );
+        {
+            let txn = TREE.in_disk.begin_read().expect("begin read");
+            let table = txn.open_table(DATA_TABLE).expect("open table");
+            let guard = table
+                .get(album_a.as_str())
+                .expect("redb get")
+                .expect("record in redb");
+            let AbstractData::Album(record) = guard.value() else {
+                panic!("not a Album record");
+            };
+            assert_eq!(
+                format!("{:?}", record.metadata.item_count),
+                format!("{:?}", 0),
+                "db.album($album_a).item_count mismatch"
+            );
+        }
+        {
+            let txn = TREE.in_disk.begin_read().expect("begin read");
+            let table = txn.open_table(DATA_TABLE).expect("open table");
+            let guard = table
+                .get(album_b.as_str())
+                .expect("redb get")
+                .expect("record in redb");
+            let AbstractData::Album(record) = guard.value() else {
+                panic!("not a Album record");
+            };
+            assert_eq!(
+                format!("{:?}", record.metadata.item_count),
+                format!("{:?}", 1),
+                "db.album($album_b).item_count mismatch"
+            );
+        }
+    }
+
+    #[test]
     fn assign_album_moves_file_and_updates_membership() {
         let data = {
             let _ = &*TEST_ENV;
@@ -31,17 +113,16 @@ mod scenarios_generated {
             find_hash_by_alias_path(&src)
         };
         let client = make_client();
-        let cookie = auth_cookie(&client);
         let resp = client
             .put("/put/assign_album")
-            .cookie(cookie)
+            .cookie(auth_cookie(&client))
             .header(ContentType::JSON)
             .body(serde_json::json!({"albumId": album, "hash": photo}).to_string())
             .dispatch();
         assert_eq!(
             resp.status(),
             Status::from_code(200).unwrap(),
-            "/put/assign_album failed"
+            "call resp status"
         );
         assert!(
             data.join("gen_e2e_h_album/gen_e2e_h_photo.jpg").exists(),
@@ -93,32 +174,30 @@ mod scenarios_generated {
     #[test]
     fn assign_album_endpoint_is_registered() {
         let client = make_client();
-        let cookie = auth_cookie(&client);
         let resp = client
     .put("/put/assign_album")
-    .cookie(cookie)
+    .cookie(auth_cookie(&client))
     .header(ContentType::JSON)
     .body(serde_json::json!({"albumId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(), "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string()}).to_string())
     .dispatch();
         assert_ne!(
             resp.status(),
             Status::from_code(404).unwrap(),
-            "/put/assign_album must not return 404"
+            "call resp must not return 404"
         );
     }
 
     #[test]
     fn create_empty_album_endpoint_removed() {
         let client = make_client();
-        let cookie = auth_cookie(&client);
         let resp = client
             .post("/post/create_empty_album")
-            .cookie(cookie)
+            .cookie(auth_cookie(&client))
             .dispatch();
         assert_eq!(
             resp.status(),
             Status::from_code(404).unwrap(),
-            "/post/create_empty_album failed"
+            "call resp status"
         );
     }
 }
