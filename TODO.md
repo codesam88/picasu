@@ -327,40 +327,44 @@ Decisions taken:
 
 ### Playwright extension (full-stack, after the backend loop is proven)
 
-Scenarios carry a top-level `target: api | ui` field. Existing scenarios are
-implicitly `target: api`. The generator dispatches on this field; both targets
-read the same `openapi.json` for operation resolution.
+Scenario files are placed by directory: `scenarios/api/*.yaml` for backend
+(Rocket-`Client`) tests, `scenarios/ui/*.yaml` for Playwright browser tests.
+The generator dispatches on the directory. UI scenarios do not depend on
+`openapi.json` — they describe user interactions and visible state only.
+Backend API behaviour is the backend e2e suite's responsibility; UI scenarios
+discover API contract drift naturally (broken interaction → assertion failure).
 
-**`target: api` (current plan — unchanged)**
+**API scenarios (`scenarios/api/`)**
 Expands into Rocket-`Client` Rust tests. `given:` seeds redb directly; `when:`
-is an API call; `then:` asserts response fields and redb/filesystem state.
+is an API call (resolved against `openapi.json`); `then:` asserts response
+fields and redb/filesystem state.
 
-**`target: ui` (new)**
+**UI scenarios (`scenarios/ui/`)**
 Expands into Playwright TypeScript specs driving a real backend + built frontend.
+Seeding is simple (any working endpoint or redb-direct — UI assertions only
+check visible state, so a seed crash is a setup failure, not a silent false
+pass). No API-call verbs, no response assertions.
 
-- [ ] `given:` seeds state via a minimal API seeding layer (not redb-direct) that
-  is kept separate from the handlers under test. This avoids the circular failure
-  mode where a broken handler corrupts both fixture and assertion simultaneously;
-  the seeding layer only calls endpoints that are not the subject of the scenario.
-- [ ] `when:` describes browser user actions. Elements are referenced by ARIA role
-  and accessible name, not CSS selectors, so specs don't couple to DOM structure.
-  Fixed verb set:
-  - `navigate: <route>` — go to a URL pattern
-  - `click: <role>/<label>` — click by ARIA role + accessible name
-  - `fill: <role>/<label>, value: <value>` — type into an input
-  - `select: <role>/<label>, option: <label>` — choose from listbox/select
-  - `submit:` — submit the current form
-  New interactions → extend the vocabulary with a new verb; no raw-TypeScript
-  escape hatch. A missing verb is a gap in the DSL, not a reason to inline code.
-- [ ] `then:` UI assertions:
+- [ ] `given:` seeds state (any working endpoint or redb-direct — no "only
+  endpoints not under test" restriction; UI assertions are independent of
+  seeding mechanism).
+- [ ] `when:` describes browser user actions. Elements are referenced by ARIA
+  role and accessible name, not CSS selectors. Fixed verb set:
+  - `navigate: <route>`
+  - `click: <role>/<label>`
+  - `fill: <role>/<label>, value: <value>`
+  - `select: <role>/<label>, option: <label>`
+  - `submit:`
+  New interactions → extend the vocabulary; no raw-TypeScript escape hatch.
+- [ ] `then:` UI assertions only:
   - `ui.visible: <role>/<label>` / `ui.hidden: <role>/<label>`
   - `ui.text: <role>/<label>, contains: <text>`
   - `ui.toast: type: <error|success|warning>, contains: <text>`
   - `ui.modal: open | closed`
   - `ui.route: <pattern>` — current URL matches
-  - `ui.aria_snapshot: <name>` — compare the ARIA role/name/state tree of a named
-    page region against a committed `.aria` snapshot file; regenerate intentionally
-    with `xtask update-snapshots`.
+  - `ui.aria_snapshot: <name>` — diff ARIA role/name/state tree of a page
+    region against a committed `.aria` snapshot file; regenerate with
+    `xtask update-snapshots`.
 
 **Frontend element and layout spec**
 
@@ -369,10 +373,10 @@ it serialises the accessible role/name/state tree of a component or page region
 and diffs it against a committed snapshot. This covers semantic layout — element
 presence, ordering, labelling, nesting — without pixel-level fragility.
 
-- [ ] `ui.aria_snapshot` verbs in `target: ui` scenarios are the spec-first path
-  for new UI: write a scenario with an `aria_snapshot` assertion before the Vue
-  component exists; the generated Playwright spec fails until the component matches.
-  This is what "specifying the frontend interface" means in practice.
+- [ ] `ui.aria_snapshot` verbs are the spec-first path for new UI: write a
+  `scenarios/ui/*.yaml` scenario with an `aria_snapshot` assertion before the
+  Vue component exists; the generated Playwright spec fails until the component
+  matches. This is what "specifying the frontend interface" means in practice.
 - [ ] Pixel-level visual regression (`toHaveScreenshot()`) is environment-sensitive
   (font rendering, GPU, OS). Treat as an optional separate layer if needed, not
   part of the core spec DSL.
@@ -390,15 +394,17 @@ presence, ordering, labelling, nesting — without pixel-level fragility.
 
 1. Workspace + xtask skeleton; `emit-openapi` for the 3 spike endpoints.
 2. Refactor `e2e.rs` to split fixtures from test code.
-3. Write `docs/scenario-dsl.md` + the DSL JSON Schema; include the `target:` field,
-   the `ui` `when:` verb set, `then:` UI assertion forms, and the escape-hatch policy
-   for both targets.
-4. Generator: validate + emit `target: api`; port Scenario H; review generated vs hand-written.
+3. Write `docs/scenario-dsl.md` + the DSL JSON Schema; document API and UI
+   scenario vocabularies separately (shared `given:` section, disjoint `when:`/`then:`
+   verb sets per directory), with their respective escape-hatch policies.
+4. Generator: validate + emit API scenarios (`scenarios/api/`); port Scenario H;
+   review generated vs hand-written.
 5. Coverage reporting + `cargo-mutants` wiring.
-6. Backfill `utoipa` across all routes; port remaining `api` scenarios to the DSL.
-7. Playwright target: implement `target: ui` generator; wire process management and
-   the API seeding layer; port Scenario H as a `target: ui` scenario as reference.
-8. Write `ui.aria_snapshot` specs for the 3 spike UI flows — album assignment modal,
-   tag editor, message toast area — as spec-first drivers for those components.
+6. Backfill `utoipa` across all routes; port remaining API scenarios to the DSL.
+7. Playwright generator: emit UI scenarios (`scenarios/ui/`); wire process
+   management (ephemeral backend + built frontend); port Scenario H as a UI
+   reference scenario.
+8. Write `ui.aria_snapshot` specs for the 3 spike UI flows — album assignment
+   modal, tag editor, message toast area — as spec-first drivers.
 9. Extend UI DSL vocabulary as new interaction patterns arise; update
    `docs/scenario-dsl.md` for each new verb added.
