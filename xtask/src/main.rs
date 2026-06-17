@@ -1,3 +1,5 @@
+mod generator;
+
 use std::process::Command;
 
 fn main() {
@@ -5,7 +7,7 @@ fn main() {
 
     match subcommand.as_deref() {
         Some("emit-openapi") => emit_openapi(),
-        Some("gen-scenarios") => gen_scenarios(),
+        Some("gen-scenarios") => generator::generate_all(),
         Some(other) => {
             eprintln!("unknown subcommand: {other}");
             eprintln!("available: emit-openapi, gen-scenarios");
@@ -44,8 +46,4 @@ fn emit_openapi() {
     std::fs::write(&path, spec.as_bytes()).expect("failed to write openapi.json");
 
     eprintln!("wrote {}", path.display());
-}
-
-fn gen_scenarios() {
-    eprintln!("gen-scenarios: not yet implemented");
 }

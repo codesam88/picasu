@@ -291,7 +291,7 @@ pub fn refresh_in_memory() {
             DatabaseTimestamp::new(v.value(), priority_list)
         })
         .collect();
-    vec.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    vec.sort_by_key(|b| std::cmp::Reverse(b.timestamp));
     *TREE.in_memory.write().unwrap() = vec;
 }
 
