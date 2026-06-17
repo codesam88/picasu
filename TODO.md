@@ -235,3 +235,170 @@ bucket explicit in code, not just in a comment:
 - [ ] Admin status API — expose queue depth, active indexing jobs, recent errors, per-job progress as a JSON endpoint (foundation for a future admin panel)
 - [ ] Frontend progress UI — poll the existing `/get/import/folder/status` pattern (or a future SSE stream) to show active indexing progress to authenticated users
 - [ ] Structured logging — investigate `tracing` + `tracing-subscriber` as a replacement for `env_logger` to support spans, JSON output for log aggregators, and `tracing-journald` for native systemd/journald integration
+
+## Spec-driven E2E testing (planning — not yet implemented)
+
+Goal: generate E2E test code from a semi-formal spec rather than hand-writing
+(or AI-writing) each test body. Two layers: a **backend-authoritative interface
+contract** (Rust `utoipa` annotations → `openapi.json`) fixes operation names and
+request/response schemas; a **scenario DSL** (Given/When/Then YAML) describes
+fixtures, calls, and assertions. A standalone generator expands scenarios into
+the existing `e2e.rs` Rocket-`Client` test style, and later into Playwright specs.
+
+Confines AI/manual interpretation to scenario *authoring*; inputs, serialization,
+and assertions are mechanical. See `docs/test-strategy.md` for the broader testing
+picture this slots into.
+
+Decisions taken:
+- **Standalone tool via cargo xtask**, not a build script — keeps `cargo test`
+  fast, debuggable, and leaves room for further generators/tooling under one entry.
+- **Backend-authoritative contract** (`utoipa`) — no FE/BE drift window; Rust owns
+  the schema as it owns the data (redb/bitcode).
+- **Scenario-DSL-first** — the first spike targets stateful flows (the source of
+  most real bugs), with the contract layer as the operation registry + type-check
+  for scenario bodies.
+
+### Prerequisite: Cargo workspace + xtask
+
+- [ ] Convert repo to a Cargo workspace. Today `gallery-backend/Cargo.toml` is a
+  bare `[package]` with no root manifest. Add a root (or `gallery-backend`-level)
+  `[workspace]` with members: the existing `urocissa` crate and a new `xtask` crate.
+- [ ] `xtask` crate: subcommand dispatch (`xtask gen-scenarios`, `xtask emit-openapi`,
+  room for `xtask check-coverage`). Alias `cargo xtask` via `.cargo/config.toml`.
+- [ ] Add `just gen-scenarios` / `just emit-openapi` recipes wrapping the xtask calls;
+  wire generation + the coverage gate into `just precommit` so generated code and
+  spec cannot drift from source unnoticed.
+
+### Interface contract (utoipa, backend-authoritative)
+
+- [ ] Add `utoipa` dependency. Annotate the 3 spike endpoints first
+  (`POST /post/authenticate`, `GET /get/get-albums`, `PUT /put/assign_album`) with
+  path + request/response schema derives.
+- [ ] `xtask emit-openapi` writes `gallery-backend/openapi.json` (committed, reviewable).
+  A test asserts the emitted doc matches the committed file (drift guard).
+- [ ] **Coverage reporting**: introspect the mounted `routes!` set vs OpenAPI paths;
+  emit a coverage percentage and list unannotated routes. Report in CI output but
+  do not fail the build — annotation is incremental, not a gate.
+- [ ] Backfill `utoipa` across remaining routes incrementally, endpoint-by-endpoint.
+
+### Refactor e2e.rs: fixtures vs. test code
+
+- [ ] Split `src/tests/e2e.rs`. Move reusable fixture builders/helpers
+  (`make_dir_album`, `insert_photo_with_real_file`, `make_client`, `auth_cookie`,
+  `refresh_in_memory`, the `TestEnv`/`DATA_PATH` setup, redb read helpers) into a
+  `src/tests/fixtures.rs` (or `tests/support/`) module with stable public signatures.
+- [ ] These fixtures become the DSL `given:` vocabulary primitives — the generator
+  emits calls to them, so their signatures are an API the generator depends on.
+- [ ] Leave the existing hand-written scenarios in place initially; generated
+  scenarios live in a separate `src/tests/scenarios_generated.rs` (clearly marked
+  generated, never hand-edited). Port scenarios to the DSL one at a time.
+
+### Scenario DSL: spec + documentation (in docs/)
+
+- [ ] Write `docs/scenario-dsl.md`: the semi-formal spec + authoring guide. Must
+  define, with examples, the fixed vocabulary:
+  - `given:` — `dir_album`, `photo`, `tag`, `empty` (each maps to a fixture builder);
+    `id_as` binding syntax for referencing created entities (`$album`, `$photo`).
+  - `when:` — `call: <operation>` (name resolved against `openapi.json`; `body`
+    validated against the operation's request schema at generation time); auth and
+    content-type derived from the contract.
+  - `then:` — `response.status`, `response.<json-path>`, `file_exists`/`file_absent`,
+    `db.image(...)/album(...)/tag(...).<field>` assertion forms; each maps to exactly
+    one generated assertion.
+  - Escape-hatch policy: **no raw-Rust escape hatch**. A missing assertion form is
+    resolved by adding a reusable verb to the vocabulary, not by inlining code.
+- [ ] Define the DSL's own schema (JSON Schema for the YAML) so scenario files are
+  validated structurally before generation, independent of the contract check.
+- [ ] Reference `docs/scenario-dsl.md` from `docs/test-strategy.md`.
+
+### Generator (xtask gen-scenarios)
+
+- [ ] Parse `scenarios/*.yaml`, load `openapi.json`, validate each scenario:
+  structural (DSL schema) + contract (operation exists, body matches request schema).
+  Fail generation on any violation — bad specs never produce green tests.
+- [ ] Emit one Rust test fn per scenario into `scenarios_generated.rs`, in the
+  existing Rocket-`Client` style, calling the refactored fixture helpers.
+- [ ] Port Scenario H (`assign_album moves file and updates membership`) as the
+  reference scenario; assert the generated test is behaviourally equivalent to the
+  hand-written one before deleting the latter.
+- [ ] **Trust guard — mutation testing**: run `cargo-mutants` against the handlers a
+  scenario covers; a generated suite that stays green under a mutated handler has
+  weak assertions. Track as a periodic check, not necessarily per-commit.
+
+### Playwright extension (full-stack, after the backend loop is proven)
+
+Scenarios carry a top-level `target: api | ui` field. Existing scenarios are
+implicitly `target: api`. The generator dispatches on this field; both targets
+read the same `openapi.json` for operation resolution.
+
+**`target: api` (current plan — unchanged)**
+Expands into Rocket-`Client` Rust tests. `given:` seeds redb directly; `when:`
+is an API call; `then:` asserts response fields and redb/filesystem state.
+
+**`target: ui` (new)**
+Expands into Playwright TypeScript specs driving a real backend + built frontend.
+
+- [ ] `given:` seeds state via a minimal API seeding layer (not redb-direct) that
+  is kept separate from the handlers under test. This avoids the circular failure
+  mode where a broken handler corrupts both fixture and assertion simultaneously;
+  the seeding layer only calls endpoints that are not the subject of the scenario.
+- [ ] `when:` describes browser user actions. Elements are referenced by ARIA role
+  and accessible name, not CSS selectors, so specs don't couple to DOM structure.
+  Fixed verb set:
+  - `navigate: <route>` — go to a URL pattern
+  - `click: <role>/<label>` — click by ARIA role + accessible name
+  - `fill: <role>/<label>, value: <value>` — type into an input
+  - `select: <role>/<label>, option: <label>` — choose from listbox/select
+  - `submit:` — submit the current form
+  New interactions → extend the vocabulary with a new verb; no raw-TypeScript
+  escape hatch. A missing verb is a gap in the DSL, not a reason to inline code.
+- [ ] `then:` UI assertions:
+  - `ui.visible: <role>/<label>` / `ui.hidden: <role>/<label>`
+  - `ui.text: <role>/<label>, contains: <text>`
+  - `ui.toast: type: <error|success|warning>, contains: <text>`
+  - `ui.modal: open | closed`
+  - `ui.route: <pattern>` — current URL matches
+  - `ui.aria_snapshot: <name>` — compare the ARIA role/name/state tree of a named
+    page region against a committed `.aria` snapshot file; regenerate intentionally
+    with `xtask update-snapshots`.
+
+**Frontend element and layout spec**
+
+Playwright's `toMatchAriaSnapshot()` is the mechanism for specifying UI structure:
+it serialises the accessible role/name/state tree of a component or page region
+and diffs it against a committed snapshot. This covers semantic layout — element
+presence, ordering, labelling, nesting — without pixel-level fragility.
+
+- [ ] `ui.aria_snapshot` verbs in `target: ui` scenarios are the spec-first path
+  for new UI: write a scenario with an `aria_snapshot` assertion before the Vue
+  component exists; the generated Playwright spec fails until the component matches.
+  This is what "specifying the frontend interface" means in practice.
+- [ ] Pixel-level visual regression (`toHaveScreenshot()`) is environment-sensitive
+  (font rendering, GPU, OS). Treat as an optional separate layer if needed, not
+  part of the core spec DSL.
+- [ ] `ui` scenario files live in `scenarios/ui/*.yaml`; generated specs in
+  `tests/playwright/scenarios_generated/`. Snapshots committed at
+  `tests/playwright/snapshots/`.
+
+**Process management**
+
+- [ ] Spawn backend on an ephemeral port with a tempdir `DATA_PATH`; build frontend
+  once per suite run; tear down after. Gate on CI (matches the existing "Playwright
+  E2E — needs running backend; save for CI" deferral above).
+
+### Sequencing
+
+1. Workspace + xtask skeleton; `emit-openapi` for the 3 spike endpoints.
+2. Refactor `e2e.rs` to split fixtures from test code.
+3. Write `docs/scenario-dsl.md` + the DSL JSON Schema; include the `target:` field,
+   the `ui` `when:` verb set, `then:` UI assertion forms, and the escape-hatch policy
+   for both targets.
+4. Generator: validate + emit `target: api`; port Scenario H; review generated vs hand-written.
+5. Coverage reporting + `cargo-mutants` wiring.
+6. Backfill `utoipa` across all routes; port remaining `api` scenarios to the DSL.
+7. Playwright target: implement `target: ui` generator; wire process management and
+   the API seeding layer; port Scenario H as a `target: ui` scenario as reference.
+8. Write `ui.aria_snapshot` specs for the 3 spike UI flows — album assignment modal,
+   tag editor, message toast area — as spec-first drivers for those components.
+9. Extend UI DSL vocabulary as new interaction patterns arise; update
+   `docs/scenario-dsl.md` for each new verb added.
