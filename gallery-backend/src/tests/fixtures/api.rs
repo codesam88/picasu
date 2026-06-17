@@ -5,14 +5,9 @@ use rocket::http::{ContentType, Cookie, Status};
 use rocket::local::blocking::Client;
 use serde_json::Value;
 
-use arrayvec::ArrayString;
-
-use crate::operations::dir_album::get_or_create_dir_album;
 use crate::operations::utils::image_path::get_resolved_image_path;
 use crate::router::builder::build_rocket_with_config;
-use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::actor::folder_import::{FolderImportState, folder_import_status};
-use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
 use super::{APP_CONFIG, PREFETCH_SERIAL_GUARD, TEST_ENV};
 
@@ -34,125 +29,7 @@ pub fn auth_cookie(client: &Client) -> Cookie<'static> {
     Cookie::new("jwt", token.trim_matches('"').to_owned())
 }
 
-pub fn json_get(client: &Client, path: &str) -> Value {
-    let cookie = auth_cookie(client);
-    let r = client.get(path).cookie(cookie).dispatch();
-    assert_eq!(r.status(), Status::Ok, "GET {path} failed");
-    serde_json::from_str(&r.into_string().unwrap()).expect("valid JSON")
-}
-
-/// Run the same prefetch flow the frontend uses before fetching row data:
-/// POST /get/prefetch?locate=<hash>, returning (timestamp, index, bearer
-/// token) for the matching item so the caller can hit /get/get-data or
-/// /put/edit_tag exactly like a real client would.
-pub fn prefetch_locate(client: &Client, hash: &str) -> (i64, usize, String) {
-    let cookie = auth_cookie(client);
-    let resp = client
-        .post(format!("/get/prefetch?locate={hash}"))
-        .cookie(cookie)
-        .header(ContentType::JSON)
-        .dispatch();
-    assert_eq!(resp.status(), Status::Ok, "prefetch must succeed");
-    let body: Value = serde_json::from_str(&resp.into_string().unwrap()).expect("valid JSON");
-    let timestamp = body["prefetch"]["timestamp"]
-        .as_i64()
-        .expect("prefetch.timestamp");
-    let index = usize::try_from(
-        body["prefetch"]["locateTo"]
-            .as_u64()
-            .expect("prefetch.locateTo must be present for a known hash"),
-    )
-    .expect("index fits in usize");
-    let token = body["token"].as_str().expect("token").to_owned();
-    (timestamp, index, token)
-}
-
-/// `prefetch_locate` + `get_data_item`, with a fresh re-prefetch on
-/// failure rather than blindly re-requesting the same (now possibly
-/// invalid) timestamp.
-///
-/// A `prefetch` snapshot is meant to live for 1 hour
-/// (`update_expire_task`), but `Expire::expired_check`
-/// (`public/db/expire/expired_check.rs`) treats "no expiry entry
-/// recorded yet" (`None`) the same as "already expired" — and a
-/// brand-new snapshot's *own* `VERSION_COUNT_TIMESTAMP` slot is
-/// recorded as exactly that `None` until the *next* version bump. So
-/// as soon as anything else in the process bumps the global,
-/// process-wide `VERSION_COUNT_TIMESTAMP` (any indexing or edit
-/// anywhere — including other tests running concurrently),
-/// `expire_check_task` immediately deletes the just-created query/tree
-/// snapshot. This is a real bug (see TODO.md), not a test artifact —
-/// but it's not what these particular tests are meant to catch, so we
-/// route around it here by re-prefetching instead of trying to outwait
-/// it.
-pub fn read_current_abstract_data(client: &Client, hash: &str) -> Value {
-    for attempt in 0..5 {
-        let (timestamp, index, token) = prefetch_locate(client, hash);
-        let resp = client
-            .get(format!(
-                "/get/get-data?timestamp={timestamp}&start={index}&end={}",
-                index + 1
-            ))
-            .header(rocket::http::Header::new(
-                "Authorization",
-                format!("Bearer {token}"),
-            ))
-            .dispatch();
-        if resp.status() == Status::Ok {
-            let body: Value =
-                serde_json::from_str(&resp.into_string().unwrap()).expect("valid JSON");
-            return body.as_array().expect("array")[0]["abstractData"].clone();
-        }
-        if attempt == 4 {
-            assert_eq!(resp.status(), Status::Ok, "get-data must succeed");
-        }
-    }
-    unreachable!()
-}
-
-/// Fetch the original-file bytes via the real client flow: prefetch +
-/// get-data (to obtain the hash-scoped, `allow_original` token embedded
-/// in the response) + `GET /object/imported/<hash-prefix>/<hash>.<ext>`.
-pub fn fetch_original_bytes(client: &Client, hash: &str, ext: &str) -> Vec<u8> {
-    let (timestamp, index, ts_token) = prefetch_locate(client, hash);
-    let resp = client
-        .get(format!(
-            "/get/get-data?timestamp={timestamp}&start={index}&end={}",
-            index + 1
-        ))
-        .header(rocket::http::Header::new(
-            "Authorization",
-            format!("Bearer {ts_token}"),
-        ))
-        .dispatch();
-    assert_eq!(resp.status(), Status::Ok, "get-data must succeed");
-    let body: Value = serde_json::from_str(&resp.into_string().unwrap()).expect("valid JSON");
-    let hash_token = body.as_array().expect("array")[0]["token"]
-        .as_str()
-        .expect("token")
-        .to_owned();
-
-    let resp = client
-        .get(format!("/object/imported/{}/{hash}.{ext}", &hash[0..2]))
-        .header(rocket::http::Header::new(
-            "Authorization",
-            format!("Bearer {hash_token}"),
-        ))
-        .dispatch();
-    assert_eq!(
-        resp.status(),
-        Status::Ok,
-        "GET /object/imported must succeed"
-    );
-    resp.into_bytes().expect("response body bytes")
-}
-
-// ─── Filesystem / album helpers ──────────────────────────────────────────
-
-/// Create a dir album for `dir_path` and return its album ID.
-pub fn make_dir_album(dir_path: &Path) -> ArrayString<64> {
-    get_or_create_dir_album(dir_path.to_path_buf()).expect("create dir album")
-}
+// ─── Filesystem / JPEG helpers ───────────────────────────────────────────
 
 /// Write a tiny real (decodable) JPEG to `path` — needed for tests that
 /// exercise the real indexing pipeline (`process_image_info` decodes
@@ -218,12 +95,6 @@ pub fn write_real_jpeg_with_xmp_keywords(path: &Path, color: [u8; 3], keywords: 
     spliced.extend_from_slice(&jpeg_bytes[2..]);
 
     std::fs::write(path, &spliced).expect("write spliced jpeg");
-}
-
-/// Write a real decodable JPEG with embedded EXIF DateTimeOriginal.
-/// The date string must be in `"YYYY:MM:DD HH:MM:SS"` format (19 chars).
-pub fn write_real_jpeg_with_exif(path: &Path, color: [u8; 3], date_str: &str) {
-    write_real_jpeg_with_xmp_and_exif(path, color, &[], Some(date_str));
 }
 
 /// Write a real decodable JPEG with embedded XMP keywords AND optional
@@ -442,19 +313,6 @@ pub fn discover_album_id(client: &Client, relative_dir: &str) -> String {
     album["albumId"].as_str().expect("albumId").to_owned()
 }
 
-/// Block until every `FlushTreeTask` queued before this call has been
-/// written to disk. `index_task`/`video_task` enqueue their writes via
-/// `execute_batch_detached`, which returns immediately; submitting an
-/// empty flush with `execute_batch_waiting` guarantees (per
-/// `mini_executor`'s ordering contract) that everything submitted
-/// earlier on the same queue has already run by the time this resolves.
-pub async fn wait_for_flush() {
-    BATCH_COORDINATOR
-        .execute_batch_waiting(FlushTreeTask::insert(Vec::new()))
-        .await
-        .expect("flush sync");
-}
-
 /// Poll `folder_import_status` in a loop until the import reaches a
 /// terminal state, then return that state.  Panics if the import takes
 /// longer than `timeout_ms`.
@@ -476,35 +334,4 @@ pub fn wait_for_import(timeout_ms: u64) -> FolderImportState {
         }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-}
-
-// ─── Upload helpers ──────────────────────────────────────────────────────
-
-/// Build a `multipart/form-data` body for `POST /upload`: one `file`
-/// part (binary, with the given filename/content-type) and one
-/// `lastModified` text part, matching what the frontend sends.
-pub fn build_upload_multipart_body(
-    filename: &str,
-    file_bytes: &[u8],
-    content_type: &str,
-    last_modified_ms: u64,
-) -> (String, Vec<u8>) {
-    let boundary = "e2eUploadBoundary".to_string();
-    let mut body = Vec::new();
-    body.extend_from_slice(
-        format!(
-            "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\nContent-Type: {content_type}\r\n\r\n"
-        )
-        .as_bytes(),
-    );
-    body.extend_from_slice(file_bytes);
-    body.extend_from_slice(b"\r\n");
-    body.extend_from_slice(
-        format!(
-            "--{boundary}\r\nContent-Disposition: form-data; name=\"lastModified\"\r\n\r\n{last_modified_ms}\r\n"
-        )
-        .as_bytes(),
-    );
-    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
-    (boundary, body)
 }
