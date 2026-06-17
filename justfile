@@ -80,6 +80,18 @@ frontend-build:
 frontend-audit:
     cd gallery-frontend && npm audit
 
+# ── Spec tooling ───────────────────────────────────────────────────────────────
+
+# Emit openapi.json from utoipa annotations (3 spike endpoints first)
+[group('spec')]
+emit-openapi:
+    cargo xtask emit-openapi
+
+# Generate scenario test code from YAML specs (not yet implemented)
+[group('spec')]
+gen-scenarios:
+    cargo xtask gen-scenarios
+
 # ── Global ─────────────────────────────────────────────────────────────────────
 
 # Check formatting (backend + frontend)

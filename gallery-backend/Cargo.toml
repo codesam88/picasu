@@ -4,11 +4,20 @@ version = "2.1.0"
 edition = "2024"
 license = "MIT"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "urocissa"
+path = "src/lib.rs"
 
-[profile.lto]
-inherits = "release"
-lto = true
+[[bin]]
+name = "urocissa"
+path = "src/main.rs"
+
+[[bin]]
+name = "urocissa-openapi"
+path = "src/bin/openapi.rs"
+required-features = ["openapi"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 anyhow = "1.0.102"
@@ -52,6 +61,7 @@ directories = "6.0.0"
 webbrowser = { version = "1.2.1", optional = true }
 rust-embed = "8.11.0"
 mime_guess = "2.0.5"
+utoipa = { version = "5", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
@@ -59,6 +69,7 @@ tempfile = "3"
 [features]
 embed-frontend = []
 auto-open-browser = ["dep:webbrowser"]
+openapi = ["dep:utoipa"]
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }

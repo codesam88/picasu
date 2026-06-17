@@ -23,10 +23,12 @@ pub async fn get_tags(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<TagInf
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumInfo {
     pub album_id: String,
     pub album_name: Option<String>,
+    #[cfg_attr(feature = "openapi", schema(value_type = HashMap<String, crate::public::structure::album::Share>))]
     pub share_list: HashMap<ArrayString<64>, Share>,
     /// Set for filesystem-hierarchy albums; `None` for user-created albums.
     pub dir_path: Option<String>,
@@ -35,6 +37,16 @@ pub struct AlbumInfo {
     pub parent_album_id: Option<String>,
 }
 
+#[cfg_attr(
+    feature = "openapi",
+    utoipa::path(
+        get,
+        path = "/get/get-albums",
+        responses(
+            (status = 200, description = "List of albums", body = Vec<AlbumInfo>),
+        )
+    )
+)]
 #[get("/get/get-albums")]
 pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<AlbumInfo>>> {
     let _ = auth?;

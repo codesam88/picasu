@@ -1,0 +1,7 @@
+[workspace]
+members = ["gallery-backend", "xtask"]
+resolver = "2"
+
+[profile.lto]
+inherits = "release"
+lto = true

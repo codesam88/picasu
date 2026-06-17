@@ -18,15 +18,30 @@ use std::fs;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct AssignAlbumData {
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub hash: ArrayString<64>,
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub album_id: ArrayString<64>,
 }
 
 /// Move a media item into the album's directory on disk, update the DB alias,
 /// and record the explicit album membership.  Returns 422 if the file is not
 /// found at the recorded alias path (stale alias — user must re-index first).
+#[cfg_attr(
+    feature = "openapi",
+    utoipa::path(
+        put,
+        path = "/put/assign_album",
+        request_body = AssignAlbumData,
+        responses(
+            (status = 200, description = "Item assigned to album"),
+            (status = 400, description = "Invalid input or item not found"),
+        )
+    )
+)]
 #[put("/put/assign_album", format = "json", data = "<json_data>")]
 pub async fn assign_album(
     auth: GuardResult<GuardAuth>,

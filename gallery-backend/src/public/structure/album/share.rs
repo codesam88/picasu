@@ -3,8 +3,10 @@ use bitcode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[serde(rename_all = "camelCase")]
 pub struct Share {
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub url: ArrayString<64>,
     pub description: String,
     pub password: Option<String>,

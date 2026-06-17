@@ -16,6 +16,8 @@ gallery-frontend/dist
 gallery-frontend/node_modules
 gallery-frontend/dev-dist
 gallery-backend/target
+gallery-backend/Cargo.lock
+/target/
 gallery-backend/test
 gallery-backend/db
 gallery-backend/object
