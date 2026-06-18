@@ -52,13 +52,14 @@ pub fn generate_all() {
          \n\
          #![cfg(test)]\n\
          #![allow(clippy::module_inception, clippy::needless_borrows_for_generic_args)]\n\
-         mod scenarios_generated {{\n\
-         {}use crate::tests::fixtures::*;\n\
-         {}use rocket::http::{{ContentType, Status}};\n\
-         \n\
-         {}\n\
-         }}",
-        "    ", "    ", indented_body
+          mod scenarios_generated {{\n\
+          {}use xtask::fixtures::*;\n\
+          {}use crate::tests::bootstrap::*;\n\
+          {}use rocket::http::{{ContentType, Status}};\n\
+          \n\
+          {}\n\
+          }}",
+        "    ", "    ", "    ", indented_body
     );
 
     std::fs::write(&out_path, &generated)
@@ -670,12 +671,13 @@ pub fn generate_negative_tests() {
          #![cfg(test)]\n\
          #![allow(clippy::redundant_closure_call)]\n\
          mod test_generator_generated {{\n\
-         {}use crate::tests::fixtures::*;\n\
-         {}use rocket::http::{{ContentType, Status}};\n\
-         \n\
-         {}\n\
-         }}",
-        "    ", "    ", indented_body
+         {}use xtask::fixtures::*;\n\
+          {}use crate::tests::bootstrap::*;\n\
+          {}use rocket::http::{{ContentType, Status}};\n\
+          \n\
+          {}\n\
+          }}",
+        "    ", "    ", "    ", indented_body
     );
 
     std::fs::write(&out_path, &generated)
@@ -718,7 +720,7 @@ fn emit_api_test_body(_name: &str, scenario: &serde_json::Value) -> String {
     if needs_data {
         lines.push(
             "let _ = &*TEST_ENV;\n\
-             let data = get_resolved_image_path().expect(\"IMAGE_HOME configured\");"
+             let data = test_image_home();"
                 .to_string(),
         );
         let scenario_text = serde_json::to_string(&scenario).unwrap_or_default();
@@ -848,7 +850,7 @@ fn emit_api_test_body(_name: &str, scenario: &serde_json::Value) -> String {
             } else if let Some(config) = item.get("config").and_then(|c| c.as_object()) {
                 if let Some(enabled) = config.get("read_only_mode").and_then(|v| v.as_bool()) {
                     let val_str = if enabled { "true" } else { "false" };
-                    lines.push(format!("set_read_only_mode({val_str});"));
+                    lines.push(format!("write_config(&serde_json::json!({{ \"read_only_mode\": {val_str} }}));"));
                 }
             }
         }
@@ -872,7 +874,7 @@ fn emit_api_test_body(_name: &str, scenario: &serde_json::Value) -> String {
                    .body(serde_json::json!({\"album\": \"/\"}).to_string())\n\
                   .dispatch();\n\
               assert_eq!(_scan_resp.status(), Status::Accepted, \"scan trigger\");\n\
-              assert_eq!(wait_for_album_index(30000), AlbumIndexState::Completed, \"album index\");"
+              wait_for_album_index(&client, 30000);"
                 .to_string(),
         );
 
@@ -979,7 +981,7 @@ fn emit_api_test_body(_name: &str, scenario: &serde_json::Value) -> String {
     }
 
     if has_config_items {
-        lines.push("set_read_only_mode(false);".to_string());
+        lines.push("write_config(&serde_json::json!({\"read_only_mode\": false}));".to_string());
     }
 
     lines.join("\n")
@@ -1186,7 +1188,7 @@ mod tests {
         });
         let result = emit_api_test("photo test", &scenario);
         assert!(result.contains("write_real_jpeg"));
-        assert!(result.contains("crate::tests::fixtures::*") || true); // imported by mod wrapper
+        assert!(result.contains("bootstrap::*") || true); // imported by mod wrapper
     }
 
     #[test]

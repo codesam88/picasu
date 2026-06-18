@@ -1,5 +1,5 @@
 #[cfg(test)]
-pub mod fixtures;
+pub mod bootstrap;
 
 #[cfg(test)]
 mod scenarios_generated;

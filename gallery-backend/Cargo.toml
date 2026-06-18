@@ -65,6 +65,7 @@ utoipa = { version = "5", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
+xtask = { path = "../xtask" }
 
 [features]
 embed-frontend = []
