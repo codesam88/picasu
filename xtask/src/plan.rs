@@ -16,14 +16,7 @@ struct LoadedTask {
     task: Task,
 }
 
-const KANBAN_ORDER: &[&str] = &[
-    "idea",
-    "backlog",
-    "open",
-    "in-progress",
-    "blocked",
-    "done",
-];
+const KANBAN_ORDER: &[&str] = &["idea", "backlog", "open", "in-progress", "blocked", "done"];
 
 pub fn validate_all() -> bool {
     let root = workspace_root();
@@ -61,7 +54,10 @@ pub fn validate_all() -> bool {
     };
 
     if entries.is_empty() {
-        eprintln!("warning: no .plan task files found in {}", tasks_dir.display());
+        eprintln!(
+            "warning: no .plan task files found in {}",
+            tasks_dir.display()
+        );
     }
 
     let mut ok = true;
@@ -290,9 +286,7 @@ fn load_and_filter_tasks(
         }
         if let Some(q) = search_query {
             let q_lower = q.to_lowercase();
-            if !slug.to_lowercase().contains(&q_lower)
-                && !body.to_lowercase().contains(&q_lower)
-            {
+            if !slug.to_lowercase().contains(&q_lower) && !body.to_lowercase().contains(&q_lower) {
                 continue;
             }
         }
@@ -335,7 +329,10 @@ fn cmp_by_key(a: &LoadedTask, b: &LoadedTask, key: &str) -> std::cmp::Ordering {
 }
 
 fn kanban_ord(status: &str) -> u8 {
-    KANBAN_ORDER.iter().position(|&s| s == status).map_or(99, |i| i as u8)
+    KANBAN_ORDER
+        .iter()
+        .position(|&s| s == status)
+        .map_or(99, |i| i as u8)
 }
 
 fn priority_ord(p: &str) -> u8 {
@@ -385,13 +382,18 @@ fn display_kanban(tasks: &[LoadedTask], sort_keys: &[String]) {
     let mut total = 0;
 
     for &status in KANBAN_ORDER {
-        let mut group: Vec<&LoadedTask> = tasks.iter().filter(|t| t.task.status == status).collect();
+        let mut group: Vec<&LoadedTask> =
+            tasks.iter().filter(|t| t.task.status == status).collect();
         group.sort_by(|a, b| cmp_tasks(a, b, sort_keys));
         total += group.len();
         groups.push((status, group));
     }
 
-    let label_w = KANBAN_ORDER.iter().map(|s| status_label(s).len()).max().unwrap_or(10);
+    let label_w = KANBAN_ORDER
+        .iter()
+        .map(|s| status_label(s).len())
+        .max()
+        .unwrap_or(10);
     let bar_w = 60usize.saturating_sub(label_w + 6);
 
     let slug_w = tasks.iter().map(|t| t.slug.len()).max().unwrap_or(4).max(4);
@@ -453,7 +455,10 @@ fn display_table(tasks: &[LoadedTask]) {
 
     println!(
         "{:<slug_w$}  {:<status_w$}  {:<type_w$}  {:<prio_w$}  area",
-        "SLUG", "STATUS", "TYPE", "PRIORITY",
+        "SLUG",
+        "STATUS",
+        "TYPE",
+        "PRIORITY",
         slug_w = slug_w,
         status_w = status_w,
         type_w = type_w,
@@ -461,7 +466,10 @@ fn display_table(tasks: &[LoadedTask]) {
     );
     println!(
         "{:-<slug_w$}  {:-<status_w$}  {:-<type_w$}  {:-<prio_w$}  ----",
-        "", "", "", "",
+        "",
+        "",
+        "",
+        "",
         slug_w = slug_w,
         status_w = status_w,
         type_w = type_w,
@@ -527,8 +535,7 @@ fn read_task_files(tasks_dir: &std::path::Path) -> Result<Vec<PathBuf>, String> 
                 .filter_map(|e| e.ok())
                 .map(|e| e.path())
                 .filter(|p| {
-                    p.extension()
-                        .is_some_and(|ext| ext == "md")
+                    p.extension().is_some_and(|ext| ext == "md")
                         && p.file_name().is_some_and(|n| n != "TEMPLATE.md")
                 })
                 .collect();
@@ -566,14 +573,12 @@ fn parse_frontmatter(content: &str) -> Result<(String, usize), String> {
 }
 
 fn workspace_root() -> PathBuf {
-    let dir = PathBuf::from(
-        std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| {
-            std::env::current_dir()
-                .unwrap()
-                .to_string_lossy()
-                .to_string()
-        }),
-    );
+    let dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| {
+        std::env::current_dir()
+            .unwrap()
+            .to_string_lossy()
+            .to_string()
+    }));
     dir.parent().unwrap().to_path_buf()
 }
 
@@ -599,9 +604,7 @@ fn normalize_frontmatter(content: &str) -> Result<String, String> {
     }
 
     for (key, val) in obj.iter() {
-        let k = key
-            .as_str()
-            .unwrap_or_else(|| "invalid key".into());
+        let k = key.as_str().unwrap_or_else(|| "invalid key".into());
         if CANONICAL_ORDER.contains(&k) {
             continue;
         }
@@ -661,9 +664,10 @@ fn value_to_yaml_str(val: &serde_yaml::Value) -> String {
         serde_yaml::Value::String(s) => s.clone(),
         serde_yaml::Value::Bool(b) => b.to_string(),
         serde_yaml::Value::Number(n) => n.to_string(),
-        _ => {
-            serde_yaml::to_string(val).unwrap_or_default().trim().to_string()
-        }
+        _ => serde_yaml::to_string(val)
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
     }
 }
 
@@ -752,7 +756,8 @@ mod tests {
 
     #[test]
     fn parse_frontmatter_dashes_in_body() {
-        let md = "---\nstatus: open\ntype: bug\npriority: high\n---\n\nA --- separator in body text.";
+        let md =
+            "---\nstatus: open\ntype: bug\npriority: high\n---\n\nA --- separator in body text.";
         let (fm, _) = parse_frontmatter(md).unwrap();
         assert!(fm.contains("status: open"));
     }
@@ -856,10 +861,7 @@ mod tests {
     fn normalize_no_body_omits_trailing_blank() {
         let input = "---\nstatus: open\ntype: bug\npriority: low\n---\n";
         let output = normalize_frontmatter(input).unwrap();
-        assert_eq!(
-            output,
-            "---\nstatus: open\ntype: bug\npriority: low\n---\n"
-        );
+        assert_eq!(output, "---\nstatus: open\ntype: bug\npriority: low\n---\n");
     }
 
     #[test]

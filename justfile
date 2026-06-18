@@ -48,7 +48,7 @@ backend-build-release:
 # prettier --write
 [group('frontend')]
 frontend-format:
-    cd gallery-frontend && npx prettier --write .
+    npx prettier --write gallery-frontend/
 
 # vue-tsc + eslint
 [group('frontend')]
@@ -186,17 +186,17 @@ precommit:
 
     echo "[ precommit ] On '$branch' — format/lint enforced; run tests at your disgression."
     if echo "$changed" | grep -q '^gallery-backend/'; then
-        cd gallery-backend && cargo fmt
+        just backend-format
         just backend-check
     fi
     if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$)'; then
-        cargo xtask plan --format
-        npx prettier --write --no-error-on-unmatched-pattern '*.md' 'docs/**/*.md' '.plan/**/*.md'
+        just plan-format
+        just docs-format
     fi
     if echo "$changed" | grep -qE '^xtask/data/'; then
         echo "[ precommit ] YAML scenarios changed — run tests manually: cargo test -p urocissa -- backend_api"
     fi
     if echo "$changed" | grep -q '^gallery-frontend/'; then
-        npx prettier --write gallery-frontend/
+        just frontend-format
         just frontend-check
     fi

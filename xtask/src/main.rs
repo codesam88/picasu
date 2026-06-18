@@ -53,19 +53,39 @@ fn main() {
                     search_query = Some(arg.trim_start_matches("-q="));
                 } else if arg == "--status" || arg == "-s" {
                     resolve_filter_or_sort(
-                        &args, &mut i, "--status=", &mut status_filter, "status", &mut sort_keys,
+                        &args,
+                        &mut i,
+                        "--status=",
+                        &mut status_filter,
+                        "status",
+                        &mut sort_keys,
                     );
                 } else if arg == "--type" || arg == "-t" {
                     resolve_filter_or_sort(
-                        &args, &mut i, "--type=", &mut type_filter, "type", &mut sort_keys,
+                        &args,
+                        &mut i,
+                        "--type=",
+                        &mut type_filter,
+                        "type",
+                        &mut sort_keys,
                     );
                 } else if arg == "--priority" || arg == "-p" {
                     resolve_filter_or_sort(
-                        &args, &mut i, "--priority=", &mut priority_filter, "priority", &mut sort_keys,
+                        &args,
+                        &mut i,
+                        "--priority=",
+                        &mut priority_filter,
+                        "priority",
+                        &mut sort_keys,
                     );
                 } else if arg == "--area" || arg == "-a" {
                     resolve_filter_or_sort(
-                        &args, &mut i, "--area=", &mut area_filter, "area", &mut sort_keys,
+                        &args,
+                        &mut i,
+                        "--area=",
+                        &mut area_filter,
+                        "area",
+                        &mut sort_keys,
                     );
                 } else if arg.starts_with("--status=") {
                     status_filter = Some(arg.trim_start_matches("--status="));
@@ -131,7 +151,9 @@ fn print_help(sub: &str) {
     match sub {
         "plan" => {
             println!("cargo xtask plan [FLAGS]\n");
-            println!("Search tasks in .plan directory. Default is table view sorted by priority then slug.\n");
+            println!(
+                "Search tasks in .plan directory. Default is table view sorted by priority then slug.\n"
+            );
             println!("Flags that take a value filter; without a value they become sort keys:");
             println!("  -s, --status <s>     filter or sort by status");
             println!("  -t, --type <t>       filter or sort by type");
@@ -151,9 +173,13 @@ fn print_help(sub: &str) {
         }
         _ => {
             println!("cargo xtask <subcommand>\n");
-            println!("  openapi-gen     generate openapi.rs and openapi.json from utoipa annotations");
+            println!(
+                "  openapi-gen     generate openapi.rs and openapi.json from utoipa annotations"
+            );
             println!("                  (see `just openapi-docs` for full pipeline)");
-            println!("  plan            list/search/validate .plan tasks (see `cargo xtask plan --help`)");
+            println!(
+                "  plan            list/search/validate .plan tasks (see `cargo xtask plan --help`)"
+            );
         }
     }
 }
