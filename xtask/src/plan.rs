@@ -349,12 +349,12 @@ fn priority_ord(p: &str) -> u8 {
 
 fn status_color(status: &str) -> &str {
     match status {
-        "in-progress" => "\x1b[34m",
-        "open" => "\x1b[33m",
-        "blocked" => "\x1b[31m",
-        "backlog" => "\x1b[90m",
-        "idea" => "\x1b[36m",
-        "done" => "\x1b[32m",
+        "in-progress" => "\x1b[1;35m",
+        "open" => "\x1b[1;33m",
+        "blocked" => "\x1b[1;31m",
+        "backlog" => "\x1b[1;34m",
+        "idea" => "\x1b[1;36m",
+        "done" => "\x1b[1;32m",
         _ => "",
     }
 }
