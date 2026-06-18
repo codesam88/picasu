@@ -15,11 +15,9 @@ Every scenario file is a YAML document with three top-level keys:
 ```yaml
 name: Human-readable name for the scenario
 given:
-  - ...  # fixture definitions
-when:
-  ...     # verb set depends on scenario type (directory)
-then:
-  ...     # verb set depends on scenario type (directory)
+  - ... # fixture definitions
+when: ... # verb set depends on scenario type (directory)
+then: ... # verb set depends on scenario type (directory)
 ```
 
 ## `given:` vocabulary (shared)
@@ -29,12 +27,12 @@ result to an `id_as` variable for later reference in `when:` bodies and
 `then:` assertions. Variables are interpolated as `${variable_name}` in
 string values.
 
-| Form | Description | Maps to |
-|---|---|---|
-| `dir_album: <path>` | Create a dir album at `path`, return its album ID | `make_dir_album(&Path::new(path))` |
-| `photo: <path>` | Insert a photo record (no real file) at `path`, return its hash | `insert_photos(&[PhotoSpec { path, tags, exif_date }])` + `find_hash_by_alias_path()` |
-| `tag: <name>` | Create a tag (typically combined with `photo`) | passed into `PhotoSpec.tags` |
-| `empty` | No-op, ensures `TEST_ENV` is initialised | `let _ = &*TEST_ENV;` |
+| Form                | Description                                                     | Maps to                                                                               |
+| ------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `dir_album: <path>` | Create a dir album at `path`, return its album ID               | `make_dir_album(&Path::new(path))`                                                    |
+| `photo: <path>`     | Insert a photo record (no real file) at `path`, return its hash | `insert_photos(&[PhotoSpec { path, tags, exif_date }])` + `find_hash_by_alias_path()` |
+| `tag: <name>`       | Create a tag (typically combined with `photo`)                  | passed into `PhotoSpec.tags`                                                          |
+| `empty`             | No-op, ensures `TEST_ENV` is initialised                        | `let _ = &*TEST_ENV;`                                                                 |
 
 Optional modifier fields per `given:` entry:
 
@@ -51,9 +49,9 @@ These expand into Rocket-`Client` Rust tests in `fixtures.rs` style.
 
 ```yaml
 when:
-  call: <method> <path>     # e.g. "PUT /put/assign_album"
-  body: <json-value>        # request body; `${var}` interpolation
-  auth: <true|false>        # default true; attaches admin auth cookie
+  call: <method> <path> # e.g. "PUT /put/assign_album"
+  body: <json-value> # request body; `${var}` interpolation
+  auth: <true|false> # default true; attaches admin auth cookie
 ```
 
 `call` is resolved against `openapi.json` for operation existence — the
@@ -62,14 +60,14 @@ the request schema.
 
 ### `then:` — assertions (one or more)
 
-| Form | Assertion |
-|---|---|
-| `response.status: <code>` | HTTP status code |
+| Form                            | Assertion                     |
+| ------------------------------- | ----------------------------- |
+| `response.status: <code>`       | HTTP status code              |
 | `response.<json-path>: <value>` | JSON body field matches value |
-| `response.<json-path] exists` | JSON body field is present |
-| `response.<json-path] absent` | JSON body field is absent |
-| `file_exists: <path>` | File exists on disk |
-| `file_absent: <path>` | File does not exist on disk |
+| `response.<json-path] exists`   | JSON body field is present    |
+| `response.<json-path] absent`   | JSON body field is absent     |
+| `file_exists: <path>`           | File exists on disk           |
+| `file_absent: <path>`           | File does not exist on disk   |
 
 `<json-path>` is a dot-separated path into the response JSON, e.g.
 `prefetch.locateTo` or `prefetch.timestamp`.
@@ -108,28 +106,28 @@ state, so a seed crash is a setup failure, not a silent false pass. The same
 Elements are referenced by **ARIA role** and **accessible name** (never CSS
 selectors).
 
-| Verb | Description |
-|---|---|
-| `navigate: <route>` | Go to a URL pattern (e.g. `/`, `/albums/<id>`) |
-| `click: <role>/<label>` | Click element by ARIA role + accessible name |
-| `fill: <role>/<label>, value: <value>` | Type into an input |
-| `select: <role>/<label>, option: <label>` | Choose from listbox/select |
-| `submit:` | Submit the current form |
+| Verb                                      | Description                                    |
+| ----------------------------------------- | ---------------------------------------------- |
+| `navigate: <route>`                       | Go to a URL pattern (e.g. `/`, `/albums/<id>`) |
+| `click: <role>/<label>`                   | Click element by ARIA role + accessible name   |
+| `fill: <role>/<label>, value: <value>`    | Type into an input                             |
+| `select: <role>/<label>, option: <label>` | Choose from listbox/select                     |
+| `submit:`                                 | Submit the current form                        |
 
 New interactions → extend the vocabulary with a new verb. No raw-TypeScript
 escape hatch.
 
 ### `then:` — UI assertions (one or more)
 
-| Form | Assertion |
-|---|---|
-| `ui.visible: <role>/<label>` | Element is visible |
-| `ui.hidden: <role>/<label>` | Element is hidden/absent |
-| `ui.text: <role>/<label>, contains: <text>` | Element text includes string |
-| `ui.toast: type: <type>, contains: <text>` | Toast of given type (`error`/`success`/`warning`) with matching text |
-| `ui.modal: open | closed` | Modal dialog state |
-| `ui.route: <pattern>` | Current URL matches pattern |
-| `ui.aria_snapshot: <name>` | Compare ARIA role/name/state tree against committed `.aria` snapshot |
+| Form                                        | Assertion                                                            |
+| ------------------------------------------- | -------------------------------------------------------------------- | ------------------ |
+| `ui.visible: <role>/<label>`                | Element is visible                                                   |
+| `ui.hidden: <role>/<label>`                 | Element is hidden/absent                                             |
+| `ui.text: <role>/<label>, contains: <text>` | Element text includes string                                         |
+| `ui.toast: type: <type>, contains: <text>`  | Toast of given type (`error`/`success`/`warning`) with matching text |
+| `ui.modal: open                             | closed`                                                              | Modal dialog state |
+| `ui.route: <pattern>`                       | Current URL matches pattern                                          |
+| `ui.aria_snapshot: <name>`                  | Compare ARIA role/name/state tree against committed `.aria` snapshot |
 
 ### Escape-hatch policy (UI)
 

@@ -20,14 +20,14 @@ Every task lives as a markdown file in `.plan/tasks/<slug>.md` with YAML frontma
 
 ### Status lifecycle
 
-| status | meaning | when to use |
-|---|---|---|
-| `idea` | aspirational, not settled | explore later, not ready to start |
-| `backlog` | accepted, deferred | consider when stepping back to plan next work |
-| `open` | ready | actionable, waiting to be picked up |
-| `in-progress` | active | currently being worked on |
-| `blocked` | stuck | note the blocker in the body |
-| `done` | complete | finished |
+| status        | meaning                   | when to use                                   |
+| ------------- | ------------------------- | --------------------------------------------- |
+| `idea`        | aspirational, not settled | explore later, not ready to start             |
+| `backlog`     | accepted, deferred        | consider when stepping back to plan next work |
+| `open`        | ready                     | actionable, waiting to be picked up           |
+| `in-progress` | active                    | currently being worked on                     |
+| `blocked`     | stuck                     | note the blocker in the body                  |
+| `done`        | complete                  | finished                                      |
 
 ### Agent conventions
 
@@ -58,33 +58,37 @@ Only document here what cannot be derived from the code itself.
 - **Schema versioning prefix.** Each `AbstractData` record on disk starts with `[0xFF, version]`. `0xFF` is safe because bitcode encodes the 3-variant enum discriminant in bits [1:0] of the first byte (values 0–2); `0xFF` (bits [1:0] = 11) is structurally invalid for the enum and unambiguous as a version marker. Legacy unversioned records (no prefix) are decoded as v1. Schema migration is append-only — never remove a migration wrapper.
 - **HTTP error codes must not collide with framework codes.** Rocket returns 404 for unregistered routes. A domain-level "entity not found" must use `ErrorKind::InvalidInput` (→ 400) rather than `ErrorKind::NotFound` (→ 404) to remain distinguishable from routing failures. Reserve `ErrorKind::NotFound` only for cases where a routing-404 is genuinely indistinguishable from the domain error.
 
+[Comment from AI]: # (
+Your skepticism is well-placed. The value of AGENTS.md is often oversold. Let me break it down:
 
-# Your skepticism is well-placed. The value of AGENTS.md is often oversold. Let me break it down:
-# 
-# What an agent can always derive itself (no need to document):
-# - File paths, function names, struct fields — grep/find/Read handle these instantly
-# - Module structure — tree src/ or cargo modules
-# - API surface — cargo doc
-# - Recent changes — git log
-# 
-# What an agent genuinely cannot derive from code:
-# - Why a design decision was made
-# - Invariants that are enforced by convention not types
-# - Gotchas with dependencies (e.g., bitcode encodes positionally — field order matters)
-# - The dual-runtime split and why it exists
-# 
-# That second list is short, stable, and doesn't rot — because if the invariant
-# breaks, the system breaks. That's the only content worth putting in AGENTS.md.
-# 
-# Deterministic options for code indexing:
-# - cargo doc --document-private-items — full symbol index, always current
-# - rust-analyzer LSP — agents with LSP support (Copilot, Cursor) get this for free
-# - cargo modules generate tree — module dependency graph
-# - A justfile with documented recipes covering build/test/run workflows
-# 
-## Practical recommendation:
-# 
-# Keep AGENTS.md to under ~50 lines covering only the non-derivable invariants
-# and gotchas. Invest the saved effort into good /// doc comments in the Rust
-# source — they serve humans, IDEs, cargo doc, and agents equally, and they live
-# next to the code they describe so they actually get updated.
+What an agent can always derive itself:
+
+- File paths, function names, struct fields — grep/find/Read handle these instantly
+- Module structure — tree src/ or cargo modules
+- API surface — cargo doc
+- Recent changes — git log
+
+What an agent genuinely cannot derive from code:
+
+- Why a design decision was made
+- Invariants that are enforced by convention not types
+- Gotchas with dependencies .g., bitcode encodes positionally — field order matters
+- The dual-runtime split and why it exists
+
+That second list is short, stable, and doesn't rot — because if the invariant
+breaks, the system breaks. That's the only content worth putting in AGENTS.md.
+
+Deterministic options for code indexing:
+
+- cargo doc --document-private-items — full symbol index, always current
+- rust-analyzer LSP — agents with LSP support get this for free
+- cargo modules generate tree — module dependency graph
+- A justfile with documented recipes covering build/test/run workflows
+
+Practical recommendation:
+
+Keep AGENTS.md to under ~50 lines covering only the non-derivable invariants
+and gotchas. Invest the saved effort into good /// doc comments in the Rust
+source — they serve humans, IDEs, cargo doc, and agents equally, and they live
+next to the code they describe so they actually get updated.
+)

@@ -4,16 +4,16 @@
 
 The frontend is a **Vue 3 single-page application** written in **TypeScript**, built with **Vite**.
 
-| Layer | Technology | Role |
-|-------|-----------|------|
-| Language | TypeScript | Type-safe JS; all `.ts` and `.vue` files |
-| UI framework | Vue 3 (Composition API) | Reactive component system |
-| Component library | Vuetify 3 | Pre-built UI widgets (`v-overlay`, `v-btn`, etc.) |
-| State management | Pinia | Global reactive stores shared across components |
-| Routing | Vue Router 4 | URL ↔ component mapping, nested routes |
-| HTTP | Axios | API calls to the Rust backend |
-| Build | Vite | Dev server + production bundler |
-| Type checking | vue-tsc | TypeScript checking for `.vue` files |
+| Layer             | Technology              | Role                                              |
+| ----------------- | ----------------------- | ------------------------------------------------- |
+| Language          | TypeScript              | Type-safe JS; all `.ts` and `.vue` files          |
+| UI framework      | Vue 3 (Composition API) | Reactive component system                         |
+| Component library | Vuetify 3               | Pre-built UI widgets (`v-overlay`, `v-btn`, etc.) |
+| State management  | Pinia                   | Global reactive stores shared across components   |
+| Routing           | Vue Router 4            | URL ↔ component mapping, nested routes            |
+| HTTP              | Axios                   | API calls to the Rust backend                     |
+| Build             | Vite                    | Dev server + production bundler                   |
+| Type checking     | vue-tsc                 | TypeScript checking for `.vue` files              |
 
 ---
 
@@ -40,6 +40,7 @@ Three building blocks from Vue:
 - **`watch(source, fn)`** — runs a side-effect function whenever `source` changes.
 
 Example mental model:
+
 ```
 const count = ref(0)           // box containing 0
 const doubled = computed(...)  // always count.value * 2, auto-updated
@@ -53,6 +54,7 @@ Components communicate downward via **props** (parent passes data to child) and 
 ### `onBeforeMount` / `onMounted`
 
 Lifecycle hooks that run code at specific moments:
+
 - `onBeforeMount` — just before the component's DOM is created. Used here to set initial data (e.g. reading route params to set `basicString`).
 - `onMounted` — after the DOM exists. Used here to start prefetch/scroll listeners.
 
@@ -124,12 +126,12 @@ Because overlays teleport to `<body>`, a component can be positioned anywhere in
 
 Every page section (home, albums, all, etc.) shares the same 4-level nested route structure, parameterized by `baseName`:
 
-| Level | URL pattern | Route name | Component |
-|-------|-------------|------------|-----------|
-| 1 | `/{baseName}` | `{baseName}` | Page component (e.g. `AlbumsPage`) |
-| 2 | `/{baseName}/view/:hash` | `{baseName}ViewPage` | `ViewPageMain` |
-| 3 | `/{baseName}/view/:hash/read` | `{baseName}ReadPage` | `HomeIsolated` |
-| 4 | `/{baseName}/view/:hash/read/view/:subhash` | `{baseName}ReadViewPage` | `ViewPageIsolated` |
+| Level | URL pattern                                 | Route name               | Component                          |
+| ----- | ------------------------------------------- | ------------------------ | ---------------------------------- |
+| 1     | `/{baseName}`                               | `{baseName}`             | Page component (e.g. `AlbumsPage`) |
+| 2     | `/{baseName}/view/:hash`                    | `{baseName}ViewPage`     | `ViewPageMain`                     |
+| 3     | `/{baseName}/view/:hash/read`               | `{baseName}ReadPage`     | `HomeIsolated`                     |
+| 4     | `/{baseName}/view/:hash/read/view/:subhash` | `{baseName}ReadViewPage` | `ViewPageIsolated`                 |
 
 **baseName values:** `home`, `all`, `favorite`, `archived`, `trashed`, `albums`, `videos`, `tags`, `share`
 
@@ -169,6 +171,7 @@ App.vue
 ## Key Components
 
 ### Home.vue
+
 The reusable infinite-scroll photo grid. Used at both level 1 (main page) and level 3 (inside an album).
 
 - **Props:** `basicString` (filter query), `isolation-id` ("mainId" or "subId"), `searchString`
@@ -176,6 +179,7 @@ The reusable infinite-scroll photo grid. Used at both level 1 (main page) and le
 - **Key behavior:** calls `usePrefetch` on mount to fetch rows from the backend
 
 ### ViewPage.vue
+
 Full-screen v-overlay that shows a single item (photo, video, or album detail).
 
 - Receives `isolation-id` from its parent (`ViewPageMain` passes "mainId"; `ViewPageIsolated` passes "subId")
@@ -184,6 +188,7 @@ Full-screen v-overlay that shows a single item (photo, video, or album detail).
 - **Fallback:** when `isolationId === 'mainId'` and the hash is not in `dataStore`, checks `albumStore` so sub-albums can be shown even though they are absent from the main page grid
 
 ### DisplayAlbum.vue
+
 Shown inside `ViewPage.vue` when the current item is an album.
 
 - Shows cover image and metadata card
@@ -191,6 +196,7 @@ Shown inside `ViewPage.vue` when the current item is an album.
 - Contains a `<router-view>` — this is how `HomeIsolated` (level 3) renders on top
 
 ### HomeIsolated.vue
+
 Level 3 component: a full-screen v-overlay wrapping `Home.vue` with a filter scoped to one album.
 
 - `basicString` = `and(trashed:false, or(album:"<id>", parent_album:"<id>"))` — includes both direct photos and child albums
@@ -201,13 +207,13 @@ Level 3 component: a full-screen v-overlay wrapping `Home.vue` with a filter sco
 
 ## Data Stores (Pinia, keyed by isolationId)
 
-| Store | Key | Contents |
-|-------|-----|----------|
-| `dataStore` | `mainId` | Grid items (photos/videos/albums) matching the level-1 page filter |
-| `dataStore` | `subId` | Grid items matching the current album filter (level 3) |
-| `albumStore` | `mainId` | **All** albums from `/get/get-albums` — keyed by `albumId`. Shared across all components. |
-| `prefetchStore` | `mainId`/`subId` | Scroll/prefetch state for each grid |
-| `collectionStore` | `mainId`/`subId` | Selected items (edit mode) |
+| Store             | Key              | Contents                                                                                  |
+| ----------------- | ---------------- | ----------------------------------------------------------------------------------------- |
+| `dataStore`       | `mainId`         | Grid items (photos/videos/albums) matching the level-1 page filter                        |
+| `dataStore`       | `subId`          | Grid items matching the current album filter (level 3)                                    |
+| `albumStore`      | `mainId`         | **All** albums from `/get/get-albums` — keyed by `albumId`. Shared across all components. |
+| `prefetchStore`   | `mainId`/`subId` | Scroll/prefetch state for each grid                                                       |
+| `collectionStore` | `mainId`/`subId` | Selected items (edit mode)                                                                |
 
 `albumStore('mainId')` is fetched once per session (by `usePrefetch`) and contains every album including sub-albums, regardless of the current page filter. `dataStore` only contains what the current page's `basicString` filter returns.
 
@@ -226,14 +232,14 @@ Stores instantiated with the same ID are shared (Pinia singletons by ID). Passin
 
 ## Navigation Rules
 
-| From level | Click on | Navigates to | Route name |
-|------------|----------|--------------|------------|
-| 1 (grid) | photo/video | level 2 viewer | `{baseName}ViewPage` |
-| 1 (grid) | album (any page) | level 3 album grid | **always `albumsReadPage`** |
-| 2 (DisplayAlbum) | "Enter Album" button | level 3 album grid | `{baseName}ReadPage` |
-| 3 (album grid) | photo/video | level 4 viewer | `{baseName}ReadViewPage` |
-| 3 (album grid) | sub-album | level 3 album grid for sub-album | **always `albumsReadPage`** |
-| any | back gesture / ESC | one level up | `router.back()` |
+| From level       | Click on             | Navigates to                     | Route name                  |
+| ---------------- | -------------------- | -------------------------------- | --------------------------- |
+| 1 (grid)         | photo/video          | level 2 viewer                   | `{baseName}ViewPage`        |
+| 1 (grid)         | album (any page)     | level 3 album grid               | **always `albumsReadPage`** |
+| 2 (DisplayAlbum) | "Enter Album" button | level 3 album grid               | `{baseName}ReadPage`        |
+| 3 (album grid)   | photo/video          | level 4 viewer                   | `{baseName}ReadViewPage`    |
+| 3 (album grid)   | sub-album            | level 3 album grid for sub-album | **always `albumsReadPage`** |
+| any              | back gesture / ESC   | one level up                     | `router.back()`             |
 
 Album clicks always navigate to `albumsReadPage` regardless of which page triggered the click. This keeps all album content under `/albums/view/` semantically, and ensures `AlbumsPage`'s `dataStore` is the one backing album navigation. Because level 2 sits between level 1 and 3 in the URL, `ViewPage.vue` at level 2 still mounts — it must render `DisplayAlbum.vue` to provide the `<router-view>` for `HomeIsolated`.
 
@@ -243,12 +249,12 @@ Album clicks always navigate to `albumsReadPage` regardless of which page trigge
 
 Filters are string expressions parsed by the Chevrotain lexer (`lexer.ts`). Each page sets a `basicString` that determines what `dataStore` contains:
 
-| Page | basicString |
-|------|-------------|
-| HomePage | `and(archived:false, trashed:false)` |
-| AlbumsPage | `and(type:"album", trashed:false, root_album:true)` |
-| AllPage | `and(archived:false, trashed:false)` |
-| FavoritePage | `and(favorite:true, trashed:false)` |
+| Page         | basicString                                                 |
+| ------------ | ----------------------------------------------------------- |
+| HomePage     | `and(archived:false, trashed:false)`                        |
+| AlbumsPage   | `and(type:"album", trashed:false, root_album:true)`         |
+| AllPage      | `and(archived:false, trashed:false)`                        |
+| FavoritePage | `and(favorite:true, trashed:false)`                         |
 | HomeIsolated | `and(trashed:false, or(album:"<id>", parent_album:"<id>"))` |
 
 `parent_album:"<id>"` matches album objects whose directory parent is the given album. It is always false for images/videos.
@@ -257,11 +263,11 @@ Filters are string expressions parsed by the Chevrotain lexer (`lexer.ts`). Each
 
 ## API Calls (frontend → backend)
 
-| Endpoint | Used by | Returns |
-|----------|---------|---------|
-| `/get/get-albums` | `albumStore.fetchAlbums()` | All albums |
-| `/get/prefetch` | `usePrefetch` | Row layout + dataLength |
-| `/get/fetch-data` | grid worker | Batch of grid items |
-| `/get/get-tags` | `tagStore.fetchTags()` | All tags |
+| Endpoint          | Used by                    | Returns                 |
+| ----------------- | -------------------------- | ----------------------- |
+| `/get/get-albums` | `albumStore.fetchAlbums()` | All albums              |
+| `/get/prefetch`   | `usePrefetch`              | Row layout + dataLength |
+| `/get/fetch-data` | grid worker                | Batch of grid items     |
+| `/get/get-tags`   | `tagStore.fetchTags()`     | All tags                |
 
 The grid uses a Web Worker (background thread) to fetch item batches (`fetch-data`) without blocking the UI. The layout calculation (`prefetch`) runs first and determines how many rows exist; the worker then fills them in on demand as the user scrolls.

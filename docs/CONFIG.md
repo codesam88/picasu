@@ -35,20 +35,20 @@ The configuration is divided into `public` and `private` sections.
 
 These settings control the server's public-facing behavior.
 
-| Setting            | Type           | Default      | Description                                                                                                                                                          |
-| ------------------ | -------------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `address`          | string         | `"0.0.0.0"` | The IP address the server binds to. `"0.0.0.0"` means it listens on all available network interfaces.                                                               |
-| `port`             | number         | `5673`       | The port number the server listens on.                                                                                                                               |
-| `limits.file`      | string         | `"10GiB"`    | Maximum size for a single file upload. Accepts human-readable sizes: `"1GiB"`, `"512MiB"`, etc.                                                                     |
-| `limits.json`      | string         | `"10MiB"`    | Maximum size for JSON request bodies.                                                                                                                                |
-| `limits.data-form` | string         | `"10GiB"`    | Maximum size for multipart form submissions (used for photo/video import).                                                                                           |
-| `imagePath`        | string \| null | `null`       | Single root directory to watch for new or changed media files. Example: `"/mnt/photos"`. If relative, resolved against `UROCISSA_IMAGE_HOME`. Aggregate multiple physical libraries under this one root at the filesystem level (bind mounts/symlinks) rather than configuring several paths — the OS already handles that. |
-| `uploadFolder`     | string         | `"uploads"`  | Subfolder name (relative to `imagePath`) that uploads with no target album land in. Becomes its own top-level album automatically (album = directory). Uploads *with* a target album write directly into that album's real directory instead. |
-| `readOnlyMode`     | boolean        | `false`      | If `true`, the gallery runs in read-only mode — uploads, edits, and deletions are disabled.                                                                          |
-| `disableImg`       | boolean        | `false`      | If `true`, disables image processing in the frontend. **Intended for debugging only; do not use in production.**                                                     |
+| Setting            | Type           | Default     | Description                                                                                                                                                                                                                                                                                                                 |
+| ------------------ | -------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `address`          | string         | `"0.0.0.0"` | The IP address the server binds to. `"0.0.0.0"` means it listens on all available network interfaces.                                                                                                                                                                                                                       |
+| `port`             | number         | `5673`      | The port number the server listens on.                                                                                                                                                                                                                                                                                      |
+| `limits.file`      | string         | `"10GiB"`   | Maximum size for a single file upload. Accepts human-readable sizes: `"1GiB"`, `"512MiB"`, etc.                                                                                                                                                                                                                             |
+| `limits.json`      | string         | `"10MiB"`   | Maximum size for JSON request bodies.                                                                                                                                                                                                                                                                                       |
+| `limits.data-form` | string         | `"10GiB"`   | Maximum size for multipart form submissions (used for photo/video import).                                                                                                                                                                                                                                                  |
+| `imagePath`        | string \| null | `null`      | Single root directory to watch for new or changed media files. Example: `"/mnt/photos"`. If relative, resolved against `UROCISSA_IMAGE_HOME`. Aggregate multiple physical libraries under this one root at the filesystem level (bind mounts/symlinks) rather than configuring several paths — the OS already handles that. |
+| `uploadFolder`     | string         | `"uploads"` | Subfolder name (relative to `imagePath`) that uploads with no target album land in. Becomes its own top-level album automatically (album = directory). Uploads _with_ a target album write directly into that album's real directory instead.                                                                               |
+| `readOnlyMode`     | boolean        | `false`     | If `true`, the gallery runs in read-only mode — uploads, edits, and deletions are disabled.                                                                                                                                                                                                                                 |
+| `disableImg`       | boolean        | `false`     | If `true`, disables image processing in the frontend. **Intended for debugging only; do not use in production.**                                                                                                                                                                                                            |
 
 **Backfilling pre-existing files:** the filesystem watcher only reacts to
-*future* create/modify events — it does not scan files already sitting
+_future_ create/modify events — it does not scan files already sitting
 under `imagePath` when the app starts (e.g. a volume populated before first
 run). After setting `imagePath`, use **Settings → One-Time Import → Scan
 Image Path** to index what's already there; unlike importing an arbitrary
@@ -80,17 +80,17 @@ Urocissa resolves three independent root directories, each with the same
 precedence: **environment variable > legacy single-folder layout > OS-standard
 directory > working directory (last resort)**.
 
-| Root | Env var | Holds | Default when unset |
-|---|---|---|---|
-| Config | `UROCISSA_CONFIG_HOME` | `config.json` | platform config dir (e.g. `~/.config/urocissa` on Linux) |
-| Data | `UROCISSA_DATA_HOME` | `db/`, `object/`, `upload/` | platform data dir (e.g. `~/.local/share/urocissa` on Linux) |
-| Image | `UROCISSA_IMAGE_HOME` | base for resolving a relative `imagePath` | `<data dir>/images` |
+| Root   | Env var                | Holds                                     | Default when unset                                          |
+| ------ | ---------------------- | ----------------------------------------- | ----------------------------------------------------------- |
+| Config | `UROCISSA_CONFIG_HOME` | `config.json`                             | platform config dir (e.g. `~/.config/urocissa` on Linux)    |
+| Data   | `UROCISSA_DATA_HOME`   | `db/`, `object/`, `upload/`               | platform data dir (e.g. `~/.local/share/urocissa` on Linux) |
+| Image  | `UROCISSA_IMAGE_HOME`  | base for resolving a relative `imagePath` | `<data dir>/images`                                         |
 
 The platform config/data dirs come from the `directories` crate, which
 already honors `$XDG_CONFIG_HOME`/`$XDG_DATA_HOME` on Linux and the platform
 equivalents on Windows/macOS — no separate XDG handling needed.
 
-`UROCISSA_IMAGE_HOME`'s default is deliberately *not* the working
+`UROCISSA_IMAGE_HOME`'s default is deliberately _not_ the working
 directory: the cwd is arbitrary depending on how the binary was launched
 (systemd unit, Docker `WORKDIR`, a desktop shortcut), so it isn't a reliable
 place to expect media to already exist. Defaulting to a subdirectory of the
@@ -126,7 +126,7 @@ directories onto them. See the README's Docker quick-setup section.
 > assignments/flags. `IMAGE_HOME` holds the originals themselves (never
 > duplicated into `DATA_HOME`); `object/compressed/` here is only a
 > regenerable thumbnail/preview cache. A handful of files (`cache_db.redb`,
-> `temp_db.redb`, `expire_db.redb`) *are* safely disposable; splitting those
+> `temp_db.redb`, `expire_db.redb`) _are_ safely disposable; splitting those
 > into a dedicated state directory is a possible future change, not yet
 > done (see `TODO.md`).
 >

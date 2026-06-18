@@ -36,7 +36,7 @@ Run NSIS to compile the script:
 
 1.  Right-click `gallery-backend\installer.nsi`.
 2.  Select "Compile NSIS Script".
-    *   OR run from command line: `makensis gallery-backend\installer.nsi`
+    - OR run from command line: `makensis gallery-backend\installer.nsi`
 
 ## Output
 

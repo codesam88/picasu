@@ -8,14 +8,9 @@ help:
 
 # ── Backend ────────────────────────────────────────────────────────────────────
 
-# cargo fmt --check
-[group('backend')]
-backend-format:
-    cd gallery-backend && cargo fmt --check
-
 # cargo fmt
 [group('backend')]
-backend-format-fix:
+backend-format:
     cd gallery-backend && cargo fmt
 
 # cargo clippy -- -D warnings
@@ -50,14 +45,9 @@ backend-build-release:
 
 # ── Frontend ───────────────────────────────────────────────────────────────────
 
-# prettier --check
-[group('frontend')]
-frontend-format:
-    cd gallery-frontend && npx prettier --check .
-
 # prettier --write
 [group('frontend')]
-frontend-format-fix:
+frontend-format:
     cd gallery-frontend && npx prettier --write .
 
 # vue-tsc + eslint
@@ -110,28 +100,29 @@ check-generated:
 
 # ── Global ─────────────────────────────────────────────────────────────────────
 
-# Check formatting (backend + frontend)
+# Format everything (backend + frontend + markdown + .plan)
 [group('global')]
 format: backend-format frontend-format
-
-# Auto-fix formatting (backend + frontend)
-[group('global')]
-format-fix: backend-format-fix frontend-format-fix
+    npx prettier --write '*.md' 'docs/**/*.md' '.plan/**/*.md'
+    cargo xtask plan --format
 
 # Run linters (backend + frontend)
 [group('global')]
 check: backend-check frontend-check
+    cargo xtask plan --lint
 
 # Run tests (backend + frontend)
 [group('global')]
 test: backend-test frontend-test
+    cargo test -p xtask
 
-# Install cargo dev tools (cargo-nextest, cargo-deny, cargo-audit)
+# Install all dev tooling (cargo tools + frontend deps including prettier)
 [group('global')]
 install-dev:
     cargo install sccache
     cargo install cargo-deny cargo-audit
     cargo install --locked cargo-nextest
+    npm ci --prefix gallery-frontend
 
 # Build frontend then backend (debug, no embedded frontend) — developer default
 [group('global')]
@@ -176,25 +167,26 @@ precommit:
 
     if [ "$branch" = "main" ]; then
         echo "[ precommit ] On main — full test suite is required to pass."
-        just check-generated
         just format
         just check
         just test
+        just check-generated
         exit 0
     fi
 
     echo "[ precommit ] On '$branch' — format/lint enforced; run tests at your disgression."
     if echo "$changed" | grep -q '^gallery-backend/'; then
-        just backend-format
+        cd gallery-backend && cargo fmt
         just backend-check
     fi
-    if echo "$changed" | grep -q '^\.plan/'; then
+    if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$)'; then
         cargo xtask plan --format
+        npx prettier --write '*.md' 'docs/**/*.md' '.plan/**/*.md'
     fi
     if echo "$changed" | grep -qE '^(xtask/data|xtask/src|gallery-backend/src/tests/scenarios_generated)'; then
         just check-generated
     fi
     if echo "$changed" | grep -q '^gallery-frontend/'; then
-        just frontend-format
+        npx prettier --write gallery-frontend/
         just frontend-check
     fi

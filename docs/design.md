@@ -1,4 +1,4 @@
-# Goals and Design 
+# Goals and Design
 
 ## Basic Principles
 
@@ -105,7 +105,6 @@ common transaction, with associated journal.
     This cleanup sweep should be done after scanning for any new files, so that
     moved/renamed files only result in alias remapping and not require recomputing
     all thumbnails. note that sidecar files are not transferred between aliases as by above.
-  
   - A semi-regular cleanup sweep could be done on schedule. Could also verify hashes.
 
   - Discovery of deleted files or changed hashes should be logged...may point
@@ -144,7 +143,7 @@ common transaction, with associated journal.
 - streams - support social streaming and sharing endpoints (activitypub? chatbots?)
 
 - storage and transfer optimizations
-  - push compressed images on mobile, replace with high-res original later    
+  - push compressed images on mobile, replace with high-res original later
   - report storage per album, keep track of raw vs post-processed/compressed
   - offer some reasonable default compression ratios
   - detect duplicate / redundant, offer to select best
