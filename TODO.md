@@ -400,7 +400,41 @@ New verbs needed for regression gaps:
 - [ ] Design UI DSL vocabulary (navigation, selectors, visual assertions)
 - [ ] Prototype one `cargo xtask test-frontend` scenario
 
-#### 9. Future tooling (deferred)
+#### 9. E2E backend scenario coverage
+
+Audit of all ~40 data-handling routes: 17 scenarios cover 6 routes. Open items sorted
+by implementation difficulty (generator/DSL changes needed):
+
+##### Easy — single YAML file, zero generator changes
+
+- [ ] `authenticate_succeeds_with_no_password` — `POST /post/authenticate` with `{"password":""}` → 200 + token
+- [ ] `create_share_then_read` — `POST /post/create_share` on a dir-album, then `GET /get/albums` verifies `share_list`
+- [ ] `set_album_cover_updates_album` — `PUT /put/set_album_cover` with a photo hash, verify via `GET /get/albums`
+- [ ] `set_album_title_updates_album` — `PUT /put/set_album_title` with a display title
+- [ ] `rotate_image_swaps_dimensions` — `PUT /put/rotate-image` on a known hash, verify width/height swap via `GET /get/get-data`
+- [ ] `config_read_endpoints` — `GET /get/config` and `GET /get/config/export` smoke test
+- [ ] `edit_flags_then_verify` — multi-step: prefetch → capture index → `PUT /put/edit_flags` → `GET /get/get-data` verifies flag change
+- [ ] `delete_data` — multi-step: prefetch → `DELETE /delete/delete-data` → verify file absent
+- [ ] `index_image_single` — `POST /post/index/image` with `{"image":"path"}` → 202
+- [ ] `cancel_album_index` — `POST /post/index/cancel` → 200
+- [ ] `get_index_status` — `GET /get/index/status` → 200 + JSON status
+- [ ] `get_rows` / `get_scroll_bar` — multi-step: prefetch → `GET /get/get-rows`/`GET /get/get-scroll-bar` with Bearer token
+
+##### Small DSL addition needed
+
+- [ ] **Stale `DIR_ALBUM_CACHE`** — delete an album directory externally, then `assign_album` → 400 with distinguishable message. Needs `given: remove_dir` (currently `remove` only does `remove_file`).
+- [ ] **`POST /upload` with known hash, different album** — last-write-wins on `album` field. Needs multipart form support or an `upload:` fixture verb.
+- [ ] **`GET /object/compressed` with wrong `GuardHash`** — valid share + wrong-hash token → 401. Needs bearer-token assertion support.
+- [ ] **Share capability flags** — `show_metadata: false` strips album/tags from response, `show_download: false` suppresses download token, `show_upload: false` gates upload. Needs share-creation fixture and share-auth in `call:`.
+
+##### Harder — blocked or environment-dependent
+
+- [ ] **Prefetch snapshot expiry** — blocked on `expire_check` known bug (see §Known bugs above)
+- [ ] **Video pipeline parity** — needs `ffmpeg`/`ffprobe` in test environment
+- [ ] **`renew-hash-token` / `renew-timestamp-token`** — requires expired JWT creation (cryptographic, not a good DSL fit)
+- [ ] **`regenerate_thumbnail_with_frame`** — multipart + binary file upload (same blocker as `upload`)
+
+#### 10. Future tooling (deferred)
 
 - Album content generator — mutation/randomization for broader image coverage
 - API fuzzer — `proptest`-driven exploration of the OpenAPI contract
