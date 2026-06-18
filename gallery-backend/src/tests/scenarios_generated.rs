@@ -659,6 +659,26 @@ mod scenarios_generated {
     }
 
     #[test]
+    fn read_only_mode_blocks_mutating_routes() {
+        let _ = &*TEST_ENV;
+        let data = get_resolved_image_path().expect("IMAGE_HOME configured");
+        set_read_only_mode(true);
+        let client = make_client();
+        let resp = client
+            .post("/post/index/album")
+            .cookie(auth_cookie(&client))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({"album": "/".to_string()}).to_string())
+            .dispatch();
+        assert_eq!(
+            resp.status(),
+            Status::from_code(405).unwrap(),
+            "call resp status"
+        );
+        set_read_only_mode(false);
+    }
+
+    #[test]
     fn reindex_preserves_album_and_tags() {
         let _ = &*TEST_ENV;
         let data = get_resolved_image_path().expect("IMAGE_HOME configured");

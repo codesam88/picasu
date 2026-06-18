@@ -57,12 +57,28 @@
       "required": ["empty"],
       "additionalProperties": false
     },
+    "givenConfig": {
+      "type": "object",
+      "properties": {
+        "config": {
+          "type": "object",
+          "properties": {
+            "read_only_mode": { "type": "boolean" }
+          },
+          "required": ["read_only_mode"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["config"],
+      "additionalProperties": false
+    },
     "givenItem": {
       "oneOf": [
         { "$ref": "#/definitions/givenDirAlbum" },
         { "$ref": "#/definitions/givenPhoto" },
         { "$ref": "#/definitions/givenEmpty" },
-        { "$ref": "#/definitions/givenRemove" }
+        { "$ref": "#/definitions/givenRemove" },
+        { "$ref": "#/definitions/givenConfig" }
       ]
     },
     "apiCall": {

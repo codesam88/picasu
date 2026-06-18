@@ -6,10 +6,19 @@ use rocket::local::blocking::Client;
 use serde_json::Value;
 
 use crate::operations::utils::image_path::get_resolved_image_path;
+use crate::public::structure::config::APP_CONFIG;
 use crate::router::builder::build_rocket_with_config;
 use crate::tasks::actor::album_index::{AlbumIndexState, album_index_status};
 
-use super::{APP_CONFIG, PREFETCH_SERIAL_GUARD, TEST_ENV};
+use super::{PREFETCH_SERIAL_GUARD, TEST_ENV};
+
+/// Bypass the API guard to toggle read_only_mode directly in global config.
+/// Used by the DSL generator to set up and tear down read-only-mode tests
+/// (the API endpoint is gated by the same guard and cannot be used to reset).
+pub fn set_read_only_mode(enabled: bool) {
+    let mut config = APP_CONFIG.get().unwrap().write().unwrap();
+    config.public.read_only_mode = enabled;
+}
 
 // ─── HTTP client helpers ─────────────────────────────────────────────────
 

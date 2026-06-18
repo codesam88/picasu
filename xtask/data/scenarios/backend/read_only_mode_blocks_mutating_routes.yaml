@@ -1,0 +1,10 @@
+name: read_only_mode blocks mutating routes
+given:
+  - config:
+      read_only_mode: true
+when:
+  call: POST /post/index/album
+  body:
+    album: "/"
+then:
+  - response.status: 405

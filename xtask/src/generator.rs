@@ -515,7 +515,7 @@ fn validate_scenario(schema: &serde_json::Value, scenario: &serde_json::Value, p
         for (i, item) in given.iter().enumerate() {
             if let Some(obj) = item.as_object() {
                 let known_keys = &[
-                    "dir_album", "photo", "empty", "remove", "id_as",
+                    "dir_album", "photo", "empty", "remove", "config", "id_as",
                     "tags", "exif_date", "color",
                 ];
                 for key in obj.keys() {
@@ -533,9 +533,10 @@ fn validate_scenario(schema: &serde_json::Value, scenario: &serde_json::Value, p
                     && !obj.contains_key("photo")
                     && !obj.contains_key("empty")
                     && !obj.contains_key("remove")
+                    && !obj.contains_key("config")
                 {
                     panic!(
-                        "{}: given[{}]: must contain one of: dir_album, photo, empty, remove",
+                        "{}: given[{}]: must contain one of: dir_album, photo, empty, remove, config",
                         path.display(),
                         i
                     );
@@ -730,6 +731,15 @@ fn emit_api_test_body(_name: &str, scenario: &serde_json::Value) -> String {
     }
 
     let has_given_items = given.map(|items| !items.is_empty()).unwrap_or(false);
+    // Items that need filesystem setup + index scan (config items skip scan).
+    let has_config_items = given.map_or(false, |items| {
+        items.iter().any(|item| item.get("config").is_some())
+    });
+    let has_non_config_items = given.map_or(false, |items| {
+        items.iter().any(|item| item.get("config").is_none())
+    });
+    let has_scan_items = has_given_items && has_non_config_items;
+
     if let Some(items) = given {
         for item in items {
             if let Some(dir) = item["dir_album"].as_str() {
@@ -835,6 +845,11 @@ fn emit_api_test_body(_name: &str, scenario: &serde_json::Value) -> String {
             } else if let Some(_remove_path) = item["remove"].as_str() {
                 // Collected and emitted after the scan — file must exist at
                 // scan time, be removed afterward.
+            } else if let Some(config) = item.get("config").and_then(|c| c.as_object()) {
+                if let Some(enabled) = config.get("read_only_mode").and_then(|v| v.as_bool()) {
+                    let val_str = if enabled { "true" } else { "false" };
+                    lines.push(format!("set_read_only_mode({val_str});"));
+                }
             }
         }
     }
@@ -846,7 +861,7 @@ fn emit_api_test_body(_name: &str, scenario: &serde_json::Value) -> String {
         .filter_map(|item| item["remove"].as_str())
         .collect();
 
-    if has_given_items {
+    if has_scan_items {
         lines.push(
             "let client = make_client();\n\
               let _guard = INDEX_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());\n\
@@ -893,7 +908,7 @@ fn emit_api_test_body(_name: &str, scenario: &serde_json::Value) -> String {
     }
 
     let is_multi = when.is_array();
-    let client_ready = has_given_items;
+    let client_ready = has_scan_items;
 
     if is_multi {
         let calls = when.as_array().expect("when array");
@@ -961,6 +976,10 @@ fn emit_api_test_body(_name: &str, scenario: &serde_json::Value) -> String {
             emit_single_call(when, &vars, &mut lines, "resp", true);
         }
         emit_then_assertions(then, "resp", &vars, &mut lines);
+    }
+
+    if has_config_items {
+        lines.push("set_read_only_mode(false);".to_string());
     }
 
     lines.join("\n")
