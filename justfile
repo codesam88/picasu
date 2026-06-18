@@ -188,6 +188,9 @@ precommit:
         just backend-format
         just backend-check
     fi
+    if echo "$changed" | grep -q '^\.plan/'; then
+        cargo xtask plan --format
+    fi
     if echo "$changed" | grep -qE '^(xtask/data|xtask/src|gallery-backend/src/tests/scenarios_generated)'; then
         just check-generated
     fi
