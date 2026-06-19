@@ -34,10 +34,21 @@ const MINIMAL_JPEG = Buffer.from([
 
 export interface GivenContext {
   vars: Record<string, string>
+  namespace?: string
 }
 
-export function createGivenContext(): GivenContext {
-  return { vars: {} }
+export function createGivenContext(namespace?: string): GivenContext {
+  return { vars: {}, namespace }
+}
+
+function sanitizeNamespace(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+function qualifyPath(relativePath: string, ns?: string): string {
+  if (!ns) return relativePath
+  const prefix = sanitizeNamespace(ns)
+  return path.join(prefix, relativePath)
 }
 
 export async function executeGiven(
@@ -45,38 +56,62 @@ export async function executeGiven(
   given: GivenItem[],
   ctx: GivenContext
 ): Promise<GivenContext> {
-  const result: GivenContext = { vars: { ...ctx.vars } }
-  const createdFiles: string[] = []
+  const result: GivenContext = { vars: { ...ctx.vars }, namespace: ctx.namespace }
+  const ns = ctx.namespace
+
+  type SeedEntry = { type: 'dir_album' | 'photo'; qualifiedPath: string; id_as?: string }
+  const seedEntries: SeedEntry[] = []
 
   for (const item of given) {
     if ('dir_album' in item && item.dir_album) {
       const ga = item as { dir_album: string; id_as?: string }
-      const dirPath = path.join(IMAGE_HOME, ga.dir_album)
+      const qualified = qualifyPath(ga.dir_album, ns)
+      const dirPath = path.join(IMAGE_HOME, qualified)
       fs.mkdirSync(dirPath, { recursive: true })
+      seedEntries.push({ type: 'dir_album', qualifiedPath: qualified, id_as: ga.id_as })
       if (ga.id_as) {
         const ph = path.join(dirPath, '.__e2e_ph__.jpg')
         fs.writeFileSync(ph, MINIMAL_JPEG)
-        createdFiles.push(ga.dir_album)
       }
     }
 
     if ('photo' in item && item.photo) {
       const ph = item as { photo: string; id_as?: string }
-      const filePath = path.join(IMAGE_HOME, ph.photo)
+      const qualified = qualifyPath(ph.photo, ns)
+      const filePath = path.join(IMAGE_HOME, qualified)
       fs.mkdirSync(path.dirname(filePath), { recursive: true })
       fs.writeFileSync(filePath, MINIMAL_JPEG)
-      createdFiles.push(ph.photo)
+      seedEntries.push({ type: 'photo', qualifiedPath: qualified, id_as: ph.id_as })
     }
 
     if ('remove' in item && item.remove) {
-      const filePath = path.join(IMAGE_HOME, item.remove)
+      const qualified = qualifyPath(item.remove, ns)
+      const filePath = path.join(IMAGE_HOME, qualified)
       try {
         fs.unlinkSync(filePath)
       } catch {}
     }
+
+    if ('config' in item && item.config) {
+      const cfg = item as { config: { read_only_mode?: boolean } }
+      const token = await ensureAuthenticated(request)
+      const res = await request.fetch(`${BACKEND_URL}/put/config`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        data: { readOnlyMode: cfg.config.read_only_mode }
+      })
+      if (!res.ok()) {
+        throw new Error(
+          `Config update failed: ${res.status()} ${await res.text()}`
+        )
+      }
+    }
   }
 
-  if (createdFiles.length > 0) {
+  if (seedEntries.length > 0) {
     const token = await ensureAuthenticated(request)
     const authHeaders = { Authorization: `Bearer ${token}` }
 
@@ -105,22 +140,21 @@ export async function executeGiven(
     }
     if (!indexed) throw new Error('Index did not complete within 60s')
 
-    if (given.some((g) => 'id_as' in (g as any) && (g as any).id_as)) {
+    const wantsIdAs = seedEntries.some((e) => e.id_as !== undefined)
+    if (wantsIdAs) {
       const dataRes = await request.fetch(`${BACKEND_URL}/get/get-data?start=0&end=100`, {
         headers: authHeaders
       })
       const data = (await dataRes.json()) as any[]
 
-      for (const item of given) {
-        if ('dir_album' in item && item.dir_album && (item as any).id_as) {
-          const ga = item as { dir_album: string; id_as: string }
-          const album = await findAlbum(request, authHeaders, ga.dir_album)
-          if (album) result.vars[ga.id_as] = album
-        }
-        if ('photo' in item && item.photo && (item as any).id_as) {
-          const ph = item as { photo: string; id_as: string }
-          const hash = await findPhotoHash(ph.photo, data)
-          if (hash) result.vars[ph.id_as] = hash
+      for (const entry of seedEntries) {
+        if (!entry.id_as) continue
+        if (entry.type === 'dir_album') {
+          const albumId = await findAlbum(request, authHeaders, entry.qualifiedPath)
+          if (albumId) result.vars[entry.id_as] = albumId
+        } else if (entry.type === 'photo') {
+          const hash = findPhotoHash(entry.qualifiedPath, data)
+          if (hash) result.vars[entry.id_as] = hash
         }
       }
     }
@@ -132,19 +166,19 @@ export async function executeGiven(
 async function findAlbum(
   request: APIRequestContext,
   headers: Record<string, string>,
-  dirPath: string
+  qualifiedPath: string
 ): Promise<string | null> {
   const res = await request.fetch(`${BACKEND_URL}/get/get-albums`, { headers })
   if (!res.ok()) return null
   const albums = (await res.json()) as any[]
-  const match = albums.find((a: any) => a.dirPath && a.dirPath.endsWith(dirPath))
+  const match = albums.find((a: any) => a.dirPath && a.dirPath.endsWith(qualifiedPath))
   return match ? String(match.album_id) : null
 }
 
-function findPhotoHash(photoPath: string, data: any[]): string | null {
+function findPhotoHash(qualifiedPath: string, data: any[]): string | null {
   const match = data.find((d: any) => {
     const alias = d.abstractData?.currentAlias?.filePath
-    return alias && alias.endsWith(photoPath)
+    return alias && alias.endsWith(qualifiedPath)
   })
   return match ? String(match.hash) : null
 }

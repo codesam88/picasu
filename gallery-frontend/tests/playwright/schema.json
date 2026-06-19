@@ -149,11 +149,17 @@
     "uiThenToast": {
       "type": "object",
       "properties": {
-        "ui.toast": { "type": "object" },
-        "type": { "type": "string", "enum": ["error", "success", "warning"] },
-        "contains": { "type": "string" }
+        "ui.toast": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["error", "success", "warning"] },
+            "contains": { "type": "string" }
+          },
+          "required": ["type", "contains"],
+          "additionalProperties": false
+        }
       },
-      "required": ["ui.toast", "type", "contains"],
+      "required": ["ui.toast"],
       "additionalProperties": false
     },
     "uiThenModal": {
