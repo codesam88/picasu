@@ -9,11 +9,10 @@ fn main() {
 
     let mut lines = String::new();
 
-    let manifest_dir: std::path::PathBuf =
-        std::env::var("CARGO_MANIFEST_DIR").map_or_else(
-            |_| std::env::current_dir().unwrap(),
-            std::path::PathBuf::from,
-        );
+    let manifest_dir: std::path::PathBuf = std::env::var("CARGO_MANIFEST_DIR").map_or_else(
+        |_| std::env::current_dir().unwrap(),
+        std::path::PathBuf::from,
+    );
 
     let backend_dir = manifest_dir.join("tests/scenarios");
     let mut entries: Vec<_> = std::fs::read_dir(&backend_dir)

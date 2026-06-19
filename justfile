@@ -13,10 +13,10 @@ help:
 backend-format:
     cd gallery-backend && cargo fmt
 
-# cargo clippy -- -D warnings
+# cargo fmt --check + cargo clippy
 [group('backend')]
 backend-check:
-    cd gallery-backend && cargo clippy -- -D warnings -A clippy::unwrap_used
+    cd gallery-backend && cargo fmt --check && cargo clippy -- -D warnings -A clippy::unwrap_used
 
 # cargo nextest run
 [group('backend')]
@@ -50,10 +50,10 @@ backend-build-release:
 frontend-format:
     npx prettier --write gallery-frontend/
 
-# vue-tsc + eslint
+# prettier --check + vue-tsc + eslint
 [group('frontend')]
 frontend-check:
-    cd gallery-frontend && npx vue-tsc --noEmit && npx eslint .
+    npx prettier --check gallery-frontend/ && cd gallery-frontend && npx vue-tsc --noEmit && npx eslint .
 
 # vitest run
 [group('frontend')]
@@ -118,15 +118,20 @@ plan *args:
 docs-format:
     npx prettier --write --no-error-on-unmatched-pattern '*.md' 'docs/**/*.md' '.plan/**/*.md'
 
+# Check markdown formatting (precommit / CI)
+[group('docs')]
+docs-check:
+    npx prettier --check --no-error-on-unmatched-pattern '*.md' 'docs/**/*.md' '.plan/**/*.md'
+
 # ── Global ─────────────────────────────────────────────────────────────────────
 
 # Format everything (backend + frontend + docs + .plan)
 [group('global')]
 format: backend-format frontend-format docs-format plan-format
 
-# Run linters (backend + frontend + .plan)
+# Run linters, including format checks (backend + frontend + docs + .plan)
 [group('global')]
-check: backend-check frontend-check plan-lint
+check: backend-check frontend-check docs-check plan-lint
 
 # Run tests (backend + frontend)
 [group('global')]
@@ -184,7 +189,6 @@ precommit:
 
     if [ "$branch" = "main" ]; then
         echo "[ precommit ] On main — full test suite is required to pass."
-        just format
         just check
         just test
         just openapi-docs-check
@@ -193,17 +197,12 @@ precommit:
 
     echo "[ precommit ] On '$branch' — format/lint enforced; run tests at your disgression."
     if echo "$changed" | grep -q '^gallery-backend/'; then
-        just backend-format
         just backend-check
     fi
     if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$)'; then
-        just plan-format
-        just docs-format
-    fi
-    if echo "$changed" | grep -qE '^(gallery-backend/tests/scenarios/|gallery-frontend/tests/playwright/scenarios/)'; then
-        echo "[ precommit ] YAML scenarios changed — run tests: 'just backend-test' and/or 'just frontend-e2e'"
+        just plan-lint
+        just docs-check
     fi
     if echo "$changed" | grep -q '^gallery-frontend/'; then
-        just frontend-format
         just frontend-check
     fi

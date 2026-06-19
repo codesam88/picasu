@@ -590,11 +590,10 @@ fn interpret_scenario(scenario: &Value) {
 // ── Scenario runners (called from generated test functions) ──
 
 pub fn run_backend_scenario(name: &str) {
-    let dir: std::path::PathBuf =
-        std::env::var("CARGO_MANIFEST_DIR").map_or_else(
-            |_| std::env::current_dir().unwrap(),
-            std::path::PathBuf::from,
-        );
+    let dir: std::path::PathBuf = std::env::var("CARGO_MANIFEST_DIR").map_or_else(
+        |_| std::env::current_dir().unwrap(),
+        std::path::PathBuf::from,
+    );
     let path = dir.join(format!("tests/scenarios/{name}.yaml"));
 
     let yaml_str =
@@ -606,11 +605,10 @@ pub fn run_backend_scenario(name: &str) {
 }
 
 pub fn run_selftest_scenario(name: &str) {
-    let dir: std::path::PathBuf =
-        std::env::var("CARGO_MANIFEST_DIR").map_or_else(
-            |_| std::env::current_dir().unwrap(),
-            std::path::PathBuf::from,
-        );
+    let dir: std::path::PathBuf = std::env::var("CARGO_MANIFEST_DIR").map_or_else(
+        |_| std::env::current_dir().unwrap(),
+        std::path::PathBuf::from,
+    );
     let path = dir.join(format!("tests/scenarios/selftest/{name}.yaml"));
 
     let yaml_str =

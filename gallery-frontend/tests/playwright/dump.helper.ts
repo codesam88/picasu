@@ -29,7 +29,9 @@ test('dump homepage ARIA snapshot', async ({ page }) => {
       return null
     }
 
-    const all = document.querySelectorAll('nav, main, header, footer, aside, form, [role], a[href], button, input, select, textarea, ul, ol, li, h1, h2, h3, h4, h5, h6, img, hr, i, span, div')
+    const all = document.querySelectorAll(
+      'nav, main, header, footer, aside, form, [role], a[href], button, input, select, textarea, ul, ol, li, h1, h2, h3, h4, h5, h6, img, hr, i, span, div'
+    )
     const results: any[] = []
     for (const el of all) {
       const explicitRole = el.getAttribute('role')
@@ -50,8 +52,12 @@ test('dump homepage ARIA snapshot', async ({ page }) => {
         text: text.slice(0, 40),
         url: url && url !== 'about:blank' ? url.replace(window.location.origin, '') : '',
         depth: (() => {
-          let d = 0, p = el.parentElement
-          while (p) { d++; p = p.parentElement }
+          let d = 0,
+            p = el.parentElement
+          while (p) {
+            d++
+            p = p.parentElement
+          }
           return d
         })()
       })

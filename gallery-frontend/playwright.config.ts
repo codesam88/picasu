@@ -54,6 +54,6 @@ export default defineConfig({
         UROCISSA_IMAGE_HOME: IMAGE_HOME
       },
       timeout: 180000
-    },
+    }
   ]
 })
