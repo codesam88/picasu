@@ -66,18 +66,18 @@ tests/playwright/
 
 ## What was built
 
-| File                                                    | Purpose                                                                                                         |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `gallery-frontend/playwright.config.ts`                 | Playwright config with webServer (backend + vite), JSON+HTML reporters, screenshot on failure                   |
-| `gallery-frontend/tests/playwright/types.ts`            | Zod schemas matching the UI DSL vocabulary from `schema.json`                                                   |
-| `gallery-frontend/tests/playwright/paths.ts`            | Shared paths (E2E_DIR, IMAGE_HOME, BACKEND_URL, etc.)                                                           |
-| `gallery-frontend/tests/playwright/loadScenarios.ts`    | Reads YAML from `gallery-frontend/tests/playwright/scenarios/`, validates with Zod                                                  |
-| `gallery-frontend/tests/playwright/executeGiven.ts`     | Filesystem seeding + API indexing, auth, variable binding                                                       |
-| `gallery-frontend/tests/playwright/interpreter.ts`      | Maps YAML verbs (navigate/click/fill/submit) and assertions (visible/hidden/text/route/modal) to Playwright API |
-| `gallery-frontend/tests/playwright/interpreter.spec.ts` | Main test file — loads all scenarios, runs given→when→then                                                      |
-| `gallery-frontend/tests/playwright/scenarios/home-page.yaml`                | Smoke test: navigate to `/`, assert `<main>` visible                                                            |
-| `gallery-frontend/tests/playwright/scenarios/albums-page.yaml`              | Smoke test: navigate to `/albums`, assert `<main>` visible                                                      |
-| `gallery-frontend/tests/playwright/scenarios/login-page.yaml`               | Smoke test: navigate to `/login`, assert password textbox visible                                               |
+| File                                                           | Purpose                                                                                                         |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `gallery-frontend/playwright.config.ts`                        | Playwright config with webServer (backend + vite), JSON+HTML reporters, screenshot on failure                   |
+| `gallery-frontend/tests/playwright/types.ts`                   | Zod schemas matching the UI DSL vocabulary from `schema.json`                                                   |
+| `gallery-frontend/tests/playwright/paths.ts`                   | Shared paths (E2E_DIR, IMAGE_HOME, BACKEND_URL, etc.)                                                           |
+| `gallery-frontend/tests/playwright/loadScenarios.ts`           | Reads YAML from `gallery-frontend/tests/playwright/scenarios/`, validates with Zod                              |
+| `gallery-frontend/tests/playwright/executeGiven.ts`            | Filesystem seeding + API indexing, auth, variable binding                                                       |
+| `gallery-frontend/tests/playwright/interpreter.ts`             | Maps YAML verbs (navigate/click/fill/submit) and assertions (visible/hidden/text/route/modal) to Playwright API |
+| `gallery-frontend/tests/playwright/interpreter.spec.ts`        | Main test file — loads all scenarios, runs given→when→then                                                      |
+| `gallery-frontend/tests/playwright/scenarios/home-page.yaml`   | Smoke test: navigate to `/`, assert `<main>` visible                                                            |
+| `gallery-frontend/tests/playwright/scenarios/albums-page.yaml` | Smoke test: navigate to `/albums`, assert `<main>` visible                                                      |
+| `gallery-frontend/tests/playwright/scenarios/login-page.yaml`  | Smoke test: navigate to `/login`, assert password textbox visible                                               |
 
 ## How to run
 
