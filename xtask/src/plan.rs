@@ -344,24 +344,35 @@ fn priority_ord(p: &str) -> u8 {
     }
 }
 
-fn status_color(status: &str) -> &str {
+use std::io::Write;
+use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
+
+macro_rules! write_colored {
+    ($stdout:expr, $color:expr, $($arg:tt)*) => {{
+        $stdout.set_color(ColorSpec::new().set_fg(Some($color))).unwrap();
+        write!($stdout, $($arg)*).unwrap();
+        $stdout.reset().unwrap();
+    }};
+}
+
+fn status_color(status: &str) -> Color {
     match status {
-        "in-progress" => "\x1b[1;35m",
-        "open" => "\x1b[1;33m",
-        "blocked" => "\x1b[1;31m",
-        "backlog" => "\x1b[1;34m",
-        "idea" => "\x1b[1;36m",
-        "done" => "\x1b[1;32m",
-        _ => "",
+        "in-progress" => Color::Magenta,
+        "open" => Color::Yellow,
+        "blocked" => Color::Red,
+        "backlog" => Color::Blue,
+        "idea" => Color::Cyan,
+        "done" => Color::Green,
+        _ => Color::White,
     }
 }
 
-fn priority_color(p: &str) -> &str {
+fn priority_color(p: &str) -> Color {
     match p {
-        "high" => "\x1b[31m",
-        "medium" => "\x1b[33m",
-        "low" => "\x1b[90m",
-        _ => "",
+        "high" => Color::Red,
+        "medium" => Color::Yellow,
+        "low" => Color::Ansi256(8),
+        _ => Color::White,
     }
 }
 
@@ -400,51 +411,37 @@ fn display_kanban(tasks: &[LoadedTask], sort_keys: &[String]) {
     let type_w = 8;
     let prio_w = 8;
 
+    let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+
     for (status, group) in &groups {
         let label = status_label(status);
         let color = status_color(status);
         let count = group.len();
         let bar = "─".repeat(bar_w);
 
-        println!(
-            "\n{color}{label} ({count}){reset} {bar}",
-            color = color,
-            label = label,
-            count = count,
-            reset = "\x1b[0m",
-            bar = bar,
-        );
+        writeln!(stdout).unwrap();
+        write_colored!(stdout, color, "{} ({})", label, count);
+        writeln!(stdout, " {}", bar).unwrap();
 
         if group.is_empty() {
-            println!("  (none)");
+            println!(" (none)");
         } else {
             for t in group {
                 let pc = priority_color(&t.task.priority);
-                println!(
-                    "  {:<slug_w$}  {:<type_w$}  {pc}{:<prio_w$}\x1b[0m  {}",
-                    t.slug,
-                    t.task.task_type,
-                    t.task.priority,
-                    t.task.area,
-                    slug_w = slug_w,
-                    type_w = type_w,
-                    prio_w = prio_w,
-                    pc = pc,
-                );
+                write!(stdout, " {:<slug_w$} {:<type_w$} ", t.slug, t.task.task_type, slug_w = slug_w, type_w = type_w).unwrap();
+                write_colored!(stdout, pc, "{:<prio_w$}", t.task.priority, prio_w = prio_w);
+                writeln!(stdout, " {}", t.task.area).unwrap();
             }
         }
     }
 
     println!();
-    let parts: Vec<String> = groups
-        .iter()
-        .filter(|(_, g)| !g.is_empty())
-        .map(|(status, g)| {
-            let color = status_color(status);
-            format!("{color}{} {}\x1b[0m", g.len(), status)
-        })
-        .collect();
-    println!("{} tasks: {}", total, parts.join(", "));
+    write!(stdout, "{} tasks:", total).unwrap();
+    for (status, g) in groups.iter().filter(|(_, g)| !g.is_empty()) {
+        let color = status_color(status);
+        write_colored!(stdout, color, " {} {}", g.len(), status);
+    }
+    writeln!(stdout).unwrap();
 }
 
 fn display_table(tasks: &[LoadedTask]) {
@@ -454,7 +451,7 @@ fn display_table(tasks: &[LoadedTask]) {
     let prio_w = 8;
 
     println!(
-        "{:<slug_w$}  {:<status_w$}  {:<type_w$}  {:<prio_w$}  area",
+        "{:<slug_w$} {:<status_w$} {:<type_w$} {:<prio_w$} area",
         "SLUG",
         "STATUS",
         "TYPE",
@@ -465,7 +462,7 @@ fn display_table(tasks: &[LoadedTask]) {
         prio_w = prio_w,
     );
     println!(
-        "{:-<slug_w$}  {:-<status_w$}  {:-<type_w$}  {:-<prio_w$}  ----",
+        "{:-<slug_w$} {:-<status_w$} {:-<type_w$} {:-<prio_w$} ----",
         "",
         "",
         "",
@@ -476,23 +473,17 @@ fn display_table(tasks: &[LoadedTask]) {
         prio_w = prio_w,
     );
 
+    let mut stdout = StandardStream::stdout(ColorChoice::Auto);
+
     for t in tasks {
         let sc = status_color(&t.task.status);
         let pc = priority_color(&t.task.priority);
-        println!(
-            "{:<slug_w$}  {sc}{:<status_w$}\x1b[0m  {:<type_w$}  {pc}{:<prio_w$}\x1b[0m  {}",
-            t.slug,
-            t.task.status,
-            t.task.task_type,
-            t.task.priority,
-            t.task.area,
-            slug_w = slug_w,
-            status_w = status_w,
-            type_w = type_w,
-            prio_w = prio_w,
-            sc = sc,
-            pc = pc,
-        );
+        
+        write!(stdout, "{:<slug_w$} ", t.slug, slug_w = slug_w).unwrap();
+        write_colored!(stdout, sc, "{:<status_w$}", t.task.status, status_w = status_w);
+        write!(stdout, " {:<type_w$} ", t.task.task_type, type_w = type_w).unwrap();
+        write_colored!(stdout, pc, "{:<prio_w$}", t.task.priority, prio_w = prio_w);
+        writeln!(stdout, " {}", t.task.area).unwrap();
     }
 
     let idea_count = tasks.iter().filter(|t| t.task.status == "idea").count();
@@ -505,27 +496,27 @@ fn display_table(tasks: &[LoadedTask]) {
     let blocked_count = tasks.iter().filter(|t| t.task.status == "blocked").count();
     let done_count = tasks.iter().filter(|t| t.task.status == "done").count();
 
-    println!();
-    print!("{} tasks:", tasks.len());
+    writeln!(stdout).unwrap();
+    write!(stdout, "{} tasks:", tasks.len()).unwrap();
     if in_progress_count > 0 {
-        print!(" \x1b[34m{} in-progress\x1b[0m", in_progress_count);
+        write_colored!(stdout, Color::Blue, " {} in-progress", in_progress_count);
     }
     if open_count > 0 {
-        print!(" \x1b[33m{} open\x1b[0m", open_count);
+        write_colored!(stdout, Color::Yellow, " {} open", open_count);
     }
     if blocked_count > 0 {
-        print!(" \x1b[31m{} blocked\x1b[0m", blocked_count);
+        write_colored!(stdout, Color::Red, " {} blocked", blocked_count);
     }
     if backlog_count > 0 {
-        print!(" \x1b[90m{} backlog\x1b[0m", backlog_count);
+        write_colored!(stdout, Color::Ansi256(8), " {} backlog", backlog_count);
     }
     if idea_count > 0 {
-        print!(" \x1b[36m{} idea\x1b[0m", idea_count);
+        write_colored!(stdout, Color::Cyan, " {} idea", idea_count);
     }
     if done_count > 0 {
-        print!(" \x1b[32m{} done\x1b[0m", done_count);
+        write_colored!(stdout, Color::Green, " {} done", done_count);
     }
-    println!();
+    writeln!(stdout).unwrap();
 }
 
 fn read_task_files(tasks_dir: &std::path::Path) -> Result<Vec<PathBuf>, String> {

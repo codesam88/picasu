@@ -12,6 +12,7 @@ pub enum ImageFormat {
 }
 
 impl ImageFormat {
+    #[allow(dead_code)]
     pub fn from_path(path: &str) -> Option<Self> {
         let ext = path.rsplit('.').next()?.to_lowercase();
         match ext.as_str() {
@@ -21,6 +22,7 @@ impl ImageFormat {
         }
     }
 
+    #[allow(dead_code)]
     pub fn mime_type(&self) -> &str {
         match self {
             Self::Jpeg => "image/jpeg",

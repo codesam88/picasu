@@ -24,3 +24,4 @@ serde_yaml = "0.9"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 rand = "0.10"
 clap = { version = "4", features = ["derive"] }
+termcolor = "1.3"
