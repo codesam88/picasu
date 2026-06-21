@@ -14,7 +14,6 @@ given:
 
   - photo: nature/sunset/img01.jpg
     tags: [sunset, nature, landscape, golden-hour]
-    id_as: $imgHash
 
 steps:
   - when:
@@ -33,7 +32,22 @@ steps:
       - ui.visible: main/
 
   - when:
-      - navigate: /albums/view/${imgHash}
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: nature
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: sunset
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.first: true
     assert:
       - ui.visible: main/
 

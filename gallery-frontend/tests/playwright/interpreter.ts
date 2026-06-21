@@ -37,10 +37,12 @@ export async function executeWhen(
       await page.locator('.parent').filter({ hasText: text }).first().click()
     } else if ('click.icon' in step) {
       await page.locator(`.${step['click.icon']}`).first().click()
+    } else if ('click.first' in step) {
+      await page.locator('#view-page .parent').first().click()
     } else {
       throw new Error(
         `Unknown when verb in step ${JSON.stringify(step)}. ` +
-          `Expected one of: navigate, click, fill, select, submit, wait.ms, click.text, click.icon`
+          `Expected one of: navigate, click, fill, select, submit, wait.ms, click.text, click.icon, click.first`
       )
     }
   }

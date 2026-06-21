@@ -112,6 +112,12 @@ export const UiWhenClickIcon = z
   })
   .strict()
 
+export const UiWhenClickFirst = z
+  .object({
+    'click.first': z.literal(true)
+  })
+  .strict()
+
 export const UiWhenItem = z.union([
   UiWhenNavigate,
   UiWhenClick,
@@ -120,7 +126,8 @@ export const UiWhenItem = z.union([
   UiWhenSubmit,
   UiWhenWait,
   UiWhenClickText,
-  UiWhenClickIcon
+  UiWhenClickIcon,
+  UiWhenClickFirst
 ])
 
 export const UiAssertVisible = z
