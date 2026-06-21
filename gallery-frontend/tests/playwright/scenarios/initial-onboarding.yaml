@@ -73,7 +73,7 @@ when:
   - wait.ms: 3000
   - navigate: /tags
 
-then:
+assert:
   - ui.visible: main/
   - ui.text: main/
     contains: sunset

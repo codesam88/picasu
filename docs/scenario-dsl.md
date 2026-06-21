@@ -3,7 +3,7 @@
 Semi-formal spec and authoring guide for spec-driven E2E testing.
 
 Two scenario types share the `given:` vocabulary but have disjoint
-`when:`/`then:` verb sets:
+`when:`/`assert:` verb sets:
 
 - **API scenarios** (`gallery-backend/tests/scenarios/*.yaml`) — compiled
   at build time into Rocket `local::Client` tests via `build.rs`. Test
@@ -14,8 +14,8 @@ Two scenario types share the `given:` vocabulary but have disjoint
 
 ## Common structure
 
-Every scenario file is a YAML document with three required top-level keys
-and one optional:
+Every scenario file is a YAML document with one required top-level key
+and several optional:
 
 ```yaml
 name: Human-readable name for the scenario
@@ -24,16 +24,21 @@ covers: # optional — see § Coverage intent
     - POST /post/authenticate
   ui:
     - textbox/Password
-given:
-  - ... # fixture definitions
-when: ... # verb set depends on scenario type
-then: ... # verb set depends on scenario type
+given: # optional — fixture definitions
+  - ...
+# Either flat when/assert (single-step):
+when: ...
+assert: ...
+# Or multi-step:
+steps:
+  - when: ...
+    assert: ...
 ```
 
 ## `given:` vocabulary (shared)
 
 Each entry in `given:` seeds state. Some forms may bind a result to
-`id_as` for later reference in `when:` bodies and `then:` assertions.
+`id_as` for later reference in `when:` bodies and `assert:` assertions.
 Variables are interpolated as `${variable_name}` in string values across
 all verb blocks.
 
@@ -86,7 +91,7 @@ when:
 `call` is validated against `openapi.json` for operation existence at
 build time.
 
-### `then:` — assertions (one or more)
+### `assert:` — assertions (one or more)
 
 | Form                            | Assertion                     |
 | ------------------------------- | ----------------------------- |
@@ -125,6 +130,35 @@ Loaded at runtime by `loadScenarios.ts`, validated against Zod schemas
 (`types.ts`), and executed by `interpreter.spec.ts`. No code generation
 step — the YAML is interpreted directly by Playwright.
 
+### Scenario structure
+
+A UI scenario either uses flat `when`/`assert` (a single interaction
+followed by assertions) or `steps` (a list of interleaved
+interaction–assertion pairs):
+
+```yaml
+# Flat form — single when, then assert
+name: Simple page load
+when:
+  - navigate: /
+assert:
+  - ui.visible: main/
+
+# Stepped form — sequential when/assert pairs
+name: Multi-step flow
+steps:
+  - when:
+      - navigate: /login
+    assert:
+      - ui.visible: textbox/Password
+  - when:
+      - fill: textbox/Password
+        value: my_password
+      - click: button/Login
+    assert:
+      - ui.route: /home
+```
+
 ### `when:` — user interactions (ordered list)
 
 Elements are referenced by **ARIA role** and **accessible name** (never
@@ -141,7 +175,7 @@ CSS selectors).
 New interactions → extend the vocabulary with a new verb. No raw-TypeScript
 escape hatch.
 
-### `then:` — UI assertions (one or more)
+### `assert:` — UI assertions (one or more)
 
 | Form                                        | Assertion                                                            |
 | ------------------------------------------- | -------------------------------------------------------------------- |
@@ -152,6 +186,38 @@ escape hatch.
 | `ui.modal: open                             | closed` — Modal dialog state                                         |
 | `ui.route: <pattern>`                       | Current URL matches pattern                                          |
 | `ui.aria_snapshot: <name>`                  | Compare ARIA role/name/state tree against committed snapshot         |
+
+New assertions → extend the vocabulary with a new verb. No raw-TypeScript
+escape hatch.
+
+### `steps:` — multi-step scenarios
+
+Use `steps` when a scenario needs to checkpoint state mid-flow (e.g.
+verify a toast appeared before the page navigates). Each step is a
+`when`/`assert` pair executed sequentially. The `given` block runs once
+before all steps.
+
+```yaml
+steps:
+  - when:
+      - navigate: /login
+    assert:
+      - ui.visible: textbox/Password
+  - when:
+      - fill: textbox/Password
+        value: wrong
+      - click: button/Login
+    assert:
+      - ui.toast:
+          type: error
+          contains: unauthorized
+  - when:
+      - fill: textbox/Password
+        value: correct
+      - click: button/Login
+    assert:
+      - ui.route: /home
+```
 
 ### `covers:` (optional)
 

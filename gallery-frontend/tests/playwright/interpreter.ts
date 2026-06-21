@@ -1,6 +1,6 @@
 import type { Page, Locator } from '@playwright/test'
 import { expect } from '@playwright/test'
-import { UiWhenItem, UiThenItem } from './types'
+import { UiWhenItem, UiAssertItem, UiStep } from './types'
 import { GivenContext } from './executeGiven'
 import { CoverageTracer, assertionTarget } from './tracer'
 
@@ -41,13 +41,13 @@ export async function executeWhen(
   }
 }
 
-export async function executeThen(
+export async function executeAssert(
   page: Page,
-  then: UiThenItem[],
+  assert: UiAssertItem[],
   ctx: GivenContext,
   tracer?: CoverageTracer
 ): Promise<void> {
-  for (const assertion of then) {
+  for (const assertion of assert) {
     const target = assertionTarget(assertion)
     if ('ui.visible' in assertion) {
       tracer?.recordUI('ui.visible', target)
@@ -90,10 +90,22 @@ export async function executeThen(
       expect(expected).toContain(response.status())
     } else {
       throw new Error(
-        `Unknown then verb in assertion ${JSON.stringify(assertion)}. ` +
+        `Unknown assert verb in assertion ${JSON.stringify(assertion)}. ` +
           `Expected one of: ui.visible, ui.hidden, ui.text, ui.route, ui.modal, ui.toast, ui.aria_snapshot, api.response`
       )
     }
+  }
+}
+
+export async function executeSteps(
+  page: Page,
+  steps: UiStep[],
+  ctx: GivenContext,
+  tracer?: CoverageTracer
+): Promise<void> {
+  for (const step of steps) {
+    await executeWhen(page, step.when, ctx)
+    await executeAssert(page, step.assert, ctx, tracer)
   }
 }
 

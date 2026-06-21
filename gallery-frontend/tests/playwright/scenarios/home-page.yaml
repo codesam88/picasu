@@ -6,5 +6,5 @@ given:
   - empty: true
 when:
   - navigate: /
-then:
+assert:
   - ui.visible: main/

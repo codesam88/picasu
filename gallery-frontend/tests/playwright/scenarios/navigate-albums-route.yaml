@@ -6,5 +6,5 @@ given:
   - empty: true
 when:
   - navigate: /albums
-then:
+assert:
   - ui.route: /albums

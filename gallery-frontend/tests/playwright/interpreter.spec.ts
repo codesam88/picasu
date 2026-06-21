@@ -3,7 +3,7 @@ import * as path from 'path'
 import { test } from '@playwright/test'
 import { loadAllScenarios } from './loadScenarios'
 import { executeGiven, createGivenContext, resetAuthToken } from './executeGiven'
-import { executeWhen, executeThen } from './interpreter'
+import { executeWhen, executeAssert, executeSteps } from './interpreter'
 import { CoverageTracer } from './tracer'
 import { E2E_DIR } from './paths'
 
@@ -16,8 +16,13 @@ test.describe('UI scenarios', () => {
       const tracer = new CoverageTracer()
       const ctx = createGivenContext(scenario.name)
       const seeded = await executeGiven(request, scenario.given, ctx, tracer)
-      await executeWhen(page, scenario.when, seeded)
-      await executeThen(page, scenario.then, seeded, tracer)
+
+      if (scenario.steps) {
+        await executeSteps(page, scenario.steps, seeded, tracer)
+      } else {
+        await executeWhen(page, scenario.when!, seeded)
+        await executeAssert(page, scenario.assert!, seeded, tracer)
+      }
 
       const warnings = tracer.compare(scenario.covers)
 

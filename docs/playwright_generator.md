@@ -41,8 +41,19 @@ rewritten, as long as ARIA roles and accessible names are preserved.
 │  For each scenario:                          │
 │    createGivenContext(scenario.name)          │
 │    executeGiven(request, given, ctx, tracer)  │
-│    executeWhen(page, when, ctx)               │
-│    executeThen(page, then, ctx, tracer)       │
+│                                              │
+│    ┌─ if steps: ────────────────────────┐    │
+│    │ executeSteps(page, steps, ctx,     │    │
+│    │   tracer)                          │    │
+│    │   └─ for each step:                │    │
+│    │      executeWhen → executeAssert   │    │
+│    └────────────────────────────────────┘    │
+│    ┌─ else (flat when/assert): ────────┐    │
+│    │ executeWhen(page, when, ctx)       │    │
+│    │ executeAssert(page, assert, ctx,   │    │
+│    │   tracer)                          │    │
+│    └────────────────────────────────────┘    │
+│                                              │
 │    compare(tracer, covers)  → warnings        │
 └───────────────────┬──────────────────────────┘
                     │
@@ -111,7 +122,7 @@ naming convention.
 ### Scenario DSL (`scenarios/*.yaml`)
 
 Each file declares one scenario with optional `covers:`, required
-`given:`, `when:`, and `then:` blocks. Full verb reference in
+`given:`, `when:`, and `assert:` blocks. Full verb reference in
 `docs/scenario-dsl.md`.
 
 ```yaml
@@ -131,7 +142,7 @@ when:
   - fill: textbox/Password
     value: e2e_test_pwd
   - click: button/Login
-then:
+assert:
   - ui.route: /home
 ```
 
@@ -141,7 +152,7 @@ Declares what the scenario intends to exercise:
 
 - `covers.api` — HTTP method + path pairs the given phase calls (seed
   operations). Each entry is a string like `"POST /post/authenticate"`.
-- `covers.ui` — assertion targets the then phase uses. Format depends on
+- `covers.ui` — assertion targets the assert phase uses. Format depends on
   the verb: for role/label assertions the raw target (e.g. `main/`), for
   others a prefixed string (`route:/home`, `toast:error:unauthorized`,
   `snapshot:login-page`).
@@ -152,7 +163,7 @@ Warnings do not fail the test.
 
 ### Type definitions (`types.ts`)
 
-Zod schemas for the full DSL: given items, when verbs, then assertions,
+Zod schemas for the full DSL: given items, when verbs, assert assertions,
 covers block, and the top-level `UiScenario` wrapper. All YAML files are
 validated against these schemas at load time (hard error on mismatch).
 
@@ -201,9 +212,9 @@ Maps `when:` verbs to Playwright page actions:
 Element references are ARIA role/accessible name pairs (`role/name`),
 never CSS selectors.
 
-### Then interpreter (`interpreter.ts`, `executeThen`)
+### Assert interpreter (`interpreter.ts`, `executeAssert`)
 
-Maps `then:` verbs to Playwright `expect` assertions:
+Maps `assert:` verbs to Playwright `expect` assertions:
 
 | YAML verb            | Assertion                                  |
 | -------------------- | ------------------------------------------ |
@@ -224,7 +235,7 @@ Passive instrument that records what actually happened during a scenario:
 
 - **API calls:** method + path for every `request.fetch/post/put/get/delete`
   call made during seeding (intercepted via a Proxy on `APIRequestContext`).
-- **UI assertions:** verb + target for every `executeThen` assertion.
+- **UI assertions:** verb + target for every `executeAssert` assertion.
 
 After the scenario, `tracer.compare(covers)` returns a list of
 `CoverageWarning` entries for expected API/UI items that were never
@@ -241,10 +252,13 @@ loaded by `loadScenarios`:
 3. Create a `GivenContext` scoped to the scenario name (fixture paths
    are prefixed with a sanitized version of the name for isolation).
 4. Execute given steps (seed state via `executeGiven`).
-5. Execute when steps (drive the browser via `executeWhen`).
-6. Execute then steps (assert via `executeThen`).
-7. Compare tracer records against `covers:` declarations.
-8. Write per-scenario coverage report.
+5. Execute scenario steps:
+   - If the scenario uses `steps:`, iterate each when/assert pair
+     via `executeSteps`.
+   - Otherwise, run `executeWhen` then `executeAssert` for the flat
+     when/assert block.
+6. Compare tracer records against `covers:` declarations.
+7. Write per-scenario coverage report.
 
 Parallel workers each start their own backend instance on a unique port.
 Fixture paths are namespaced by scenario name, so concurrent runs of

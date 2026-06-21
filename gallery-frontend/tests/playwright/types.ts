@@ -109,26 +109,26 @@ export const UiWhenItem = z.union([
   UiWhenWait
 ])
 
-export const UiThenVisible = z
+export const UiAssertVisible = z
   .object({
     'ui.visible': RoleLabel
   })
   .strict()
 
-export const UiThenHidden = z
+export const UiAssertHidden = z
   .object({
     'ui.hidden': RoleLabel
   })
   .strict()
 
-export const UiThenText = z
+export const UiAssertText = z
   .object({
     'ui.text': RoleLabel,
     contains: z.string()
   })
   .strict()
 
-export const UiThenToast = z
+export const UiAssertToast = z
   .object({
     'ui.toast': z.object({
       type: z.enum(['error', 'success', 'warning']),
@@ -137,25 +137,25 @@ export const UiThenToast = z
   })
   .strict()
 
-export const UiThenModal = z
+export const UiAssertModal = z
   .object({
     'ui.modal': z.enum(['open', 'closed'])
   })
   .strict()
 
-export const UiThenRoute = z
+export const UiAssertRoute = z
   .object({
     'ui.route': z.string()
   })
   .strict()
 
-export const UiThenAriaSnapshot = z
+export const UiAssertAriaSnapshot = z
   .object({
     'ui.aria_snapshot': z.string()
   })
   .strict()
 
-export const UiThenApiResponse = z
+export const UiAssertApiResponse = z
   .object({
     'api.response': z.object({
       url: z.string(),
@@ -164,16 +164,23 @@ export const UiThenApiResponse = z
   })
   .strict()
 
-export const UiThenItem = z.union([
-  UiThenVisible,
-  UiThenHidden,
-  UiThenText,
-  UiThenToast,
-  UiThenModal,
-  UiThenRoute,
-  UiThenAriaSnapshot,
-  UiThenApiResponse
+export const UiAssertItem = z.union([
+  UiAssertVisible,
+  UiAssertHidden,
+  UiAssertText,
+  UiAssertToast,
+  UiAssertModal,
+  UiAssertRoute,
+  UiAssertAriaSnapshot,
+  UiAssertApiResponse
 ])
+
+export const UiStep = z
+  .object({
+    when: z.array(UiWhenItem).min(1),
+    assert: z.array(UiAssertItem).min(1)
+  })
+  .strict()
 
 export const Covers = z
   .object({
@@ -187,14 +194,24 @@ export const UiScenario = z
     name: z.string(),
     covers: Covers.optional().default({}),
     given: z.array(GivenItem).optional().default([]),
-    when: z.array(UiWhenItem).min(1),
-    then: z.array(UiThenItem).min(1)
+    steps: z.array(UiStep).min(1).optional(),
+    when: z.array(UiWhenItem).min(1).optional(),
+    assert: z.array(UiAssertItem).min(1).optional()
   })
   .strict()
+  .refine(
+    (data) => {
+      const hasSteps = data.steps !== undefined
+      const hasFlat = data.when !== undefined && data.assert !== undefined
+      return hasSteps !== hasFlat
+    },
+    { message: 'Specify either steps (multi-step) or when + assert (single-step), not both' }
+  )
 
 export type UiScenario = z.infer<typeof UiScenario>
 export type UiWhenItem = z.infer<typeof UiWhenItem>
-export type UiThenItem = z.infer<typeof UiThenItem>
+export type UiAssertItem = z.infer<typeof UiAssertItem>
+export type UiStep = z.infer<typeof UiStep>
 export type GivenMove = z.infer<typeof GivenMove>
 export type GivenItem = z.infer<typeof GivenItem>
 export type Covers = z.infer<typeof Covers>

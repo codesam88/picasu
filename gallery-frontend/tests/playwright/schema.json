@@ -139,7 +139,7 @@
         { "$ref": "#/definitions/uiWhenWait" }
       ]
     },
-    "uiThenVisible": {
+    "uiAssertVisible": {
       "type": "object",
       "properties": {
         "ui.visible": { "type": "string", "pattern": "^[a-z]+/" }
@@ -147,7 +147,7 @@
       "required": ["ui.visible"],
       "additionalProperties": false
     },
-    "uiThenHidden": {
+    "uiAssertHidden": {
       "type": "object",
       "properties": {
         "ui.hidden": { "type": "string", "pattern": "^[a-z]+/" }
@@ -155,7 +155,7 @@
       "required": ["ui.hidden"],
       "additionalProperties": false
     },
-    "uiThenText": {
+    "uiAssertText": {
       "type": "object",
       "properties": {
         "ui.text": { "type": "string", "pattern": "^[a-z]+/" },
@@ -164,7 +164,7 @@
       "required": ["ui.text", "contains"],
       "additionalProperties": false
     },
-    "uiThenToast": {
+    "uiAssertToast": {
       "type": "object",
       "properties": {
         "ui.toast": {
@@ -180,7 +180,7 @@
       "required": ["ui.toast"],
       "additionalProperties": false
     },
-    "uiThenModal": {
+    "uiAssertModal": {
       "type": "object",
       "properties": {
         "ui.modal": { "type": "string", "enum": ["open", "closed"] }
@@ -188,7 +188,7 @@
       "required": ["ui.modal"],
       "additionalProperties": false
     },
-    "uiThenRoute": {
+    "uiAssertRoute": {
       "type": "object",
       "properties": {
         "ui.route": { "type": "string" }
@@ -196,7 +196,7 @@
       "required": ["ui.route"],
       "additionalProperties": false
     },
-    "uiThenAriaSnapshot": {
+    "uiAssertAriaSnapshot": {
       "type": "object",
       "properties": {
         "ui.aria_snapshot": { "type": "string" }
@@ -204,7 +204,7 @@
       "required": ["ui.aria_snapshot"],
       "additionalProperties": false
     },
-    "uiThenApiResponse": {
+    "uiAssertApiResponse": {
       "type": "object",
       "properties": {
         "api.response": {
@@ -222,17 +222,34 @@
       "required": ["api.response"],
       "additionalProperties": false
     },
-    "uiThenItem": {
+    "uiAssertItem": {
       "oneOf": [
-        { "$ref": "#/definitions/uiThenVisible" },
-        { "$ref": "#/definitions/uiThenHidden" },
-        { "$ref": "#/definitions/uiThenText" },
-        { "$ref": "#/definitions/uiThenToast" },
-        { "$ref": "#/definitions/uiThenModal" },
-        { "$ref": "#/definitions/uiThenRoute" },
-        { "$ref": "#/definitions/uiThenAriaSnapshot" },
-        { "$ref": "#/definitions/uiThenApiResponse" }
+        { "$ref": "#/definitions/uiAssertVisible" },
+        { "$ref": "#/definitions/uiAssertHidden" },
+        { "$ref": "#/definitions/uiAssertText" },
+        { "$ref": "#/definitions/uiAssertToast" },
+        { "$ref": "#/definitions/uiAssertModal" },
+        { "$ref": "#/definitions/uiAssertRoute" },
+        { "$ref": "#/definitions/uiAssertAriaSnapshot" },
+        { "$ref": "#/definitions/uiAssertApiResponse" }
       ]
+    },
+    "uiStep": {
+      "type": "object",
+      "properties": {
+        "when": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/uiWhenItem" },
+          "minItems": 1
+        },
+        "assert": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/uiAssertItem" },
+          "minItems": 1
+        }
+      },
+      "required": ["when", "assert"],
+      "additionalProperties": false
     },
     "covers": {
       "type": "object",
@@ -258,18 +275,27 @@
           "items": { "$ref": "#/definitions/givenItem" },
           "minItems": 0
         },
+        "steps": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/uiStep" },
+          "minItems": 1
+        },
         "when": {
           "type": "array",
           "items": { "$ref": "#/definitions/uiWhenItem" },
           "minItems": 1
         },
-        "then": {
+        "assert": {
           "type": "array",
-          "items": { "$ref": "#/definitions/uiThenItem" },
+          "items": { "$ref": "#/definitions/uiAssertItem" },
           "minItems": 1
         }
       },
-      "required": ["name", "when", "then"],
+      "required": ["name"],
+      "oneOf": [
+        { "required": ["steps"] },
+        { "required": ["when", "assert"] }
+      ],
       "additionalProperties": false
     }
   }

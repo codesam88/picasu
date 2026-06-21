@@ -58,7 +58,7 @@ to catch configuration-specific divergence before a release.
 the runtime interpreter in `src/tests/backend_api.rs`.
 **Run:** `cargo nextest run`
 
-Each YAML file is a given/when/then spec for a real Rocket instance with
+Each YAML file is a given/when/assert spec for a real Rocket instance with
 ephemeral `IMAGE_HOME` and `DATA_HOME`. Internal redb state is opaque —
 tests observe only HTTP responses and filesystem layout. This boundary
 ensures the E2E suite survives internal storage changes as long as the
@@ -75,7 +75,7 @@ remain untouched.
 `capture` and `calc` blocks chain multi-call scenarios where one response
 feeds the next request.
 
-**Then** asserts against response status, JSON body (dot-path navigation,
+**Assert** validates against response status, JSON body (dot-path navigation,
 `array_min_counts`, `array_where`), filesystem presence/absence, and image
 serving.
 
@@ -92,13 +92,13 @@ under test.
 **Run:** `just frontend-e2e` (requires `npm run build` first — the backend
 serves `dist/` directly; Vite's dev server is not used).
 
-Same given/when/then structure as the API generator, and the **given** step
+Same given/when/assert structure as the API generator, and the **given** step
 seeds state through the same backend HTTP API (`executeGiven.ts`).
 
 **When** maps YAML verbs to Playwright page actions: `navigate` →
 `page.goto()`, `click` → `getByRole().click()`, etc.
 
-**Then** maps to Playwright `expect` assertions: `ui.visible`,
+**Assert** maps to Playwright `expect` assertions: `ui.visible`,
 `ui.hidden`, `ui.text`+`contains`, `ui.route`.
 
 The Playwright JSON reporter emits structured per-scenario results

@@ -1,4 +1,4 @@
-import type { Covers, UiThenItem } from './types'
+import type { Covers, UiAssertItem } from './types'
 
 export interface APIRecord {
   method: string
@@ -61,7 +61,7 @@ export class CoverageTracer {
   }
 }
 
-export function assertionTarget(assertion: UiThenItem): string {
+export function assertionTarget(assertion: UiAssertItem): string {
   if ('ui.visible' in assertion) return assertion['ui.visible']
   if ('ui.hidden' in assertion) return assertion['ui.hidden']
   if ('ui.text' in assertion) return assertion['ui.text']

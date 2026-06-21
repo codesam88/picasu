@@ -1,0 +1,34 @@
+name: Login handling covers all states
+covers:
+  api:
+    - POST /post/authenticate
+    - PUT /put/config/password
+  ui:
+    - textbox/Password
+    - route:/home
+    - toast:error:unauthorized
+    - snapshot:login-page
+given:
+  - empty: true
+  - config:
+      password: e2e_test_pwd
+steps:
+  - when:
+      - navigate: /login
+    assert:
+      - ui.visible: textbox/Password
+      - ui.aria_snapshot: login-page
+  - when:
+      - fill: textbox/Password
+        value: wrong_password
+      - click: button/Login
+    assert:
+      - ui.toast:
+          type: error
+          contains: unauthorized
+  - when:
+      - fill: textbox/Password
+        value: e2e_test_pwd
+      - click: button/Login
+    assert:
+      - ui.route: /home
