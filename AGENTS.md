@@ -6,15 +6,34 @@
 - In assessments and commit messages, reflect uncertainty where it exists. Avoid asserting things as definitive when the evidence is incomplete.
 - Skip superlatives and filler ("Clean.", "Perfect.", "This is the right call."). State what happened or what is true and move on.
 
-## Development Workflow
+## Project Orientation
+
+Urocissa is a self-hosted photo gallery for millions of images. The repo has two independent frontends and one backend:
+
+| Directory           | Stack                                | Role                                                                    |
+| ------------------- | ------------------------------------ | ----------------------------------------------------------------------- |
+| `gallery-backend/`  | Rust (Rocket, utoipa)                | HTTP API, image processing, metadata DB, file management                |
+| `gallery-frontend/` | Vue 3 + Vuetify + Pinia + Vue Router | Main photo gallery SPA — shipped with the server binary                 |
+
+**Entry points for a new agent:**
+
+1. **Architecture overview** — start with `docs/FRONTEND.md` (frontend) and `docs/design.md` (backend). They cover routing, state, component tree, filter system, and design decisions.
+2. **Dev commands** — read `justfile` at the repo root. Key recipes: `just check` (lint), `just test` (backend nextest + frontend vitest), `just frontend-check`, `just frontend-test`, `just format` (auto-format)
+3. **Backend sources** — `gallery-backend/src/main.rs` (server bootstrap), `gallery-backend/src/router/` (API routes), `gallery-backend/src/operations/` (domain logic), `gallery-backend/src/process/` (background tasks).
+4. **Frontend sources** — `gallery-frontend/src/main.ts` (app bootstrap), `gallery-frontend/src/route/routes.ts` (URL structure), `gallery-frontend/src/store/` (Pinia stores), `gallery-frontend/src/components/` (Vue components) — see `docs/FRONTEND.md` for the component tree.
+4. **Test strategy** — big picture in `docs/test-strategy.md`, detailed reference in `docs/scenario-dsl.md`, `docs/playwright_generator.md`.
+
+The `.plan/tasks/` directory tracks pending and completed work. Run `cargo xtask plan -k` to view the board.
+
+## Project Development Workflow
 
 - Take a step back and consider best-practice solutions before diving in.
 - Clarify ambiguous requirements with the user before starting.
 - Always present the proposed solution and its trade-offs for review before implementing.
-- After implementation, give the user a chance to review before moving on.
-- Run all relevant checks and tests before committing. Do not rely on precommit hooks to catch everything.
-  Refrain from including verbose examples and documentation in git commit messages or this AGENTS.md.
+- Before claiming success, run applicable tests to verify. In doubt, run full test suite: `just check; just test`.
+- When done, provide a summary of the change and give a chance to review or course correct. Commit only on request.
 - Commit messages should include a summary of what was changed and why. Do not include verbose examples or documentation. Only large commits may contain lists of changes.
+- Update code-level documentation where applicable. Refrain from including verbose examples and documentation without request.
 
 ## Task Management (.plan)
 
@@ -31,7 +50,7 @@ Every task lives as a markdown file in `.plan/tasks/<slug>.md` with YAML frontma
 | `blocked`     | stuck                     | note the blocker in the body                  |
 | `done`        | complete                  | finished                                      |
 
-### Agent conventions
+### Task Management Workflow
 
 - **Discover work:** `cargo xtask plan` lists all tasks; `cargo xtask plan -k` groups by status column. Filter with `-s open`, `-a backend`, `-t bug`, etc.
 - **Step back / plan:** `cargo xtask plan -k` to see the full board. Pull items from `backlog` or `idea` when choosing what to work on next.
@@ -50,46 +69,3 @@ Doc comments live next to the code, get updated with it, serve `cargo doc`, IDEs
 Items which do not fit into code documentation such as design decisions and usage instructions belong in separate user-focused documentation.
 
 Only document here what cannot be derived from the code itself.
-
-## Non-obvious invariants
-
-- **Album = directory.** Each media item has exactly one album (`metadata.album: Option<ArrayString<64>>`), corresponding to the directory it lives in. Albums are not stored separately — `DIR_ALBUM_CACHE` maps directory paths to album IDs at runtime, rebuilt from the filesystem on every startup. Moving a file to a different album via the API moves the physical file on disk. See `docs/design.md` § Albums.
-- **`DIR_ALBUM_CACHE` is a separate `Mutex`.** The album content filter (`generate_filter.rs`) is called while `TREE.in_memory` is already read-locked. Looking up a dir album's path through the tree would deadlock; `DIR_ALBUM_CACHE` avoids this.
-- **bitcode encodes struct fields positionally.** Field order in any `Encode`/`Decode` struct is part of the on-disk schema. Adding or reordering fields without a schema version bump silently corrupts existing records.
-- **Schema versioning prefix.** Each `AbstractData` record on disk starts with `[0xFF, version]`. `0xFF` is safe because bitcode encodes the 3-variant enum discriminant in bits [1:0] of the first byte (values 0–2); `0xFF` (bits [1:0] = 11) is structurally invalid for the enum and unambiguous as a version marker. Legacy unversioned records (no prefix) are decoded as v1. Schema migration is append-only — never remove a migration wrapper.
-- **HTTP error codes must not collide with framework codes.** Rocket returns 404 for unregistered routes. A domain-level "entity not found" must use `ErrorKind::InvalidInput` (→ 400) rather than `ErrorKind::NotFound` (→ 404) to remain distinguishable from routing failures. Reserve `ErrorKind::NotFound` only for cases where a routing-404 is genuinely indistinguishable from the domain error.
-
-[Comment from AI]: # (
-Your skepticism is well-placed. The value of AGENTS.md is often oversold. Let me break it down:
-
-What an agent can always derive itself:
-
-- File paths, function names, struct fields — grep/find/Read handle these instantly
-- Module structure — tree src/ or cargo modules
-- API surface — cargo doc
-- Recent changes — git log
-
-What an agent genuinely cannot derive from code:
-
-- Why a design decision was made
-- Invariants that are enforced by convention not types
-- Gotchas with dependencies .g., bitcode encodes positionally — field order matters
-- The dual-runtime split and why it exists
-
-That second list is short, stable, and doesn't rot — because if the invariant
-breaks, the system breaks. That's the only content worth putting in AGENTS.md.
-
-Deterministic options for code indexing:
-
-- cargo doc --document-private-items — full symbol index, always current
-- rust-analyzer LSP — agents with LSP support get this for free
-- cargo modules generate tree — module dependency graph
-- A justfile with documented recipes covering build/test/run workflows
-
-Practical recommendation:
-
-Keep AGENTS.md to under ~50 lines covering only the non-derivable invariants
-and gotchas. Invest the saved effort into good /// doc comments in the Rust
-source — they serve humans, IDEs, cargo doc, and agents equally, and they live
-next to the code they describe so they actually get updated.
-)
