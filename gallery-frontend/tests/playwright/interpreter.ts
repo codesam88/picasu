@@ -108,18 +108,23 @@ export async function executeAssert(
     } else if ('ui.count' in assertion) {
       tracer?.recordUI('ui.count', target)
       await expect(page.locator(assertion['ui.count'])).toHaveCount(assertion.equals)
+    } else if ('ui.sidebar_visible' in assertion) {
+      tracer?.recordUI('ui.sidebar_visible', target)
+      await expect(page.locator('#abstractData-col')).toContainText(
+        interpolate(assertion['ui.sidebar_visible'], ctx.vars)
+      )
     } else if ('ui.chip_visible' in assertion) {
       tracer?.recordUI('ui.chip_visible', target)
       await expect(
         page
-          .locator('#abstractData-col .v-chip')
+          .locator('[id="album-chip"], [id="filename-chip"]')
           .filter({ hasText: interpolate(assertion['ui.chip_visible'], ctx.vars) })
           .first()
       ).toBeVisible()
     } else {
       throw new Error(
         `Unknown assert verb in assertion ${JSON.stringify(assertion)}. ` +
-          `Expected one of: ui.visible, ui.hidden, ui.text, ui.route, ui.modal, ui.toast, ui.aria_snapshot, api.response, ui.text_visible, ui.count, ui.chip_visible`
+          `Expected one of: ui.visible, ui.hidden, ui.text, ui.route, ui.modal, ui.toast, ui.aria_snapshot, api.response, ui.text_visible, ui.count, ui.sidebar_visible, ui.chip_visible`
       )
     }
   }

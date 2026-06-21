@@ -266,6 +266,14 @@
       "required": ["ui.count", "equals"],
       "additionalProperties": false
     },
+    "uiAssertSidebarVisible": {
+      "type": "object",
+      "properties": {
+        "ui.sidebar_visible": { "type": "string" }
+      },
+      "required": ["ui.sidebar_visible"],
+      "additionalProperties": false
+    },
     "uiAssertChipVisible": {
       "type": "object",
       "properties": {
@@ -286,6 +294,7 @@
         { "$ref": "#/definitions/uiAssertApiResponse" },
         { "$ref": "#/definitions/uiAssertTextVisible" },
         { "$ref": "#/definitions/uiAssertCount" },
+        { "$ref": "#/definitions/uiAssertSidebarVisible" },
         { "$ref": "#/definitions/uiAssertChipVisible" }
       ]
     },

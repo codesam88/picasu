@@ -198,6 +198,12 @@ export const UiAssertCount = z
   })
   .strict()
 
+export const UiAssertSidebarVisible = z
+  .object({
+    'ui.sidebar_visible': z.string()
+  })
+  .strict()
+
 export const UiAssertChipVisible = z
   .object({
     'ui.chip_visible': z.string()
@@ -215,6 +221,7 @@ export const UiAssertItem = z.union([
   UiAssertApiResponse,
   UiAssertTextVisible,
   UiAssertCount,
+  UiAssertSidebarVisible,
   UiAssertChipVisible
 ])
 

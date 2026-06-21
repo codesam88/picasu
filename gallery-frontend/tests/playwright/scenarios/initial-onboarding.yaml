@@ -90,19 +90,19 @@ steps:
       - navigate: /albums
     assert:
       - ui.visible: main/
-      - ui.text_visible: nature
-      - ui.text_visible: travel
-      - ui.text_visible: pets
-      - ui.text_visible: family
-      - ui.text_visible: misc
+      - ui.chip_visible: nature
+      - ui.chip_visible: travel
+      - ui.chip_visible: pets
+      - ui.chip_visible: family
+      - ui.chip_visible: misc
       - ui.count: .parent
         equals: 5
 
   - when:
       - click.text: nature
     assert:
-      - ui.text_visible: sunset
-      - ui.text_visible: forest
+      - ui.chip_visible: sunset
+      - ui.chip_visible: forest
       - ui.count: '#view-page .parent'
         equals: 2
 
@@ -110,8 +110,8 @@ steps:
       - navigate: /albums
       - click.text: travel
     assert:
-      - ui.text_visible: paris
-      - ui.text_visible: london
+      - ui.chip_visible: paris
+      - ui.chip_visible: london
       - ui.count: '#view-page .parent'
         equals: 2
 
@@ -119,8 +119,8 @@ steps:
       - navigate: /albums
       - click.text: pets
     assert:
-      - ui.text_visible: dogs
-      - ui.text_visible: cats
+      - ui.chip_visible: dogs
+      - ui.chip_visible: cats
       - ui.count: '#view-page .parent'
         equals: 2
 
@@ -128,8 +128,8 @@ steps:
       - navigate: /albums
       - click.text: family
     assert:
-      - ui.text_visible: birthday
-      - ui.text_visible: holiday
+      - ui.chip_visible: birthday
+      - ui.chip_visible: holiday
       - ui.count: '#view-page .parent'
         equals: 2
 
