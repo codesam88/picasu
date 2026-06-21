@@ -100,13 +100,20 @@ export const UiWhenWait = z
   })
   .strict()
 
+export const UiWhenClickText = z
+  .object({
+    'click.text': z.string()
+  })
+  .strict()
+
 export const UiWhenItem = z.union([
   UiWhenNavigate,
   UiWhenClick,
   UiWhenFill,
   UiWhenSelect,
   UiWhenSubmit,
-  UiWhenWait
+  UiWhenWait,
+  UiWhenClickText
 ])
 
 export const UiAssertVisible = z
@@ -164,6 +171,19 @@ export const UiAssertApiResponse = z
   })
   .strict()
 
+export const UiAssertTextVisible = z
+  .object({
+    'ui.text_visible': z.string()
+  })
+  .strict()
+
+export const UiAssertCount = z
+  .object({
+    'ui.count': z.string(),
+    equals: z.number().int().nonnegative()
+  })
+  .strict()
+
 export const UiAssertItem = z.union([
   UiAssertVisible,
   UiAssertHidden,
@@ -172,7 +192,9 @@ export const UiAssertItem = z.union([
   UiAssertModal,
   UiAssertRoute,
   UiAssertAriaSnapshot,
-  UiAssertApiResponse
+  UiAssertApiResponse,
+  UiAssertTextVisible,
+  UiAssertCount
 ])
 
 export const UiStep = z

@@ -129,6 +129,14 @@
       "required": ["wait.ms"],
       "additionalProperties": false
     },
+    "uiWhenClickText": {
+      "type": "object",
+      "properties": {
+        "click.text": { "type": "string" }
+      },
+      "required": ["click.text"],
+      "additionalProperties": false
+    },
     "uiWhenItem": {
       "oneOf": [
         { "$ref": "#/definitions/uiWhenNavigate" },
@@ -136,7 +144,8 @@
         { "$ref": "#/definitions/uiWhenFill" },
         { "$ref": "#/definitions/uiWhenSelect" },
         { "$ref": "#/definitions/uiWhenSubmit" },
-        { "$ref": "#/definitions/uiWhenWait" }
+        { "$ref": "#/definitions/uiWhenWait" },
+        { "$ref": "#/definitions/uiWhenClickText" }
       ]
     },
     "uiAssertVisible": {
@@ -222,6 +231,23 @@
       "required": ["api.response"],
       "additionalProperties": false
     },
+    "uiAssertTextVisible": {
+      "type": "object",
+      "properties": {
+        "ui.text_visible": { "type": "string" }
+      },
+      "required": ["ui.text_visible"],
+      "additionalProperties": false
+    },
+    "uiAssertCount": {
+      "type": "object",
+      "properties": {
+        "ui.count": { "type": "string" },
+        "equals": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["ui.count", "equals"],
+      "additionalProperties": false
+    },
     "uiAssertItem": {
       "oneOf": [
         { "$ref": "#/definitions/uiAssertVisible" },
@@ -231,7 +257,9 @@
         { "$ref": "#/definitions/uiAssertModal" },
         { "$ref": "#/definitions/uiAssertRoute" },
         { "$ref": "#/definitions/uiAssertAriaSnapshot" },
-        { "$ref": "#/definitions/uiAssertApiResponse" }
+        { "$ref": "#/definitions/uiAssertApiResponse" },
+        { "$ref": "#/definitions/uiAssertTextVisible" },
+        { "$ref": "#/definitions/uiAssertCount" }
       ]
     },
     "uiStep": {

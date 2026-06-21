@@ -32,10 +32,13 @@ export async function executeWhen(
       await page.keyboard.press('Enter')
     } else if ('wait.ms' in step) {
       await page.waitForTimeout(step['wait.ms'])
+    } else if ('click.text' in step) {
+      const text = interpolate(step['click.text'], ctx.vars)
+      await page.locator('.parent').filter({ hasText: text }).first().click()
     } else {
       throw new Error(
         `Unknown when verb in step ${JSON.stringify(step)}. ` +
-          `Expected one of: navigate, click, fill, select, submit, wait.ms`
+          `Expected one of: navigate, click, fill, select, submit, wait.ms, click.text`
       )
     }
   }
@@ -88,10 +91,18 @@ export async function executeAssert(
       const response = await page.request.fetch(url)
       const expected = Array.isArray(spec.status) ? spec.status : [spec.status]
       expect(expected).toContain(response.status())
+    } else if ('ui.text_visible' in assertion) {
+      tracer?.recordUI('ui.text_visible', target)
+      await expect(
+        page.getByText(interpolate(assertion['ui.text_visible'], ctx.vars)).first()
+      ).toBeVisible()
+    } else if ('ui.count' in assertion) {
+      tracer?.recordUI('ui.count', target)
+      await expect(page.locator(assertion['ui.count'])).toHaveCount(assertion.equals)
     } else {
       throw new Error(
         `Unknown assert verb in assertion ${JSON.stringify(assertion)}. ` +
-          `Expected one of: ui.visible, ui.hidden, ui.text, ui.route, ui.modal, ui.toast, ui.aria_snapshot, api.response`
+          `Expected one of: ui.visible, ui.hidden, ui.text, ui.route, ui.modal, ui.toast, ui.aria_snapshot, api.response, ui.text_visible`
       )
     }
   }
