@@ -161,31 +161,41 @@ steps:
 
 ### `when:` — user interactions (ordered list)
 
-Elements are referenced by **ARIA role** and **accessible name** (never
-CSS selectors).
+Elements with ARIA labels are referenced by **role** and **accessible name**
+(e.g. `button/Login`). Elements without ARIA labels use one of the
+text/icon-based verbs below.
 
-| Verb                                      | Description                                    |
-| ----------------------------------------- | ---------------------------------------------- |
-| `navigate: <route>`                       | Go to a URL pattern (e.g. `/`, `/albums/<id>`) |
-| `click: <role>/<label>`                   | Click element by ARIA role + accessible name   |
-| `fill: <role>/<label>, value: <value>`    | Type into an input                             |
-| `select: <role>/<label>, option: <label>` | Choose from listbox/select                     |
-| `submit:`                                 | Submit the current form                        |
+| Verb                                          | Description                                                       |
+| --------------------------------------------- | ----------------------------------------------------------------- |
+| `navigate: <route>`                           | Go to a URL pattern (e.g. `/`, `/albums/<id>`)                   |
+| `click: <role>/<label>`                       | Click element by ARIA role + accessible name                      |
+| `click.text: <text>`                          | Click an album card by its chip label (uses `.parent` container)  |
+| `click.icon: <icon-class>`                    | Click a button by Material Design Icon class (e.g. `mdi-information-outline`) |
+| `click.first`                                 | Click the first grid image (`.desktop-small-image`) in the active overlay |
+| `fill: <role>/<label>, value: <value>`        | Type into an input                                                |
+| `select: <role>/<label>, option: <label>`     | Choose from listbox/select                                        |
+| `submit`                                      | Submit the current form                                           |
+| `wait.ms: <milliseconds>`                     | Pause execution (use sparingly — prefer auto-waiting assertions)  |
 
 New interactions → extend the vocabulary with a new verb. No raw-TypeScript
 escape hatch.
 
 ### `assert:` — UI assertions (one or more)
 
-| Form                                        | Assertion                                                            |
-| ------------------------------------------- | -------------------------------------------------------------------- |
-| `ui.visible: <role>/<label>`                | Element is visible                                                   |
-| `ui.hidden: <role>/<label>`                 | Element is hidden/absent                                             |
-| `ui.text: <role>/<label>, contains: <text>` | Element text includes string                                         |
-| `ui.toast: type: <type>, contains: <text>`  | Toast of given type (`error`/`success`/`warning`) with matching text |
-| `ui.modal: open                             | closed` — Modal dialog state                                         |
-| `ui.route: <pattern>`                       | Current URL matches pattern                                          |
-| `ui.aria_snapshot: <name>`                  | Compare ARIA role/name/state tree against committed snapshot         |
+| Form                                             | Assertion                                                            |
+| ------------------------------------------------ | -------------------------------------------------------------------- |
+| `ui.visible: <role>/<label>`                     | Element is visible                                                   |
+| `ui.hidden: <role>/<label>`                      | Element is hidden/absent                                             |
+| `ui.text: <role>/<label>, contains: <text>`      | Element text includes string                                         |
+| `ui.text_visible: <text>`                        | Text is visible anywhere on the page                                 |
+| `ui.chip_visible: <text>`                        | Album/filename chip with given text is visible in a grid card        |
+| `ui.sidebar_visible: <text>`                     | Text is visible inside the metadata sidebar (`#abstractData-col`)    |
+| `ui.count: <selector>, equals: <number>`         | Count of elements matching a CSS selector equals the given number    |
+| `ui.toast: type: <type>, contains: <text>`       | Toast of given type (`error`/`success`/`warning`) with matching text |
+| `ui.modal: open                                  | closed` — Modal dialog state                                         |
+| `ui.route: <pattern>`                            | Current URL matches pattern                                          |
+| `ui.aria_snapshot: <name>`                       | Compare ARIA role/name/state tree against committed snapshot         |
+| `api.response: url: <url>, status: <code>`       | Backend API call returns expected status code                        |
 
 New assertions → extend the vocabulary with a new verb. No raw-TypeScript
 escape hatch.
@@ -263,8 +273,11 @@ schema in `types.ts`.
 
 ## Idempotency and isolation
 
-- Each scenario creates its own fixtures under namespaced paths
-  (sanitized scenario name used as a directory prefix within `IMAGE_HOME`).
+- Each Playwright worker runs its own backend instance with a unique
+  `E2E_DIR` (see `paths.ts`), so fixture files on disk are already
+  isolated. No scenario-name directory prefix is used — albums are
+  placed at the root of `IMAGE_HOME` and respect the `root_album`
+  backend filter.
 - In API scenarios, all assertions are made through the HTTP API only
   — no direct redb access.
 - In UI scenarios, state is seeded before the browser navigates to the

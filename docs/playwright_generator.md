@@ -201,12 +201,15 @@ wraps the `APIRequestContext` in a Proxy that records every HTTP call
 
 Maps `when:` verbs to Playwright page actions:
 
-| YAML verb  | Playwright call                          |
-| ---------- | ---------------------------------------- |
-| `navigate` | `page.goto(path)`                        |
-| `click`    | `page.getByRole(role, { name }).click()` |
-| `fill`     | `page.getByRole(...).fill(value)`        |
-| `select`   | `page.getByRole(...).selectOption()`     |
+| YAML verb     | Playwright call                                              |
+| ------------- | ------------------------------------------------------------ |
+| `navigate`    | `page.goto(path)`                                            |
+| `click`       | `page.getByRole(role, { name }).click()`                     |
+| `click.text`  | `page.locator('.parent').filter({ hasText }).first().click()` |
+| `click.icon`  | `page.evaluate` → `document.querySelector('.' + cls).closest('button').click()` |
+| `click.first` | `page.locator('#view-page .desktop-small-image').first().click()` |
+| `fill`        | `page.getByRole(...).fill(value)`                             |
+| `select`      | `page.getByRole(...).selectOption()`                         |
 | `submit`   | `page.keyboard.press('Enter')`           |
 
 Element references are ARIA role/accessible name pairs (`role/name`),
@@ -216,15 +219,20 @@ never CSS selectors.
 
 Maps `assert:` verbs to Playwright `expect` assertions:
 
-| YAML verb            | Assertion                                  |
-| -------------------- | ------------------------------------------ |
-| `ui.visible`         | `toBeVisible()`                            |
-| `ui.hidden`          | `not.toBeVisible()`                        |
-| `ui.text + contains` | `toContainText(value)`                     |
-| `ui.route`           | `toHaveURL(regex)`                         |
-| `ui.modal`           | `dialog.toBeVisible() / not.toBeVisible()` |
-| `ui.toast`           | Snackbar visible with matching text        |
-| `ui.aria_snapshot`   | `toMatchAriaSnapshot({ name })`            |
+| YAML verb               | Assertion                                  |
+| ----------------------- | ------------------------------------------ |
+| `ui.visible`            | `toBeVisible()`                            |
+| `ui.hidden`             | `not.toBeVisible()`                        |
+| `ui.text + contains`    | `toContainText(value)`                     |
+| `ui.text_visible`       | `getByText(text).first().toBeVisible()`    |
+| `ui.chip_visible`       | `[id="album-chip"]` or `[id="filename-chip"]` chip visible with text |
+| `ui.sidebar_visible`    | `#abstractData-col` contains text          |
+| `ui.count + equals`     | `locator(selector).toHaveCount(n)`         |
+| `ui.route`              | `toHaveURL(regex)`                         |
+| `ui.modal`              | `dialog.toBeVisible() / not.toBeVisible()` |
+| `ui.toast`              | Snackbar visible with matching text        |
+| `ui.aria_snapshot`      | `toMatchAriaSnapshot({ name })`            |
+| `api.response`          | Fetch URL and assert status code(s)        |
 
 The function accepts an optional `CoverageTracer` — when provided, it
 records the verb and target of every assertion.
