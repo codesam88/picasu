@@ -7,6 +7,8 @@ use rocket::http::{ContentType, Status};
 use rocket::local::blocking::Client;
 use serde_json::Value;
 
+use xtask::test_image::{generate_batch, PhotoSpec};
+
 use crate::tests::bootstrap::*;
 use crate::tests::fixtures::*;
 
@@ -396,6 +398,8 @@ fn interpret_scenario(scenario: &Value) {
             let mut remove_files: Vec<String> = Vec::new();
             let mut has_id_as = false;
 
+            let mut photo_specs: Vec<PhotoSpec> = Vec::new();
+
             for item in items {
                 if let Some(dir) = item["dir_album"].as_str() {
                     let trimmed = dir.trim_start_matches('/');
@@ -405,32 +409,21 @@ fn interpret_scenario(scenario: &Value) {
                     if item.get("id_as").is_some() {
                         has_id_as = true;
                         let ph = format!("{trimmed}/.__urocissa_ph__.jpg");
-                        write_real_jpeg(&data.join(&ph), path_color(&ph));
+                        photo_specs.push(PhotoSpec {
+                            output: Some(data.join(&ph).to_string_lossy().to_string()),
+                            format: Some("jpeg".into()),
+                            width: Some(4),
+                            height: Some(4),
+                            tags: None,
+                            exif_date: None,
+                        });
                     }
                 } else if let Some(photo) = item["photo"].as_str() {
                     let trimmed = photo.trim_start_matches('/');
-                    if let Some(parent) = Path::new(trimmed).parent() {
-                        if !parent.as_os_str().is_empty() {
-                            std::fs::create_dir_all(&data.join(parent))
-                                .unwrap_or_else(|e| panic!("create dir {parent:?}: {e}"));
-                        }
-                    }
 
                     if item.get("id_as").is_some() {
                         has_id_as = true;
                     }
-
-                    let color = item
-                        .get("color")
-                        .and_then(|c| c.as_array())
-                        .map(|c| {
-                            (
-                                c[0].as_i64().unwrap_or(128) as u8,
-                                c[1].as_i64().unwrap_or(128) as u8,
-                                c[2].as_i64().unwrap_or(128) as u8,
-                            )
-                        })
-                        .unwrap_or((128u8, 128u8, 128u8));
 
                     let tags: Vec<String> = item["tags"]
                         .as_array()
@@ -443,41 +436,15 @@ fn interpret_scenario(scenario: &Value) {
 
                     let exif_date = item["exif_date"].as_str();
                     let has_tags = !tags.is_empty();
-                    let has_date = exif_date.is_some();
 
-                    match (has_tags, has_date) {
-                        (true, true) => {
-                            let refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
-                            write_real_jpeg_with_xmp_and_exif(
-                                &data.join(trimmed),
-                                [color.0, color.1, color.2],
-                                &refs,
-                                exif_date,
-                            );
-                        }
-                        (true, false) => {
-                            let refs: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
-                            write_real_jpeg_with_xmp_keywords(
-                                &data.join(trimmed),
-                                [color.0, color.1, color.2],
-                                &refs,
-                            );
-                        }
-                        (false, true) => {
-                            write_real_jpeg_with_exif(
-                                &data.join(trimmed),
-                                [color.0, color.1, color.2],
-                                exif_date.unwrap(),
-                            );
-                        }
-                        (false, false) => {
-                            if item.get("color").is_some() {
-                                write_real_jpeg(&data.join(trimmed), [color.0, color.1, color.2]);
-                            } else {
-                                write_real_jpeg(&data.join(trimmed), path_color(trimmed));
-                            }
-                        }
-                    }
+                    photo_specs.push(PhotoSpec {
+                        output: Some(data.join(trimmed).to_string_lossy().to_string()),
+                        format: Some("jpeg".into()),
+                        width: Some(4),
+                        height: Some(4),
+                        tags: if has_tags { Some(tags) } else { None },
+                        exif_date: exif_date.map(|d| d.to_string()),
+                    });
 
                     let idx = vars.len();
                     vars.insert(format!("photo_{idx}"), format!("photo_{idx}"));
@@ -488,6 +455,10 @@ fn interpret_scenario(scenario: &Value) {
                         write_config(&serde_json::json!({"read_only_mode": enabled}));
                     }
                 }
+            }
+
+            if !photo_specs.is_empty() {
+                generate_batch(&photo_specs).expect("generate photos");
             }
 
             if has_scan_items {

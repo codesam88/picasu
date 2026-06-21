@@ -16,10 +16,8 @@ export const GivenPhoto = z
     format: z.enum(['jpeg', 'png']).optional(),
     width: z.number().int().positive().optional(),
     height: z.number().int().positive().optional(),
-    seed: z.number().int().nonnegative().optional(),
     tags: z.array(z.string()).optional(),
-    exif_date: z.string().optional(),
-    color: z.array(z.number().int().min(0).max(255)).length(3).optional()
+    exif_date: z.string().optional()
   })
   .strict()
 

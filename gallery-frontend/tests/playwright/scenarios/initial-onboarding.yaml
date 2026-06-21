@@ -24,64 +24,44 @@ given:
 
   - photo: nature/sunset/img01.jpg
     tags: [sunset, nature, landscape]
-    seed: 1
   - photo: nature/sunset/img02.jpg
     tags: [sunset, nature, landscape]
-    seed: 2
   - photo: nature/forest/img01.jpg
     tags: [forest, nature]
-    seed: 3
   - photo: nature/forest/img02.jpg
     tags: [forest, nature]
-    seed: 4
   - photo: travel/paris/img01.jpg
     tags: [paris, travel, europe]
-    seed: 5
   - photo: travel/paris/img02.jpg
     tags: [paris, travel, europe]
-    seed: 6
   - photo: travel/london/img01.jpg
     tags: [london, travel, europe]
-    seed: 7
   - photo: travel/london/img02.jpg
     tags: [london, travel, europe]
-    seed: 8
   - photo: pets/dogs/img01.jpg
     tags: [dog, pets]
-    seed: 9
   - photo: pets/dogs/img02.jpg
     tags: [dog, pets]
-    seed: 10
   - photo: pets/cats/img01.jpg
     tags: [cat, pets]
-    seed: 11
   - photo: pets/cats/img02.jpg
     tags: [cat, pets]
-    seed: 12
   - photo: family/birthday/img01.jpg
     tags: [birthday, family, celebration]
-    seed: 13
   - photo: family/birthday/img02.jpg
     tags: [birthday, family, celebration]
-    seed: 14
   - photo: family/holiday/img01.jpg
     tags: [holiday, family]
-    seed: 15
   - photo: family/holiday/img02.jpg
     tags: [holiday, family]
-    seed: 16
   - photo: misc/img01.jpg
     tags: [beach, summer]
-    seed: 17
   - photo: misc/img02.jpg
     tags: [hiking, adventure]
-    seed: 18
   - photo: misc/img03.jpg
     tags: [camping, adventure]
-    seed: 19
   - photo: misc/img04.jpg
     tags: [sunset, beach]
-    seed: 20
 
 when:
   - navigate: /login

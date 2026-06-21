@@ -48,10 +48,8 @@ interface PhotoManifestEntry {
   format?: string
   width?: number
   height?: number
-  color?: number[]
   exif_date?: string
   tags?: string[]
-  seed?: number
 }
 
 export interface GivenContext {
@@ -147,23 +145,18 @@ export async function executeGiven(
         format?: string
         width?: number
         height?: number
-        seed?: number
         tags?: string[]
         exif_date?: string
-        color?: number[]
       }
       const qualified = qualifyPath(ph.photo, ns)
       const filePath = path.join(IMAGE_HOME, qualified)
-      fs.mkdirSync(path.dirname(filePath), { recursive: true })
 
       const entry: PhotoManifestEntry = { output: filePath }
       if (ph.format) entry.format = ph.format
       if (ph.width) entry.width = ph.width
       if (ph.height) entry.height = ph.height
-      if (ph.seed) entry.seed = ph.seed
       if (ph.tags) entry.tags = ph.tags
       if (ph.exif_date) entry.exif_date = ph.exif_date
-      if (ph.color) entry.color = ph.color
       photoManifest.push(entry)
       seedEntries.push({ type: 'photo', qualifiedPath: qualified, id_as: ph.id_as })
     }

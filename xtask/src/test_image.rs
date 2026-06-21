@@ -252,6 +252,20 @@ pub fn generate_photo_file(spec: &PhotoSpec, path: &Path, rng: &mut SmallRng, st
     Ok(mode)
 }
 
+pub fn generate_batch(specs: &[PhotoSpec]) -> std::io::Result<()> {
+    let mut rng = SmallRng::from_rng(&mut rand::rng());
+    let mut stats = PerfCounter::new();
+    for spec in specs {
+        let path = spec
+            .output
+            .as_ref()
+            .expect("each batch entry must have an output path");
+        generate_photo_file(spec, Path::new(path), &mut rng, &mut stats, ACTIVE_MODES)?;
+    }
+    stats.report();
+    Ok(())
+}
+
 const PALETTE_MUTED: &[[u8; 3]] = &[
     [70, 130, 180],   [60, 160, 90],    [200, 100, 60],
     [220, 180, 50],   [140, 90, 60],    [80, 150, 140],
