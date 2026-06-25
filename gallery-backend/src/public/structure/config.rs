@@ -51,8 +51,6 @@ pub struct AppConfig {
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub discord_hook_url: Option<String>,
 }
 
 impl Default for AppConfig {
@@ -68,7 +66,6 @@ impl Default for AppConfig {
             disable_img: false,
             password: None,
             auth_key: None,
-            discord_hook_url: None,
         }
     }
 }
@@ -138,13 +135,11 @@ pub(crate) struct TomlSecrets {
     pub(crate) password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) auth_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) discord_hook_url: Option<String>,
 }
 
 impl Default for TomlSecrets {
     fn default() -> Self {
-        Self { password: None, auth_key: None, discord_hook_url: None }
+        Self { password: None, auth_key: None }
     }
 }
 
@@ -161,7 +156,6 @@ impl From<TomlFile> for AppConfig {
             disable_img: t.gallery.disable_img,
             password: t.secrets.password,
             auth_key: t.secrets.auth_key,
-            discord_hook_url: t.secrets.discord_hook_url,
         }
     }
 }
@@ -180,7 +174,6 @@ impl From<AppConfig> for TomlFile {
             secrets: TomlSecrets {
                 password: c.password,
                 auth_key: c.auth_key,
-                discord_hook_url: c.discord_hook_url,
             },
         }
     }
@@ -332,10 +325,6 @@ impl AppConfig {
             let trimmed = val.trim().to_string();
             config.auth_key = if trimmed.is_empty() { None } else { Some(trimmed) };
         }
-        if let Ok(val) = std::env::var("UROCISSA_DISCORD_HOOK_URL") {
-            let trimmed = val.trim().to_string();
-            config.discord_hook_url = if trimmed.is_empty() { None } else { Some(trimmed) };
-        }
     }
 
     pub fn update(mut new_config: AppConfig) -> anyhow::Result<()> {
@@ -415,7 +404,6 @@ mod tests {
             disable_img: false,
             password: Some("secret".to_string()),
             auth_key: None,
-            discord_hook_url: Some("https://discord.test/webhook".to_string()),
         };
 
         let tf = TomlFile::from(config.clone());
@@ -435,7 +423,6 @@ mod tests {
             max_upload_size: "200MiB".to_string(),
             password: Some("hunter2".to_string()),
             auth_key: Some("jwt-secret".to_string()),
-            discord_hook_url: None,
             ..AppConfig::default()
         };
 
@@ -452,7 +439,6 @@ mod tests {
         assert!(toml_str.contains("image_home = \"/images\""));
         assert!(toml_str.contains("password = \"hunter2\""));
         assert!(toml_str.contains("auth_key = \"jwt-secret\""));
-        assert!(!toml_str.contains("discord_hook_url"), "None secrets should be omitted");
     }
 
     #[test]

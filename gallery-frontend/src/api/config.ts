@@ -13,8 +13,6 @@ export interface AppConfig {
   authKey: string | null
   hasAuthKey: boolean
   hasPassword: boolean
-  hasDiscordHook: boolean
-  discordHookUrl: string | null
   imagePath: string | null
   uploadFolder: string
   maxUploadSize: string

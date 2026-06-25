@@ -23,7 +23,7 @@ read_only_mode = false
 disable_img = false
 
 [secrets]
-# password, auth_key, discord_hook_url only present if configured
+# password, auth_key only present if configured
 ```
 
 ### `[server]` section
@@ -56,7 +56,6 @@ Sensitive authentication and notification credentials. Only present when configu
 | ------------------ | -------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `password`         | string \| null | `null`  | Password required to log in to the web interface. Set via the web UI or the password endpoint.                                                                                                                                    |
 | `auth_key`         | string \| null | `null`  | Secret key for signing JWT tokens. If `null`, a random key is generated on every startup (invalidates sessions on restart).                                                                                                       |
-| `discord_hook_url` | string \| null | `null`  | Discord Webhook URL for error notifications.                                                                                                                                                                                      |
 
 > **`data_home`** and **`image_home`** are resolved on first launch from
 > environment variables or defaults and written to `config.toml`. On
@@ -109,8 +108,7 @@ The following env vars override the config file on every launch:
 | `UROCISSA_IMAGE_HOME`        | `gallery.image_home`         |
 | `UROCISSA_READ_ONLY_MODE`    | `gallery.read_only_mode`     |
 | `UROCISSA_UPLOAD_FOLDER`     | `gallery.upload_folder`      |
-| `UROCISSA_AUTH_KEY`          | `secrets.auth_key`           |
-| `UROCISSA_DISCORD_HOOK_URL`  | `secrets.discord_hook_url`   |
+| `UROCISSA_AUTH_KEY`          | `secrets.auth_key`         |
 
 ## Advanced: Rocket configuration
 

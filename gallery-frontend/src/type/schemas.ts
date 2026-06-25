@@ -218,7 +218,6 @@ export const PublicConfigSchema = z.object({
   imagePath: z.string().nullable(), // Option<PathBuf>
   uploadFolder: z.string(),
   maxUploadSize: z.string(),
-  discordHookUrl: z.string().nullable().optional(),
   readOnlyMode: z.boolean(),
   disableImg: z.boolean()
 })

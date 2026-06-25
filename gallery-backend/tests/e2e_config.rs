@@ -44,7 +44,7 @@ fn e2e_config_precedence() {
     // For each field type:
     //   server.*  ← address, port, max_upload_size
     //   gallery.* ← data_home, image_home, upload_folder, read_only_mode, disable_img
-    //   secrets.* ← password, auth_key, discord_hook_url
+    //   secrets.* ← password, auth_key
     //
     // Env overrides are set for port and upload_folder (verify env wins),
     // while max_upload_size and read_only_mode are left to the config file
@@ -64,7 +64,6 @@ upload_folder = "my_uploads"
 [secrets]
 password = "secret123"
 auth_key = "jwt-key-from-toml"
-discord_hook_url = "https://discord.test/toml"
 "#,
     )
     .unwrap();
@@ -85,8 +84,6 @@ discord_hook_url = "https://discord.test/toml"
         std::env::set_var("UROCISSA_ADDRESS", "10.0.0.55");
         std::env::set_var("UROCISSA_DISABLE_IMG", "true");
         std::env::set_var("UROCISSA_AUTH_KEY", "jwt-key-from-env");
-        // Empty env should clear config file value
-        std::env::set_var("UROCISSA_DISCORD_HOOK_URL", "");
     }
 
     // ── Load config ───────────────────────────────────────────────────
@@ -113,8 +110,7 @@ discord_hook_url = "https://discord.test/toml"
             Some("jwt-key-from-env"),
             "UROCISSA_AUTH_KEY overrides secrets block"
         );
-        // Empty env var clears the config file value
-        assert!(cfg.discord_hook_url.is_none(), "empty UROCISSA_DISCORD_HOOK_URL clears value");
+
 
         // ── Config file wins over default ─────────
         assert_eq!(cfg.password.as_deref(), Some("secret123"), "password from secrets block");
@@ -154,6 +150,5 @@ discord_hook_url = "https://discord.test/toml"
         std::env::remove_var("UROCISSA_UPLOAD_FOLDER");
         std::env::remove_var("UROCISSA_MAX_UPLOAD_SIZE");
         std::env::remove_var("UROCISSA_AUTH_KEY");
-        std::env::remove_var("UROCISSA_DISCORD_HOOK_URL");
     }
 }

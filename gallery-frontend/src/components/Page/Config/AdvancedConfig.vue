@@ -33,40 +33,6 @@
       </v-list-item>
 
       <v-divider></v-divider>
-
-      <v-list-item
-        title="Discord Notifications"
-        subtitle="Send backend error messages to Discord Webhook"
-        @click="hasDiscordHook = !hasDiscordHook"
-      >
-        <template #append>
-          <v-switch
-            v-model="hasDiscordHook"
-            color="primary"
-            hide-details
-            inset
-            @click.stop
-          ></v-switch>
-        </template>
-      </v-list-item>
-
-      <v-list-item>
-        <v-text-field
-          v-model="discordHookUrl"
-          :key="hasDiscordHook.toString()"
-          :rules="[(v) => !hasDiscordHook || !!v || 'Required']"
-          label="Discord Webhook URL"
-          prepend-icon="mdi-webhook"
-          placeholder="https://discord.com/api/..."
-          variant="outlined"
-          density="compact"
-          :disabled="!hasDiscordHook"
-          @click.stop
-          class="py-2"
-        ></v-text-field>
-      </v-list-item>
-
-      <v-divider></v-divider>
       <v-list-item
         title="JWT Authentication Key"
         subtitle="Disable to use random key"
@@ -108,21 +74,13 @@ import { useMessageStore } from '@/store/messageStore'
 import type { AppConfig } from '@/api/config'
 
 const authKey = defineModel<string | null>('authKey', { required: true })
-const discordHookUrl = defineModel<string | null>('discordHookUrl', { required: true })
 const readOnlyMode = defineModel<boolean>('readOnlyMode', { required: true })
 const disableImg = defineModel<boolean>('disableImg', { required: true })
-const hasDiscordHook = defineModel<boolean>('hasDiscordHook', { required: true })
 const hasAuthKey = defineModel<boolean>('hasAuthKey', { required: true })
 
 const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
 const loading = ref(false)
-
-watch(hasDiscordHook, (newValue) => {
-  if (!newValue) {
-    discordHookUrl.value = ''
-  }
-})
 
 watch(hasAuthKey, (newValue) => {
   if (!newValue) {
@@ -139,15 +97,6 @@ const save = async () => {
     return
   }
 
-  if (
-    hasDiscordHook.value &&
-    (discordHookUrl.value == null || discordHookUrl.value.trim() === '')
-  ) {
-    messageStore.error('Discord Webhook URL is required when enabled')
-    loading.value = false
-    return
-  }
-
   const payload: Partial<AppConfig> = {
     readOnlyMode: readOnlyMode.value,
     disableImg: disableImg.value
@@ -157,13 +106,6 @@ const save = async () => {
     payload.authKey = ''
   } else if (authKey.value != null && authKey.value !== '') {
     payload.authKey = authKey.value
-  }
-
-  // Handle Discord Hook logic
-  if (!hasDiscordHook.value) {
-    payload.discordHookUrl = ''
-  } else if (discordHookUrl.value != null && discordHookUrl.value !== '') {
-    payload.discordHookUrl = discordHookUrl.value
   }
 
   const success = await configStore.updateConfig(payload)

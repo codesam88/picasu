@@ -34,10 +34,8 @@
             <AdvancedConfig
               v-model:auth-key="localSettings.authKey"
               v-model:has-auth-key="localSettings.hasAuthKey"
-              v-model:discord-hook-url="localSettings.discordHookUrl"
               v-model:read-only-mode="localSettings.readOnlyMode"
               v-model:disable-img="localSettings.disableImg"
-              v-model:has-discord-hook="localSettings.hasDiscordHook"
             />
           </v-row>
         </div>
@@ -70,9 +68,7 @@ const localSettings = reactive<AppConfig>({
   disableImg: false,
   hasPassword: false,
   hasAuthKey: false,
-  hasDiscordHook: false,
   authKey: '',
-  discordHookUrl: '',
   imagePath: null,
   uploadFolder: 'uploads',
   maxUploadSize: '100MiB',

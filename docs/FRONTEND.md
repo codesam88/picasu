@@ -235,7 +235,7 @@ The config page at `ConfigPage.vue` contains:
 | Display          | `FrontendConfig`  | Frontend-only UI preferences (light/dark mode, chips, etc.) |
 | Password         | `ChangePassword`  | Set or change the admin password                            |
 | Image Paths      | `StorageAndSync`  | Monitored path display, Scan Now button, scan status with counters (scanned/matched/processed/failed), Cancel button. Also has editable `maxUploadSize` and `uploadFolder` fields. Save writes to `PUT /put/config`. |
-| Advanced Settings | `AdvancedConfig`  | Read-only mode toggle, disable image processing, Discord webhook URL, JWT auth key |
+| Advanced Settings | `AdvancedConfig`  | Read-only mode toggle, disable image processing, JWT auth key |
 
 ---
 

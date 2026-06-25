@@ -23,7 +23,6 @@ pub struct ConfigResponse {
     pub read_only_mode: bool,
     pub disable_img: bool,
     pub has_password: bool,
-    pub has_discord_hook: bool,
     pub has_auth_key: bool,
 }
 
@@ -51,7 +50,6 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
         read_only_mode: config.read_only_mode,
         disable_img: config.disable_img,
         has_password: config.password.is_some(),
-        has_discord_hook: config.discord_hook_url.is_some(),
         has_auth_key: config.auth_key.is_some(),
     };
     Ok(Json(response))

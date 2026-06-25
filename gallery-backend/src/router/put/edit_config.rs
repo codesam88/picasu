@@ -24,7 +24,6 @@ pub struct PartialUpdateConfigRequest {
     pub read_only_mode: Option<bool>,
     pub disable_img: Option<bool>,
     pub auth_key: Option<String>,
-    pub discord_hook_url: Option<String>,
 }
 
 #[cfg_attr(
@@ -80,15 +79,6 @@ pub async fn update_config_handler(
                 Some(trimmed.to_string())
             };
         }
-        if let Some(hook) = req_data.discord_hook_url {
-            let trimmed = hook.trim();
-            current_config.discord_hook_url = if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            };
-        }
-
         AppConfig::update(current_config).map_err(|e| {
             error!("Failed to update config: {e}");
             AppError::from_err(ErrorKind::Internal, e)
