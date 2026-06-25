@@ -69,6 +69,11 @@ rewritten, as long as ARIA roles and accessible names are preserved.
 
 ### Prerequisites
 
+> **Important:** The E2E test does **not** use Vite's dev server. The backend
+> binary (`urocissa`) serves the production build of the frontend directly
+> from `gallery-frontend/dist/`. You must run `npm run build` before running
+> tests. See the pipeline diagram above.
+
 The backend must be built, and the frontend must be built to `dist/` — the
 e2e test does not use Vite's dev server. Playwright browsers must be
 installed:
@@ -85,37 +90,36 @@ cd gallery-frontend
 npx playwright test --grep "UI scenarios"
 ```
 
-This starts a Rocket backend on an ephemeral port (30000–59999) with an
-isolated data directory under `.testruns/playwright-RUN_ID/`, runs every
-YAML scenario in `tests/playwright/scenarios/`, then shuts the backend
-down.
+Each scenario starts its own isolated Rocket backend on an ephemeral port
+(30000–59999) with its own data directory under `.testruns/playwright-RUN_ID/`,
+runs the YAML scenario against that backend, then shuts it down. Multiple
+scenarios run in parallel when Playwright has multiple workers available.
 
 ### Output layout
 
-Each run creates a unique directory:
+Each scenario gets its own `playwright-<id>/` directory under `TEST_DIR`.
+Directories persist after the run for debugging. Artifacts and reports
+are consolidated to the shared run directory:
 
 ```
 .testruns/
-  playwright-<run-id>/
-    data/               # backend data directory (redb, thumbnails)
-    config/             # backend config directory (config.json)
-    images/             # backend image store (seeded fixture files)
-    coverage/           # per-scenario coverage reports
-    report.json         # Playwright JSON report
-    html-report/        # Playwright HTML report (with trace viewer)
+  playwright-<run-id>/    (per-scenario, temporary — removed after test)
+    data/                 # backend data directory (redb, thumbnails)
+    config/               # backend config directory (config.toml)
+    images/               # backend image store (seeded fixture files)
+    coverage/             # per-scenario coverage reports
+  artifacts/              # Playwright run artifacts (shared)
+    report.json           # Playwright JSON report
+    html-report/          # Playwright HTML report (with trace viewer)
 ```
-
-The main process computes the full `E2E_DIR` path once and stores it in
-`process.env.TESTRUN_DIR`. Workers inherit it via `child_process.fork`
-and read it back — they have no knowledge of the `.testruns/playwright-`
-naming convention.
 
 ### Configuration
 
-| Variable        | Effect                          |
-| --------------- | ------------------------------- |
-| `UROCISSA_PORT` | Backend port (random if unset)  |
-| `TESTRUN_DIR`   | Forces a specific run directory |
+| Variable        | Effect                                                      |
+| --------------- | ----------------------------------------------------------- |
+| `TEST_DIR`      | Top-level directory for all test outputs (default: `.testruns/` under repo root) |
+| `WORKER_NUM`    | Deterministic worker index (port = `30000 + N*2`, path = `{TEST_DIR}/playwright-{N}`) |
+| `CI`            | When set, enables Playwright retries (`retries: 2`) and `forbidOnly` |
 
 ## Components
 
@@ -267,37 +271,34 @@ loaded by `loadScenarios`:
 6. Compare tracer records against `covers:` declarations.
 7. Write per-scenario coverage report.
 
-Parallel workers each start their own backend instance on a unique port.
+Each scenario starts its own backend instance via `scenarioFixtures.ts`,
+which calls `backendLauncher.startBackend()` with a per-scenario path
+set. The `page` fixture is overridden to set `baseURL` to the scenario's
+backend, so all `page.goto('/login')` calls resolve to the right
+instance.
 
 ### Paths (`paths.ts`)
 
-Generates run-scoped paths at module load time; the main process stores
-them in `process.env` so that worker processes (which inherit the
-environment) read the same values without knowing the naming convention:
+- **`TEST_DIR`** — shared top-level directory for all test-run outputs.
+  Set via `TEST_DIR` env var; defaults to `.testruns/` under the repo
+  root. Used by `playwright.config.ts` for the report and artifact paths.
+- **`createPaths()` factory** — called per-scenario to generate fresh,
+  isolated paths for each backend instance. Uses `{TEST_DIR}/playwright-<id>/`.
+  When `WORKER_NUM` is set, `id` is the worker number for deterministic
+  paths and ports (`30000 + N*2`). Otherwise a random 6-char hex string.
 
-- **`E2E_DIR`** — full path to `.testruns/playwright-<runId>/`, stored in
-  `process.env.TESTRUN_DIR`. Workers read this one variable instead
-  of reconstructing the path from components.
-- **`port`** — random port in 30000–59999, stored in
-  `process.env.TESTRUN_PORT`. Workers inherit it, so all
-  processes connect to the same backend.
-- **`BACKEND_URL`** — `http://localhost:<port>`.
-- **`ADMIN_PASSWORD`** — `e2e_test_pwd`, used consistently across all
-  login scenarios.
-
-### Backend config (`builder.rs`)
-
-The backend checks `UROCISSA_PORT` and `UROCISSA_ADDRESS` environment
-variables and applies them over `config.json` values before building the
-Rocket configuration. This is how each e2e worker forces a unique port
-without modifying config files.
+| Export / Function | Source                          |
+| ----------------- | ------------------------------- |
+| `TEST_DIR`        | `process.env.TEST_DIR` or `{REPO_ROOT}/.testruns/` |
+| `createPaths()`   | `{TEST_DIR}/playwright-{WORKER_NUM\|random}/`      |
+| `ADMIN_PASSWORD`  | Always `e2e_test_pwd`           |
 
 ## Isolation model
 
 | Concern                 | Mechanism                                                |
 | ----------------------- | -------------------------------------------------------- |
-| Data directory          | Unique `E2E_DIR` per run                                 |
-| Backend port            | Unique `UROCISSA_PORT` (random 30000–59999) per run      |
+| Data directory          | Unique per-scenario `playwright-{id}` under `TEST_DIR`   |
+| Backend port            | Unique per-scenario instance (random 30000–59999)         |
 | Auth token              | Reset before each scenario (`resetAuthToken()`)          |
-| Parallel workers        | Each worker starts its own backend (fullyParallel: true) |
-| Run directory discovery | `TESTRUN_DIR` inherited via `fork()`                     |
+| Parallel workers        | Each scenario starts its own backend (fullyParallel: true)|
+| Path control            | `TEST_DIR` / `WORKER_NUM` env vars                       |

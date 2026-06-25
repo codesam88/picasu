@@ -273,11 +273,11 @@ schema in `types.ts`.
 
 ## Idempotency and isolation
 
-- Each Playwright worker runs its own backend instance with a unique
-  `E2E_DIR` (see `paths.ts`), so fixture files on disk are already
-  isolated. No scenario-name directory prefix is used — albums are
-  placed at the root of `IMAGE_HOME` and respect the `root_album`
-  backend filter.
+- Each Playwright scenario runs its own backend instance with a unique
+  `{TEST_DIR}/playwright-{id}/` directory (see `paths.ts`), so fixture
+  files on disk are already isolated. No scenario-name directory prefix
+  is used — albums are placed at the root of `IMAGE_HOME` and respect
+  the `root_album` backend filter.
 - In API scenarios, all assertions are made through the HTTP API only
   — no direct redb access.
 - In UI scenarios, state is seeded before the browser navigates to the

@@ -60,11 +60,10 @@ frontend-check:
 frontend-vitest:
     cd gallery-frontend && npm test
 
-# Playwright E2E scenarios (starts backend + frontend automatically)
+# Playwright E2E scenarios (each scenario starts its own isolated backend)
 [group('frontend')]
 frontend-playwright:
-    # single instance mode: npx playwright test --workers=1
-    # select/grep the test: npx playwright test --grep "onboarding"
+    # filter scenarios: npx playwright test --grep "onboarding"
     cd gallery-frontend && npm run test:e2e
 
 # all frontend tests

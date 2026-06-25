@@ -4,7 +4,7 @@ import { spawn } from 'child_process'
 import { createHash, createHmac } from 'crypto'
 import { GivenItem } from './types'
 import type { APIRequestContext } from '@playwright/test'
-import { IMAGE_HOME, BACKEND_URL, ADMIN_PASSWORD, CONFIG_DIR } from './paths'
+import { type WorkerPaths } from './paths'
 import { CoverageTracer } from './tracer'
 
 let authToken: string | null = null
@@ -13,9 +13,9 @@ export function resetAuthToken(): void {
   authToken = null
 }
 
-function readCurrentPassword(): string | null {
+function readCurrentPassword(configDir: string): string | null {
   try {
-    const configPath = path.join(CONFIG_DIR, 'config.toml')
+    const configPath = path.join(configDir, 'config.toml')
     const raw = fs.readFileSync(configPath, 'utf-8')
     const match = raw.match(/password\s*=\s*"([^"]+)"/)
     return match ? match[1] : null
@@ -32,10 +32,14 @@ function authHeaders(token: string): Record<string, string> {
   }
 }
 
-async function ensureAuthenticated(request: APIRequestContext): Promise<string> {
+async function ensureAuthenticated(
+  request: APIRequestContext,
+  backendUrl: string,
+  adminPassword: string
+): Promise<string> {
   if (authToken) return authToken
-  const res = await request.post(`${BACKEND_URL}/post/authenticate`, {
-    data: JSON.stringify(ADMIN_PASSWORD),
+  const res = await request.post(`${backendUrl}/post/authenticate`, {
+    data: JSON.stringify(adminPassword),
     headers: { 'Content-Type': 'application/json' }
   })
   if (!res.ok()) throw new Error(`Auth failed: ${res.status()}`)
@@ -113,8 +117,11 @@ export async function executeGiven(
   baseRequest: APIRequestContext,
   given: GivenItem[],
   ctx: GivenContext,
-  tracer?: CoverageTracer
+  tracer: CoverageTracer | undefined,
+  overridePaths: WorkerPaths
 ): Promise<GivenContext> {
+  const { IMAGE_HOME: imageHome, BACKEND_URL: backendUrl, ADMIN_PASSWORD: adminPassword, CONFIG_DIR: configDir } = overridePaths
+
   const request = tracer ? tracedRequest(baseRequest, tracer) : baseRequest
   const result: GivenContext = { vars: { ...ctx.vars }, namespace: ctx.namespace }
   const ns = ctx.namespace
@@ -129,7 +136,7 @@ export async function executeGiven(
     if ('dir_album' in item && item.dir_album) {
       const ga = item as { dir_album: string; id_as?: string }
       const qualified = qualifyPath(ga.dir_album, ns)
-      const dirPath = path.join(IMAGE_HOME, qualified)
+      const dirPath = path.join(imageHome, qualified)
       fs.mkdirSync(dirPath, { recursive: true })
       seedEntries.push({ type: 'dir_album', qualifiedPath: qualified, id_as: ga.id_as })
       if (ga.id_as) {
@@ -149,7 +156,7 @@ export async function executeGiven(
         exif_date?: string
       }
       const qualified = qualifyPath(ph.photo, ns)
-      const filePath = path.join(IMAGE_HOME, qualified)
+      const filePath = path.join(imageHome, qualified)
 
       const entry: PhotoManifestEntry = { output: filePath }
       if (ph.format) entry.format = ph.format
@@ -163,7 +170,7 @@ export async function executeGiven(
 
     if ('remove' in item && item.remove) {
       const qualified = qualifyPath(item.remove, ns)
-      const filePath = path.join(IMAGE_HOME, qualified)
+      const filePath = path.join(imageHome, qualified)
       try {
         fs.unlinkSync(filePath)
       } catch {}
@@ -184,12 +191,12 @@ export async function executeGiven(
           auth_key?: string
         }
       }
-      const token = await ensureAuthenticated(request)
+      const token = await ensureAuthenticated(request, backendUrl, adminPassword)
       const headers = authHeaders(token)
 
       if (cfg.config.password !== undefined) {
-        const oldPassword = readCurrentPassword()
-        const pwdRes = await request.fetch(`${BACKEND_URL}/put/config/password`, {
+        const oldPassword = readCurrentPassword(configDir)
+        const pwdRes = await request.fetch(`${backendUrl}/put/config/password`, {
           method: 'PUT',
           headers,
           data: { password: cfg.config.password, oldPassword }
@@ -200,7 +207,7 @@ export async function executeGiven(
       }
 
       if (cfg.config.read_only_mode !== undefined) {
-        const res = await request.fetch(`${BACKEND_URL}/put/config`, {
+        const res = await request.fetch(`${backendUrl}/put/config`, {
           method: 'PUT',
           headers,
           data: { readOnlyMode: cfg.config.read_only_mode }
@@ -211,7 +218,7 @@ export async function executeGiven(
       }
 
       if (cfg.config.auth_key !== undefined) {
-        const res = await request.fetch(`${BACKEND_URL}/put/config`, {
+        const res = await request.fetch(`${backendUrl}/put/config`, {
           method: 'PUT',
           headers,
           data: { authKey: cfg.config.auth_key }
@@ -230,10 +237,10 @@ export async function executeGiven(
   }
 
   if (seedEntries.length > 0) {
-    const token = await ensureAuthenticated(request)
+    const token = await ensureAuthenticated(request, backendUrl, adminPassword)
     const allHeaders = authHeaders(token)
 
-    const indexRes = await request.fetch(`${BACKEND_URL}/post/index/album`, {
+    const indexRes = await request.fetch(`${backendUrl}/post/index/album`, {
       method: 'POST',
       headers: allHeaders,
       data: { album: '/' }
@@ -244,7 +251,7 @@ export async function executeGiven(
 
     let indexed = false
     for (let i = 0; i < 60; i++) {
-      const statusRes = await request.fetch(`${BACKEND_URL}/get/index/status`, {
+      const statusRes = await request.fetch(`${backendUrl}/get/index/status`, {
         headers: allHeaders
       })
       if (statusRes.ok()) {
@@ -260,7 +267,7 @@ export async function executeGiven(
 
     const wantsIdAs = seedEntries.some((e) => e.id_as !== undefined)
     if (wantsIdAs) {
-      const dataRes = await request.fetch(`${BACKEND_URL}/get/get-data?start=0&end=100`, {
+      const dataRes = await request.fetch(`${backendUrl}/get/get-data?start=0&end=100`, {
         headers: allHeaders
       })
       const data = (await dataRes.json()) as any[]
@@ -268,7 +275,7 @@ export async function executeGiven(
       for (const entry of seedEntries) {
         if (!entry.id_as) continue
         if (entry.type === 'dir_album') {
-          const albumId = await findAlbum(request, allHeaders, entry.qualifiedPath)
+          const albumId = await findAlbum(request, allHeaders, backendUrl, entry.qualifiedPath)
           if (albumId) result.vars[entry.id_as] = albumId
         } else if (entry.type === 'photo') {
           const hash = findPhotoHash(entry.qualifiedPath, data)
@@ -279,8 +286,8 @@ export async function executeGiven(
   }
 
   for (const mv of postIndexMoves) {
-    const fromPath = path.join(IMAGE_HOME, mv.from)
-    const toPath = path.join(IMAGE_HOME, mv.to)
+    const fromPath = path.join(imageHome, mv.from)
+    const toPath = path.join(imageHome, mv.to)
 
     const fileBuffer = fs.readFileSync(fromPath)
     const hexHash = createHash('sha256').update(fileBuffer).digest('hex')
@@ -292,7 +299,7 @@ export async function executeGiven(
       throw new Error(`Failed to move ${fromPath} to ${toPath}`)
     }
 
-    const authToken = await ensureAuthenticated(request)
+    const token = await ensureAuthenticated(request, backendUrl, adminPassword)
     if (knownJwtSecret) {
       const ext = path.extname(fromPath).slice(1) || 'jpg'
       const ts = Math.floor(Date.now() / 1000)
@@ -306,11 +313,11 @@ export async function executeGiven(
         knownJwtSecret!
       )
 
-      const url = `${BACKEND_URL}/object/imported/${hexHash.slice(0, 2)}/${hexHash}.${ext}?updated_at=0`
+      const url = `${backendUrl}/object/imported/${hexHash.slice(0, 2)}/${hexHash}.${ext}?updated_at=0`
       const dlRes = await request.fetch(url, {
         headers: {
           Authorization: `Bearer ${hashJwt}`,
-          Cookie: `jwt=${authToken}`
+          Cookie: `jwt=${token}`
         }
       })
       if (dlRes.ok()) {
@@ -327,9 +334,10 @@ export async function executeGiven(
 async function findAlbum(
   request: APIRequestContext,
   headers: Record<string, string>,
+  backendUrl: string,
   qualifiedPath: string
 ): Promise<string | null> {
-  const res = await request.fetch(`${BACKEND_URL}/get/get-albums`, { headers })
+  const res = await request.fetch(`${backendUrl}/get/get-albums`, { headers })
   if (!res.ok()) return null
   const albums = (await res.json()) as any[]
   const match = albums.find((a: any) => a.dirPath && a.dirPath.endsWith(qualifiedPath))
@@ -355,9 +363,9 @@ function createHashJwt(payload: Record<string, unknown>, secret: string): string
   return `${header}.${body}.${base64urlEncode(signature)}`
 }
 
-function readJwtSecretFromConfig(): string {
+function readJwtSecretFromConfig(configDir: string): string {
   try {
-    const configPath = path.join(CONFIG_DIR, 'config.toml')
+    const configPath = path.join(configDir, 'config.toml')
     const raw = fs.readFileSync(configPath, 'utf-8')
     const match = raw.match(/auth_key\s*=\s*"([^"]+)"/)
     if (match) return match[1]
