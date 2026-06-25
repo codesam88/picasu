@@ -15,6 +15,11 @@ mod workflow;
 #[cfg(feature = "openapi")]
 pub mod openapi;
 
+// Re-exports for integration tests that need to access the real init path.
+pub use public::constant::storage::DATA_PATH;
+pub use public::structure::config::{APP_CONFIG, AppConfig};
+pub use router::builder::build_rocket_with_config;
+
 use crate::operations::dir_album::init_dir_album_cache;
 use crate::operations::initialization::logger::initialize_logger;
 use crate::process::initialization::initialize;
