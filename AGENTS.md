@@ -21,7 +21,7 @@ Urocissa is a self-hosted photo gallery for millions of images. The repo has two
 2. **Dev commands** — read `justfile` at the repo root. Key recipes: `just check` (lint), `just test` (backend nextest + frontend vitest), `just frontend-check`, `just frontend-test`, `just format` (auto-format)
 3. **Backend sources** — `gallery-backend/src/main.rs` (server bootstrap), `gallery-backend/src/router/` (API routes), `gallery-backend/src/operations/` (domain logic), `gallery-backend/src/process/` (background tasks).
 4. **Frontend sources** — `gallery-frontend/src/main.ts` (app bootstrap), `gallery-frontend/src/route/routes.ts` (URL structure), `gallery-frontend/src/store/` (Pinia stores), `gallery-frontend/src/components/` (Vue components) — see `docs/FRONTEND.md` for the component tree.
-4. **Test strategy** — big picture in `docs/test-strategy.md`, detailed reference in `docs/scenario-dsl.md`, `docs/playwright_generator.md`.
+4. **Testing** — Review `docs/test-strategy.md` and `docs/playwright_generator.md` before extending or modifying test scenarios or test infratructure.
 
 The `.plan/tasks/` directory tracks pending and completed work. Run `cargo xtask plan -k` to view the board.
 
