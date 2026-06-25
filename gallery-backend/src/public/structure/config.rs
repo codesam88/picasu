@@ -76,24 +76,24 @@ impl Default for AppConfig {
 // ── TOML file format (snake_case, sections) ──────────────────────────────────
 
 #[derive(Serialize, Deserialize)]
-struct TomlFile {
+pub(crate) struct TomlFile {
     #[serde(default)]
-    server: TomlServer,
+    pub(crate) server: TomlServer,
     #[serde(default)]
-    gallery: TomlGallery,
+    pub(crate) gallery: TomlGallery,
     #[serde(default)]
-    secrets: TomlSecrets,
+    pub(crate) secrets: TomlSecrets,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-struct TomlServer {
+pub(crate) struct TomlServer {
     #[serde(default = "default_address")]
-    address: String,
+    pub(crate) address: String,
     #[serde(default = "default_port")]
-    port: u16,
+    pub(crate) port: u16,
     #[serde(default = "default_max_upload_size")]
-    max_upload_size: String,
+    pub(crate) max_upload_size: String,
 }
 
 impl Default for TomlServer {
@@ -107,16 +107,16 @@ fn default_port() -> u16 { 5673 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-struct TomlGallery {
+pub(crate) struct TomlGallery {
     #[serde(skip_serializing_if = "Option::is_none")]
-    data_home: Option<PathBuf>,
-    image_home: Option<PathBuf>,
+    pub(crate) data_home: Option<PathBuf>,
+    pub(crate) image_home: Option<PathBuf>,
     #[serde(default = "default_upload_folder")]
-    upload_folder: String,
+    pub(crate) upload_folder: String,
     #[serde(default)]
-    read_only_mode: bool,
+    pub(crate) read_only_mode: bool,
     #[serde(default)]
-    disable_img: bool,
+    pub(crate) disable_img: bool,
 }
 
 impl Default for TomlGallery {
@@ -133,13 +133,13 @@ impl Default for TomlGallery {
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-struct TomlSecrets {
+pub(crate) struct TomlSecrets {
     #[serde(skip_serializing_if = "Option::is_none")]
-    password: Option<String>,
+    pub(crate) password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    auth_key: Option<String>,
+    pub(crate) auth_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    discord_hook_url: Option<String>,
+    pub(crate) discord_hook_url: Option<String>,
 }
 
 impl Default for TomlSecrets {
@@ -395,5 +395,83 @@ impl AppConfig {
         ))?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn toml_round_trip_full() {
+        let config = AppConfig {
+            address: "127.0.0.1".to_string(),
+            port: 8080,
+            data_home: Some(PathBuf::from("/tmp/data")),
+            image_home: Some(PathBuf::from("/tmp/images")),
+            upload_folder: "test_uploads".to_string(),
+            max_upload_size: "500MiB".to_string(),
+            read_only_mode: true,
+            disable_img: false,
+            password: Some("secret".to_string()),
+            auth_key: None,
+            discord_hook_url: Some("https://discord.test/webhook".to_string()),
+        };
+
+        let tf = TomlFile::from(config.clone());
+        let toml_str = toml::to_string_pretty(&tf).unwrap();
+        let parsed: TomlFile = toml::from_str(&toml_str).unwrap();
+        let restored = AppConfig::from(parsed);
+        assert_eq!(config, restored);
+    }
+
+    #[test]
+    fn toml_sections_are_correct() {
+        let config = AppConfig {
+            address: "10.0.0.1".to_string(),
+            port: 8000,
+            data_home: Some(PathBuf::from("/data")),
+            image_home: Some(PathBuf::from("/images")),
+            max_upload_size: "200MiB".to_string(),
+            password: Some("hunter2".to_string()),
+            auth_key: Some("jwt-secret".to_string()),
+            discord_hook_url: None,
+            ..AppConfig::default()
+        };
+
+        let tf = TomlFile::from(config);
+        let toml_str = toml::to_string_pretty(&tf).unwrap();
+
+        assert!(toml_str.contains("[server]"), "should have [server] section");
+        assert!(toml_str.contains("[gallery]"), "should have [gallery] section");
+        assert!(toml_str.contains("[secrets]"), "should have [secrets] section");
+        assert!(toml_str.contains("address = \"10.0.0.1\""));
+        assert!(toml_str.contains("port = 8000"));
+        assert!(toml_str.contains("max_upload_size = \"200MiB\""));
+        assert!(toml_str.contains("data_home = \"/data\""));
+        assert!(toml_str.contains("image_home = \"/images\""));
+        assert!(toml_str.contains("password = \"hunter2\""));
+        assert!(toml_str.contains("auth_key = \"jwt-secret\""));
+        assert!(!toml_str.contains("discord_hook_url"), "None secrets should be omitted");
+    }
+
+    #[test]
+    fn toml_defaults_fill_gaps() {
+        let toml_str = r#"
+[server]
+port = 9999
+
+[gallery]
+read_only_mode = true
+"#;
+        let parsed: TomlFile = toml::from_str(toml_str).unwrap();
+        let config = AppConfig::from(parsed);
+
+        assert_eq!(config.port, 9999);
+        assert!(config.read_only_mode);
+        assert_eq!(config.address, "0.0.0.0");
+        assert_eq!(config.max_upload_size, "100MiB");
+        assert_eq!(config.upload_folder, "uploads");
+        assert!(!config.disable_img);
     }
 }
