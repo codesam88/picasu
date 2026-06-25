@@ -4,8 +4,6 @@ use rocket::put;
 use rocket::serde::json::Json;
 use tokio::task::spawn_blocking;
 
-use std::path::PathBuf;
-
 use crate::public::error::{AppError, ErrorKind, ResultExt};
 use crate::public::structure::config::{APP_CONFIG, AppConfig};
 use crate::router::fairing::guard_auth::GuardAuth;
@@ -19,9 +17,6 @@ use serde::{Deserialize, Serialize};
 pub struct PartialUpdateConfigRequest {
     pub address: Option<String>,
     pub port: Option<u16>,
-    /// `None` = don't touch; `Some("")` = clear; `Some(path)` = set.
-    #[serde(rename = "imagePath", alias = "imageHome")]
-    pub image_home: Option<String>,
     /// `None` = don't touch; `Some("")` resets to the default ("uploads").
     pub upload_folder: Option<String>,
     /// `None` = don't touch; `Some("")` resets to the default ("100MiB").
@@ -64,14 +59,6 @@ pub async fn update_config_handler(
         }
         if let Some(port) = req_data.port {
             current_config.port = port;
-        }
-        if let Some(image_home) = req_data.image_home {
-            let trimmed = image_home.trim();
-            current_config.image_home = if trimmed.is_empty() {
-                None
-            } else {
-                Some(PathBuf::from(trimmed))
-            };
         }
         if let Some(upload_folder) = req_data.upload_folder {
             current_config.upload_folder = upload_folder;

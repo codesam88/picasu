@@ -60,7 +60,6 @@
           "properties": {
             "read_only_mode": { "type": "boolean" },
             "password": { "type": "string" },
-            "image_path": { "oneOf": [{ "type": "boolean" }, { "type": "string" }] },
             "auth_key": { "type": "string" }
           },
           "additionalProperties": false

@@ -45,7 +45,6 @@ export const GivenConfig = z
     config: z.object({
       read_only_mode: z.boolean().optional(),
       password: z.string().optional(),
-      image_path: z.union([z.boolean(), z.string()]).optional(),
       auth_key: z.string().optional()
     })
   })

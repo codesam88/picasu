@@ -22,16 +22,10 @@
         <div class="config-block">
           <v-row class="ma-0">
             <StorageAndSync
-              v-model:image-path="localSettings.imagePath"
+              :image-path="localSettings.imagePath"
               v-model:upload-folder="localSettings.uploadFolder"
               v-model:max-upload-size="localSettings.maxUploadSize"
             />
-          </v-row>
-        </div>
-
-        <div class="config-block">
-          <v-row class="ma-0">
-            <AlbumIndex />
           </v-row>
         </div>
 
@@ -60,7 +54,6 @@ import type { AppConfig } from '@/api/config'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 import ChangePassword from './Config/ChangePassword.vue'
 import StorageAndSync from './Config/StorageAndSync.vue'
-import AlbumIndex from './Config/AlbumIndex.vue'
 import AdvancedConfig from './Config/AdvancedConfig.vue'
 import FrontendConfig from './Config/FrontendConfig.vue'
 import { tryWithMessageStore } from '@/script/utils/try_catch'

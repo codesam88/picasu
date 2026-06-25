@@ -15,10 +15,10 @@ export function resetAuthToken(): void {
 
 function readCurrentPassword(): string | null {
   try {
-    const configPath = path.join(CONFIG_DIR, 'config.json')
+    const configPath = path.join(CONFIG_DIR, 'config.toml')
     const raw = fs.readFileSync(configPath, 'utf-8')
-    const config = JSON.parse(raw)
-    return config?.private?.password ?? null
+    const match = raw.match(/password\s*=\s*"([^"]+)"/)
+    return match ? match[1] : null
   } catch {
     return null
   }
@@ -181,7 +181,6 @@ export async function executeGiven(
         config: {
           read_only_mode?: boolean
           password?: string
-          image_path?: boolean | string
           auth_key?: string
         }
       }
@@ -208,18 +207,6 @@ export async function executeGiven(
         })
         if (!res.ok()) {
           throw new Error(`Config update failed: ${res.status()} ${await res.text()}`)
-        }
-      }
-
-      if (cfg.config.image_path !== undefined) {
-        const imagePathValue = cfg.config.image_path === true ? IMAGE_HOME : cfg.config.image_path
-        const res = await request.fetch(`${BACKEND_URL}/put/config`, {
-          method: 'PUT',
-          headers,
-          data: { imagePath: imagePathValue }
-        })
-        if (!res.ok()) {
-          throw new Error(`Image path update failed: ${res.status()} ${await res.text()}`)
         }
       }
 
@@ -370,11 +357,10 @@ function createHashJwt(payload: Record<string, unknown>, secret: string): string
 
 function readJwtSecretFromConfig(): string {
   try {
-    const configPath = path.join(CONFIG_DIR, 'config.json')
+    const configPath = path.join(CONFIG_DIR, 'config.toml')
     const raw = fs.readFileSync(configPath, 'utf-8')
-    const config = JSON.parse(raw)
-    const authKey: string | null = config?.private?.authKey ?? null
-    if (authKey) return authKey
+    const match = raw.match(/auth_key\s*=\s*"([^"]+)"/)
+    if (match) return match[1]
   } catch {
     // fall through
   }

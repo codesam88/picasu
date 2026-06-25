@@ -8,7 +8,6 @@ covers:
 given:
   - config:
       password: e2e_test_pwd
-      image_path: true
 
   - dir_album: nature/sunset
 
