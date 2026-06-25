@@ -206,8 +206,8 @@ Maps `when:` verbs to Playwright page actions:
 | `navigate`    | `page.goto(path)`                                            |
 | `click`       | `page.getByRole(role, { name }).click()`                     |
 | `click.text`  | `page.locator('.parent').filter({ hasText }).first().click()` |
-| `click.icon`  | `page.evaluate` → `document.querySelector('.' + cls).closest('button').click()` |
-| `click.first` | `page.locator('#view-page .desktop-small-image').first().click()` |
+| `click.icon`  | `page.locator('button:has(.{class})')` (retries up to 5× with 2s visibility check) |
+| `click.first` | `page.locator('.desktop-small-image').first().click()` (retries up to 3×, waits for URL `/view/`) |
 | `fill`        | `page.getByRole(...).fill(value)`                             |
 | `select`      | `page.getByRole(...).selectOption()`                         |
 | `submit`   | `page.keyboard.press('Enter')`           |
@@ -257,8 +257,7 @@ loaded by `loadScenarios`:
 
 1. Reset the auth token cache (`resetAuthToken()`).
 2. Create a `CoverageTracer`.
-3. Create a `GivenContext` scoped to the scenario name (fixture paths
-   are prefixed with a sanitized version of the name for isolation).
+3. Create a `GivenContext`.
 4. Execute given steps (seed state via `executeGiven`).
 5. Execute scenario steps:
    - If the scenario uses `steps:`, iterate each when/assert pair
@@ -269,8 +268,6 @@ loaded by `loadScenarios`:
 7. Write per-scenario coverage report.
 
 Parallel workers each start their own backend instance on a unique port.
-Fixture paths are namespaced by scenario name, so concurrent runs of
-different scenarios do not collide.
 
 ### Paths (`paths.ts`)
 
@@ -301,7 +298,6 @@ without modifying config files.
 | ----------------------- | -------------------------------------------------------- |
 | Data directory          | Unique `E2E_DIR` per run                                 |
 | Backend port            | Unique `UROCISSA_PORT` (random 30000–59999) per run      |
-| Scenario fixtures       | Namespaced by sanitized scenario name in `IMAGE_HOME`    |
 | Auth token              | Reset before each scenario (`resetAuthToken()`)          |
 | Parallel workers        | Each worker starts its own backend (fullyParallel: true) |
 | Run directory discovery | `TESTRUN_DIR` inherited via `fork()`                     |
