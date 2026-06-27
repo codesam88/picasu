@@ -6,8 +6,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Serialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct FsCompletion {
     roots: Vec<String>,
     children: Vec<String>,
@@ -32,9 +31,7 @@ fn absolutize(p: &Path) -> PathBuf {
     }
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/get/path-completion",
         responses(
@@ -42,7 +39,7 @@ fn absolutize(p: &Path) -> PathBuf {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[get("/get/path-completion?<path>")]
 pub fn get_fs_completion(_auth: GuardAuth, path: Option<String>) -> AppResult<Json<FsCompletion>> {
     let query = path.unwrap_or_default();

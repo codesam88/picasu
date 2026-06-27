@@ -33,15 +33,20 @@ This minimises the risk of undocumented or untested functions due to code drift.
 └──────┬──────────────┘     └──────────┬───────────────┘
        │                               │
        ▼                               ▼
-┌──────────────────────────────────────────────────┐
-│            cargo xtask openapi-gen               │
-│                                                  │
-│  1. Scan all routes![] for handler names         │
-│  2. Scan handler source for #[utoipa::path]      │
-│  3. Generate backend/src/openapi.rs               │
-│  4. Compile server with openapi feature          │
-│  5. Run picasu-openapi → openapi.json            │
-└──────┬─────────────────────────────┬────────────┘
+┌──────────────────────────────────────────────────────┐
+│   build.rs (runs every build, no feature flag)       │
+│                                                      │
+│   1. Scan all routes![] for handler names            │
+│   2. Scan handler source for #[utoipa::path]         │
+│   3. Warn on any missing annotations                 │
+│   4. Write backend/src/openapi.rs                         │
+└──────────────┬───────────────────────────────────────┘
+               │
+                ▼
+┌────────────────────────────────────────────────────┐
+│        just openapi-gen                            │
+│   (cargo run -- --dump-openapi > openapi.json)     │
+└──────┬──────────────────────────────┬──────────────┘
        │                             │
        ▼                             ▼
 ┌──────────────┐      ┌──────────────────────────┐
@@ -52,37 +57,32 @@ This minimises the risk of undocumented or untested functions due to code drift.
 
 ### Steps
 
-1. **`cargo xtask openapi-gen`** — the core command. It:
+1. **`build.rs`** (automatic on every `cargo build`) — the build script:
    - Parses every `routes![]` invocation in `router/{get,post,put}/mod.rs` and
      `router/delete.rs` to discover every registered handler.
    - For each handler, reads its source file to check for a
-     `#[utoipa::path]` or `#[cfg_attr(feature = "openapi", utoipa::path(...))]`
-     annotation.
-   - Writes `backend/src/openapi.rs` containing only the annotated routes, with
-     the correct `__path_*` imports and `paths(...)` registration.
-   - Compiles `backend` with `--features openapi` and runs the `picasu-openapi`
-     binary, which calls `ApiDoc::openapi().to_json()`.
-   - Writes the result to `backend/openapi.json`.
+     `#[utoipa::path]` annotation.
+   - Prints `cargo:warning=` for any handler missing an annotation.
+   - Writes `backend/src/openapi.rs` with the correct `__path_*` imports and
+     `paths(...)` registration.
 
-2. **`just openapi-docs`** — chains `openapi-gen` with:
+2. **`just openapi-gen`** — runs the `picasu` binary with `--dump-openapi`
+   (`cargo run -- --dump-openapi > backend/openapi.json`), which calls
+   `ApiDoc::openapi().to_json()` and writes the result to the file.
+
+3. **`just openapi-docs`** — chains `openapi-gen` with:
    - `widdershins` to convert `openapi.json` → `docs/openapi-reference.md`
    - `prettier` for consistent markdown formatting
 
-3. **`just openapi-docs-check`** — runs the full generation plus coverage
-   check, then fails if any of the three committed files (`openapi.rs`,
-   `openapi.json`, `docs/openapi-reference.md`) differ from the working tree.
-   Wired into `just precommit` on the `main` branch.
+4. **`just openapi-docs-check`** — runs the full generation, then fails if
+   `openapi.json` or `docs/openapi-reference.md` differs from the committed
+   versions. Wired into `just precommit` on the `main` branch.
 
-### Coverage Tool
+### Coverage check
 
-`cargo xtask openapi-coverage` is a fast, no-compilation check that reports:
-
-- Total registered routes (all must be annotated)
-- Annotated vs missing routes
-- Coverage percentage
-
-It exits non-zero if any route lacks a `#[utoipa::path]` annotation. No
-module-level exemptions exist — every route is subject to the check.
+Coverage is checked automatically by `build.rs` during every build. If a route
+lacks `#[utoipa::path]`, the build prints a `cargo:warning=` for each missing
+handler. No module-level exemptions exist — every route is subject to the check.
 
 ## Tag conventions
 
@@ -97,15 +97,15 @@ module-level exemptions exist — every route is subject to the check.
 ### Adding a new data API route
 
 1. Add the handler function to a `routes![]` block.
-2. Add `#[cfg_attr(feature = "openapi", utoipa::path(...))]` with the route's
-   HTTP method, path, parameters, and response types. Pick the appropriate
-   tag (or omit for standard data APIs).
-3. Run `just openapi-docs` — this regenerates all three committed files.
-4. Run `cargo xtask openapi-coverage` to confirm 100%.
-5. Commit the handler, its annotation, and the three generated files together.
+2. Add `#[utoipa::path(...)]` with the route's HTTP method, path, parameters,
+   and response types. Pick the appropriate tag (or omit for standard data
+   APIs).
+3. Run `just openapi-docs` — this regenerates `openapi.json` and the docs.
+4. Run `cargo build` — build.rs confirms 100% coverage (no warnings).
+5. Commit the handler, its annotation, and the two generated files together.
 
-Pre-commit hook or CI enforces step 3 — if the generated files are out of
-date, the change is rejected.
+Pre-commit hook or CI enforces step 4 — if coverage drops below 100% the
+build prints warnings.
 
 ### Removing a route
 
@@ -126,13 +126,22 @@ listing every handler in `paths(...)`. This was error-prone and duplicated what
 `routes![]` already declares. The generator eliminates this maintenance burden
 while guaranteeing completeness.
 
-### Why not move `openapi.rs` to xtask?
+### Why generate `openapi.rs` in `build.rs` instead of xtask?
 
 `#[derive(OpenApi)]` references `__path_*` items generated by
 `#[utoipa::path(...)]` proc-macros in the same crate. Cross-crate access would
 require re-exporting every `__path_*` symbol from `backend`'s public API — more
-boilerplate, not less. The generated file lives in `backend` but is written by
-xtask before compilation.
+boilerplate, not less. `build.rs` runs before compilation and writes the file
+into the source tree (`.gitignore`d, never committed), keeping the generated
+code in the crate where it belongs.
+
+### Why not gate utoipa behind a feature flag?
+
+The `#[utoipa::path]` annotations are part of the route handler definitions and
+don't affect runtime behavior when the OpenAPI spec isn't generated. The
+original feature-gated approach added 53 `#[cfg_attr]` wrappers across 23 files
+for negligible binary-size benefit. Making utoipa a standard dependency removed
+all of them, simplifying the code and the build.
 
 ### Why the stack size override?
 
@@ -151,9 +160,9 @@ The explicit schema list was redundant and has been removed.
 
 ## Files
 
-| File                             | Generator                 | Role                             |
-| -------------------------------- | ------------------------- | -------------------------------- |
-| `backend/src/openapi.rs`          | `cargo xtask openapi-gen` | ApiDoc struct with all routes    |
-| `backend/openapi.json`            | `ApiDoc::openapi()`       | OpenAPI 3.1 spec                 |
-| `docs/openapi-reference.md`      | widdershins               | Human-readable API reference     |
-| `xtask/src/openapi.rs`           | —                         | Generator + coverage tool source |
+| File                             | Generator                 | Role                                                |
+| -------------------------------- | ------------------------- | --------------------------------------------------- |
+| `backend/src/openapi.rs`          | `build.rs`                | ApiDoc struct with all routes (gitignored)          |
+| `backend/openapi.json`            | `ApiDoc::openapi()`       | OpenAPI 3.1 spec                                    |
+| `docs/openapi-reference.md`      | widdershins               | Human-readable API reference                        |
+| `build.rs`                       | —                         | Route scanner + `openapi.rs` generator + coverage   |

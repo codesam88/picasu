@@ -26,15 +26,13 @@ use rocket::serde::{Deserialize, Serialize, json::Json};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct DeleteList {
     delete_list: Vec<usize>,
     timestamp: i64,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         delete,
         path = "/delete/delete-data",
         request_body = DeleteList,
@@ -43,7 +41,7 @@ pub struct DeleteList {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[delete("/delete/delete-data", format = "json", data = "<json_data>")]
 pub async fn delete_data(
     auth: GuardResult<GuardAuth>,

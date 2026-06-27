@@ -89,9 +89,7 @@ async fn serve_file(filename: &str) -> AppResult<FrontendResponse> {
     }
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/",
         tag = "pages",
@@ -99,15 +97,13 @@ async fn serve_file(filename: &str) -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/")]
 pub fn redirect_to_photo() -> content::RawHtml<String> {
     content::RawHtml(INDEX_HTML.to_string())
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/login",
         tag = "pages",
@@ -115,15 +111,13 @@ pub fn redirect_to_photo() -> content::RawHtml<String> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/login")]
 pub async fn login() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/redirect-to-login",
         tag = "pages",
@@ -131,15 +125,13 @@ pub async fn login() -> AppResult<FrontendResponse> {
             (status = 302, description = "Redirect to /login"),
         )
     )
-)]
+]
 #[get("/redirect-to-login")]
 pub fn redirect_to_login() -> Redirect {
     Redirect::to(uri!("/login"))
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/unauthorized",
         tag = "pages",
@@ -147,15 +139,13 @@ pub fn redirect_to_login() -> Redirect {
             (status = 401, description = "Unauthorized status"),
         )
     )
-)]
+]
 #[get("/unauthorized")]
 pub fn unauthorized() -> Status {
     Status::Unauthorized
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/home",
         tag = "pages",
@@ -163,15 +153,13 @@ pub fn unauthorized() -> Status {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/home")]
 pub async fn home() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/home/view/{path}",
         tag = "pages",
@@ -179,15 +167,13 @@ pub async fn home() -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/home/view/<_path..>")]
 pub async fn home_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/favorite",
         tag = "pages",
@@ -195,15 +181,13 @@ pub async fn home_view(_path: PathBuf) -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/favorite")]
 pub async fn favorite() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/favorite/view/{path}",
         tag = "pages",
@@ -211,15 +195,13 @@ pub async fn favorite() -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/favorite/view/<_path..>")]
 pub async fn favorite_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/albums",
         tag = "pages",
@@ -227,15 +209,13 @@ pub async fn favorite_view(_path: PathBuf) -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/albums")]
 pub async fn albums() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/albums/view/{path}",
         tag = "pages",
@@ -243,15 +223,13 @@ pub async fn albums() -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/albums/view/<_path..>")]
 pub async fn albums_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/{dynamic_album_id}",
         tag = "pages",
@@ -260,7 +238,7 @@ pub async fn albums_view(_path: PathBuf) -> AppResult<FrontendResponse> {
             (status = 404, description = "Not found"),
         )
     )
-)]
+]
 #[get("/<dynamic_album_id>")]
 pub async fn album_page(dynamic_album_id: String) -> AppResult<FrontendResponse> {
     if dynamic_album_id.starts_with("album-") {
@@ -270,9 +248,7 @@ pub async fn album_page(dynamic_album_id: String) -> AppResult<FrontendResponse>
     }
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/share/{path}",
         tag = "pages",
@@ -280,15 +256,13 @@ pub async fn album_page(dynamic_album_id: String) -> AppResult<FrontendResponse>
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/share/<_path..>")]
 pub async fn share(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/archived",
         tag = "pages",
@@ -296,15 +270,13 @@ pub async fn share(_path: PathBuf) -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/archived")]
 pub async fn archived() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/archived/view/{path}",
         tag = "pages",
@@ -312,15 +284,13 @@ pub async fn archived() -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/archived/view/<_path..>")]
 pub async fn archived_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/trashed",
         tag = "pages",
@@ -328,15 +298,13 @@ pub async fn archived_view(_path: PathBuf) -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/trashed")]
 pub async fn trashed() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/trashed/view/{path}",
         tag = "pages",
@@ -344,15 +312,13 @@ pub async fn trashed() -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/trashed/view/<_path..>")]
 pub async fn trashed_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/all",
         tag = "pages",
@@ -360,15 +326,13 @@ pub async fn trashed_view(_path: PathBuf) -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/all")]
 pub async fn all() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/all/view/{path}",
         tag = "pages",
@@ -376,15 +340,13 @@ pub async fn all() -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/all/view/<_path..>")]
 pub async fn all_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/videos",
         tag = "pages",
@@ -392,15 +354,13 @@ pub async fn all_view(_path: PathBuf) -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/videos")]
 pub async fn videos() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/videos/view/{path}",
         tag = "pages",
@@ -408,15 +368,13 @@ pub async fn videos() -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/videos/view/<_path..>")]
 pub async fn videos_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/tags",
         tag = "pages",
@@ -424,15 +382,13 @@ pub async fn videos_view(_path: PathBuf) -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/tags")]
 pub async fn tags() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/links",
         tag = "pages",
@@ -440,15 +396,13 @@ pub async fn tags() -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/links")]
 pub async fn links() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/config",
         tag = "pages",
@@ -456,15 +410,13 @@ pub async fn links() -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/config")]
 pub async fn config() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/setting",
         tag = "pages",
@@ -472,15 +424,13 @@ pub async fn config() -> AppResult<FrontendResponse> {
             (status = 200, description = "SPA page (HTML)"),
         )
     )
-)]
+]
 #[get("/setting")]
 pub async fn setting() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/favicon.ico",
         tag = "pages",
@@ -488,15 +438,13 @@ pub async fn setting() -> AppResult<FrontendResponse> {
             (status = 200, description = "Favicon file"),
         )
     )
-)]
+]
 #[get("/favicon.ico")]
 pub async fn favicon() -> AppResult<FrontendResponse> {
     serve_file("favicon.ico").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/registerSW.js",
         tag = "pages",
@@ -504,15 +452,13 @@ pub async fn favicon() -> AppResult<FrontendResponse> {
             (status = 200, description = "Service worker registration script"),
         )
     )
-)]
+]
 #[get("/registerSW.js")]
 pub async fn sregister_sw() -> AppResult<FrontendResponse> {
     serve_file("registerSW.js").await
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/serviceWorker.js",
         tag = "pages",
@@ -520,7 +466,7 @@ pub async fn sregister_sw() -> AppResult<FrontendResponse> {
             (status = 200, description = "Service worker script"),
         )
     )
-)]
+]
 #[get("/serviceWorker.js")]
 pub async fn service_worker() -> AppResult<FrontendResponse> {
     serve_file("serviceWorker.js").await

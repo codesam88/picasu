@@ -74,9 +74,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
     Ok(target_dir)
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         post,
         path = "/upload",
         request_body = Value,
@@ -85,7 +83,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[post("/upload?<presigned_album_id_opt>", data = "<form>")]
 pub async fn upload(
     auth: GuardResult<GuardUpload>,

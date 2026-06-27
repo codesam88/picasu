@@ -25,15 +25,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct RegenerateData {
     index_array: Vec<usize>,
     timestamp: i64,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         post,
         path = "/put/reindex",
         request_body = RegenerateData,
@@ -42,7 +40,7 @@ pub struct RegenerateData {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[post("/put/reindex", format = "json", data = "<json_data>")]
 pub async fn reindex(
     auth: GuardResult<GuardAuth>,

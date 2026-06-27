@@ -20,7 +20,7 @@ use crate::workflow::index_image;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub enum AlbumIndexState {
     Idle,
     Running,
@@ -31,7 +31,7 @@ pub enum AlbumIndexState {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct AlbumIndexStatus {
     pub state: AlbumIndexState,
     pub root: Option<String>,

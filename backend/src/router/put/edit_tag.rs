@@ -15,7 +15,7 @@ use rocket::serde::{Deserialize, Serialize, json::Json};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct EditTagsData {
     index_array: Vec<usize>,
     add_tags_array: Vec<String>,
@@ -23,9 +23,7 @@ pub struct EditTagsData {
     timestamp: i64,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         put,
         path = "/put/edit_tag",
         request_body = EditTagsData,
@@ -34,7 +32,7 @@ pub struct EditTagsData {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[put("/put/edit_tag", format = "json", data = "<json_data>")]
 pub async fn edit_tag(
     auth: GuardResult<GuardAuth>,

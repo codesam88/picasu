@@ -16,7 +16,7 @@ use std::collections::HashSet;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct EditFlagsData {
     index_array: Vec<usize>,
     timestamp: i64,
@@ -28,9 +28,7 @@ pub struct EditFlagsData {
     is_trashed: Option<bool>,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         put,
         path = "/put/edit_flags",
         request_body = EditFlagsData,
@@ -39,7 +37,7 @@ pub struct EditFlagsData {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[put("/put/edit_flags", format = "json", data = "<json_data>")]
 pub async fn edit_flags(
     auth: GuardResult<GuardAuth>,

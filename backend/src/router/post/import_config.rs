@@ -10,9 +10,7 @@ use crate::model::config::AppConfig;
 use crate::router::AppResult;
 use crate::router::auth::GuardAuth;
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         post,
         path = "/post/config/import",
         request_body = AppConfig,
@@ -21,7 +19,7 @@ use crate::router::auth::GuardAuth;
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[post("/post/config/import", data = "<file>")]
 pub fn import_config_handler(_auth: GuardAuth, file: Json<AppConfig>) -> AppResult<Status> {
     match AppConfig::update(file.into_inner()) {

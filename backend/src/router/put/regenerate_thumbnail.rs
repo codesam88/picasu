@@ -26,9 +26,7 @@ pub struct RegenerateThumbnailForm<'r> {
     pub frame: TempFile<'r>,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         put,
         path = "/put/regenerate-thumbnail-with-frame",
         request_body = Value,
@@ -37,7 +35,7 @@ pub struct RegenerateThumbnailForm<'r> {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[put("/put/regenerate-thumbnail-with-frame", data = "<form>")]
 pub async fn regenerate_thumbnail_with_frame(
     auth: GuardResult<GuardAuth>,

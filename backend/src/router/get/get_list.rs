@@ -11,9 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/get/get-tags",
         responses(
@@ -21,7 +19,7 @@ use std::path::Path;
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[get("/get/get-tags")]
 pub async fn get_tags(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<TagInfo>>> {
     let _ = auth?;
@@ -33,13 +31,12 @@ pub async fn get_tags(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<TagInf
     .map_err(|e| AppError::from(anyhow::Error::from(e)))? // Handle JoinError
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumInfo {
     pub album_id: String,
     pub album_name: Option<String>,
-    #[cfg_attr(feature = "openapi", schema(value_type = HashMap<String, crate::model::album::Share>))]
+    #[schema(value_type = HashMap<String, crate::model::album::Share>)]
     pub share_list: HashMap<ArrayString<64>, Share>,
     /// Set for filesystem-hierarchy albums; `None` for user-created albums.
     pub dir_path: Option<String>,
@@ -48,16 +45,14 @@ pub struct AlbumInfo {
     pub parent_album_id: Option<String>,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/get/get-albums",
         responses(
             (status = 200, description = "List of albums", body = Vec<AlbumInfo>),
         )
     )
-)]
+]
 #[get("/get/get-albums")]
 pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<AlbumInfo>>> {
     let _ = auth?;

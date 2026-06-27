@@ -17,15 +17,13 @@ use rocket::serde::{Deserialize, Serialize, json::Json};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(crate = "rocket::serde")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct RotateImageRequest {
     /// Hash of the image to rotate
     pub hash: String,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         put,
         path = "/put/rotate-image",
         request_body = RotateImageRequest,
@@ -34,7 +32,7 @@ pub struct RotateImageRequest {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[put("/put/rotate-image", data = "<request>")]
 pub async fn rotate_image(
     auth: GuardResult<GuardAuth>,

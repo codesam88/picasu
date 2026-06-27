@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct PartialUpdateConfigRequest {
     pub address: Option<String>,
     pub port: Option<u16>,
@@ -26,9 +26,7 @@ pub struct PartialUpdateConfigRequest {
     pub auth_key: Option<String>,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         put,
         path = "/put/config",
         request_body = PartialUpdateConfigRequest,
@@ -37,7 +35,7 @@ pub struct PartialUpdateConfigRequest {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[put("/put/config", data = "<req>")]
 pub async fn update_config_handler(
     _auth: GuardAuth,
@@ -92,15 +90,13 @@ pub async fn update_config_handler(
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct UpdatePasswordRequest {
     pub password: Option<String>,
     pub old_password: Option<String>,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         put,
         path = "/put/config/password",
         request_body = UpdatePasswordRequest,
@@ -109,7 +105,7 @@ pub struct UpdatePasswordRequest {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[put("/put/config/password", data = "<req>")]
 pub async fn update_password_handler(
     _auth: GuardAuth,

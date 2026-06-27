@@ -253,11 +253,22 @@ pub struct AlbumMetadata {
     pub dir_path: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(
+    Debug,
+    Clone,
+    Deserialize,
+    Default,
+    Serialize,
+    Decode,
+    Encode,
+    PartialEq,
+    Eq,
+    Hash,
+    utoipa::ToSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Share {
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    #[schema(value_type = String)]
     pub url: ArrayString<64>,
     pub description: String,
     pub password: Option<String>,
@@ -269,10 +280,10 @@ pub struct Share {
 
 #[derive(Debug, Clone, Deserialize, Default, Serialize, Decode, Encode, PartialEq, Eq, Hash)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct ResolvedShare {
     pub share: Share,
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    #[schema(value_type = String)]
     pub album_id: ArrayString<64>,
     pub album_title: Option<String>,
 }

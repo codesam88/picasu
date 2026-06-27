@@ -10,7 +10,6 @@ mod error;
 mod frontend;
 mod init;
 mod model;
-#[cfg(feature = "openapi")]
 pub mod openapi;
 mod process;
 mod router;

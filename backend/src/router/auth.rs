@@ -553,21 +553,19 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct RenewHashToken {
     pub expired_hash_token: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct RenewHashTokenReturn {
     pub token: String,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         post,
         path = "/post/renew-hash-token",
         request_body = RenewHashToken,
@@ -576,7 +574,7 @@ pub struct RenewHashTokenReturn {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[post("/post/renew-hash-token", format = "json", data = "<token_request>")]
 pub async fn renew_hash_token(
     auth: TimestampGuardModified,
@@ -820,21 +818,19 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct RenewTimestampToken {
     pub token: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct RenewTimestampTokenReturn {
     pub token: String,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         post,
         path = "/post/renew-timestamp-token",
         request_body = RenewTimestampToken,
@@ -843,7 +839,7 @@ pub struct RenewTimestampTokenReturn {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[post(
     "/post/renew-timestamp-token",
     format = "json",

@@ -11,11 +11,11 @@ use crate::router::{AppResult, GuardResult};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct ConfigResponse {
     pub address: String,
     pub port: u16,
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    #[schema(value_type = Option<String>)]
     #[serde(rename = "imagePath", alias = "imageHome")]
     pub image_home: Option<std::path::PathBuf>,
     pub upload_folder: String,
@@ -26,9 +26,7 @@ pub struct ConfigResponse {
     pub has_auth_key: bool,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/get/config",
         responses(
@@ -36,7 +34,7 @@ pub struct ConfigResponse {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[get("/get/config")]
 pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<ConfigResponse>> {
     let _ = auth?;
@@ -55,9 +53,7 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
     Ok(Json(response))
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/get/config/export",
         responses(
@@ -65,7 +61,7 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[get("/get/config/export")]
 pub fn export_config_handler(auth: GuardResult<GuardAuth>) -> AppResult<(ContentType, String)> {
     let _ = auth?;

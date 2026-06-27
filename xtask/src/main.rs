@@ -1,8 +1,5 @@
-mod openapi;
 mod plan;
 mod test_image;
-
-use std::process::Command;
 
 fn main() {
     let subcommand = std::env::args().nth(1);
@@ -13,8 +10,6 @@ fn main() {
     }
 
     match subcommand.as_deref() {
-        Some("openapi-gen") => emit_openapi(),
-        Some("openapi-coverage") => openapi::run_coverage(),
         Some("test-image") => {
             let args: Vec<String> = std::iter::once("test-image".into())
                 .chain(std::env::args().skip(2))
@@ -181,10 +176,6 @@ fn print_help(sub: &str) {
         _ => {
             println!("cargo xtask <subcommand>\n");
             println!(
-                "  openapi-gen     generate openapi.rs and openapi.json from utoipa annotations"
-            );
-            println!("                  (see `just openapi-docs` for full pipeline)");
-            println!(
                 "  plan            list/search/validate .plan tasks (see `cargo xtask plan --help`)"
             );
             println!(
@@ -195,35 +186,6 @@ fn print_help(sub: &str) {
 }
 
 fn print_help_summary() {
-    eprintln!("available: openapi-gen, openapi-coverage, plan, test-image");
+    eprintln!("available: plan, test-image");
     eprintln!("use --help for details");
-}
-
-fn emit_openapi() {
-    openapi::generate_openapi_rs();
-
-    let output = Command::new("cargo")
-        .args([
-            "run",
-            "--package",
-            "picasu",
-            "--bin",
-            "picasu-openapi",
-            "--features",
-            "openapi",
-        ])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
-        .output()
-        .expect("failed to run picasu-openapi");
-
-    if !output.status.success() {
-        std::process::exit(output.status.code().unwrap_or(1));
-    }
-
-    let spec = String::from_utf8(output.stdout).expect("openapi output is not valid UTF-8");
-    let path = std::path::Path::new("backend").join("openapi.json");
-    std::fs::write(&path, spec.as_bytes()).expect("failed to write openapi.json");
-
-    eprintln!("wrote {}", path.display());
 }

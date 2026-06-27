@@ -5,9 +5,7 @@ use crate::model::config::APP_CONFIG;
 use crate::router::auth::Claims;
 use crate::router::{AppError, AppResult, ErrorKind};
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         post,
         path = "/post/authenticate",
         request_body = String,
@@ -16,7 +14,7 @@ use crate::router::{AppError, AppResult, ErrorKind};
             (status = 401, description = "Invalid password"),
         )
     )
-)]
+]
 #[post("/post/authenticate", data = "<password>")]
 pub fn authenticate(password: Json<String>) -> AppResult<Json<String>> {
     // Trim input password to match storage behavior

@@ -18,9 +18,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rocket::serde::json::Json;
 use std::time::Instant;
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/get/get-data",
         responses(
@@ -28,7 +26,7 @@ use std::time::Instant;
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[get("/get/get-data?<timestamp>&<start>&<end>")]
 pub async fn get_data(
     guard_timestamp: GuardResult<GuardTimestamp>,
@@ -88,9 +86,7 @@ pub async fn get_data(
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/get/get-rows",
         responses(
@@ -98,7 +94,7 @@ pub async fn get_data(
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[get("/get/get-rows?<index>&<timestamp>")]
 pub async fn get_rows(
     auth: GuardResult<GuardTimestamp>,
@@ -119,9 +115,7 @@ pub async fn get_rows(
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/get/get-scroll-bar",
         responses(
@@ -129,7 +123,7 @@ pub async fn get_rows(
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[get("/get/get-scroll-bar?<timestamp>")]
 #[allow(clippy::needless_pass_by_value)]
 pub fn get_scroll_bar(

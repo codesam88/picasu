@@ -21,9 +21,9 @@ impl DatabaseTimestamp {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct DataBaseTimestampReturn {
-    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    #[schema(value_type = Object)]
     pub abstract_data: AbstractData,
     pub timestamp: i64,
     pub token: String,
@@ -73,7 +73,7 @@ pub struct ReducedData {
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Decode, Encode)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct Prefetch {
     pub timestamp: i64,
     pub locate_to: Option<usize>,
@@ -93,7 +93,7 @@ impl Prefetch {
 #[allow(clippy::struct_field_names)]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Encode, Decode)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct DisplayElement {
     pub display_width: u32,
     pub display_height: u32,
@@ -101,7 +101,7 @@ pub struct DisplayElement {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Encode, Decode)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct Row {
     pub start: usize,
     pub end: usize,
@@ -111,7 +111,7 @@ pub struct Row {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct ScrollBarData {
     pub year: usize,
     pub month: usize,

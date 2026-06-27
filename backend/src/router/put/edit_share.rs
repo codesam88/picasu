@@ -14,16 +14,14 @@ use redb::ReadableTable;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct EditShare {
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    #[schema(value_type = String)]
     album_id: ArrayString<64>,
     share: Share,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         put,
         path = "/put/edit_share",
         request_body = EditShare,
@@ -32,7 +30,7 @@ pub struct EditShare {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[put("/put/edit_share", format = "json", data = "<json_data>")]
 pub async fn edit_share(
     auth: GuardResult<GuardAuth>,
@@ -87,17 +85,15 @@ pub async fn edit_share(
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct DeleteShare {
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    #[schema(value_type = String)]
     album_id: ArrayString<64>,
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    #[schema(value_type = String)]
     share_id: ArrayString<64>,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         put,
         path = "/put/delete_share",
         request_body = DeleteShare,
@@ -106,7 +102,7 @@ pub struct DeleteShare {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[put("/put/delete_share", format = "json", data = "<json_data>")]
 pub async fn delete_share(
     auth: GuardResult<GuardAuth>,

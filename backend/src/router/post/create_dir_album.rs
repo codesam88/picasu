@@ -13,18 +13,16 @@ use std::fs;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct CreateDirAlbumData {
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    #[schema(value_type = String)]
     pub parent_album_id: ArrayString<64>,
     pub name: String,
 }
 
 /// Create a new subdirectory under an existing dir-album's directory and
 /// register it as a new album. Returns the new album's ID.
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         post,
         path = "/post/create_dir_album",
         request_body = CreateDirAlbumData,
@@ -33,7 +31,7 @@ pub struct CreateDirAlbumData {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[post("/post/create_dir_album", format = "json", data = "<json_data>")]
 pub async fn create_dir_album(
     auth: GuardResult<GuardAuth>,

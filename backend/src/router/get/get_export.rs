@@ -12,9 +12,7 @@ pub struct ExportEntry {
     value: AbstractData,
 }
 
-#[cfg_attr(
-    feature = "openapi",
-    utoipa::path(
+#[utoipa::path(
         get,
         path = "/get/get-export",
         responses(
@@ -22,7 +20,7 @@ pub struct ExportEntry {
             (status = 400, description = "Invalid input"),
         )
     )
-)]
+]
 #[get("/get/get-export")]
 pub fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
     let _ = auth?;

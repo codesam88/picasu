@@ -110,11 +110,11 @@ playwright-report/results.json`).
 ### OpenAPI spec generator and coverage tracing
 
 Derives an OpenAPI 3.1 spec from `#[utoipa::path]` annotations on route
-handlers. A coverage tool (`cargo xtask openapi-coverage`) checks every
-handler registered in the `routes![]` macro for an annotation and reports
-coverage percentage. `just openapi-docs-check` (in `just precommit` on
-`main`) regenerates and diffs the committed spec files — unannotated new
-routes or stale docs fail the gate.
+handlers. `build.rs` checks every handler registered in the `routes![]` macro
+for an annotation and prints `cargo:warning=` for any missing during every
+build. `just openapi-docs-check` (in `just precommit` on `main`) regenerates
+and diffs the committed spec files — unannotated new routes or stale docs
+fail the gate.
 
 See `docs/openapi-generator.md` for the full design, and
 `docs/openapi-reference.md` for the rendered reference.

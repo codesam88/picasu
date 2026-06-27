@@ -31,14 +31,14 @@ fn default_max_upload_size() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(utoipa::ToSchema)]
 pub struct AppConfig {
     pub address: String,
     pub port: u16,
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    #[schema(value_type = Option<String>)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_home: Option<PathBuf>,
-    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    #[schema(value_type = Option<String>)]
     #[serde(rename = "imagePath", alias = "imageHome")]
     pub image_home: Option<PathBuf>,
     #[serde(default = "default_upload_folder")]
