@@ -1,0 +1,73 @@
+name: Run checks and tests
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - ".plan/**"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/copilot-instructions.md"
+  pull_request:
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - ".plan/**"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/copilot-instructions.md"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  precommit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Install cargo tools
+        run: cargo install --locked cargo-nextest
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+        working-directory: frontend
+
+      - name: Check (format + lints)
+        run: just check
+
+      - name: Test
+        run: just test
+
+      - name: OpenAPI docs check
+        run: just openapi-docs-check
