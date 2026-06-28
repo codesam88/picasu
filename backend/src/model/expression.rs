@@ -38,6 +38,7 @@ pub enum Expression {
 use crate::model::abstract_data::AbstractData;
 
 impl Expression {
+    #[allow(clippy::too_many_lines)]
     pub fn generate_filter(self) -> Box<dyn Fn(&AbstractData) -> bool + Sync + Send> {
         match self {
             Expression::Or(expressions) => {
@@ -336,16 +337,16 @@ impl Expression {
         }
     }
 }
+#[cfg(test)]
 mod tests {
-    use super::{AlbumFilterValue, Expression, FilterValue};
+    use super::Expression;
     use crate::model::abstract_data::AbstractData;
     use crate::model::image::{ImageCombined, ImageMetadata};
     use crate::model::object::{ObjectSchema, ObjectType};
-    use crate::model::response::FileModify;
     use arrayvec::ArrayString;
 
     fn img() -> ImageCombined {
-        let id = ArrayString::from("test").unwrap();
+        let id = ArrayString::from("test").expect("failed to create ArrayString");
         ImageCombined {
             object: ObjectSchema::new(id, ObjectType::Image),
             metadata: ImageMetadata::new(id, 0, 0, 0, "jpg".to_string()),
@@ -498,7 +499,7 @@ mod tests {
     fn album_value_matches_stored_membership() {
         // DIR_ALBUM_CACHE is empty in tests, so the filter falls through to the
         // manual-album path that checks img.metadata.albums.
-        let album_id = ArrayString::from("aabbccdd").unwrap();
+        let album_id = ArrayString::from("aabbccdd").expect("failed to create ArrayString");
         let mut i = img();
         i.metadata.album = Some(album_id);
         let member = AbstractData::Image(i);
@@ -516,7 +517,7 @@ mod tests {
 
     #[test]
     fn album_exists_reflects_membership_emptiness() {
-        let album_id = ArrayString::from("aabbccdd").unwrap();
+        let album_id = ArrayString::from("aabbccdd").expect("failed to create ArrayString");
         let empty = AbstractData::Image(img());
         let mut i = img();
         i.metadata.album = Some(album_id);
@@ -578,6 +579,7 @@ mod tests {
 }
 
 impl Expression {
+    #[allow(clippy::too_many_lines)]
     pub fn generate_filter_hide_metadata(
         self,
         shared_album_id: ArrayString<64>,

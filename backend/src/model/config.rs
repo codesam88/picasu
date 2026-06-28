@@ -138,20 +138,12 @@ impl Default for TomlGallery {
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub(crate) struct TomlSecrets {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) auth_key: Option<String>,
-}
-
-impl Default for TomlSecrets {
-    fn default() -> Self {
-        Self {
-            password: None,
-            auth_key: None,
-        }
-    }
 }
 
 impl From<TomlFile> for AppConfig {
@@ -209,6 +201,8 @@ impl AppConfig {
         }
     }
 
+    /// # Panics
+    /// Panics if the global configuration is already initialized.
     pub fn init() {
         let config_path = get_config_path();
         let config_path_display = config_path.display();
@@ -233,10 +227,13 @@ impl AppConfig {
                 ..AppConfig::default()
             };
 
-            if let Some(parent) = config_path.parent() {
-                if let Err(e) = fs::create_dir_all(parent) {
-                    warn!("Failed to create config directory {parent:?}: {e}");
-                }
+            if let Some(parent) = config_path.parent()
+                && let Err(e) = fs::create_dir_all(parent)
+            {
+                warn!(
+                    "Failed to create config directory {}: {e}",
+                    parent.display()
+                );
             }
 
             if let Err(e) = Self::save_update(&config) {
@@ -264,10 +261,11 @@ impl AppConfig {
         };
 
         // Overwrite file if we had to fall back to defaults
-        if config == AppConfig::default() && config_path.exists() {
-            if let Err(e) = Self::save_update(&config) {
-                warn!("Failed to save default config: {e}");
-            }
+        if config == AppConfig::default()
+            && config_path.exists()
+            && let Err(e) = Self::save_update(&config)
+        {
+            warn!("Failed to save default config: {e}");
         }
 
         Self::apply_env_overrides(&mut config);
@@ -306,23 +304,23 @@ impl AppConfig {
                 config.image_home = Some(PathBuf::from(p));
             }
         }
-        if let Ok(val) = std::env::var("PICASU_PORT") {
-            if let Ok(port) = val.parse() {
-                config.port = port;
-            }
+        if let Ok(val) = std::env::var("PICASU_PORT")
+            && let Ok(port) = val.parse()
+        {
+            config.port = port;
         }
         if let Ok(val) = std::env::var("PICASU_ADDRESS") {
             config.address = val;
         }
-        if let Ok(val) = std::env::var("PICASU_READ_ONLY_MODE") {
-            if let Ok(mode) = val.parse() {
-                config.read_only_mode = mode;
-            }
+        if let Ok(val) = std::env::var("PICASU_READ_ONLY_MODE")
+            && let Ok(mode) = val.parse()
+        {
+            config.read_only_mode = mode;
         }
-        if let Ok(val) = std::env::var("PICASU_DISABLE_IMG") {
-            if let Ok(disabled) = val.parse() {
-                config.disable_img = disabled;
-            }
+        if let Ok(val) = std::env::var("PICASU_DISABLE_IMG")
+            && let Ok(disabled) = val.parse()
+        {
+            config.disable_img = disabled;
         }
         if let Ok(val) = std::env::var("PICASU_UPLOAD_FOLDER") {
             let trimmed = val.trim().to_string();
@@ -346,6 +344,10 @@ impl AppConfig {
         }
     }
 
+    /// # Panics
+    /// Panics if the global configuration has not been initialized.
+    /// # Errors
+    /// Returns an error if the configuration cannot be serialized and saved to disk.
     pub fn update(mut new_config: AppConfig) -> anyhow::Result<()> {
         use crate::tasks::batcher::start_watcher::reload_watcher;
 
@@ -374,7 +376,11 @@ impl AppConfig {
         Self::save_update(&new_config).context("Failed to save configuration to file")?;
 
         {
-            let mut w = APP_CONFIG.get().unwrap().write().unwrap();
+            let mut w = APP_CONFIG
+                .get()
+                .expect("APP_CONFIG not initialized")
+                .write()
+                .expect("lock poisoned");
             if new_config.auth_key.is_none() {
                 FALLBACK_SECRET_KEY.get_or_init(generate_secret_key);
             }
@@ -422,8 +428,8 @@ mod tests {
         };
 
         let tf = TomlFile::from(config.clone());
-        let toml_str = toml::to_string_pretty(&tf).unwrap();
-        let parsed: TomlFile = toml::from_str(&toml_str).unwrap();
+        let toml_str = toml::to_string_pretty(&tf).expect("failed to serialize toml");
+        let parsed: TomlFile = toml::from_str(&toml_str).expect("failed to deserialize toml");
         let restored = AppConfig::from(parsed);
         assert_eq!(config, restored);
     }
@@ -442,7 +448,7 @@ mod tests {
         };
 
         let tf = TomlFile::from(config);
-        let toml_str = toml::to_string_pretty(&tf).unwrap();
+        let toml_str = toml::to_string_pretty(&tf).expect("failed to serialize toml");
 
         assert!(
             toml_str.contains("[server]"),
@@ -474,7 +480,7 @@ port = 9999
 [gallery]
 read_only_mode = true
 "#;
-        let parsed: TomlFile = toml::from_str(toml_str).unwrap();
+        let parsed: TomlFile = toml::from_str(toml_str).expect("failed to deserialize toml");
         let config = AppConfig::from(parsed);
 
         assert_eq!(config.port, 9999);

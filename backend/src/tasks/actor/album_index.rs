@@ -16,7 +16,6 @@ use crate::model::media::is_valid_media_file;
 use crate::router::AppResult;
 use crate::storage::files::get_data_path;
 use crate::storage::files::get_resolved_image_home;
-use crate::workflow::index_image;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -114,7 +113,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
     let cancel = Arc::new(AtomicBool::new(false));
 
     {
-        let mut slot = INDEX_STATUS.lock().unwrap();
+        let mut slot = INDEX_STATUS.lock().expect("lock poisoned");
         if slot.status.state == AlbumIndexState::Running {
             return Err(AppError::new(
                 ErrorKind::Conflict,
@@ -136,7 +135,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
         };
     }
 
-    *ACTIVE_INDEX.lock().unwrap() = Some(ActiveIndex {
+    *ACTIVE_INDEX.lock().expect("lock poisoned") = Some(ActiveIndex {
         job_id,
         cancel: cancel.clone(),
     });
@@ -220,13 +219,13 @@ pub fn index_album(src: &str) -> AppResult<()> {
 }
 
 pub fn cancel_album_index() -> AppResult<()> {
-    let active = ACTIVE_INDEX.lock().unwrap().clone();
+    let active = ACTIVE_INDEX.lock().expect("lock poisoned").clone();
     let Some(active) = active else {
         return Err(AppError::new(ErrorKind::NotFound, "No active index job"));
     };
 
     active.cancel.store(true, Ordering::SeqCst);
-    let mut slot = INDEX_STATUS.lock().unwrap();
+    let mut slot = INDEX_STATUS.lock().expect("lock poisoned");
     if slot.job_id == active.job_id && slot.status.state == AlbumIndexState::Running {
         slot.status.cancel_requested = true;
     }
@@ -235,7 +234,7 @@ pub fn cancel_album_index() -> AppResult<()> {
 }
 
 pub fn album_index_status() -> AlbumIndexStatus {
-    INDEX_STATUS.lock().unwrap().status.clone()
+    INDEX_STATUS.lock().expect("lock poisoned").status.clone()
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────
@@ -270,7 +269,7 @@ fn should_walk_entry(entry: &DirEntry, internal_roots: &[PathBuf]) -> bool {
 }
 
 fn update_status(job_id: u64, update: impl FnOnce(&mut AlbumIndexStatus)) {
-    let mut slot = INDEX_STATUS.lock().unwrap();
+    let mut slot = INDEX_STATUS.lock().expect("lock poisoned");
     if slot.job_id == job_id {
         update(&mut slot.status);
     }
@@ -293,7 +292,7 @@ fn increment_failed(job_id: u64) {
 }
 
 fn did_every_matched_file_fail(job_id: u64) -> bool {
-    let slot = INDEX_STATUS.lock().unwrap();
+    let slot = INDEX_STATUS.lock().expect("lock poisoned");
     slot.job_id == job_id
         && slot.status.matched > 0
         && slot.status.processed == 0
@@ -302,14 +301,14 @@ fn did_every_matched_file_fail(job_id: u64) -> bool {
 
 fn finish_job(job_id: u64, state: AlbumIndexState) {
     {
-        let mut slot = INDEX_STATUS.lock().unwrap();
+        let mut slot = INDEX_STATUS.lock().expect("lock poisoned");
         if slot.job_id == job_id {
             slot.status.state = state;
             slot.status.finished_at = Some(Utc::now().timestamp_millis());
         }
     }
 
-    let mut active = ACTIVE_INDEX.lock().unwrap();
+    let mut active = ACTIVE_INDEX.lock().expect("lock poisoned");
     if active.as_ref().is_some_and(|job| job.job_id == job_id) {
         *active = None;
     }

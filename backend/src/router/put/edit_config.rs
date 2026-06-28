@@ -47,7 +47,11 @@ pub async fn update_config_handler(
 
     spawn_blocking(move || -> Result<Status, AppError> {
         let mut current_config = {
-            let read_lock = APP_CONFIG.get().unwrap().read().unwrap();
+            let read_lock = APP_CONFIG
+                .get()
+                .expect("APP_CONFIG not initialized")
+                .read()
+                .expect("lock poisoned");
             read_lock.clone()
         };
 
@@ -116,7 +120,12 @@ pub async fn update_password_handler(
     let req_data = req.into_inner();
 
     spawn_blocking(move || -> Result<Status, AppError> {
-        let mut current_config = APP_CONFIG.get().unwrap().read().unwrap().clone();
+        let mut current_config = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG not initialized")
+            .read()
+            .expect("lock poisoned")
+            .clone();
 
         if req_data.old_password != current_config.password {
             return Err(AppError::new(

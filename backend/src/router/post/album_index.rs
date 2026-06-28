@@ -1,5 +1,3 @@
-use anyhow::Context;
-use anyhow::{anyhow, bail};
 use rocket::http::Status;
 use rocket::post;
 use rocket::serde::json::Json;
@@ -9,7 +7,6 @@ use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::actor::album_index::{cancel_album_index, index_album};
-use crate::workflow::index_image;
 use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]

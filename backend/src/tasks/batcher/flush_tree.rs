@@ -42,20 +42,27 @@ impl BatchTask for FlushTreeTask {
 }
 
 fn flush_tree_task(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
-    let write_txn = TREE.in_disk.begin_write().unwrap();
+    let write_txn = TREE
+        .in_disk
+        .begin_write()
+        .expect("failed to begin write transaction");
     {
-        let mut data_table = write_txn.open_table(DATA_TABLE).unwrap();
+        let mut data_table = write_txn
+            .open_table(DATA_TABLE)
+            .expect("failed to open table");
 
         for abstract_data in insert_list {
             let hash = abstract_data.hash();
-            data_table.insert(&*hash, abstract_data).unwrap();
+            data_table
+                .insert(&*hash, abstract_data)
+                .expect("failed to insert");
         }
         for abstract_data in remove_list {
             let hash = abstract_data.hash();
-            data_table.remove(&*hash).unwrap();
+            data_table.remove(&*hash).expect("failed to remove");
         }
     };
-    write_txn.commit().unwrap();
+    write_txn.commit().expect("failed to commit transaction");
 
     for abstract_data in insert_list.iter().chain(remove_list.iter()) {
         if let Some(album_id) = abstract_data.album() {

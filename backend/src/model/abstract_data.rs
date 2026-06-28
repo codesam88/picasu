@@ -17,7 +17,7 @@ use crate::constant::VALID_IMAGE_EXTENSIONS;
 
 /// Regex for parsing timestamps from filenames (e.g., `20231225_143052`)
 static FILE_NAME_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\b(\d{4})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})\b").unwrap()
+    Regex::new(r"\b(\d{4})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})\b").expect("failed to compile FILE_NAME_TIME_REGEX")
 });
 
 use super::{
@@ -149,7 +149,8 @@ impl AbstractData {
                     if let Some(datetime) = max_time {
                         return chrono::Local
                             .from_local_datetime(&datetime)
-                            .unwrap()
+                            .single()
+                            .expect("failed to convert datetime to local timezone")
                             .timestamp_millis();
                     }
                 }
@@ -181,15 +182,6 @@ impl AbstractData {
             AbstractData::Image(_) => "image",
             AbstractData::Video(_) => "video",
             AbstractData::Album(_) => "album",
-        }
-    }
-
-    /// Get file extension
-    pub fn ext(&self) -> &str {
-        match self {
-            AbstractData::Image(img) => &img.metadata.ext,
-            AbstractData::Video(vid) => &vid.metadata.ext,
-            AbstractData::Album(_) => "",
         }
     }
 
@@ -470,36 +462,6 @@ impl AbstractData {
             AbstractData::Album(_) => {}
         }
     }
-
-    /// Convert to Image type (if currently video)
-    pub fn convert_to_image(&mut self) {
-        if let AbstractData::Video(vid) = self {
-            let object = ObjectSchema {
-                id: vid.object.id,
-                obj_type: ObjectType::Image,
-                pending: vid.object.pending,
-                thumbhash: vid.object.thumbhash.clone(),
-                description: vid.object.description.clone(),
-                tags: vid.object.tags.clone(),
-                is_favorite: vid.object.is_favorite,
-                is_archived: vid.object.is_archived,
-                is_trashed: vid.object.is_trashed,
-                update_at: Utc::now().timestamp_millis(),
-            };
-            let metadata = ImageMetadata {
-                id: vid.metadata.id,
-                size: vid.metadata.size,
-                width: vid.metadata.width,
-                height: vid.metadata.height,
-                ext: vid.metadata.ext.clone(),
-                phash: None,
-                album: vid.metadata.album,
-                exif_vec: vid.metadata.exif_vec.clone(),
-                alias: vid.metadata.alias.clone(),
-            };
-            *self = AbstractData::Image(ImageCombined { object, metadata });
-        }
-    }
 }
 
 impl From<ImageCombined> for AbstractData {
@@ -526,7 +488,7 @@ mod tests {
     use crate::model::object::ObjectType;
 
     fn img_with_alias(files: &[(&str, i64, i64)]) -> AbstractData {
-        let id = ArrayString::from("test").unwrap();
+        let id = ArrayString::from("test").expect("failed to create ArrayString");
         let mut metadata = ImageMetadata::new(id, 0, 0, 0, "jpg".to_string());
         for (file, modified, scan_time) in files {
             metadata.alias.push(FileModify {
@@ -542,7 +504,7 @@ mod tests {
     }
 
     fn img_with_exif(key: &str, value: &str) -> AbstractData {
-        let id = ArrayString::from("test").unwrap();
+        let id = ArrayString::from("test").expect("failed to create ArrayString");
         let mut metadata = ImageMetadata::new(id, 0, 0, 0, "jpg".to_string());
         metadata.exif_vec.insert(key.to_string(), value.to_string());
         AbstractData::Image(ImageCombined {

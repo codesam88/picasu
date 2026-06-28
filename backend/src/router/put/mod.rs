@@ -12,7 +12,7 @@ pub mod regenerate_thumbnail;
 pub mod reindex;
 pub mod rotate_image;
 pub fn generate_put_routes() -> Vec<Route> {
-    let mut r = routes![
+    let r = routes![
         assign_album::assign_album,
         edit_album::set_album_cover,
         edit_album::set_album_title,

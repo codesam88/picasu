@@ -102,6 +102,7 @@ pub struct DisplayElement {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Encode, Decode)]
 #[serde(rename_all = "camelCase")]
 #[derive(utoipa::ToSchema)]
+#[allow(clippy::struct_field_names)]
 pub struct Row {
     pub start: usize,
     pub end: usize,

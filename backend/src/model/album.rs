@@ -39,7 +39,7 @@ impl AlbumCombined {
     }
 
     pub fn self_update(&mut self) {
-        let ref_data = TREE.in_memory.read().unwrap();
+        let ref_data = TREE.in_memory.read().expect("lock poisoned");
 
         let album_id = self.object.id;
         let dir_path = self.metadata.dir_path.clone();
@@ -119,7 +119,7 @@ impl AlbumCombined {
                 self.set_cover_from_info(first_info);
             }
         } else {
-            let current_cover = self.metadata.cover.unwrap();
+            let current_cover = self.metadata.cover.expect("cover not set");
             let cover_still_in_album = data_in_album.iter().any(|info| info.hash == current_cover);
             if !cover_still_in_album && let Some(first_info) = data_in_album.first() {
                 self.set_cover_from_info(first_info);
@@ -219,14 +219,14 @@ mod tests {
 
     #[test]
     fn manual_album_matches_stored_id() {
-        let id = ArrayString::from("abc").unwrap();
+        let id = ArrayString::from("abc").expect("failed to create ArrayString");
         assert!(belongs_to_album(&alias(&[]), Some(id), None, id));
     }
 
     #[test]
     fn manual_album_does_not_match_different_id() {
-        let id = ArrayString::from("abc").unwrap();
-        let other = ArrayString::from("xyz").unwrap();
+        let id = ArrayString::from("abc").expect("failed to create ArrayString");
+        let other = ArrayString::from("xyz").expect("failed to create ArrayString");
         assert!(!belongs_to_album(&alias(&[]), Some(other), None, id));
     }
 }

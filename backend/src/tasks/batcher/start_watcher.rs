@@ -3,9 +3,7 @@ use crate::model::config::APP_CONFIG;
 use crate::model::media::is_valid_media_file;
 use crate::storage::files::get_resolved_image_home;
 use crate::tasks::runtime::INDEX_RUNTIME;
-use anyhow::Context;
 use anyhow::Result;
-use anyhow::{anyhow, bail};
 use log::{error, info};
 use mini_executor::BatchTask;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -45,7 +43,7 @@ pub fn reload_watcher() {
     info!("Reloading watcher...");
 
     {
-        let mut guard = WATCHER_HANDLE.lock().unwrap();
+        let mut guard = WATCHER_HANDLE.lock().expect("lock poisoned");
         *guard = None; // Drop old watcher
     }
 
@@ -64,7 +62,13 @@ fn start_watcher_task_internal() -> Result<()> {
     }
 
     // Get the raw path from config system
-    let raw_image_path = APP_CONFIG.get().unwrap().read().unwrap().image_home.clone();
+    let raw_image_path = APP_CONFIG
+        .get()
+        .expect("APP_CONFIG not initialized")
+        .read()
+        .expect("lock poisoned")
+        .image_home
+        .clone();
 
     let Some(raw_image_path) = raw_image_path else {
         info!("No path to watch");
@@ -86,7 +90,7 @@ fn start_watcher_task_internal() -> Result<()> {
     }
 
     // Store it globally to keep it alive.
-    *WATCHER_HANDLE.lock().unwrap() = Some(watcher);
+    *WATCHER_HANDLE.lock().expect("lock poisoned") = Some(watcher);
     Ok(())
 }
 
@@ -94,7 +98,7 @@ fn submit_to_debounce_pool(path: PathBuf) {
     let now = Instant::now();
 
     {
-        let mut pool = DEBOUNCE_POOL.lock().unwrap();
+        let mut pool = DEBOUNCE_POOL.lock().expect("lock poisoned");
         pool.insert(path.clone(), now);
     }
 
@@ -104,7 +108,7 @@ fn submit_to_debounce_pool(path: PathBuf) {
 
         // Check if there are any events for the same path within this 1 second (i.e., whether the last time is still now)
         let should_run = {
-            let mut pool = DEBOUNCE_POOL.lock().unwrap();
+            let mut pool = DEBOUNCE_POOL.lock().expect("lock poisoned");
             match pool.get(&path).copied() {
                 Some(last) if last == now => {
                     // Not updated, remove and execute

@@ -93,7 +93,11 @@ use crate::model::config::APP_CONFIG;
 
 pub fn initialize_folder() {
     let (data_home, image_home, upload_folder) = {
-        let config = APP_CONFIG.get().unwrap().read().unwrap();
+        let config = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG not initialized")
+            .read()
+            .expect("lock poisoned");
         let data_home = config
             .data_home
             .clone()
@@ -104,14 +108,16 @@ pub fn initialize_folder() {
     };
 
     info!("Storage root initialized at: {}", data_home.display());
-    std::fs::create_dir_all(data_home.join("db")).unwrap();
-    std::fs::create_dir_all(data_home.join("object/compressed")).unwrap();
+    std::fs::create_dir_all(data_home.join("db")).expect("failed to create db directory");
+    std::fs::create_dir_all(data_home.join("object/compressed"))
+        .expect("failed to create object/compressed directory");
 
     // Pre-create image root and uploads directory from config
     if let Some(ref root) = image_home {
         info!("Creating image root: {}", root.display());
-        std::fs::create_dir_all(root).unwrap();
-        std::fs::create_dir_all(root.join(&upload_folder)).unwrap();
+        std::fs::create_dir_all(root).expect("failed to create image root directory");
+        std::fs::create_dir_all(root.join(&upload_folder))
+            .expect("failed to create upload folder directory");
     }
 }
 
@@ -125,9 +131,12 @@ pub fn initialize_file() {
     // Ensure DATA_TABLE exists so that read-only callers (e.g. init_dir_album_cache)
     // never see TableDoesNotExist on a fresh or reset database.
     {
-        let txn = TREE.in_disk.begin_write().unwrap();
-        txn.open_table(DATA_TABLE).unwrap();
-        txn.commit().unwrap();
+        let txn = TREE
+            .in_disk
+            .begin_write()
+            .expect("failed to begin write transaction");
+        txn.open_table(DATA_TABLE).expect("failed to open table");
+        txn.commit().expect("failed to commit transaction");
     }
 
     {
@@ -138,7 +147,7 @@ pub fn initialize_file() {
                     info!("Clear tree cache");
                 }
                 Err(_) => {
-                    error!("Fail to delete cache data {db_path:?}");
+                    error!("Fail to delete cache data {}", db_path.display());
                 }
             }
         }
@@ -151,7 +160,7 @@ pub fn initialize_file() {
                     info!("Clear query cache");
                 }
                 Err(_) => {
-                    error!("Fail to delete cache data {db_path:?}");
+                    error!("Fail to delete cache data {}", db_path.display());
                 }
             }
         }
@@ -164,7 +173,7 @@ pub fn initialize_file() {
                     info!("Clear expire table");
                 }
                 Err(_) => {
-                    error!("Fail to delete expire table {db_path:?}");
+                    error!("Fail to delete expire table {}", db_path.display());
                 }
             }
         }

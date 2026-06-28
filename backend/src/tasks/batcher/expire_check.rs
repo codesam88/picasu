@@ -23,11 +23,14 @@ impl BatchTask for ExpireCheckTask {
 }
 
 fn expire_check_task() {
-    let write_txn = QUERY_SNAPSHOT.in_disk.begin_write().unwrap();
+    let write_txn = QUERY_SNAPSHOT
+        .in_disk
+        .begin_write()
+        .expect("failed to begin write transaction");
 
     write_txn
         .list_tables()
-        .unwrap()
+        .expect("failed to list tables")
         .par_bridge()
         .for_each(|table_handle| {
             if let Ok(timestamp) = table_handle.name().parse::<i64>()
@@ -38,18 +41,23 @@ fn expire_check_task() {
                 let table_definition: TableDefinition<u64, Prefetch> =
                     TableDefinition::new(&binding);
 
-                let read_txn = QUERY_SNAPSHOT.in_disk.begin_read().unwrap();
-                let table = read_txn.open_table(table_definition).unwrap();
+                let read_txn = QUERY_SNAPSHOT
+                    .in_disk
+                    .begin_read()
+                    .expect("failed to begin read transaction");
+                let table = read_txn
+                    .open_table(table_definition)
+                    .expect("failed to open table");
 
                 match write_txn.delete_table(table_handle) {
                     Ok(true) => {
                         info!("Delete query cache table: {timestamp}");
                         let tree_snapshot_delete_queue: Vec<_> = table
                             .iter()
-                            .unwrap()
+                            .expect("failed to iterate table")
                             .par_bridge()
                             .map(|result| {
-                                let (_, guard) = result.unwrap();
+                                let (_, guard) = result.expect("failed to read record");
                                 let prefetch_return = guard.value();
                                 prefetch_return.timestamp
                             })
@@ -70,10 +78,13 @@ fn expire_check_task() {
 
                 info!(
                     "{} items remaining in disk query cache",
-                    write_txn.list_tables().unwrap().count()
+                    write_txn
+                        .list_tables()
+                        .expect("failed to list tables")
+                        .count()
                 );
             }
         });
 
-    write_txn.commit().unwrap();
+    write_txn.commit().expect("failed to commit transaction");
 }

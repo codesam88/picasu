@@ -2,7 +2,7 @@ use crate::constant::SHOULD_SWAP_WIDTH_HEIGHT_ROTATION;
 use crate::model::abstract_data::AbstractData;
 use anyhow::Context;
 use anyhow::Result;
-use anyhow::{anyhow, bail};
+use anyhow::bail;
 use image::DynamicImage;
 
 pub fn fix_image_orientation(abstract_data: &AbstractData, dynamic_image: &mut DynamicImage) {
@@ -117,8 +117,6 @@ pub fn generate_phash(dynamic_image_rotated: &DynamicImage) -> Vec<u8> {
     let phash = hasher.hash_image(dynamic_image_rotated);
     phash.as_bytes().to_vec()
 }
-
-use crate::process::video::video_width_height;
 
 /// Return `(width, height)` for an already‑decoded **image**.
 /// Pure function ‑ no fallible operations.

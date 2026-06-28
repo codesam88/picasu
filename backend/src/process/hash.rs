@@ -26,5 +26,5 @@ pub fn generate_random_hash() -> ArrayString<64> {
         .map(char::from)
         .collect();
 
-    ArrayString::<64>::from(&hash).unwrap()
+    ArrayString::<64>::from(&hash).expect("failed to create hash ArrayString")
 }

@@ -85,17 +85,20 @@ pub fn run() {
     let worker_handle = thread::spawn(move || {
         INDEX_RUNTIME.block_on(async {
             let start_time = Instant::now();
-            let txn = TREE.in_disk.begin_write().unwrap();
+            let txn = TREE
+                .in_disk
+                .begin_write()
+                .expect("failed to begin write transaction");
 
             {
-                let table = txn.open_table(DATA_TABLE).unwrap();
-                let total_count = table.len().unwrap();
+                let table = txn.open_table(DATA_TABLE).expect("failed to open table");
+                let total_count = table.len().expect("failed to get length");
 
                 // Constraint: DATA_TABLE stores mixed types (Albums and Media).
                 // We must perform an O(N) scan to differentiate counts.
                 let album_count = table
                     .iter()
-                    .unwrap()
+                    .expect("failed to iterate table")
                     .filter_map(std::result::Result::ok)
                     .filter(|(_, guard)| matches!(guard.value(), AbstractData::Album(_)))
                     .count();
@@ -109,15 +112,17 @@ pub fn run() {
                 );
             }
 
-            txn.commit().unwrap();
+            txn.commit().expect("failed to commit transaction");
 
             BATCH_COORDINATOR.execute_batch_detached(StartWatcherTask);
             BATCH_COORDINATOR.execute_batch_detached(UpdateTreeTask);
             start_expire_check_loop();
 
             {
-                let mut sigint = signal(SignalKind::interrupt()).unwrap();
-                let mut sigterm = signal(SignalKind::terminate()).unwrap();
+                let mut sigint =
+                    signal(SignalKind::interrupt()).expect("failed to set SIGINT handler");
+                let mut sigterm =
+                    signal(SignalKind::terminate()).expect("failed to set SIGTERM handler");
                 tokio::select! {
                     _ = sigint.recv() => info!("SIGINT received, worker shutting down."),
                     _ = sigterm.recv() => info!("SIGTERM received, worker shutting down."),
@@ -138,8 +143,10 @@ pub fn run() {
             // Manually handle SIGINT/SIGTERM to trigger graceful shutdown
             // since we are running outside the default global runtime.
             ROCKET_RUNTIME.spawn(async move {
-                let mut sigint = signal(SignalKind::interrupt()).unwrap();
-                let mut sigterm = signal(SignalKind::terminate()).unwrap();
+                let mut sigint =
+                    signal(SignalKind::interrupt()).expect("failed to set SIGINT handler");
+                let mut sigterm =
+                    signal(SignalKind::terminate()).expect("failed to set SIGTERM handler");
                 tokio::select! {
                     _ = sigint.recv() => info!("SIGINT received, shutting down Rocket."),
                     _ = sigterm.recv() => info!("SIGTERM received, shutting down Rocket."),

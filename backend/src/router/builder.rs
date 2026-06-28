@@ -6,6 +6,7 @@ use super::post::generate_post_routes;
 use super::put::generate_put_routes;
 use crate::model::config::{APP_CONFIG, AppConfig};
 use rocket::data::{ByteUnit, Limits};
+#[cfg(not(feature = "embed-frontend"))]
 use rocket::fs::FileServer;
 use rocket::info;
 use std::path::PathBuf;
@@ -25,7 +26,6 @@ async fn assets(
     file: PathBuf,
 ) -> Option<(rocket::http::ContentType, std::borrow::Cow<'static, [u8]>)> {
     use crate::frontend::FrontendAssets;
-    use rocket::routes;
 
     let filename = format!("assets/{}", file.display());
     let asset = FrontendAssets::get(&filename)?;
@@ -43,7 +43,7 @@ pub fn load_config() -> AppConfig {
         .get()
         .expect("APP_CONFIG not initialized")
         .read()
-        .unwrap()
+        .expect("lock poisoned")
         .clone()
 }
 
@@ -54,6 +54,10 @@ pub fn build_rocket() -> rocket::Rocket<rocket::Build> {
 }
 
 /// Build Rocket instance with injected configuration
+///
+/// # Panics
+/// Panics if `app_config.max_upload_size` is not a valid [`ByteUnit`] string.
+#[must_use]
 pub fn build_rocket_with_config(mut app_config: AppConfig) -> rocket::Rocket<rocket::Build> {
     if let Ok(port_str) = std::env::var("PICASU_PORT")
         && let Ok(port) = port_str.parse::<u16>()

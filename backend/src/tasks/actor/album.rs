@@ -42,13 +42,16 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
     {
         let mut data_table = txn.open_table(DATA_TABLE)?;
 
-        let album_opt = data_table.get(&*album_id).unwrap().and_then(|guard| {
-            let abstract_data = guard.value();
-            match abstract_data {
-                AbstractData::Album(album) => Some(album),
-                _ => None,
-            }
-        });
+        let album_opt = data_table
+            .get(&*album_id)
+            .expect("failed to get record")
+            .and_then(|guard| {
+                let abstract_data = guard.value();
+                match abstract_data {
+                    AbstractData::Album(album) => Some(album),
+                    _ => None,
+                }
+            });
 
         if let Some(mut album) = album_opt {
             album.object.pending = true;
@@ -56,10 +59,10 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
             album.object.pending = false;
             data_table
                 .insert(&*album_id, AbstractData::Album(album))
-                .unwrap();
+                .expect("failed to insert");
         } else {
             // Album has been deleted
-            let ref_data = TREE.in_memory.read().unwrap();
+            let ref_data = TREE.in_memory.read().expect("lock poisoned");
 
             // Collect all data contained in this album
             let hash_list: Vec<_> = ref_data
@@ -77,9 +80,15 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
 
             // Clear album membership from these items
             for hash in hash_list {
-                let mut abstract_data = data_table.get(&*hash).unwrap().unwrap().value();
+                let mut abstract_data = data_table
+                    .get(&*hash)
+                    .expect("failed to get record")
+                    .expect("record not found")
+                    .value();
                 abstract_data.set_album(None);
-                data_table.insert(&*hash, abstract_data).unwrap();
+                data_table
+                    .insert(&*hash, abstract_data)
+                    .expect("failed to insert");
             }
         }
     }

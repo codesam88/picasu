@@ -6,7 +6,6 @@ use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardUpload;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::files::get_resolved_image_home;
-use crate::workflow::index_image;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rocket::form::{Errors, Form};
@@ -57,9 +56,9 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
 
     let upload_folder = APP_CONFIG
         .get()
-        .unwrap()
+        .expect("APP_CONFIG not initialized")
         .read()
-        .unwrap()
+        .expect("lock poisoned")
         .upload_folder
         .clone();
     let target_dir = image_root.join(upload_folder);

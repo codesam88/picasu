@@ -33,7 +33,7 @@ impl Task for VideoTask {
 
 pub fn video_task(mut abstract_data: AbstractData) -> Result<()> {
     let hash = abstract_data.hash();
-    match generate_compressed_video(&mut abstract_data) {
+    match generate_compressed_video(&abstract_data) {
         Ok(()) => {
             abstract_data.set_pending(false);
             BATCH_COORDINATOR

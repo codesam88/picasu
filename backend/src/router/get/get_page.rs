@@ -1,5 +1,8 @@
-use crate::error::{AppError, ErrorKind, ResultExt};
+#[cfg(not(feature = "embed-frontend"))]
+use crate::error::ResultExt;
+use crate::error::{AppError, ErrorKind};
 use crate::router::AppResult;
+#[cfg(not(feature = "embed-frontend"))]
 use rocket::fs::NamedFile;
 use rocket::http::Status;
 use rocket::response::{Redirect, content};
@@ -45,14 +48,17 @@ fn resolve_path(filename: &str) -> PathBuf {
 
 // Custom responder that can return either a NamedFile or embedded content
 pub enum FrontendResponse {
+    #[cfg(not(feature = "embed-frontend"))]
     File(NamedFile),
     #[cfg(feature = "embed-frontend")]
     Embedded(ContentType, Cow<'static, [u8]>),
 }
 
+#[cfg_attr(feature = "embed-frontend", allow(unused_variables))]
 impl<'r> rocket::response::Responder<'r, 'static> for FrontendResponse {
     fn respond_to(self, request: &'r rocket::Request<'_>) -> rocket::response::Result<'static> {
         match self {
+            #[cfg(not(feature = "embed-frontend"))]
             FrontendResponse::File(f) => f.respond_to(request),
             #[cfg(feature = "embed-frontend")]
             FrontendResponse::Embedded(ct, data) => rocket::response::Response::build()

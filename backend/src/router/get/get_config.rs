@@ -12,6 +12,7 @@ use crate::router::{AppResult, GuardResult};
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[derive(utoipa::ToSchema)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ConfigResponse {
     pub address: String,
     pub port: u16,
@@ -38,7 +39,11 @@ pub struct ConfigResponse {
 #[get("/get/config")]
 pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<ConfigResponse>> {
     let _ = auth?;
-    let config = APP_CONFIG.get().unwrap().read().unwrap();
+    let config = APP_CONFIG
+        .get()
+        .expect("APP_CONFIG not initialized")
+        .read()
+        .expect("lock poisoned");
     let response = ConfigResponse {
         address: config.address.clone(),
         port: config.port,
@@ -65,7 +70,11 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
 #[get("/get/config/export")]
 pub fn export_config_handler(auth: GuardResult<GuardAuth>) -> AppResult<(ContentType, String)> {
     let _ = auth?;
-    let config = APP_CONFIG.get().unwrap().read().unwrap();
+    let config = APP_CONFIG
+        .get()
+        .expect("APP_CONFIG not initialized")
+        .read()
+        .expect("lock poisoned");
     let json = serde_json::to_string_pretty(&*config).unwrap_or_default();
     Ok((ContentType::JSON, json))
 }

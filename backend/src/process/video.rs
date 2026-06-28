@@ -1,16 +1,8 @@
 use crate::model::abstract_data::AbstractData;
-use crate::process::index::process_image_info;
 use crate::process::misc::create_silent_ffmpeg_command;
 use crate::process::misc::small_width_height;
 use anyhow::{Context, Result};
 use log::{debug, info};
-use regex::Regex;
-use std::{
-    cmp,
-    io::{BufRead, BufReader},
-    process::Stdio,
-    sync::LazyLock,
-};
 
 /// Extract video width or height from ffprobe output
 pub fn video_width_height(info: &str, file_path: &str) -> Result<u32> {
@@ -69,28 +61,26 @@ pub fn video_duration(file_path: &str) -> Result<f64> {
 /// Get video dimensions using ffprobe
 pub fn generate_video_width_height(abstract_data: &AbstractData) -> Result<(u32, u32)> {
     let source = abstract_data.source_path_string();
-    let width = video_width_height("width", &source)
+    let width = video_width_height("width", source)
         .context(format!("failed to obtain video width for {source:?}"))?;
-    let height = video_width_height("height", &source)
+    let height = video_width_height("height", source)
         .context(format!("failed to obtain video height for {source:?}"))?;
     Ok((width, height))
 }
 
-static DURATION_CACHE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"duration=(?P<duration>[\d.]+)").expect("invalid duration regex"));
-
-/// Compress a video file using ffmpeg, target ~25 MB if the source exceeds it.
+/// Compress a video file using ffmpeg, target ~25 MB if the source exceeds it.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 pub fn generate_compressed_video(abstract_data: &AbstractData) -> Result<()> {
+    // Data rate to target ~25 MB output
+    const TARGET_SIZE_BITS: f64 = 25.0 * 1024.0 * 1024.0 * 8.0; // 25 MB in bits
+
     let source_path = abstract_data.source_path();
     let source_path_str = abstract_data.source_path_string();
     let target_path = abstract_data.compressed_path_string();
 
     // Compute video duration from ffprobe
-    let duration: f64 = video_duration(&source_path_str)?;
+    let duration: f64 = video_duration(source_path_str)?;
     debug!("Video duration: {duration} seconds for {source_path_str}");
-
-    // Data rate to target ~25 MB output
-    const TARGET_SIZE_BITS: f64 = 25.0 * 1024.0 * 1024.0 * 8.0; // 25 MB in bits
     let target_bitrate = if duration > 0.0 {
         (TARGET_SIZE_BITS / duration) as u64
     } else {
@@ -115,7 +105,7 @@ pub fn generate_compressed_video(abstract_data: &AbstractData) -> Result<()> {
     cmd.args([
         "-y",
         "-i",
-        &source_path_str,
+        source_path_str,
         "-b:v",
         &target_bitrate.to_string(),
         "-maxrate",

@@ -20,7 +20,13 @@ pub fn authenticate(password: Json<String>) -> AppResult<Json<String>> {
     // Trim input password to match storage behavior
     let input_password = password.into_inner().trim().to_string();
 
-    let current_password = APP_CONFIG.get().unwrap().read().unwrap().password.clone();
+    let current_password = APP_CONFIG
+        .get()
+        .expect("APP_CONFIG not initialized")
+        .read()
+        .expect("lock poisoned")
+        .password
+        .clone();
 
     let is_valid = match current_password {
         Some(pwd) => input_password == pwd,

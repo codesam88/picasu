@@ -60,10 +60,10 @@ fn update_tree_task() {
 
     let mut database_timestamp_vec: Vec<DatabaseTimestamp> = data_table
         .iter()
-        .unwrap()
+        .expect("failed to iterate table")
         .par_bridge()
         .map(|guard| {
-            let (_, value) = guard.unwrap();
+            let (_, value) = guard.expect("failed to read record");
             let mut abstract_data = value.value();
             // retain only necessary exif data used for query search
             if let Some(exif_vec) = abstract_data.exif_vec_mut() {
@@ -75,7 +75,7 @@ fn update_tree_task() {
 
     database_timestamp_vec.par_sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
-    *TREE.in_memory.write().unwrap() = database_timestamp_vec;
+    *TREE.in_memory.write().expect("lock poisoned") = database_timestamp_vec;
 
     BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
 

@@ -27,9 +27,9 @@ static TREE_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     if let Some(parent) = path.parent()
         && !parent.exists()
     {
-        std::fs::create_dir_all(parent).unwrap();
+        std::fs::create_dir_all(parent).expect("failed to create db directory for tree snapshots");
     }
-    redb::Database::create(path).unwrap()
+    redb::Database::create(path).expect("failed to create tree snapshot database")
 });
 
 static TREE_SNAPSHOT_IN_MEMORY: LazyLock<DashMap<i64, Vec<ReducedData>>> =
@@ -88,7 +88,9 @@ use chrono::{Datelike, TimeZone, Utc};
 impl TreeSnapshot {
     pub fn read_scrollbar(&'static self, timestamp: i64) -> Vec<ScrollBarData> {
         let start_time = Instant::now();
-        let tree_snapshot = self.read_tree_snapshot(timestamp).unwrap();
+        let tree_snapshot = self
+            .read_tree_snapshot(timestamp)
+            .expect("failed to read tree snapshot for scrollbar");
         let mut scroll_bar_data_vec = Vec::new();
         let mut last_year = None;
         let mut last_month = None;
@@ -96,7 +98,10 @@ impl TreeSnapshot {
         match tree_snapshot {
             MyCow::DashMap(ref_data) => {
                 ref_data.iter().enumerate().for_each(|(index, data)| {
-                    let datetime = Utc.timestamp_millis_opt(data.date).unwrap();
+                    let datetime = Utc
+                        .timestamp_millis_opt(data.date)
+                        .single()
+                        .expect("invalid timestamp");
                     let year = datetime.year();
                     let month = datetime.month();
                     if last_year != Some(year) || last_month != Some(month) {
@@ -115,12 +120,16 @@ impl TreeSnapshot {
             }
             MyCow::Redb(redb) => {
                 redb.iter()
-                    .unwrap()
+                    .expect("failed to iterate redb table for scrollbar")
                     .enumerate()
                     .for_each(|(index, result)| {
-                        let (_key, value) = result.unwrap();
+                        let (_key, value) =
+                            result.expect("failed to read row from scrollbar table");
                         let data = value.value();
-                        let datetime = Utc.timestamp_millis_opt(data.date).unwrap();
+                        let datetime = Utc
+                            .timestamp_millis_opt(data.date)
+                            .single()
+                            .expect("invalid timestamp");
                         let year = datetime.year();
                         let month = datetime.month();
                         if last_year != Some(year) || last_month != Some(month) {
@@ -216,7 +225,7 @@ impl MyCow {
     pub fn len(&self) -> usize {
         match self {
             MyCow::DashMap(data) => data.value().len(),
-            MyCow::Redb(table) => table.len().unwrap() as usize,
+            MyCow::Redb(table) => table.len().expect("failed to get table length") as usize,
         }
     }
 
@@ -271,9 +280,9 @@ static QUERY_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     if let Some(parent) = path.parent()
         && !parent.exists()
     {
-        std::fs::create_dir_all(parent).unwrap();
+        std::fs::create_dir_all(parent).expect("failed to create db directory for query snapshots");
     }
-    redb::Database::create(path).unwrap()
+    redb::Database::create(path).expect("failed to create query snapshot database")
 });
 
 static QUERY_SNAPSHOT_IN_MEMORY: LazyLock<DashMap<u64, Prefetch>> = LazyLock::new(DashMap::new);
@@ -298,7 +307,10 @@ impl QuerySnapshot {
             return Ok(Some(*data.value()));
         }
 
-        let read_txn = self.in_disk.begin_read().unwrap();
+        let read_txn = self
+            .in_disk
+            .begin_read()
+            .expect("failed to begin read transaction for query snapshot");
 
         let count_version = VERSION_COUNT_TIMESTAMP.load(Ordering::Relaxed).to_string();
 
@@ -327,9 +339,9 @@ static EXPIRE_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     if let Some(parent) = path.parent()
         && !parent.exists()
     {
-        std::fs::create_dir_all(parent).unwrap();
+        std::fs::create_dir_all(parent).expect("failed to create db directory for expire database");
     }
-    redb::Database::create(path).unwrap()
+    redb::Database::create(path).expect("failed to create expire database")
 });
 
 impl Expire {
@@ -362,36 +374,48 @@ impl Expire {
     /// * `false` if the `timestamp` has not yet expired.
     pub fn expired_check(&self, timestamp: i64) -> bool {
         // Begin a read transaction on the in-memory disk
-        let read_transaction = self.in_disk.begin_read().unwrap();
+        let read_transaction = self
+            .in_disk
+            .begin_read()
+            .expect("failed to begin read transaction for expire check");
 
         // Open the expiration table using its definition
         let expire_table = read_transaction
             .open_table(EXPIRE_TABLE_DEFINITION)
-            .unwrap();
+            .expect("failed to open expire table");
 
         // Attempt to retrieve the expiration entry for the given timestamp
         match expire_table
             .get(timestamp)
-            .unwrap()
+            .expect("failed to get expire entry")
             .and_then(|entry| entry.value())
         {
             // If an expiration time exists and the current time has surpassed it
             Some(expire_time) if Utc::now().timestamp_millis() > expire_time => {
                 // Begin a write transaction to modify the expiration table
-                let write_transaction = self.in_disk.begin_write().unwrap();
+                let write_transaction = self
+                    .in_disk
+                    .begin_write()
+                    .expect("failed to begin write transaction for expire cleanup");
                 {
                     // Open the expiration table for writing
                     let mut write_table = write_transaction
                         .open_table(EXPIRE_TABLE_DEFINITION)
-                        .unwrap();
+                        .expect("failed to open expire table for writing");
 
                     // Iterate over all entries in the expiration table
-                    for (key, _) in expire_table.iter().unwrap().flatten() {
+                    for (key, _) in expire_table
+                        .iter()
+                        .expect("failed to iterate expire table")
+                        .flatten()
+                    {
                         let key_timestamp = key.value();
                         // If the key's timestamp is less than or equal to the provided timestamp
                         if key_timestamp <= timestamp {
                             // Remove the expired key from the table
-                            write_table.remove(key_timestamp).unwrap();
+                            write_table
+                                .remove(key_timestamp)
+                                .expect("failed to remove expired key");
                             // Log the deletion of the expired key
                             info!("Deleted expired key: {key_timestamp:?}");
                         }
@@ -400,11 +424,15 @@ impl Expire {
                     // Log the number of items remaining in the expiration table
                     info!(
                         "{} items remaining in expire table",
-                        write_table.len().unwrap()
+                        write_table
+                            .len()
+                            .expect("failed to get expire table length")
                     );
                 }
                 // Commit the write transaction to finalize changes
-                write_transaction.commit().unwrap();
+                write_transaction
+                    .commit()
+                    .expect("failed to commit expire transaction");
                 // Indicate that the timestamp has expired
                 true
             }

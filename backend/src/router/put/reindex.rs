@@ -54,11 +54,15 @@ pub async fn reindex(
         let data_table = open_data_table();
         let reduced_data_vec = TREE_SNAPSHOT
             .read_tree_snapshot(json_data.timestamp)
-            .unwrap();
+            .expect("failed to read tree snapshot");
         let hash_vec: Vec<ArrayString<64>> = json_data
             .index_array
             .par_iter()
-            .map(|index| reduced_data_vec.get_hash(*index).unwrap())
+            .map(|index| {
+                reduced_data_vec
+                    .get_hash(*index)
+                    .expect("failed to get hash from reduced data")
+            })
             .collect();
         let total_batches = hash_vec.len().div_ceil(PROCESS_BATCH_NUMBER);
 
@@ -68,7 +72,7 @@ pub async fn reindex(
             let data_list: Vec<_> = batch
                 .into_par_iter()
                 .filter_map(|&hash| {
-                    if let Some(guard) = data_table.get(&*hash).unwrap() {
+                    if let Some(guard) = data_table.get(&*hash).expect("failed to get record") {
                         let mut abstract_data = guard.value();
                         match &abstract_data {
                             AbstractData::Image(_) => {

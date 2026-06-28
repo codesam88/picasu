@@ -4,7 +4,6 @@ use crate::process::transitor::index_to_hash;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::cache::TreeSnapshot;
 use crate::storage::db::TagInfo;
 use crate::storage::db::{open_data_table, open_tree_snapshot_table};
 use crate::tasks::BATCH_COORDINATOR;

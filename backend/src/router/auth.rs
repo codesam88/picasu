@@ -1,7 +1,7 @@
+#![allow(clippy::module_inception)]
+
 use crate::model::album::ResolvedShare;
-#[allow(clippy::module_inception)]
 #[allow(unused_imports)]
-// src/router/claims/claims.rs
 use crate::model::album::Share;
 use crate::model::config::APP_CONFIG;
 use crate::router::{AppResult, GuardError, GuardResult};
@@ -56,7 +56,11 @@ impl Claims {
     pub fn encode(&self) -> String {
         use crate::model::config::APP_CONFIG;
 
-        let config = APP_CONFIG.get().unwrap().read().unwrap();
+        let config = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG not initialized")
+            .read()
+            .expect("lock poisoned");
         self.encode_with_key(&config.get_jwt_secret_key())
     }
 
@@ -94,9 +98,9 @@ impl ClaimsHash {
     pub fn encode(&self) -> String {
         let secret_key = APP_CONFIG
             .get()
-            .unwrap()
+            .expect("APP_CONFIG not initialized")
             .read()
-            .unwrap()
+            .expect("lock poisoned")
             .get_jwt_secret_key();
         encode(
             &Header::default(),
@@ -132,9 +136,9 @@ impl ClaimsTimestamp {
     pub fn encode(&self) -> String {
         let secret_key = APP_CONFIG
             .get()
-            .unwrap()
+            .expect("APP_CONFIG not initialized")
             .read()
-            .unwrap()
+            .expect("lock poisoned")
             .get_jwt_secret_key();
         encode(
             &Header::default(),
@@ -225,9 +229,9 @@ pub fn extract_bearer_token<'a>(req: &'a Request<'_>) -> Result<&'a str> {
 pub fn my_decode_token<T: DeserializeOwned>(token: &str, validation: &Validation) -> Result<T> {
     let secret_key = APP_CONFIG
         .get()
-        .unwrap()
+        .expect("APP_CONFIG not initialized")
         .read()
-        .unwrap()
+        .expect("lock poisoned")
         .get_jwt_secret_key();
 
     match decode::<T>(token, &DecodingKey::from_secret(&secret_key), validation) {
@@ -242,7 +246,14 @@ pub fn my_decode_token<T: DeserializeOwned>(token: &str, validation: &Validation
 /// Try to authenticate via JWT cookie and check if user is admin
 pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
     // If no password is set, allow access as admin
-    if APP_CONFIG.get().unwrap().read().unwrap().password.is_none() {
+    if APP_CONFIG
+        .get()
+        .expect("APP_CONFIG not initialized")
+        .read()
+        .expect("lock poisoned")
+        .password
+        .is_none()
+    {
         return Ok(Claims::new_admin());
     }
 
@@ -587,9 +598,9 @@ pub async fn renew_hash_token(
             &DecodingKey::from_secret(
                 &APP_CONFIG
                     .get()
-                    .unwrap()
+                    .expect("APP_CONFIG not initialized")
                     .read()
-                    .unwrap()
+                    .expect("lock poisoned")
                     .get_jwt_secret_key(),
             ),
             &VALIDATION_ALLOW_EXPIRED,
@@ -702,7 +713,13 @@ pub struct GuardReadOnlyMode;
 impl<'r> FromRequest<'r> for GuardReadOnlyMode {
     type Error = GuardError;
     async fn from_request(_req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        if APP_CONFIG.get().unwrap().read().unwrap().read_only_mode {
+        if APP_CONFIG
+            .get()
+            .expect("APP_CONFIG not initialized")
+            .read()
+            .expect("lock poisoned")
+            .read_only_mode
+        {
             return Outcome::Error((
                 Status::MethodNotAllowed,
                 AppError::new(ErrorKind::ReadOnlyMode, "Read-only mode is enabled"),
@@ -857,9 +874,9 @@ pub async fn renew_timestamp_token(
             &DecodingKey::from_secret(
                 &APP_CONFIG
                     .get()
-                    .unwrap()
+                    .expect("APP_CONFIG not initialized")
                     .read()
-                    .unwrap()
+                    .expect("lock poisoned")
                     .get_jwt_secret_key(),
             ),
             &VALIDATION_ALLOW_EXPIRED,

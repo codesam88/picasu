@@ -27,9 +27,9 @@ static TREE_SNAPSHOT_IN_DISK: LazyLock<redb::Database> = LazyLock::new(|| {
     if let Some(parent) = path.parent()
         && !parent.exists()
     {
-        std::fs::create_dir_all(parent).unwrap();
+        std::fs::create_dir_all(parent).expect("failed to create db directory for index database");
     }
-    redb::Database::create(path).unwrap()
+    redb::Database::create(path).expect("failed to create index database")
 });
 
 impl Tree {
@@ -59,7 +59,7 @@ impl Tree {
 
         self.in_memory
             .read()
-            .unwrap()
+            .expect("lock poisoned")
             .iter()
             .par_bridge()
             .for_each(|database_timestamp| {
@@ -128,8 +128,13 @@ pub const DATA_TABLE: TableDefinition<&str, AbstractData> = TableDefinition::new
 use anyhow::Result;
 
 pub fn open_data_table() -> ReadOnlyTable<&'static str, AbstractData> {
-    let read_txn = TREE.in_disk.begin_read().unwrap();
-    read_txn.open_table(DATA_TABLE).unwrap()
+    let read_txn = TREE
+        .in_disk
+        .begin_read()
+        .expect("failed to begin read transaction");
+    read_txn
+        .open_table(DATA_TABLE)
+        .expect("failed to open data table")
 }
 
 pub fn open_tree_snapshot_table(timestamp: i64) -> Result<MyCow> {

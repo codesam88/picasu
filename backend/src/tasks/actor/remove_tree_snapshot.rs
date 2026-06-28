@@ -26,7 +26,10 @@ impl Task for RemoveTask {
 }
 /// Removes a tree cache table by its timestamp.
 fn remove_task(timestamp: i64) {
-    let write_txn = TREE_SNAPSHOT.in_disk.begin_write().unwrap();
+    let write_txn = TREE_SNAPSHOT
+        .in_disk
+        .begin_write()
+        .expect("failed to begin write transaction");
     let binding = timestamp.to_string();
     let table_definition: TableDefinition<u64, ReducedData> = TableDefinition::new(&binding);
 
@@ -47,8 +50,11 @@ fn remove_task(timestamp: i64) {
 
     info!(
         "{} items remaining in disk tree cache",
-        write_txn.list_tables().unwrap().count()
+        write_txn
+            .list_tables()
+            .expect("failed to list tables")
+            .count()
     );
 
-    write_txn.commit().unwrap();
+    write_txn.commit().expect("failed to commit transaction");
 }

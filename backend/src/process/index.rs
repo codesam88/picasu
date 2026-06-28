@@ -5,11 +5,9 @@ use std::fs::metadata;
 use crate::model::abstract_data::AbstractData;
 use crate::process::exif::{generate_exif_for_image, generate_exif_for_video};
 use crate::process::misc::{
-    create_silent_ffmpeg_command, fix_image_orientation, fix_image_width_height,
-    fix_video_width_height, generate_dynamic_image, generate_image_width_height, generate_phash,
-    generate_thumbhash,
+    fix_image_orientation, fix_image_width_height, fix_video_width_height, generate_dynamic_image,
+    generate_image_width_height, generate_phash, generate_thumbhash,
 };
-use crate::process::video::{generate_thumbnail_for_video, generate_video_width_height};
 use crate::process::xmp::extract_keywords_from_file;
 
 /// Analyse the newly‑imported **image** and populate the `AbstractData` record.

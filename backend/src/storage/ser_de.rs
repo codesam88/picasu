@@ -258,7 +258,7 @@ impl Value for ReducedData {
                 error!("Failed to deserialize ReducedData: {:?}", e);
                 e
             })
-            .unwrap()
+            .expect("failed to deserialize ReducedData")
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a> {
@@ -308,7 +308,7 @@ mod tests {
     };
 
     fn make_image_v3() -> AbstractData {
-        let id = ArrayString::from("test").unwrap();
+        let id = ArrayString::from("test").expect("failed to create test ArrayString");
         AbstractData::Image(ImageCombined {
             object: ObjectSchema::new(id, ObjectType::Image),
             metadata: ImageMetadata::new(id, 1024, 800, 600, "jpg".to_string()),
@@ -316,7 +316,7 @@ mod tests {
     }
 
     fn make_image_v2_bytes(ext: &str) -> Vec<u8> {
-        let id = ArrayString::from("img2").unwrap();
+        let id = ArrayString::from("img2").expect("failed to create test ArrayString");
         let v2 = AbstractDataV2::Image(ImageCombinedV2 {
             object: ObjectSchema::new(id, ObjectType::Image),
             metadata: ImageMetadataV2 {
@@ -337,7 +337,7 @@ mod tests {
     }
 
     fn make_album_v1() -> AbstractDataV1 {
-        let id = ArrayString::from("alb").unwrap();
+        let id = ArrayString::from("alb").expect("failed to create test ArrayString");
         AbstractDataV1::Album(AlbumCombinedV1 {
             object: ObjectSchema::new(id, ObjectType::Album),
             metadata: AlbumMetadataV1 {
@@ -410,7 +410,7 @@ mod tests {
     fn legacy_unversioned_decodes_as_v1_schema() {
         // A record with no 0xFF prefix is treated as the legacy v1 schema.
         // V1 images have albums: HashSet, so we use ImageCombinedV2 (same layout).
-        let id = ArrayString::from("img").unwrap();
+        let id = ArrayString::from("img").expect("failed to create test ArrayString");
         let v1_img = AbstractDataV1::Image(ImageCombinedV2 {
             object: ObjectSchema::new(id, ObjectType::Image),
             metadata: ImageMetadataV2 {
@@ -524,7 +524,7 @@ mod integration_tests {
     const TYPED_TABLE: TableDefinition<&str, AbstractData> = TableDefinition::new("data");
 
     fn make_v1_album_bytes() -> Vec<u8> {
-        let id = ArrayString::from("alb").unwrap();
+        let id = ArrayString::from("alb").expect("failed to create test ArrayString");
         let v1 = AbstractDataV1::Album(AlbumCombinedV1 {
             object: ObjectSchema::new(id, ObjectType::Album),
             metadata: AlbumMetadataV1 {
@@ -563,20 +563,28 @@ mod integration_tests {
             _ => panic!("fixture must produce AbstractDataV1::Album"),
         }
 
-        let dir = tempfile::tempdir().unwrap();
-        let db = Database::create(dir.path().join("test.redb")).unwrap();
+        let dir = tempfile::tempdir().expect("failed to create temp directory");
+        let db =
+            Database::create(dir.path().join("test.redb")).expect("failed to create test database");
 
         {
-            let txn = db.begin_write().unwrap();
-            let mut table = txn.open_table(RAW_TABLE).unwrap();
-            table.insert("alb", RawRecord(v1_bytes)).unwrap();
+            let txn = db.begin_write().expect("failed to begin write transaction");
+            let mut table = txn.open_table(RAW_TABLE).expect("failed to open raw table");
+            table
+                .insert("alb", RawRecord(v1_bytes))
+                .expect("failed to insert test record");
             drop(table);
-            txn.commit().unwrap();
+            txn.commit().expect("failed to commit transaction");
         }
 
-        let txn = db.begin_read().unwrap();
-        let table = txn.open_table(TYPED_TABLE).unwrap();
-        let guard = table.get("alb").unwrap().unwrap();
+        let txn = db.begin_read().expect("failed to begin read transaction");
+        let table = txn
+            .open_table(TYPED_TABLE)
+            .expect("failed to open typed table");
+        let guard = table
+            .get("alb")
+            .expect("failed to get test record")
+            .expect("test record not found");
         match guard.value() {
             AbstractData::Album(alb) => {
                 assert_eq!(alb.metadata.title, Some("Holiday".to_string()));
@@ -589,26 +597,36 @@ mod integration_tests {
 
     #[test]
     fn v2_image_round_trips_through_redb() {
-        let id = ArrayString::from("img").unwrap();
+        let id = ArrayString::from("img").expect("failed to create test ArrayString");
         let original = AbstractData::Image(ImageCombined {
             object: ObjectSchema::new(id, ObjectType::Image),
             metadata: ImageMetadata::new(id, 1024, 800, 600, "jpg".to_string()),
         });
 
-        let dir = tempfile::tempdir().unwrap();
-        let db = Database::create(dir.path().join("test.redb")).unwrap();
+        let dir = tempfile::tempdir().expect("failed to create temp directory");
+        let db =
+            Database::create(dir.path().join("test.redb")).expect("failed to create test database");
 
         {
-            let txn = db.begin_write().unwrap();
-            let mut table = txn.open_table(TYPED_TABLE).unwrap();
-            table.insert("img", original).unwrap();
+            let txn = db.begin_write().expect("failed to begin write transaction");
+            let mut table = txn
+                .open_table(TYPED_TABLE)
+                .expect("failed to open typed table");
+            table
+                .insert("img", original)
+                .expect("failed to insert test record");
             drop(table);
-            txn.commit().unwrap();
+            txn.commit().expect("failed to commit transaction");
         }
 
-        let txn = db.begin_read().unwrap();
-        let table = txn.open_table(TYPED_TABLE).unwrap();
-        let guard = table.get("img").unwrap().unwrap();
+        let txn = db.begin_read().expect("failed to begin read transaction");
+        let table = txn
+            .open_table(TYPED_TABLE)
+            .expect("failed to open typed table");
+        let guard = table
+            .get("img")
+            .expect("failed to get test record")
+            .expect("test record not found");
         match guard.value() {
             AbstractData::Image(img) => assert_eq!(img.metadata.ext, "jpg"),
             _ => panic!("expected Image variant"),

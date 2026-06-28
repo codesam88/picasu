@@ -36,9 +36,13 @@ pub static PENDING_ALBUM_UPDATES: LazyLock<Mutex<HashSet<ArrayString<64>>>> =
 /// stats self-update so their counts are correct from first request.
 pub fn init_dir_album_cache() {
     let data_table = open_data_table();
-    let mut cache = DIR_ALBUM_CACHE.lock().unwrap();
+    let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
 
-    for entry in data_table.iter().unwrap().flatten() {
+    for entry in data_table
+        .iter()
+        .expect("failed to iterate table")
+        .flatten()
+    {
         let (_, guard) = entry;
         if let AbstractData::Album(album) = guard.value()
             && let Some(ref dir) = album.metadata.dir_path
@@ -50,7 +54,7 @@ pub fn init_dir_album_cache() {
     info!("Loaded {} dir album mappings from database", cache.len());
 
     if !cache.is_empty() {
-        let mut pending = PENDING_ALBUM_UPDATES.lock().unwrap();
+        let mut pending = PENDING_ALBUM_UPDATES.lock().expect("lock poisoned");
         for &id in cache.values() {
             pending.insert(id);
         }
@@ -75,13 +79,20 @@ pub fn prettify_dir_name(name: &str) -> String {
 
 /// Mark `album_id` as needing a statistics self-update.
 pub fn mark_album_for_update(album_id: ArrayString<64>) {
-    PENDING_ALBUM_UPDATES.lock().unwrap().insert(album_id);
+    PENDING_ALBUM_UPDATES
+        .lock()
+        .expect("lock poisoned")
+        .insert(album_id);
 }
 
 /// Drain and return all albums that need a self-update.
 /// Called from `UpdateTreeTask` after the in-memory tree has been refreshed.
 pub fn drain_pending_album_updates() -> Vec<ArrayString<64>> {
-    PENDING_ALBUM_UPDATES.lock().unwrap().drain().collect()
+    PENDING_ALBUM_UPDATES
+        .lock()
+        .expect("lock poisoned")
+        .drain()
+        .collect()
 }
 
 /// Return the album ID whose `dir_path` is the direct parent of `dir_path`,
@@ -89,7 +100,11 @@ pub fn drain_pending_album_updates() -> Vec<ArrayString<64>> {
 /// top-level dir album directly under a sync root).
 pub fn get_parent_album_id(dir_path: &Path) -> Option<ArrayString<64>> {
     let parent = dir_path.parent()?;
-    DIR_ALBUM_CACHE.lock().unwrap().get(parent).copied()
+    DIR_ALBUM_CACHE
+        .lock()
+        .expect("lock poisoned")
+        .get(parent)
+        .copied()
 }
 
 /// Return the album ID for `dir_path` itself, if it is already a known
@@ -97,7 +112,11 @@ pub fn get_parent_album_id(dir_path: &Path) -> Option<ArrayString<64>> {
 /// `ensure_dir_albums`'s sync-root walk or some other path (e.g. created
 /// directly by a test, or loaded at startup by `init_dir_album_cache`).
 pub fn get_album_id_for_dir(dir_path: &Path) -> Option<ArrayString<64>> {
-    DIR_ALBUM_CACHE.lock().unwrap().get(dir_path).copied()
+    DIR_ALBUM_CACHE
+        .lock()
+        .expect("lock poisoned")
+        .get(dir_path)
+        .copied()
 }
 
 /// Return the directory path corresponding to `album_id`, or `None` if it is
@@ -105,7 +124,7 @@ pub fn get_album_id_for_dir(dir_path: &Path) -> Option<ArrayString<64>> {
 pub fn get_dir_path_for_album(album_id: ArrayString<64>) -> Option<PathBuf> {
     DIR_ALBUM_CACHE
         .lock()
-        .unwrap()
+        .expect("lock poisoned")
         .iter()
         .find_map(|(path, &id)| {
             if id == album_id {
@@ -120,8 +139,8 @@ pub fn get_dir_path_for_album(album_id: ArrayString<64>) -> Option<PathBuf> {
 /// stats self-update.  Called from `flush_tree_task` after a media item is
 /// written to the database.
 pub fn mark_dir_albums_for_path(file_path: &Path) {
-    let cache = DIR_ALBUM_CACHE.lock().unwrap();
-    let mut pending = PENDING_ALBUM_UPDATES.lock().unwrap();
+    let cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
+    let mut pending = PENDING_ALBUM_UPDATES.lock().expect("lock poisoned");
     for (dir_path, &album_id) in cache.iter() {
         if file_path.starts_with(dir_path) {
             pending.insert(album_id);
@@ -135,7 +154,7 @@ pub fn mark_dir_albums_for_path(file_path: &Path) {
 /// Holds `DIR_ALBUM_CACHE`'s mutex for the entire duration to guarantee
 /// at-most-once album creation per directory under concurrent indexing.
 pub fn get_or_create_dir_album(dir_path: PathBuf) -> Result<ArrayString<64>> {
-    let mut cache = DIR_ALBUM_CACHE.lock().unwrap();
+    let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
 
     if let Some(&id) = cache.get(&dir_path) {
         return Ok(id);

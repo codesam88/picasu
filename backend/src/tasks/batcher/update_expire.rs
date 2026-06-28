@@ -20,9 +20,13 @@ fn update_expire_task() {
     let last_timestamp = VERSION_COUNT_TIMESTAMP.swap(current_timestamp, Ordering::SeqCst);
 
     if last_timestamp > 0 {
-        let expire_write_txn = EXPIRE.in_disk.begin_write().unwrap();
-        let new_expire_time = current_timestamp
-            .saturating_add(i64::try_from(Duration::from_hours(1).as_millis()).unwrap());
+        let expire_write_txn = EXPIRE
+            .in_disk
+            .begin_write()
+            .expect("failed to begin write transaction");
+        let new_expire_time = current_timestamp.saturating_add(
+            i64::try_from(Duration::from_hours(1).as_millis()).expect("value out of range for i64"),
+        );
         {
             let mut expire_table = expire_write_txn
                 .open_table(EXPIRE_TABLE_DEFINITION)
@@ -41,7 +45,9 @@ fn update_expire_task() {
             );
         }
 
-        expire_write_txn.commit().unwrap();
+        expire_write_txn
+            .commit()
+            .expect("failed to commit transaction");
         BATCH_COORDINATOR.execute_batch_detached(ExpireCheckTask);
     }
 }

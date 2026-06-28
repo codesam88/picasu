@@ -43,7 +43,7 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
 
     let data_table = open_data_table();
 
-    if let Some(guard) = data_table.get(&*task.hash).unwrap() {
+    if let Some(guard) = data_table.get(&*task.hash).expect("failed to get record") {
         let mut data_exist = guard.value();
         if let Some(alias_mut) = abstract_data.alias_mut() {
             let file_modify = mem::take(&mut alias_mut[0]);

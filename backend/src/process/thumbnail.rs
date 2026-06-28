@@ -1,12 +1,6 @@
-use crate::{
-    model::abstract_data::AbstractData,
-    process::{misc::create_silent_ffmpeg_command, misc::small_width_height},
-};
-use anyhow::Context;
-use anyhow::Result;
-use anyhow::{anyhow, bail};
+use crate::{model::abstract_data::AbstractData, process::misc::small_width_height};
+use anyhow::{Context, Result, anyhow};
 use image::{DynamicImage, ImageFormat};
-use std::process::Stdio;
 
 /// Generate a JPEG thumbnail for an **image** asset, propagating
 /// every error with clear human‑readable context strings.
