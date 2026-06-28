@@ -366,7 +366,9 @@ fn has_json_assertions(item: &Value) -> bool {
 // ── Interpreter main logic ──
 
 fn interpret_scenario(scenario: &Value) {
+    let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
     let _ = &*TEST_ENV;
+    reset_backend_state();
     let data = test_image_home();
     set_image_home(data.clone());
 
@@ -463,7 +465,6 @@ fn interpret_scenario(scenario: &Value) {
 
             if has_scan_items {
                 let client = make_client();
-                let _guard = INDEX_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
 
                 let _scan_resp = client
                     .post("/post/index/album")
