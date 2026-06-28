@@ -16,6 +16,7 @@ on:
       - ".plan/**"
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/copilot-instructions.md"
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -79,6 +80,7 @@ jobs:
         run: just openapi-docs-check
 
   test-release-build:
+    if: github.event_name != 'pull_request'
     needs: [checks-n-tests]
     runs-on: ubuntu-latest
     steps:
