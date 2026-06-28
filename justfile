@@ -40,12 +40,12 @@ backend-deny:
 backend-audit:
     cd backend && cargo audit
 
-# cargo build (debug, no embedded frontend) — developer default; matches check/test
+# cargo build (dev build)
 [group('backend')]
 backend-build:
     cd backend && cargo build
 
-# cargo build --release --features embed-frontend — production build (CI/deployment)
+# cargo build (release build)
 [group('backend')]
 backend-build-release:
     cd backend && cargo build --release --features embed-frontend
@@ -67,7 +67,7 @@ frontend-check:
 frontend-vitest:
     cd frontend && npm test
 
-# Playwright E2E scenarios (each scenario starts its own isolated backend)
+# run frontend e2e (playwright) tests
 [group('frontend')]
 frontend-playwright:
     # filter scenarios: npx playwright test --grep "onboarding"
@@ -105,34 +105,34 @@ plan-format:
 plan-lint:
     cargo xtask plan --lint
 
-# List / filter / search .plan tasks (passes through all flags — e.g. `just plan -k`, `just plan -s open`)
+# cargo xtask plan <args>
 [group('xtask')]
 plan *args:
     cargo xtask plan {{args}}
 
 # ── Documentation ───────────────────────────────────────────────────────────────
 
-# Generate Rust API docs
-# Generate OpenAPI spec + markdown reference
+# Generate OpenAPI spec and reference doc
 [group('docs')]
 docs-openapi: openapi-gen
     npx --yes widdershins --summary backend/openapi.json -o docs/openapi-reference.md
     npx prettier --write docs/openapi-reference.md
 
-# Build mdBook site from docs/ into target/docs/book
+# Build mdBook site at target/docs/
 [group('docs')]
 docs-build: docs-openapi
     #!/usr/bin/env bash
     set -e
-    mkdir -p docs/src
-    cp -r docs/*.md docs/src/
-    mdbook build docs/ -d target/docs/book
+    mkdir -p target/mdbook/src
+    cp docs/book.toml target/mdbook
+    cp -r docs/*.md target/mdbook/src
+    mdbook build target/mdbook -d target/docs/book
     echo ""
     echo "=== Documentation built ==="
     echo "  Book:    target/docs/book/index.html"
     echo "  View:    just docs-serve → http://localhost:3637"
 
-# Serve documentation on port 3637
+# Serve mdbook documentation
 [group('docs')]
 docs-serve:
     python3 -m http.server 3637 -d target/docs/book
@@ -142,7 +142,7 @@ docs-serve:
 docs-format:
     npx prettier --write --no-error-on-unmatched-pattern '*.md' 'docs/**/*.md' '.plan/**/*.md'
 
-# Check markdown formatting (precommit / CI)
+# Check markdown formatting (docs, .plan)
 [group('docs')]
 docs-check:
     npx prettier --check --no-error-on-unmatched-pattern '*.md' 'docs/**/*.md' '.plan/**/*.md'
@@ -153,7 +153,7 @@ docs-check:
 [group('global')]
 format: backend-format frontend-format docs-format plan-format
 
-# Run linters, including format checks (backend + frontend + docs + .plan)
+# Run all linters and static checks
 [group('global')]
 check: backend-check frontend-check docs-check plan-lint
 
@@ -161,13 +161,13 @@ check: backend-check frontend-check docs-check plan-lint
 [group('global')]
 test: backend-test frontend-test
 
-# One-shot: install tooling + enable pre-commit hook for a fresh clone
+# install dev tools + precommit hook
 [group('global')]
 setup-dev: install-dev
     git config core.hooksPath .githooks
     @echo "✓ Pre-commit hook enabled — ready to develop"
 
-# Install all dev tooling (cargo tools + frontend deps including prettier)
+# Install dev tools
 [group('global')]
 install-dev:
     cargo install sccache
@@ -175,16 +175,15 @@ install-dev:
     npm ci --prefix frontend
     npm install --prefix frontend --save-dev --save-exact widdershins
 
-# Build frontend then backend (debug, no embedded frontend) — developer default
+# Build frontend then backend (dev build)
 [group('global')]
 build: frontend-build backend-build
 
-# Build frontend then backend with embedded assets (release) — production build (CI/deployment)
+# Build frontend then backend with embedded assets (release)
 [group('global')]
 build-release: frontend-build backend-build-release
 
-# Build + test release build (CI): run backend tests first for quick feedback,
-# then compile release and validate with Playwright E2E
+# Build + test release build
 [group('global')]
 test-release: backend-test-release build-release
     PICASU_BINARY=backend/target/release/picasu just frontend-playwright
@@ -193,15 +192,16 @@ test-release: backend-test-release build-release
 [group('global')]
 clean:
     rm -rf .testruns/*
-    rm -rf target/docs
+    rm -rf target/mdbook
     rm -rf sandbox/data
 
-# Nuclear reset — also clear built frontend
+# Clean all generated files
 [group('global')]
 distclean: clean
+    rm -rf target/docs
     rm -rf frontend/dist
 
-# Build (debug, no embedded frontend) and launch a clean instance against sandbox/{data,images}
+# Build and run out of sandbox/{data,images}
 [group('global')]
 run: build
     #!/usr/bin/env sh
@@ -218,11 +218,7 @@ run: build
 [group('global')]
 audit: backend-audit backend-deny frontend-audit
 
-# Pre-commit check: run format + linter/static checks.
-# On main, we enforce full tests as well. This is to support
-# test-driven development in development branches.
-# Developers know best which tests to fix and what to delegate to CI,
-# but then again, these are safe defaults when people are in a hurry.
+# Run format, linter, static checks and tests
 [group('global')]
 precommit:
     #!/usr/bin/env sh
