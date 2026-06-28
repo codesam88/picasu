@@ -20,12 +20,12 @@ backend-check:
 
 # cargo nextest run
 [group('backend')]
-backend-test:
+backend-test: frontend-build
     cd backend && cargo nextest run
 
 # cargo nextest run (release)
 [group('backend')]
-backend-test-release:
+backend-test-release: frontend-build
     cd backend && cargo nextest run --release
 
 # cargo deny check
