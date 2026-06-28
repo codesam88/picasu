@@ -145,6 +145,12 @@ check: backend-check frontend-check docs-check plan-lint
 [group('global')]
 test: backend-test frontend-test
 
+# One-shot: install tooling + enable pre-commit hook for a fresh clone
+[group('global')]
+setup-dev: install-dev
+    git config core.hooksPath .githooks
+    @echo "✓ Pre-commit hook enabled — ready to develop"
+
 # Install all dev tooling (cargo tools + frontend deps including prettier)
 [group('global')]
 install-dev:

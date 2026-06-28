@@ -46,6 +46,17 @@ See [docs/config.md](docs/config.md) for the full reference.
 
 ## Development & Contributing
 
+First-time setup on a fresh clone:
+
+```bash
+just setup-dev    # install tooling + enable pre-commit hook
+```
+
+`setup-dev` runs `install-dev` (cargo tools + npm deps) and enables the
+`.githooks/pre-commit` hook via `git config core.hooksPath .githooks`.
+The hook runs format + lint + typecheck on staged changes before every commit.
+On `main` it also runs the full test suite.
+
 - `just check` — lint + format check (backend, frontend, docs)
 - `just test` — run all tests (backend nextest + frontend vitest)
 - `just run` — build and launch against `sandbox/`
