@@ -2,6 +2,7 @@ use log::error;
 use rocket::http::Status;
 use rocket::put;
 use rocket::serde::json::Json;
+use std::path::{Component, Path};
 use tokio::task::spawn_blocking;
 
 use crate::error::{AppError, ErrorKind, ResultExt};
@@ -47,6 +48,16 @@ pub async fn update_config_handler(
     let req_data = req.into_inner();
 
     spawn_blocking(move || -> Result<Status, AppError> {
+        if let Some(ref folder) = req_data.upload_folder {
+            let p = Path::new(folder.as_str());
+            if p.is_absolute() || p.components().any(|c| matches!(c, Component::ParentDir)) {
+                return Err(AppError::new(
+                    ErrorKind::InvalidInput,
+                    "upload_folder must be a relative path without '..' components",
+                ));
+            }
+        }
+
         let mut current_config = {
             let read_lock = APP_CONFIG
                 .get()

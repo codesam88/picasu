@@ -165,6 +165,7 @@
   <!-- Upload folder browser -->
   <ServerFilePicker
     v-model="showFolderPicker"
+    :root-path="imagePath ?? undefined"
     :initial-path="imagePath ?? ''"
     @select="onFolderSelected"
   />
@@ -195,15 +196,8 @@ const scanLoading = ref(false)
 const cancelLoading = ref(false)
 const showFolderPicker = ref(false)
 
-const onFolderSelected = (fullPath: string) => {
-  const base = props.imagePath
-  if (base !== null && fullPath.startsWith(base)) {
-    const sep = base.endsWith('/') || base.endsWith('\\') ? '' : (fullPath[base.length] ?? '/')
-    const relative = fullPath.slice(base.length + sep.length)
-    uploadFolder.value = relative || fullPath
-  } else {
-    uploadFolder.value = fullPath
-  }
+const onFolderSelected = (relativePath: string) => {
+  uploadFolder.value = relativePath
 }
 const status = ref<AlbumIndexStatus>(emptyStatus())
 let pollTimer: ReturnType<typeof setInterval> | undefined
