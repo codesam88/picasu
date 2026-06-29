@@ -5,7 +5,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
@@ -29,18 +29,23 @@ const scanPath = computed<string>(() => {
   return '/'
 })
 
+let cancelled = false
+onBeforeUnmount(() => {
+  cancelled = true
+})
+
 const scan = async () => {
   await tryWithMessageStore('mainId', async () => {
     messageStore.info('Scanning for new files...')
     await startAlbumIndex(scanPath.value)
     let status = await getAlbumIndexStatus()
-    while (status.state !== 'completed') {
+    while (status.state !== 'completed' && !cancelled) {
       if (status.state === 'failed') throw new Error('Scan failed')
       if (status.state === 'canceled') throw new Error('Scan was canceled')
       await new Promise((resolve) => setTimeout(resolve, 500))
       status = await getAlbumIndexStatus()
     }
-    messageStore.success('Scan complete')
+    if (!cancelled) messageStore.success('Scan complete')
   })
 }
 </script>
