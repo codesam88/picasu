@@ -62,7 +62,7 @@ utoipa = "5"
 [dev-dependencies]
 tempfile = "3"
 serde_yaml = "0.9"
-xtask = { path = "../xtask" }
+xtask = { path = "../xtask", version = "0.1.0" }
 
 [features]
 embed-frontend = []
