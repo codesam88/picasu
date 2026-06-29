@@ -59,6 +59,9 @@ pub fn write_config(updates: &serde_json::Value) {
         if let Some(val) = obj.get("read_only_mode").and_then(|v| v.as_bool()) {
             config.read_only_mode = val;
         }
+        if let Some(val) = obj.get("fs_notify_watcher").and_then(|v| v.as_bool()) {
+            config.fs_notify_watcher = val;
+        }
     }
     // Write a copy to disk for documentation/debugging.
     use serde::Serialize;
@@ -124,6 +127,7 @@ pub fn reset_backend_state() {
         .write()
         .expect("APP_CONFIG lock");
     config.read_only_mode = false;
+    config.fs_notify_watcher = true;
 }
 
 /// Build a Rocket test client with the current APP_CONFIG.

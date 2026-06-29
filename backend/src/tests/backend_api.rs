@@ -456,6 +456,10 @@ fn interpret_scenario(scenario: &Value) {
                     if let Some(enabled) = config.get("read_only_mode").and_then(|v| v.as_bool()) {
                         write_config(&serde_json::json!({"read_only_mode": enabled}));
                     }
+                    if let Some(enabled) = config.get("fs_notify_watcher").and_then(|v| v.as_bool())
+                    {
+                        write_config(&serde_json::json!({"fs_notify_watcher": enabled}));
+                    }
                 }
             }
 
@@ -555,7 +559,7 @@ fn interpret_scenario(scenario: &Value) {
     }
 
     if has_config_item {
-        write_config(&serde_json::json!({"read_only_mode": false}));
+        write_config(&serde_json::json!({"read_only_mode": false, "fs_notify_watcher": true}));
     }
 }
 
