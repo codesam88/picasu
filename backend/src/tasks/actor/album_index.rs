@@ -125,9 +125,13 @@ pub fn index_album(src: &str) -> AppResult<()> {
         }
 
         slot.job_id = job_id;
+        let root_display = root.strip_prefix(&image_root).map_or_else(
+            |_| root.to_string_lossy().into_owned(),
+            |rel| rel.to_string_lossy().into_owned(),
+        );
         slot.status = AlbumIndexStatus {
             state: AlbumIndexState::Running,
-            root: Some(root.to_string_lossy().into_owned()),
+            root: Some(root_display),
             scanned: 0,
             matched: 0,
             processed: 0,
