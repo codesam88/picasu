@@ -15,7 +15,7 @@
             variant="text"
             density="comfortable"
             title="Go up"
-            :disabled="!currentPath"
+            :disabled="!currentPath || isAtRootPath"
             @click="navigateUp"
           />
 
@@ -214,6 +214,8 @@ const modelValue = defineModel<boolean>({ required: true })
 
 const props = defineProps<{
   initialPath?: string
+  /** When set, navigation is constrained to this path and 'select' emits a path relative to it. */
+  rootPath?: string
 }>()
 
 const emit = defineEmits<(e: 'select', path: string) => void>()
@@ -240,7 +242,26 @@ const selectedFolderLabel = computed(
   () => getFolderName(currentPath.value) || selectedPathLabel.value
 )
 
-const breadcrumbs = computed<Breadcrumb[]>(() => buildBreadcrumbs(currentPath.value))
+const allBreadcrumbs = computed<Breadcrumb[]>(() => buildBreadcrumbs(currentPath.value))
+
+const breadcrumbs = computed<Breadcrumb[]>(() => {
+  if (props.rootPath == null || props.rootPath === '') return allBreadcrumbs.value
+  const root = props.rootPath
+  const normalizedRoot = ensureTrailingSeparator(root)
+  const rootIdx = allBreadcrumbs.value.findIndex(
+    (c) => c.path === root || c.path === normalizedRoot
+  )
+  return rootIdx === -1 ? allBreadcrumbs.value : allBreadcrumbs.value.slice(rootIdx)
+})
+
+const isAtRootPath = computed(() => {
+  if (props.rootPath == null || props.rootPath === '') return false
+  const root = props.rootPath
+  const sep = root.includes('\\') ? '\\' : '/'
+  const normalized = root.endsWith(sep) ? root : root + sep
+  return currentPath.value === root || currentPath.value === normalized
+})
+
 const hiddenBreadcrumbs = computed<Breadcrumb[]>(() => {
   if (breadcrumbs.value.length <= 5) return []
   return breadcrumbs.value.slice(1, -3)
@@ -391,6 +412,7 @@ const navigateDown = (path: string) => {
 
 const navigateUp = () => {
   if (!currentPath.value) return
+  if (isAtRootPath.value) return
 
   const isWindows = currentPath.value.includes('\\')
   const separator = isWindows ? '\\' : '/'
@@ -425,6 +447,14 @@ const navigateUp = () => {
   loadItems(currentPath.value).catch(console.error)
 }
 
+const stripRootPrefix = (fullPath: string, root: string): string => {
+  const sep = fullPath.includes('\\') ? '\\' : '/'
+  const normalizedRoot = root.endsWith(sep) ? root : root + sep
+  if (fullPath === root || fullPath === normalizedRoot.slice(0, -1)) return ''
+  if (fullPath.startsWith(normalizedRoot)) return fullPath.slice(normalizedRoot.length)
+  return fullPath
+}
+
 const confirmSelection = () => {
   if (currentPath.value) {
     let selected = currentPath.value
@@ -437,6 +467,10 @@ const confirmSelection = () => {
     // Remove trailing slash if not root
     if (!isRoot && selected.endsWith(separator)) {
       selected = selected.slice(0, -1)
+    }
+
+    if (props.rootPath != null && props.rootPath !== '') {
+      selected = stripRootPrefix(selected, props.rootPath)
     }
 
     emit('select', selected)
