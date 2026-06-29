@@ -47,6 +47,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_page::videos_view,
         get_page::service_worker,
         get_page::sregister_sw,
+        get_page::spa_fallback,
         get_prefetch::prefetch,
         get_export::get_export,
         get_config::get_config_handler,

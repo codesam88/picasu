@@ -1,7 +1,7 @@
-#[cfg(not(feature = "embed-frontend"))]
-use crate::error::ResultExt;
-use crate::error::{AppError, ErrorKind};
+use crate::error::{AppError, ErrorKind, ResultExt};
+use crate::model::abstract_data::AbstractData;
 use crate::router::AppResult;
+use crate::storage::db::{DATA_TABLE, TREE};
 #[cfg(not(feature = "embed-frontend"))]
 use rocket::fs::NamedFile;
 use rocket::http::Status;
@@ -46,7 +46,7 @@ fn resolve_path(filename: &str) -> PathBuf {
     }
 }
 
-// Custom responder that can return either a NamedFile or embedded content
+// Custom responder that can return a file or embedded content
 pub enum FrontendResponse {
     #[cfg(not(feature = "embed-frontend"))]
     File(NamedFile),
@@ -476,4 +476,55 @@ pub async fn sregister_sw() -> AppResult<FrontendResponse> {
 #[get("/serviceWorker.js")]
 pub async fn service_worker() -> AppResult<FrontendResponse> {
     serve_file("serviceWorker.js").await
+}
+
+#[utoipa::path(
+        get,
+        path = "/{path}",
+        tag = "pages",
+        responses(
+            (status = 200, description = "SPA fallback — serves index.html for Vue Router routes"),
+        )
+    )
+]
+/// Catch-all SPA fallback — serves index.html for valid Vue Router routes.
+/// Paths matching `/album/<hash>` validate the album exists before serving
+/// the SPA; invalid album hashes return 404. Rank 1 ensures specific
+/// routes (assets, API, pages) take priority.
+#[get("/<path..>", rank = 1)]
+pub async fn spa_fallback(path: PathBuf) -> AppResult<FrontendResponse> {
+    let path_str = path.display().to_string();
+
+    if let Some(hash) = path_str.strip_prefix("album/") {
+        let hash = hash.to_string();
+        let exists = tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
+            use redb::ReadableDatabase;
+
+            let read_txn = TREE
+                .in_disk
+                .begin_read()
+                .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?;
+            let table = read_txn
+                .open_table(DATA_TABLE)
+                .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
+
+            let is_album = match table
+                .get(&*hash)
+                .or_raise(|| (ErrorKind::Database, "Failed to query data"))?
+            {
+                Some(guard) => matches!(guard.value(), AbstractData::Album(_)),
+                None => false,
+            };
+
+            Ok(is_album)
+        })
+        .await
+        .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
+
+        if !exists {
+            return Err(AppError::new(ErrorKind::NotFound, "Album not found"));
+        }
+    }
+
+    serve_file("index.html").await
 }
