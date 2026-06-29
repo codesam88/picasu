@@ -186,7 +186,7 @@ build-release: frontend-build backend-build-release
 # Build + test release build
 [group('global')]
 test-release: backend-test-release build-release
-    PICASU_BINARY=backend/target/release/picasu just frontend-playwright
+    PICASU_BINARY=target/release/picasu just frontend-playwright
 
 # Remove transient generated state (test runs, docs, sandbox)
 [group('global')]
