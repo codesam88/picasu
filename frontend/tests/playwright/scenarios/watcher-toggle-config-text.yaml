@@ -1,0 +1,22 @@
+name: Filesystem watcher toggle changes config page text
+covers:
+  api:
+    - PUT /put/config
+  ui:
+    - StorageAndSync shows disabled headline when fsNotifyWatcher=false
+    - StorageAndSync shows enabled headline when fsNotifyWatcher=true
+    - Toggling the switch changes text without requiring a page save
+given:
+  - config:
+      fs_notify_watcher: false
+
+steps:
+  - when:
+      - navigate: /config
+    assert:
+      - ui.text_visible: Backend filesystem watcher is unavailable / disabled.
+
+  - when:
+      - click: checkbox/Filesystem watcher
+    assert:
+      - ui.text_visible: Backend watches filesystem for modifications.

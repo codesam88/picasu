@@ -194,6 +194,7 @@ export async function executeGiven(
           read_only_mode?: boolean
           password?: string
           auth_key?: string
+          fs_notify_watcher?: boolean
         }
       }
       const token = await ensureAuthenticated(request, backendUrl, adminPassword)
@@ -222,6 +223,17 @@ export async function executeGiven(
         }
       }
 
+      if (cfg.config.fs_notify_watcher !== undefined) {
+        const res = await request.fetch(`${backendUrl}/put/config`, {
+          method: 'PUT',
+          headers,
+          data: { fsNotifyWatcher: cfg.config.fs_notify_watcher }
+        })
+        if (!res.ok()) {
+          throw new Error(`Config update failed: ${res.status()} ${await res.text()}`)
+        }
+      }
+
       if (cfg.config.auth_key !== undefined) {
         const res = await request.fetch(`${backendUrl}/put/config`, {
           method: 'PUT',
@@ -234,6 +246,24 @@ export async function executeGiven(
         knownJwtSecret = cfg.config.auth_key
         authToken = null
       }
+    }
+
+    if ('photo_raw' in item && item.photo_raw) {
+      const pr = item as {
+        photo_raw: string
+        format?: string
+        width?: number
+        height?: number
+      }
+      const qualified = qualifyPath(pr.photo_raw, ns)
+      const filePath = path.join(imageHome, qualified)
+      const entry: PhotoManifestEntry = { output: filePath }
+      if (pr.format) entry.format = pr.format
+      if (pr.width) entry.width = pr.width
+      if (pr.height) entry.height = pr.height
+      photoManifest.push(entry)
+      // Deliberately NOT added to seedEntries — file is placed on disk but
+      // no auto-scan is triggered, leaving it unindexed for scan-flow tests.
     }
   }
 

@@ -48,6 +48,7 @@
             hide-details
             color="primary"
             density="compact"
+            aria-label="Filesystem watcher"
           ></v-switch>
         </template>
       </v-list-item>

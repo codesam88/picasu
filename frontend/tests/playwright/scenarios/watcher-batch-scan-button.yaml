@@ -1,0 +1,19 @@
+name: Scan for New Files appears in batch menu when watcher is disabled
+covers:
+  api:
+    - PUT /put/config
+  ui:
+    - BatchMenu conditionally renders ItemScanAlbum when fsNotifyWatcher=false
+    - Scan for New Files menu item is visible in the three-dots batch menu
+given:
+  - photo: batch-scan/img01.jpg
+  - config:
+      fs_notify_watcher: false
+
+steps:
+  - when:
+      - navigate: /home
+      - click.select_first: true
+      - click.icon: mdi-dots-vertical
+    assert:
+      - ui.text_visible: Scan for New Files

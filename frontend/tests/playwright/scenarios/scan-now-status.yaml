@@ -1,0 +1,21 @@
+name: Scan Now button triggers index and status transitions to Completed
+covers:
+  api:
+    - POST /post/index/album
+    - GET /get/index/status
+  ui:
+    - StorageAndSync Scan Now button starts album index
+    - Scan Status transitions from idle to completed
+given:
+  - photo_raw: scan-status/img01.jpg
+
+steps:
+  - when:
+      - navigate: /config
+    assert:
+      - ui.text_visible: No index has run yet
+
+  - when:
+      - click: button/Scan Now
+    assert:
+      - ui.text_visible: Completed

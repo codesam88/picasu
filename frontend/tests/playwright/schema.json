@@ -60,7 +60,8 @@
           "properties": {
             "read_only_mode": { "type": "boolean" },
             "password": { "type": "string" },
-            "auth_key": { "type": "string" }
+            "auth_key": { "type": "string" },
+            "fs_notify_watcher": { "type": "boolean" }
           },
           "additionalProperties": false
         }
@@ -68,10 +69,22 @@
       "required": ["config"],
       "additionalProperties": false
     },
+    "givenPhotoRaw": {
+      "type": "object",
+      "properties": {
+        "photo_raw": { "type": "string" },
+        "format": { "type": "string", "enum": ["jpeg", "png"] },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["photo_raw"],
+      "additionalProperties": false
+    },
     "givenItem": {
       "oneOf": [
         { "$ref": "#/definitions/givenDirAlbum" },
         { "$ref": "#/definitions/givenPhoto" },
+        { "$ref": "#/definitions/givenPhotoRaw" },
         { "$ref": "#/definitions/givenEmpty" },
         { "$ref": "#/definitions/givenRemove" },
         { "$ref": "#/definitions/givenConfig" },
@@ -152,6 +165,14 @@
       "required": ["click.first"],
       "additionalProperties": false
     },
+    "uiWhenClickSelectFirst": {
+      "type": "object",
+      "properties": {
+        "click.select_first": { "type": "boolean", "const": true }
+      },
+      "required": ["click.select_first"],
+      "additionalProperties": false
+    },
     "uiWhenItem": {
       "oneOf": [
         { "$ref": "#/definitions/uiWhenNavigate" },
@@ -162,7 +183,8 @@
         { "$ref": "#/definitions/uiWhenWait" },
         { "$ref": "#/definitions/uiWhenClickText" },
         { "$ref": "#/definitions/uiWhenClickIcon" },
-        { "$ref": "#/definitions/uiWhenClickFirst" }
+        { "$ref": "#/definitions/uiWhenClickFirst" },
+        { "$ref": "#/definitions/uiWhenClickSelectFirst" }
       ]
     },
     "uiAssertVisible": {

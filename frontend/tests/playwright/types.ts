@@ -45,14 +45,25 @@ export const GivenConfig = z
     config: z.object({
       read_only_mode: z.boolean().optional(),
       password: z.string().optional(),
-      auth_key: z.string().optional()
+      auth_key: z.string().optional(),
+      fs_notify_watcher: z.boolean().optional()
     })
+  })
+  .strict()
+
+export const GivenPhotoRaw = z
+  .object({
+    photo_raw: z.string(),
+    format: z.enum(['jpeg', 'png']).optional(),
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional()
   })
   .strict()
 
 export const GivenItem = z.union([
   GivenDirAlbum,
   GivenPhoto,
+  GivenPhotoRaw,
   GivenEmpty,
   GivenRemove,
   GivenConfig,
@@ -117,6 +128,12 @@ export const UiWhenClickFirst = z
   })
   .strict()
 
+export const UiWhenClickSelectFirst = z
+  .object({
+    'click.select_first': z.literal(true)
+  })
+  .strict()
+
 export const UiWhenItem = z.union([
   UiWhenNavigate,
   UiWhenClick,
@@ -126,7 +143,8 @@ export const UiWhenItem = z.union([
   UiWhenWait,
   UiWhenClickText,
   UiWhenClickIcon,
-  UiWhenClickFirst
+  UiWhenClickFirst,
+  UiWhenClickSelectFirst
 ])
 
 export const UiAssertVisible = z

@@ -1,0 +1,26 @@
+name: Config unsaved changes revert on re-entry
+covers:
+  api:
+    - GET /get/config
+  ui:
+    - ConfigPage re-fetches backend state on every mount
+    - Unsaved watcher toggle does not persist across navigation
+    - Navigating away then back resets local state to server value
+given: []
+
+steps:
+  - when:
+      - navigate: /config
+    assert:
+      - ui.text_visible: Backend watches filesystem for modifications.
+
+  - when:
+      - click: checkbox/Filesystem watcher
+    assert:
+      - ui.text_visible: Backend filesystem watcher is unavailable / disabled.
+
+  - when:
+      - navigate: /home
+      - navigate: /config
+    assert:
+      - ui.text_visible: Backend watches filesystem for modifications.
