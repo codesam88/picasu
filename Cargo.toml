@@ -1,7 +1,10 @@
 [workspace]
-members = ["backend", "xtask"]
+members = ["backend", "xtask", "utils/paste-shim"]
 default-members = ["backend"]
 resolver = "2"
+
+[patch.crates-io]
+paste = { path = "utils/paste-shim" }
 
 [profile.lto]
 inherits = "release"

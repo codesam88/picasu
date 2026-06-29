@@ -4,8 +4,6 @@ targets = []
 [advisories]
 version = 2
 ignore = [
-    # paste proc-macro, pulled in by rav1e (image codec); no fix available upstream
-    { id = "RUSTSEC-2024-0436", reason = "transitive dep via rav1e/image; no fix available" },
     # rsa Marvin Attack; pulled in by jsonwebtoken; no patched version available yet
     { id = "RUSTSEC-2023-0071", reason = "transitive dep via jsonwebtoken; no patched version available" },
 ]
