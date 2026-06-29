@@ -3,10 +3,7 @@ targets = []
 
 [advisories]
 version = 2
-ignore = [
-    # rsa Marvin Attack; pulled in by jsonwebtoken; no patched version available yet
-    { id = "RUSTSEC-2023-0071", reason = "transitive dep via jsonwebtoken; no patched version available" },
-]
+ignore = []
 
 [licenses]
 version = 2
