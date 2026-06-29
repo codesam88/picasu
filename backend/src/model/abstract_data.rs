@@ -453,15 +453,6 @@ impl AbstractData {
             img.metadata.phash = Some(phash);
         }
     }
-
-    /// Set size
-    pub fn set_size(&mut self, size: u64) {
-        match self {
-            AbstractData::Image(img) => img.metadata.size = size,
-            AbstractData::Video(vid) => vid.metadata.size = size,
-            AbstractData::Album(_) => {}
-        }
-    }
 }
 
 impl From<ImageCombined> for AbstractData {

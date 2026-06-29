@@ -18,7 +18,7 @@
       <ItemRestore v-if="database.isTrashed" :index-list="[props.index]" />
       <ItemPermanentlyDelete v-if="database.isTrashed" :index-list="[props.index]" />
       <v-divider></v-divider>
-      <ItemRegenerateMetadata :index-list="[props.index]" />
+      <ItemScanAlbum />
       <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
       <ItemRotateImage v-if="database.type === 'image'" />
     </v-list>
@@ -34,7 +34,7 @@ import ItemEditTags from '@Menu/MenuItem/ItemEditTags.vue'
 import ItemEditAlbums from '@Menu/MenuItem/ItemEditAlbums.vue'
 import ItemDelete from '@Menu/MenuItem/ItemDelete.vue'
 import ItemPermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
-import ItemRegenerateMetadata from '@Menu/MenuItem/ItemRegenerateMetadata.vue'
+import ItemScanAlbum from '@Menu/MenuItem/ItemScanAlbum.vue'
 import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
 import ItemRegenerateThumbnailByFrame from '@Menu/MenuItem/ItemRegenerateThumbnailByFrame.vue'
 import ItemRotateImage from '@Menu/MenuItem/ItemRotateImage.vue'

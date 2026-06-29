@@ -9,7 +9,6 @@ pub mod edit_flags;
 pub mod edit_share;
 pub mod edit_tag;
 pub mod regenerate_thumbnail;
-pub mod reindex;
 pub mod rotate_image;
 pub fn generate_put_routes() -> Vec<Route> {
     let r = routes![
@@ -22,7 +21,6 @@ pub fn generate_put_routes() -> Vec<Route> {
         edit_share::delete_share,
         edit_tag::edit_tag,
         regenerate_thumbnail::regenerate_thumbnail_with_frame,
-        reindex::reindex,
         edit_config::update_config_handler,
         edit_config::update_password_handler,
         rotate_image::rotate_image

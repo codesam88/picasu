@@ -1,0 +1,43 @@
+name: complex tags and album survive assign
+# Full lifecycle: photo with embedded XMP tags + EXIF date imported from
+# filesystem -> scan -> assigned to album -> verify tags and album visible
+# via API and file physically moved on disk.
+given:
+  - dir_album: /e2e_y/album
+    id_as: $album
+  - photo: /e2e_y/import/sunset.jpg
+    tags:
+      - e2e_y_scenic
+      - e2e_y_sunset
+    exif_date: "2025:06:15 19:30:00"
+    id_as: $photo
+when:
+  # Step 1: Assign photo to album
+  - call: PUT /put/assign_album
+    body:
+      hash: "${photo}"
+      albumId: "${album}"
+    then:
+      - response.status: 200
+  # Step 2: Verify tags and album membership
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.[0].abstractData.album: "${album}"
+  - response.json.[0].abstractData.tags:
+      contains: e2e_y_scenic
+  - response.json.[0].abstractData.tags:
+      contains: e2e_y_sunset
+  # File moved on disk and original removed
+  - file_exists: /e2e_y/album/sunset.jpg
+  - file_absent: /e2e_y/import/sunset.jpg

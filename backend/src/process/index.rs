@@ -1,6 +1,5 @@
 use crate::process::thumbnail::generate_thumbnail_for_image;
 use anyhow::{Context, Result};
-use std::fs::metadata;
 
 use crate::model::abstract_data::AbstractData;
 use crate::process::exif::{generate_exif_for_image, generate_exif_for_video};
@@ -49,19 +48,6 @@ pub fn process_image_info(abstract_data: &mut AbstractData) -> Result<()> {
     Ok(())
 }
 
-/// Re‑build all metadata for an existing **image** (e.g. after replace / fix).
-pub fn regenerate_metadata_for_image(abstract_data: &mut AbstractData) -> Result<()> {
-    // Refresh size from filesystem
-    let size = metadata(abstract_data.source_path())
-        .context("failed to read metadata for source image file")?
-        .len();
-    abstract_data.set_size(size);
-
-    // Re‑run the full processing pipeline
-    process_image_info(abstract_data).context("failed to process image info")?;
-    Ok(())
-}
-
 /// Analyse the newly‑imported **video** and populate the `AbstractData` record.
 pub fn process_video_info(abstract_data: &mut AbstractData) -> Result<()> {
     // Extract EXIF‑like metadata via ffprobe
@@ -97,18 +83,5 @@ pub fn process_video_info(abstract_data: &mut AbstractData) -> Result<()> {
     abstract_data.set_thumbhash(generate_thumbhash(&dynamic_image));
     abstract_data.set_phash(generate_phash(&dynamic_image));
 
-    Ok(())
-}
-
-/// Re‑build all metadata for an existing **video** file.
-pub fn regenerate_metadata_for_video(abstract_data: &mut AbstractData) -> Result<()> {
-    // Refresh size from filesystem metadata
-    let size = metadata(abstract_data.source_path())
-        .context("failed to read metadata for source video file")?
-        .len();
-    abstract_data.set_size(size);
-
-    // Re‑run the full processing pipeline
-    process_video_info(abstract_data).context("failed to process video info")?;
     Ok(())
 }

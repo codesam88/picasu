@@ -31,7 +31,7 @@
       <v-divider></v-divider>
 
       <!-- Regenerate Action -->
-      <ItemRegenerateMetadata :index-list="editModeList" />
+      <ItemScanAlbum />
     </v-list>
   </v-menu>
 </template>
@@ -49,7 +49,7 @@ import ItemBatchEditAlbums from '@Menu/MenuItem/ItemBatchEditAlbums.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
 import ItemDelete from '@Menu/MenuItem/ItemDelete.vue'
 import ItemPermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
-import ItemRegenerateMetadata from '@Menu/MenuItem/ItemRegenerateMetadata.vue'
+import ItemScanAlbum from '@Menu/MenuItem/ItemScanAlbum.vue'
 import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
 
 import { getIsolationIdByRoute } from '@utils/getter'
