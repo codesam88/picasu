@@ -72,11 +72,13 @@ fn start_watcher_task_internal() -> Result<()> {
 
     if !fs_notify_watcher_enabled {
         info!("fs_notify_watcher disabled — skipping filesystem watcher");
+        IS_WATCHING.store(false, Ordering::SeqCst);
         return Ok(());
     }
 
     let Some(raw_image_path) = raw_image_path else {
         info!("No path to watch");
+        IS_WATCHING.store(false, Ordering::SeqCst);
         return Ok(());
     };
 
