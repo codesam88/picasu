@@ -126,7 +126,7 @@
               density="compact"
               variant="outlined"
               hide-details
-              placeholder="uploads"
+              placeholder="(image library root)"
               style="min-width: 120px; max-width: 220px"
             ></v-text-field>
           </div>
