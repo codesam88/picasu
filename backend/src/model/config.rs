@@ -381,12 +381,7 @@ impl AppConfig {
             }
         });
 
-        let trimmed_upload_folder = new_config.upload_folder.trim().to_string();
-        new_config.upload_folder = if trimmed_upload_folder.is_empty() {
-            default_upload_folder()
-        } else {
-            trimmed_upload_folder
-        };
+        new_config.upload_folder = new_config.upload_folder.trim().to_string();
 
         if new_config.auth_key.as_deref().is_none_or(str::is_empty) {
             new_config.auth_key = None;
