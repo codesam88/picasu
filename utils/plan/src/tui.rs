@@ -753,6 +753,7 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut style_stack: Vec<Style> = Vec::new();
+    let mut in_code_block = false;
     let push_span = |spans: &mut Vec<Span<'static>>, text: &str, style: &Style| {
         if !text.is_empty() {
             spans.push(Span::styled(text.to_string(), *style));
@@ -793,6 +794,7 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                 }
                 Tag::CodeBlock(_) => {
                     flush(&mut lines, &mut spans);
+                    in_code_block = true;
                 }
                 Tag::Strong => {
                     let s = style_stack.last().map_or(th.bold, |base| {
@@ -824,6 +826,7 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                     flush(&mut lines, &mut spans);
                 }
                 TagEnd::CodeBlock => {
+                    in_code_block = false;
                     flush(&mut lines, &mut spans);
                     lines.push(Line::from(""));
                 }
@@ -833,8 +836,17 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                 _ => {}
             },
             Event::Text(t) => {
-                let style = style_stack.last().copied().unwrap_or_default();
-                push_span(&mut spans, &t, &style);
+                if in_code_block {
+                    for (i, line) in t.lines().enumerate() {
+                        if i > 0 {
+                            flush(&mut lines, &mut spans);
+                        }
+                        push_span(&mut spans, line, &th.code);
+                    }
+                } else {
+                    let style = style_stack.last().copied().unwrap_or_default();
+                    push_span(&mut spans, &t, &style);
+                }
             }
             Event::Code(t) => {
                 push_span(&mut spans, &t, &th.code);
