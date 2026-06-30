@@ -23,26 +23,26 @@ struct MarkdownTheme {
 }
 
 fn themes() -> Vec<MarkdownTheme> {
-    let ni = |fg| Style::default().fg(fg).add_modifier(Modifier::ITALIC);
-    let nu = |fg| Style::default().fg(fg).add_modifier(Modifier::UNDERLINED);
+    let nb = |fg| Style::default().fg(fg).add_modifier(Modifier::BOLD);
+    let nd = |fg| Style::default().fg(fg).add_modifier(Modifier::DIM);
     vec![
         MarkdownTheme {
             name: "default",
-            h1: nu(Color::Cyan),
-            h2: ni(Color::Cyan),
-            h3: ni(Color::Cyan),
+            h1: nb(Color::Cyan),
+            h2: Style::default().fg(Color::Cyan),
+            h3: nd(Color::Cyan),
             bold: Style::default().add_modifier(Modifier::BOLD),
-            dim: Style::default().add_modifier(Modifier::ITALIC),
+            dim: Style::default().add_modifier(Modifier::DIM),
             code: Style::default().fg(Color::Yellow),
             bullet: Style::default(),
         },
         MarkdownTheme {
             name: "classic",
-            h1: nu(Color::Cyan),
-            h2: ni(Color::Cyan),
-            h3: ni(Color::Cyan),
+            h1: nb(Color::Cyan),
+            h2: Style::default().fg(Color::Cyan),
+            h3: nd(Color::Cyan),
             bold: Style::default().add_modifier(Modifier::BOLD),
-            dim: Style::default().add_modifier(Modifier::ITALIC),
+            dim: Style::default().add_modifier(Modifier::DIM),
             code: Style::default().fg(Color::Yellow),
             bullet: Style::default().fg(Color::Green),
         },
