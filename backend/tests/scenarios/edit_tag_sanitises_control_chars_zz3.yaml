@@ -1,0 +1,32 @@
+name: edit_tag strips control characters before storing
+given:
+  - photo: /e2e_zz3/photo.jpg
+    id_as: $photo
+when:
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  # The tag contains ESC (U+001B) as a JSON unicode escape ().
+  # YAML single-quotes preserve the backslash literally; the server's JSON parser
+  # then expands  to the ESC byte before our sanitiser runs and strips it.
+  # The stored tag must be "e2e_zz3clean" — ESC removed, rest intact.
+  - call: PUT /put/edit_tag
+    raw_body: '{"indexArray":[${idx}],"addTagsArray":["e2e_zz3\u001Bclean"],"removeTagsArray":[],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.[0].abstractData.tags:
+      contains: e2e_zz3clean

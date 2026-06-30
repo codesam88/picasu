@@ -1,0 +1,84 @@
+name: HTML/SQL injection characters in tags and description render as literal text
+covers:
+  api:
+    - PUT /put/edit_tag
+    - PUT /put/set_user_defined_description
+  ui:
+    - tag with HTML markup renders as plain text
+    - description with SQL and script injection renders as plain text
+
+given:
+  - dir_album: injectiontest/pool
+
+  - photo: injectiontest/pool/img01.jpg
+
+steps:
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: injectiontest
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: pool
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+
+  # Open Edit Tags and add a tag containing HTML markup
+  - when:
+      - click.icon: mdi-dots-vertical
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: option/Edit Tags
+    assert:
+      - ui.modal: open
+
+  - when:
+      - fill: combobox/Tags
+        value: '<b>bold</b>'
+      - keyboard: Tab
+      - click: button/OK
+    assert:
+      - ui.toast:
+          type: success
+          contains: Successfully edited tags
+      # The tag must appear as literal text, not rendered HTML
+      - ui.sidebar_visible: '<b>bold</b>'
+
+  # Fill description with SQL injection and a script tag
+  - when:
+      - fill: textbox/Description
+        value: "'; DROP TABLE photos--"
+    assert:
+      - ui.input_value: textbox/Description
+        contains: "'; DROP TABLE photos--"
+
+  - when:
+      - click.icon: mdi-close
+    assert:
+      - ui.toast:
+          type: success
+          contains: Description saved
+
+  # Reopen and verify the description round-trips as plain text
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.input_value: textbox/Description
+        contains: "'; DROP TABLE photos--"

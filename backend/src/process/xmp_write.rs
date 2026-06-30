@@ -1,4 +1,5 @@
 use crate::model::abstract_data::AbstractData;
+use crate::process::sanitize::is_valid_xml_char;
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::io;
@@ -93,6 +94,9 @@ fn format_xmp_packet(
 
 fn xml_escape_into(out: &mut String, s: &str) {
     for ch in s.chars() {
+        if !is_valid_xml_char(ch) {
+            continue; // drop characters forbidden by XML 1.0 §2.2
+        }
         match ch {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),

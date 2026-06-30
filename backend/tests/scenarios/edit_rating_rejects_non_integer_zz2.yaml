@@ -1,0 +1,13 @@
+name: edit_rating rejects non-integer value
+given:
+  - photo: /e2e_zz2/photo.jpg
+    id_as: $photo
+when:
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  - call: PUT /put/edit_rating
+    raw_body: '{"indexArray":[${idx}],"timestamp":${ts},"rating":2.5}'
+then:
+  - response.status_not: 200
