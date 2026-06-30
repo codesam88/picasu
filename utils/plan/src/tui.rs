@@ -734,6 +734,30 @@ impl App<'_> {
     }
 }
 
+/// Word-wrap text into lines of at most `max` characters.
+/// Returns None if no wrapping needed.
+fn word_wrap(text: &str, max: usize) -> Option<Vec<String>> {
+    if text.len() <= max {
+        return None;
+    }
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for word in text.split_inclusive(' ') {
+        if current.len() + word.trim_end().len() > max {
+            if !current.is_empty() {
+                lines.push(current.trim_end().to_string());
+            }
+            current = word.trim_start().to_string();
+        } else {
+            current.push_str(word);
+        }
+    }
+    if !current.is_empty() {
+        lines.push(current.trim_end().to_string());
+    }
+    Some(lines)
+}
+
 fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let mut in_fm = false;
@@ -776,9 +800,20 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
             continue;
         }
 
-        // List item
+        // List item — wrapped at preview width, continuation indented to align
         if let Some(item) = trimmed.strip_prefix("- ") {
-            lines.push(Line::from(format!("  - {}", item)));
+            let indent = "    ";
+            let first = format!("  - {}", item);
+            if let Some(wrapped) = word_wrap(&first, 78) {
+                for (i, seg) in wrapped.iter().enumerate() {
+                    let s = if i == 0 {
+                        seg.clone()
+                    } else {
+                        format!("{}{}", indent, seg)
+                    };
+                    lines.push(Line::from(s));
+                }
+            }
             continue;
         }
         // Code block fence
