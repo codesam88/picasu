@@ -57,6 +57,10 @@ pub struct AppConfig {
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_key: Option<String>,
+    /// Path to the compiled frontend build directory (contains index.html and assets/).
+    /// Not exposed via the JSON API; set via config.toml or `PICASU_WEB_ROOT` env var.
+    #[serde(skip)]
+    pub web_root: Option<PathBuf>,
 }
 
 impl Default for AppConfig {
@@ -73,6 +77,7 @@ impl Default for AppConfig {
             fs_notify_watcher: true,
             password: None,
             auth_key: None,
+            web_root: None,
         }
     }
 }
@@ -131,6 +136,8 @@ pub(crate) struct TomlGallery {
     pub(crate) disable_img: bool,
     #[serde(default = "default_true")]
     pub(crate) fs_notify_watcher: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) web_root: Option<PathBuf>,
 }
 
 impl Default for TomlGallery {
@@ -142,6 +149,7 @@ impl Default for TomlGallery {
             read_only_mode: false,
             disable_img: false,
             fs_notify_watcher: true,
+            web_root: None,
         }
     }
 }
@@ -170,6 +178,7 @@ impl From<TomlFile> for AppConfig {
             fs_notify_watcher: t.gallery.fs_notify_watcher,
             password: t.secrets.password,
             auth_key: t.secrets.auth_key,
+            web_root: t.gallery.web_root,
         }
     }
 }
@@ -189,6 +198,7 @@ impl From<AppConfig> for TomlFile {
                 read_only_mode: c.read_only_mode,
                 disable_img: c.disable_img,
                 fs_notify_watcher: c.fs_notify_watcher,
+                web_root: c.web_root,
             },
             secrets: TomlSecrets {
                 password: c.password,
@@ -233,9 +243,15 @@ impl AppConfig {
                 Err(_) => Some(data_home.join("images")),
             };
 
+            let web_root = match std::env::var("PICASU_WEB_ROOT") {
+                Ok(p) => Some(PathBuf::from(p)),
+                Err(_) => Some(data_home.join("www")),
+            };
+
             let config = AppConfig {
                 data_home: Some(data_home),
                 image_home,
+                web_root,
                 ..AppConfig::default()
             };
 
@@ -361,6 +377,12 @@ impl AppConfig {
                 Some(trimmed)
             };
         }
+        if let Ok(val) = std::env::var("PICASU_WEB_ROOT") {
+            let trimmed = val.trim().to_string();
+            if !trimmed.is_empty() {
+                config.web_root = Some(PathBuf::from(trimmed));
+            }
+        }
     }
 
     /// # Panics
@@ -440,6 +462,7 @@ mod tests {
             fs_notify_watcher: false,
             password: Some("secret".to_string()),
             auth_key: None,
+            web_root: Some(PathBuf::from("/tmp/www")),
         };
 
         let tf = TomlFile::from(config.clone());

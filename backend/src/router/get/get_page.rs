@@ -1,14 +1,13 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
+use crate::model::config::APP_CONFIG;
 use crate::router::AppResult;
 use crate::storage::db::{DATA_TABLE, TREE};
 #[cfg(not(feature = "embed-frontend"))]
 use rocket::fs::NamedFile;
 use rocket::http::Status;
-use rocket::response::{Redirect, content};
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+use rocket::response::Redirect;
+use std::path::PathBuf;
 
 #[cfg(feature = "embed-frontend")]
 use crate::frontend::FrontendAssets;
@@ -17,32 +16,23 @@ use rocket::http::ContentType;
 #[cfg(feature = "embed-frontend")]
 use std::borrow::Cow;
 
-pub static INDEX_HTML: LazyLock<String> = LazyLock::new(|| {
-    #[cfg(feature = "embed-frontend")]
-    {
-        if let Some(file) = FrontendAssets::get("index.html") {
-            return std::str::from_utf8(&file.data)
-                .expect("index.html is not valid UTF-8")
-                .to_string();
-        }
-    }
-
-    let prod_path = Path::new("index.html");
-    if prod_path.exists() {
-        fs::read_to_string(prod_path).expect("Unable to read index.html from current directory")
-    } else {
-        fs::read_to_string("../frontend/dist/index.html")
-            .expect("Unable to read index.html from dev path")
-    }
-});
-
 #[cfg(not(feature = "embed-frontend"))]
 fn resolve_path(filename: &str) -> PathBuf {
-    let prod_path = Path::new(filename);
-    if prod_path.exists() {
-        prod_path.to_path_buf()
+    let web_root = APP_CONFIG
+        .get()
+        .and_then(|l| l.read().ok())
+        .and_then(|c| c.web_root.clone());
+
+    if let Some(root) = web_root {
+        root.join(filename)
     } else {
-        PathBuf::from(format!("../frontend/dist/{filename}"))
+        // Dev fallback when web_root is not configured
+        let prod_path = std::path::Path::new(filename);
+        if prod_path.exists() {
+            prod_path.to_path_buf()
+        } else {
+            PathBuf::from(format!("../frontend/dist/{filename}"))
+        }
     }
 }
 
@@ -105,8 +95,8 @@ async fn serve_file(filename: &str) -> AppResult<FrontendResponse> {
     )
 ]
 #[get("/")]
-pub fn redirect_to_photo() -> content::RawHtml<String> {
-    content::RawHtml(INDEX_HTML.to_string())
+pub async fn redirect_to_photo() -> AppResult<FrontendResponse> {
+    serve_file("index.html").await
 }
 
 #[utoipa::path(

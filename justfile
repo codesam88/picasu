@@ -185,7 +185,7 @@ build: frontend-build backend-build
 [group('global')]
 build-release: frontend-build backend-build-release
 
-# Build + test release build
+# Build + test release build - webroot is embedded
 [group('global')]
 test-release: backend-test-release build-release
     PICASU_BINARY=target/release/picasu just frontend-playwright
@@ -214,6 +214,7 @@ run: build
         PICASU_CONFIG_HOME="{{justfile_directory()}}/sandbox/data" \
         PICASU_DATA_HOME="{{justfile_directory()}}/sandbox/data" \
         PICASU_IMAGE_HOME="{{justfile_directory()}}/sandbox/images" \
+        PICASU_WEB_ROOT="{{justfile_directory()}}/frontend/dist" \
         cargo run --bin picasu
 
 # Run security audits (backend + frontend)

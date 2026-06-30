@@ -45,7 +45,7 @@ export async function startBackend(paths: WorkerPaths): Promise<BackendHandle> {
 
   const binaryPath = process.env.PICASU_BINARY
   const [cmd, cmdArgs, cmdOpts] = binaryPath
-    ? [path.resolve(REPO_ROOT, binaryPath), [], { cwd: BACKEND_DIR }]
+    ? [path.resolve(REPO_ROOT, binaryPath), [], {}]
     : ['cargo', ['run', '--bin', 'picasu'], { cwd: BACKEND_DIR }]
 
   const logTag = `[${path.basename(paths.DIR)}]`
@@ -55,7 +55,8 @@ export async function startBackend(paths: WorkerPaths): Promise<BackendHandle> {
       ...process.env,
       PICASU_PORT: String(paths.BACKEND_PORT),
       PICASU_DATA_HOME: paths.DATA_DIR,
-      PICASU_CONFIG_HOME: paths.CONFIG_DIR
+      PICASU_CONFIG_HOME: paths.CONFIG_DIR,
+      PICASU_WEB_ROOT: path.resolve(REPO_ROOT, 'frontend/dist')
     },
     stdio: ['ignore', 'pipe', 'pipe']
   })

@@ -82,11 +82,12 @@ pub fn build_rocket_with_config(mut app_config: AppConfig) -> rocket::Rocket<roc
         .merge(("port", app_config.port))
         .merge(("limits", limits));
 
+    let web_root = app_config.web_root.clone();
     let base_app = rocket::custom(rocket_config)
         .manage(app_config)
         .attach(cache_control_fairing());
 
-    let app = mount_frontend(base_app);
+    let app = mount_frontend(base_app, web_root.as_ref());
 
     app.mount("/", generate_get_routes())
         .mount("/", generate_post_routes())
@@ -122,7 +123,10 @@ mod test_build_rocket_with_config {
     }
 }
 
-fn mount_frontend(app: rocket::Rocket<rocket::Build>) -> rocket::Rocket<rocket::Build> {
+fn mount_frontend(
+    app: rocket::Rocket<rocket::Build>,
+    web_root: Option<&PathBuf>,
+) -> rocket::Rocket<rocket::Build> {
     #[cfg(feature = "embed-frontend")]
     {
         info!("Serving assets from embedded binary");
@@ -131,8 +135,11 @@ fn mount_frontend(app: rocket::Rocket<rocket::Build>) -> rocket::Rocket<rocket::
 
     #[cfg(not(feature = "embed-frontend"))]
     {
-        let asset_path = PathBuf::from("../frontend/dist/assets");
-        info!("Serving assets from: {:?}", asset_path);
+        let asset_path = web_root.map_or_else(
+            || PathBuf::from("../frontend/dist/assets"),
+            |r| r.join("assets"),
+        );
+        info!("Serving assets from: {}", asset_path.display());
         app.mount("/assets", FileServer::from(asset_path))
     }
 }
