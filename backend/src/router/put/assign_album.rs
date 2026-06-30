@@ -189,8 +189,8 @@ fn move_item_into_album(
     Ok(())
 }
 
-/// Append `(N)` before the extension until we find a path that doesn't exist.
-/// `photo.jpg` → `photo (1).jpg`, `photo (2).jpg`, …
+/// Append `-NNN` before the extension until we find a path that doesn't exist.
+/// `photo.jpg` → `photo-001.jpg`, `photo-002.jpg`, …
 fn find_unique_path(base: &Path) -> PathBuf {
     let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
     let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -198,9 +198,9 @@ fn find_unique_path(base: &Path) -> PathBuf {
 
     for n in 1u32.. {
         let name = if ext.is_empty() {
-            format!("{stem} ({n})")
+            format!("{stem}-{n:03}")
         } else {
-            format!("{stem} ({n}).{ext}")
+            format!("{stem}-{n:03}.{ext}")
         };
         let candidate = parent.join(&name);
         if !candidate.exists() {

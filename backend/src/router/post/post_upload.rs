@@ -4,6 +4,7 @@ use crate::model::config::APP_CONFIG;
 use crate::process::dir_album::get_dir_path_for_album;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardUpload;
+use crate::router::put::assign_album::OnConflict;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::files::get_resolved_image_home;
 use anyhow::Result;
@@ -83,11 +84,12 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
         )
     )
 ]
-#[post("/upload?<presigned_album_id_opt>", data = "<form>")]
+#[post("/upload?<presigned_album_id_opt>&<on_conflict>", data = "<form>")]
 pub async fn upload(
     auth: GuardResult<GuardUpload>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     presigned_album_id_opt: Option<String>,
+    on_conflict: Option<String>,
     form: Result<Form<UploadForm<'_>>, Errors<'_>>,
 ) -> AppResult<()> {
     let _ = auth?;
@@ -124,6 +126,19 @@ pub async fn upload(
 
     let target_dir = resolve_upload_target_dir(album_id)?;
 
+    let on_conflict_strategy: Option<OnConflict> = match on_conflict.as_deref() {
+        None => None,
+        Some("skip") => Some(OnConflict::Skip),
+        Some("rename") => Some(OnConflict::Rename),
+        Some("replace") => Some(OnConflict::Replace),
+        Some(other) => {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                format!("Unknown on_conflict value: {other}; expected skip, rename, or replace"),
+            ));
+        }
+    };
+
     for (i, file) in inner_form.files.iter_mut().enumerate() {
         let last_modified = inner_form.last_modified[i];
         let filename = get_filename(file);
@@ -132,8 +147,18 @@ pub async fn upload(
         if VALID_IMAGE_EXTENSIONS.contains(&extension.as_str())
             || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str())
         {
-            let final_path =
-                save_file(file, &target_dir, filename, extension, last_modified).await?;
+            let Some(final_path) = save_file(
+                file,
+                &target_dir,
+                filename,
+                extension,
+                last_modified,
+                on_conflict_strategy,
+            )
+            .await?
+            else {
+                continue; // on_conflict=skip and destination existed
+            };
             let image_root = get_resolved_image_home()
                 .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "No imagePath configured"))?;
             let relative_src = Path::new(&final_path)
@@ -159,14 +184,20 @@ pub async fn upload(
 /// Persists the temporary file directly into `target_dir` (its real, final
 /// location under `IMAGE_HOME`) with the correct modification time.
 ///
-/// Returns the absolute path of the saved file.
+/// When `on_conflict` is `None` (default), a UUID suffix is appended to the
+/// filename to guarantee uniqueness.  When `on_conflict` is `Some`, the
+/// original filename is used and the conflict strategy is applied.
+///
+/// Returns the absolute path of the saved file, or `None` if `on_conflict` is
+/// `Skip` and the destination already exists.
 async fn save_file(
     file: &mut TempFile<'_>,
     target_dir: &Path,
     filename: String,
     extension: String,
     last_modified_ms: u64,
-) -> Result<String, AppError> {
+    on_conflict: Option<OnConflict>,
+) -> Result<Option<String>, AppError> {
     let unique_id = Uuid::new_v4();
     let target_dir = target_dir.to_path_buf();
 
@@ -185,20 +216,64 @@ async fn save_file(
     // Perform metadata operations and rename in a blocking thread.
     // 1. Set mtime on the .tmp file.
     // 2. Atomic rename to .ext (final state).
-    // This ensures the file watcher (workflow) only picks up the file once it is fully written and has the correct timestamp.
-    let final_path = spawn_blocking(move || -> Result<String, AppError> {
-        let final_path = target_dir.join(format!("{filename_owned}-{unique_id}.{extension}"));
+    // This ensures the file watcher only picks up the file once it is fully
+    // written and has the correct timestamp.
+    let result = spawn_blocking(move || -> Result<Option<String>, AppError> {
+        let base_final = if on_conflict.is_some() {
+            target_dir.join(format!("{filename_owned}.{extension}"))
+        } else {
+            target_dir.join(format!("{filename_owned}-{unique_id}.{extension}"))
+        };
+
+        let final_path = if let Some(strategy) = on_conflict {
+            if base_final.exists() {
+                match strategy {
+                    OnConflict::Skip => {
+                        // Remove the temp file and signal nothing to index.
+                        let _ = std::fs::remove_file(&tmp_path_owned);
+                        return Ok(None);
+                    }
+                    OnConflict::Replace => base_final,
+                    OnConflict::Rename => find_unique_upload_path(&base_final),
+                }
+            } else {
+                base_final
+            }
+        } else {
+            base_final
+        };
 
         set_last_modified_time(&tmp_path_owned, last_modified_ms)?;
         std::fs::rename(&tmp_path_owned, &final_path)
             .or_raise(|| (ErrorKind::IO, "Failed to rename file"))?;
 
-        Ok(final_path.to_string_lossy().into_owned())
+        Ok(Some(final_path.to_string_lossy().into_owned()))
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
 
-    Ok(final_path)
+    Ok(result)
+}
+
+/// Append `-NNN` before the extension until we find a path that doesn't exist.
+/// `photo.jpg` → `photo-001.jpg`, `photo-002.jpg`, …
+fn find_unique_upload_path(base: &Path) -> PathBuf {
+    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let parent = base.parent().unwrap_or(Path::new("."));
+
+    for n in 1u32.. {
+        let name = if ext.is_empty() {
+            format!("{stem}-{n:03}")
+        } else {
+            format!("{stem}-{n:03}.{ext}")
+        };
+        let candidate = parent.join(&name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!("filesystem has finite capacity")
 }
 
 #[allow(clippy::cast_possible_wrap)]
