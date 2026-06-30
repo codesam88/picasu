@@ -1,5 +1,10 @@
 <template>
-  <v-list-item prepend-icon="mdi-folder-move" value="assign-album" @click="openModal">
+  <v-list-item
+    prepend-icon="mdi-folder-move"
+    value="assign-album"
+    role="menuitem"
+    @click="openModal"
+  >
     <v-list-item-title class="wrap">Assign Album</v-list-item-title>
   </v-list-item>
 </template>

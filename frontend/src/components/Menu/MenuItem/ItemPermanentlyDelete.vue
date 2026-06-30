@@ -1,5 +1,5 @@
 <template>
-  <v-list-item prepend-icon="mdi-trash-can-outline" @click="deleteData">
+  <v-list-item prepend-icon="mdi-trash-can-outline" role="menuitem" @click="deleteData">
     <v-list-item-title class="wrap">Permanently Delete</v-list-item-title>
   </v-list-item>
 </template>

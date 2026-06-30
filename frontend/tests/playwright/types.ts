@@ -227,6 +227,13 @@ export const UiAssertChipVisible = z
   })
   .strict()
 
+export const UiAssertInputValue = z
+  .object({
+    'ui.input_value': RoleLabel,
+    contains: z.string()
+  })
+  .strict()
+
 export const UiAssertItem = z.union([
   UiAssertVisible,
   UiAssertHidden,
@@ -239,7 +246,8 @@ export const UiAssertItem = z.union([
   UiAssertTextVisible,
   UiAssertCount,
   UiAssertSidebarVisible,
-  UiAssertChipVisible
+  UiAssertChipVisible,
+  UiAssertInputValue
 ])
 
 export const UiStep = z
@@ -278,6 +286,7 @@ export const UiScenario = z
 export type UiScenario = z.infer<typeof UiScenario>
 export type UiWhenItem = z.infer<typeof UiWhenItem>
 export type UiAssertItem = z.infer<typeof UiAssertItem>
+export type UiAssertInputValue = z.infer<typeof UiAssertInputValue>
 export type UiStep = z.infer<typeof UiStep>
 export type GivenMove = z.infer<typeof GivenMove>
 export type GivenItem = z.infer<typeof GivenItem>

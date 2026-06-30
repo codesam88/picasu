@@ -13,6 +13,7 @@
         v-model="userDefinedDescriptionModel"
         :variant="isShareMode ? 'plain' : 'underlined'"
         :readonly="isShareMode"
+        aria-label="Description"
         rows="1"
         auto-grow
         @blur="

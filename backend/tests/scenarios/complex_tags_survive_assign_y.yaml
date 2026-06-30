@@ -9,6 +9,7 @@ given:
     tags:
       - e2e_y_scenic
       - e2e_y_sunset
+      - golden hour
     exif_date: "2025:06:15 19:30:00"
     id_as: $photo
 when:
@@ -38,6 +39,8 @@ then:
       contains: e2e_y_scenic
   - response.json.[0].abstractData.tags:
       contains: e2e_y_sunset
+  - response.json.[0].abstractData.tags:
+      contains: golden hour
   # File moved on disk and original removed
   - file_exists: /e2e_y/album/sunset.jpg
   - file_absent: /e2e_y/import/sunset.jpg

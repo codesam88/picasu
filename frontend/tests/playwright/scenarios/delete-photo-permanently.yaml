@@ -1,0 +1,70 @@
+name: Soft-delete then permanently delete removes photo from library
+covers:
+  api:
+    - PUT /put/edit_flags
+    - DELETE /delete/delete-data
+  ui:
+    - Delete menu item moves photo to trash
+    - Permanently Delete removes photo from trash view
+
+given:
+  - dir_album: deletetest/pool
+
+  - photo: deletetest/pool/img01.jpg
+
+steps:
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: deletetest
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: pool
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+
+  # Soft-delete via the three-dot menu
+  - when:
+      - click.icon: mdi-dots-vertical
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: menuitem/Delete
+    assert:
+      - ui.visible: main/
+
+  # Navigate to trash — the photo should be there
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.visible: main/
+
+  # Open the trashed photo
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+
+  # Permanently delete via the three-dot menu
+  - when:
+      - click.icon: mdi-dots-vertical
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: menuitem/Permanently Delete
+    assert:
+      - ui.toast:
+          type: success
+          contains: Successfully deleted data

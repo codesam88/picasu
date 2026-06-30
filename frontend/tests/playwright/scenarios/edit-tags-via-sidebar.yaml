@@ -1,0 +1,64 @@
+name: Adding a tag via Edit Tags menu persists to sidebar
+covers:
+  api:
+    - PUT /put/edit_tag
+  ui:
+    - EditTagsModal saves new tag
+    - sidebar reflects updated tags
+
+given:
+  - dir_album: tagedit/pool
+
+  - photo: tagedit/pool/img01.jpg
+    tags: [originaltag]
+
+steps:
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: tagedit
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: pool
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+
+  # Open info sidebar and confirm the seeded tag is present
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.sidebar_visible: originaltag
+
+  # Open the three-dot menu and launch Edit Tags
+  - when:
+      - click.icon: mdi-dots-vertical
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: menuitem/Edit Tags
+    assert:
+      - ui.modal: open
+
+  # Type a new tag, add it as a chip (Enter), then save
+  - when:
+      - fill: combobox/Tags
+        value: addedtag
+      - submit: true
+      - click: button/Save
+    assert:
+      - ui.toast:
+          type: success
+          contains: Successfully edited tags
+      - ui.sidebar_visible: originaltag
+      - ui.sidebar_visible: addedtag

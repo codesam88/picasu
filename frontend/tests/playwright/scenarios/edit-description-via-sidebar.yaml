@@ -1,0 +1,60 @@
+name: Editing description in sidebar persists after panel reopen
+covers:
+  api:
+    - PUT /put/set_user_defined_description
+  ui:
+    - description textarea accepts input
+    - description persists after sidebar close and reopen
+
+given:
+  - dir_album: descedit/pool
+
+  - photo: descedit/pool/img01.jpg
+
+steps:
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: descedit
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: pool
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+
+  # Fill the description textarea (uniquely identified by aria-label)
+  - when:
+      - fill: textbox/Description
+        value: A scenic landscape photo
+    assert:
+      - ui.input_value: textbox/Description
+        contains: A scenic landscape photo
+
+  # Close the sidebar — blurs the textarea and triggers the API save
+  - when:
+      - click.icon: mdi-close
+      - wait.ms: 1000
+    assert:
+      - ui.visible: main/
+
+  # Reopen the sidebar and verify the description was persisted
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.input_value: textbox/Description
+        contains: A scenic landscape photo

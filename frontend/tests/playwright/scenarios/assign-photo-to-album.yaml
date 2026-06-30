@@ -1,0 +1,64 @@
+name: Assigning a photo to an album via the sidebar modal moves it correctly
+covers:
+  api:
+    - PUT /put/assign_album
+  ui:
+    - AssignAlbumModal selects album and confirms move
+    - sidebar album chip reflects new album after move
+
+given:
+  - dir_album: assigntest/imports
+
+  - dir_album: assigntest/destination
+    id_as: $dest
+
+  - photo: assigntest/imports/photo.jpg
+    id_as: $photo
+
+steps:
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: assigntest
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: imports
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+
+  # Open info sidebar
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+
+  # Open three-dot menu and launch Assign Album modal
+  - when:
+      - click.icon: mdi-dots-vertical
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: menuitem/Assign Album
+    assert:
+      - ui.modal: open
+
+  # Select the destination album in the tree and confirm
+  - when:
+      - click: option/destination
+      - click: button/Move
+    assert:
+      - ui.toast:
+          type: success
+          contains: Moved to album
+      - ui.sidebar_visible: destination

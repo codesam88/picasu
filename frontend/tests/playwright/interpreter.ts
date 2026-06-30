@@ -157,10 +157,15 @@ export async function executeAssert(
           .filter({ hasText: interpolate(assertion['ui.chip_visible'], ctx.vars) })
           .first()
       ).toBeVisible()
+    } else if ('ui.input_value' in assertion) {
+      tracer?.recordUI('ui.input_value', target)
+      await expect(resolveLocator(page, assertion['ui.input_value'], ctx.vars)).toHaveValue(
+        new RegExp(interpolate(assertion.contains, ctx.vars))
+      )
     } else {
       throw new Error(
         `Unknown assert verb in assertion ${JSON.stringify(assertion)}. ` +
-          `Expected one of: ui.visible, ui.hidden, ui.text, ui.route, ui.modal, ui.toast, ui.aria_snapshot, api.response, ui.text_visible, ui.count, ui.sidebar_visible, ui.chip_visible`
+          `Expected one of: ui.visible, ui.hidden, ui.text, ui.route, ui.modal, ui.toast, ui.aria_snapshot, api.response, ui.text_visible, ui.count, ui.sidebar_visible, ui.chip_visible, ui.input_value`
       )
     }
   }

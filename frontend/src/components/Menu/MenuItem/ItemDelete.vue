@@ -1,6 +1,7 @@
 <template>
   <v-list-item
     prepend-icon="mdi-trash-can-outline"
+    role="menuitem"
     @click="setTrashed(props.indexList, true, isolationId)"
   >
     <v-list-item-title class="wrap">Delete</v-list-item-title>
