@@ -302,9 +302,24 @@ export async function executeGiven(
 
     const wantsIdAs = seedEntries.some((e) => e.id_as !== undefined)
     if (wantsIdAs) {
-      const dataRes = await request.fetch(`${backendUrl}/get/get-data?start=0&end=100`, {
-        headers: allHeaders
+      const prefetchRes = await request.fetch(`${backendUrl}/get/prefetch`, {
+        method: 'POST',
+        headers: { ...allHeaders, 'Content-Type': 'application/json' },
+        data: {}
       })
+      if (!prefetchRes.ok()) {
+        throw new Error(`Prefetch failed: ${prefetchRes.status()} ${await prefetchRes.text()}`)
+      }
+      const prefetchJson = await prefetchRes.json()
+      const dataTimestamp: number = prefetchJson.prefetch.timestamp
+      const dataToken: string = prefetchJson.token
+      const dataRes = await request.fetch(
+        `${backendUrl}/get/get-data?timestamp=${dataTimestamp}&start=0&end=100`,
+        { headers: { ...allHeaders, Authorization: `Bearer ${dataToken}` } }
+      )
+      if (!dataRes.ok()) {
+        throw new Error(`Get-data failed: ${dataRes.status()} ${await dataRes.text()}`)
+      }
       const data = (await dataRes.json()) as any[]
 
       for (const entry of seedEntries) {

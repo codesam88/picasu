@@ -46,16 +46,15 @@ steps:
       - ui.visible: main/
 
   - when:
-      - click: menuitem/Edit Tags
+      - click: option/Edit Tags
     assert:
       - ui.modal: open
 
-  # Type a new tag, add it as a chip (Enter), then save
+  # Type a new tag and click OK — Vuetify adds uncommitted text as chip on blur before save
   - when:
       - fill: combobox/Tags
         value: addedtag
-      - submit: true
-      - click: button/Save
+      - click: button/OK
     assert:
       - ui.toast:
           type: success

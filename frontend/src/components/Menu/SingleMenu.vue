@@ -3,7 +3,7 @@
     <template #activator="{ props: MenuBtn }">
       <v-btn v-bind="MenuBtn" icon="mdi-dots-vertical"></v-btn>
     </template>
-    <v-list>
+    <v-list role="menu">
       <ItemViewOriginalFile
         :src="getSrc(database.id, true, database.ext, database.updateAt)"
         :isolation-id="props.isolationId"

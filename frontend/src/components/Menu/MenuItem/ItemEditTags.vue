@@ -2,7 +2,6 @@
   <v-list-item
     prepend-icon="mdi-pencil-outline"
     value="edit-tags"
-    role="menuitem"
     @click="modalStore.showEditTagsModal = true"
   >
     <v-list-item-title class="wrap">{{ 'Edit Tags' }}</v-list-item-title>

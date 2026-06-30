@@ -40,7 +40,7 @@ steps:
       - ui.visible: main/
 
   - when:
-      - click: menuitem/Delete
+      - click: option/Delete
     assert:
       - ui.visible: main/
 
@@ -63,7 +63,7 @@ steps:
       - ui.visible: main/
 
   - when:
-      - click: menuitem/Permanently Delete
+      - click: option/Permanently Delete
     assert:
       - ui.toast:
           type: success
