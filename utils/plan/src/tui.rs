@@ -1059,11 +1059,10 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                     }
 
                     // Render rows with word-wrap
-                    for row in &trimmed {
+                    for (ri, row) in trimmed.iter().enumerate() {
                         if row.is_empty() {
                             continue;
                         }
-                        // Wrap each cell to column width
                         let cell_lines: Vec<Vec<String>> = (0..ncols)
                             .map(|i| {
                                 let txt = row.get(i).map(|s| s.as_str()).unwrap_or("");
@@ -1079,6 +1078,15 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                                 buf.push_str(&format!(" {:<w$}|", txt, w = w));
                             }
                             lines.push(Line::from(buf));
+                        }
+                        // Separator after header (first non-empty row)
+                        if ri == 0 && trimmed.len() > 1 {
+                            let sep: String = col_w
+                                .iter()
+                                .map(|&w| format!(":{:-<w$}:", "", w = w.saturating_sub(1)))
+                                .collect::<Vec<_>>()
+                                .join("");
+                            lines.push(Line::from(format!(" {}", sep)));
                         }
                     }
                     lines.push(Line::from(""));
