@@ -65,6 +65,33 @@ impl AbstractData {
         }
     }
 
+    /// Get description
+    pub fn description(&self) -> Option<&str> {
+        match self {
+            AbstractData::Image(img) => img.object.description.as_deref(),
+            AbstractData::Video(vid) => vid.object.description.as_deref(),
+            AbstractData::Album(alb) => alb.object.description.as_deref(),
+        }
+    }
+
+    /// Set description
+    pub fn set_description(&mut self, description: Option<String>) {
+        match self {
+            AbstractData::Image(img) => img.object.description = description,
+            AbstractData::Video(vid) => vid.object.description = description,
+            AbstractData::Album(alb) => alb.object.description = description,
+        }
+    }
+
+    /// Get rating
+    pub fn rating(&self) -> Option<u8> {
+        match self {
+            AbstractData::Image(img) => img.object.rating,
+            AbstractData::Video(vid) => vid.object.rating,
+            AbstractData::Album(alb) => alb.object.rating,
+        }
+    }
+
     /// Get tags (reference)
     pub fn tag(&self) -> &HashSet<String> {
         match self {

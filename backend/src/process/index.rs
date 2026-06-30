@@ -7,7 +7,7 @@ use crate::process::misc::{
     fix_image_orientation, fix_image_width_height, fix_video_width_height, generate_dynamic_image,
     generate_image_width_height, generate_phash, generate_thumbhash,
 };
-use crate::process::xmp::extract_keywords_from_file;
+use crate::process::xmp::extract_xmp_data_from_file;
 
 /// Analyse the newly‑imported **image** and populate the `AbstractData` record.
 pub fn process_image_info(abstract_data: &mut AbstractData) -> Result<()> {
@@ -18,11 +18,15 @@ pub fn process_image_info(abstract_data: &mut AbstractData) -> Result<()> {
         *exif_vec = exif_data;
     }
 
-    // Discover keyword tags embedded in the file's XMP packet (non‑fallible;
-    // extract_keywords_from_xmp is not yet implemented, so this is a no-op
-    // today — see TODO.md "tags discovered at index time").
-    let discovered_tags = extract_keywords_from_file(&abstract_data.source_path());
-    abstract_data.tag_mut().extend(discovered_tags);
+    // Extract XMP metadata from sidecar (preferred) or embedded packet.
+    let xmp = extract_xmp_data_from_file(&abstract_data.source_path());
+    abstract_data.tag_mut().extend(xmp.tags);
+    if abstract_data.description().is_none() {
+        abstract_data.set_description(xmp.description);
+    }
+    if abstract_data.rating().is_none() {
+        abstract_data.set_rating(xmp.rating);
+    }
 
     // Decode image to DynamicImage
     let mut dynamic_image = generate_dynamic_image(abstract_data)
@@ -57,12 +61,15 @@ pub fn process_video_info(abstract_data: &mut AbstractData) -> Result<()> {
         *exif_vec = exif;
     }
 
-    // Discover keyword tags embedded in the file's XMP packet, mirroring
-    // process_image_info (non‑fallible; extract_keywords_from_xmp is not
-    // yet implemented, so this is a no-op today — see TODO.md "tags
-    // discovered at index time").
-    let discovered_tags = extract_keywords_from_file(&abstract_data.source_path());
-    abstract_data.tag_mut().extend(discovered_tags);
+    // Extract XMP metadata from sidecar (preferred) or embedded packet.
+    let xmp = extract_xmp_data_from_file(&abstract_data.source_path());
+    abstract_data.tag_mut().extend(xmp.tags);
+    if abstract_data.description().is_none() {
+        abstract_data.set_description(xmp.description);
+    }
+    if abstract_data.rating().is_none() {
+        abstract_data.set_rating(xmp.rating);
+    }
 
     // Get logical dimensions and fix if rotated
     let (width, height) = crate::process::video::generate_video_width_height(abstract_data)
