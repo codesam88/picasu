@@ -1093,6 +1093,7 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                                 wrap_lines(txt, col_w.get(i).copied().unwrap_or(10))
                             })
                             .collect();
+                        let is_header = !rendered_first;
                         let max_ln = cell_lines.iter().map(|c| c.len()).max().unwrap_or(1);
                         for li in 0..max_ln {
                             let mut buf = String::from("|");
@@ -1101,7 +1102,14 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                                 let w = col_w[i];
                                 buf.push_str(&format!(" {:<w$}|", txt, w = w));
                             }
-                            lines.push(Line::from(buf));
+                            if is_header {
+                                lines.push(Line::from(vec![Span::styled(
+                                    buf,
+                                    Style::default().add_modifier(Modifier::UNDERLINED),
+                                )]));
+                            } else {
+                                lines.push(Line::from(buf));
+                            }
                         }
                         rendered_first = true;
                     }
