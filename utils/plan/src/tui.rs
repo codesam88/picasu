@@ -553,6 +553,9 @@ impl App<'_> {
     }
 
     fn handle_task_key(&mut self, code: KeyCode) {
+        if self.columns.is_empty() {
+            return;
+        }
         match code {
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.selected_task > 0 {
