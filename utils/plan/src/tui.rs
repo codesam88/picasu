@@ -196,9 +196,12 @@ pub fn run_tui(
                                 .is_ok()
                         });
                         if let Some(cmd) = cmd {
-                            std::process::Command::new(cmd).arg(path).status().ok();
+                            std::process::Command::new(cmd)
+                                .env("PAGER", "cat")
+                                .arg(path)
+                                .status()
+                                .ok();
                         }
-                        let _ = crossterm::event::read();
                         if let Ok(t) = ratatui::try_init() {
                             terminal = t;
                         } else {
