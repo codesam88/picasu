@@ -841,7 +841,7 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                         if i > 0 {
                             flush(&mut lines, &mut spans);
                         }
-                        push_span(&mut spans, line, &th.code);
+                        push_span(&mut spans, line, &Style::default());
                     }
                 } else {
                     let style = style_stack.last().copied().unwrap_or_default();
