@@ -28,7 +28,9 @@ fn themes() -> Vec<MarkdownTheme> {
             h1: Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-            h2: Style::default().fg(Color::Cyan),
+            h2: Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::UNDERLINED),
             h3: Style::default().fg(Color::Cyan),
             bold: Style::default().add_modifier(Modifier::BOLD),
             dim: Style::default().add_modifier(Modifier::BOLD),
@@ -39,7 +41,9 @@ fn themes() -> Vec<MarkdownTheme> {
             h1: Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-            h2: Style::default().fg(Color::Cyan),
+            h2: Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::UNDERLINED),
             h3: Style::default().fg(Color::Cyan),
             bold: Style::default().add_modifier(Modifier::BOLD),
             dim: Style::default().add_modifier(Modifier::BOLD),
@@ -942,8 +946,8 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                         let mut buf = String::from(" ");
                         for i in 0..ncols {
                             let txt = row.get(i).map(|s| s.as_str()).unwrap_or("");
-                            let w = col_w.get(i).copied().unwrap_or(10).saturating_sub(2);
-                            buf.push_str(&format!(" {:<w$} |", txt, w = w));
+                            let w = col_w.get(i).copied().unwrap_or(10);
+                            buf.push_str(&format!(" {:<w$}|", txt, w = w));
                         }
                         lines.push(Line::from(buf));
                     }
