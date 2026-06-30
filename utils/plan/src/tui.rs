@@ -1,12 +1,10 @@
-#![allow(dead_code)]
-
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::Paragraph,
+    widgets::{Block, Borders, Paragraph},
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -39,6 +37,7 @@ impl SortField {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_sort_key(&self) -> &'static str {
         match self {
             SortField::Type => "type",
@@ -117,6 +116,7 @@ impl SortState {
 
     /// Returns sort keys with direction for use with plan::cmp_by_key.
     /// The first entry is primary sort, second (if any) is secondary.
+    #[allow(dead_code)]
     pub fn sort_keys(&self) -> Vec<(&'static str, SortDirection)> {
         let mut keys = Vec::new();
         if let Some((f, d)) = self.primary {
@@ -136,8 +136,10 @@ enum FocusZone {
 }
 
 struct App<'a> {
+    #[allow(dead_code)]
     root: &'a Path,
     tasks: Vec<crate::plan::LoadedTask>,
+    #[allow(dead_code)]
     task_paths: HashMap<String, PathBuf>,
     focus: FocusZone,
     columns: Vec<Column>,
@@ -314,10 +316,110 @@ impl App<'_> {
     }
 
     fn render_task_area(&mut self, frame: &mut Frame, area: Rect) {
-        // TODO: render kanban columns (Task 4)
-        // Placeholder until then
-        let text = format!("{} tasks loaded", self.tasks.len());
-        frame.render_widget(Paragraph::new(text), area);
+        let total_cols = self.columns.len();
+        if total_cols == 0 || area.width < 10 {
+            return;
+        }
+
+        // Determine visible columns based on terminal width
+        let min_col_width = 20u16;
+        let max_visible = usize::from((area.width / min_col_width).max(1)).min(total_cols);
+
+        // Keep scroll_offset in bounds
+        if self.selected_column < self.scroll_offset {
+            self.scroll_offset = self.selected_column;
+        } else if self.selected_column >= self.scroll_offset + max_visible {
+            self.scroll_offset = self.selected_column + 1 - max_visible;
+        }
+
+        let visible_columns = self.columns[self.scroll_offset..]
+            .iter()
+            .take(max_visible)
+            .enumerate();
+        let col_width = area.width / max_visible as u16;
+
+        for (vis_idx, column) in visible_columns {
+            let col_start = self.scroll_offset + vis_idx;
+            let x = area.x + vis_idx as u16 * col_width;
+            let col_area = Rect::new(x, area.y, col_width, area.height);
+
+            self.render_column(frame, col_area, column, col_start);
+        }
+    }
+
+    fn render_column(&self, frame: &mut Frame, area: Rect, column: &Column, col_idx: usize) {
+        let is_active = col_idx == self.selected_column;
+
+        // Column header
+        let status_color = status_color(&column.status);
+        let header_label = format!(
+            " {} ({}) ",
+            column.status.to_uppercase(),
+            column.task_indices.len()
+        );
+        let header_style = Style::default()
+            .fg(status_color)
+            .add_modifier(Modifier::BOLD);
+        let header_line = Line::from(Span::styled(header_label.clone(), header_style));
+
+        // Separator
+        let dash_count = area.width.saturating_sub(header_label.len().max(5) as u16);
+        let sep = "─".repeat(dash_count as usize);
+
+        let mut lines = vec![header_line, Line::from(Span::raw(sep))];
+
+        // Task rows
+        for (row_idx, &task_idx) in column.task_indices.iter().enumerate() {
+            let is_selected = is_active && row_idx == self.selected_task;
+            let task = &self.tasks[task_idx];
+
+            let slug = &task.slug;
+            let task_type = &task.task.task_type;
+            let priority = &task.task.priority;
+            let area = &task.task.area;
+
+            let task_line = if is_selected {
+                let indicator = "› ";
+                Line::from(vec![
+                    Span::styled(
+                        format!(
+                            "{}{:<width$}",
+                            indicator,
+                            slug,
+                            width = 14usize.saturating_sub(2)
+                        ),
+                        Style::default().add_modifier(Modifier::REVERSED),
+                    ),
+                    Span::styled(
+                        format!(" {:<8}", task_type),
+                        Style::default().add_modifier(Modifier::REVERSED),
+                    ),
+                    Span::styled(
+                        format!(" {:<6}", priority),
+                        Style::default().add_modifier(Modifier::REVERSED),
+                    ),
+                    Span::styled(
+                        format!(" {}", area),
+                        Style::default().add_modifier(Modifier::REVERSED),
+                    ),
+                ])
+            } else {
+                let pc = priority_color(priority);
+                Line::from(vec![
+                    Span::raw(format!("  {:<14}", slug)),
+                    Span::raw(format!(" {:<8}", task_type)),
+                    Span::styled(format!(" {:<6}", priority), Style::default().fg(pc)),
+                    Span::raw(format!(" {}", area)),
+                ])
+            };
+
+            lines.push(task_line);
+        }
+
+        frame.render_widget(
+            Paragraph::new(lines).block(Block::default().borders(Borders::NONE)),
+            area,
+        );
     }
 
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
@@ -422,6 +524,27 @@ impl App<'_> {
             KeyCode::Enter => {}
             _ => {}
         }
+    }
+}
+
+fn status_color(status: &str) -> Color {
+    match status {
+        "in-progress" => Color::Magenta,
+        "open" => Color::Yellow,
+        "blocked" => Color::Red,
+        "backlog" => Color::Blue,
+        "idea" => Color::Cyan,
+        "done" => Color::Green,
+        _ => Color::White,
+    }
+}
+
+fn priority_color(p: &str) -> Color {
+    match p {
+        "high" => Color::Red,
+        "medium" => Color::Yellow,
+        "low" => Color::DarkGray,
+        _ => Color::White,
     }
 }
 
