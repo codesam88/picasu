@@ -1,15 +1,20 @@
 use crate::error::handle_error;
+use crate::model::abstract_data::AbstractData;
 use crate::model::config::APP_CONFIG;
 use crate::model::media::is_valid_media_file;
+use crate::storage::db::TREE;
 use crate::storage::files::get_resolved_image_home;
+use crate::tasks::BATCH_COORDINATOR;
+use crate::tasks::batcher::flush_tree::FlushTreeTask;
+use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::runtime::INDEX_RUNTIME;
 use anyhow::Result;
-use log::{error, info};
+use log::{error, info, warn};
 use mini_executor::BatchTask;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         LazyLock, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -145,6 +150,69 @@ fn submit_to_debounce_pool(path: PathBuf) {
     });
 }
 
+/// Handle an external file removal: find the DB record that owns `path`,
+/// remove that alias, and if no aliases remain remove the record + thumbnail.
+fn submit_removal_to_watcher(path: PathBuf) {
+    INDEX_RUNTIME.spawn(async move {
+        if let Err(e) = tokio::task::spawn_blocking(move || handle_removed_file(&path)).await {
+            warn!("Join error in removal handler: {e}");
+        }
+        let _ = BATCH_COORDINATOR
+            .execute_batch_waiting(FlushTreeTask::insert(vec![]))
+            .await;
+        if let Err(e) = BATCH_COORDINATOR
+            .execute_batch_waiting(UpdateTreeTask)
+            .await
+        {
+            warn!("Failed to update tree after file removal: {e}");
+        }
+    });
+}
+
+fn handle_removed_file(removed: &Path) {
+    // Scan in-memory tree to find the record that owns this path.
+    let removed_str = removed.to_string_lossy();
+    let matching: Option<AbstractData> = {
+        let tree = TREE.in_memory.read().expect("lock poisoned");
+        tree.iter()
+            .find(|dt| {
+                dt.abstract_data
+                    .alias()
+                    .iter()
+                    .any(|a| a.file == removed_str.as_ref())
+            })
+            .map(|dt| dt.abstract_data.clone())
+    };
+
+    let Some(mut abstract_data) = matching else {
+        return; // Unknown file, nothing to do.
+    };
+
+    let remaining_aliases: Vec<_> = abstract_data
+        .alias()
+        .iter()
+        .filter(|a| a.file != removed_str.as_ref())
+        .cloned()
+        .collect();
+
+    if remaining_aliases.is_empty() {
+        // Last alias gone — delete thumbnail and remove the DB record.
+        let thumb = abstract_data.compressed_path();
+        if thumb.exists()
+            && let Err(e) = std::fs::remove_file(&thumb)
+        {
+            warn!("Failed to delete thumbnail {}: {e}", thumb.display());
+        }
+        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::remove(vec![abstract_data]));
+    } else {
+        // Still other aliases — just prune this one.
+        if let Some(alias_mut) = abstract_data.alias_mut() {
+            *alias_mut = remaining_aliases;
+        }
+        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
+    }
+}
+
 fn new_watcher() -> Result<RecommendedWatcher> {
     notify::recommended_watcher(move |result: Result<Event, notify::Error>| match result {
         Ok(event) => {
@@ -185,6 +253,14 @@ fn new_watcher() -> Result<RecommendedWatcher> {
                     for path in path_list {
                         if is_valid_media_file(&path) {
                             submit_to_debounce_pool(path);
+                        }
+                    }
+                }
+
+                EventKind::Remove(_) => {
+                    for path in event.paths {
+                        if is_valid_media_file(&path) {
+                            submit_removal_to_watcher(path);
                         }
                     }
                 }
