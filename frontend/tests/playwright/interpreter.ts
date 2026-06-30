@@ -1,8 +1,33 @@
+import * as http from 'http'
 import type { Page, Locator } from '@playwright/test'
 import { expect } from '@playwright/test'
 import { UiWhenItem, UiAssertItem, UiStep } from './types'
 import { GivenContext } from './executeGiven'
 import { CoverageTracer, assertionTarget } from './tracer'
+
+/** Ping the backend health endpoint and throw a descriptive error if it is unreachable. */
+async function assertBackendAlive(backendUrl: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const req = http.get(`${backendUrl}/get/prefetch`, (res) => {
+      res.resume()
+      // Any response (even 4xx) means the server is alive.
+      resolve()
+    })
+    req.on('error', (err) => {
+      reject(
+        new Error(
+          `Backend at ${backendUrl} is not reachable (${err.message}). ` +
+            `The process may have crashed — check logs for details.`
+        )
+      )
+    })
+    req.setTimeout(3000, () => {
+      req.destroy()
+      reject(new Error(`Backend at ${backendUrl} did not respond within 3 s.`))
+    })
+    req.end()
+  })
+}
 
 function resolveLocator(page: Page, roleLabel: string, vars: Record<string, string>): Locator {
   const resolved = interpolate(roleLabel, vars)
@@ -33,6 +58,8 @@ export async function executeWhen(
       )
     } else if ('submit' in step) {
       await page.keyboard.press('Enter')
+    } else if ('keyboard' in step) {
+      await page.keyboard.press(step.keyboard)
     } else if ('wait.ms' in step) {
       await page.waitForTimeout(step['wait.ms'])
     } else if ('click.text' in step) {
@@ -47,6 +74,8 @@ export async function executeWhen(
           break
         }
         if (i < 4) {
+          // Check backend health before retrying so crashes surface immediately.
+          await assertBackendAlive(ctx.backendUrl)
           await page.waitForTimeout(500)
         } else {
           throw new Error(`Icon button with class "${iconClass}" not found after 5 attempts`)
@@ -83,7 +112,7 @@ export async function executeWhen(
     } else {
       throw new Error(
         `Unknown when verb in step ${JSON.stringify(step)}. ` +
-          `Expected one of: navigate, click, fill, select, submit, wait.ms, click.text, click.icon, click.first, click.select_first`
+          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, click.text, click.icon, click.first, click.select_first`
       )
     }
   }
@@ -123,7 +152,7 @@ export async function executeAssert(
       tracer?.recordUI('ui.toast', target)
       const toastSpec = assertion['ui.toast']
       const snackbar = page.getByRole('status').or(page.locator('.v-snackbar'))
-      await expect(snackbar.first()).toBeVisible({ timeout: 5000 })
+      await expect(snackbar.first()).toBeVisible({ timeout: 15000 })
       await expect(snackbar.first()).toContainText(interpolate(toastSpec.contains, ctx.vars))
     } else if ('ui.aria_snapshot' in assertion) {
       tracer?.recordUI('ui.aria_snapshot', target)

@@ -73,7 +73,9 @@ frontend-playwright:
     [ -n "${PICASU_BINARY:-}" ] || cargo build --bin picasu
     # filter scenarios: npx playwright test --grep "onboarding"
     export PICASU_BINARY="${PICASU_BINARY:-$(pwd)/target/debug/picasu}"
-    cd frontend && npx playwright test
+    workers=$(( $(nproc) / 2 ))
+    [ "$workers" -lt 1 ] && workers=1
+    cd frontend && npx playwright test --workers="$workers"
 
 # all frontend tests
 [group('frontend')]

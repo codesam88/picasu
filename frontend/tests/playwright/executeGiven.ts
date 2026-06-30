@@ -59,10 +59,11 @@ interface PhotoManifestEntry {
 export interface GivenContext {
   vars: Record<string, string>
   namespace?: string
+  backendUrl: string
 }
 
 export function createGivenContext(namespace?: string): GivenContext {
-  return { vars: {}, namespace }
+  return { vars: {}, namespace, backendUrl: '' }
 }
 
 function sanitizeNamespace(name: string): string {
@@ -128,7 +129,7 @@ export async function executeGiven(
   } = overridePaths
 
   const request = tracer ? tracedRequest(baseRequest, tracer) : baseRequest
-  const result: GivenContext = { vars: { ...ctx.vars }, namespace: ctx.namespace }
+  const result: GivenContext = { vars: { ...ctx.vars }, namespace: ctx.namespace, backendUrl }
   const ns = ctx.namespace
 
   type SeedEntry = { type: 'dir_album' | 'photo'; qualifiedPath: string; id_as?: string }

@@ -50,10 +50,12 @@ steps:
     assert:
       - ui.modal: open
 
-  # Type a new tag and click OK — Vuetify adds uncommitted text as chip on blur before save
+  # Tab after fill commits the uncommitted text as a chip via the blur handler and
+  # closes the dropdown in one shot, then OK can be clicked cleanly.
   - when:
       - fill: combobox/Tags
         value: addedtag
+      - keyboard: Tab
       - click: button/OK
     assert:
       - ui.toast:

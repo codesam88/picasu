@@ -12,17 +12,31 @@ const BACKEND_DIR = path.resolve(__dirname, '..', '..', '..', 'backend')
 const POLL_INTERVAL_MS = 200
 const STARTUP_TIMEOUT_MS = 120_000
 
-function waitForServer(url: string): Promise<void> {
+function waitForServer(url: string, proc: ChildProcess): Promise<void> {
   const start = Date.now()
   return new Promise((resolve, reject) => {
+    let done = false
+    const finish = (err?: Error) => {
+      if (done) return
+      done = true
+      err ? reject(err) : resolve()
+    }
+
+    // Fail immediately if the process exits before the server is ready.
+    proc.once('exit', (code, signal) => {
+      finish(new Error(`Backend exited before becoming ready (code=${code}, signal=${signal})`))
+    })
+
     function poll() {
+      if (done) return
       const req = http.get(url, (res) => {
         res.resume()
-        resolve()
+        finish()
       })
       req.on('error', () => {
+        if (done) return
         if (Date.now() - start > STARTUP_TIMEOUT_MS) {
-          reject(new Error(`Backend at ${url} did not start within ${STARTUP_TIMEOUT_MS}ms`))
+          finish(new Error(`Backend at ${url} did not start within ${STARTUP_TIMEOUT_MS}ms`))
         } else {
           setTimeout(poll, POLL_INTERVAL_MS)
         }
@@ -78,7 +92,7 @@ export async function startBackend(paths: WorkerPaths): Promise<BackendHandle> {
     }
   })
 
-  await waitForServer(paths.BACKEND_URL)
+  await waitForServer(paths.BACKEND_URL, proc)
 
   return {
     stop: async () => {

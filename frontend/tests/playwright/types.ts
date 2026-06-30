@@ -134,6 +134,12 @@ export const UiWhenClickSelectFirst = z
   })
   .strict()
 
+export const UiWhenKeyboard = z
+  .object({
+    keyboard: z.string()
+  })
+  .strict()
+
 export const UiWhenItem = z.union([
   UiWhenNavigate,
   UiWhenClick,
@@ -144,7 +150,8 @@ export const UiWhenItem = z.union([
   UiWhenClickText,
   UiWhenClickIcon,
   UiWhenClickFirst,
-  UiWhenClickSelectFirst
+  UiWhenClickSelectFirst,
+  UiWhenKeyboard
 ])
 
 export const UiAssertVisible = z
