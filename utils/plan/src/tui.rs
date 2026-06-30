@@ -184,14 +184,20 @@ pub fn run_tui(
                 Action::None => {}
                 Action::Quit => break,
                 Action::OpenPreview => {
-                    if let Some((_slug, path)) = app.current_task_path()
-                        && let Ok(content) = std::fs::read_to_string(path)
-                    {
+                    if let Some((_slug, path)) = app.current_task_path() {
                         ratatui::restore();
-                        let skin = termimad::MadSkin::default();
-                        let fmt = termimad::FmtText::from(&skin, &content, None);
-                        println!("{}", fmt);
-                        println!("\n--- Press Enter to continue ---");
+                        let previewers = ["glow", "view", "cat"];
+                        let cmd = previewers.iter().find(|cmd| {
+                            std::process::Command::new(cmd)
+                                .arg("--version")
+                                .stdout(std::process::Stdio::null())
+                                .stderr(std::process::Stdio::null())
+                                .status()
+                                .is_ok()
+                        });
+                        if let Some(cmd) = cmd {
+                            std::process::Command::new(cmd).arg(path).status().ok();
+                        }
                         let _ = crossterm::event::read();
                         if let Ok(t) = ratatui::try_init() {
                             terminal = t;
