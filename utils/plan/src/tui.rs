@@ -249,12 +249,10 @@ impl<'a> App<'a> {
                 .filter(|(_, t)| t.task.status == status)
                 .map(|(i, _)| i)
                 .collect();
-            if !indices.is_empty() {
-                columns.push(Column {
-                    status: status.to_string(),
-                    task_indices: indices,
-                });
-            }
+            columns.push(Column {
+                status: status.to_string(),
+                task_indices: indices,
+            });
         }
         self.columns = columns;
 
