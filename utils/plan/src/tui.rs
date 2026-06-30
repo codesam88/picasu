@@ -9,112 +9,7 @@ use ratatui::{
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum SortField {
-    Type,
-    Priority,
-    Area,
-    Slug,
-}
-
-impl SortField {
-    fn all() -> [SortField; 4] {
-        [
-            SortField::Type,
-            SortField::Priority,
-            SortField::Area,
-            SortField::Slug,
-        ]
-    }
-
-    fn label(&self) -> &'static str {
-        match self {
-            SortField::Type => "Type",
-            SortField::Priority => "Priority",
-            SortField::Area => "Area",
-            SortField::Slug => "Slug",
-        }
-    }
-
-    fn as_sort_key(&self) -> &'static str {
-        match self {
-            SortField::Type => "type",
-            SortField::Priority => "priority",
-            SortField::Area => "area",
-            SortField::Slug => "slug",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum SortDirection {
-    Ascending,
-    Descending,
-}
-
-impl SortDirection {
-    fn symbol(&self) -> &'static str {
-        match self {
-            SortDirection::Ascending => "▲",
-            SortDirection::Descending => "▼",
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SortState {
-    pub primary: Option<(SortField, SortDirection)>,
-    pub secondary: Option<(SortField, SortDirection)>,
-}
-
-impl SortState {
-    pub fn new() -> Self {
-        SortState {
-            primary: None,
-            secondary: None,
-        }
-    }
-
-    pub fn toggle(&mut self, field: SortField) {
-        if let Some((pf, pd)) = self.primary
-            && field == pf
-        {
-            match pd {
-                SortDirection::Ascending => {
-                    self.primary = Some((field, SortDirection::Descending));
-                }
-                SortDirection::Descending => {
-                    self.primary = self.secondary.take();
-                }
-            }
-            return;
-        }
-
-        if let Some((sf, _sd)) = self.secondary
-            && field == sf
-        {
-            let old_primary = self.primary.take();
-            self.primary = self.secondary.take();
-            self.secondary = old_primary;
-            return;
-        }
-
-        let old_primary = self.primary.take();
-        self.primary = Some((field, SortDirection::Ascending));
-        self.secondary = old_primary;
-    }
-
-    pub fn sort_keys(&self) -> Vec<(&'static str, SortDirection)> {
-        let mut keys = Vec::new();
-        if let Some((f, d)) = self.primary {
-            keys.push((f.as_sort_key(), d));
-        }
-        if let Some((f, d)) = self.secondary {
-            keys.push((f.as_sort_key(), d));
-        }
-        keys
-    }
-}
+const FIELD_COUNT: usize = 4; // type, priority, area, slug
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Action {
@@ -133,7 +28,6 @@ struct App<'a> {
     selected_column: usize,
     selected_task: usize,
     selected_field: usize,
-    sort_state: SortState,
     quit: bool,
     filter_status: Option<String>,
     filter_type: Option<String>,
@@ -158,7 +52,6 @@ impl<'a> App<'a> {
             })
             .collect();
 
-        let task_count = tasks.len();
         let mut app = Self {
             root,
             entries,
@@ -168,7 +61,6 @@ impl<'a> App<'a> {
             selected_column: 0,
             selected_task: 0,
             selected_field: 0,
-            sort_state: SortState::new(),
             quit: false,
             filter_status: None,
             filter_type: None,
@@ -177,33 +69,13 @@ impl<'a> App<'a> {
             filter_search: None,
         };
 
-        app.apply_sort();
-        debug_assert!(
-            task_count == app.tasks.len(),
-            "task count changed during sort"
-        );
+        app.sort_tasks();
+        app.rebuild_columns();
         app
     }
 
-    fn apply_sort(&mut self) {
-        let keys = self.sort_state.sort_keys();
-        if keys.is_empty() {
-            self.tasks.sort_by(|a, b| crate::plan::cmp_tasks(a, b, &[]));
-        } else {
-            self.tasks.sort_by(|a, b| {
-                for (key, direction) in &keys {
-                    let ord = crate::plan::cmp_by_key(a, b, key);
-                    if ord != std::cmp::Ordering::Equal {
-                        return match direction {
-                            SortDirection::Ascending => ord,
-                            SortDirection::Descending => ord.reverse(),
-                        };
-                    }
-                }
-                std::cmp::Ordering::Equal
-            });
-        }
-        self.rebuild_columns();
+    fn sort_tasks(&mut self) {
+        self.tasks.sort_by(|a, b| crate::plan::cmp_tasks(a, b, &[]));
     }
 
     fn reload_tasks(&mut self) {
@@ -227,7 +99,8 @@ impl<'a> App<'a> {
         self.task_paths = path_map;
         self.selected_column = 0;
         self.selected_task = 0;
-        self.apply_sort();
+        self.sort_tasks();
+        self.rebuild_columns();
     }
 
     fn has_active_filters(&self) -> bool {
@@ -347,57 +220,26 @@ impl App<'_> {
         ])
         .areas(frame.area());
 
-        self.render_sort_bar(frame, sort_bar_area);
+        self.render_header(frame, sort_bar_area);
         self.render_task_area(frame, task_area);
         self.render_footer(frame, footer_area);
     }
 
-    fn render_sort_bar(&self, frame: &mut Frame, area: Rect) {
-        let fields = SortField::all();
+    fn render_header(&self, frame: &mut Frame, area: Rect) {
+        let labels = ["Type", "Priority", "Area", "Slug"];
         let mut spans = Vec::new();
-        spans.push(Span::raw(" Sort: "));
-
-        for (i, field) in fields.iter().enumerate() {
-            let is_active_field = self.selected_field == i;
-
-            let is_primary = self
-                .sort_state
-                .primary
-                .map(|(f, _)| f == *field)
-                .unwrap_or(false);
-            let is_secondary = self
-                .sort_state
-                .secondary
-                .map(|(f, _)| f == *field)
-                .unwrap_or(false);
-
-            let dir = if is_primary {
-                self.sort_state.primary.unwrap().1.symbol()
-            } else if is_secondary {
-                self.sort_state.secondary.unwrap().1.symbol()
-            } else {
-                ""
-            };
-
-            let label = format!("{}{}", field.label(), dir);
-            let style = if is_active_field {
+        spans.push(Span::raw(" "));
+        for (i, label) in labels.iter().enumerate() {
+            let style = if self.selected_field == i {
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::White)
                     .add_modifier(Modifier::BOLD)
-            } else if is_primary {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            } else if is_secondary {
-                Style::default().fg(Color::DarkGray)
             } else {
                 Style::default()
             };
-
             spans.push(Span::styled(format!(" {} ", label), style));
         }
-
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
@@ -582,7 +424,7 @@ impl App<'_> {
 
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
         let text = format!(
-            " Space:sort  Enter:filter  e:edit  {}  Ctrl-c:quit ",
+            " Enter:filter  e:edit  {}  Ctrl-c:quit ",
             if self.has_active_filters() {
                 "q:clear-filters"
             } else {
@@ -671,7 +513,6 @@ impl App<'_> {
         if self.columns.is_empty() {
             return;
         }
-        let field_count = SortField::all().len();
         match code {
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.selected_task > 0 {
@@ -697,20 +538,15 @@ impl App<'_> {
                 self.selected_field = if self.selected_field > 0 {
                     self.selected_field - 1
                 } else {
-                    field_count - 1
+                    FIELD_COUNT - 1
                 };
             }
             KeyCode::Right | KeyCode::Char('l') => {
-                self.selected_field = if self.selected_field + 1 < field_count {
+                self.selected_field = if self.selected_field + 1 < FIELD_COUNT {
                     self.selected_field + 1
                 } else {
                     0
                 };
-            }
-            KeyCode::Char(' ') => {
-                let field = SortField::all()[self.selected_field];
-                self.sort_state.toggle(field);
-                self.apply_sort();
             }
             _ => {}
         }
@@ -743,139 +579,5 @@ fn priority_color(p: &str) -> Color {
         "medium" => Color::Yellow,
         "low" => Color::DarkGray,
         _ => Color::White,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sort_state_starts_empty() {
-        let s = SortState::new();
-        assert!(s.primary.is_none());
-        assert!(s.secondary.is_none());
-    }
-
-    #[test]
-    fn toggle_inactive_becomes_primary() {
-        let mut s = SortState::new();
-        s.toggle(SortField::Priority);
-        assert_eq!(
-            s.primary,
-            Some((SortField::Priority, SortDirection::Ascending))
-        );
-        assert!(s.secondary.is_none());
-    }
-
-    #[test]
-    fn toggle_inactive_pushes_old_primary_to_secondary() {
-        let mut s = SortState::new();
-        s.toggle(SortField::Priority);
-        s.toggle(SortField::Type);
-        assert_eq!(s.primary, Some((SortField::Type, SortDirection::Ascending)));
-        assert_eq!(
-            s.secondary,
-            Some((SortField::Priority, SortDirection::Ascending))
-        );
-    }
-
-    #[test]
-    fn toggle_primary_ascending_reverses_to_descending() {
-        let mut s = SortState::new();
-        s.toggle(SortField::Priority);
-        s.toggle(SortField::Priority);
-        assert_eq!(
-            s.primary,
-            Some((SortField::Priority, SortDirection::Descending))
-        );
-    }
-
-    #[test]
-    fn toggle_primary_descending_removes_and_promotes_secondary() {
-        let mut s = SortState::new();
-        s.toggle(SortField::Priority);
-        s.toggle(SortField::Type);
-        s.toggle(SortField::Priority);
-        s.toggle(SortField::Priority);
-        assert_eq!(
-            s.primary,
-            Some((SortField::Priority, SortDirection::Descending))
-        );
-        assert_eq!(
-            s.secondary,
-            Some((SortField::Type, SortDirection::Ascending))
-        );
-        s.toggle(SortField::Priority);
-        assert_eq!(s.primary, Some((SortField::Type, SortDirection::Ascending)));
-        assert!(s.secondary.is_none());
-    }
-
-    #[test]
-    fn toggle_secondary_swaps_with_primary() {
-        let mut s = SortState::new();
-        s.toggle(SortField::Priority);
-        s.toggle(SortField::Type);
-        s.toggle(SortField::Priority);
-        assert_eq!(
-            s.primary,
-            Some((SortField::Priority, SortDirection::Ascending))
-        );
-        assert_eq!(
-            s.secondary,
-            Some((SortField::Type, SortDirection::Ascending))
-        );
-    }
-
-    #[test]
-    fn sort_keys_empty_when_no_keys_active() {
-        let s = SortState::new();
-        assert!(s.sort_keys().is_empty());
-    }
-
-    #[test]
-    fn sort_keys_returns_primary_then_secondary() {
-        let mut s = SortState::new();
-        s.toggle(SortField::Priority);
-        s.toggle(SortField::Type);
-        let keys = s.sort_keys();
-        assert_eq!(keys.len(), 2);
-        assert_eq!(keys[0], ("type", SortDirection::Ascending));
-        assert_eq!(keys[1], ("priority", SortDirection::Ascending));
-    }
-
-    #[test]
-    fn toggle_different_fields_accumulate() {
-        let mut s = SortState::new();
-        s.toggle(SortField::Type);
-        s.toggle(SortField::Priority);
-        s.toggle(SortField::Area);
-        assert_eq!(s.primary, Some((SortField::Area, SortDirection::Ascending)));
-        assert_eq!(
-            s.secondary,
-            Some((SortField::Priority, SortDirection::Ascending))
-        );
-    }
-
-    #[test]
-    fn sort_field_as_sort_key_maps_correctly() {
-        assert_eq!(SortField::Type.as_sort_key(), "type");
-        assert_eq!(SortField::Priority.as_sort_key(), "priority");
-        assert_eq!(SortField::Area.as_sort_key(), "area");
-        assert_eq!(SortField::Slug.as_sort_key(), "slug");
-    }
-
-    #[test]
-    fn sort_field_label_is_readable() {
-        assert_eq!(SortField::Type.label(), "Type");
-        assert_eq!(SortField::Priority.label(), "Priority");
-        assert_eq!(SortField::Area.label(), "Area");
-        assert_eq!(SortField::Slug.label(), "Slug");
-    }
-
-    #[test]
-    fn sort_direction_symbol_roundtrips() {
-        assert_eq!(SortDirection::Ascending.symbol(), "▲");
-        assert_eq!(SortDirection::Descending.symbol(), "▼");
     }
 }
