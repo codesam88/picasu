@@ -1,4 +1,4 @@
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -131,26 +131,20 @@ impl SortState {
 pub enum Action {
     None,
     Quit,
+    OpenPreview,
     OpenEditor,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum FocusZone {
-    SortBar,
-    TaskList,
-}
-
 struct App<'a> {
-    #[allow(dead_code)] // kept for future use (e.g. error messages, path resolution)
+    #[allow(dead_code)]
     root: &'a Path,
     tasks: Vec<crate::plan::LoadedTask>,
     task_paths: HashMap<String, PathBuf>,
-    focus: FocusZone,
     columns: Vec<Column>,
     selected_column: usize,
     selected_task: usize,
+    selected_field: usize,
     sort_state: SortState,
-    sort_cursor: usize,
     quit: bool,
 }
 
@@ -175,12 +169,11 @@ impl<'a> App<'a> {
             root,
             tasks,
             task_paths: path_map,
-            focus: FocusZone::TaskList,
             columns: Vec::new(),
             selected_column: 0,
             selected_task: 0,
+            selected_field: 0,
             sort_state: SortState::new(),
-            sort_cursor: 0,
             quit: false,
         };
 
@@ -286,6 +279,33 @@ pub fn run_tui(
             Ok(action) => match action {
                 Action::None => {}
                 Action::Quit => break,
+                Action::OpenPreview => {
+                    if let Some((_slug, path)) = app.current_task_path() {
+                        ratatui::restore();
+                        let previewers = ["glow", "view", "cat"];
+                        let cmd = previewers.iter().find(|cmd| {
+                            std::process::Command::new(cmd)
+                                .arg("--version")
+                                .stdout(std::process::Stdio::null())
+                                .stderr(std::process::Stdio::null())
+                                .status()
+                                .is_ok()
+                        });
+                        if let Some(cmd) = cmd {
+                            std::process::Command::new(cmd).arg(path).status().ok();
+                        } else {
+                            if let Ok(s) = std::fs::read_to_string(path) {
+                                println!("{}", s);
+                            }
+                        }
+                        if let Ok(t) = ratatui::try_init() {
+                            terminal = t;
+                        } else {
+                            eprintln!("failed to re-init terminal after preview");
+                            break;
+                        }
+                    }
+                }
                 Action::OpenEditor => {
                     if let Some((_slug, path)) = app.current_task_path() {
                         ratatui::restore();
@@ -335,7 +355,7 @@ impl App<'_> {
         spans.push(Span::raw(" Sort: "));
 
         for (i, field) in fields.iter().enumerate() {
-            let is_focused = self.focus == FocusZone::SortBar && self.sort_cursor == i;
+            let is_active_field = self.selected_field == i;
 
             let is_primary = self
                 .sort_state
@@ -357,7 +377,7 @@ impl App<'_> {
             };
 
             let label = format!("{}{}", field.label(), dir);
-            let style = if is_focused {
+            let style = if is_active_field {
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::White)
@@ -424,38 +444,55 @@ impl App<'_> {
                         selected_line = lines.len();
                     }
 
-                    let line = if is_selected {
-                        Line::from(vec![Span::styled(
-                            format!(
-                                "› {:<slug_w$} {:<type_w$} {:<prio_w$} {}",
-                                task.slug,
-                                task.task.task_type,
-                                task.task.priority,
-                                task.task.area,
-                                slug_w = slug_w,
-                                type_w = type_w,
-                                prio_w = prio_w
-                            ),
-                            Style::default().add_modifier(Modifier::REVERSED),
-                        )])
-                    } else {
-                        Line::from(vec![
-                            Span::raw(format!(
-                                " {:<slug_w$} {:<type_w$} ",
-                                task.slug,
-                                task.task.task_type,
-                                slug_w = slug_w,
-                                type_w = type_w
-                            )),
-                            Span::styled(
-                                format!("{:<prio_w$}", task.task.priority, prio_w = prio_w),
-                                Style::default().fg(priority_color(&task.task.priority)),
-                            ),
-                            Span::raw(format!(" {}", task.task.area)),
-                        ])
-                    };
+                    // fields: 0=type, 1=priority, 2=area, 3=slug
+                    let indicator = if is_selected { "›" } else { " " };
+                    let slug_hl = is_selected && self.selected_field == 3;
+                    let type_hl = is_selected && self.selected_field == 0;
+                    let prio_hl = is_selected && self.selected_field == 1;
+                    let area_hl = is_selected && self.selected_field == 2;
 
-                    lines.push(line);
+                    let mut spans = Vec::new();
+                    spans.push(Span::styled(
+                        format!(
+                            " {}{:<slug_w$}",
+                            indicator,
+                            task.slug,
+                            slug_w = slug_w.saturating_sub(1)
+                        ),
+                        if slug_hl {
+                            Style::default().add_modifier(Modifier::REVERSED)
+                        } else {
+                            Style::default()
+                        },
+                    ));
+                    spans.push(Span::styled(
+                        format!(" {:<type_w$}", task.task.task_type, type_w = type_w),
+                        if type_hl {
+                            Style::default().add_modifier(Modifier::REVERSED)
+                        } else {
+                            Style::default()
+                        },
+                    ));
+                    let pc = priority_color(&task.task.priority);
+                    spans.push(Span::styled(
+                        format!(" {:<prio_w$}", task.task.priority, prio_w = prio_w),
+                        if prio_hl {
+                            Style::default().fg(pc).add_modifier(Modifier::REVERSED)
+                        } else {
+                            Style::default().fg(pc)
+                        },
+                    ));
+                    spans.push(Span::styled(
+                        format!(" {}", task.task.area),
+                        if area_hl {
+                            Style::default().add_modifier(Modifier::REVERSED)
+                        } else if is_selected {
+                            Style::default().add_modifier(Modifier::DIM)
+                        } else {
+                            Style::default()
+                        },
+                    ));
+                    lines.push(Line::from(spans));
                 }
             }
 
@@ -474,7 +511,7 @@ impl App<'_> {
 
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
         let text = Line::from(Span::styled(
-            " Space:toggle sort  Enter:edit  Tab:focus  q:quit ",
+            " Space:sort  Enter:preview  e:edit  ↑↓←→:navigate  q/Ctrl-c:quit ",
             Style::default().fg(Color::DarkGray),
         ));
         frame.render_widget(Paragraph::new(text), area);
@@ -491,51 +528,30 @@ impl App<'_> {
             }
             match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(Action::Quit),
-                KeyCode::Tab => {
-                    self.focus = match self.focus {
-                        FocusZone::SortBar => FocusZone::TaskList,
-                        FocusZone::TaskList => FocusZone::SortBar,
-                    };
+                KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
+                    return Ok(Action::Quit);
                 }
                 KeyCode::Enter => {
-                    if self.focus == FocusZone::TaskList && !self.columns.is_empty() {
+                    if !self.columns.is_empty() {
+                        return Ok(Action::OpenPreview);
+                    }
+                }
+                KeyCode::Char('e') => {
+                    if !self.columns.is_empty() {
                         return Ok(Action::OpenEditor);
                     }
                 }
-                _ => match self.focus {
-                    FocusZone::SortBar => self.handle_sort_bar_key(key.code),
-                    FocusZone::TaskList => self.handle_task_key(key.code),
-                },
+                _ => self.handle_task_key(key.code),
             }
         }
         Ok(Action::None)
-    }
-
-    fn handle_sort_bar_key(&mut self, code: KeyCode) {
-        match code {
-            KeyCode::Left | KeyCode::Char('h') => {
-                if self.sort_cursor > 0 {
-                    self.sort_cursor -= 1;
-                }
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                if self.sort_cursor < SortField::all().len() - 1 {
-                    self.sort_cursor += 1;
-                }
-            }
-            KeyCode::Char(' ') => {
-                let field = SortField::all()[self.sort_cursor];
-                self.sort_state.toggle(field);
-                self.apply_sort();
-            }
-            _ => {}
-        }
     }
 
     fn handle_task_key(&mut self, code: KeyCode) {
         if self.columns.is_empty() {
             return;
         }
+        let field_count = SortField::all().len();
         match code {
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.selected_task > 0 {
@@ -558,7 +574,9 @@ impl App<'_> {
                 }
             }
             KeyCode::Left | KeyCode::Char('h') => {
-                if self.selected_column > 0 {
+                if self.selected_field > 0 {
+                    self.selected_field -= 1;
+                } else if self.selected_column > 0 {
                     self.selected_column -= 1;
                     self.selected_task = self.selected_task.min(
                         self.columns[self.selected_column]
@@ -566,10 +584,13 @@ impl App<'_> {
                             .len()
                             .saturating_sub(1),
                     );
+                    self.selected_field = field_count - 1;
                 }
             }
             KeyCode::Right | KeyCode::Char('l') => {
-                if self.selected_column + 1 < self.columns.len() {
+                if self.selected_field + 1 < field_count {
+                    self.selected_field += 1;
+                } else if self.selected_column + 1 < self.columns.len() {
                     self.selected_column += 1;
                     self.selected_task = self.selected_task.min(
                         self.columns[self.selected_column]
@@ -577,9 +598,14 @@ impl App<'_> {
                             .len()
                             .saturating_sub(1),
                     );
+                    self.selected_field = 0;
                 }
             }
-            KeyCode::Char(' ') => {}
+            KeyCode::Char(' ') => {
+                let field = SortField::all()[self.selected_field];
+                self.sort_state.toggle(field);
+                self.apply_sort();
+            }
             _ => {}
         }
     }
