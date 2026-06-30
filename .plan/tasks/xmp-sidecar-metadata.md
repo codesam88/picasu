@@ -1,5 +1,5 @@
 ---
-status: backlog
+status: done
 type: feature
 priority: medium
 area: backend
@@ -14,3 +14,10 @@ Tags assigned via API should be merged into DB as well as image repository on di
 5. Provide a separate helper script to merge metadata from sidecar files back into originals
 
 DEFERRED — not part of the storage-architecture fix; XMP sidecars are a separate future step.
+
+2026-06-30: Done. Full XMP sidecar lifecycle implemented on pre01 branch:
+
+- `xmp.rs`: byte-scan parser for dc:subject, dc:description, xmp:Rating; sidecar-first discovery at index time
+- `xmp_write.rs`: atomic sidecar write (temp+rename) wired into edit_tag, edit_description, edit_rating
+- `assign_album`: sidecar renamed alongside original
+- `delete_data`: sidecar deleted alongside original
