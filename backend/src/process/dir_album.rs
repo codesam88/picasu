@@ -38,6 +38,7 @@ pub fn init_dir_album_cache() {
     let data_table = open_data_table();
     let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
 
+    let mut stale_count = 0usize;
     for entry in data_table
         .iter()
         .expect("failed to iterate table")
@@ -47,10 +48,18 @@ pub fn init_dir_album_cache() {
         if let AbstractData::Album(album) = guard.value()
             && let Some(ref dir) = album.metadata.dir_path
         {
-            cache.insert(PathBuf::from(dir), album.metadata.id);
+            let path = PathBuf::from(dir);
+            if path.is_dir() {
+                cache.insert(path, album.metadata.id);
+            } else {
+                stale_count += 1;
+            }
         }
     }
 
+    if stale_count > 0 {
+        info!("Skipped {stale_count} stale dir album entries (directories no longer exist)");
+    }
     info!("Loaded {} dir album mappings from database", cache.len());
 
     if !cache.is_empty() {

@@ -57,6 +57,16 @@ pub async fn assign_album(
     let album_dir = get_dir_path_for_album(album_id)
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Album not found in dir cache"))?;
 
+    if !album_dir.is_dir() {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "Album directory no longer exists on disk: {} — re-index to refresh",
+                album_dir.display()
+            ),
+        ));
+    }
+
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let txn = TREE
             .in_disk
