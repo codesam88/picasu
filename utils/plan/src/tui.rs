@@ -1116,8 +1116,9 @@ fn render_markdown(th: &MarkdownTheme, text: &str, wrap: usize) -> Vec<Line<'sta
                         }
                         let mut buf = String::from("|");
                         for (i, &w) in col_w.iter().enumerate() {
-                            let txt = row.get(i).map(|s| s.as_str()).unwrap_or("");
-                            buf.push_str(&format!(" {:<w$}|", txt, w = w));
+                            let raw = row.get(i).map(|s| s.as_str()).unwrap_or("");
+                            let cell: String = raw.chars().take(w).collect();
+                            buf.push_str(&format!(" {:<w$}|", cell, w = w));
                         }
                         lines.push(Line::from(buf));
                         sep_count += 1;
