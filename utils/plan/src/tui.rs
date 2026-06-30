@@ -630,6 +630,12 @@ impl App<'_> {
                     KeyCode::Down | KeyCode::Char('j') => {
                         self.preview_scroll = self.preview_scroll.saturating_add(1);
                     }
+                    KeyCode::PageUp => {
+                        self.preview_scroll = self.preview_scroll.saturating_sub(20);
+                    }
+                    KeyCode::PageDown => {
+                        self.preview_scroll = self.preview_scroll.saturating_add(20);
+                    }
                     KeyCode::Left | KeyCode::Char('h') => {
                         self.preview_offset = self.preview_offset.saturating_sub(8);
                     }
