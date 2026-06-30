@@ -245,24 +245,53 @@ impl App<'_> {
         prio_w: usize,
         slot: impl Fn(usize) -> usize,
     ) {
-        let header_slug = format!("{:<w$}", format!(" {}", "Slug"), w = slot(slug_w));
-        let header_type = format!("{:<w$}", format!(" {}", "Type"), w = slot(type_w));
-        let header_prio = format!("{:<w$}", format!(" {}", "Priority"), w = slot(prio_w));
-        let headers = [header_type, header_prio, header_slug, "Area".into()];
+        // Header labels in same order as task rows: slug, type, priority, area
+        // Each padded with same slot widths so columns align
         let mut spans = Vec::new();
-        // order: slug, type, priority, area — same as task rows
-        let order = [3usize, 0, 1, 2];
-        for &i in &order {
-            let style = if self.selected_field == i {
+        spans.push(Span::styled(
+            format!("{:<w$}", format!(" {}", "Slug"), w = slot(slug_w)),
+            if self.selected_field == 3 {
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::White)
                     .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
-            };
-            spans.push(Span::styled(&headers[i], style));
-        }
+            },
+        ));
+        spans.push(Span::styled(
+            format!("{:<w$}", format!(" {}", "Type"), w = slot(type_w)),
+            if self.selected_field == 0 {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::White)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            },
+        ));
+        spans.push(Span::styled(
+            format!("{:<w$}", format!(" {}", "Priority"), w = slot(prio_w)),
+            if self.selected_field == 1 {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::White)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            },
+        ));
+        spans.push(Span::styled(
+            format!(" {}", "Area"),
+            if self.selected_field == 2 {
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::White)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            },
+        ));
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
