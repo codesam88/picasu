@@ -123,6 +123,7 @@ mod test_build_rocket_with_config {
     }
 }
 
+#[cfg_attr(feature = "embed-frontend", allow(unused_variables))]
 fn mount_frontend(
     app: rocket::Rocket<rocket::Build>,
     web_root: Option<&PathBuf>,
