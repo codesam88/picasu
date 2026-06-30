@@ -857,6 +857,7 @@ fn render_markdown(th: &MarkdownTheme, text: &str, wrap: usize) -> Vec<Line<'sta
     let body = strip_frontmatter(text);
     let mut opts = Options::empty();
     opts.insert(Options::ENABLE_TABLES);
+    opts.insert(Options::ENABLE_TASKLISTS);
     let parser = Parser::new_ext(body, opts);
 
     let mut lines: Vec<Line<'static>> = Vec::new();
@@ -976,7 +977,8 @@ fn render_markdown(th: &MarkdownTheme, text: &str, wrap: usize) -> Vec<Line<'sta
                         };
                         let first = format!("{}{}", prefix, content);
                         let indent = " ".repeat(indent_sz);
-                        for (i, seg) in wrap_lines(&first, 78).iter().enumerate() {
+                        let lw = if wrap < 40 { 78 } else { wrap };
+                        for (i, seg) in wrap_lines(&first, lw).iter().enumerate() {
                             let s: String = if i == 0 {
                                 seg.into()
                             } else {
