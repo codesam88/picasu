@@ -7,7 +7,7 @@ use rocket::http::{ContentType, Status};
 use rocket::local::blocking::Client;
 use serde_json::Value;
 
-use xtask::test_image::{PhotoSpec, generate_batch};
+use snapfab::{PhotoSpec, generate_batch};
 
 use crate::tests::bootstrap::*;
 use crate::tests::fixtures::*;
@@ -440,6 +440,7 @@ fn interpret_scenario(scenario: &Value) {
                             height: Some(4),
                             tags: None,
                             exif_date: None,
+                            minimal: false,
                         });
                     }
                 } else if let Some(raw_file) = item["raw_file"].as_str() {
@@ -478,6 +479,7 @@ fn interpret_scenario(scenario: &Value) {
                         height: Some(4),
                         tags: if has_tags { Some(tags) } else { None },
                         exif_date: exif_date.map(|d| d.to_string()),
+                        minimal: false,
                     });
 
                     let idx = vars.len();

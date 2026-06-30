@@ -23,7 +23,7 @@ Picasu is a self-hosted photo gallery for millions of images. The repo has two i
 4. **Frontend sources** — `frontend/src/main.ts` (app bootstrap), `frontend/src/route/routes.ts` (URL structure), `frontend/src/store/` (Pinia stores), `frontend/src/components/` (Vue components) — see `docs/frontend.md` for the component tree.
 5. **Testing** — Review `docs/test-strategy.md` and `docs/playwright_generator.md` before extending or modifying test scenarios or test infratructure.
 
-The `.plan/tasks/` directory tracks pending and completed work. Run `cargo xtask plan -k` to view the board.
+The `.plan/tasks/` directory tracks pending and completed work. Run `just plan -k` to view the board.
 
 ## Project Development Workflow
 
@@ -52,14 +52,14 @@ Every task lives as a markdown file in `.plan/tasks/<slug>.md` with YAML frontma
 
 ### Task Management Workflow
 
-- **Discover work:** `cargo xtask plan` lists all tasks; `cargo xtask plan -k` groups by status column. Filter with `-s open`, `-a backend`, `-t bug`, etc.
-- **Step back / plan:** `cargo xtask plan -k` to see the full board. Pull items from `backlog` or `idea` when choosing what to work on next.
-- **Sort:** flags without values become sort keys — `cargo xtask plan -a -p` sorts by area then priority. `-h` prints all options.
+- **Discover work:** `just plan` lists all tasks; `just plan -k` groups by status column. Filter with `-s open`, `-a backend`, `-t bug`, etc.
+- **Step back / plan:** `just plan -k` to see the full board. Pull items from `backlog` or `idea` when choosing what to work on next.
+- **Sort:** flags without values become sort keys — `just plan -a -p` sorts by area then priority. `-h` prints all options.
 - **Create:** copy `.plan/TEMPLATE.md` to `.plan/tasks/<slug>.md`.
 - **Update:** update 'status' to reflect status. append progress notes at the bottom (newest first). Do not rewrite history.
 - **Complete:** set `status: done` when finished. Do not delete the file.
 - **Block:** set `status: blocked` and note the blocker in the body.
-- **Validate:** run `cargo xtask plan --lint` to check; `cargo xtask plan --format` to auto-fix. The precommit hook runs `--format` automatically
+- **Validate:** run `just plan-lint` to check; `just plan-format` to auto-fix. The precommit hook runs `--format` automatically
 
 ## Code documentation
 

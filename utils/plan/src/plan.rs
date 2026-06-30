@@ -18,8 +18,7 @@ struct LoadedTask {
 
 const KANBAN_ORDER: &[&str] = &["idea", "backlog", "open", "in-progress", "blocked", "done"];
 
-pub fn validate_all() -> bool {
-    let root = workspace_root();
+pub fn validate_all(root: &std::path::Path) -> bool {
     let plan_dir = root.join(".plan");
     let tasks_dir = plan_dir.join("tasks");
     let schema_path = plan_dir.join("schema.json");
@@ -165,7 +164,9 @@ pub fn validate_all() -> bool {
     ok
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn list_tasks(
+    root: &std::path::Path,
     status_filter: Option<&str>,
     type_filter: Option<&str>,
     priority_filter: Option<&str>,
@@ -174,9 +175,8 @@ pub fn list_tasks(
     kanban: bool,
     sort_keys: &[String],
 ) {
-    let _ = validate_all();
+    let _ = validate_all(root);
 
-    let root = workspace_root();
     let tasks_dir = root.join(".plan").join("tasks");
 
     let entries = match read_task_files(&tasks_dir) {
@@ -247,8 +247,7 @@ fn load_and_filter_tasks(
             .enumerate()
             .skip_while(|(_, l)| l.trim() != "---")
             .skip(1)
-            .skip_while(|(_, l)| l.trim() != "---")
-            .next()
+            .find(|(_, l)| l.trim() == "---")
             .map(|(i, _)| i + 1)
             .unwrap_or(0);
 
@@ -264,25 +263,25 @@ fn load_and_filter_tasks(
             String::new()
         };
 
-        if let Some(s) = status_filter {
-            if task.status != s {
-                continue;
-            }
+        if let Some(s) = status_filter
+            && task.status != s
+        {
+            continue;
         }
-        if let Some(t) = type_filter {
-            if task.task_type != t {
-                continue;
-            }
+        if let Some(t) = type_filter
+            && task.task_type != t
+        {
+            continue;
         }
-        if let Some(p) = priority_filter {
-            if task.priority != p {
-                continue;
-            }
+        if let Some(p) = priority_filter
+            && task.priority != p
+        {
+            continue;
         }
-        if let Some(a) = area_filter {
-            if task.area != a {
-                continue;
-            }
+        if let Some(a) = area_filter
+            && task.area != a
+        {
+            continue;
         }
         if let Some(q) = search_query {
             let q_lower = q.to_lowercase();
@@ -577,14 +576,19 @@ fn parse_frontmatter(content: &str) -> Result<(String, usize), String> {
     Ok((frontmatter.join("\n"), first_line + 1))
 }
 
-fn workspace_root() -> PathBuf {
-    let dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| {
-        std::env::current_dir()
-            .unwrap()
-            .to_string_lossy()
-            .to_string()
-    }));
-    dir.parent().unwrap().to_path_buf()
+pub fn workspace_root() -> PathBuf {
+    let dir = std::env::var("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::current_dir().unwrap());
+    // Walk up from parent (skip crate's own Cargo.toml) to find repo root
+    let mut candidate = dir.parent();
+    while let Some(path) = candidate {
+        if path.join("Cargo.toml").exists() {
+            return path.to_path_buf();
+        }
+        candidate = path.parent();
+    }
+    dir
 }
 
 /// Re-emit a task file with canonical frontmatter field ordering and clean formatting.
@@ -609,7 +613,7 @@ fn normalize_frontmatter(content: &str) -> Result<String, String> {
     }
 
     for (key, val) in obj.iter() {
-        let k = key.as_str().unwrap_or_else(|| "invalid key".into());
+        let k = key.as_str().unwrap_or("invalid key");
         if CANONICAL_ORDER.contains(&k) {
             continue;
         }
@@ -622,8 +626,7 @@ fn normalize_frontmatter(content: &str) -> Result<String, String> {
         .lines()
         .enumerate()
         .skip(start_line)
-        .skip_while(|(_, l)| l.trim() != "---")
-        .next()
+        .find(|(_, l)| l.trim() == "---")
         .map(|(i, _)| i);
 
     if let Some(body_start) = line_before_body {
@@ -657,7 +660,7 @@ fn normalize_body_lines(lines: &[&str]) -> Vec<String> {
         }
     }
 
-    while out.last().map_or(false, |l| l.is_empty()) {
+    while out.last().is_some_and(|l| l.is_empty()) {
         out.pop();
     }
 
@@ -676,8 +679,7 @@ fn value_to_yaml_str(val: &serde_yaml::Value) -> String {
     }
 }
 
-pub fn normalize_all() -> bool {
-    let root = workspace_root();
+pub fn normalize_all(root: &std::path::Path) -> bool {
     let tasks_dir = root.join(".plan").join("tasks");
 
     let entries = match read_task_files(&tasks_dir) {

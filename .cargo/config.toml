@@ -1,2 +1,1 @@
-[alias]
-xtask = "run --package xtask --"
+# xtask alias removed — replaced by utils/snapfab and utils/plan
