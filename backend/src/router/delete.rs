@@ -20,7 +20,9 @@ use crate::tasks::{BATCH_COORDINATOR, INDEX_COORDINATOR};
 use anyhow::Result;
 use arrayvec::ArrayString;
 use futures::future::try_join_all;
+use log::warn;
 use rocket::serde::{Deserialize, Serialize, json::Json};
+use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,6 +107,30 @@ fn process_deletes(
             AbstractData::Video(vid) => vid.metadata.album.iter().copied().collect(),
             AbstractData::Album(alb) => vec![alb.object.id],
         };
+
+        // Delete original file(s) and sidecar(s) from disk.
+        for alias in abstract_data.alias() {
+            let original = Path::new(&alias.file);
+            if let Err(e) = std::fs::remove_file(original)
+                && e.kind() != std::io::ErrorKind::NotFound
+            {
+                warn!("Failed to delete file {}: {e}", original.display());
+            }
+            let sidecar = original.with_extension("xmp");
+            if sidecar.exists()
+                && let Err(e) = std::fs::remove_file(&sidecar)
+            {
+                warn!("Failed to delete sidecar {}: {e}", sidecar.display());
+            }
+        }
+
+        // Delete thumbnail from disk.
+        let thumb = abstract_data.compressed_path();
+        if thumb.exists()
+            && let Err(e) = std::fs::remove_file(&thumb)
+        {
+            warn!("Failed to delete thumbnail {}: {e}", thumb.display());
+        }
 
         all_affected_album_ids.extend(affected_albums);
         abstract_data_to_remove.push(abstract_data);
