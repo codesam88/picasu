@@ -7,8 +7,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 use std::collections::HashMap;
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SortField {
@@ -19,7 +18,7 @@ pub enum SortField {
 }
 
 impl SortField {
-    pub fn all() -> [SortField; 4] {
+    fn all() -> [SortField; 4] {
         [
             SortField::Type,
             SortField::Priority,
@@ -28,7 +27,7 @@ impl SortField {
         ]
     }
 
-    pub fn label(&self) -> &'static str {
+    fn label(&self) -> &'static str {
         match self {
             SortField::Type => "Type",
             SortField::Priority => "Priority",
@@ -37,7 +36,7 @@ impl SortField {
         }
     }
 
-    pub fn as_sort_key(&self) -> &'static str {
+    fn as_sort_key(&self) -> &'static str {
         match self {
             SortField::Type => "type",
             SortField::Priority => "priority",
@@ -54,7 +53,7 @@ pub enum SortDirection {
 }
 
 impl SortDirection {
-    pub fn symbol(&self) -> &'static str {
+    fn symbol(&self) -> &'static str {
         match self {
             SortDirection::Ascending => "▲",
             SortDirection::Descending => "▼",
@@ -76,14 +75,6 @@ impl SortState {
         }
     }
 
-    /// Toggle the given sort field according to the state machine:
-    ///
-    /// | Current | Press | Result |
-    /// |---|---|---|
-    /// | Inactive | Space | Becomes primary ▲, old primary → secondary |
-    /// | Primary ▲ | Space | Primary ▼ |
-    /// | Primary ▼ | Space | Remove. Secondary (if any) → primary |
-    /// | Secondary | Space | Swap with primary |
     pub fn toggle(&mut self, field: SortField) {
         if let Some((pf, pd)) = self.primary
             && field == pf
@@ -113,8 +104,6 @@ impl SortState {
         self.secondary = old_primary;
     }
 
-    /// Returns sort keys with direction for use with plan::cmp_by_key.
-    /// The first entry is primary sort, second (if any) is secondary.
     pub fn sort_keys(&self) -> Vec<(&'static str, SortDirection)> {
         let mut keys = Vec::new();
         if let Some((f, d)) = self.primary {
@@ -131,13 +120,13 @@ impl SortState {
 pub enum Action {
     None,
     Quit,
-    OpenPreview,
     OpenEditor,
 }
 
 struct App<'a> {
     #[allow(dead_code)]
     root: &'a Path,
+    entries: Vec<PathBuf>,
     tasks: Vec<crate::plan::LoadedTask>,
     task_paths: HashMap<String, PathBuf>,
     columns: Vec<Column>,
@@ -146,6 +135,11 @@ struct App<'a> {
     selected_field: usize,
     sort_state: SortState,
     quit: bool,
+    filter_status: Option<String>,
+    filter_type: Option<String>,
+    filter_priority: Option<String>,
+    filter_area: Option<String>,
+    filter_search: Option<String>,
 }
 
 struct Column {
@@ -154,7 +148,7 @@ struct Column {
 }
 
 impl<'a> App<'a> {
-    fn new(root: &'a Path, tasks: Vec<crate::plan::LoadedTask>, entries: &[PathBuf]) -> Self {
+    fn new(root: &'a Path, tasks: Vec<crate::plan::LoadedTask>, entries: Vec<PathBuf>) -> Self {
         let path_map: HashMap<String, PathBuf> = entries
             .iter()
             .filter_map(|p| {
@@ -167,6 +161,7 @@ impl<'a> App<'a> {
         let task_count = tasks.len();
         let mut app = Self {
             root,
+            entries,
             tasks,
             task_paths: path_map,
             columns: Vec::new(),
@@ -175,6 +170,11 @@ impl<'a> App<'a> {
             selected_field: 0,
             sort_state: SortState::new(),
             quit: false,
+            filter_status: None,
+            filter_type: None,
+            filter_priority: None,
+            filter_area: None,
+            filter_search: None,
         };
 
         app.apply_sort();
@@ -204,6 +204,38 @@ impl<'a> App<'a> {
             });
         }
         self.rebuild_columns();
+    }
+
+    fn reload_tasks(&mut self) {
+        self.tasks = crate::plan::load_and_filter_tasks(
+            &self.entries,
+            self.filter_status.as_deref(),
+            self.filter_type.as_deref(),
+            self.filter_priority.as_deref(),
+            self.filter_area.as_deref(),
+            self.filter_search.as_deref(),
+        );
+        let path_map: HashMap<String, PathBuf> = self
+            .entries
+            .iter()
+            .filter_map(|p| {
+                p.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|slug| (slug.to_string(), p.clone()))
+            })
+            .collect();
+        self.task_paths = path_map;
+        self.selected_column = 0;
+        self.selected_task = 0;
+        self.apply_sort();
+    }
+
+    fn has_active_filters(&self) -> bool {
+        self.filter_status.is_some()
+            || self.filter_type.is_some()
+            || self.filter_priority.is_some()
+            || self.filter_area.is_some()
+            || self.filter_search.is_some()
     }
 
     fn rebuild_columns(&mut self) {
@@ -261,7 +293,7 @@ pub fn run_tui(
         return;
     }
 
-    let mut app = App::new(root, tasks, &entries);
+    let mut app = App::new(root, tasks, entries);
     let mut terminal = match ratatui::try_init() {
         Ok(t) => t,
         Err(e) => {
@@ -279,33 +311,6 @@ pub fn run_tui(
             Ok(action) => match action {
                 Action::None => {}
                 Action::Quit => break,
-                Action::OpenPreview => {
-                    if let Some((_slug, path)) = app.current_task_path() {
-                        ratatui::restore();
-                        let previewers = ["glow", "view", "cat"];
-                        let cmd = previewers.iter().find(|cmd| {
-                            std::process::Command::new(cmd)
-                                .arg("--version")
-                                .stdout(std::process::Stdio::null())
-                                .stderr(std::process::Stdio::null())
-                                .status()
-                                .is_ok()
-                        });
-                        if let Some(cmd) = cmd {
-                            std::process::Command::new(cmd).arg(path).status().ok();
-                        } else {
-                            if let Ok(s) = std::fs::read_to_string(path) {
-                                println!("{}", s);
-                            }
-                        }
-                        if let Ok(t) = ratatui::try_init() {
-                            terminal = t;
-                        } else {
-                            eprintln!("failed to re-init terminal after preview");
-                            break;
-                        }
-                    }
-                }
                 Action::OpenEditor => {
                     if let Some((_slug, path)) = app.current_task_path() {
                         ratatui::restore();
@@ -451,14 +456,15 @@ impl App<'_> {
                     let indicator = if is_selected { "›" } else { " " };
 
                     let mut spans = Vec::new();
-                    // Slug (field 3)
+                    // Slug (field 3) — truncate to fit column
+                    let max_slug = slug_w.saturating_sub(1);
+                    let slug = if task.slug.len() > max_slug {
+                        format!("{}…", &task.slug[..max_slug.saturating_sub(1)])
+                    } else {
+                        task.slug.clone()
+                    };
                     spans.push(Span::styled(
-                        format!(
-                            " {}{:<slug_w$}",
-                            indicator,
-                            task.slug,
-                            slug_w = slug_w.saturating_sub(1)
-                        ),
+                        format!(" {}{:<width$}", indicator, slug, width = max_slug),
                         if is_selected && self.selected_field == 3 {
                             active_style
                         } else if is_selected {
@@ -510,10 +516,8 @@ impl App<'_> {
             lines.push(Line::from(""));
         }
 
-        // Trim trailing blank line
         lines.pop();
 
-        // Vertical scroll to keep selected line visible
         let visible_lines = area.height as usize;
         let vert_scroll = selected_line.saturating_sub(visible_lines.saturating_sub(2));
 
@@ -521,11 +525,38 @@ impl App<'_> {
     }
 
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
-        let text = Line::from(Span::styled(
-            " Space:sort  Enter:preview  e:edit  ↑↓←→:navigate  q/Ctrl-c:quit ",
-            Style::default().fg(Color::DarkGray),
-        ));
-        frame.render_widget(Paragraph::new(text), area);
+        let text = format!(
+            " Space:sort  Enter:filter  e:edit  {}  Ctrl-c:quit ",
+            if self.has_active_filters() {
+                "q:clear-filters"
+            } else {
+                "q:quit"
+            }
+        );
+
+        let filters: Vec<(&str, &str)> = [
+            ("status", self.filter_status.as_deref()),
+            ("type", self.filter_type.as_deref()),
+            ("priority", self.filter_priority.as_deref()),
+            ("area", self.filter_area.as_deref()),
+        ]
+        .into_iter()
+        .filter_map(|(k, v)| v.map(|v| (k, v)))
+        .collect();
+
+        let mut spans = vec![Span::styled(text, Style::default().fg(Color::DarkGray))];
+        if !filters.is_empty() {
+            spans.push(Span::raw("  "));
+            spans.push(Span::styled("Filter:", Style::default().fg(Color::Yellow)));
+            for (k, v) in &filters {
+                spans.push(Span::styled(
+                    format!(" {}={}", k, v),
+                    Style::default().fg(Color::Yellow),
+                ));
+            }
+        }
+
+        frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 }
 
@@ -538,13 +569,35 @@ impl App<'_> {
                 return Ok(Action::None);
             }
             match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => return Ok(Action::Quit),
                 KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
                     return Ok(Action::Quit);
                 }
+                KeyCode::Char('q') | KeyCode::Esc => {
+                    if self.has_active_filters() {
+                        self.filter_status = None;
+                        self.filter_type = None;
+                        self.filter_priority = None;
+                        self.filter_area = None;
+                        self.filter_search = None;
+                        self.reload_tasks();
+                    } else {
+                        return Ok(Action::Quit);
+                    }
+                }
                 KeyCode::Enter => {
                     if !self.columns.is_empty() {
-                        return Ok(Action::OpenPreview);
+                        let col = &self.columns[self.selected_column];
+                        if let Some(&task_idx) = col.task_indices.get(self.selected_task) {
+                            let task = &self.tasks[task_idx];
+                            match self.selected_field {
+                                0 => self.filter_type = Some(task.task.task_type.clone()),
+                                1 => self.filter_priority = Some(task.task.priority.clone()),
+                                2 => self.filter_area = Some(task.task.area.clone()),
+                                3 => self.filter_search = Some(task.slug.clone()),
+                                _ => {}
+                            }
+                            self.reload_tasks();
+                        }
                     }
                 }
                 KeyCode::Char('e') => {
@@ -585,32 +638,18 @@ impl App<'_> {
                 }
             }
             KeyCode::Left | KeyCode::Char('h') => {
-                if self.selected_field > 0 {
-                    self.selected_field -= 1;
-                } else if self.selected_column > 0 {
-                    self.selected_column -= 1;
-                    self.selected_task = self.selected_task.min(
-                        self.columns[self.selected_column]
-                            .task_indices
-                            .len()
-                            .saturating_sub(1),
-                    );
-                    self.selected_field = field_count - 1;
-                }
+                self.selected_field = if self.selected_field > 0 {
+                    self.selected_field - 1
+                } else {
+                    field_count - 1
+                };
             }
             KeyCode::Right | KeyCode::Char('l') => {
-                if self.selected_field + 1 < field_count {
-                    self.selected_field += 1;
-                } else if self.selected_column + 1 < self.columns.len() {
-                    self.selected_column += 1;
-                    self.selected_task = self.selected_task.min(
-                        self.columns[self.selected_column]
-                            .task_indices
-                            .len()
-                            .saturating_sub(1),
-                    );
-                    self.selected_field = 0;
-                }
+                self.selected_field = if self.selected_field + 1 < field_count {
+                    self.selected_field + 1
+                } else {
+                    0
+                };
             }
             KeyCode::Char(' ') => {
                 let field = SortField::all()[self.selected_field];
@@ -699,10 +738,10 @@ mod tests {
     #[test]
     fn toggle_primary_descending_removes_and_promotes_secondary() {
         let mut s = SortState::new();
-        s.toggle(SortField::Priority); // primary = (P, ▲)
-        s.toggle(SortField::Type); // primary = (T, ▲), secondary = (P, ▲)
-        s.toggle(SortField::Priority); // P is secondary → swap: primary = (P, ▲), secondary = (T, ▲)
-        s.toggle(SortField::Priority); // P is primary ▲ → ▼: primary = (P, ▼), secondary = (T, ▲)
+        s.toggle(SortField::Priority);
+        s.toggle(SortField::Type);
+        s.toggle(SortField::Priority);
+        s.toggle(SortField::Priority);
         assert_eq!(
             s.primary,
             Some((SortField::Priority, SortDirection::Descending))
@@ -711,7 +750,6 @@ mod tests {
             s.secondary,
             Some((SortField::Type, SortDirection::Ascending))
         );
-        // Toggle Priority: ▼ → remove, promote Type to primary
         s.toggle(SortField::Priority);
         assert_eq!(s.primary, Some((SortField::Type, SortDirection::Ascending)));
         assert!(s.secondary.is_none());
@@ -720,10 +758,9 @@ mod tests {
     #[test]
     fn toggle_secondary_swaps_with_primary() {
         let mut s = SortState::new();
-        s.toggle(SortField::Priority); // primary ▲
-        s.toggle(SortField::Type); // Type becomes primary ▲, Priority → secondary ▲
-        // s.primary = Type, s.secondary = Priority
-        s.toggle(SortField::Priority); // secondary → swap: primary = Priority, secondary = Type
+        s.toggle(SortField::Priority);
+        s.toggle(SortField::Type);
+        s.toggle(SortField::Priority);
         assert_eq!(
             s.primary,
             Some((SortField::Priority, SortDirection::Ascending))
@@ -743,8 +780,8 @@ mod tests {
     #[test]
     fn sort_keys_returns_primary_then_secondary() {
         let mut s = SortState::new();
-        s.toggle(SortField::Priority); // primary = (P, ▲)
-        s.toggle(SortField::Type); // primary = (T, ▲), secondary = (P, ▲)
+        s.toggle(SortField::Priority);
+        s.toggle(SortField::Type);
         let keys = s.sort_keys();
         assert_eq!(keys.len(), 2);
         assert_eq!(keys[0], ("type", SortDirection::Ascending));
