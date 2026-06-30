@@ -12,6 +12,7 @@ use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use arrayvec::ArrayString;
+use log::warn;
 use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
 use std::fs;
@@ -98,6 +99,15 @@ pub async fn assign_album(
             fs::rename(&current_path, &dest_path).map_err(|e| {
                 AppError::new(ErrorKind::Internal, format!("Failed to move file: {e}"))
             })?;
+
+            // Move sidecar alongside the original if it exists.
+            let src_sidecar = current_path.with_extension("xmp");
+            if src_sidecar.exists() {
+                let dst_sidecar = dest_path.with_extension("xmp");
+                if let Err(e) = fs::rename(&src_sidecar, &dst_sidecar) {
+                    warn!("Failed to move XMP sidecar: {e}");
+                }
+            }
 
             // Record previous album so it can be marked for update.
             let old_album = abstract_data.album();
