@@ -1096,20 +1096,23 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                         let is_header = !rendered_first;
                         let max_ln = cell_lines.iter().map(|c| c.len()).max().unwrap_or(1);
                         for li in 0..max_ln {
-                            let mut buf = String::from("|");
+                            let mut spans: Vec<Span<'static>> = Vec::new();
+                            spans.push(Span::raw("|"));
                             for i in 0..ncols {
                                 let txt = cell_lines[i].get(li).map(|s| s.as_str()).unwrap_or("");
                                 let w = col_w[i];
-                                buf.push_str(&format!(" {:<w$}|", txt, w = w));
+                                if is_header {
+                                    spans.push(Span::raw(" "));
+                                    spans.push(Span::styled(
+                                        format!("{:<w$}", txt, w = w),
+                                        Style::default().add_modifier(Modifier::UNDERLINED),
+                                    ));
+                                    spans.push(Span::raw("|"));
+                                } else {
+                                    spans.push(Span::raw(format!(" {:<w$}|", txt, w = w)));
+                                }
                             }
-                            if is_header {
-                                lines.push(Line::from(vec![Span::styled(
-                                    buf,
-                                    Style::default().add_modifier(Modifier::UNDERLINED),
-                                )]));
-                            } else {
-                                lines.push(Line::from(buf));
-                            }
+                            lines.push(Line::from(spans));
                         }
                         rendered_first = true;
                     }
