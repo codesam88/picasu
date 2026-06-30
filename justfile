@@ -20,14 +20,12 @@ backend-check:
 
 # cargo test
 [group('backend')]
-backend-test:
-    test -d frontend/dist/assets || just frontend-build
+backend-test: frontend-build-maybe
     cd backend && cargo test
 
 # cargo test (release)
 [group('backend')]
-backend-test-release:
-    test -d frontend/dist/assets || just frontend-build
+backend-test-release: frontend-build-maybe
     cd backend && cargo test --release
 
 # cargo audit
@@ -65,7 +63,7 @@ frontend-vitest:
 
 # run frontend e2e (playwright) tests
 [group('frontend')]
-frontend-playwright:
+frontend-playwright: frontend-build-maybe
     #!/usr/bin/env bash
     set -e
     # Pre-build backend once so parallel test workers don't fight for the cargo build lock.
@@ -85,6 +83,10 @@ frontend-test: frontend-vitest frontend-playwright
 [group('frontend')]
 frontend-build:
     cd frontend && npm run build
+
+[private]
+frontend-build-maybe:
+	test -d frontend/dist/assets || just frontend-build
 
 # npm audit
 [group('frontend')]
