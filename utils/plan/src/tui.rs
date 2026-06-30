@@ -202,6 +202,13 @@ pub fn run_tui(
                                 .status()
                                 .ok();
                         }
+                        loop {
+                            if let Ok(Event::Key(k)) = crossterm::event::read()
+                                && matches!(k.code, KeyCode::Char('q') | KeyCode::Esc)
+                            {
+                                break;
+                            }
+                        }
                         if let Ok(t) = ratatui::try_init() {
                             terminal = t;
                         } else {
