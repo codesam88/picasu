@@ -1,3 +1,4 @@
+use crate::process::sanitize::sanitize_text;
 use crate::process::transitor::index_to_hash;
 use crate::process::xmp_write::write_sidecar_for;
 use crate::storage::db::{open_data_table, open_tree_snapshot_table};
@@ -66,7 +67,11 @@ pub async fn set_user_defined_description(
         {
             let mut abstract_data = guard.value();
 
-            abstract_data.set_description(set_user_defined_description.description.clone());
+            let description = set_user_defined_description
+                .description
+                .as_deref()
+                .map(sanitize_text);
+            abstract_data.set_description(description);
 
             if let Err(e) = write_sidecar_for(&abstract_data) {
                 warn!("Failed to write XMP sidecar: {e}");

@@ -1,0 +1,13 @@
+name: edit_rating rejects out-of-range value
+given:
+  - photo: /e2e_zz1/photo.jpg
+    id_as: $photo
+when:
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  - call: PUT /put/edit_rating
+    raw_body: '{"indexArray":[${idx}],"timestamp":${ts},"rating":6}'
+then:
+  - response.status_not: 200

@@ -3,6 +3,7 @@ pub mod exif;
 pub mod hash;
 pub mod index;
 pub mod misc;
+pub mod sanitize;
 pub mod thumbnail;
 pub mod transitor;
 pub mod video;

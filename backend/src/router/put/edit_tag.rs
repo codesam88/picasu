@@ -1,5 +1,6 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
+use crate::process::sanitize::sanitize_tag;
 use crate::process::transitor::index_to_hash;
 use crate::process::xmp_write::write_sidecar_for;
 use crate::router::auth::GuardAuth;
@@ -67,10 +68,13 @@ pub async fn edit_tag(
                 // Apply tag additions and removals (only regular tags)
                 let tags = abstract_data.tag_mut();
                 for tag in &json_data.add_tags_array {
-                    tags.insert(tag.clone());
+                    let clean = sanitize_tag(tag);
+                    if !clean.is_empty() {
+                        tags.insert(clean);
+                    }
                 }
                 for tag in &json_data.remove_tags_array {
-                    tags.remove(tag);
+                    tags.remove(&sanitize_tag(tag));
                 }
 
                 if let Err(e) = write_sidecar_for(&abstract_data) {

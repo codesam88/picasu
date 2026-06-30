@@ -58,6 +58,7 @@ webbrowser = { version = "1.2.1", optional = true }
 rust-embed = "8.11.0"
 mime_guess = "2.0.5"
 utoipa = "5"
+unicode-normalization = "0.1.25"
 
 [dev-dependencies]
 tempfile = "3"
