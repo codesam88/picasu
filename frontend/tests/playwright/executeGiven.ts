@@ -60,10 +60,11 @@ export interface GivenContext {
   vars: Record<string, string>
   namespace?: string
   backendUrl: string
+  imageHome: string
 }
 
 export function createGivenContext(namespace?: string): GivenContext {
-  return { vars: {}, namespace, backendUrl: '' }
+  return { vars: {}, namespace, backendUrl: '', imageHome: '' }
 }
 
 function sanitizeNamespace(name: string): string {
@@ -129,7 +130,12 @@ export async function executeGiven(
   } = overridePaths
 
   const request = tracer ? tracedRequest(baseRequest, tracer) : baseRequest
-  const result: GivenContext = { vars: { ...ctx.vars }, namespace: ctx.namespace, backendUrl }
+  const result: GivenContext = {
+    vars: { ...ctx.vars },
+    namespace: ctx.namespace,
+    backendUrl,
+    imageHome
+  }
   const ns = ctx.namespace
 
   type SeedEntry = { type: 'dir_album' | 'photo'; qualifiedPath: string; id_as?: string }

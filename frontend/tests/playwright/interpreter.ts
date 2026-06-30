@@ -1,4 +1,6 @@
 import * as http from 'http'
+import * as fs from 'fs'
+import * as path from 'path'
 import type { Page, Locator } from '@playwright/test'
 import { expect } from '@playwright/test'
 import { UiWhenItem, UiAssertItem, UiStep } from './types'
@@ -191,10 +193,19 @@ export async function executeAssert(
       await expect(resolveLocator(page, assertion['ui.input_value'], ctx.vars)).toHaveValue(
         new RegExp(interpolate(assertion.contains, ctx.vars))
       )
+    } else if ('file.contains' in assertion) {
+      const filePath = path.join(ctx.imageHome, interpolate(assertion['file.contains'], ctx.vars))
+      const needle = interpolate(assertion.text, ctx.vars)
+      const content = fs.readFileSync(filePath, 'utf-8')
+      if (!content.includes(needle)) {
+        throw new Error(
+          `file.contains: "${filePath}" does not contain "${needle}".\nFile content:\n${content}`
+        )
+      }
     } else {
       throw new Error(
         `Unknown assert verb in assertion ${JSON.stringify(assertion)}. ` +
-          `Expected one of: ui.visible, ui.hidden, ui.text, ui.route, ui.modal, ui.toast, ui.aria_snapshot, api.response, ui.text_visible, ui.count, ui.sidebar_visible, ui.chip_visible, ui.input_value`
+          `Expected one of: ui.visible, ui.hidden, ui.text, ui.route, ui.modal, ui.toast, ui.aria_snapshot, api.response, ui.text_visible, ui.count, ui.sidebar_visible, ui.chip_visible, ui.input_value, file.contains`
       )
     }
   }

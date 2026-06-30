@@ -241,6 +241,13 @@ export const UiAssertInputValue = z
   })
   .strict()
 
+export const UiAssertFileContains = z
+  .object({
+    'file.contains': z.string(),
+    text: z.string()
+  })
+  .strict()
+
 export const UiAssertItem = z.union([
   UiAssertVisible,
   UiAssertHidden,
@@ -254,7 +261,8 @@ export const UiAssertItem = z.union([
   UiAssertCount,
   UiAssertSidebarVisible,
   UiAssertChipVisible,
-  UiAssertInputValue
+  UiAssertInputValue,
+  UiAssertFileContains
 ])
 
 export const UiStep = z

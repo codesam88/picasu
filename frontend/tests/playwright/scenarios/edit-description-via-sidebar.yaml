@@ -5,6 +5,7 @@ covers:
   ui:
     - description textarea accepts input
     - description persists after sidebar close and reopen
+    - description written to XMP sidecar
 
 given:
   - dir_album: descedit/pool
@@ -45,12 +46,20 @@ steps:
       - ui.input_value: textbox/Description
         contains: A scenic landscape photo
 
-  # Close the sidebar — blurs the textarea and triggers the API save
+  # Close the sidebar — blurs the textarea, triggers the API save, shows a toast
   - when:
       - click.icon: mdi-close
-      - wait.ms: 1000
     assert:
-      - ui.visible: main/
+      - ui.toast:
+          type: success
+          contains: Description saved
+
+  # Sidecar must have been written with the description
+  - when:
+      - wait.ms: 200
+    assert:
+      - file.contains: descedit/pool/img01.xmp
+        text: A scenic landscape photo
 
   # Reopen the sidebar and verify the description was persisted
   - when:

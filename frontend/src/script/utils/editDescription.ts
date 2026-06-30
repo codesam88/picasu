@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
+import { useMessageStore } from '@/store/messageStore'
 import { EnrichedUnifiedData, IsolationId } from '@type/types'
 
 export async function editUserDefinedDescription(
@@ -10,6 +11,7 @@ export async function editUserDefinedDescription(
   isolationId: IsolationId
 ) {
   const dataStore = useDataStore('mainId')
+  const messageStore = useMessageStore('mainId')
 
   function getCurrentDescription(): string {
     return abstractData.description ?? ''
@@ -31,5 +33,7 @@ export async function editUserDefinedDescription(
     if (item) {
       item.description = descriptionModelValue === '' ? null : descriptionModelValue
     }
+
+    messageStore.success('Description saved')
   }
 }
