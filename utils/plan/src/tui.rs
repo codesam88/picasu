@@ -934,28 +934,100 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                     if ncols == 0 {
                         continue;
                     }
-                    // Build trimmed versions
+
+                    // Trim all cells
                     let trimmed: Vec<Vec<String>> = tbl
                         .iter()
                         .map(|row| row.iter().map(|c| c.trim().to_string()).collect())
                         .collect();
-                    let mut col_w: Vec<usize> = vec![0; ncols];
+
+                    // Compute min and preferred widths
+                    let mut min_w: Vec<usize> = vec![0; ncols];
+                    let mut all_lens: Vec<Vec<usize>> = vec![Vec::new(); ncols];
                     for row in &trimmed {
                         for (i, cell) in row.iter().enumerate() {
-                            col_w[i] = col_w[i].max(cell.len().min(40));
+                            let longest_word = cell
+                                .split_whitespace()
+                                .map(|w| w.len())
+                                .max()
+                                .unwrap_or(cell.len());
+                            min_w[i] = min_w[i].max(longest_word.min(40));
+                            all_lens[i].push(cell.len());
                         }
                     }
+                    // Preferred = median
+                    let pref_w: Vec<usize> = all_lens
+                        .iter()
+                        .enumerate()
+                        .map(|(i, lens)| {
+                            let mut s = lens.clone();
+                            s.sort_unstable();
+                            let med = s.get(s.len() / 2).copied().unwrap_or(4);
+                            med.max(min_w[i]).min(40)
+                        })
+                        .collect();
+
+                    // Target width: 78, minus borders (ncols * 3 + 1)
+                    let border_w = ncols * 3 + 1; // "| x |" per column plus initial " "
+                    let target = 78usize.saturating_sub(border_w);
+                    let total_pref: usize = pref_w.iter().sum();
+
+                    // Allocate widths
+                    let mut col_w: Vec<usize> = if total_pref <= target {
+                        pref_w.clone()
+                    } else {
+                        // Scale down proportional to pref, but not below min
+                        let deficit = total_pref - target;
+                        let flex: usize = pref_w
+                            .iter()
+                            .zip(&min_w)
+                            .map(|(p, m)| p.saturating_sub(*m))
+                            .sum();
+                        pref_w
+                            .iter()
+                            .enumerate()
+                            .map(|(i, &p)| {
+                                let room = p.saturating_sub(min_w[i]);
+                                let cut = if flex > 0 {
+                                    deficit * room / flex.max(1)
+                                } else {
+                                    0
+                                };
+                                p.saturating_sub(cut).max(min_w[i])
+                            })
+                            .collect()
+                    };
+
+                    // Clamp total to target (rounding may leave slack) — add to widest column
+                    let cur_total: usize = col_w.iter().sum();
+                    if cur_total < target
+                        && let Some(max_idx) = (0..ncols).max_by_key(|&i| col_w[i])
+                    {
+                        col_w[max_idx] += target - cur_total;
+                    }
+
+                    // Render rows with word-wrap
                     for row in &trimmed {
                         if row.is_empty() {
                             continue;
                         }
-                        let mut buf = String::from(" ");
-                        for i in 0..ncols {
-                            let txt = row.get(i).map(|s| s.as_str()).unwrap_or("");
-                            let w = col_w.get(i).copied().unwrap_or(10);
-                            buf.push_str(&format!(" {:<w$}|", txt, w = w));
+                        // Wrap each cell to column width
+                        let cell_lines: Vec<Vec<String>> = (0..ncols)
+                            .map(|i| {
+                                let txt = row.get(i).map(|s| s.as_str()).unwrap_or("");
+                                wrap_lines(txt, col_w.get(i).copied().unwrap_or(10))
+                            })
+                            .collect();
+                        let max_ln = cell_lines.iter().map(|c| c.len()).max().unwrap_or(1);
+                        for li in 0..max_ln {
+                            let mut buf = String::from(" ");
+                            for i in 0..ncols {
+                                let txt = cell_lines[i].get(li).map(|s| s.as_str()).unwrap_or("");
+                                let w = col_w[i];
+                                buf.push_str(&format!(" {:<w$}|", txt, w = w));
+                            }
+                            lines.push(Line::from(buf));
                         }
-                        lines.push(Line::from(buf));
                     }
                     lines.push(Line::from(""));
                 }
