@@ -54,6 +54,7 @@ interface PhotoManifestEntry {
   height?: number
   exif_date?: string
   tags?: string[]
+  minimal?: boolean
 }
 
 export interface GivenContext {
@@ -80,13 +81,13 @@ function qualifyPath(relativePath: string, ns?: string): string {
 
 function runTestImageBatch(manifest: PhotoManifestEntry[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('cargo', ['xtask', 'test-image', 'batch', '-'], {
+    const proc = spawn('cargo', ['run', '-p', 'snapfab', '--quiet', '--', 'batch', '-'], {
       stdio: ['pipe', 'inherit', 'inherit']
     })
-    proc.on('error', (err) => reject(new Error(`cargo xtask test-image: ${err.message}`)))
+    proc.on('error', (err) => reject(new Error(`snapfab batch: ${err.message}`)))
     proc.on('exit', (code) => {
       if (code === 0) resolve()
-      else reject(new Error(`cargo xtask test-image batch exited with code ${code}`))
+      else reject(new Error(`snapfab batch exited with code ${code}`))
     })
     proc.stdin.write(JSON.stringify(manifest))
     proc.stdin.end()
@@ -146,7 +147,7 @@ export async function executeGiven(
       seedEntries.push({ type: 'dir_album', qualifiedPath: qualified, id_as: ga.id_as })
       if (ga.id_as) {
         const ph = path.join(dirPath, '.__e2e_ph__.jpg')
-        photoManifest.push({ output: ph })
+        photoManifest.push({ output: ph, minimal: true })
       }
     }
 
@@ -163,7 +164,7 @@ export async function executeGiven(
       const qualified = qualifyPath(ph.photo, ns)
       const filePath = path.join(imageHome, qualified)
 
-      const entry: PhotoManifestEntry = { output: filePath }
+      const entry: PhotoManifestEntry = { output: filePath, minimal: true }
       if (ph.format) entry.format = ph.format
       if (ph.width) entry.width = ph.width
       if (ph.height) entry.height = ph.height

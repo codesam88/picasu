@@ -16,7 +16,8 @@ backend-format:
 # cargo fmt --check + cargo clippy
 [group('backend')]
 backend-check:
-    cd backend && cargo fmt --check && cargo clippy -- -D warnings -A clippy::unwrap_used
+    cd backend && cargo fmt --check
+    cargo clippy -- -D warnings -A clippy::unwrap_used
 
 # cargo test
 [group('backend')]
@@ -89,28 +90,46 @@ frontend-build:
 frontend-audit:
     cd frontend && npm audit
 
-# ── Xtask tooling ───────────────────────────────────────────────────────────────
+# ── Utils (snapfab, plan) ────────────────────────────────────────────────────────
+
+# cargo fmt on utils/ crates
+[group('utils')]
+utils-format:
+    cargo fmt -p snapfab -p plan
+
+# cargo fmt --check + cargo clippy on utils/ crates
+[group('utils')]
+utils-check:
+    cargo fmt --check -p snapfab -p plan
+    cargo clippy -p snapfab -p plan -- -D warnings -A clippy::unwrap_used
+
+# cargo test on utils/ crates
+[group('utils')]
+utils-test:
+    cargo test -p snapfab -p plan
+
+# ── Tooling ─────────────────────────────────────────────────────────────────────
 
 # Generate openapi.json from utoipa annotations
-[group('xtask')]
+[group('utils')]
 openapi-gen:
     RUST_MIN_STACK=16777216 cargo run --package picasu -- --dump-openapi > backend/openapi.json
     @echo "wrote backend/openapi.json"
 
 # Auto-format .plan task frontmatter and body
-[group('xtask')]
+[group('tooling')]
 plan-format:
-    cargo xtask plan --format
+    cargo run -p plan -- --root {{justfile_directory()}} --format
 
 # Validate .plan task frontmatter structure
-[group('xtask')]
+[group('tooling')]
 plan-lint:
-    cargo xtask plan --lint
+    cargo run -p plan -- --root {{justfile_directory()}} --lint
 
-# cargo xtask plan <args>
-[group('xtask')]
+# run plan <args>
+[group('tooling')]
 plan *args:
-    cargo xtask plan {{args}}
+    cargo run -p plan -- --root {{justfile_directory()}} {{args}}
 
 # ── Documentation ───────────────────────────────────────────────────────────────
 
@@ -151,17 +170,17 @@ docs-check:
 
 # ── Global ─────────────────────────────────────────────────────────────────────
 
-# Format everything (backend + frontend + docs + .plan)
+# Format everything (backend + utils + frontend + docs + .plan)
 [group('global')]
-format: backend-format frontend-format docs-format plan-format
+format: backend-format utils-format frontend-format docs-format plan-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check frontend-check docs-check plan-lint
+check: backend-check utils-check frontend-check docs-check plan-lint
 
-# Run tests (backend + frontend)
+# Run tests (backend + utils + frontend)
 [group('global')]
-test: backend-test frontend-test
+test: backend-test utils-test frontend-test
 
 # install dev tools + precommit hook
 [group('global')]
@@ -240,6 +259,9 @@ precommit:
     echo "[ precommit ] On '$branch' — format/lint enforced; run tests at your disgression."
     if echo "$changed" | grep -q '^backend/'; then
         just backend-check
+    fi
+    if echo "$changed" | grep -q '^utils/'; then
+        just utils-check
     fi
     if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$)'; then
         just plan-lint

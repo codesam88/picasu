@@ -35,14 +35,14 @@ impl ImageFormat {
         }
     }
 
-    pub fn to_image_format(&self) -> image::ImageFormat {
+    pub fn to_image_format(self) -> image::ImageFormat {
         match self {
             Self::Jpeg => image::ImageFormat::Jpeg,
             Self::Png => image::ImageFormat::Png,
         }
     }
 
-    pub fn to_file_extension(&self) -> FileExtension {
+    pub fn to_file_extension(self) -> FileExtension {
         match self {
             Self::Jpeg => FileExtension::JPEG,
             Self::Png => FileExtension::PNG {
@@ -104,6 +104,12 @@ pub struct PerfCounter {
     nanos: [u64; 8],
 }
 
+impl Default for PerfCounter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PerfCounter {
     pub fn new() -> Self {
         Self {
@@ -155,6 +161,8 @@ pub struct PhotoSpec {
     pub exif_date: Option<String>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    pub minimal: bool,
 }
 
 pub fn generate_photo(
@@ -166,7 +174,7 @@ pub fn generate_photo(
     let fmt = match spec.format.as_deref().or_else(|| {
         spec.output
             .as_deref()
-            .and_then(|p| ImageFormat::from_path(p))
+            .and_then(ImageFormat::from_path)
             .map(|f| match f {
                 ImageFormat::Jpeg => "jpeg",
                 ImageFormat::Png => "png",
@@ -183,7 +191,15 @@ pub fn generate_photo(
         .height
         .unwrap_or_else(|| rng.sample(Uniform::new(80u32, 401).unwrap()));
 
-    let (img, render_mode, start) = {
+    let minimal = spec.minimal || (width <= 4 && height <= 4);
+
+    let (img, render_mode, start) = if minimal {
+        let idx = rng.sample(Uniform::new(0u32, enabled_modes.len() as u32).unwrap()) as usize;
+        let mode = enabled_modes[idx];
+        let start = Instant::now();
+        let img = RgbImage::from_pixel(2, 2, image::Rgb([128, 128, 128]));
+        (img, mode, start)
+    } else {
         let idx = rng.sample(Uniform::new(0u32, enabled_modes.len() as u32).unwrap()) as usize;
         let mode = enabled_modes[idx];
         let start = Instant::now();
@@ -230,52 +246,53 @@ pub fn generate_photo(
             .expect("write exif");
     }
 
-    if let Some(ref tags) = spec.tags {
-        if !tags.is_empty() && fmt == ImageFormat::Jpeg {
-            let titles = &[
-                "Sunset Over the Hills",
-                "Morning Dew",
-                "City Lights",
-                "Mountain Vista",
-                "Coastal Scene",
-                "Garden Bloom",
-                "Urban Street",
-                "Wildlife Encounter",
-            ];
-            let descriptions = &[
-                "A beautiful sunset captured during golden hour.",
-                "Morning dew on fresh green leaves.",
-                "City skyline illuminated at dusk.",
-                "Panoramic view of mountain ranges.",
-                "Waves crashing along the coastline.",
-                "Colorful flowers in full bloom.",
-                "Street photography in the urban landscape.",
-                "Wildlife spotted in their natural habitat.",
-            ];
-            let title = titles[rng.sample(Uniform::new(0usize, titles.len()).unwrap())];
-            let description =
-                descriptions[rng.sample(Uniform::new(0usize, descriptions.len()).unwrap())];
+    if let Some(ref tags) = spec.tags
+        && !tags.is_empty()
+        && fmt == ImageFormat::Jpeg
+    {
+        let titles = &[
+            "Sunset Over the Hills",
+            "Morning Dew",
+            "City Lights",
+            "Mountain Vista",
+            "Coastal Scene",
+            "Garden Bloom",
+            "Urban Street",
+            "Wildlife Encounter",
+        ];
+        let descriptions = &[
+            "A beautiful sunset captured during golden hour.",
+            "Morning dew on fresh green leaves.",
+            "City skyline illuminated at dusk.",
+            "Panoramic view of mountain ranges.",
+            "Waves crashing along the coastline.",
+            "Colorful flowers in full bloom.",
+            "Street photography in the urban landscape.",
+            "Wildlife spotted in their natural habitat.",
+        ];
+        let title = titles[rng.sample(Uniform::new(0usize, titles.len()).unwrap())];
+        let description =
+            descriptions[rng.sample(Uniform::new(0usize, descriptions.len()).unwrap())];
 
-            let all_keywords: Vec<String> = {
-                let mut k = tags.clone();
-                k.push(mode_name.to_owned());
-                k
-            };
+        let all_keywords: Vec<String> = {
+            let mut k = tags.clone();
+            k.push(mode_name.to_owned());
+            k
+        };
 
-            let xmp_app1 = build_xmp_app1(&all_keywords, title, description);
-            splice_segment(&mut bytes, &xmp_app1);
+        let xmp_app1 = build_xmp_app1(&all_keywords, title, description);
+        splice_segment(&mut bytes, &xmp_app1);
 
-            let mut iptc = iptc::IPTC::new();
-            iptc.set_tag(iptc::IPTCTag::ObjectName, title);
-            iptc.set_tag(iptc::IPTCTag::Caption, description);
-            for kw in &all_keywords {
-                iptc.set_tag(iptc::IPTCTag::Keywords, kw);
-            }
-            let updated = iptc.write_to_buffer(&bytes).expect("iptc write_to_buffer");
-            // Workaround: strip the extra pad byte the crate inserts after
-            // "Photoshop 3.0\0" (it's already 14 bytes, no pad needed).
-            bytes = fix_iptc_pad(&updated);
+        let mut iptc = iptc::IPTC::new();
+        iptc.set_tag(iptc::IPTCTag::ObjectName, title);
+        iptc.set_tag(iptc::IPTCTag::Caption, description);
+        for kw in &all_keywords {
+            iptc.set_tag(iptc::IPTCTag::Keywords, kw);
         }
+        let updated = iptc.write_to_buffer(&bytes).expect("iptc write_to_buffer");
+        // Workaround: strip the extra pad byte the crate inserts after
+        // "Photoshop 3.0\0" (it's already 14 bytes, no pad needed).
+        bytes = fix_iptc_pad(&updated);
     }
 
     (bytes, render_mode)
@@ -953,11 +970,7 @@ fn xml_escape(s: &str) -> String {
             '&' => "&amp;".chars().collect(),
             '"' => "&quot;".chars().collect(),
             '\'' => "&apos;".chars().collect(),
-            _ => {
-                let mut v = Vec::new();
-                v.push(c);
-                v
-            }
+            _ => vec![c],
         })
         .collect()
 }
@@ -1016,7 +1029,10 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
     use clap::Parser;
 
     #[derive(Parser)]
-    #[command(name = "test-image")]
+    #[command(
+        name = "snapfab",
+        about = "Generate test images with EXIF/XMP/IPTC metadata"
+    )]
     struct Cli {
         #[command(subcommand)]
         command: CliCommand,
@@ -1024,26 +1040,46 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
 
     #[derive(clap::Subcommand)]
     enum CliCommand {
+        /// Generate a single image from a JSON spec on stdin
         Single {
-            #[arg(short, long)]
+            #[arg(short, long, help = "Output file path")]
             out: PathBuf,
-            #[arg(short, long)]
+            #[arg(short, long, help = "Comma-separated render modes to enable")]
             generators: Option<String>,
+            #[arg(short, long, help = "Skip render, use a solid-color placeholder")]
+            minimal: bool,
         },
+        /// Generate multiple images from a JSON array spec (stdin or file)
         Batch {
+            #[arg(help = "Manifest file path, or '-' for stdin")]
             manifest: String,
-            #[arg(short, long)]
+            #[arg(short, long, help = "Comma-separated render modes to enable")]
             generators: Option<String>,
+            #[arg(short, long, help = "Skip render, use a solid-color placeholder")]
+            minimal: bool,
         },
+        /// Generate a library of random images
         Library {
-            #[arg(short, long)]
+            #[arg(short, long, help = "Output directory")]
             dir: PathBuf,
-            #[arg(short, long, default_value = "100")]
+            #[arg(
+                short,
+                long,
+                default_value = "100",
+                help = "Number of images to generate"
+            )]
             count: u32,
-            #[arg(short, long, default_value = "42")]
+            #[arg(
+                short,
+                long,
+                default_value = "42",
+                help = "RNG seed for reproducibility"
+            )]
             seed: u64,
-            #[arg(short, long)]
+            #[arg(short, long, help = "Comma-separated render modes to enable")]
             generators: Option<String>,
+            #[arg(short, long, help = "Skip render, use a solid-color placeholder")]
+            minimal: bool,
         },
     }
 
@@ -1058,10 +1094,17 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
     };
 
     match Cli::parse_from(args).command {
-        CliCommand::Single { out, generators } => {
+        CliCommand::Single {
+            out,
+            generators,
+            minimal,
+        } => {
             let mut input = String::new();
             std::io::stdin().read_line(&mut input).expect("read stdin");
-            let spec: PhotoSpec = serde_json::from_str(&input).expect("invalid JSON spec");
+            let mut spec: PhotoSpec = serde_json::from_str(&input).expect("invalid JSON spec");
+            if minimal {
+                spec.minimal = true;
+            }
             let mut rng = SmallRng::from_rng(&mut rand::rng());
             let mut stats = PerfCounter::new();
             let enabled = enabled(&generators);
@@ -1072,6 +1115,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
         CliCommand::Batch {
             manifest,
             generators,
+            minimal,
         } => {
             let json = if manifest == "-" {
                 let mut buf = String::new();
@@ -1080,7 +1124,13 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             } else {
                 std::fs::read_to_string(&manifest).expect("read manifest file")
             };
-            let specs: Vec<PhotoSpec> = serde_json::from_str(&json).expect("invalid manifest JSON");
+            let mut specs: Vec<PhotoSpec> =
+                serde_json::from_str(&json).expect("invalid manifest JSON");
+            if minimal {
+                for spec in &mut specs {
+                    spec.minimal = true;
+                }
+            }
             let mut rng = SmallRng::from_rng(&mut rand::rng());
             let mut stats = PerfCounter::new();
             let enabled = enabled(&generators);
@@ -1107,6 +1157,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             count,
             seed,
             generators,
+            minimal,
         } => {
             std::fs::create_dir_all(&dir).expect("create output dir");
             let mut rng = SmallRng::seed_from_u64(seed);
@@ -1129,6 +1180,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
                     height: None,
                     exif_date: None,
                     tags: None,
+                    minimal,
                 };
                 let mode = generate_photo_file(&spec, &path, &mut rng, &mut stats, &enabled)
                     .expect("write image");
@@ -1157,6 +1209,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: None,
+            minimal: false,
         };
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
@@ -1175,6 +1228,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: None,
+            minimal: false,
         };
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
@@ -1192,6 +1246,7 @@ mod tests {
             height: Some(4),
             exif_date: Some("2024:06:19 12:00:00".into()),
             tags: None,
+            minimal: false,
         };
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
@@ -1209,6 +1264,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(vec!["tag1".into(), "tag2".into()]),
+            minimal: false,
         };
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
@@ -1228,6 +1284,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(vec!["kw1".into(), "kw2".into()]),
+            minimal: false,
         };
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
@@ -1252,6 +1309,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(vec!["x".into()]),
+            minimal: false,
         };
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
@@ -1274,6 +1332,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(tags),
+            minimal: false,
         };
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
@@ -1306,6 +1365,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: None,
+            minimal: false,
         };
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
@@ -1327,6 +1387,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(vec![]),
+            minimal: false,
         };
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
@@ -1348,6 +1409,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(vec!["kw".into()]),
+            minimal: false,
         };
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
@@ -1369,6 +1431,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(vec!["p".into()]),
+            minimal: false,
         };
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
