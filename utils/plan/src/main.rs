@@ -179,7 +179,9 @@ fn print_help() {
     println!("  --lint               validate frontmatter only, then exit");
     println!("  --format             normalize frontmatter + body, then exit\n");
     println!("Subcommands:");
-    println!("  tui                  interactive kanban browser\n");
+    println!(
+        "  tui                  interactive kanban browser (arrow keys, Space to sort, Enter to edit)\n"
+    );
     println!("Frontmatter is validated on every invocation; warnings go to stderr.\n");
     println!("Examples:");
     println!("  plan -a -p            sort by area then priority");

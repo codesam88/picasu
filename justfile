@@ -131,6 +131,11 @@ plan-lint:
 plan *args:
     cargo --offline --quiet run -p plan -- --root {{justfile_directory()}} {{args}}
 
+# Run plan tui <args>
+[group('utils')]
+plan-tui *args:
+    cargo run -p plan -- --root {{justfile_directory()}} tui {{args}}
+
 # ── Documentation ───────────────────────────────────────────────────────────────
 
 # Generate OpenAPI spec and reference doc
