@@ -23,29 +23,28 @@ struct MarkdownTheme {
 }
 
 fn themes() -> Vec<MarkdownTheme> {
-    let n = |fg| Style::default().fg(fg);
-    let nb = |fg| Style::default().fg(fg).add_modifier(Modifier::BOLD);
-    let nc = |fg| Style::default().fg(fg).bg(Color::DarkGray);
+    let ni = |fg| Style::default().fg(fg).add_modifier(Modifier::ITALIC);
+    let nu = |fg| Style::default().fg(fg).add_modifier(Modifier::UNDERLINED);
     vec![
         MarkdownTheme {
             name: "default",
-            h1: nb(Color::Cyan),
-            h2: nb(Color::Cyan),
-            h3: nb(Color::Cyan),
-            bold: n(Color::White),
-            dim: n(Color::DarkGray),
-            code: nc(Color::Green),
-            bullet: n(Color::White),
+            h1: nu(Color::Cyan),
+            h2: ni(Color::Cyan),
+            h3: ni(Color::Cyan),
+            bold: Style::default().add_modifier(Modifier::BOLD),
+            dim: Style::default().add_modifier(Modifier::ITALIC),
+            code: Style::default().fg(Color::Yellow),
+            bullet: Style::default(),
         },
         MarkdownTheme {
             name: "classic",
-            h1: nb(Color::Yellow),
-            h2: nb(Color::Cyan),
-            h3: n(Color::Cyan).add_modifier(Modifier::DIM),
-            bold: n(Color::Yellow),
-            dim: n(Color::DarkGray),
-            code: nc(Color::Green),
-            bullet: n(Color::Green),
+            h1: nu(Color::Cyan),
+            h2: ni(Color::Cyan),
+            h3: ni(Color::Cyan),
+            bold: Style::default().add_modifier(Modifier::BOLD),
+            dim: Style::default().add_modifier(Modifier::ITALIC),
+            code: Style::default().fg(Color::Yellow),
+            bullet: Style::default().fg(Color::Green),
         },
     ]
 }
