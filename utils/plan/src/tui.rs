@@ -169,10 +169,56 @@ impl<'a> App<'a> {
             })
             .collect();
 
+        let task_count = tasks.len();
+        let mut app = Self {
+            root,
+            tasks,
+            task_paths: path_map,
+            focus: FocusZone::TaskList,
+            columns: Vec::new(),
+            selected_column: 0,
+            selected_task: 0,
+            sort_state: SortState::new(),
+            sort_cursor: 0,
+            quit: false,
+            scroll_offset: 0,
+        };
+
+        app.apply_sort();
+        debug_assert!(
+            task_count == app.tasks.len(),
+            "task count changed during sort"
+        );
+        app
+    }
+
+    fn apply_sort(&mut self) {
+        let keys = self.sort_state.sort_keys();
+        if keys.is_empty() {
+            self.tasks.sort_by(|a, b| crate::plan::cmp_tasks(a, b, &[]));
+        } else {
+            self.tasks.sort_by(|a, b| {
+                for (key, direction) in &keys {
+                    let ord = crate::plan::cmp_by_key(a, b, key);
+                    if ord != std::cmp::Ordering::Equal {
+                        return match direction {
+                            SortDirection::Ascending => ord,
+                            SortDirection::Descending => ord.reverse(),
+                        };
+                    }
+                }
+                std::cmp::Ordering::Equal
+            });
+        }
+        self.rebuild_columns();
+    }
+
+    fn rebuild_columns(&mut self) {
         let kanban_order = crate::plan::KANBAN_ORDER;
         let mut columns = Vec::new();
         for &status in kanban_order {
-            let indices: Vec<usize> = tasks
+            let indices: Vec<usize> = self
+                .tasks
                 .iter()
                 .enumerate()
                 .filter(|(_, t)| t.task.status == status)
@@ -185,22 +231,15 @@ impl<'a> App<'a> {
                 });
             }
         }
+        self.columns = columns;
 
-        let selected_column = 0;
-        let selected_task = 0;
-
-        Self {
-            root,
-            tasks,
-            task_paths: path_map,
-            focus: FocusZone::TaskList,
-            columns,
-            selected_column,
-            selected_task,
-            sort_state: SortState::new(),
-            sort_cursor: 0,
-            quit: false,
-            scroll_offset: 0,
+        if self.selected_column >= self.columns.len() {
+            self.selected_column = self.columns.len().saturating_sub(1);
+        }
+        if let Some(col) = self.columns.get(self.selected_column)
+            && self.selected_task >= col.task_indices.len()
+        {
+            self.selected_task = col.task_indices.len().saturating_sub(1);
         }
     }
 }
@@ -471,6 +510,7 @@ impl App<'_> {
             KeyCode::Char(' ') => {
                 let field = SortField::all()[self.sort_cursor];
                 self.sort_state.toggle(field);
+                self.apply_sort();
             }
             _ => {}
         }

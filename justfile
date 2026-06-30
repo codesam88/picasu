@@ -117,19 +117,19 @@ openapi-gen:
     @echo "wrote backend/openapi.json"
 
 # Auto-format .plan task frontmatter and body
-[group('tooling')]
+[group('utils')]
 plan-format:
     cargo run -p plan -- --root {{justfile_directory()}} --format
 
 # Validate .plan task frontmatter structure
-[group('tooling')]
+[group('utils')]
 plan-lint:
     cargo run -p plan -- --root {{justfile_directory()}} --lint
 
 # run plan <args>
-[group('tooling')]
+[group('utils')]
 plan *args:
-    cargo run -p plan -- --root {{justfile_directory()}} {{args}}
+    cargo --offline --quiet run -p plan -- --root {{justfile_directory()}} {{args}}
 
 # ── Documentation ───────────────────────────────────────────────────────────────
 
