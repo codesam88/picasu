@@ -923,6 +923,11 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                     in_cell = false;
                     cur_row.push(std::mem::take(&mut cur_cell));
                 }
+                TagEnd::TableHead => {
+                    if !cur_row.is_empty() {
+                        tbl.push(std::mem::take(&mut cur_row));
+                    }
+                }
                 TagEnd::TableRow => {
                     tbl.push(std::mem::take(&mut cur_row));
                 }
@@ -935,7 +940,6 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                         continue;
                     }
 
-                    // Trim all cells
                     let trimmed: Vec<Vec<String>> = tbl
                         .iter()
                         .map(|row| row.iter().map(|c| c.trim().to_string()).collect())
@@ -1157,5 +1161,28 @@ fn priority_color(p: &str) -> Color {
         "medium" => Color::Yellow,
         "low" => Color::DarkGray,
         _ => Color::White,
+    }
+}
+
+#[cfg(test)]
+mod quick_table_test {
+    use crate::tui::{render_markdown, themes};
+    #[test]
+    fn table_renders_header_and_body() {
+        let md = "| **Name** | `Code` |\n|---|---|\n| foo | bar |\n";
+        let th = &themes()[0];
+        let lines = render_markdown(th, md);
+        // Should have header + separator + body + blank → at least 3 lines
+        let total: String = lines
+            .iter()
+            .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+            .collect();
+        assert!(
+            total.contains("Name"),
+            "Missing header 'Name' in: {:?}",
+            lines
+        );
+        assert!(total.contains("foo"), "Missing body 'foo' in: {:?}", lines);
+        assert!(total.contains("-"), "Missing separator in: {:?}", lines);
     }
 }
