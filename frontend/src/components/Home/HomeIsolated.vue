@@ -124,6 +124,7 @@ function albumFromStore(id: string): GalleryAlbum | undefined {
     isFavorite: false,
     isArchived: false,
     isTrashed: false,
+    rating: null,
     updateAt: 0,
     shareList: info.shareList
   }

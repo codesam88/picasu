@@ -193,6 +193,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         is_favorite: false,
         is_archived: false,
         is_trashed: false,
+        rating: None,
         update_at: now,
     };
     let metadata = AlbumMetadata {

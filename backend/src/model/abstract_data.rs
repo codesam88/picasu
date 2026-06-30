@@ -407,6 +407,15 @@ impl AbstractData {
         }
     }
 
+    /// Set rating (0–5); None clears it
+    pub fn set_rating(&mut self, rating: Option<u8>) {
+        match self {
+            AbstractData::Image(img) => img.object.rating = rating,
+            AbstractData::Video(vid) => vid.object.rating = rating,
+            AbstractData::Album(alb) => alb.object.rating = rating,
+        }
+    }
+
     /// Get mutable reference to width
     pub fn set_width(&mut self, width: u32) {
         match self {

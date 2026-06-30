@@ -123,6 +123,7 @@ const albumFallback = computed((): EnrichedUnifiedData | undefined => {
     isFavorite: false,
     isArchived: false,
     isTrashed: false,
+    rating: null,
     updateAt: 0,
     shareList: Object.fromEntries(info.shareList),
     thumbhashUrl: null,

@@ -50,6 +50,7 @@ pub struct ObjectSchema {
     pub is_favorite: bool,
     pub is_archived: bool,
     pub is_trashed: bool,
+    pub rating: Option<u8>,
     pub update_at: i64,
 }
 
@@ -65,6 +66,7 @@ impl ObjectSchema {
             is_favorite: false,
             is_archived: false,
             is_trashed: false,
+            rating: None,
             update_at: Utc::now().timestamp_millis(),
         }
     }
