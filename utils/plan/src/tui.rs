@@ -745,6 +745,31 @@ fn strip_frontmatter(text: &str) -> &str {
     text
 }
 
+fn word_wrap_lines(text: &str, max: usize) -> Vec<String> {
+    if text.len() <= max {
+        return vec![text.to_string()];
+    }
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for word in text.split_inclusive(' ') {
+        if cur.len() + word.trim_end().len() > max && !cur.is_empty() {
+            out.push(cur.trim_end().to_string());
+            cur = word.trim_start().to_string();
+        } else if cur.is_empty() {
+            cur = word.trim_start().to_string();
+        } else {
+            cur.push_str(word);
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur.trim_end().to_string());
+    }
+    if out.is_empty() {
+        out.push(text.to_string());
+    }
+    out
+}
+
 fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
     use pulldown_cmark::HeadingLevel;
     use pulldown_cmark::{Event, Parser, Tag, TagEnd};
@@ -756,6 +781,13 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
     let mut spans: Vec<Span<'static>> = Vec::new();
     let mut style_stack: Vec<Style> = Vec::new();
     let mut in_code_block = false;
+
+    // Table state
+    let mut tbl: Vec<Vec<String>> = Vec::new();
+    let mut cur_row: Vec<String> = Vec::new();
+    let mut cur_cell = String::new();
+    let mut in_cell = false;
+
     let push_span = |spans: &mut Vec<Span<'static>>, text: &str, style: &Style| {
         if !text.is_empty() {
             spans.push(Span::styled(text.to_string(), *style));
@@ -786,9 +818,7 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                     push_span(&mut spans, prefix, &s);
                     style_stack.push(s);
                 }
-                Tag::Paragraph => {
-                    flush(&mut lines, &mut spans);
-                }
+                Tag::Paragraph => flush(&mut lines, &mut spans),
                 Tag::List(_) => {}
                 Tag::Item => {
                     flush(&mut lines, &mut spans);
@@ -799,22 +829,30 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                     in_code_block = true;
                 }
                 Tag::Strong => {
-                    let s = style_stack.last().map_or(th.bold, |base| {
-                        let mut combined = *base;
-                        combined = combined.add_modifier(Modifier::BOLD);
-                        combined
-                    });
+                    let s = style_stack
+                        .last()
+                        .map_or(th.bold, |base| base.add_modifier(Modifier::BOLD));
                     style_stack.push(s);
                 }
                 Tag::Emphasis => {
-                    let s = style_stack.last().map_or(th.dim, |base| {
-                        let mut combined = *base;
-                        combined = combined.add_modifier(Modifier::DIM);
-                        combined
-                    });
+                    let s = style_stack
+                        .last()
+                        .map_or(th.dim, |base| base.add_modifier(Modifier::DIM));
                     style_stack.push(s);
                 }
-                Tag::Strikethrough => {}
+                Tag::Table(_) => {
+                    flush(&mut lines, &mut spans);
+                    tbl.clear();
+                    cur_row.clear();
+                }
+                Tag::TableHead => {}
+                Tag::TableRow => {
+                    cur_row.clear();
+                }
+                Tag::TableCell => {
+                    cur_cell.clear();
+                    in_cell = true;
+                }
                 _ => {}
             },
             Event::End(tag) => match tag {
@@ -824,9 +862,7 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                     lines.push(Line::from(""));
                 }
                 TagEnd::List(_) => {}
-                TagEnd::Item => {
-                    flush(&mut lines, &mut spans);
-                }
+                TagEnd::Item => flush(&mut lines, &mut spans),
                 TagEnd::CodeBlock => {
                     in_code_block = false;
                     flush(&mut lines, &mut spans);
@@ -835,15 +871,68 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                 TagEnd::Strong | TagEnd::Emphasis => {
                     style_stack.pop();
                 }
+                TagEnd::TableCell => {
+                    in_cell = false;
+                    cur_row.push(std::mem::take(&mut cur_cell));
+                }
+                TagEnd::TableRow => {
+                    tbl.push(std::mem::take(&mut cur_row));
+                }
+                TagEnd::Table => {
+                    if tbl.is_empty() {
+                        continue;
+                    }
+                    let ncols = tbl.iter().map(|r| r.len()).max().unwrap_or(0);
+                    if ncols == 0 {
+                        continue;
+                    }
+                    let mut col_w: Vec<usize> = vec![0; ncols];
+                    for row in &tbl {
+                        for (i, cell) in row.iter().enumerate() {
+                            let ml = cell.lines().map(|l| l.len()).max().unwrap_or(0);
+                            col_w[i] = col_w[i].max(ml.min(40));
+                        }
+                    }
+                    for row in tbl.iter() {
+                        if row.is_empty() {
+                            continue;
+                        }
+                        let cell_lines: Vec<Vec<String>> = row
+                            .iter()
+                            .enumerate()
+                            .map(|(i, c)| {
+                                let w = col_w.get(i).copied().unwrap_or(10).saturating_sub(2);
+                                word_wrap_lines(c, w.max(3))
+                            })
+                            .collect();
+                        let max_ln = cell_lines.iter().map(|c| c.len()).max().unwrap_or(1);
+                        for li in 0..max_ln {
+                            let mut buf = String::from(" ");
+                            for i in 0..ncols {
+                                let txt = cell_lines
+                                    .get(i)
+                                    .and_then(|c| c.get(li))
+                                    .map(|s| s.as_str())
+                                    .unwrap_or("");
+                                let w = col_w.get(i).copied().unwrap_or(10).saturating_sub(2);
+                                buf.push_str(&format!(" {:<w$} |", txt, w = w));
+                            }
+                            lines.push(Line::from(buf));
+                        }
+                    }
+                    lines.push(Line::from(""));
+                }
                 _ => {}
             },
             Event::Text(t) => {
-                if in_code_block {
-                    for (i, line) in t.lines().enumerate() {
+                if in_cell {
+                    cur_cell.push_str(&t);
+                } else if in_code_block {
+                    for (i, l) in t.lines().enumerate() {
                         if i > 0 {
                             flush(&mut lines, &mut spans);
                         }
-                        push_span(&mut spans, line, &Style::default());
+                        push_span(&mut spans, l, &Style::default());
                     }
                 } else {
                     let style = style_stack.last().copied().unwrap_or_default();
@@ -851,21 +940,20 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                 }
             }
             Event::Code(t) => {
-                push_span(&mut spans, &t, &th.code);
+                if in_cell {
+                    cur_cell.push_str(&t);
+                } else {
+                    push_span(&mut spans, &t, &th.code);
+                }
             }
-            Event::SoftBreak | Event::HardBreak => {
-                flush(&mut lines, &mut spans);
-            }
-            Event::Html(t) => {
-                push_span(&mut spans, &t, &Style::default());
-            }
+            Event::SoftBreak | Event::HardBreak => flush(&mut lines, &mut spans),
+            Event::Html(t) => push_span(&mut spans, &t, &Style::default()),
             _ => {}
         }
     }
     flush(&mut lines, &mut spans);
     lines
 }
-
 fn status_color(status: &str) -> Color {
     match status {
         "in-progress" => Color::Magenta,
