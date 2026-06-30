@@ -298,6 +298,14 @@ impl AppConfig {
 
         Self::apply_env_overrides(&mut config);
 
+        if config.web_root.is_none() {
+            let data_home = config
+                .data_home
+                .clone()
+                .unwrap_or_else(|| get_data_path().clone());
+            config.web_root = Some(data_home.join("www"));
+        }
+
         {
             let data_path = config
                 .data_home

@@ -1,6 +1,5 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
-use crate::model::config::APP_CONFIG;
 use crate::router::AppResult;
 use crate::storage::db::{DATA_TABLE, TREE};
 #[cfg(not(feature = "embed-frontend"))]
@@ -18,22 +17,15 @@ use std::borrow::Cow;
 
 #[cfg(not(feature = "embed-frontend"))]
 fn resolve_path(filename: &str) -> PathBuf {
-    let web_root = APP_CONFIG
+    use crate::model::config::APP_CONFIG;
+    APP_CONFIG
         .get()
         .and_then(|l| l.read().ok())
-        .and_then(|c| c.web_root.clone());
-
-    if let Some(root) = web_root {
-        root.join(filename)
-    } else {
-        // Dev fallback when web_root is not configured
-        let prod_path = std::path::Path::new(filename);
-        if prod_path.exists() {
-            prod_path.to_path_buf()
-        } else {
-            PathBuf::from(format!("../frontend/dist/{filename}"))
-        }
-    }
+        .and_then(|c| c.web_root.clone())
+        .map_or_else(
+            || PathBuf::from(format!("../frontend/dist/{filename}")),
+            |root| root.join(filename),
+        )
 }
 
 // Custom responder that can return a file or embedded content
