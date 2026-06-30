@@ -1071,9 +1071,17 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                     }
 
                     // Render rows with word-wrap
-                    for (ri, row) in trimmed.iter().enumerate() {
+                    let mut rendered_first = false;
+                    for row in &trimmed {
                         if row.is_empty() {
                             continue;
+                        }
+                        if rendered_first {
+                            let mut sep = String::from(" ");
+                            for &w in &col_w {
+                                sep.push_str(&format!(" {:-<w$}|", "-", w = w));
+                            }
+                            lines.push(Line::from(sep));
                         }
                         let cell_lines: Vec<Vec<String>> = (0..ncols)
                             .map(|i| {
@@ -1091,14 +1099,7 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                             }
                             lines.push(Line::from(buf));
                         }
-                        // Separator after header (first non-empty row)
-                        if ri == 0 && trimmed.len() > 1 {
-                            let mut sep = String::from(" ");
-                            for &w in &col_w {
-                                sep.push_str(&format!(" {:-<w$}|", "-", w = w));
-                            }
-                            lines.push(Line::from(sep));
-                        }
+                        rendered_first = true;
                     }
                     lines.push(Line::from(""));
                 }
