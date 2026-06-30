@@ -659,33 +659,7 @@ impl App<'_> {
             && let Ok(content) = std::fs::read_to_string(path)
         {
             let width = 80u16;
-            let mut skin = ratskin::RatSkin::default();
-            use termimad::crossterm::style::{Attribute, Color};
-            // Reset all headers, then style: h1=bold cyan, h2=plain cyan, h3+=italic cyan
-            for h in &mut skin.skin.headers {
-                h.compound_style = termimad::CompoundStyle::default();
-                h.compound_style.set_fg(Color::Cyan);
-            }
-            skin.skin.headers[0]
-                .compound_style
-                .add_attr(Attribute::Bold);
-            for h in &mut skin.skin.headers[2..] {
-                h.compound_style.add_attr(Attribute::Italic);
-            }
-            skin.skin
-                .italic
-                .set_fg(termimad::crossterm::style::Color::Magenta);
-            skin.skin.inline_code.set_fgbg(
-                termimad::crossterm::style::Color::Cyan,
-                termimad::crossterm::style::Color::DarkGrey,
-            );
-            skin.skin.code_block.set_fgbg(
-                termimad::crossterm::style::Color::Cyan,
-                termimad::crossterm::style::Color::DarkGrey,
-            );
-            skin.skin
-                .bullet
-                .set_fg(termimad::crossterm::style::Color::Green);
+            let skin = ratskin::RatSkin::default();
             let text = ratskin::RatSkin::parse_text(&content);
             self.preview = skin.parse(text, width);
             self.preview_scroll = 0;
