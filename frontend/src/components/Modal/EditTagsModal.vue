@@ -16,7 +16,7 @@
         <v-card variant="elevated" retain-focus>
           <template #title> Edit Tags </template>
           <template #text>
-            <v-form v-model="formIsValid" @submit.prevent="submit" validate-on="input">
+            <v-form v-model="formIsValid" @submit.prevent validate-on="input">
               <v-combobox
                 v-model="proxyModel.value"
                 chips

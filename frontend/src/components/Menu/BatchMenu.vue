@@ -4,7 +4,7 @@
     <template #activator="{ props: MenuBtn }">
       <v-btn v-bind="MenuBtn" icon="mdi-dots-vertical"></v-btn>
     </template>
-    <v-list>
+    <v-list role="menu">
       <!-- Conditional Set as Cover -->
       <ItemSetAsCover v-if="shouldShowSetAsCover" />
 

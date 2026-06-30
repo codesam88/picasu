@@ -30,8 +30,7 @@
               v-if="node.visible"
               :style="{ paddingLeft: `${node.depth * 20 + 12}px` }"
               :class="{ 'bg-primary-lighten-4': node.id === selectedAlbumId }"
-              role="option"
-              :aria-selected="node.id === selectedAlbumId"
+              :value="node.id"
               @click="selectedAlbumId = node.id"
             >
               <template #prepend>

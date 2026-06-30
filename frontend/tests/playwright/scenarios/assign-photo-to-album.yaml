@@ -16,6 +16,7 @@ given:
     id_as: $photo
 
 steps:
+  # Navigate through albums so the data store is populated before we enter the photo view
   - when:
       - navigate: /albums
     assert:
@@ -49,16 +50,16 @@ steps:
       - ui.visible: main/
 
   - when:
-      - click: menuitem/Assign Album
+      - click: option/Assign Album
     assert:
       - ui.modal: open
 
   # Select the destination album in the tree and confirm
   - when:
-      - click: option/destination
+      - click: option/Destination
       - click: button/Move
     assert:
       - ui.toast:
           type: success
           contains: Moved to album
-      - ui.sidebar_visible: destination
+      - ui.sidebar_visible: Destination
