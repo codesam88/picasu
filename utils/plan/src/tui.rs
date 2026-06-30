@@ -932,14 +932,18 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                     if ncols == 0 {
                         continue;
                     }
+                    // Build trimmed versions
+                    let trimmed: Vec<Vec<String>> = tbl
+                        .iter()
+                        .map(|row| row.iter().map(|c| c.trim().to_string()).collect())
+                        .collect();
                     let mut col_w: Vec<usize> = vec![0; ncols];
-                    for row in &tbl {
+                    for row in &trimmed {
                         for (i, cell) in row.iter().enumerate() {
-                            let ml = cell.lines().map(|l| l.len()).max().unwrap_or(0);
-                            col_w[i] = col_w[i].max(ml.min(40));
+                            col_w[i] = col_w[i].max(cell.len().min(40));
                         }
                     }
-                    for row in tbl.iter() {
+                    for row in &trimmed {
                         if row.is_empty() {
                             continue;
                         }
