@@ -58,7 +58,7 @@ struct Cli {
 
 #[derive(Parser)]
 enum Commands {
-    /// Interactive kanban browser (arrow keys, Space to sort, Enter to edit)
+    /// Interactive kanban browser (arrow keys, Enter to filter, e to edit)
     Tui {
         /// Filter by status
         #[arg(short, long, global = true, value_name = "STATUS")]
