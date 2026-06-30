@@ -1,0 +1,53 @@
+name: Setting a star rating via sidebar persists to XMP sidecar
+covers:
+  api:
+    - PUT /put/edit_rating
+  ui:
+    - star rating widget accepts click
+    - rating written to XMP sidecar
+
+given:
+  - dir_album: ratingtest/pool
+
+  - photo: ratingtest/pool/img01.jpg
+
+steps:
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: ratingtest
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: pool
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+
+  # Click the 3rd star on the rating widget (v-rating renders each star as a visible button)
+  - when:
+      - click: button/3
+    assert:
+      - ui.toast:
+          type: success
+          contains: Rating saved
+
+  # Sidecar must reflect the new rating
+  - when:
+      - wait.ms: 200
+    assert:
+      - file.contains: ratingtest/pool/img01.xmp
+        text: <xmp:Rating>3</xmp:Rating>

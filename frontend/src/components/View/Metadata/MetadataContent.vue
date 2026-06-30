@@ -42,6 +42,13 @@
           v-if="abstractData.exif.Make !== undefined || abstractData.exif.Model !== undefined"
           :database="abstractData"
         />
+        <ItemRating
+          v-if="showMetadata"
+          :isolation-id="props.isolationId"
+          :index="props.index"
+          :rating="abstractData.rating ?? null"
+          :readonly="isShareMode"
+        />
         <v-divider></v-divider>
         <ItemTag
           v-if="showMetadata"
@@ -84,6 +91,7 @@ import { useShareStore } from '@/store/shareStore'
 import { editUserDefinedDescription } from '@utils/editDescription'
 import { EnrichedUnifiedData, IsolationId } from '@type/types'
 import ItemExif from './ItemExif.vue'
+import ItemRating from './ItemRating.vue'
 import ItemSize from './ItemSize.vue'
 import ItemPath from './ItemPath.vue'
 import ItemDate from './ItemDate.vue'
