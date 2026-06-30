@@ -370,8 +370,9 @@ impl Expire {
     ///
     /// # Returns
     ///
-    /// * `true` if the `timestamp` has expired or does not exist (already removed).
-    /// * `false` if the `timestamp` has not yet expired.
+    /// * `true` if the `timestamp` has a recorded expiry time that has passed.
+    /// * `false` if the `timestamp` has not yet expired, or has no row recorded
+    ///   yet (the active version, whose expiry is scheduled on the next rotation).
     pub fn expired_check(&self, timestamp: i64) -> bool {
         // Begin a read transaction on the in-memory disk
         let read_transaction = self
@@ -436,10 +437,56 @@ impl Expire {
                 // Indicate that the timestamp has expired
                 true
             }
-            // If an expiration time exists but has not yet expired
-            Some(_) => false,
-            // Already expired and been removed
-            None => true,
+            // `Some(_)`: an expiration time exists but has not yet been reached.
+            // `None`: no row recorded for this timestamp. This is the active version
+            // whose expiry hasn't been scheduled yet (see `update_expire_task`'s
+            // swap/commit race) — not an already-removed entry, since a removed
+            // entry's query snapshot table would already be gone and never reach
+            // this check again.
+            Some(_) | None => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod expire_tests {
+    use super::*;
+
+    fn make_expire() -> Expire {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let db_path = dir.path().join("expire_test.redb");
+        // Leak the tempdir so it stays alive for the lifetime of the leaked Database below.
+        Box::leak(Box::new(dir));
+        let db = redb::Database::create(db_path).expect("failed to create test database");
+        Expire {
+            in_disk: Box::leak(Box::new(db)),
+        }
+    }
+
+    #[test]
+    fn expired_check_does_not_expire_unscheduled_active_version() {
+        let expire = make_expire();
+
+        // The expire table always exists in production (update_expire_task creates it
+        // on first use), but simulates the race: `VERSION_COUNT_TIMESTAMP` has already
+        // been swapped to a newer value, while the write transaction recording this
+        // timestamp's expiry has not committed yet, so no row exists for it.
+        let write_txn = expire
+            .in_disk
+            .begin_write()
+            .expect("failed to begin write transaction");
+        {
+            write_txn
+                .open_table(EXPIRE_TABLE_DEFINITION)
+                .expect("failed to open expire table");
+        }
+        write_txn.commit().expect("failed to commit transaction");
+
+        let timestamp = 1_000_i64;
+
+        assert!(
+            !expire.expired_check(timestamp),
+            "a timestamp with no recorded expiry must not be treated as already expired"
+        );
     }
 }
