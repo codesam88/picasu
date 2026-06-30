@@ -1093,12 +1093,11 @@ fn render_markdown(th: &MarkdownTheme, text: &str) -> Vec<Line<'static>> {
                         }
                         // Separator after header (first non-empty row)
                         if ri == 0 && trimmed.len() > 1 {
-                            let sep: String = col_w
-                                .iter()
-                                .map(|&w| format!(":{:-<w$}:", "", w = w.saturating_sub(1)))
-                                .collect::<Vec<_>>()
-                                .join("");
-                            lines.push(Line::from(format!(" {}", sep)));
+                            let mut sep = String::from(" ");
+                            for &w in &col_w {
+                                sep.push_str(&format!(" {:-<w$}|", "-", w = w));
+                            }
+                            lines.push(Line::from(sep));
                         }
                     }
                     lines.push(Line::from(""));
