@@ -4,7 +4,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::Paragraph,
+    widgets::{Paragraph, Wrap},
 };
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -308,7 +308,9 @@ impl App<'_> {
         ));
         frame.render_widget(title, title_area);
         frame.render_widget(
-            Paragraph::new(self.preview.clone()).scroll((self.preview_scroll as u16, 0)),
+            Paragraph::new(self.preview.clone())
+                .wrap(Wrap { trim: false })
+                .scroll((self.preview_scroll as u16, 0)),
             body_area,
         );
     }
