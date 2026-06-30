@@ -489,9 +489,9 @@ pub async fn service_worker() -> AppResult<FrontendResponse> {
 ]
 /// Catch-all SPA fallback — serves index.html for valid Vue Router routes.
 /// Paths matching `/album/<hash>` validate the album exists before serving
-/// the SPA; invalid album hashes return 404. Rank 1 ensures specific
-/// routes (assets, API, pages) take priority.
-#[get("/<path..>", rank = 1)]
+/// the SPA; invalid album hashes return 404. Rank 11 ensures specific
+/// routes (assets at rank 10, API, pages) take priority.
+#[get("/<path..>", rank = 11)]
 pub async fn spa_fallback(path: PathBuf) -> AppResult<FrontendResponse> {
     let path_str = path.display().to_string();
 
