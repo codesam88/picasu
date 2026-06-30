@@ -54,7 +54,7 @@ Every task lives as a markdown file in `.plan/tasks/<slug>.md` with YAML frontma
 
 - **Discover work:** `just plan` lists all tasks; `just plan -k` groups by status column. Filter with `-s open`, `-a backend`, `-t bug`, etc.
 - **Step back / plan:** `just plan -k` to see the full board. Pull items from `backlog` or `idea` when choosing what to work on next.
-- **Sort:** flags without values become sort keys — `just plan -a -p` sorts by area then priority. `-h` prints all options.
+- **Sort:** `just plan -S priority -S slug` sorts by priority then slug. Run `plan --help` for all options.
 - **Create:** copy `.plan/TEMPLATE.md` to `.plan/tasks/<slug>.md`.
 - **Update:** update 'status' to reflect status. append progress notes at the bottom (newest first). Do not rewrite history.
 - **Complete:** set `status: done` when finished. Do not delete the file.

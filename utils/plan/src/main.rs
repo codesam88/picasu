@@ -1,192 +1,149 @@
 mod plan;
 mod tui;
 
+use clap::Parser;
+use std::path::PathBuf;
+
+#[derive(Parser)]
+#[command(
+    name = "plan",
+    version,
+    max_term_width = 80,
+    about = "Search, view, and interact with .plan tasks"
+)]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    /// Repo root containing .plan (default: auto-detect)
+    #[arg(short, long, global = true, value_name = "PATH")]
+    root: Option<PathBuf>,
+
+    /// Filter by status (open, in-progress, blocked, backlog, idea, done)
+    #[arg(short, long, global = true, value_name = "STATUS")]
+    status: Option<String>,
+
+    /// Filter by type (bug, feature, chore, decision, perf)
+    #[arg(short = 't', long = "type", global = true, value_name = "TYPE")]
+    type_: Option<String>,
+
+    /// Filter by priority (high, medium, low)
+    #[arg(short, long, global = true, value_name = "PRIORITY")]
+    priority: Option<String>,
+
+    /// Filter by area label
+    #[arg(short, long, global = true, value_name = "AREA")]
+    area: Option<String>,
+
+    /// Search slug and body text
+    #[arg(short = 'q', long, global = true, value_name = "QUERY")]
+    search: Option<String>,
+
+    /// Group by status (vertical sections)
+    #[arg(short, long)]
+    kanban: bool,
+
+    /// Sort key(s), repeatable for compound sort (status, type, priority, area, slug)
+    #[arg(short = 'S', long = "sort", value_name = "FIELD")]
+    sort: Vec<String>,
+
+    /// Validate frontmatter only, then exit
+    #[arg(long)]
+    lint: bool,
+
+    /// Normalize frontmatter + body, then exit
+    #[arg(long)]
+    format: bool,
+}
+
+#[derive(Parser)]
+enum Commands {
+    /// Interactive kanban browser (arrow keys, Space to sort, Enter to edit)
+    Tui {
+        /// Filter by status
+        #[arg(short, long, global = true, value_name = "STATUS")]
+        status: Option<String>,
+
+        /// Filter by type
+        #[arg(short = 't', long = "type", global = true, value_name = "TYPE")]
+        type_: Option<String>,
+
+        /// Filter by priority
+        #[arg(short, long, global = true, value_name = "PRIORITY")]
+        priority: Option<String>,
+
+        /// Filter by area
+        #[arg(short, long, global = true, value_name = "AREA")]
+        area: Option<String>,
+
+        /// Search slug and body text
+        #[arg(short = 'q', long, global = true, value_name = "QUERY")]
+        search: Option<String>,
+    },
+}
+
 fn main() {
-    let raw_args: Vec<String> = std::env::args().skip(1).collect();
-    let is_tui = raw_args.first().map(|s| s == "tui").unwrap_or(false);
-    let args: Vec<String> = if is_tui {
-        raw_args.into_iter().skip(1).collect()
-    } else {
-        raw_args
-    };
-    let mut status_filter: Option<String> = None;
-    let mut type_filter: Option<String> = None;
-    let mut priority_filter: Option<String> = None;
-    let mut area_filter: Option<String> = None;
-    let mut search_query: Option<String> = None;
-    let mut sort_keys: Vec<String> = Vec::new();
-    let mut kanban = false;
-    let mut check = false;
-    let mut root: Option<std::path::PathBuf> = None;
+    let cli = Cli::parse();
 
-    let mut i = 0;
+    let root = cli.root.unwrap_or_else(plan::workspace_root);
 
-    if args.is_empty() || args[0] == "-h" || args[0] == "--help" {
-        print_help();
-        return;
-    }
+    // Resolve filter values — prefer subcommand flags, fall back to top-level
+    let (status_filter, type_filter, priority_filter, area_filter, search_query) =
+        match &cli.command {
+            Some(Commands::Tui {
+                status,
+                type_,
+                priority,
+                area,
+                search,
+            }) => (
+                status.as_deref(),
+                type_.as_deref(),
+                priority.as_deref(),
+                area.as_deref(),
+                search.as_deref(),
+            ),
+            None => (
+                cli.status.as_deref(),
+                cli.type_.as_deref(),
+                cli.priority.as_deref(),
+                cli.area.as_deref(),
+                cli.search.as_deref(),
+            ),
+        };
 
-    while i < args.len() {
-        let arg = args[i].as_str();
-        if arg == "--kanban" || arg == "-k" {
-            kanban = true;
-        } else if arg == "--lint" {
-            check = true;
-        } else if arg == "--format" {
-            let root = root.unwrap_or_else(plan::workspace_root);
-            plan::normalize_all(&root);
-            return;
-        } else if arg == "--root" || arg == "-r" {
-            if i + 1 < args.len() {
-                i += 1;
-                root = Some(std::path::PathBuf::from(&args[i]));
-            } else {
-                eprintln!("--root / -r requires a path");
-                std::process::exit(1);
-            }
-        } else if arg.starts_with("--root=") {
-            root = Some(std::path::PathBuf::from(arg.trim_start_matches("--root=")));
-        } else if arg.starts_with("-r=") {
-            root = Some(std::path::PathBuf::from(arg.trim_start_matches("-r=")));
-        } else if arg == "--search" || arg == "-q" {
-            if i + 1 < args.len() {
-                i += 1;
-                search_query = Some(args[i].clone());
-            } else {
-                eprintln!("--search / -q requires a value");
-                std::process::exit(1);
-            }
-        } else if arg.starts_with("--search=") {
-            search_query = Some(arg.trim_start_matches("--search=").to_string());
-        } else if arg.starts_with("-q=") {
-            search_query = Some(arg.trim_start_matches("-q=").to_string());
-        } else if arg == "--status" || arg == "-s" {
-            resolve_filter_or_sort(
-                &args,
-                &mut i,
-                "--status=",
-                &mut status_filter,
-                "status",
-                &mut sort_keys,
+    match cli.command {
+        Some(Commands::Tui { .. }) => {
+            tui::run_tui(
+                &root,
+                status_filter,
+                type_filter,
+                priority_filter,
+                area_filter,
+                search_query,
             );
-        } else if arg == "--type" || arg == "-t" {
-            resolve_filter_or_sort(
-                &args,
-                &mut i,
-                "--type=",
-                &mut type_filter,
-                "type",
-                &mut sort_keys,
-            );
-        } else if arg == "--priority" || arg == "-p" {
-            resolve_filter_or_sort(
-                &args,
-                &mut i,
-                "--priority=",
-                &mut priority_filter,
-                "priority",
-                &mut sort_keys,
-            );
-        } else if arg == "--area" || arg == "-a" {
-            resolve_filter_or_sort(
-                &args,
-                &mut i,
-                "--area=",
-                &mut area_filter,
-                "area",
-                &mut sort_keys,
-            );
-        } else if arg.starts_with("--status=") {
-            status_filter = Some(arg.trim_start_matches("--status=").to_string());
-        } else if arg.starts_with("--type=") {
-            type_filter = Some(arg.trim_start_matches("--type=").to_string());
-        } else if arg.starts_with("--priority=") {
-            priority_filter = Some(arg.trim_start_matches("--priority=").to_string());
-        } else if arg.starts_with("--area=") {
-            area_filter = Some(arg.trim_start_matches("--area=").to_string());
-        } else {
-            eprintln!("unknown flag: {}", arg);
-            eprintln!("use --help for usage");
-            std::process::exit(1);
         }
-        i += 1;
-    }
+        None => {
+            if cli.lint {
+                let ok = plan::validate_all(&root);
+                std::process::exit(if ok { 0 } else { 1 });
+            }
 
-    let root = root.unwrap_or_else(plan::workspace_root);
+            if cli.format {
+                plan::normalize_all(&root);
+                return;
+            }
 
-    if check {
-        let ok = plan::validate_all(&root);
-        if !ok {
-            std::process::exit(1);
+            plan::list_tasks(
+                &root,
+                status_filter,
+                type_filter,
+                priority_filter,
+                area_filter,
+                search_query,
+                cli.kanban,
+                &cli.sort,
+            );
         }
-        return;
     }
-
-    if is_tui {
-        tui::run_tui(
-            &root,
-            status_filter.as_deref(),
-            type_filter.as_deref(),
-            priority_filter.as_deref(),
-            area_filter.as_deref(),
-            search_query.as_deref(),
-        );
-        return;
-    }
-
-    plan::list_tasks(
-        &root,
-        status_filter.as_deref(),
-        type_filter.as_deref(),
-        priority_filter.as_deref(),
-        area_filter.as_deref(),
-        search_query.as_deref(),
-        kanban,
-        &sort_keys,
-    );
-}
-
-fn resolve_filter_or_sort(
-    args: &[String],
-    i: &mut usize,
-    _eq_prefix: &str,
-    filter: &mut Option<String>,
-    sort_key: &str,
-    sort_keys: &mut Vec<String>,
-) {
-    if *i + 1 < args.len() && !args[*i + 1].starts_with('-') {
-        *i += 1;
-        *filter = Some(args[*i].clone());
-    } else {
-        sort_keys.push(sort_key.to_string());
-    }
-}
-
-fn print_help() {
-    println!("plan [FLAGS]");
-    println!("plan tui [FLAGS]  interactive kanban browser\n");
-    println!(
-        "Search tasks in .plan directory. Default is table view sorted by priority then slug.\n"
-    );
-    println!("Flags that take a value filter; without a value they become sort keys:");
-    println!("  -s, --status <s>     filter or sort by status");
-    println!("  -t, --type <t>       filter or sort by type");
-    println!("  -p, --priority <p>   filter or sort by priority");
-    println!("  -a, --area <a>       filter or sort by area");
-    println!("  -r, --root <path>    repo root containing .plan (default: auto-detect)");
-    println!("  -q, --search <q>     search slug and body text (requires value)");
-    println!("  -k, --kanban         group by status (vertical sections)");
-    println!("  --lint               validate frontmatter only, then exit");
-    println!("  --format             normalize frontmatter + body, then exit\n");
-    println!("Subcommands:");
-    println!(
-        "  tui                  interactive kanban browser (arrow keys, Space to sort, Enter to edit)\n"
-    );
-    println!("Frontmatter is validated on every invocation; warnings go to stderr.\n");
-    println!("Examples:");
-    println!("  plan -a -p            sort by area then priority");
-    println!("  plan -s open -p high  filter open, priority=high");
-    println!("  plan -a backend -k    filter area=backend, kanban view");
-    println!("  plan --lint           validate only");
-    println!("  plan --format         auto-format all task files");
 }
