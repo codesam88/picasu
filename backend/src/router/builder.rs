@@ -137,10 +137,16 @@ fn mount_frontend(
     #[cfg(not(feature = "embed-frontend"))]
     {
         let asset_path = web_root.map_or_else(
-            || PathBuf::from("../frontend/dist/assets"),
+            // Deliberately unreachable in production (AppConfig::init always sets web_root).
+            // Intentionally impossible so tests that omit web_root get clean 404s
+            // rather than accidentally serving a developer's frontend/dist build.
+            || PathBuf::from("/nonexistent/www/assets"),
             |r| r.join("assets"),
         );
         info!("Serving assets from: {}", asset_path.display());
-        app.mount("/assets", FileServer::from(asset_path))
+        app.mount(
+            "/assets",
+            FileServer::new(asset_path, rocket::fs::Options::Missing),
+        )
     }
 }

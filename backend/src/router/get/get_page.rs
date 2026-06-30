@@ -23,7 +23,10 @@ fn resolve_path(filename: &str) -> PathBuf {
         .and_then(|l| l.read().ok())
         .and_then(|c| c.web_root.clone())
         .map_or_else(
-            || PathBuf::from(format!("../frontend/dist/{filename}")),
+            // Deliberately unreachable in production (AppConfig::init always sets web_root).
+            // Intentionally impossible so tests that omit web_root get clean 404s
+            // rather than accidentally serving a developer's frontend/dist build.
+            || PathBuf::from(format!("/nonexistent/www/{filename}")),
             |root| root.join(filename),
         )
 }
