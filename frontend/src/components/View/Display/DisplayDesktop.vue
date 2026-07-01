@@ -20,11 +20,6 @@
         :isolation-id="isolationId"
         :enable-watch="true"
       />
-      <ViewPageDisplayAlbum
-        v-if="abstractData && abstractData.type === 'album' && !configStore.disableImg"
-        :index="index"
-        :album="abstractData"
-      />
     </div>
   </div>
 </template>
@@ -32,7 +27,6 @@
 <script setup lang="ts">
 import { useConfigStore } from '@/store/configStore'
 import ViewPageDisplayDatabase from './DisplayDatabase.vue'
-import ViewPageDisplayAlbum from './DisplayAlbum.vue'
 import NavigationOverlays from './NavigationOverlays.vue'
 import type { EnrichedUnifiedData, IsolationId } from '@type/types'
 

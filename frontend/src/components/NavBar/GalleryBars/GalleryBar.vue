@@ -168,7 +168,8 @@ const albumForTemp = computed((): GalleryAlbum | undefined => {
     isTrashed: false,
     rating: null,
     updateAt: 0,
-    shareList: Object.fromEntries(info.shareList)
+    shareList: Object.fromEntries(info.shareList),
+    customDate: null
   }
 })
 

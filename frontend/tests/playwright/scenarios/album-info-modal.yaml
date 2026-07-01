@@ -1,0 +1,79 @@
+name: Album Info modal edits title/description/date and persists to sidecar
+covers:
+  api:
+    - PUT /put/set_album_title
+    - PUT /put/set_user_defined_description
+    - PUT /put/set_album_date
+  ui:
+    - Album Info menu item appears for a single selected album
+    - Album Info modal edits persist after reopen
+    - album metadata written to .albuminfo.xmp sidecar
+
+given:
+  - dir_album: albuminfotest/parent
+  - dir_album: albuminfotest/parent/child
+    id_as: $child
+
+steps:
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: Albuminfotest
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: parent
+    assert:
+      - ui.visible: main/
+
+  # Select the nested "child" album card (edit mode) and open its context menu
+  - when:
+      - click.select_first: true
+      - click.icon: mdi-dots-vertical
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: option/Album Info
+    assert:
+      - ui.modal: open
+
+  - when:
+      - fill: textbox/Title
+        value: My Custom Child
+      - fill: textbox/Description
+        value: A nice sub album
+      - fill: textbox/Date
+        value: '2024-06-01'
+    assert:
+      - ui.input_value: textbox/Title
+        contains: My Custom Child
+
+  - when:
+      - click: button/Save
+    assert:
+      - ui.toast:
+          type: success
+          contains: Description saved
+
+  - when:
+      - wait.ms: 200
+    assert:
+      - file.contains: albuminfotest/parent/child/.albuminfo.xmp
+        text: My Custom Child
+
+  # Reopen and verify the edits persisted (item is still selected from before)
+  - when:
+      - click.icon: mdi-dots-vertical
+      - click: option/Album Info
+    assert:
+      - ui.input_value: textbox/Title
+        contains: My Custom Child
+      - ui.input_value: textbox/Description
+        contains: A nice sub album
+      - ui.input_value: textbox/Date
+        contains: '2024-06-01'

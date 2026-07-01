@@ -118,7 +118,8 @@ const AlbumSchemaRaw = BaseObjectRaw.extend({
   cover: z.string().nullable(),
   itemCount: z.number(),
   itemSize: z.number(),
-  shareList: z.record(z.string(), z.any()).default({})
+  shareList: z.record(z.string(), z.any()).default({}),
+  customDate: z.string().nullable().optional().default(null)
 }).transform((data) => ({
   type: 'album' as const,
   id: data.id,
@@ -138,7 +139,8 @@ const AlbumSchemaRaw = BaseObjectRaw.extend({
   isTrashed: data.isTrashed,
   rating: data.rating,
   updateAt: data.updateAt,
-  shareList: data.shareList
+  shareList: data.shareList,
+  customDate: data.customDate
 }))
 
 export const BackendDataParser = z.union([ImageSchemaRaw, VideoSchemaRaw, AlbumSchemaRaw])
