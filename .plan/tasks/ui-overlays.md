@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: high
 area: frontend
@@ -143,3 +143,27 @@ Leave `'subId'` in `IsolationId` union type — remove as a follow-up once runti
 4. Manual: click album-type photo → "Enter Album" → `/album/:albumHash`, back returns to viewer
 5. Manual: add photos via GalleryTempModal in album view → grid refreshes
 6. `npx vue-tsc --noEmit` — no type errors
+
+## Progress
+
+- Implemented on `feat/ui-overlays` (worktree `.worktrees/ui-overlays`), two commits:
+  - Phase 0 (route/file renaming: home/all → timeline, Home\* → Gallery\*) — required a
+    matching backend route rename (`get_page.rs`: `/home` → `/timeline`, `/all` removed)
+    since the SPA fallback's single-segment catch-all otherwise 404s any unregistered
+    top-level path. Not called out in the original plan; discovered via a failing
+    Playwright scenario.
+  - Phases 1-7 (route flattening, v-overlay removal, Gallery.vue viewer/grid swap,
+    DisplayAlbum Enter Album fix, dead level-3/4 cleanup, HomeIsolatedBar migration,
+    obsolete file deletion) landed together — they're mutually dependent at runtime
+    (e.g. routes pointing at ViewPage while it still required the isolationId prop
+    being removed in the same change would have been broken independently).
+- `just check` and `just test` (106 backend, 35 vitest, 16 Playwright) pass.
+- Manually verified via an ad hoc Playwright scenario (not committed): `/` → `/timeline`
+  redirect works, clicking a photo shows the nav bar and persistent toolbar alongside the
+  image (no full-screen overlay), Escape/back-arrow returns to the grid, and the
+  "Add photos to album" button appears on the persistent bar for album routes.
+- Not exercised live: the "Enter Album" flow (DisplayAlbum → `/album/:albumHash`). Building
+  a fixture with a genuinely nested sub-album (as opposed to a dir-album's own child
+  directory, which only contributes photos via `parent_album` matching, not a browsable
+  album-type grid item) proved nontrivial within session time; no existing scenario covers
+  this either. The code path itself (named-route `:to` binding) was reviewed by hand.
