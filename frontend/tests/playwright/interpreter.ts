@@ -64,6 +64,8 @@ export async function executeWhen(
       await page.keyboard.press(step.keyboard)
     } else if ('wait.ms' in step) {
       await page.waitForTimeout(step['wait.ms'])
+    } else if ('browser.back' in step) {
+      await page.goBack()
     } else if ('click.text' in step) {
       const text = interpolate(step['click.text'], ctx.vars)
       await page.locator('.parent').filter({ hasText: text }).first().click()
@@ -114,7 +116,7 @@ export async function executeWhen(
     } else {
       throw new Error(
         `Unknown when verb in step ${JSON.stringify(step)}. ` +
-          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, click.text, click.icon, click.first, click.select_first`
+          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.select_first`
       )
     }
   }
