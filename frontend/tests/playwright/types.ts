@@ -140,6 +140,12 @@ export const UiWhenKeyboard = z
   })
   .strict()
 
+export const UiWhenBrowserBack = z
+  .object({
+    'browser.back': z.literal(true)
+  })
+  .strict()
+
 export const UiWhenItem = z.union([
   UiWhenNavigate,
   UiWhenClick,
@@ -151,7 +157,8 @@ export const UiWhenItem = z.union([
   UiWhenClickIcon,
   UiWhenClickFirst,
   UiWhenClickSelectFirst,
-  UiWhenKeyboard
+  UiWhenKeyboard,
+  UiWhenBrowserBack
 ])
 
 export const UiAssertVisible = z

@@ -3,6 +3,7 @@ covers:
   ui:
     - Escape while viewing a photo navigates to the parent page, not router.back()
     - the parent grid is populated after returning (not an empty/unrelated page)
+    - the browser Back button after Escape does not re-enter the view page
 
 given:
   - dir_album: escapetest/sunset
@@ -39,3 +40,11 @@ steps:
       - ui.route: /album/[a-z0-9]+$
       - ui.count: .parent
         equals: 2
+
+  # Escape must replace the view-page history entry, not push a new one —
+  # otherwise the browser's own Back button re-enters the view you just
+  # escaped from instead of leaving the album.
+  - when:
+      - browser.back: true
+    assert:
+      - ui.route: /album/[a-z0-9]+$
