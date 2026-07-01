@@ -234,8 +234,12 @@ pub fn run_tui(
 
     while !app.quit {
         if let Err(e) = terminal.draw(|frame| app.render(frame)) {
-            eprintln!("render error: {e}");
-            break;
+            if let Ok(t) = ratatui::try_init() {
+                terminal = t;
+            } else {
+                eprintln!("render error: {e}");
+                break;
+            }
         }
         match app.handle_events() {
             Ok(action) => match action {
@@ -615,84 +619,91 @@ impl App<'_> {
 
 impl App<'_> {
     fn handle_events(&mut self) -> Result<Action, Box<dyn std::error::Error>> {
-        if event::poll(std::time::Duration::from_millis(100))?
-            && let Event::Key(key) = event::read()?
-        {
-            if key.kind != KeyEventKind::Press {
-                return Ok(Action::None);
-            }
-            match self.mode {
-                Mode::Preview => match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => self.mode = Mode::Browse,
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        self.preview_scroll = self.preview_scroll.saturating_sub(1);
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        self.preview_scroll = self.preview_scroll.saturating_add(1);
-                    }
-                    KeyCode::PageUp => {
-                        self.preview_scroll = self.preview_scroll.saturating_sub(20);
-                    }
-                    KeyCode::PageDown => {
-                        self.preview_scroll = self.preview_scroll.saturating_add(20);
-                    }
-                    KeyCode::Left | KeyCode::Char('h') => {
-                        self.preview_offset = self.preview_offset.saturating_sub(8);
-                    }
-                    KeyCode::Right | KeyCode::Char('l') => {
-                        self.preview_offset = self.preview_offset.saturating_add(8);
-                    }
-                    KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
-                        return Ok(Action::Quit);
-                    }
-                    KeyCode::Char('c') => self.cycle_theme(),
-                    _ => {}
-                },
-                Mode::Browse => {
-                    return Ok(match key.code {
-                        KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
-                            Action::Quit
+        if !event::poll(std::time::Duration::from_millis(100))? {
+            return Ok(Action::None);
+        }
+        match event::read()? {
+            Event::Resize(_, _) => {}
+            Event::Key(key) => {
+                if key.kind != KeyEventKind::Press {
+                    return Ok(Action::None);
+                }
+                match self.mode {
+                    Mode::Preview => match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => self.mode = Mode::Browse,
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            self.preview_scroll = self.preview_scroll.saturating_sub(1);
                         }
-                        KeyCode::Char('q') | KeyCode::Esc => {
-                            if self.has_active_filters() {
-                                self.filter_status = None;
-                                self.filter_type = None;
-                                self.filter_priority = None;
-                                self.filter_area = None;
-                                self.filter_search = None;
-                                self.reload_tasks();
-                                Action::None
-                            } else {
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            self.preview_scroll = self.preview_scroll.saturating_add(1);
+                        }
+                        KeyCode::PageUp => {
+                            self.preview_scroll = self.preview_scroll.saturating_sub(20);
+                        }
+                        KeyCode::PageDown => {
+                            self.preview_scroll = self.preview_scroll.saturating_add(20);
+                        }
+                        KeyCode::Left | KeyCode::Char('h') => {
+                            self.preview_offset = self.preview_offset.saturating_sub(8);
+                        }
+                        KeyCode::Right | KeyCode::Char('l') => {
+                            self.preview_offset = self.preview_offset.saturating_add(8);
+                        }
+                        KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
+                            return Ok(Action::Quit);
+                        }
+                        KeyCode::Char('c') => self.cycle_theme(),
+                        _ => {}
+                    },
+                    Mode::Browse => {
+                        return Ok(match key.code {
+                            KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
                                 Action::Quit
                             }
-                        }
-                        KeyCode::Enter if !self.columns.is_empty() => {
-                            self.open_preview();
-                            Action::None
-                        }
-                        KeyCode::Char('f') if !self.columns.is_empty() => {
-                            let col = &self.columns[self.selected_column];
-                            if let Some(&task_idx) = col.task_indices.get(self.selected_task) {
-                                let task = &self.tasks[task_idx];
-                                match self.selected_field {
-                                    0 => self.filter_type = Some(task.task.task_type.clone()),
-                                    1 => self.filter_priority = Some(task.task.priority.clone()),
-                                    2 => self.filter_area = Some(task.task.area.clone()),
-                                    3 => self.filter_search = Some(task.slug.clone()),
-                                    _ => {}
+                            KeyCode::Char('q') | KeyCode::Esc => {
+                                if self.has_active_filters() {
+                                    self.filter_status = None;
+                                    self.filter_type = None;
+                                    self.filter_priority = None;
+                                    self.filter_area = None;
+                                    self.filter_search = None;
+                                    self.reload_tasks();
+                                    Action::None
+                                } else {
+                                    Action::Quit
                                 }
-                                self.reload_tasks();
                             }
-                            Action::None
-                        }
-                        KeyCode::Char('e') if !self.columns.is_empty() => Action::OpenEditor,
-                        _ => {
-                            self.handle_task_key(key.code);
-                            Action::None
-                        }
-                    });
+                            KeyCode::Enter if !self.columns.is_empty() => {
+                                self.open_preview();
+                                Action::None
+                            }
+                            KeyCode::Char('f') if !self.columns.is_empty() => {
+                                let col = &self.columns[self.selected_column];
+                                if let Some(&task_idx) = col.task_indices.get(self.selected_task) {
+                                    let task = &self.tasks[task_idx];
+                                    match self.selected_field {
+                                        0 => self.filter_type = Some(task.task.task_type.clone()),
+                                        1 => {
+                                            self.filter_priority = Some(task.task.priority.clone())
+                                        }
+                                        2 => self.filter_area = Some(task.task.area.clone()),
+                                        3 => self.filter_search = Some(task.slug.clone()),
+                                        _ => {}
+                                    }
+                                    self.reload_tasks();
+                                }
+                                Action::None
+                            }
+                            KeyCode::Char('e') if !self.columns.is_empty() => Action::OpenEditor,
+                            _ => {
+                                self.handle_task_key(key.code);
+                                Action::None
+                            }
+                        });
+                    }
                 }
             }
+            _ => {}
         }
         Ok(Action::None)
     }
