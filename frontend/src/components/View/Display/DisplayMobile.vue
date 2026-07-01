@@ -34,15 +34,6 @@
               :isolation-id="isolationId"
               :enable-watch="false"
             />
-            <ViewPageDisplayAlbum
-              v-if="
-                previousAbstractData &&
-                previousAbstractData.type === 'album' &&
-                !configStore.disableImg
-              "
-              :index="index - 1"
-              :album="previousAbstractData"
-            />
           </div>
         </div>
       </swiper-slide>
@@ -62,13 +53,6 @@
               :isolation-id="isolationId"
               :enable-watch="false"
             />
-            <ViewPageDisplayAlbum
-              v-if="
-                abstractData && ['album'].includes(abstractData.type) && !configStore.disableImg
-              "
-              :index="index"
-              :album="abstractData as unknown as GalleryAlbum"
-            />
           </div>
         </div>
       </swiper-slide>
@@ -87,13 +71,6 @@
               :abstract-data="nextAbstractData"
               :isolation-id="isolationId"
               :enable-watch="false"
-            />
-            <ViewPageDisplayAlbum
-              v-if="
-                nextAbstractData && nextAbstractData.type === 'album' && !configStore.disableImg
-              "
-              :index="index + 1"
-              :album="nextAbstractData"
             />
           </div>
         </div>
@@ -127,15 +104,6 @@
             :isolation-id="isolationId"
             :enable-watch="false"
           />
-          <ViewPageDisplayAlbum
-            v-if="
-              previousAbstractData &&
-              previousAbstractData.type === 'album' &&
-              !configStore.disableImg
-            "
-            :index="index - 1"
-            :album="previousAbstractData"
-          />
         </div>
       </swiper-slide>
 
@@ -152,11 +120,6 @@
             :abstract-data="abstractData"
             :isolation-id="isolationId"
             :enable-watch="true"
-          />
-          <ViewPageDisplayAlbum
-            v-if="abstractData && ['album'].includes(abstractData.type) && !configStore.disableImg"
-            :index="index"
-            :album="abstractData as GalleryAlbum"
           />
         </div>
       </swiper-slide>
@@ -175,11 +138,6 @@
             :isolation-id="isolationId"
             :enable-watch="false"
           />
-          <ViewPageDisplayAlbum
-            v-if="nextAbstractData && nextAbstractData.type === 'album' && !configStore.disableImg"
-            :index="index + 1"
-            :album="nextAbstractData"
-          />
         </div>
       </swiper-slide>
     </swiper>
@@ -191,7 +149,6 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDataStore } from '@/store/dataStore'
 import ViewPageDisplayDatabase from './DisplayDatabase.vue'
-import ViewPageDisplayAlbum from './DisplayAlbum.vue'
 import { useConfigStore } from '@/store/configStore'
 import { useModalStore } from '@/store/modalStore'
 import { Manipulation, Zoom } from 'swiper/modules'
@@ -199,7 +156,7 @@ import 'swiper/css'
 import 'swiper/css/manipulation'
 import 'swiper/css/zoom'
 import type { Swiper as SwiperType } from 'swiper'
-import type { EnrichedUnifiedData, IsolationId, GalleryAlbum } from '@type/types'
+import type { EnrichedUnifiedData, IsolationId } from '@type/types'
 import { Swiper, SwiperSlide } from 'swiper/vue'
 
 const props = defineProps<{
