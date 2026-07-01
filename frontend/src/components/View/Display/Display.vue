@@ -106,9 +106,6 @@ const nextPage = computed(() => {
   if (route.meta.level === 2) {
     const updatedParams = { ...route.params, hash: nextHash.value }
     return { ...route, params: updatedParams }
-  } else if (route.meta.level === 4) {
-    const updatedParams = { ...route.params, subhash: nextHash.value }
-    return { ...route, params: updatedParams }
   }
   return undefined
 })
@@ -117,9 +114,6 @@ const previousPage = computed(() => {
   if (previousHash.value === undefined) return undefined
   if (route.meta.level === 2) {
     const updatedParams = { ...route.params, hash: previousHash.value }
-    return { ...route, params: updatedParams }
-  } else if (route.meta.level === 4) {
-    const updatedParams = { ...route.params, subhash: previousHash.value }
     return { ...route, params: updatedParams }
   }
   return undefined
@@ -223,10 +217,7 @@ const rotateImageHandler = async () => {
 }
 
 const handleKeyDown = (event: KeyboardEvent) => {
-  if (
-    (route.meta.level === 2 && props.isolationId === 'mainId') ||
-    (route.meta.level === 4 && props.isolationId === 'subId')
-  ) {
+  if (route.meta.level === 2 && props.isolationId === 'mainId') {
     if (modalStore.showEditTagsModal) return
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
       return

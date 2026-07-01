@@ -3,10 +3,11 @@ import { inject } from 'vue'
 import { useDataStore } from '@/store/dataStore'
 import { escapeAndWrap } from '@utils/escape'
 import { useShareStore } from '@/store/shareStore'
+import { IsolationId } from '@type/types'
 
-export function getIsolationIdByRoute(route: RouteLocationNormalizedLoaded) {
-  const isolationId = route.meta.level === 3 || route.meta.level === 4 ? 'subId' : 'mainId'
-  return isolationId
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function getIsolationIdByRoute(_route: RouteLocationNormalizedLoaded): IsolationId {
+  return 'mainId'
 }
 
 export function getHashIndexDataFromRoute(route: RouteLocationNormalizedLoaded) {
@@ -15,10 +16,8 @@ export function getHashIndexDataFromRoute(route: RouteLocationNormalizedLoaded) 
 
   let hash: string
 
-  if (isolationId === 'mainId' && typeof route.params.hash === 'string') {
+  if (typeof route.params.hash === 'string') {
     hash = route.params.hash
-  } else if (isolationId === 'subId' && typeof route.params.subhash === 'string') {
-    hash = route.params.subhash
   } else {
     return undefined
   }

@@ -230,8 +230,8 @@ function canHandleNav(): boolean {
   const modalStore = useModalStore('mainId')
   return (
     configStore.isMobile &&
-    ((route.meta.level === 2 && props.isolationId === 'mainId') ||
-      (route.meta.level === 4 && props.isolationId === 'subId')) &&
+    route.meta.level === 2 &&
+    props.isolationId === 'mainId' &&
     !modalStore.showEditTagsModal
   )
 }

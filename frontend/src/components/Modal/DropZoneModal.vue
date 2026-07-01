@@ -61,7 +61,7 @@ const classes = computed(() => ({
 }))
 
 function isUploadAllowed(e: DragEvent): boolean {
-  if (route.meta.level === 2 || route.meta.level === 4) return false
+  if (route.meta.level === 2) return false
 
   const items = e.dataTransfer?.items
   if (!items) return false
@@ -103,8 +103,9 @@ function onDrop(e: DragEvent) {
   const shareId = shareStore.shareId ?? undefined
   const isSharedAlbum = typeof albumId === 'string' && typeof shareId === 'string'
 
-  const hashParam = route.params.hash
-  const isLevel3RouteWithHash = route.meta.level === 3 && typeof hashParam === 'string'
+  const albumHashParam = route.params.albumHash
+  const isAlbumContentRoute =
+    route.meta.baseName === 'album' && route.meta.level === 1 && typeof albumHashParam === 'string'
 
   // 4. Determine presignedAlbumId (guaranteed to be string | undefined)
   let presignedAlbumId: string | undefined
@@ -115,8 +116,8 @@ function onDrop(e: DragEvent) {
       return
     }
     presignedAlbumId = albumId
-  } else if (isLevel3RouteWithHash) {
-    presignedAlbumId = hashParam
+  } else if (isAlbumContentRoute) {
+    presignedAlbumId = albumHashParam
   }
 
   // 5. Perform upload (catch uses unknown to satisfy ESLint rule)

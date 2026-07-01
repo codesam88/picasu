@@ -1,9 +1,5 @@
 <template>
   <div class="h-100 d-flex align-center justify-center">
-    <router-view v-slot="{ Component }">
-      <component :is="Component" />
-    </router-view>
-
     <div class="card-pair">
       <v-card
         class="square album-cover-card rounded-0"
@@ -48,7 +44,7 @@
             color="teal-accent-4"
             variant="flat"
             class="button button-submit"
-            :to="route.meta.getChildPage(route, undefined)"
+            :to="{ name: 'album', params: { albumHash: props.album.id }, query: route.query }"
             @click="
               () => {
                 albumStore.leaveAlbumPath = route.fullPath

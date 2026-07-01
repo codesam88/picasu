@@ -47,6 +47,11 @@
           @click="modalStore.showShareModal = true"
         />
         <v-btn
+          v-if="route.meta.baseName === 'album'"
+          icon="mdi-image-plus"
+          @click="modalStore.showHomeTempModal = true"
+        />
+        <v-btn
           v-if="route.meta.level === 1"
           :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
           @click="themeIsLight = !themeIsLight"
@@ -69,6 +74,8 @@
         :album-id="route.params.hash"
         :mode="'create'"
       />
+
+      <GalleryTemp v-if="modalStore.showHomeTempModal && albumForTemp" :album="albumForTemp" />
     </template>
   </GalleryBarTemplate>
 </template>
@@ -84,8 +91,10 @@ import { useConstStore } from '@/store/constStore'
 import { useModalStore } from '@/store/modalStore'
 import EditBar from '@/components/NavBar/EditBar.vue'
 import CreateShareModal from '@/components/Modal/CreateShareModal.vue'
+import GalleryTemp from '@/components/Gallery/GalleryTemp.vue'
 import { useTheme } from 'vuetify'
 import GalleryBarTemplate from '@/components/NavBar/GalleryBars/GalleryBarTemplate.vue'
+import { GalleryAlbum } from '@type/types'
 
 const showDrawer = inject('showDrawer')
 
@@ -111,7 +120,7 @@ const searchQuery: Ref<LocationQueryValue | LocationQueryValue[] | undefined> = 
 const loading = ref(false)
 
 const baseTitleMap: Record<string, string> = {
-  home: 'Home',
+  timeline: 'Timeline',
   trashed: 'Trash',
   albums: 'Albums',
   album: 'Album',
@@ -129,6 +138,38 @@ const pageTitle = computed(() => {
     return info?.displayName ?? 'Album'
   }
   return baseTitleMap[baseName] ?? baseName
+})
+
+// Reconstructs a GalleryAlbum-shaped object from the lighter AlbumInfo store entry, so
+// GalleryTemp (which expects a full UnifiedData album) can be opened from the persistent
+// nav bar. albumHash identifies the current album at both level 1 and level 2.
+const albumForTemp = computed((): GalleryAlbum | undefined => {
+  if (route.meta.baseName !== 'album') return undefined
+  const albumHash = route.params.albumHash
+  if (typeof albumHash !== 'string') return undefined
+  const info = albumStore.albums.get(albumHash)
+  if (!info) return undefined
+  return {
+    type: 'album',
+    id: info.albumId,
+    title: info.albumName,
+    startTime: null,
+    endTime: null,
+    lastModifiedTime: 0,
+    cover: null,
+    thumbhash: null,
+    tags: [],
+    itemCount: 0,
+    itemSize: 0,
+    pending: false,
+    description: null,
+    isFavorite: false,
+    isArchived: false,
+    isTrashed: false,
+    rating: null,
+    updateAt: 0,
+    shareList: Object.fromEntries(info.shareList)
+  }
 })
 
 const handleSearch = async () => {

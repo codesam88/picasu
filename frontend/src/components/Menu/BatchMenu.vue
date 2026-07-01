@@ -63,7 +63,10 @@ const configStore = useConfigStore('mainId')
 const editModeList = computed(() => Array.from(collectionStore.editModeCollection))
 
 const shouldShowSetAsCover = computed(
-  () => route.meta.level === 3 && collectionStore.editModeCollection.size === 1
+  () =>
+    route.meta.baseName === 'album' &&
+    route.meta.level === 1 &&
+    collectionStore.editModeCollection.size === 1
 )
 
 const isInTrashedPath = computed(() => route.meta.baseName === 'trashed')

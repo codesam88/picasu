@@ -4,9 +4,7 @@ import { Component } from 'vue'
 import { RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 
-import ViewPageMain from '@/components/View/ViewPageMain.vue'
-import HomeIsolated from '@/components/Gallery/HomeIsolated.vue'
-import ViewPageIsolated from '@/components/View/ViewPageIsolated.vue'
+import ViewPage from '@/components/View/ViewPage.vue'
 
 type BaseName =
   | 'timeline'
@@ -59,7 +57,7 @@ export function createRoute(baseName: BaseName, component: Component): RouteReco
     children: [
       {
         path: 'view/:hash',
-        component: ViewPageMain,
+        component: ViewPage,
         name: `${baseName}ViewPage`,
         meta: {
           level: 2,
@@ -71,64 +69,16 @@ export function createRoute(baseName: BaseName, component: Component): RouteReco
               query: route.query
             }
           },
+          // No child page below level 2 (level 3/4 were eliminated). Identity fallback
+          // since RouteMeta.getChildPage is required by the type but has no real caller here.
           getChildPage: (route) => {
             return {
-              name: `${baseName}ReadPage`,
+              name: `${baseName}ViewPage`,
               params: { hash: route.params.hash, subhash: undefined },
               query: route.query
             }
           }
-        },
-        children: [
-          {
-            path: 'read',
-            component: HomeIsolated,
-            name: `${baseName}ReadPage`,
-            meta: {
-              level: 3,
-              baseName: baseName,
-              getParentPage: (route) => {
-                return {
-                  name: `${baseName}ViewPage`,
-                  params: { hash: route.params.hash, subhash: undefined },
-                  query: route.query
-                }
-              },
-              getChildPage: (route, subhash) => {
-                return {
-                  name: `${baseName}ReadViewPage`,
-                  params: { hash: route.params.hash, subhash: subhash },
-                  query: route.query
-                }
-              }
-            },
-            children: [
-              {
-                path: 'view/:subhash',
-                name: `${baseName}ReadViewPage`,
-                component: ViewPageIsolated,
-                meta: {
-                  level: 4,
-                  baseName: baseName,
-                  getParentPage: (route) => {
-                    return {
-                      name: `${baseName}ReadPage`,
-                      params: { hash: route.params.hash, subhash: undefined },
-                      query: route.query
-                    }
-                  },
-                  getChildPage: (route) => {
-                    return {
-                      name: `${baseName}ReadViewPage`,
-                      params: { hash: route.params.hash, subhash: route.params.subhash },
-                      query: route.query
-                    }
-                  }
-                }
-              }
-            ]
-          }
-        ]
+        }
       }
     ]
   }

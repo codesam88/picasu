@@ -128,13 +128,6 @@ function navigateToHash(targetHash: string) {
       params: updatedParams,
       query: route.query
     })
-  } else if (route.meta.level === 4) {
-    const updatedParams = { ...route.params, subhash: targetHash }
-    void router.replace({
-      name: route.name ?? undefined,
-      params: updatedParams,
-      query: route.query
-    })
   }
 }
 

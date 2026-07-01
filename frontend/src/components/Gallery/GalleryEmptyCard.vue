@@ -170,8 +170,7 @@ interface UIState {
 }
 
 const ui = computed<UIState>(() => {
-  const searchKey = props.isolationId === 'subId' ? 'subSearch' : 'search'
-  const raw = route.query[searchKey]
+  const raw = route.query.search
   const searchText = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.join(',') : ''
   const isSearching = searchText.trim() !== ''
 
@@ -186,7 +185,7 @@ const ui = computed<UIState>(() => {
     }
   }
 
-  if (route.meta.level === 3) {
+  if (route.meta.baseName === 'album' && route.meta.level === 1) {
     if (collectionStore.editModeOn) {
       return {
         isSearchEmpty: false,

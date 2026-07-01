@@ -29,13 +29,7 @@ export function usePrefetch(
         let locate: string | null = null
 
         // add locate to query string if user enter view page directly
-        if (
-          isolationId === 'subId' &&
-          route.meta.level === 4 &&
-          typeof route.params.subhash === 'string'
-        ) {
-          locate = route.params.subhash
-        } else if (isolationId === 'mainId' && typeof route.params.hash === 'string') {
+        if (isolationId === 'mainId' && typeof route.params.hash === 'string') {
           locate = route.params.hash
         } else if (typeof route.query.locate === 'string') {
           locate = route.query.locate

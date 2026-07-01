@@ -1,6 +1,6 @@
 <template>
   <v-app
-    :class="{ 'no-select': scrollbarStore.isDragging || scrollbarStoreInsideAlbum.isDragging }"
+    :class="{ 'no-select': scrollbarStore.isDragging }"
     @dragstart.prevent
     @dragover.prevent
     @drop.prevent
@@ -36,7 +36,6 @@ import { useModalStore } from '@/store/modalStore'
 
 const modalStore = useModalStore('mainId')
 const scrollbarStore = useScrollbarStore('mainId')
-const scrollbarStoreInsideAlbum = useScrollbarStore('subId')
 const rerenderStore = useRerenderStore('mainId')
 const messageStore = useMessageStore('mainId')
 const constStore = useConstStore('mainId')

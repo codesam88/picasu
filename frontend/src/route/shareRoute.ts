@@ -3,7 +3,7 @@
 import { RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 
-import ViewPageMain from '@/components/View/ViewPageMain.vue'
+import ViewPage from '@/components/View/ViewPage.vue'
 
 import GalleryShare from '@/components/Gallery/GalleryShare.vue'
 import { PageReturnType } from './pageReturnType'
@@ -34,7 +34,7 @@ export const shareRoute: RouteRecordRaw = {
   children: [
     {
       path: 'view/:hash',
-      component: ViewPageMain,
+      component: ViewPage,
       name: `shareViewPage`,
       meta: {
         level: 2,

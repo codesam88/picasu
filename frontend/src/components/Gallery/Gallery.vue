@@ -1,43 +1,43 @@
 <template>
   <div class="w-100 h-100 d-flex flex-column">
     <!-- This router-view contains ViewPage.vue. -->
-    <!--
-      albumHomeIsolatedKey triggers a ViewPage re-render when photos are added or removed
-      via HomeTempBar while browsing an album, ensuring the latest album data is displayed.
-    -->
-    <router-view :key="albumHomeIsolatedKey"></router-view>
+    <Transition v-if="route.meta.level >= 2" name="fade">
+      <router-view :key="galleryRerenderKey"></router-view>
+    </Transition>
 
-    <div class="w-100 flex-grow-0 flex-shrink-0">
-      <slot name="home-toolbar"></slot>
-    </div>
-
-    <div class="w-100 flex-grow-1 min-h-0 d-flex">
-      <div
-        id="image-container"
-        ref="imageContainerRef"
-        class="d-flex flex-wrap position-relative flex-grow-1 min-h-0 h-100 pa-1 pb-2 bg-surface-light"
-        :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
-        @scroll="
-          prefetchStore.locateTo === null && locationStore.pendingLocateTarget === null
-            ? throttledHandleScroll()
-            : () => {}
-        "
-      >
-        <Buffer
-          v-if="initializedStore.initialized && prefetchStore.dataLength > 0"
-          :buffer-height="bufferHeight"
-          :isolation-id="props.isolationId"
-        />
-        <GalleryEmptyCard
-          v-if="initializedStore.initialized && prefetchStore.dataLength === 0"
-          :isolation-id="props.isolationId"
-        />
+    <template v-else>
+      <div class="w-100 flex-grow-0 flex-shrink-0">
+        <slot name="home-toolbar"></slot>
       </div>
 
-      <div class="flex-grow-0 flex-shrink-0 bg-surface-light" style="overflow: visible">
-        <ScrollBar :isolation-id="props.isolationId" />
+      <div class="w-100 flex-grow-1 min-h-0 d-flex">
+        <div
+          id="image-container"
+          ref="imageContainerRef"
+          class="d-flex flex-wrap position-relative flex-grow-1 min-h-0 h-100 pa-1 pb-2 bg-surface-light"
+          :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
+          @scroll="
+            prefetchStore.locateTo === null && locationStore.pendingLocateTarget === null
+              ? throttledHandleScroll()
+              : () => {}
+          "
+        >
+          <Buffer
+            v-if="initializedStore.initialized && prefetchStore.dataLength > 0"
+            :buffer-height="bufferHeight"
+            :isolation-id="props.isolationId"
+          />
+          <GalleryEmptyCard
+            v-if="initializedStore.initialized && prefetchStore.dataLength === 0"
+            :isolation-id="props.isolationId"
+          />
+        </div>
+
+        <div class="flex-grow-0 flex-shrink-0 bg-surface-light" style="overflow: visible">
+          <ScrollBar :isolation-id="props.isolationId" />
+        </div>
       </div>
-    </div>
+    </template>
   </div>
 </template>
 
@@ -139,14 +139,10 @@ const bufferHeight = computed(() => {
   return 600000
 })
 
-const albumHomeIsolatedKey = computed(() => {
-  const hash = route.params.hash
-  if (typeof hash === 'string') {
-    const rerenderKey = rerenderStore.galleryKey.toString()
-    return rerenderKey
-  } else {
-    return 'undefineBehavior'
-  }
+// Triggers a ViewPage re-render when photos are added to the album while
+// browsing it via GalleryTempBar, so the freshly added photo is reflected.
+const galleryRerenderKey = computed(() => {
+  return rerenderStore.galleryKey.toString()
 })
 
 // Remove the locate query param after the two-step jump fully completes,
@@ -223,5 +219,15 @@ onBeforeUnmount(() => {
 
 img {
   transition: border 0.1s linear;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
