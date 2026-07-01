@@ -153,6 +153,11 @@ pub struct SetAlbumTitle {
 }
 
 /// Updates the display title of a specific album.
+///
+/// Sets both the raw display `title` and `custom_title` (the value actually
+/// persisted to `.albuminfo.xmp` by `write_sidecar_for`). Clearing the title
+/// (`title: None`) falls back `title` to the directory-derived default for
+/// dir-albums, so the sidecar-freezing bug can't reappear via this path.
 #[utoipa::path(
         put,
         path = "/put/set_album_title",
@@ -177,56 +182,17 @@ pub async fn set_album_title(
 
     tokio::task::spawn_blocking(move || {
         update_album(album_id, |album| {
-            album.metadata.title = set_album_title_inner.title;
-        })
-    })
-    .await
-    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-
-    BATCH_COORDINATOR
-        .execute_batch_waiting(UpdateTreeTask)
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
-
-    Ok(())
-}
-
-/// Payload for setting an album's custom date override.
-#[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-#[derive(utoipa::ToSchema)]
-pub struct SetAlbumDate {
-    #[schema(value_type = String)]
-    pub album_id: ArrayString<64>,
-    pub custom_date: Option<String>,
-}
-
-/// Updates the custom date override of a specific album.
-#[utoipa::path(
-        put,
-        path = "/put/set_album_date",
-        request_body = SetAlbumDate,
-        responses(
-            (status = 200, description = "Album date updated"),
-            (status = 400, description = "Invalid input"),
-        )
-    )
-]
-#[put("/put/set_album_date", data = "<set_album_date>")]
-pub async fn set_album_date(
-    auth: GuardResult<GuardShare>,
-    read_only_mode: GuardResult<GuardReadOnlyMode>,
-    set_album_date: Json<SetAlbumDate>,
-) -> AppResult<()> {
-    let _ = auth?;
-    let _ = read_only_mode?;
-
-    let set_album_date_inner = set_album_date.into_inner();
-    let album_id = set_album_date_inner.album_id;
-
-    tokio::task::spawn_blocking(move || {
-        update_album(album_id, |album| {
-            album.metadata.custom_date = set_album_date_inner.custom_date;
+            album
+                .metadata
+                .custom_title
+                .clone_from(&set_album_title_inner.title);
+            album.metadata.title = set_album_title_inner.title.or_else(|| {
+                album
+                    .metadata
+                    .dir_path
+                    .as_deref()
+                    .map(crate::process::dir_album::derive_default_title)
+            });
         })
     })
     .await

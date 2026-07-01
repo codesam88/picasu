@@ -1,0 +1,22 @@
+name: editing a dir-album's rating does not freeze its auto-derived title
+# Regression test: write_sidecar_for must only persist the album title when
+# it was explicitly customized (custom_title). Editing an unrelated field
+# (rating here) must not bake the directory-name-derived default title into
+# .albuminfo.xmp — doing so would freeze the display name and stop it from
+# following a later directory rename.
+given:
+  - dir_album: /e2e_zz6/vacation_2024
+    id_as: $album_id
+
+when:
+  - call: POST /get/prefetch?locate=${album_id}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  - call: PUT /put/edit_rating
+    raw_body: '{"indexArray":[${idx}],"timestamp":${ts},"rating":4}'
+then:
+  - response.status: 200
+  - file_exists: /e2e_zz6/vacation_2024/.albuminfo.xmp
+  - file.not_contains: /e2e_zz6/vacation_2024/.albuminfo.xmp
+    text: dc:title

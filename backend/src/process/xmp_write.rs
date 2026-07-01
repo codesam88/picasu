@@ -8,7 +8,11 @@ use std::path::Path;
 /// Write (create or overwrite) the XMP sidecar for `abstract_data` with its
 /// current managed metadata fields:
 /// - `dc:subject` (tags), `dc:description`, `xmp:Rating` for all types
-/// - `dc:title`, `dc:date` additionally for albums
+/// - `dc:title` additionally for albums, but only when explicitly
+///   user-set (`metadata.custom_title`) — the directory-name-derived
+///   default in `metadata.title` must never be baked into the sidecar, or
+///   it would freeze and survive a later directory rename instead of being
+///   re-derived from the new name.
 ///
 /// Images/videos write `{basename}.{ext}.xmp` alongside their primary alias
 /// file. Directory-backed albums write `.albuminfo.xmp` inside `dir_path`.
@@ -28,8 +32,7 @@ pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
             abstract_data.tag(),
             abstract_data.description(),
             abstract_data.rating(),
-            album.metadata.title.as_deref(),
-            album.metadata.custom_date.as_deref(),
+            album.metadata.custom_title.as_deref(),
         );
         return write_sidecar_content(&sidecar, &content);
     }
@@ -44,7 +47,6 @@ pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
         abstract_data.tag(),
         abstract_data.description(),
         abstract_data.rating(),
-        None,
         None,
     );
     write_sidecar_content(&sidecar, &content)
@@ -69,7 +71,6 @@ fn format_xmp_packet(
     description: Option<&str>,
     rating: Option<u8>,
     title: Option<&str>,
-    date: Option<&str>,
 ) -> String {
     let mut out = String::with_capacity(512);
     out.push_str("<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n");
@@ -101,12 +102,6 @@ fn format_xmp_packet(
         out.push_str("<dc:description><rdf:Alt><rdf:li xml:lang=\"x-default\">");
         xml_escape_into(&mut out, desc);
         out.push_str("</rdf:li></rdf:Alt></dc:description>\n");
-    }
-
-    if let Some(d) = date.filter(|d| !d.is_empty()) {
-        out.push_str("<dc:date>");
-        xml_escape_into(&mut out, d);
-        out.push_str("</dc:date>\n");
     }
 
     if let Some(r) = rating {
@@ -145,7 +140,7 @@ mod tests {
         let mut tags = HashSet::new();
         tags.insert("cat".to_owned());
         tags.insert("dog".to_owned());
-        let pkt = format_xmp_packet(&tags, Some("nice photo"), Some(3), None, None);
+        let pkt = format_xmp_packet(&tags, Some("nice photo"), Some(3), None);
         assert!(pkt.contains("<rdf:li>cat</rdf:li>"));
         assert!(pkt.contains("<rdf:li>dog</rdf:li>"));
         assert!(pkt.contains("nice photo"));
@@ -154,35 +149,27 @@ mod tests {
 
     #[test]
     fn packet_omits_empty_fields() {
-        let pkt = format_xmp_packet(&HashSet::new(), None, None, None, None);
+        let pkt = format_xmp_packet(&HashSet::new(), None, None, None);
         assert!(!pkt.contains("dc:subject"));
         assert!(!pkt.contains("dc:description"));
         assert!(!pkt.contains("xmp:Rating"));
         assert!(!pkt.contains("dc:title"));
-        assert!(!pkt.contains("dc:date"));
     }
 
     #[test]
     fn xml_special_chars_are_escaped() {
         let mut tags = HashSet::new();
         tags.insert("a&b".to_owned());
-        let pkt = format_xmp_packet(&tags, Some("desc <with> \"quotes\""), None, None, None);
+        let pkt = format_xmp_packet(&tags, Some("desc <with> \"quotes\""), None, None);
         assert!(pkt.contains("&amp;"));
         assert!(pkt.contains("&lt;"));
         assert!(pkt.contains("&quot;"));
     }
 
     #[test]
-    fn packet_contains_title_and_date() {
-        let pkt = format_xmp_packet(
-            &HashSet::new(),
-            None,
-            None,
-            Some("My Album"),
-            Some("2024-06-01"),
-        );
+    fn packet_contains_title() {
+        let pkt = format_xmp_packet(&HashSet::new(), None, None, Some("My Album"));
         assert!(pkt.contains("<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">My Album"));
-        assert!(pkt.contains("<dc:date>2024-06-01</dc:date>"));
     }
 
     mod album_sidecar {
@@ -191,7 +178,7 @@ mod tests {
         use crate::model::object::{ObjectSchema, ObjectType};
         use arrayvec::ArrayString;
 
-        fn make_dir_album(dir_path: Option<String>) -> AbstractData {
+        fn make_dir_album(dir_path: Option<String>, custom_title: Option<String>) -> AbstractData {
             let id = ArrayString::from("alb").expect("failed to create test ArrayString");
             let mut object = ObjectSchema::new(id, ObjectType::Album);
             object.description = Some("A lovely trip".to_string());
@@ -201,6 +188,9 @@ mod tests {
                 object,
                 metadata: AlbumMetadata {
                     id,
+                    // The auto-derived display title. Populated regardless of
+                    // whether the user ever customized it — write_sidecar_for
+                    // must key off `custom_title`, not this field.
                     title: Some("Vacation 2024".to_string()),
                     created_time: 0,
                     start_time: None,
@@ -211,7 +201,7 @@ mod tests {
                     item_size: 0,
                     share_list: Default::default(),
                     dir_path,
-                    custom_date: Some("2024-06-01".to_string()),
+                    custom_title,
                 },
             })
         }
@@ -219,7 +209,10 @@ mod tests {
         #[test]
         fn writes_albuminfo_xmp_for_dir_album() {
             let dir = tempfile::tempdir().expect("failed to create temp dir");
-            let album = make_dir_album(Some(dir.path().to_string_lossy().into_owned()));
+            let album = make_dir_album(
+                Some(dir.path().to_string_lossy().into_owned()),
+                Some("Vacation 2024".to_string()),
+            );
 
             write_sidecar_for(&album).expect("failed to write album sidecar");
 
@@ -229,12 +222,28 @@ mod tests {
             assert!(content.contains("A lovely trip"));
             assert!(content.contains("<rdf:li>vacation</rdf:li>"));
             assert!(content.contains("<xmp:Rating>4</xmp:Rating>"));
-            assert!(content.contains("<dc:date>2024-06-01</dc:date>"));
+        }
+
+        /// Regression test: editing a field other than title (rating/tags/
+        /// description here) must not freeze the auto-derived display title
+        /// into the sidecar, or a later directory rename would no longer be
+        /// picked up.
+        #[test]
+        fn does_not_write_title_when_not_explicitly_customized() {
+            let dir = tempfile::tempdir().expect("failed to create temp dir");
+            let album = make_dir_album(Some(dir.path().to_string_lossy().into_owned()), None);
+
+            write_sidecar_for(&album).expect("failed to write album sidecar");
+
+            let sidecar_path = dir.path().join(".albuminfo.xmp");
+            let content = std::fs::read_to_string(&sidecar_path).expect("sidecar not written");
+            assert!(!content.contains("dc:title"));
+            assert!(!content.contains("Vacation 2024"));
         }
 
         #[test]
         fn manual_album_without_dir_path_is_noop() {
-            let album = make_dir_album(None);
+            let album = make_dir_album(None, None);
             write_sidecar_for(&album).expect("manual album should not error");
         }
     }

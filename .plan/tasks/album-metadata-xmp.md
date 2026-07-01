@@ -103,3 +103,21 @@ convention used everywhere else in the app.
     Playwright including the new album-info-modal.yaml scenario, which
     exercises the full round trip: edit all four fields, verify sidecar
     content on disk, confirm persistence after modal reopen).
+- 2026-07-01: Code review found `write_sidecar_for`'s Album branch always
+  wrote `metadata.title` (auto-derived-or-custom, indistinguishable) into
+  `.albuminfo.xmp` on _any_ field edit, freezing the auto-derived default
+  the first time a user edited rating/tags/description without ever
+  touching the title — defeating the "survives directory rename" goal.
+  Fixed by adding `AlbumMetadata.custom_title: Option<String>` (raw,
+  explicitly-user-set value only) alongside the existing `title` (resolved
+  display value); `write_sidecar_for` now serializes `custom_title`, not
+  `title`. Schema version bumped 4->5. Also, per user direction, description/
+  date/tags were dropped from the "Album Info" modal (description/tags were
+  already editable elsewhere for albums via the per-item metadata panel and
+  EditTagsModal; the custom date override had no display consumer anywhere)
+  — the modal and `PUT /put/set_album_title` are now the only surface for
+  this feature, so the Promise.all-race workaround noted above is now moot
+  (a single field, no ordering to get wrong). `PUT /put/set_album_date` and
+  `custom_date` removed entirely. `just check` and `just test` pass (121
+  backend — 4 new regression tests, including an e2e scenario asserting a
+  rating-only edit does not write `dc:title` — 35 vitest, 17 Playwright).

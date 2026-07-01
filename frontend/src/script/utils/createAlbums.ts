@@ -2,6 +2,7 @@ import axios from 'axios'
 import { useAlbumStore } from '@/store/albumStore'
 import { GalleryAlbum } from '@type/types'
 import { useDataStore } from '@/store/dataStore'
+import { tryWithMessageStore } from '@utils/try_catch'
 
 export async function editTitle(album: GalleryAlbum, titleModelValue: string) {
   const albumStore = useAlbumStore('mainId')
@@ -10,46 +11,26 @@ export async function editTitle(album: GalleryAlbum, titleModelValue: string) {
   if ((album.title ?? '') !== titleModelValue) {
     const id = album.id
     const title = titleModelValue === '' ? null : titleModelValue
-    await axios.put('/put/set_album_title', {
-      albumId: id,
-      title: title
-    })
-    const albumInfo = albumStore.albums.get(id)
 
-    const index = dataStore.hashMapData.get(album.id)
-    if (index !== undefined) {
-      const data = dataStore.data.get(index)
+    await tryWithMessageStore('mainId', async () => {
+      await axios.put('/put/set_album_title', {
+        albumId: id,
+        title: title
+      })
+      const albumInfo = albumStore.albums.get(id)
 
-      if (albumInfo && data?.type === 'album') {
-        albumInfo.albumName = title
-        albumInfo.displayName = albumInfo.albumName ?? 'Untitled'
-        data.title = title
-      } else {
-        console.error(`Cannot find album with id ${id}`)
+      const index = dataStore.hashMapData.get(album.id)
+      if (index !== undefined) {
+        const data = dataStore.data.get(index)
+
+        if (albumInfo && data?.type === 'album') {
+          albumInfo.albumName = title
+          albumInfo.displayName = albumInfo.albumName ?? 'Untitled'
+          data.title = title
+        } else {
+          console.error(`Cannot find album with id ${id}`)
+        }
       }
-    }
-  }
-}
-
-export async function editCustomDate(album: GalleryAlbum, customDateModelValue: string) {
-  const dataStore = useDataStore('mainId')
-
-  if ((album.customDate ?? '') !== customDateModelValue) {
-    const id = album.id
-    const customDate = customDateModelValue === '' ? null : customDateModelValue
-    await axios.put('/put/set_album_date', {
-      albumId: id,
-      customDate: customDate
     })
-
-    const index = dataStore.hashMapData.get(album.id)
-    if (index !== undefined) {
-      const data = dataStore.data.get(index)
-      if (data?.type === 'album') {
-        data.customDate = customDate
-      } else {
-        console.error(`Cannot find album with id ${id}`)
-      }
-    }
   }
 }

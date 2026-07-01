@@ -30,7 +30,7 @@ use std::collections::HashMap;
 //   2. Copy the current structs to AbstractDataVN / AlbumCombinedVN / etc.
 //   3. Add a match arm for the old version in from_bytes.
 
-const SCHEMA_VERSION: u8 = 4;
+const SCHEMA_VERSION: u8 = 5;
 
 // ── v2 schema types (ImageMetadata/VideoMetadata with albums: HashSet) ────────
 
@@ -165,7 +165,7 @@ impl From<AlbumCombinedV3> for AlbumCombined {
                 item_size: v3.metadata.item_size,
                 share_list: v3.metadata.share_list,
                 dir_path: v3.metadata.dir_path,
-                custom_date: None,
+                custom_title: None,
             },
         }
     }
@@ -185,6 +185,79 @@ impl From<AbstractDataV3> for AbstractData {
             AbstractDataV3::Image(img) => AbstractData::Image(img),
             AbstractDataV3::Video(vid) => AbstractData::Video(vid),
             AbstractDataV3::Album(alb) => AbstractData::Album(AlbumCombined::from(alb)),
+        }
+    }
+}
+
+// ── v4 schema types (AlbumMetadata with custom_date, without custom_title) ───
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+struct AlbumMetadataV4 {
+    id: ArrayString<64>,
+    title: Option<String>,
+    created_time: i64,
+    start_time: Option<i64>,
+    end_time: Option<i64>,
+    last_modified_time: i64,
+    cover: Option<ArrayString<64>>,
+    item_count: usize,
+    item_size: u64,
+    share_list: HashMap<ArrayString<64>, Share>,
+    dir_path: Option<String>,
+    custom_date: Option<String>,
+}
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+struct AlbumCombinedV4 {
+    object: ObjectSchema,
+    metadata: AlbumMetadataV4,
+}
+
+impl From<AlbumCombinedV4> for AlbumCombined {
+    fn from(v4: AlbumCombinedV4) -> Self {
+        AlbumCombined {
+            object: v4.object,
+            metadata: AlbumMetadata {
+                id: v4.metadata.id,
+                // v4 couldn't tell apart an explicitly-set title from the
+                // path-derived default, so a pre-existing v4 record's title
+                // is conservatively treated as customized (preserving
+                // whatever is currently displayed) rather than risk
+                // silently reverting a real custom title to the directory
+                // name. `custom_date` had no display consumer and is
+                // dropped without replacement.
+                custom_title: v4.metadata.title.clone(),
+                title: v4.metadata.title,
+                created_time: v4.metadata.created_time,
+                start_time: v4.metadata.start_time,
+                end_time: v4.metadata.end_time,
+                last_modified_time: v4.metadata.last_modified_time,
+                cover: v4.metadata.cover,
+                item_count: v4.metadata.item_count,
+                item_size: v4.metadata.item_size,
+                share_list: v4.metadata.share_list,
+                dir_path: v4.metadata.dir_path,
+            },
+        }
+    }
+}
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+enum AbstractDataV4 {
+    Image(crate::model::image::ImageCombined),
+    Video(crate::model::video::VideoCombined),
+    Album(AlbumCombinedV4),
+}
+
+impl From<AbstractDataV4> for AbstractData {
+    fn from(v4: AbstractDataV4) -> Self {
+        match v4 {
+            AbstractDataV4::Image(img) => AbstractData::Image(img),
+            AbstractDataV4::Video(vid) => AbstractData::Video(vid),
+            AbstractDataV4::Album(alb) => AbstractData::Album(AlbumCombined::from(alb)),
         }
     }
 }
@@ -240,7 +313,7 @@ impl From<AbstractDataV1> for AbstractData {
                     item_size: alb.metadata.item_size,
                     share_list: alb.metadata.share_list,
                     dir_path: None,
-                    custom_date: None,
+                    custom_title: None,
                 },
             }),
         }
@@ -281,8 +354,12 @@ impl Value for AbstractData {
                     bitcode::decode::<AbstractDataV3>(payload)
                         .expect("Failed to decode AbstractData v3"),
                 ),
-                4 => bitcode::decode::<AbstractData>(payload)
-                    .expect("Failed to decode AbstractData v4"),
+                4 => AbstractData::from(
+                    bitcode::decode::<AbstractDataV4>(payload)
+                        .expect("Failed to decode AbstractData v4"),
+                ),
+                5 => bitcode::decode::<AbstractData>(payload)
+                    .expect("Failed to decode AbstractData v5"),
                 v => panic!("Unknown AbstractData schema version {v}"),
             }
         } else {
@@ -440,10 +517,10 @@ mod tests {
     }
 
     #[test]
-    fn v4_bytes_have_correct_prefix() {
+    fn v5_bytes_have_correct_prefix() {
         let bytes = AbstractData::as_bytes(&make_image_v3());
         assert_eq!(bytes[0], 0xFF, "magic marker must be 0xFF");
-        assert_eq!(bytes[1], 4, "version byte must match SCHEMA_VERSION");
+        assert_eq!(bytes[1], 5, "version byte must match SCHEMA_VERSION");
     }
 
     fn make_album_v3_bytes() -> Vec<u8> {
@@ -470,16 +547,57 @@ mod tests {
     }
 
     #[test]
-    fn v3_album_migrates_custom_date_to_none() {
+    fn v3_album_migrates_to_no_custom_title() {
         let bytes = make_album_v3_bytes();
         let decoded = AbstractData::from_bytes(&bytes);
         match decoded {
             AbstractData::Album(alb) => {
                 assert_eq!(alb.metadata.title, Some("Reunion".to_string()));
                 assert_eq!(alb.metadata.dir_path, Some("/photos/reunion".to_string()));
-                assert_eq!(alb.metadata.custom_date, None);
+                assert_eq!(alb.metadata.custom_title, None);
             }
             _ => panic!("expected Album variant after v3 migration"),
+        }
+    }
+
+    fn make_album_v4_bytes() -> Vec<u8> {
+        let id = ArrayString::from("alb4").expect("failed to create test ArrayString");
+        let v4 = AbstractDataV4::Album(AlbumCombinedV4 {
+            object: ObjectSchema::new(id, ObjectType::Album),
+            metadata: AlbumMetadataV4 {
+                id,
+                title: Some("Reunion 2".to_string()),
+                created_time: 2000,
+                start_time: Some(1000),
+                end_time: Some(3000),
+                last_modified_time: 2500,
+                cover: None,
+                item_count: 5,
+                item_size: 12000,
+                share_list: HashMap::new(),
+                dir_path: Some("/photos/reunion2".to_string()),
+                custom_date: Some("2024-06-01".to_string()),
+            },
+        });
+        let mut bytes = vec![0xFF, 4u8];
+        bytes.extend(bitcode::encode(&v4));
+        bytes
+    }
+
+    #[test]
+    fn v4_album_migrates_title_to_custom_title_and_drops_custom_date() {
+        let bytes = make_album_v4_bytes();
+        let decoded = AbstractData::from_bytes(&bytes);
+        match decoded {
+            AbstractData::Album(alb) => {
+                assert_eq!(alb.metadata.title, Some("Reunion 2".to_string()));
+                // A pre-existing v4 title is conservatively treated as
+                // customized, since v4 had no way to tell a user-set title
+                // apart from the path-derived default.
+                assert_eq!(alb.metadata.custom_title, Some("Reunion 2".to_string()));
+                assert_eq!(alb.metadata.dir_path, Some("/photos/reunion2".to_string()));
+            }
+            _ => panic!("expected Album variant after v4 migration"),
         }
     }
 
@@ -525,7 +643,7 @@ mod tests {
                 assert_eq!(alb.metadata.title, Some("Holiday".to_string()));
                 assert_eq!(alb.metadata.item_count, 3);
                 assert_eq!(alb.metadata.dir_path, None);
-                assert_eq!(alb.metadata.custom_date, None);
+                assert_eq!(alb.metadata.custom_title, None);
             }
             _ => panic!("expected Album variant after v1 migration"),
         }
@@ -715,7 +833,7 @@ mod integration_tests {
                 assert_eq!(alb.metadata.title, Some("Holiday".to_string()));
                 assert_eq!(alb.metadata.item_count, 3);
                 assert_eq!(alb.metadata.dir_path, None);
-                assert_eq!(alb.metadata.custom_date, None);
+                assert_eq!(alb.metadata.custom_title, None);
             }
             _ => panic!("expected Album variant after v1 migration through redb"),
         }

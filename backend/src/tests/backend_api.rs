@@ -243,6 +243,17 @@ fn check_file_and_serve_assertions(
                 content.contains(text),
                 "file.contains: {trimmed} does not contain {text:?}.\nFile content:\n{content}"
             );
+        } else if let Some(file_path) = item["file.not_contains"].as_str() {
+            let trimmed = file_path.trim_start_matches('/');
+            let text = item["text"]
+                .as_str()
+                .unwrap_or_else(|| panic!("file.not_contains: missing 'text' field"));
+            let content = std::fs::read_to_string(data.join(trimmed))
+                .unwrap_or_else(|e| panic!("file.not_contains: failed to read {trimmed}: {e}"));
+            assert!(
+                !content.contains(text),
+                "file.not_contains: {trimmed} unexpectedly contains {text:?}.\nFile content:\n{content}"
+            );
         }
     }
 }

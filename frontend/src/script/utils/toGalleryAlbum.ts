@@ -7,9 +7,9 @@ import { AlbumInfo, GalleryAlbum } from '@type/types'
  * album object for the album currently being browsed).
  *
  * Fields with no AlbumInfo equivalent (startTime/endTime/lastModifiedTime/
- * cover/tags/itemCount/itemSize/description/rating/customDate) are not
- * derivable here and default to empty/zero — callers needing those should
- * read from dataStore instead.
+ * cover/tags/itemCount/itemSize/description/rating) are not derivable here
+ * and default to empty/zero — callers needing those should read from
+ * dataStore instead.
  */
 export function toGalleryAlbum(info: AlbumInfo): GalleryAlbum {
   return {
@@ -31,7 +31,6 @@ export function toGalleryAlbum(info: AlbumInfo): GalleryAlbum {
     isTrashed: false,
     rating: null,
     updateAt: 0,
-    shareList: Object.fromEntries(info.shareList),
-    customDate: null
+    shareList: Object.fromEntries(info.shareList)
   }
 }

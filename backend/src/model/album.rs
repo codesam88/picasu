@@ -251,10 +251,13 @@ pub struct AlbumMetadata {
     /// When present, album membership is derived from source file paths rather than
     /// the `albums` set on each media item — the two album types are fully independent.
     pub dir_path: Option<String>,
-    /// User-set override for the album's displayed date, distinct from the
-    /// auto-computed `start_time`/`end_time` range. Free-form text (e.g. ISO 8601),
-    /// not parsed or validated by the backend.
-    pub custom_date: Option<String>,
+    /// The user-set title override, as explicitly written via `PUT
+    /// /put/set_album_title` (or hydrated from a pre-existing `.albuminfo.xmp`
+    /// sidecar). `None` when the album has never been explicitly titled — in
+    /// that case `title` holds a directory-name-derived default that must
+    /// NOT be written back to the sidecar, or it would freeze and survive a
+    /// later directory rename instead of being re-derived from the new name.
+    pub custom_title: Option<String>,
 }
 
 #[derive(

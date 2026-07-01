@@ -86,6 +86,17 @@ pub fn prettify_dir_name(name: &str) -> String {
         .join(" ")
 }
 
+/// Derive the default display title for a dir-album from its directory path
+/// (basename, prettified). Used both at creation and whenever a custom title
+/// is cleared back to the path-derived default.
+pub fn derive_default_title(dir_path: &str) -> String {
+    let name = Path::new(dir_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("Album");
+    prettify_dir_name(name)
+}
+
 /// Mark `album_id` as needing a statistics self-update.
 pub fn mark_album_for_update(album_id: ArrayString<64>) {
     PENDING_ALBUM_UPDATES
@@ -195,15 +206,18 @@ fn read_albuminfo(dir_path: &Path) -> crate::process::xmp::XmpData {
 
 fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
     let album_id = generate_random_hash();
-    let dir_name = dir_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("Album");
-    let default_title = prettify_dir_name(dir_name);
     let dir_path_str = dir_path.to_string_lossy().into_owned();
+    let default_title = derive_default_title(&dir_path_str);
 
     let albuminfo = read_albuminfo(dir_path);
-    let title = albuminfo.title.clone().unwrap_or(default_title);
+    // `custom_title` reflects only what was actually persisted to the sidecar
+    // (i.e. explicitly set via the frontend/API at some point) — `title` is
+    // the resolved display value, falling back to the directory name when
+    // there is no custom title. Only `custom_title` may ever be written back
+    // to the sidecar (see `write_sidecar_for`); baking the resolved default
+    // into it would freeze the title across later directory renames.
+    let custom_title = albuminfo.title.clone();
+    let title = custom_title.clone().unwrap_or(default_title);
 
     let now = Utc::now().timestamp_millis();
     let object = ObjectSchema {
@@ -231,7 +245,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         item_size: 0,
         share_list: std::collections::HashMap::new(),
         dir_path: Some(dir_path_str),
-        custom_date: albuminfo.date,
+        custom_title,
     };
     let abstract_data = AbstractData::Album(AlbumCombined { object, metadata });
 
@@ -303,11 +317,10 @@ mod tests {
             assert_eq!(data.description, None);
             assert!(data.tags.is_empty());
             assert_eq!(data.rating, None);
-            assert_eq!(data.date, None);
         }
 
         #[test]
-        fn reads_title_description_tags_rating_date_from_albuminfo() {
+        fn reads_title_description_tags_rating_from_albuminfo() {
             let dir = tempfile::tempdir().expect("failed to create temp dir");
             let xmp = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
@@ -316,7 +329,6 @@ mod tests {
 <dc:description><rdf:Alt><rdf:li xml:lang="x-default">A trip</rdf:li></rdf:Alt></dc:description>
 <dc:subject><rdf:Bag><rdf:li>hiking</rdf:li></rdf:Bag></dc:subject>
 <xmp:Rating>5</xmp:Rating>
-<dc:date>2023-08-15</dc:date>
 </rdf:Description>
 </rdf:RDF>
 </x:xmpmeta>"#;
@@ -328,7 +340,6 @@ mod tests {
             assert_eq!(data.description.as_deref(), Some("A trip"));
             assert_eq!(data.tags, HashSet::from(["hiking".to_string()]));
             assert_eq!(data.rating, Some(5));
-            assert_eq!(data.date.as_deref(), Some("2023-08-15"));
         }
     }
 }
