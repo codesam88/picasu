@@ -30,7 +30,7 @@ use std::collections::HashMap;
 //   2. Copy the current structs to AbstractDataVN / AlbumCombinedVN / etc.
 //   3. Add a match arm for the old version in from_bytes.
 
-const SCHEMA_VERSION: u8 = 3;
+const SCHEMA_VERSION: u8 = 4;
 
 // ── v2 schema types (ImageMetadata/VideoMetadata with albums: HashSet) ────────
 
@@ -81,7 +81,7 @@ struct VideoCombinedV2 {
 enum AbstractDataV2 {
     Image(ImageCombinedV2),
     Video(VideoCombinedV2),
-    Album(AlbumCombined),
+    Album(AlbumCombinedV3),
 }
 
 impl From<AbstractDataV2> for AbstractData {
@@ -119,7 +119,72 @@ impl From<AbstractDataV2> for AbstractData {
                     alias: vid.metadata.alias,
                 },
             }),
-            AbstractDataV2::Album(alb) => AbstractData::Album(alb),
+            AbstractDataV2::Album(alb) => AbstractData::Album(AlbumCombined::from(alb)),
+        }
+    }
+}
+
+// ── v3 schema types (AlbumMetadata without custom_date) ───────────────────────
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+struct AlbumMetadataV3 {
+    id: ArrayString<64>,
+    title: Option<String>,
+    created_time: i64,
+    start_time: Option<i64>,
+    end_time: Option<i64>,
+    last_modified_time: i64,
+    cover: Option<ArrayString<64>>,
+    item_count: usize,
+    item_size: u64,
+    share_list: HashMap<ArrayString<64>, Share>,
+    dir_path: Option<String>,
+}
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+struct AlbumCombinedV3 {
+    object: ObjectSchema,
+    metadata: AlbumMetadataV3,
+}
+
+impl From<AlbumCombinedV3> for AlbumCombined {
+    fn from(v3: AlbumCombinedV3) -> Self {
+        AlbumCombined {
+            object: v3.object,
+            metadata: AlbumMetadata {
+                id: v3.metadata.id,
+                title: v3.metadata.title,
+                created_time: v3.metadata.created_time,
+                start_time: v3.metadata.start_time,
+                end_time: v3.metadata.end_time,
+                last_modified_time: v3.metadata.last_modified_time,
+                cover: v3.metadata.cover,
+                item_count: v3.metadata.item_count,
+                item_size: v3.metadata.item_size,
+                share_list: v3.metadata.share_list,
+                dir_path: v3.metadata.dir_path,
+                custom_date: None,
+            },
+        }
+    }
+}
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+enum AbstractDataV3 {
+    Image(crate::model::image::ImageCombined),
+    Video(crate::model::video::VideoCombined),
+    Album(AlbumCombinedV3),
+}
+
+impl From<AbstractDataV3> for AbstractData {
+    fn from(v3: AbstractDataV3) -> Self {
+        match v3 {
+            AbstractDataV3::Image(img) => AbstractData::Image(img),
+            AbstractDataV3::Video(vid) => AbstractData::Video(vid),
+            AbstractDataV3::Album(alb) => AbstractData::Album(AlbumCombined::from(alb)),
         }
     }
 }
@@ -175,6 +240,7 @@ impl From<AbstractDataV1> for AbstractData {
                     item_size: alb.metadata.item_size,
                     share_list: alb.metadata.share_list,
                     dir_path: None,
+                    custom_date: None,
                 },
             }),
         }
@@ -211,8 +277,12 @@ impl Value for AbstractData {
                     bitcode::decode::<AbstractDataV2>(payload)
                         .expect("Failed to decode AbstractData v2"),
                 ),
-                3 => bitcode::decode::<AbstractData>(payload)
-                    .expect("Failed to decode AbstractData v3"),
+                3 => AbstractData::from(
+                    bitcode::decode::<AbstractDataV3>(payload)
+                        .expect("Failed to decode AbstractData v3"),
+                ),
+                4 => bitcode::decode::<AbstractData>(payload)
+                    .expect("Failed to decode AbstractData v4"),
                 v => panic!("Unknown AbstractData schema version {v}"),
             }
         } else {
@@ -370,10 +440,64 @@ mod tests {
     }
 
     #[test]
-    fn v3_bytes_have_correct_prefix() {
+    fn v4_bytes_have_correct_prefix() {
         let bytes = AbstractData::as_bytes(&make_image_v3());
         assert_eq!(bytes[0], 0xFF, "magic marker must be 0xFF");
-        assert_eq!(bytes[1], 3, "version byte must match SCHEMA_VERSION");
+        assert_eq!(bytes[1], 4, "version byte must match SCHEMA_VERSION");
+    }
+
+    fn make_album_v3_bytes() -> Vec<u8> {
+        let id = ArrayString::from("alb3").expect("failed to create test ArrayString");
+        let v3 = AbstractDataV3::Album(AlbumCombinedV3 {
+            object: ObjectSchema::new(id, ObjectType::Album),
+            metadata: AlbumMetadataV3 {
+                id,
+                title: Some("Reunion".to_string()),
+                created_time: 2000,
+                start_time: Some(1000),
+                end_time: Some(3000),
+                last_modified_time: 2500,
+                cover: None,
+                item_count: 5,
+                item_size: 12000,
+                share_list: HashMap::new(),
+                dir_path: Some("/photos/reunion".to_string()),
+            },
+        });
+        let mut bytes = vec![0xFF, 3u8];
+        bytes.extend(bitcode::encode(&v3));
+        bytes
+    }
+
+    #[test]
+    fn v3_album_migrates_custom_date_to_none() {
+        let bytes = make_album_v3_bytes();
+        let decoded = AbstractData::from_bytes(&bytes);
+        match decoded {
+            AbstractData::Album(alb) => {
+                assert_eq!(alb.metadata.title, Some("Reunion".to_string()));
+                assert_eq!(alb.metadata.dir_path, Some("/photos/reunion".to_string()));
+                assert_eq!(alb.metadata.custom_date, None);
+            }
+            _ => panic!("expected Album variant after v3 migration"),
+        }
+    }
+
+    #[test]
+    fn v3_image_round_trips_unchanged() {
+        let id = ArrayString::from("img3").expect("failed to create test ArrayString");
+        let v3 = AbstractDataV3::Image(ImageCombined {
+            object: ObjectSchema::new(id, ObjectType::Image),
+            metadata: ImageMetadata::new(id, 2048, 1920, 1080, "webp".to_string()),
+        });
+        let mut bytes = vec![0xFF, 3u8];
+        bytes.extend(bitcode::encode(&v3));
+
+        let decoded = AbstractData::from_bytes(&bytes);
+        match decoded {
+            AbstractData::Image(img) => assert_eq!(img.metadata.ext, "webp"),
+            _ => panic!("expected Image variant after v3 passthrough"),
+        }
     }
 
     #[test]
@@ -401,6 +525,7 @@ mod tests {
                 assert_eq!(alb.metadata.title, Some("Holiday".to_string()));
                 assert_eq!(alb.metadata.item_count, 3);
                 assert_eq!(alb.metadata.dir_path, None);
+                assert_eq!(alb.metadata.custom_date, None);
             }
             _ => panic!("expected Album variant after v1 migration"),
         }
@@ -590,6 +715,7 @@ mod integration_tests {
                 assert_eq!(alb.metadata.title, Some("Holiday".to_string()));
                 assert_eq!(alb.metadata.item_count, 3);
                 assert_eq!(alb.metadata.dir_path, None);
+                assert_eq!(alb.metadata.custom_date, None);
             }
             _ => panic!("expected Album variant after v1 migration through redb"),
         }

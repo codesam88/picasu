@@ -1,5 +1,6 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
+use crate::process::xmp_write::write_sidecar_for;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardShare;
@@ -10,6 +11,7 @@ use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use arrayvec::ArrayString;
+use log::warn;
 use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
@@ -152,8 +154,91 @@ pub async fn set_album_title(
             };
 
             album.metadata.title = set_album_title_inner.title;
+            let abstract_data = AbstractData::Album(album);
+            if let Err(e) = write_sidecar_for(&abstract_data) {
+                warn!("Failed to write XMP sidecar: {e}");
+            }
             data_table
-                .insert(&*album_id, AbstractData::Album(album))
+                .insert(&*album_id, abstract_data)
+                .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
+        }
+        txn.commit()
+            .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
+        Ok(())
+    })
+    .await
+    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
+
+    BATCH_COORDINATOR
+        .execute_batch_waiting(UpdateTreeTask)
+        .await
+        .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
+
+    Ok(())
+}
+
+/// Payload for setting an album's custom date override.
+#[derive(Debug, Clone, Deserialize, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[derive(utoipa::ToSchema)]
+pub struct SetAlbumDate {
+    #[schema(value_type = String)]
+    pub album_id: ArrayString<64>,
+    pub custom_date: Option<String>,
+}
+
+/// Updates the custom date override of a specific album.
+#[utoipa::path(
+        put,
+        path = "/put/set_album_date",
+        request_body = SetAlbumDate,
+        responses(
+            (status = 200, description = "Album date updated"),
+            (status = 400, description = "Invalid input"),
+        )
+    )
+]
+#[put("/put/set_album_date", data = "<set_album_date>")]
+pub async fn set_album_date(
+    auth: GuardResult<GuardShare>,
+    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    set_album_date: Json<SetAlbumDate>,
+) -> AppResult<()> {
+    let _ = auth?;
+    let _ = read_only_mode?;
+
+    tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+        let set_album_date_inner = set_album_date.into_inner();
+        let album_id = set_album_date_inner.album_id;
+
+        let txn = TREE
+            .in_disk
+            .begin_write()
+            .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
+        {
+            let mut data_table = txn
+                .open_table(DATA_TABLE)
+                .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
+
+            let album = data_table
+                .get(&*album_id)
+                .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
+                .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?
+                .value();
+            let AbstractData::Album(mut album) = album else {
+                return Err(AppError::new(
+                    ErrorKind::InvalidInput,
+                    "Expected Album but got different type",
+                ));
+            };
+
+            album.metadata.custom_date = set_album_date_inner.custom_date;
+            let abstract_data = AbstractData::Album(album);
+            if let Err(e) = write_sidecar_for(&abstract_data) {
+                warn!("Failed to write XMP sidecar: {e}");
+            }
+            data_table
+                .insert(&*album_id, abstract_data)
                 .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
         }
         txn.commit()

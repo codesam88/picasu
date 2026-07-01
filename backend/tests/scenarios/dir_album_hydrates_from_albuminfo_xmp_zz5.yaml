@@ -1,0 +1,25 @@
+name: dir album hydrates custom title from pre-existing .albuminfo.xmp
+# A .albuminfo.xmp sidecar already sitting in a directory (e.g. carried over
+# from a previous scan before a rename) should override the path-derived
+# album name when the directory is (re)discovered.
+given:
+  - dir_album: /e2e_zz5/vacation_2024
+    id_as: $album_id
+  - raw_file: /e2e_zz5/vacation_2024/.albuminfo.xmp
+    content: |
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:title><rdf:Alt><rdf:li xml:lang="x-default">Summer in Provence</rdf:li></rdf:Alt></dc:title>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+when:
+  - call: GET /get/get-albums
+then:
+  - response.status: 200
+  - array_where:
+      where:
+        dirPath: "e2e_zz5/vacation_2024"
+      assert:
+        albumName: "Summer in Provence"

@@ -8,14 +8,20 @@ pub struct XmpData {
     pub description: Option<String>,
     /// 0–5 per XMP `xmp:Rating`; -1 ("rejected") in some tools is clamped to None.
     pub rating: Option<u8>,
+    /// `dc:title`. Used for the album display name override.
+    pub title: Option<String>,
+    /// `dc:date`, plain ISO 8601 text. Used for the album custom date override.
+    pub date: Option<String>,
 }
 
 /// Extract XMP metadata from raw bytes (file contents or sidecar content).
 ///
-/// Handles the three fields the app manages:
+/// Handles the fields the app manages:
 /// - `dc:subject`   → tags (`rdf:Bag` of `rdf:li`)
 /// - `dc:description` → description (`rdf:Alt` of `rdf:li`)
 /// - `xmp:Rating`   → rating (plain integer text node)
+/// - `dc:title`     → title (`rdf:Alt` of `rdf:li`)
+/// - `dc:date`      → date (plain text node)
 ///
 /// Limitations: only handles uncompressed, contiguous XMP packets.
 /// Compact XMP (namespace shorthand, RDF attribute syntax) may not be matched.
@@ -26,6 +32,8 @@ pub fn extract_xmp_data(bytes: &[u8]) -> XmpData {
         // Parse as i32 to handle negative values (e.g. -1 = "rejected"); clamp to None.
         rating: extract_simple_integer(bytes, b"<xmp:Rating>", b"</xmp:Rating>")
             .and_then(|v| u8::try_from(v).ok().filter(|&r| r <= 5)),
+        title: extract_alt_text(bytes, b"<dc:title>", b"</dc:title>"),
+        date: extract_simple_text(bytes, b"<dc:date>", b"</dc:date>"),
     }
 }
 
@@ -111,6 +119,21 @@ fn extract_simple_integer(bytes: &[u8], open: &[u8], close: &[u8]) -> Option<i32
     text.parse::<i32>().ok()
 }
 
+/// Extract a plain text value from a simple text-node element.
+/// Used for `dc:date`.
+fn extract_simple_text(bytes: &[u8], open: &[u8], close: &[u8]) -> Option<String> {
+    let open_pos = find_subslice(bytes, open)?;
+    let inner_start = open_pos + open.len();
+    let close_offset = find_subslice(&bytes[inner_start..], close)?;
+    let inner = &bytes[inner_start..inner_start + close_offset];
+    let text = std::str::from_utf8(inner).ok()?.trim();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text.to_owned())
+    }
+}
+
 /// Walk `<rdf:li ...>…</rdf:li>` entries in `text`, adding trimmed non-empty
 /// values to `out`.
 fn collect_rdf_li(text: &str, out: &mut HashSet<String>) {
@@ -158,6 +181,19 @@ mod tests {
 <dc:subject><rdf:Bag>{items}</rdf:Bag></dc:subject>
 <dc:description><rdf:Alt>{desc_items}</rdf:Alt></dc:description>
 <xmp:Rating>{rating}</xmp:Rating>
+</rdf:Description>
+</rdf:RDF>
+</x:xmpmeta>"#
+        )
+    }
+
+    fn xmp_with_title_and_date(title: &str, date: &str) -> String {
+        format!(
+            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:title><rdf:Alt><rdf:li xml:lang="x-default">{title}</rdf:li></rdf:Alt></dc:title>
+<dc:date>{date}</dc:date>
 </rdf:Description>
 </rdf:RDF>
 </x:xmpmeta>"#
@@ -239,5 +275,21 @@ mod tests {
         let xmp = xmp_packet_with_keywords(&[]);
         let data = extract_xmp_data(xmp.as_bytes());
         assert!(data.tags.is_empty());
+    }
+
+    #[test]
+    fn extracts_title_and_date() {
+        let xmp = xmp_with_title_and_date("My Album", "2024-06-01");
+        let data = extract_xmp_data(xmp.as_bytes());
+        assert_eq!(data.title.as_deref(), Some("My Album"));
+        assert_eq!(data.date.as_deref(), Some("2024-06-01"));
+    }
+
+    #[test]
+    fn title_and_date_are_none_when_absent() {
+        let xmp = xmp_packet_with_keywords(&["family"]);
+        let data = extract_xmp_data(xmp.as_bytes());
+        assert_eq!(data.title, None);
+        assert_eq!(data.date, None);
     }
 }

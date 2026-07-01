@@ -1,0 +1,16 @@
+name: album title and date edits write .albuminfo.xmp sidecar
+# Verifies dir-album metadata edits (title, custom date) persist to a
+# .albuminfo.xmp sidecar in the album's own directory, mirroring the
+# per-photo .xmp sidecar pattern.
+given:
+  - dir_album: /e2e_zz4
+    id_as: $album_id
+
+when:
+  - call: PUT /put/set_album_title
+    raw_body: '{"albumId":"${album_id}","title":"My Custom Title"}'
+  - call: PUT /put/set_album_date
+    raw_body: '{"albumId":"${album_id}","customDate":"2024-06-01"}'
+then:
+  - response.status: 200
+  - file_exists: /e2e_zz4/.albuminfo.xmp

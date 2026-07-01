@@ -251,6 +251,10 @@ pub struct AlbumMetadata {
     /// When present, album membership is derived from source file paths rather than
     /// the `albums` set on each media item — the two album types are fully independent.
     pub dir_path: Option<String>,
+    /// User-set override for the album's displayed date, distinct from the
+    /// auto-computed `start_time`/`end_time` range. Free-form text (e.g. ISO 8601),
+    /// not parsed or validated by the backend.
+    pub custom_date: Option<String>,
 }
 
 #[derive(

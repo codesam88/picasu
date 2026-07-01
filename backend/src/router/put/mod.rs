@@ -16,6 +16,7 @@ pub fn generate_put_routes() -> Vec<Route> {
         assign_album::assign_album,
         edit_album::set_album_cover,
         edit_album::set_album_title,
+        edit_album::set_album_date,
         edit_description::set_user_defined_description,
         edit_flags::edit_flags,
         edit_rating::edit_rating,

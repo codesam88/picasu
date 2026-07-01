@@ -182,14 +182,28 @@ pub fn get_or_create_dir_album(dir_path: PathBuf) -> Result<ArrayString<64>> {
 
 // ── internal helpers ───────────────────────────────────────────────────────────
 
+/// Read `.albuminfo.xmp` from `dir_path` if present, for hydrating a dir-album's
+/// initial metadata. Returns default (empty) data if the file is absent or
+/// unreadable — the caller falls back to path-derived defaults in that case.
+fn read_albuminfo(dir_path: &Path) -> crate::process::xmp::XmpData {
+    let sidecar = dir_path.join(".albuminfo.xmp");
+    match std::fs::read(&sidecar) {
+        Ok(bytes) => crate::process::xmp::extract_xmp_data(&bytes),
+        Err(_) => crate::process::xmp::XmpData::default(),
+    }
+}
+
 fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
     let album_id = generate_random_hash();
     let dir_name = dir_path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("Album");
-    let title = prettify_dir_name(dir_name);
+    let default_title = prettify_dir_name(dir_name);
     let dir_path_str = dir_path.to_string_lossy().into_owned();
+
+    let albuminfo = read_albuminfo(dir_path);
+    let title = albuminfo.title.clone().unwrap_or(default_title);
 
     let now = Utc::now().timestamp_millis();
     let object = ObjectSchema {
@@ -197,12 +211,12 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         obj_type: ObjectType::Album,
         pending: false,
         thumbhash: None,
-        description: None,
-        tags: std::collections::HashSet::new(),
+        description: albuminfo.description,
+        tags: albuminfo.tags,
         is_favorite: false,
         is_archived: false,
         is_trashed: false,
-        rating: None,
+        rating: albuminfo.rating,
         update_at: now,
     };
     let metadata = AlbumMetadata {
@@ -217,6 +231,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         item_size: 0,
         share_list: std::collections::HashMap::new(),
         dir_path: Some(dir_path_str),
+        custom_date: albuminfo.date,
     };
     let abstract_data = AbstractData::Album(AlbumCombined { object, metadata });
 
@@ -275,5 +290,45 @@ mod tests {
     #[test]
     fn unicode_first_char_is_uppercased() {
         assert_eq!(prettify_dir_name("été_photos"), "Été Photos");
+    }
+
+    mod read_albuminfo_tests {
+        use super::*;
+
+        #[test]
+        fn returns_default_when_albuminfo_missing() {
+            let dir = tempfile::tempdir().expect("failed to create temp dir");
+            let data = read_albuminfo(dir.path());
+            assert_eq!(data.title, None);
+            assert_eq!(data.description, None);
+            assert!(data.tags.is_empty());
+            assert_eq!(data.rating, None);
+            assert_eq!(data.date, None);
+        }
+
+        #[test]
+        fn reads_title_description_tags_rating_date_from_albuminfo() {
+            let dir = tempfile::tempdir().expect("failed to create temp dir");
+            let xmp = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+<dc:title><rdf:Alt><rdf:li xml:lang="x-default">Custom Title</rdf:li></rdf:Alt></dc:title>
+<dc:description><rdf:Alt><rdf:li xml:lang="x-default">A trip</rdf:li></rdf:Alt></dc:description>
+<dc:subject><rdf:Bag><rdf:li>hiking</rdf:li></rdf:Bag></dc:subject>
+<xmp:Rating>5</xmp:Rating>
+<dc:date>2023-08-15</dc:date>
+</rdf:Description>
+</rdf:RDF>
+</x:xmpmeta>"#;
+            std::fs::write(dir.path().join(".albuminfo.xmp"), xmp)
+                .expect("failed to write fixture");
+
+            let data = read_albuminfo(dir.path());
+            assert_eq!(data.title.as_deref(), Some("Custom Title"));
+            assert_eq!(data.description.as_deref(), Some("A trip"));
+            assert_eq!(data.tags, HashSet::from(["hiking".to_string()]));
+            assert_eq!(data.rating, Some(5));
+            assert_eq!(data.date.as_deref(), Some("2023-08-15"));
+        }
     }
 }

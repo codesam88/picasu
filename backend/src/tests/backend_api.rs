@@ -420,6 +420,16 @@ fn interpret_scenario(scenario: &Value) {
                             exif_date: None,
                         });
                     }
+                } else if let Some(raw_file) = item["raw_file"].as_str() {
+                    let trimmed = raw_file.trim_start_matches('/');
+                    let content = item["content"].as_str().unwrap_or("");
+                    let path = data.join(trimmed);
+                    if let Some(parent) = path.parent() {
+                        std::fs::create_dir_all(parent)
+                            .unwrap_or_else(|e| panic!("create dir for raw_file {trimmed}: {e}"));
+                    }
+                    std::fs::write(&path, content)
+                        .unwrap_or_else(|e| panic!("write raw_file {trimmed}: {e}"));
                 } else if let Some(photo) = item["photo"].as_str() {
                     let trimmed = photo.trim_start_matches('/');
 
