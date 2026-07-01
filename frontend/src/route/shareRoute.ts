@@ -40,7 +40,6 @@ export const shareRoute: RouteRecordRaw = {
         level: 2,
         baseName: 'share',
         getParentPage: (route, albumId, shareId) => {
-          console.log('123')
           return {
             name: 'share',
             params: { albumId: albumId, shareId: shareId },

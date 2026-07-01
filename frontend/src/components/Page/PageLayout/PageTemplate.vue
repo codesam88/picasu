@@ -40,10 +40,11 @@
 
 <script setup lang="ts">
 import { computed, provide, ref, onMounted, onUnmounted } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import GalleryBar from '@/components/NavBar/GalleryBars/GalleryBar.vue'
 import Drawer from './Drawer.vue'
 import { useCollectionStore } from '@/store/collectionStore'
+import { useModalStore } from '@/store/modalStore'
 import { navBarHeight } from '@/type/constants'
 
 interface PageCol {
@@ -133,7 +134,9 @@ const props = withDefaults(
 )
 
 const showDrawer = ref(false)
+const route = useRoute()
 const collectionStore = useCollectionStore('mainId')
+const modalStore = useModalStore('mainId')
 provide('showDrawer', showDrawer)
 
 const exitEditMode = () => {
@@ -144,8 +147,20 @@ const exitEditMode = () => {
   return false
 }
 
+// Only handles the grid (level 1) case: close a dialog if one is open,
+// otherwise leave edit/selection mode. When level 2 (viewing a single item)
+// is active, ViewPage.vue owns Escape instead (dialog-close, then back-
+// navigation to the parent page) — this component stays mounted underneath
+// it, so it must not also react and race with that handler.
 const handleKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') collectionStore.leaveEdit()
+  if (event.key !== 'Escape' || route.meta.level !== 1) return
+
+  if (modalStore.hasOpenDialog) {
+    modalStore.closeOpenDialog()
+    return
+  }
+
+  collectionStore.leaveEdit()
 }
 
 onMounted(() => {

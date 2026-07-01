@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, provide, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, computed, provide, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useDataStore } from '@/store/dataStore'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useCollectionStore } from '@/store/collectionStore'
@@ -120,6 +120,12 @@ const { throttledHandleScroll, onWheel } = handleScroll(
 )
 
 watch([windowWidth, () => constStore.subRowHeightScale], async () => {
+  // #image-container is unmounted while a nested ViewPage is shown (v-else
+  // branch removed from the DOM), which reports windowWidth as 0 via
+  // useElementSize — not a real resize. Treating that as one wipes rowStore/
+  // offsetStore/queueStore for no reason, so the grid comes back empty.
+  if (windowWidth.value === 0) return
+
   locationStore.triggerForResize()
   prefetchStore.windowWidth = Math.round(windowWidth.value)
   prefetchStore.clearForResize()
@@ -138,6 +144,26 @@ watch([windowWidth, () => constStore.subRowHeightScale], async () => {
 const bufferHeight = computed(() => {
   return 600000
 })
+
+// The grid (v-else branch) unmounts its #image-container while a nested
+// ViewPage is shown (route.meta.level >= 2) and remounts a *new* DOM element
+// when returning — a fresh element's native scrollTop starts at 0, but
+// lastScrollTop/scrollTopStore (plain refs/stores, unaffected by the DOM
+// swap since this component itself never unmounts) still hold the old
+// virtual-scroll baseline. Without resyncing, the row virtualization then
+// renders rows via translateY offsets computed from that stale baseline
+// while the real viewport sits at native scrollTop 0 — the grid looks empty.
+watch(
+  () => route.meta.level,
+  async (newLevel, oldLevel) => {
+    if (oldLevel >= 2 && newLevel < 2) {
+      await nextTick()
+      if (imageContainerRef.value) {
+        imageContainerRef.value.scrollTop = lastScrollTop.value
+      }
+    }
+  }
+)
 
 // Triggers a ViewPage re-render when photos are added to the album while
 // browsing it via GalleryTempBar, so the freshly added photo is reflected.

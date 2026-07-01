@@ -35,11 +35,13 @@ import { useDataStore } from '@/store/dataStore'
 import ViewPageDisplay from '@/components/View/Display/Display.vue'
 import ViewPageMetadata from '@/components/View/Metadata/ViewPageMetadata.vue'
 import { useConstStore } from '@/store/constStore'
+import { useModalStore } from '@/store/modalStore'
 
 const dataStore = useDataStore('mainId')
 const route = useRoute()
 const router = useRouter()
 const constStore = useConstStore('mainId')
+const modalStore = useModalStore('mainId')
 
 const hash = computed(() => {
   return route.params.hash as string
@@ -57,10 +59,24 @@ const abstractData = computed(() => {
   }
 })
 
+// Escape closes an open dialog first; only when nothing is open does it act
+// like a back button, returning to the page this view was entered from
+// (rather than router.back(), which can land outside the app's own history
+// or on a stale grid state depending on how this page was reached).
 const handleKeyDown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') {
-    router.back()
+  if (event.key !== 'Escape') return
+
+  if (modalStore.hasOpenDialog) {
+    modalStore.closeOpenDialog()
+    return
   }
+
+  const albumId = typeof route.params.albumId === 'string' ? route.params.albumId : undefined
+  const shareId = typeof route.params.shareId === 'string' ? route.params.shareId : undefined
+  const parentPage = route.meta.getParentPage(route, albumId, shareId)
+  router.push(parentPage).catch(() => {
+    // No-op on navigation aborts (e.g. rapid double Escape).
+  })
 }
 
 onMounted(() => {
