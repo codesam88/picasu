@@ -15,6 +15,7 @@ export const useModalStore = (isolationId: IsolationId) =>
       showEditShareModal: boolean
       showDeleteShareModal: boolean
       showShareLoginModal: boolean
+      showAlbumInfoModal: boolean
     } => ({
       showEditTagsModal: false,
       showBatchEditTagsModal: false,
@@ -26,7 +27,8 @@ export const useModalStore = (isolationId: IsolationId) =>
       showShareModal: false,
       showEditShareModal: false,
       showDeleteShareModal: false,
-      showShareLoginModal: false
+      showShareLoginModal: false,
+      showAlbumInfoModal: false
     }),
     actions: {}
   })()

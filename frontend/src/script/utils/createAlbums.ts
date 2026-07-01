@@ -30,3 +30,26 @@ export async function editTitle(album: GalleryAlbum, titleModelValue: string) {
     }
   }
 }
+
+export async function editCustomDate(album: GalleryAlbum, customDateModelValue: string) {
+  const dataStore = useDataStore('mainId')
+
+  if ((album.customDate ?? '') !== customDateModelValue) {
+    const id = album.id
+    const customDate = customDateModelValue === '' ? null : customDateModelValue
+    await axios.put('/put/set_album_date', {
+      albumId: id,
+      customDate: customDate
+    })
+
+    const index = dataStore.hashMapData.get(album.id)
+    if (index !== undefined) {
+      const data = dataStore.data.get(index)
+      if (data?.type === 'album') {
+        data.customDate = customDate
+      } else {
+        console.error(`Cannot find album with id ${id}`)
+      }
+    }
+  }
+}
