@@ -30,7 +30,7 @@
     <!-- General empty state -->
     <v-row v-else justify="center">
       <!-- Home page: dialog with upload + scan actions -->
-      <template v-if="route.meta.baseName === 'home'">
+      <template v-if="route.meta.baseName === 'timeline'">
         <v-dialog v-model="showDialog" max-width="560">
           <v-card class="pa-6">
             <v-card-title class="text-h5 font-weight-bold text-center">
@@ -210,8 +210,7 @@ const ui = computed<UIState>(() => {
   }
 
   switch (route.meta.baseName) {
-    case 'home':
-    case 'all':
+    case 'timeline':
     case 'album':
       return {
         isSearchEmpty: false,

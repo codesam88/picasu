@@ -1,20 +1,20 @@
 <template>
-  <Home
+  <Gallery
     v-if="basicString !== undefined"
     :key="`${shareStore.password}`"
     isolation-id="mainId"
     :basic-string="basicString"
     :search-string="searchString"
   >
-    <template #home-toolbar> <HomeShareBar /> </template>
-  </Home>
+    <template #home-toolbar> <GalleryShareBar /> </template>
+  </Gallery>
 
   <ShareLoginModal />
 </template>
 <script setup lang="ts">
 import { LocationQueryValue, useRoute } from 'vue-router'
-import Home from './Home.vue'
-import HomeShareBar from '@/components/NavBar/HomeBars/HomeShareBar.vue'
+import Gallery from './Gallery.vue'
+import GalleryShareBar from '@/components/NavBar/GalleryBars/GalleryShareBar.vue'
 import ShareLoginModal from '@/components/Modal/ShareLoginModal.vue'
 import { onBeforeMount, ref, Ref, watch } from 'vue'
 import { useShareStore } from '@/store/shareStore'

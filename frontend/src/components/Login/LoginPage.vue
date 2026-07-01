@@ -114,7 +114,7 @@ const handleLogin = async () => {
         // we redirect the user to the home page.
         // Using `replace` here removes `/login` from the current session history entry,
         // so the Back button will not return to the login page.
-        await router.replace({ name: 'home' })
+        await router.replace({ name: 'timeline' })
       }
     })
   } finally {

@@ -8,17 +8,17 @@
     :transition="false"
     :close-on-back="false"
   >
-    <Home isolation-id="tempId" :basic-string="basicString" :search-string="null">
+    <Gallery isolation-id="tempId" :basic-string="basicString" :search-string="null">
       <template #home-toolbar>
-        <HomeTempBar :album="album" />
+        <GalleryTempBar :album="album" />
       </template>
-    </Home>
+    </Gallery>
   </v-overlay>
 </template>
 <script setup lang="ts">
 import { GalleryAlbum } from '@type/types'
-import Home from './Home.vue'
-import HomeTempBar from '@/components/NavBar/HomeBars/HomeTempBar.vue'
+import Gallery from './Gallery.vue'
+import GalleryTempBar from '@/components/NavBar/GalleryBars/GalleryTempBar.vue'
 import { useModalStore } from '@/store/modalStore'
 import { onBeforeRouteLeave } from 'vue-router'
 const modalStore = useModalStore('mainId')

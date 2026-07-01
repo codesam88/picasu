@@ -1,5 +1,5 @@
 <template>
-  <Home
+  <Gallery
     class="w-100 h-100"
     isolation-id="mainId"
     :basic-string="props.basicString"
@@ -9,7 +9,7 @@
 
 <script setup lang="ts">
 import { onBeforeMount, ref } from 'vue'
-import Home from './Home.vue'
+import Gallery from './Gallery.vue'
 import { LocationQueryValue, useRoute } from 'vue-router'
 
 const route = useRoute()

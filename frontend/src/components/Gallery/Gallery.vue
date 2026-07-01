@@ -28,7 +28,7 @@
           :buffer-height="bufferHeight"
           :isolation-id="props.isolationId"
         />
-        <HomeEmptyCard
+        <GalleryEmptyCard
           v-if="initializedStore.initialized && prefetchStore.dataLength === 0"
           :isolation-id="props.isolationId"
         />
@@ -57,13 +57,13 @@ import { handleScroll } from '@/script/hook/useHandleScroll'
 import { useInitializeScrollPosition } from '@/script/hook/useInitializeScrollPosition'
 import { useImgStore } from '@/store/imgStore'
 import Buffer from '@/components/Buffer/Buffer.vue'
-import ScrollBar from '@/components/Home/HomeScrollBar.vue'
+import ScrollBar from '@/components/Gallery/GalleryScrollBar.vue'
 import { layoutBatchNumber } from '@/type/constants'
 import { useOffsetStore } from '@/store/offsetStore'
 import { useRowStore } from '@/store/rowStore'
 import { useLocationStore } from '@/store/locationStore'
 import { fetchRowInWorker } from '@/api/fetchRow'
-import HomeEmptyCard from '@/components/Home/HomeEmptyCard.vue'
+import GalleryEmptyCard from '@/components/Gallery/GalleryEmptyCard.vue'
 import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { IsolationId } from '@type/types'
@@ -142,7 +142,7 @@ const bufferHeight = computed(() => {
 const albumHomeIsolatedKey = computed(() => {
   const hash = route.params.hash
   if (typeof hash === 'string') {
-    const rerenderKey = rerenderStore.homeIsolatedKey.toString()
+    const rerenderKey = rerenderStore.galleryKey.toString()
     return rerenderKey
   } else {
     return 'undefineBehavior'

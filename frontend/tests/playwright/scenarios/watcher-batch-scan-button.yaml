@@ -12,7 +12,7 @@ given:
 
 steps:
   - when:
-      - navigate: /home
+      - navigate: /timeline
       - click.select_first: true
       - click.icon: mdi-dots-vertical
     assert:

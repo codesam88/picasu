@@ -1,7 +1,7 @@
 <template>
   <PageTemplate>
     <template #content>
-      <HomeMain :key="albumHash" :basic-string="basicString" />
+      <GalleryMain :key="albumHash" :basic-string="basicString" />
     </template>
   </PageTemplate>
 </template>
@@ -9,7 +9,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import HomeMain from '@/components/Home/HomeMain.vue'
+import GalleryMain from '@/components/Gallery/GalleryMain.vue'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 
 const route = useRoute()

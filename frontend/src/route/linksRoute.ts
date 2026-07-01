@@ -15,7 +15,7 @@ export const linksRoute: RouteRecordRaw = {
     baseName: 'links',
     getParentPage: (route) => {
       return {
-        name: 'home',
+        name: 'timeline',
         params: { hash: undefined, subhash: undefined },
         query: route.query
       }

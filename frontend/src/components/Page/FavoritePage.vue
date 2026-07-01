@@ -1,13 +1,13 @@
 <template>
   <PageTemplate>
     <template #content>
-      <HomeMain :basic-string="basicString" />
+      <GalleryMain :basic-string="basicString" />
     </template>
   </PageTemplate>
 </template>
 
 <script setup lang="ts">
-import HomeMain from '@/components/Home/HomeMain.vue'
+import GalleryMain from '@/components/Gallery/GalleryMain.vue'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 
 const basicString = 'and(favorite:true, trashed:false)'

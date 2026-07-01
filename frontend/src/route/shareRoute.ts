@@ -5,12 +5,12 @@ import 'vue-router'
 
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
 
-import HomeShare from '@/components/Home/HomeShare.vue'
+import GalleryShare from '@/components/Gallery/GalleryShare.vue'
 import { PageReturnType } from './pageReturnType'
 
 export const shareRoute: RouteRecordRaw = {
   path: '/share/:albumId-:shareId',
-  component: HomeShare,
+  component: GalleryShare,
   name: 'share',
   meta: {
     basicString: null,

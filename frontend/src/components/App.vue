@@ -43,7 +43,7 @@ const constStore = useConstStore('mainId')
 const configStore = useConfigStore('mainId')
 const route = useRoute()
 
-// The routeKey is used to ensure that the router-view reloads the Home.vue component properly.
+// The routeKey is used to ensure that the router-view reloads the Gallery.vue component properly.
 // Without it, Vue may cache the component for optimization, potentially causing bugs.
 const routeKey = computed(() => {
   const currentPage = route.meta.baseName
@@ -52,8 +52,8 @@ const routeKey = computed(() => {
   const priorityId = typeof route.query.priority_id === 'string' ? route.query.priority_id : ''
   const reverse = typeof route.query.reverse === 'string' ? route.query.reverse : ''
   const concurrencyNumber = constStore.concurrencyNumber
-  const homeKey = rerenderStore.homeKey.toString()
-  return `${currentPage}-${search}-${locate}-${priorityId}-${reverse}-${concurrencyNumber}-${homeKey}`
+  const galleryKey = rerenderStore.galleryKey.toString()
+  return `${currentPage}-${search}-${locate}-${priorityId}-${reverse}-${concurrencyNumber}-${galleryKey}`
 })
 
 onBeforeMount(async () => {

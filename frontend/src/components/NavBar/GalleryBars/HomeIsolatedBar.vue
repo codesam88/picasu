@@ -1,5 +1,5 @@
 <template>
-  <HomeBarTemplate isolation-id="subId">
+  <GalleryBarTemplate isolation-id="subId">
     <template #content>
       <v-toolbar v-if="!collectionStore.editModeOn" class="position-relative bg-surface">
         <LeaveView />
@@ -55,16 +55,16 @@
         :mode="'create'"
       />
     </template>
-  </HomeBarTemplate>
+  </GalleryBarTemplate>
 </template>
 
 <script setup lang="ts">
 import { useCollectionStore } from '@/store/collectionStore'
 import LeaveView from '@/components/Menu/MenuButton/BtnLeaveView.vue'
 import EditBar from '@/components/NavBar/EditBar.vue'
-import HomeTemp from '@/components/Home/HomeTemp.vue'
+import HomeTemp from '@/components/Gallery/GalleryTemp.vue'
 import CreateShareModal from '@/components/Modal/CreateShareModal.vue'
-import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
+import GalleryBarTemplate from '@/components/NavBar/GalleryBars/GalleryBarTemplate.vue'
 import { GalleryAlbum } from '@type/types'
 import { useModalStore } from '@/store/modalStore'
 import { Ref, ref, watch, watchEffect } from 'vue'

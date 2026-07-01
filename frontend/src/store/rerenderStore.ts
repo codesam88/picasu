@@ -4,18 +4,13 @@ import { defineStore } from 'pinia'
 export const useRerenderStore = (isolationId: IsolationId) =>
   defineStore('rerenderStore' + isolationId, {
     state: (): {
-      homeKey: boolean
-      homeIsolatedKey: boolean
+      galleryKey: boolean
     } => ({
-      homeKey: false,
-      homeIsolatedKey: false
+      galleryKey: false
     }),
     actions: {
-      rerenderHome() {
-        this.homeKey = !this.homeKey
-      },
-      rerenderHomeIsolated() {
-        this.homeIsolatedKey = !this.homeIsolatedKey
+      rerenderGallery() {
+        this.galleryKey = !this.galleryKey
       }
     }
   })()

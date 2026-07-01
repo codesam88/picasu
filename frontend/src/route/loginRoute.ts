@@ -16,7 +16,7 @@ export const loginRoute: RouteRecordRaw = {
     baseName: 'login',
     getParentPage: (route) => {
       return {
-        name: 'home',
+        name: 'timeline',
         params: { hash: undefined, subhash: undefined },
         query: route.query
       }

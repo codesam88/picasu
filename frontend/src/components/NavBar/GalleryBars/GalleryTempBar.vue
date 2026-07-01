@@ -1,5 +1,5 @@
 <template>
-  <HomeBarTemplate isolation-id="tempId">
+  <GalleryBarTemplate isolation-id="tempId">
     <template #content>
       <v-toolbar class="bg-surface"
         ><v-btn icon="mdi-close" @click="modalStore.showHomeTempModal = false"></v-btn>
@@ -31,7 +31,7 @@
         </v-btn>
       </v-toolbar>
     </template>
-  </HomeBarTemplate>
+  </GalleryBarTemplate>
 </template>
 <script setup lang="ts">
 import { useCollectionStore } from '@/store/collectionStore'
@@ -39,7 +39,7 @@ import { usePrefetchStore } from '@/store/prefetchStore'
 import SelectAll from '@Menu/MenuButton/BtnSelectAll.vue'
 import SelectClear from '@Menu/MenuButton/BtnSelectClear.vue'
 import SelectInverse from '@Menu/MenuButton/BtnSelectInverse.vue'
-import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
+import GalleryBarTemplate from '@/components/NavBar/GalleryBars/GalleryBarTemplate.vue'
 import { GalleryAlbum } from '@type/types'
 import { useModalStore } from '@/store/modalStore'
 import { useRerenderStore } from '@/store/rerenderStore'
@@ -83,7 +83,7 @@ const submit = async () => {
     }
 
     await refreshAlbumMetadata(albumId)
-    rerenderStore.rerenderHomeIsolated()
+    rerenderStore.rerenderGallery()
   }
 }
 watchEffect(() => {

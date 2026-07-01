@@ -95,7 +95,7 @@ export async function searchByTag(tag: string, router: Router) {
     })
   } else {
     await router.push({
-      name: 'all',
+      name: 'timeline',
       query: searchQuery
     })
   }

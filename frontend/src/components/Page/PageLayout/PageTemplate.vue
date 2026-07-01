@@ -1,5 +1,5 @@
 <template>
-  <HomeMainBar />
+  <GalleryBar />
   <Drawer />
 
   <div class="page-root" :style="{ height: `calc(100% - ${navBarHeight}px)` }">
@@ -41,7 +41,7 @@
 <script setup lang="ts">
 import { computed, provide, ref, onMounted, onUnmounted } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
-import HomeMainBar from '@/components/NavBar/HomeBars/HomeMainBar.vue'
+import GalleryBar from '@/components/NavBar/GalleryBars/GalleryBar.vue'
 import Drawer from './Drawer.vue'
 import { useCollectionStore } from '@/store/collectionStore'
 import { navBarHeight } from '@/type/constants'

@@ -1,5 +1,5 @@
 <template>
-  <HomeBarTemplate isolation-id="mainId">
+  <GalleryBarTemplate isolation-id="mainId">
     <template #content>
       <v-toolbar v-if="!collectionStore.editModeOn" class="bg-surface">
         <v-btn v-if="route.meta.level === 1" @click="showDrawer = !showDrawer" icon="mdi-menu">
@@ -70,7 +70,7 @@
         :mode="'create'"
       />
     </template>
-  </HomeBarTemplate>
+  </GalleryBarTemplate>
 </template>
 
 <script setup lang="ts">
@@ -85,7 +85,7 @@ import { useModalStore } from '@/store/modalStore'
 import EditBar from '@/components/NavBar/EditBar.vue'
 import CreateShareModal from '@/components/Modal/CreateShareModal.vue'
 import { useTheme } from 'vuetify'
-import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
+import GalleryBarTemplate from '@/components/NavBar/GalleryBars/GalleryBarTemplate.vue'
 
 const showDrawer = inject('showDrawer')
 

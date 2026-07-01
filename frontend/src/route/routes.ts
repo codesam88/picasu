@@ -4,8 +4,7 @@ import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 import type { RouteLocationRaw } from 'vue-router'
 import 'vue-router'
 
-import HomeMain from '@/components/Page/HomePage.vue'
-import AllPage from '@/components/Page/AllPage.vue'
+import TimelineMain from '@/components/Page/TimelinePage.vue'
 import FavoritePage from '@/components/Page/FavoritePage.vue'
 import ArchivedPage from '@/components/Page/ArchivedPage.vue'
 import TrashedPage from '@/components/Page/TrashedPage.vue'
@@ -13,7 +12,7 @@ import AlbumsPage from '@/components/Page/AlbumsPage.vue'
 import AlbumContentsPage from '@/components/Page/AlbumContentsPage.vue'
 import VideosPage from '@/components/Page/VideosPage.vue'
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
-import HomeIsolated from '@/components/Home/HomeIsolated.vue'
+import HomeIsolated from '@/components/Gallery/HomeIsolated.vue'
 import ViewPageIsolated from '@/components/View/ViewPageIsolated.vue'
 import { createRoute } from './createRoute'
 import { tagsRoute } from './tagsRoute'
@@ -27,7 +26,7 @@ import { configRoute } from './configRoute'
 // ======================================
 
 const simpleRoutes: RouteRecordRaw[] = [
-  { path: '/', redirect: '/home' },
+  { path: '/', redirect: '/timeline' },
   tagsRoute,
   linksRoute,
   loginRoute,
@@ -39,9 +38,7 @@ const simpleRoutes: RouteRecordRaw[] = [
 // Create Routes Using the Helper Function
 // ======================================
 
-const homePageRoutes = createRoute('home', HomeMain)
-
-const allPageRoutes = createRoute('all', AllPage)
+const timelinePageRoutes = createRoute('timeline', TimelineMain)
 
 const favoritePageRoutes = createRoute('favorite', FavoritePage)
 
@@ -65,7 +62,7 @@ const albumContentRoute: RouteRecordRaw = {
     level: 1,
     baseName: 'album',
     getParentPage: (route) => ({
-      name: 'home',
+      name: 'timeline',
       params: { hash: undefined, subhash: undefined },
       query: route.query
     }),
@@ -142,8 +139,7 @@ const albumContentRoute: RouteRecordRaw = {
 
 const routes: RouteRecordRaw[] = [
   ...simpleRoutes,
-  ...homePageRoutes,
-  ...allPageRoutes,
+  ...timelinePageRoutes,
   ...favoritePageRoutes,
   ...archivedPageRoutes,
   ...trashedPageRoutes,
@@ -171,8 +167,7 @@ router.afterEach((to) => {
         : undefined
 
   const baseTitleMap: Record<string, string> = {
-    home: 'Home',
-    all: 'All',
+    timeline: 'Timeline',
     favorite: 'Favorites',
     archived: 'Archived',
     trashed: 'Trash',

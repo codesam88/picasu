@@ -8,7 +8,7 @@
     :transition="false"
     :close-on-back="false"
   >
-    <Home
+    <Gallery
       v-if="album !== undefined && basicString !== null"
       :key="isolatedHomeKey"
       isolation-id="subId"
@@ -18,12 +18,12 @@
       <template #home-toolbar>
         <HomeIsolatedBar :album="album" />
       </template>
-    </Home>
+    </Gallery>
   </v-overlay>
 </template>
 <script setup lang="ts">
-import Home from './Home.vue'
-import HomeIsolatedBar from '@/components/NavBar/HomeBars/HomeIsolatedBar.vue'
+import Gallery from './Gallery.vue'
+import HomeIsolatedBar from '@/components/NavBar/GalleryBars/HomeIsolatedBar.vue'
 import { GalleryAlbum } from '@type/types'
 import { computed, Ref, ref, watch } from 'vue'
 import { useCollectionStore } from '@/store/collectionStore'

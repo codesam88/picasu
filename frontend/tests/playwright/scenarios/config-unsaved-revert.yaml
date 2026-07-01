@@ -20,7 +20,7 @@ steps:
       - ui.text_visible: Backend filesystem watcher is unavailable / disabled.
 
   - when:
-      - navigate: /home
+      - navigate: /timeline
       - navigate: /config
     assert:
       - ui.text_visible: Backend watches filesystem for modifications.

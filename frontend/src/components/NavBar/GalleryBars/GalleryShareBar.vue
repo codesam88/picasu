@@ -1,5 +1,5 @@
 <template>
-  <HomeBarTemplate isolation-id="mainId">
+  <GalleryBarTemplate isolation-id="mainId">
     <template #content>
       <v-toolbar v-if="!collectionStore.editModeOn" class="position-relative bg-surface">
         <v-card elevation="0" class="w-50">
@@ -43,7 +43,7 @@
 
       <EditBarShare v-else />
     </template>
-  </HomeBarTemplate>
+  </GalleryBarTemplate>
 </template>
 
 <script setup lang="ts">
@@ -53,7 +53,7 @@ import { useFilterStore } from '@/store/filterStore'
 import { useShareStore } from '@/store/shareStore'
 import { useCollectionStore } from '@/store/collectionStore'
 import EditBarShare from '@/components/NavBar/EditBarShare.vue'
-import HomeBarTemplate from '@/components/NavBar/HomeBars/HomeBarTemplate.vue'
+import GalleryBarTemplate from '@/components/NavBar/GalleryBars/GalleryBarTemplate.vue'
 
 const filterStore = useFilterStore('mainId')
 const shareStore = useShareStore('mainId')

@@ -5,7 +5,7 @@ covers:
     - PUT /put/config/password
   ui:
     - textbox/Password
-    - route:/home
+    - route:/timeline
     - toast:error:unauthorized
     - snapshot:login-page
 given:
@@ -31,4 +31,4 @@ steps:
         value: e2e_test_pwd
       - click: button/Login
     assert:
-      - ui.route: /home
+      - ui.route: /timeline

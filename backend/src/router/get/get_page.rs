@@ -138,29 +138,29 @@ pub fn unauthorized() -> Status {
 
 #[utoipa::path(
         get,
-        path = "/home",
+        path = "/timeline",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
     )
 ]
-#[get("/home")]
-pub async fn home() -> AppResult<FrontendResponse> {
+#[get("/timeline")]
+pub async fn timeline() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
 #[utoipa::path(
         get,
-        path = "/home/view/{path}",
+        path = "/timeline/view/{path}",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
     )
 ]
-#[get("/home/view/<_path..>")]
-pub async fn home_view(_path: PathBuf) -> AppResult<FrontendResponse> {
+#[get("/timeline/view/<_path..>")]
+pub async fn timeline_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
@@ -306,34 +306,6 @@ pub async fn trashed() -> AppResult<FrontendResponse> {
 ]
 #[get("/trashed/view/<_path..>")]
 pub async fn trashed_view(_path: PathBuf) -> AppResult<FrontendResponse> {
-    serve_file("index.html").await
-}
-
-#[utoipa::path(
-        get,
-        path = "/all",
-        tag = "pages",
-        responses(
-            (status = 200, description = "SPA page (HTML)"),
-        )
-    )
-]
-#[get("/all")]
-pub async fn all() -> AppResult<FrontendResponse> {
-    serve_file("index.html").await
-}
-
-#[utoipa::path(
-        get,
-        path = "/all/view/{path}",
-        tag = "pages",
-        responses(
-            (status = 200, description = "SPA page (HTML)"),
-        )
-    )
-]
-#[get("/all/view/<_path..>")]
-pub async fn all_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 

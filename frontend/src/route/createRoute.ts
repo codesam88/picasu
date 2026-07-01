@@ -5,12 +5,11 @@ import { RouteRecordRaw } from 'vue-router'
 import 'vue-router'
 
 import ViewPageMain from '@/components/View/ViewPageMain.vue'
-import HomeIsolated from '@/components/Home/HomeIsolated.vue'
+import HomeIsolated from '@/components/Gallery/HomeIsolated.vue'
 import ViewPageIsolated from '@/components/View/ViewPageIsolated.vue'
 
 type BaseName =
-  | 'home'
-  | 'all'
+  | 'timeline'
   | 'favorite'
   | 'archived'
   | 'trashed'

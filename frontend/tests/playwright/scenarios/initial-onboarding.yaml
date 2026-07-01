@@ -67,7 +67,7 @@ steps:
         value: e2e_test_pwd
       - click: button/Login
     assert:
-      - ui.route: /home
+      - ui.route: /timeline
 
   - when:
       - navigate: /config

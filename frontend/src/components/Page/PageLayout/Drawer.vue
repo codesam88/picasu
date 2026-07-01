@@ -1,7 +1,7 @@
 <template>
   <v-navigation-drawer v-model="showDrawer" temporary touchless width="150" class="no-select">
     <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized">
-      <v-list-item slim to="/home" prepend-icon="mdi-home" title="Home"></v-list-item>
+      <v-list-item slim to="/" prepend-icon="mdi-home" title="Home"></v-list-item>
       <v-list-item slim to="/albums" prepend-icon="mdi-image-album" title="Albums"></v-list-item>
       <v-list-item slim to="/tags" prepend-icon="mdi-tag-multiple" title="Tags"></v-list-item>
       <v-divider></v-divider>

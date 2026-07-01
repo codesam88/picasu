@@ -29,8 +29,7 @@ declare module 'vue-router' {
 }
 
 type BaseName =
-  | 'home'
-  | 'all'
+  | 'timeline'
   | 'favorite'
   | 'archived'
   | 'trashed'
