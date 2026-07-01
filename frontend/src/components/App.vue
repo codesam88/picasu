@@ -23,7 +23,6 @@
 import { useRoute } from 'vue-router'
 import { computed, onBeforeMount } from 'vue'
 import { useScrollbarStore } from '@/store/scrollbarStore'
-import { useRerenderStore } from '@/store/rerenderStore'
 import { useMessageStore } from '@/store/messageStore'
 import DropZoneModal from './Modal/DropZoneModal.vue'
 import { useConstStore } from '@/store/constStore'
@@ -38,7 +37,6 @@ import { useModalStore } from '@/store/modalStore'
 
 const modalStore = useModalStore('mainId')
 const scrollbarStore = useScrollbarStore('mainId')
-const rerenderStore = useRerenderStore('mainId')
 const messageStore = useMessageStore('mainId')
 const constStore = useConstStore('mainId')
 const configStore = useConfigStore('mainId')
@@ -53,8 +51,7 @@ const routeKey = computed(() => {
   const priorityId = typeof route.query.priority_id === 'string' ? route.query.priority_id : ''
   const reverse = typeof route.query.reverse === 'string' ? route.query.reverse : ''
   const concurrencyNumber = constStore.concurrencyNumber
-  const galleryKey = rerenderStore.galleryKey.toString()
-  return `${currentPage}-${search}-${locate}-${priorityId}-${reverse}-${concurrencyNumber}-${galleryKey}`
+  return `${currentPage}-${search}-${locate}-${priorityId}-${reverse}-${concurrencyNumber}`
 })
 
 onBeforeMount(async () => {

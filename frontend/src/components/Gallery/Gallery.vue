@@ -2,7 +2,7 @@
   <div class="w-100 h-100 d-flex flex-column">
     <!-- This router-view contains ViewPage.vue. -->
     <Transition v-if="route.meta.level >= 2" name="fade">
-      <router-view :key="galleryRerenderKey"></router-view>
+      <router-view></router-view>
     </Transition>
 
     <template v-else>
@@ -67,7 +67,6 @@ import GalleryEmptyCard from '@/components/Gallery/GalleryEmptyCard.vue'
 import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { IsolationId } from '@type/types'
-import { useRerenderStore } from '@/store/rerenderStore'
 import { useTagStore } from '@/store/tagStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useConstStore } from '@/store/constStore'
@@ -95,7 +94,6 @@ const optimisticUpateStore = useOptimisticStore(props.isolationId)
 const scrollbarStore = useScrollbarStore(props.isolationId)
 // albumStore should not use 'mainId'; otherwise clearAll will be called when the 'props.isolationId' component is unmounted.
 const albumStore = useAlbumStore(props.isolationId)
-const rerenderStore = useRerenderStore('mainId')
 const tagStore = useTagStore('mainId')
 const constStore = useConstStore('mainId')
 
@@ -164,12 +162,6 @@ watch(
     }
   }
 )
-
-// Triggers a ViewPage re-render when photos are added to the album while
-// browsing it via GalleryTempBar, so the freshly added photo is reflected.
-const galleryRerenderKey = computed(() => {
-  return rerenderStore.galleryKey.toString()
-})
 
 // Remove the locate query param after the two-step jump fully completes,
 // so refreshing won't re-trigger the jump.

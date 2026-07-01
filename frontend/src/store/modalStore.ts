@@ -9,7 +9,6 @@ const dialogKeys = [
   'showBatchEditTagsModal',
   'showAssignAlbumModal',
   'showUploadModal',
-  'showHomeTempModal',
   'showShareModal',
   'showEditShareModal',
   'showDeleteShareModal',
@@ -26,7 +25,6 @@ export const useModalStore = (isolationId: IsolationId) =>
       assignAlbumBatch: boolean
       showUploadModal: boolean
       showIsolatedHomeModal: boolean
-      showHomeTempModal: boolean
       showShareModal: boolean
       showEditShareModal: boolean
       showDeleteShareModal: boolean
@@ -39,7 +37,6 @@ export const useModalStore = (isolationId: IsolationId) =>
       assignAlbumBatch: false,
       showUploadModal: false,
       showIsolatedHomeModal: false,
-      showHomeTempModal: false,
       showShareModal: false,
       showEditShareModal: false,
       showDeleteShareModal: false,

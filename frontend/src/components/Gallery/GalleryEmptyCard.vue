@@ -136,23 +136,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { useCollectionStore } from '@/store/collectionStore'
-import { useModalStore } from '@/store/modalStore'
 import { useUploadStore } from '@/store/uploadStore'
 import { useConfigStore } from '@/store/configStore'
 import { startAlbumIndex } from '@/api/fs'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import type { IsolationId } from '@type/types'
 
-const props = defineProps<{
+defineProps<{
   isolationId: IsolationId
 }>()
 
 const route = useRoute()
 
 const uploadStore = useUploadStore('mainId')
-const collectionStore = useCollectionStore(props.isolationId)
-const modalStore = useModalStore('mainId')
 const configStore = useConfigStore('mainId')
 
 const showDialog = ref(true)
@@ -186,24 +182,16 @@ const ui = computed<UIState>(() => {
   }
 
   if (route.meta.baseName === 'album' && route.meta.level === 1) {
-    if (collectionStore.editModeOn) {
-      return {
-        isSearchEmpty: false,
-        showUploadCard: false,
-        hasHoverEffect: false,
-        message: 'All photos are already added!',
-        icon: 'mdi-image-plus',
-        onClick: undefined
-      }
-    }
     return {
       isSearchEmpty: false,
-      showUploadCard: true,
+      showUploadCard: false,
       hasHoverEffect: true,
-      message: 'Select from existing photos.',
+      message: 'Upload some photos here!',
       icon: 'mdi-image-plus',
       onClick: () => {
-        modalStore.showHomeTempModal = true
+        uploadStore.triggerFileInput(
+          typeof route.params.hash === 'string' ? route.params.hash : undefined
+        )
       }
     }
   }
