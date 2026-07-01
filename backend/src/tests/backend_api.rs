@@ -232,6 +232,17 @@ fn check_file_and_serve_assertions(
                 Status::Ok,
                 "serve_image_ok: {photo_var}"
             );
+        } else if let Some(file_path) = item["file.contains"].as_str() {
+            let trimmed = file_path.trim_start_matches('/');
+            let text = item["text"]
+                .as_str()
+                .unwrap_or_else(|| panic!("file.contains: missing 'text' field"));
+            let content = std::fs::read_to_string(data.join(trimmed))
+                .unwrap_or_else(|e| panic!("file.contains: failed to read {trimmed}: {e}"));
+            assert!(
+                content.contains(text),
+                "file.contains: {trimmed} does not contain {text:?}.\nFile content:\n{content}"
+            );
         }
     }
 }

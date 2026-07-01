@@ -10,10 +10,10 @@
 
       <v-divider v-if="shouldShowSetAsCover"></v-divider>
 
-      <!-- Album Info (only when the single selected item is itself an album) -->
-      <ItemAlbumInfo v-if="shouldShowAlbumInfo" />
+      <!-- Album Info: grayed out unless the single selected item is itself an album -->
+      <ItemAlbumInfo />
 
-      <v-divider v-if="shouldShowAlbumInfo"></v-divider>
+      <v-divider></v-divider>
 
       <!-- Archive and Favorite Actions -->
       <ItemArchive :index-list="editModeList" />
@@ -46,7 +46,6 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useConfigStore } from '@/store/configStore'
-import { useDataStore } from '@/store/dataStore'
 
 import ItemSetAsCover from '@Menu/MenuItem/ItemSetAsCover.vue'
 import ItemAlbumInfo from '@Menu/MenuItem/ItemAlbumInfo.vue'
@@ -66,7 +65,6 @@ const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 const collectionStore = useCollectionStore(isolationId)
 const configStore = useConfigStore('mainId')
-const dataStore = useDataStore(isolationId)
 
 const editModeList = computed(() => Array.from(collectionStore.editModeCollection))
 
@@ -76,13 +74,6 @@ const shouldShowSetAsCover = computed(
     route.meta.level === 1 &&
     collectionStore.editModeCollection.size === 1
 )
-
-const shouldShowAlbumInfo = computed(() => {
-  if (collectionStore.editModeCollection.size !== 1) return false
-  const index = Array.from(collectionStore.editModeCollection)[0]
-  if (index === undefined) return false
-  return dataStore.data.get(index)?.type === 'album'
-})
 
 const isInTrashedPath = computed(() => route.meta.baseName === 'trashed')
 

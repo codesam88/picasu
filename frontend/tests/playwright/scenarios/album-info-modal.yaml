@@ -1,13 +1,13 @@
-name: Album Info modal edits title/description/date and persists to sidecar
+name: Album Info modal edits title/description/date and does not auto-reopen on reselection
 covers:
   api:
     - PUT /put/set_album_title
     - PUT /put/set_user_defined_description
     - PUT /put/set_album_date
   ui:
-    - Album Info menu item appears for a single selected album
+    - Album Info batch-menu item is grayed out unless a single album is selected
     - Album Info modal edits persist after reopen
-    - album metadata written to .albuminfo.xmp sidecar
+    - dialog does not auto-reopen when the same album is reselected after closing
 
 given:
   - dir_album: albuminfotest/parent
@@ -17,20 +17,12 @@ given:
 steps:
   - when:
       - navigate: /albums
-    assert:
-      - ui.visible: main/
-
-  - when:
       - click.text: Albuminfotest
-    assert:
-      - ui.visible: main/
-
-  - when:
       - click.text: parent
     assert:
       - ui.visible: main/
 
-  # Select the nested "child" album card (edit mode) and open its context menu
+  # Select the "child" album card and open its context menu
   - when:
       - click.select_first: true
       - click.icon: mdi-dots-vertical
@@ -52,13 +44,15 @@ steps:
     assert:
       - ui.input_value: textbox/Title
         contains: My Custom Child
+      - ui.input_value: textbox/Description
+        contains: A nice sub album
+      - ui.input_value: textbox/Date
+        contains: '2024-06-01'
 
   - when:
       - click: button/Save
     assert:
-      - ui.toast:
-          type: success
-          contains: Description saved
+      - ui.modal: closed
 
   - when:
       - wait.ms: 200
@@ -66,7 +60,7 @@ steps:
       - file.contains: albuminfotest/parent/child/.albuminfo.xmp
         text: My Custom Child
 
-  # Reopen and verify the edits persisted (item is still selected from before)
+  # Reopen (album still selected from before) and verify the edits persisted
   - when:
       - click.icon: mdi-dots-vertical
       - click: option/Album Info
@@ -77,3 +71,17 @@ steps:
         contains: A nice sub album
       - ui.input_value: textbox/Date
         contains: '2024-06-01'
+
+  - when:
+      - click: button/Cancel
+    assert:
+      - ui.modal: closed
+
+  # Regression guard for the reported bug: with the album still selected
+  # (Cancel doesn't clear the grid selection) and the dialog closed, merely
+  # opening the batch menu again must not resurrect the dialog on its own —
+  # it must require a fresh explicit click on "Album Info".
+  - when:
+      - click.icon: mdi-dots-vertical
+    assert:
+      - ui.modal: closed

@@ -59,9 +59,10 @@
 /**
  * Views and edits custom metadata (title, description, keywords, date) for a
  * single selected album-type grid item. Reachable from the batch context
- * menu's "Album Info" action (ItemAlbumInfo.vue), shown only when exactly
+ * menu's "Album Info" action (ItemAlbumInfo.vue), enabled only when exactly
  * one album is selected. All fields are optional and persisted to disk via
- * the album's .albuminfo.xmp sidecar (dir-albums) or DB only (manual albums).
+ * the album's .albuminfo.xmp sidecar (dir-albums) or DB only (manual
+ * albums).
  */
 import { ref, computed, watch } from 'vue'
 import { useModalStore } from '@/store/modalStore'
@@ -95,6 +96,14 @@ const album = computed<EnrichedAlbum | undefined>(() => {
   if (selectedIndex.value === undefined) return undefined
   const data = dataStore.data.get(selectedIndex.value)
   return data?.type === 'album' ? data : undefined
+})
+
+// Any change in grid selection force-closes the dialog — it can never carry
+// stale open/visible state across from a previous album into a newly
+// selected one, which previously let it "pop open" without an explicit
+// click on "Album Info" after the selection changed.
+watch(selectedIndex, () => {
+  modalStore.showAlbumInfoModal = false
 })
 
 watch(
