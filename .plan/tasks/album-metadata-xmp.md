@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: medium
 area: backend
@@ -85,3 +85,21 @@ convention used everywhere else in the app.
   `feat/ui-overlays`. Implementing on new branch `feat/album-metadata`
   (worktree `.worktrees/album-metadata`), branched from `feat/ui-overlays`
   since it repurposes `DisplayAlbum.vue` as left by that branch.
+- 2026-07-01: Implementation complete, two commits:
+  - `68dc080a` — backend: dc:title/dc:date in the XMP module, album-aware
+    `write_sidecar_for`, `set_album_title` now writes the sidecar, new
+    `set_album_date` endpoint, hydration from `.albuminfo.xmp` on dir-album
+    (re)creation, schema version bump 3->4 for `AlbumMetadata.custom_date`.
+  - `1fb983d1` — frontend: new "Album Info" modal (title/description/
+    keywords/date) reachable from the batch context menu when a single
+    album-type item is selected; `DisplayAlbum.vue` deleted (confirmed
+    unreachable both before and after the `feat/ui-overlays` refactor).
+  - Found and fixed a real race during e2e testing: the modal's save()
+    originally fired all four field-edit PUTs via `Promise.all`, but each
+    endpoint independently reads-modifies-writes the same album record —
+    concurrent requests raced and silently dropped edits (title in
+    particular). Fixed to await sequentially.
+  - `just check` and `just test` pass (117 backend, 35 vitest, 17
+    Playwright including the new album-info-modal.yaml scenario, which
+    exercises the full round trip: edit all four fields, verify sidecar
+    content on disk, confirm persistence after modal reopen).
