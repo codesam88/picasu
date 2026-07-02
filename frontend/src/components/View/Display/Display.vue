@@ -1,8 +1,5 @@
 <template>
-  <div
-    id="image-display-col"
-    class="h-100 position-relative flex-grow-1 min-w-0 image-col d-flex flex-column"
-  >
+  <div id="image-display-col" class="h-100 w-100 position-relative image-col d-flex flex-column">
     <DisplayMobile
       class="flex-grow-1 position-relative view-content"
       v-if="configStore.isMobile"

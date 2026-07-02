@@ -48,7 +48,12 @@ steps:
   - when:
       - click.first: true
     assert:
-      # The info panel is always visible in the item view now.
+      - ui.visible: main/
+
+  # The info sidepane is opt-in now — open it via the modal's info icon.
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
       - ui.text_visible: Info
       - ui.sidebar_visible: sunset
       - ui.sidebar_visible: nature

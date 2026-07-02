@@ -37,8 +37,14 @@ steps:
     assert:
       - ui.visible: main/
 
-  # Open three-dot menu and launch Assign Album modal — the info panel
-  # (and its menu) is always visible in the item view now.
+  # The info sidepane (and its menu) is opt-in now — open it via the
+  # modal's info icon before reaching the three-dot menu.
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+
+  # Open three-dot menu and launch Assign Album modal
   - when:
       - click.icon: mdi-dots-vertical
     assert:

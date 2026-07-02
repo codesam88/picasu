@@ -33,6 +33,12 @@ steps:
     assert:
       - ui.visible: main/
 
+  # The info sidepane (and its menu) is opt-in now.
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+
   # Soft-delete via the three-dot menu
   - when:
       - click.icon: mdi-dots-vertical
@@ -53,6 +59,12 @@ steps:
   # Open the trashed photo
   - when:
       - click.first: true
+    assert:
+      - ui.visible: main/
+
+  # The info sidepane (and its menu) is opt-in now.
+  - when:
+      - click.icon: mdi-information-outline
     assert:
       - ui.visible: main/
 
