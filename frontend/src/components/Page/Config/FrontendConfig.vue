@@ -39,43 +39,6 @@
           ></v-switch>
         </template>
       </v-list-item>
-
-      <v-divider></v-divider>
-
-      <v-list-item @click="onViewBarOverlayUpdate(!viewBarOverlayValue)">
-        <template #title>
-          <div class="d-flex align-center">
-            ViewBar Overlay
-            <v-tooltip location="top" max-width="300">
-              <template #activator="{ props }">
-                <v-icon
-                  v-bind="props"
-                  icon="mdi-alert-circle-outline"
-                  size="small"
-                  color="medium-emphasis"
-                  class="ml-2"
-                  style="cursor: help"
-                ></v-icon>
-              </template>
-              <span>
-                <b>When viewing photos:</b><br />
-                <b>On:</b> The navigation bar overlays the image.<br />
-                <b>Off:</b> The image is pushed down to prevent obstruction.
-              </span>
-            </v-tooltip>
-          </div>
-        </template>
-        <template #append>
-          <v-switch
-            :model-value="viewBarOverlayValue"
-            @update:model-value="onViewBarOverlayUpdate"
-            color="primary"
-            inset
-            hide-details
-            @click.stop
-          ></v-switch>
-        </template>
-      </v-list-item>
     </v-card>
   </v-col>
 </template>
@@ -118,24 +81,5 @@ const onShowFilenameChipUpdate = (newValue: boolean | null) => {
   constStore.updateShowFilenameChip(newValue ?? true).catch((error: unknown) => {
     console.error('Failed to update showFilenameChip:', error)
   })
-}
-
-const viewBarOverlayValue = computed<boolean>({
-  get: () => constStore.viewBarOverlay,
-  set: (newVal: boolean | null) => {
-    if (newVal !== null) {
-      constStore.updateViewBarOverlay(newVal).catch((error: unknown) => {
-        console.error('Failed to update viewBarOverlay (via setter):', error)
-      })
-    }
-  }
-})
-
-const onViewBarOverlayUpdate = (newValue: boolean | null) => {
-  if (newValue !== null) {
-    constStore.updateViewBarOverlay(newValue).catch((error: unknown) => {
-      console.error('Failed to update viewBarOverlay:', error)
-    })
-  }
 }
 </script>
