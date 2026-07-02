@@ -2,10 +2,48 @@
   <div class="h-100 w-100 bg-surface position-relative d-flex flex-column overflow-hidden">
     <div>
       <v-toolbar class="bg-surface">
-        <v-btn icon @click="toggleInfo">
+        <v-btn icon @click="handleClose">
           <v-icon>mdi-close</v-icon>
         </v-btn>
         <v-toolbar-title class="text-h5">Info</v-toolbar-title>
+        <v-spacer />
+        <v-btn
+          v-if="
+            (abstractData.type === 'image' || abstractData.type === 'video') &&
+            (abstractData.exif.Make !== undefined || abstractData.exif.Model !== undefined)
+          "
+          :icon="constStore.showInfo ? 'mdi-information' : 'mdi-information-outline'"
+          @click="toggleExifDetail"
+        />
+        <template v-if="route.meta.baseName !== 'share'">
+          <DatabaseMenu
+            v-if="
+              (abstractData.type === 'image' || abstractData.type === 'video') && share === null
+            "
+            :database="abstractData"
+            :index="index"
+            :hash="hash"
+            :isolation-id="isolationId"
+          />
+        </template>
+        <ShareMenu
+          v-if="
+            (abstractData.type === 'image' || abstractData.type === 'video') &&
+            share !== null &&
+            share.showDownload
+          "
+          :database="abstractData"
+          :index="index"
+          :hash="hash"
+          :isolation-id="isolationId"
+        />
+        <AlbumMenu
+          v-if="abstractData.type === 'album'"
+          :album="abstractData"
+          :index="index"
+          :hash="hash"
+          :isolation-id="isolationId"
+        />
       </v-toolbar>
     </div>
     <v-card-item v-if="!isShareMode || userDefinedDescriptionModel">
@@ -39,7 +77,10 @@
         <ItemPath v-if="showMetadata" :database="abstractData" />
         <ItemDate :database="abstractData" />
         <ItemExif
-          v-if="abstractData.exif.Make !== undefined || abstractData.exif.Model !== undefined"
+          v-if="
+            constStore.showInfo &&
+            (abstractData.exif.Make !== undefined || abstractData.exif.Model !== undefined)
+          "
           :database="abstractData"
         />
         <ItemRating
@@ -85,10 +126,11 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useConstStore } from '@/store/constStore'
 import { useShareStore } from '@/store/shareStore'
 import { editUserDefinedDescription } from '@utils/editDescription'
+import { leaveView } from '@utils/leaveView'
 import { EnrichedUnifiedData, IsolationId } from '@type/types'
 import ItemExif from './ItemExif.vue'
 import ItemRating from './ItemRating.vue'
@@ -99,8 +141,12 @@ import ItemTag from './ItemTag.vue'
 import ItemAlbum from './ItemAlbum.vue'
 import ItemTitle from './ItemTitle.vue'
 import ItemCount from './ItemCount.vue'
+import DatabaseMenu from '@Menu/SingleMenu.vue'
+import ShareMenu from '@Menu/ShareMenu.vue'
+import AlbumMenu from '@Menu/AlbumMenu.vue'
 
 const route = useRoute()
+const router = useRouter()
 const userDefinedDescriptionModel = ref('')
 
 const props = defineProps<{
@@ -121,8 +167,16 @@ const isShareMode = computed(() => {
 
 const constStore = useConstStore('mainId')
 const shareStore = useShareStore('mainId')
+const share = computed(() => shareStore.resolvedShare?.share ?? null)
 
-function toggleInfo() {
+function handleClose() {
+  leaveView(route, router)
+}
+
+// Repurposed from a whole-panel visibility toggle (the panel is always
+// shown now) to gating the extra EXIF/shot-detail row (camera make/model,
+// aperture, exposure, ISO) so the default view stays uncluttered.
+function toggleExifDetail() {
   void constStore.updateShowInfo(!constStore.showInfo)
 }
 

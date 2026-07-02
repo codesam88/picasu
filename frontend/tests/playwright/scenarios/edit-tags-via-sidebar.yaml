@@ -31,12 +31,8 @@ steps:
   - when:
       - click.first: true
     assert:
-      - ui.visible: main/
-
-  # Open info sidebar and confirm the seeded tag is present
-  - when:
-      - click.icon: mdi-information-outline
-    assert:
+      # The info panel is always visible in the item view now; confirm the
+      # seeded tag is already showing without needing to open anything.
       - ui.sidebar_visible: originaltag
 
   # Open the three-dot menu and launch Edit Tags

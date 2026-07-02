@@ -4,11 +4,7 @@
       <v-toolbar v-if="!collectionStore.editModeOn" class="bg-surface">
         <v-btn v-if="route.meta.level === 1" @click="showDrawer = !showDrawer" icon="mdi-menu">
         </v-btn>
-        <v-btn
-          v-else
-          icon="mdi mdi-arrow-left"
-          :to="albumStore.leaveAlbumPath ? albumStore.leaveAlbumPath : '/'"
-        ></v-btn>
+        <v-btn v-else icon="mdi mdi-arrow-left" @click="leaveView(route, router)"></v-btn>
 
         <v-card-title class="page-title text-truncate">
           {{ pageTitle }}
@@ -86,6 +82,7 @@ import EditBar from '@/components/NavBar/EditBar.vue'
 import CreateShareModal from '@/components/Modal/CreateShareModal.vue'
 import { useTheme } from 'vuetify'
 import GalleryBarTemplate from '@/components/NavBar/GalleryBars/GalleryBarTemplate.vue'
+import { leaveView } from '@utils/leaveView'
 
 const showDrawer = inject('showDrawer')
 

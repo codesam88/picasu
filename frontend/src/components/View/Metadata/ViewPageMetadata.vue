@@ -3,10 +3,7 @@
     id="abstractData-col"
     v-if="abstractData"
     class="h-100 flex-grow-0 flex-shrink-0 bg-surface"
-    :style="{
-      width: constStore.showInfo ? undefined : '0',
-      zIndex: 1
-    }"
+    style="z-index: 1"
   >
     <MetadataMobile
       v-if="configStore.isMobile"
@@ -26,7 +23,6 @@
 </template>
 
 <script setup lang="ts">
-import { useConstStore } from '@/store/constStore'
 import { useConfigStore } from '@/store/configStore'
 import { EnrichedUnifiedData, IsolationId } from '@type/types'
 import MetadataContent from './MetadataContent.vue'
@@ -39,7 +35,6 @@ const props = defineProps<{
   abstractData: EnrichedUnifiedData
 }>()
 
-const constStore = useConstStore('mainId')
 const configStore = useConfigStore(props.isolationId)
 </script>
 

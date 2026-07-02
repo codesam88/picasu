@@ -10,9 +10,7 @@
       paddingTop: '2px'
     }"
   >
-    <LeaveView />
     <v-spacer></v-spacer>
-    <ShowInfo />
     <template v-if="route.meta.baseName !== 'share'">
       <v-btn
         v-if="abstractData && (abstractData.type === 'image' || abstractData.type === 'video')"
@@ -20,53 +18,16 @@
         @click="setFavorite([index], !abstractData.isFavorite, isolationId)"
       ></v-btn>
     </template>
-    <DatabaseMenu
-      v-if="
-        abstractData &&
-        (abstractData.type === 'image' || abstractData.type === 'video') &&
-        share === null
-      "
-      :database="abstractData"
-      :index="index"
-      :hash="hash"
-      :isolation-id="isolationId"
-    />
-    <ShareMenu
-      v-if="
-        abstractData &&
-        (abstractData.type === 'image' || abstractData.type === 'video') &&
-        share !== null &&
-        share.showDownload
-      "
-      :database="abstractData"
-      :index="index"
-      :hash="hash"
-      :isolation-id="isolationId"
-    />
-    <AlbumMenu
-      v-if="abstractData && abstractData.type === 'album'"
-      :album="abstractData"
-      :index="index"
-      :hash="hash"
-      :isolation-id="isolationId"
-    />
   </v-toolbar>
 </template>
 <script setup lang="ts">
 import { setFavorite } from '@/api/editFlags'
 import { EnrichedUnifiedData, IsolationId } from '@type/types'
-import DatabaseMenu from '@Menu/SingleMenu.vue'
-import AlbumMenu from '@Menu/AlbumMenu.vue'
-import ShareMenu from '@Menu/ShareMenu.vue'
-import LeaveView from '@Menu/MenuButton/BtnLeaveView.vue'
-import ShowInfo from '@Menu/MenuButton/BtnShowInfo.vue'
 import { useRoute } from 'vue-router'
-import { useShareStore } from '@/store/shareStore'
 import { onMounted } from 'vue'
 import { useConstStore } from '@/store/constStore'
 
 const route = useRoute()
-const shareStore = useShareStore('mainId')
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -85,8 +46,6 @@ onMounted(() => {
     console.error('Failed to load viewBarOverlay:', error)
   })
 })
-
-const share = shareStore.resolvedShare?.share ?? null
 </script>
 <style scoped>
 .my-toolbar {

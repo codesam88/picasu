@@ -48,11 +48,7 @@ steps:
   - when:
       - click.first: true
     assert:
-      - ui.visible: main/
-
-  - when:
-      - click.icon: mdi-information-outline
-    assert:
+      # The info panel is always visible in the item view now.
       - ui.text_visible: Info
       - ui.sidebar_visible: sunset
       - ui.sidebar_visible: nature
