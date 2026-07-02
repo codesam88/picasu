@@ -2,9 +2,6 @@
   <div class="h-100 w-100 bg-surface position-relative d-flex flex-column overflow-hidden">
     <div>
       <v-toolbar class="bg-surface">
-        <v-btn icon @click="handleClose">
-          <v-icon>mdi-close</v-icon>
-        </v-btn>
         <v-toolbar-title class="text-h5">Info</v-toolbar-title>
         <v-spacer />
         <v-btn
@@ -126,11 +123,10 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useConstStore } from '@/store/constStore'
 import { useShareStore } from '@/store/shareStore'
 import { editUserDefinedDescription } from '@utils/editDescription'
-import { leaveView } from '@utils/leaveView'
 import { EnrichedUnifiedData, IsolationId } from '@type/types'
 import ItemExif from './ItemExif.vue'
 import ItemRating from './ItemRating.vue'
@@ -146,7 +142,6 @@ import ShareMenu from '@Menu/ShareMenu.vue'
 import AlbumMenu from '@Menu/AlbumMenu.vue'
 
 const route = useRoute()
-const router = useRouter()
 const userDefinedDescriptionModel = ref('')
 
 const props = defineProps<{
@@ -169,13 +164,8 @@ const constStore = useConstStore('mainId')
 const shareStore = useShareStore('mainId')
 const share = computed(() => shareStore.resolvedShare?.share ?? null)
 
-function handleClose() {
-  leaveView(route, router)
-}
-
-// Repurposed from a whole-panel visibility toggle (the panel is always
-// shown now) to gating the extra EXIF/shot-detail row (camera make/model,
-// aperture, exposure, ISO) so the default view stays uncluttered.
+// Gates the extra EXIF/shot-detail row (camera make/model, aperture,
+// exposure, ISO) so the default view stays uncluttered.
 function toggleExifDetail() {
   void constStore.updateShowInfo(!constStore.showInfo)
 }
