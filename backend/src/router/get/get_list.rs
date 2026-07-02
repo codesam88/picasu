@@ -39,7 +39,6 @@ pub struct AlbumInfo {
     pub album_name: Option<String>,
     #[schema(value_type = HashMap<String, crate::model::album::Share>)]
     pub share_list: HashMap<ArrayString<64>, Share>,
-    /// Set for filesystem-hierarchy albums; `None` for user-created albums.
     pub dir_path: Option<String>,
     /// Album ID of the direct parent directory album, or `None` for top-level
     /// dir albums and all user-created albums.
@@ -73,17 +72,16 @@ pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Albu
             .into_iter()
             .map(|album| {
                 // parent_album_id lookup uses the raw absolute path stored in the DB
-                let parent_album_id =
-                    album.metadata.dir_path.as_deref().and_then(|dir| {
-                        get_parent_album_id(Path::new(dir)).map(|id| id.to_string())
-                    });
+                let parent_album_id = get_parent_album_id(Path::new(&album.metadata.dir_path))
+                    .map(|id| id.to_string());
                 // Expose dir_path as a path relative to IMAGE_HOME so the frontend
                 // never needs to know or handle the absolute image library location.
-                let dir_path = album.metadata.dir_path.as_deref().map(|dir| {
+                let dir_path = Some({
+                    let dir = &album.metadata.dir_path;
                     image_home
                         .as_ref()
                         .and_then(|root| Path::new(dir).strip_prefix(root).ok())
-                        .map_or_else(|| dir.to_string(), |rel| rel.to_string_lossy().into_owned())
+                        .map_or_else(|| dir.clone(), |rel| rel.to_string_lossy().into_owned())
                 });
                 AlbumInfo {
                     album_id: album.object.id.to_string(),

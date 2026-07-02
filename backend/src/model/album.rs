@@ -41,22 +41,15 @@ impl AlbumCombined {
     pub fn self_update(&mut self) {
         let ref_data = TREE.in_memory.read().expect("lock poisoned");
 
-        let album_id = self.object.id;
-        let dir_path = self.metadata.dir_path.clone();
+        let dir_path = Path::new(&self.metadata.dir_path).to_path_buf();
 
-        // For dir albums, membership is path-based (file's immediate parent == dir_path).
-        // For non-dir albums, membership is stored explicitly in item.metadata.album.
-        let belongs_to_album = move |alias: &[crate::model::response::FileModify],
-                                     item_album: Option<ArrayString<64>>|
-              -> bool {
-            if let Some(ref dir) = dir_path {
-                let dir_path = Path::new(dir.as_str());
-                alias
-                    .iter()
-                    .any(|a| Path::new(&a.file).parent() == Some(dir_path))
-            } else {
-                item_album == Some(album_id)
-            }
+        // Membership is path-based: a file belongs to this album iff its
+        // immediate parent directory is this album's directory. Files in
+        // sub-directories belong to the corresponding child album instead.
+        let belongs_to_album = move |alias: &[crate::model::response::FileModify]| -> bool {
+            alias
+                .iter()
+                .any(|a| Path::new(&a.file).parent() == Some(dir_path.as_path()))
         };
 
         let mut data_in_album: Vec<MediaItemInfo> = ref_data
@@ -64,9 +57,7 @@ impl AlbumCombined {
             .filter_map(
                 |database_timestamp| match &database_timestamp.abstract_data {
                     AbstractData::Image(img) => {
-                        if !img.object.is_trashed
-                            && belongs_to_album(&img.metadata.alias, img.metadata.album)
-                        {
+                        if !img.object.is_trashed && belongs_to_album(&img.metadata.alias) {
                             Some(MediaItemInfo {
                                 hash: img.object.id,
                                 size: img.metadata.size,
@@ -78,9 +69,7 @@ impl AlbumCombined {
                         }
                     }
                     AbstractData::Video(vid) => {
-                        if !vid.object.is_trashed
-                            && belongs_to_album(&vid.metadata.alias, vid.metadata.album)
-                        {
+                        if !vid.object.is_trashed && belongs_to_album(&vid.metadata.alias) {
                             Some(MediaItemInfo {
                                 hash: vid.object.id,
                                 size: vid.metadata.size,
@@ -130,25 +119,15 @@ impl AlbumCombined {
 
 #[cfg(test)]
 mod tests {
-    use arrayvec::ArrayString;
     use std::path::Path;
 
     use crate::model::response::FileModify;
 
-    fn belongs_to_album(
-        alias: &[FileModify],
-        item_album: Option<ArrayString<64>>,
-        dir_path: Option<&str>,
-        album_id: ArrayString<64>,
-    ) -> bool {
-        if let Some(dir) = dir_path {
-            let dir_path = Path::new(dir);
-            alias
-                .iter()
-                .any(|a| Path::new(&a.file).parent() == Some(dir_path))
-        } else {
-            item_album == Some(album_id)
-        }
+    fn belongs_to_album(alias: &[FileModify], dir_path: &str) -> bool {
+        let dir_path = Path::new(dir_path);
+        alias
+            .iter()
+            .any(|a| Path::new(&a.file).parent() == Some(dir_path))
     }
 
     fn alias(paths: &[&str]) -> Vec<FileModify> {
@@ -165,69 +144,31 @@ mod tests {
     #[test]
     fn dir_album_matches_file_inside_dir() {
         let a = alias(&["/photos/vacation/img.jpg"]);
-        assert!(belongs_to_album(
-            &a,
-            None,
-            Some("/photos/vacation"),
-            ArrayString::new()
-        ));
+        assert!(belongs_to_album(&a, "/photos/vacation"));
     }
 
     #[test]
     fn dir_album_does_not_match_file_in_subdirectory() {
         let a = alias(&["/photos/vacation/day1/img.jpg"]);
-        assert!(!belongs_to_album(
-            &a,
-            None,
-            Some("/photos/vacation"),
-            ArrayString::new()
-        ));
+        assert!(!belongs_to_album(&a, "/photos/vacation"));
     }
 
     #[test]
     fn child_dir_album_matches_its_own_direct_file() {
         let a = alias(&["/photos/vacation/day1/img.jpg"]);
-        assert!(belongs_to_album(
-            &a,
-            None,
-            Some("/photos/vacation/day1"),
-            ArrayString::new()
-        ));
+        assert!(belongs_to_album(&a, "/photos/vacation/day1"));
     }
 
     #[test]
     fn dir_album_does_not_match_sibling_dir() {
         let a = alias(&["/photos/other/img.jpg"]);
-        assert!(!belongs_to_album(
-            &a,
-            None,
-            Some("/photos/vacation"),
-            ArrayString::new()
-        ));
+        assert!(!belongs_to_album(&a, "/photos/vacation"));
     }
 
     #[test]
     fn dir_album_does_not_match_partial_name_prefix() {
         let a = alias(&["/photos/vacation2/img.jpg"]);
-        assert!(!belongs_to_album(
-            &a,
-            None,
-            Some("/photos/vacation"),
-            ArrayString::new()
-        ));
-    }
-
-    #[test]
-    fn manual_album_matches_stored_id() {
-        let id = ArrayString::from("abc").expect("failed to create ArrayString");
-        assert!(belongs_to_album(&alias(&[]), Some(id), None, id));
-    }
-
-    #[test]
-    fn manual_album_does_not_match_different_id() {
-        let id = ArrayString::from("abc").expect("failed to create ArrayString");
-        let other = ArrayString::from("xyz").expect("failed to create ArrayString");
-        assert!(!belongs_to_album(&alias(&[]), Some(other), None, id));
+        assert!(!belongs_to_album(&a, "/photos/vacation"));
     }
 }
 
@@ -247,10 +188,10 @@ pub struct AlbumMetadata {
     pub item_count: usize,
     pub item_size: u64,
     pub share_list: HashMap<ArrayString<64>, Share>,
-    /// Set for filesystem-hierarchy albums; `None` for all user-created albums.
-    /// When present, album membership is derived from source file paths rather than
-    /// the `albums` set on each media item — the two album types are fully independent.
-    pub dir_path: Option<String>,
+    /// Every album corresponds to a subdirectory under `IMAGE_HOME`. Membership
+    /// is derived from source file paths: a file belongs to this album iff
+    /// its immediate parent directory is `dir_path`.
+    pub dir_path: String,
     /// The user-set title override, as explicitly written via `PUT
     /// /put/set_album_title` (or hydrated from a pre-existing `.albuminfo.xmp`
     /// sidecar). `None` when the album has never been explicitly titled — in

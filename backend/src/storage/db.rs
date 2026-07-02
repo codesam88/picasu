@@ -103,9 +103,7 @@ impl Tree {
             .filter_map(|entry| {
                 entry
                     .map(|(_, guard)| match guard.value() {
-                        AbstractData::Album(album) if album.metadata.dir_path.is_some() => {
-                            Some(album)
-                        }
+                        AbstractData::Album(album) => Some(album),
                         _ => None,
                     })
                     .transpose()
