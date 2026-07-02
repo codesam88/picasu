@@ -45,10 +45,8 @@ pub fn init_dir_album_cache() {
         .flatten()
     {
         let (_, guard) = entry;
-        if let AbstractData::Album(album) = guard.value()
-            && let Some(ref dir) = album.metadata.dir_path
-        {
-            let path = PathBuf::from(dir);
+        if let AbstractData::Album(album) = guard.value() {
+            let path = PathBuf::from(&album.metadata.dir_path);
             if path.is_dir() {
                 cache.insert(path, album.metadata.id);
             } else {
@@ -155,6 +153,25 @@ pub fn get_dir_path_for_album(album_id: ArrayString<64>) -> Option<PathBuf> {
         })
 }
 
+/// Rewrite `DIR_ALBUM_CACHE` entries after a directory (and everything
+/// nested under it) has been physically moved from `old_prefix` to
+/// `new_prefix` — the moved album's own entry and any nested sub-album
+/// entries all get re-keyed under the new location.
+pub fn rewrite_dir_album_cache_prefix(old_prefix: &Path, new_prefix: &Path) {
+    let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
+    let matching: Vec<(PathBuf, ArrayString<64>)> = cache
+        .iter()
+        .filter(|(path, _)| path.starts_with(old_prefix))
+        .map(|(path, &id)| (path.clone(), id))
+        .collect();
+    for (old_path, id) in matching {
+        cache.remove(&old_path);
+        if let Ok(rel) = old_path.strip_prefix(old_prefix) {
+            cache.insert(new_prefix.join(rel), id);
+        }
+    }
+}
+
 /// Mark every directory album whose path is a prefix of `file_path` for a
 /// stats self-update.  Called from `flush_tree_task` after a media item is
 /// written to the database.
@@ -244,7 +261,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         item_count: 0,
         item_size: 0,
         share_list: std::collections::HashMap::new(),
-        dir_path: Some(dir_path_str),
+        dir_path: dir_path_str,
         custom_title,
     };
     let abstract_data = AbstractData::Album(AlbumCombined { object, metadata });

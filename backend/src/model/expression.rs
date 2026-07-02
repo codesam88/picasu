@@ -204,29 +204,27 @@ impl Expression {
             }
             Expression::Album(album_id) => match album_id {
                 AlbumFilterValue::Value(album_id) => {
-                    // For filesystem-hierarchy albums, membership is path-based
-                    // rather than stored in img.metadata.albums.  Look up the
-                    // dir_path from the cache (separate Mutex from the in-memory
-                    // tree, so no deadlock even when called inside filter_items).
+                    // Membership is path-based rather than stored in
+                    // img.metadata.albums. Look up the dir_path from the
+                    // cache (separate Mutex from the in-memory tree, so no
+                    // deadlock even when called inside filter_items). An
+                    // unknown album_id (e.g. a stale reference) matches nothing.
                     let dir_path = crate::process::dir_album::get_dir_path_for_album(album_id);
-                    if let Some(dir) = dir_path {
-                        // Only files whose immediate parent equals this album's directory.
-                        // Files in sub-directories belong to the corresponding child album.
-                        Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                            AbstractData::Image(img) => img.metadata.alias.iter().any(|a| {
-                                std::path::Path::new(&a.file).parent() == Some(dir.as_path())
-                            }),
-                            AbstractData::Video(vid) => vid.metadata.alias.iter().any(|a| {
-                                std::path::Path::new(&a.file).parent() == Some(dir.as_path())
-                            }),
-                            AbstractData::Album(_) => false,
-                        })
-                    } else {
-                        Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                            AbstractData::Image(img) => img.metadata.album == Some(album_id),
-                            AbstractData::Video(vid) => vid.metadata.album == Some(album_id),
-                            AbstractData::Album(_) => false,
-                        })
+                    match dir_path {
+                        Some(dir) => {
+                            // Only files whose immediate parent equals this album's directory.
+                            // Files in sub-directories belong to the corresponding child album.
+                            Box::new(move |abstract_data: &AbstractData| match abstract_data {
+                                AbstractData::Image(img) => img.metadata.alias.iter().any(|a| {
+                                    std::path::Path::new(&a.file).parent() == Some(dir.as_path())
+                                }),
+                                AbstractData::Video(vid) => vid.metadata.alias.iter().any(|a| {
+                                    std::path::Path::new(&a.file).parent() == Some(dir.as_path())
+                                }),
+                                AbstractData::Album(_) => false,
+                            })
+                        }
+                        None => Box::new(|_: &AbstractData| false),
                     }
                 }
                 AlbumFilterValue::Exists(exists) => {
@@ -240,12 +238,10 @@ impl Expression {
             Expression::RootAlbum(value) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::Album(alb) => {
-                        let is_root = alb.metadata.dir_path.as_deref().is_none_or(|dir| {
-                            crate::process::dir_album::get_parent_album_id(std::path::Path::new(
-                                dir,
-                            ))
-                            .is_none()
-                        });
+                        let is_root = crate::process::dir_album::get_parent_album_id(
+                            std::path::Path::new(&alb.metadata.dir_path),
+                        )
+                        .is_none();
                         is_root == value
                     }
                     AbstractData::Image(_) | AbstractData::Video(_) => false,
@@ -254,11 +250,9 @@ impl Expression {
             Expression::ParentAlbum(parent_id) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::Album(alb) => {
-                        alb.metadata.dir_path.as_deref().is_some_and(|dir| {
-                            crate::process::dir_album::get_parent_album_id(std::path::Path::new(
-                                dir,
-                            )) == Some(parent_id)
-                        })
+                        crate::process::dir_album::get_parent_album_id(std::path::Path::new(
+                            &alb.metadata.dir_path,
+                        )) == Some(parent_id)
                     }
                     AbstractData::Image(_) | AbstractData::Video(_) => false,
                 })
@@ -497,22 +491,19 @@ mod tests {
     // ── Album (manual) ────────────────────────────────────────────────────────
 
     #[test]
-    fn album_value_matches_stored_membership() {
-        // DIR_ALBUM_CACHE is empty in tests, so the filter falls through to the
-        // manual-album path that checks img.metadata.albums.
+    fn album_value_with_unknown_id_matches_nothing() {
+        // Metadata-only albums are deprecated: an album_id with no
+        // DIR_ALBUM_CACHE entry (this test's cache is empty) must match
+        // nothing, even for an item whose stored `album` field happens to
+        // equal it — there is no path-independent membership fallback left.
         let album_id = ArrayString::from("aabbccdd").expect("failed to create ArrayString");
         let mut i = img();
         i.metadata.album = Some(album_id);
         let member = AbstractData::Image(i);
-        let non_member = AbstractData::Image(img());
 
-        assert!(run(
-            Expression::Album(AlbumFilterValue::Value(album_id)),
-            &member
-        ));
         assert!(!run(
             Expression::Album(AlbumFilterValue::Value(album_id)),
-            &non_member
+            &member
         ));
     }
 

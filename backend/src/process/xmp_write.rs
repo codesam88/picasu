@@ -15,19 +15,16 @@ use std::path::Path;
 ///   re-derived from the new name.
 ///
 /// Images/videos write `{basename}.{ext}.xmp` alongside their primary alias
-/// file. Directory-backed albums write `.albuminfo.xmp` inside `dir_path`.
-/// Manual (non-directory) albums and items with no aliases have nowhere on
-/// disk to write and are silently skipped (Ok returned).
+/// file. Albums write `.albuminfo.xmp` inside `dir_path`. Items with no
+/// aliases have nowhere on disk to write and are silently skipped (Ok
+/// returned).
 ///
 /// Uses an atomic temp-file + rename to avoid partial-write races.
 /// Sidecar write failures are returned to the caller; callers should log and
 /// treat them as non-fatal.
 pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
     if let AbstractData::Album(album) = abstract_data {
-        let Some(dir_path) = &album.metadata.dir_path else {
-            return Ok(());
-        };
-        let sidecar = Path::new(dir_path).join(".albuminfo.xmp");
+        let sidecar = Path::new(&album.metadata.dir_path).join(".albuminfo.xmp");
         let content = format_xmp_packet(
             abstract_data.tag(),
             abstract_data.description(),
@@ -178,7 +175,7 @@ mod tests {
         use crate::model::object::{ObjectSchema, ObjectType};
         use arrayvec::ArrayString;
 
-        fn make_dir_album(dir_path: Option<String>, custom_title: Option<String>) -> AbstractData {
+        fn make_dir_album(dir_path: String, custom_title: Option<String>) -> AbstractData {
             let id = ArrayString::from("alb").expect("failed to create test ArrayString");
             let mut object = ObjectSchema::new(id, ObjectType::Album);
             object.description = Some("A lovely trip".to_string());
@@ -210,7 +207,7 @@ mod tests {
         fn writes_albuminfo_xmp_for_dir_album() {
             let dir = tempfile::tempdir().expect("failed to create temp dir");
             let album = make_dir_album(
-                Some(dir.path().to_string_lossy().into_owned()),
+                dir.path().to_string_lossy().into_owned(),
                 Some("Vacation 2024".to_string()),
             );
 
@@ -231,7 +228,7 @@ mod tests {
         #[test]
         fn does_not_write_title_when_not_explicitly_customized() {
             let dir = tempfile::tempdir().expect("failed to create temp dir");
-            let album = make_dir_album(Some(dir.path().to_string_lossy().into_owned()), None);
+            let album = make_dir_album(dir.path().to_string_lossy().into_owned(), None);
 
             write_sidecar_for(&album).expect("failed to write album sidecar");
 
@@ -239,12 +236,6 @@ mod tests {
             let content = std::fs::read_to_string(&sidecar_path).expect("sidecar not written");
             assert!(!content.contains("dc:title"));
             assert!(!content.contains("Vacation 2024"));
-        }
-
-        #[test]
-        fn manual_album_without_dir_path_is_noop() {
-            let album = make_dir_album(None, None);
-            write_sidecar_for(&album).expect("manual album should not error");
         }
     }
 }

@@ -187,11 +187,9 @@ pub async fn set_album_title(
                 .custom_title
                 .clone_from(&set_album_title_inner.title);
             album.metadata.title = set_album_title_inner.title.or_else(|| {
-                album
-                    .metadata
-                    .dir_path
-                    .as_deref()
-                    .map(crate::process::dir_album::derive_default_title)
+                Some(crate::process::dir_album::derive_default_title(
+                    &album.metadata.dir_path,
+                ))
             });
         })
     })
