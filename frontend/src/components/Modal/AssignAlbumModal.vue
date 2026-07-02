@@ -260,6 +260,21 @@ function cancel() {
   modalStore.showAssignAlbumModal = false
 }
 
+// True if `albumId` is nested (at any depth) under one of the other
+// currently-selected albums. Moving an ancestor already carries its
+// descendants along on disk — also moving a selected descendant would
+// re-fetch its now-updated path and "extract" it back out as a sibling of
+// the already-moved ancestor instead of leaving it nested, which is safe
+// but not what selecting both together looks like it should do.
+function isDescendantOfAnySelected(albumId: string, selectedAlbumIds: Set<string>): boolean {
+  let parent = albumStore.albums.get(albumId)?.parentAlbumId ?? null
+  while (parent !== null) {
+    if (selectedAlbumIds.has(parent)) return true
+    parent = albumStore.albums.get(parent)?.parentAlbumId ?? null
+  }
+  return false
+}
+
 async function handleSubmit() {
   if (selectedAlbumId.value === null) return
   submitting.value = true
@@ -269,9 +284,17 @@ async function handleSubmit() {
       // file; albums move as a whole directory — assignAlbum/assign_album
       // dispatch on the item's actual type either way).
       const indices = [...collectionStore.editModeCollection]
+      const selectedAlbumIds = new Set<string>()
+      for (const idx of indices) {
+        const item = dataStore.data.get(idx)
+        if (item?.type === 'album') selectedAlbumIds.add(item.id)
+      }
       for (const idx of indices) {
         const item = dataStore.data.get(idx)
         if (!item) continue
+        if (item.type === 'album' && isDescendantOfAnySelected(item.id, selectedAlbumIds)) {
+          continue
+        }
         await assignAlbum(item.id, selectedAlbumId.value, idx, isolationId)
       }
       collectionStore.leaveEdit()

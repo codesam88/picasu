@@ -1,0 +1,28 @@
+name: assign_album (album/directory move) on_conflict=replace is rejected rather than deleting an existing directory
+# Unlike file moves, Replace can't be a safe atomic rename for directories
+# (POSIX rename() over a non-empty directory fails, and silently
+# recursive-deleting an existing album to make room would be destructive).
+# Verify the API returns a clear error and leaves both directories intact.
+given:
+  - dir_album: /e2e_zza/source/child
+    id_as: $child_album
+  - photo: /e2e_zza/source/child/photo.jpg
+  - dir_album: /e2e_zza/target
+    id_as: $target_album
+  - dir_album: /e2e_zza/target/child
+    id_as: $existing_target_child
+  - photo: /e2e_zza/target/child/other.jpg
+
+when:
+  - call: PUT /put/assign_album
+    body:
+      hash: "${child_album}"
+      albumId: "${target_album}"
+      onConflict: "replace"
+    then:
+      - response.status_not: 200
+then:
+  - response.status_not: 200
+  # Nothing moved or was deleted
+  - file_exists: /e2e_zza/source/child/photo.jpg
+  - file_exists: /e2e_zza/target/child/other.jpg
