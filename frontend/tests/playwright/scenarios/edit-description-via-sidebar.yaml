@@ -1,10 +1,10 @@
-name: Editing description in sidebar persists after panel reopen
+name: Editing description in sidebar persists after leaving and re-entering the view
 covers:
   api:
     - PUT /put/set_user_defined_description
   ui:
     - description textarea accepts input
-    - description persists after sidebar close and reopen
+    - description persists after leaving and re-entering the item view
     - description written to XMP sidecar
 
 given:
@@ -31,11 +31,7 @@ steps:
   - when:
       - click.first: true
     assert:
-      - ui.visible: main/
-
-  - when:
-      - click.icon: mdi-information-outline
-    assert:
+      # The info panel is always visible in the item view now.
       - ui.visible: main/
 
   # Fill the description textarea (uniquely identified by aria-label)
@@ -46,7 +42,8 @@ steps:
       - ui.input_value: textbox/Description
         contains: A scenic landscape photo
 
-  # Close the sidebar — blurs the textarea, triggers the API save, shows a toast
+  # Close now leaves the item view entirely (like the back button) — blurring
+  # the textarea on the way out still triggers the API save and a toast.
   - when:
       - click.icon: mdi-close
     assert:
@@ -61,9 +58,9 @@ steps:
       - file.contains: descedit/pool/img01.xmp
         text: A scenic landscape photo
 
-  # Reopen the sidebar and verify the description was persisted
+  # Re-enter the photo and verify the description was persisted server-side
   - when:
-      - click.icon: mdi-information-outline
+      - click.first: true
     assert:
       - ui.input_value: textbox/Description
         contains: A scenic landscape photo

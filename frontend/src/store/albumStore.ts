@@ -10,11 +10,9 @@ export const useAlbumStore = (isolationId: IsolationId) =>
     state: (): {
       albums: Map<string, AlbumInfo> // id -> album
       fetched: boolean
-      leaveAlbumPath: string | undefined
     } => ({
       albums: new Map(),
-      fetched: false,
-      leaveAlbumPath: undefined
+      fetched: false
     }),
     actions: {
       async fetchAlbums() {

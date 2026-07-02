@@ -31,11 +31,7 @@ steps:
   - when:
       - click.first: true
     assert:
-      - ui.visible: main/
-
-  - when:
-      - click.icon: mdi-information-outline
-    assert:
+      # The info panel is always visible in the item view now.
       - ui.visible: main/
 
   # Open Edit Tags and add a tag containing HTML markup
@@ -69,6 +65,8 @@ steps:
       - ui.input_value: textbox/Description
         contains: "'; DROP TABLE photos--"
 
+  # Close now leaves the item view entirely (like the back button) — blurring
+  # the textarea on the way out still triggers the API save and a toast.
   - when:
       - click.icon: mdi-close
     assert:
@@ -76,9 +74,9 @@ steps:
           type: success
           contains: Description saved
 
-  # Reopen and verify the description round-trips as plain text
+  # Re-enter the photo and verify the description round-trips as plain text
   - when:
-      - click.icon: mdi-information-outline
+      - click.first: true
     assert:
       - ui.input_value: textbox/Description
         contains: "'; DROP TABLE photos--"

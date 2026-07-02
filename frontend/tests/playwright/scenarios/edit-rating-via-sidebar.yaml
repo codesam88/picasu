@@ -30,11 +30,7 @@ steps:
   - when:
       - click.first: true
     assert:
-      - ui.visible: main/
-
-  - when:
-      - click.icon: mdi-information-outline
-    assert:
+      # The info panel is always visible in the item view now.
       - ui.visible: main/
 
   # Click the 3rd star on the rating widget (v-rating renders each star as a visible button)
