@@ -120,6 +120,7 @@ import { useModalStore } from '@/store/modalStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useDataStore } from '@/store/dataStore'
+import { useMessageStore } from '@/store/messageStore'
 import { assignAlbum } from '@/api/assignAlbum'
 import { createDirAlbum } from '@/api/createDirAlbum'
 import { getHashIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
@@ -132,6 +133,7 @@ const modalStore = useModalStore('mainId')
 const albumStore = useAlbumStore('mainId')
 const collectionStore = useCollectionStore(isolationId)
 const dataStore = useDataStore(isolationId)
+const messageStore = useMessageStore('mainId')
 
 const search = ref('')
 const selectedAlbumId = ref<string | null>(null)
@@ -275,26 +277,47 @@ function isDescendantOfAnySelected(albumId: string, selectedAlbumIds: Set<string
   return false
 }
 
+// Reject the whole batch upfront rather than silently dropping the
+// conflicting item mid-move: each assign_album call is independent and
+// stateless, so if both an album and its own sub-album are selected
+// together, moving the ancestor first and the descendant second doesn't
+// error — it just re-extracts the (already-relocated) descendant as a
+// sibling instead of leaving it nested. That's safe but not something the
+// UI can explain clearly as a partial result, so refuse the operation
+// entirely instead — the modal stays open so the user can fix the
+// selection and retry.
+function hasNestedAlbumSelection(indices: number[]): boolean {
+  const selectedAlbumIds = new Set<string>()
+  for (const idx of indices) {
+    const item = dataStore.data.get(idx)
+    if (item?.type === 'album') selectedAlbumIds.add(item.id)
+  }
+  return indices.some((idx) => {
+    const item = dataStore.data.get(idx)
+    return item?.type === 'album' && isDescendantOfAnySelected(item.id, selectedAlbumIds)
+  })
+}
+
 async function handleSubmit() {
   if (selectedAlbumId.value === null) return
+
+  const indices = [...collectionStore.editModeCollection]
+  if (modalStore.assignAlbumBatch && hasNestedAlbumSelection(indices)) {
+    messageStore.error(
+      'Cannot move an album together with one of its own sub-albums. Deselect one and try again.'
+    )
+    return
+  }
+
   submitting.value = true
   try {
     if (modalStore.assignAlbumBatch) {
       // Batch: move all selected items (images/videos move as a single
       // file; albums move as a whole directory — assignAlbum/assign_album
       // dispatch on the item's actual type either way).
-      const indices = [...collectionStore.editModeCollection]
-      const selectedAlbumIds = new Set<string>()
-      for (const idx of indices) {
-        const item = dataStore.data.get(idx)
-        if (item?.type === 'album') selectedAlbumIds.add(item.id)
-      }
       for (const idx of indices) {
         const item = dataStore.data.get(idx)
         if (!item) continue
-        if (item.type === 'album' && isDescendantOfAnySelected(item.id, selectedAlbumIds)) {
-          continue
-        }
         await assignAlbum(item.id, selectedAlbumId.value, idx, isolationId)
       }
       collectionStore.leaveEdit()
