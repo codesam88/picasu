@@ -1,0 +1,25 @@
+name: assign_album moves a sub-album's whole directory (with its photo) into the target album
+# Regression test: assign_album previously only handled Image/Video items —
+# an Album's .alias() is always empty, so moving a sub-album via the batch
+# "Assign Album" UI silently 400'd ("Item has no alias"). Verifies the
+# directory (and its contents) physically moves and the DB record's path
+# updates to match.
+given:
+  - dir_album: /e2e_zz7/source/child
+    id_as: $child_album
+  - photo: /e2e_zz7/source/child/photo.jpg
+    id_as: $photo
+  - dir_album: /e2e_zz7/target
+    id_as: $target_album
+
+when:
+  - call: PUT /put/assign_album
+    body:
+      hash: "${child_album}"
+      albumId: "${target_album}"
+    then:
+      - response.status: 200
+then:
+  - response.status: 200
+  - file_exists: /e2e_zz7/target/child/photo.jpg
+  - file_absent: /e2e_zz7/source/child/photo.jpg
