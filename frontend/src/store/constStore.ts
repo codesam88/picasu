@@ -12,9 +12,7 @@ import {
   storeTheme,
   getTheme,
   storeShowFilenameChip,
-  getShowFilenameChip,
-  storeViewBarOverlay,
-  getViewBarOverlay
+  getShowFilenameChip
 } from '@/db/settingsDb'
 
 export const useConstStore = (isolationId: IsolationId) =>
@@ -26,7 +24,6 @@ export const useConstStore = (isolationId: IsolationId) =>
       limitRatio: boolean
       theme: 'dark' | 'light'
       showFilenameChip: boolean
-      viewBarOverlay: boolean
     } => ({
       subRowHeightScale: 250,
       showInfo: false,
@@ -35,8 +32,7 @@ export const useConstStore = (isolationId: IsolationId) =>
       limitRatio: false,
       // default theme: dark
       theme: 'dark',
-      showFilenameChip: false,
-      viewBarOverlay: true
+      showFilenameChip: false
     }),
 
     actions: {
@@ -120,18 +116,6 @@ export const useConstStore = (isolationId: IsolationId) =>
         const stored = await getShowFilenameChip()
         if (typeof stored === 'boolean') {
           this.showFilenameChip = stored
-        }
-      },
-
-      async updateViewBarOverlay(value: boolean): Promise<void> {
-        this.viewBarOverlay = value
-        await storeViewBarOverlay(value)
-      },
-
-      async loadViewBarOverlay(): Promise<void> {
-        const stored = await getViewBarOverlay()
-        if (typeof stored === 'boolean') {
-          this.viewBarOverlay = stored
         }
       }
     }

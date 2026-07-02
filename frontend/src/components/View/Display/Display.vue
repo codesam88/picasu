@@ -2,19 +2,7 @@
   <div
     id="image-display-col"
     class="h-100 position-relative flex-grow-1 min-w-0 image-col d-flex flex-column"
-    :class="{
-      'is-overlay-mode': constStore.viewBarOverlay,
-      'is-push-mode': !constStore.viewBarOverlay
-    }"
   >
-    <!-- Overlay toolbar positioned absolutely within the column scope -->
-    <ViewBar
-      :abstract-data="abstractData"
-      :index="index"
-      :hash="hash"
-      :isolation-id="isolationId"
-    />
-
     <DisplayMobile
       class="flex-grow-1 position-relative view-content"
       v-if="configStore.isMobile"
@@ -47,7 +35,6 @@
 import { onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useDataStore } from '@/store/dataStore'
-import ViewBar from '@/components/NavBar/ViewBar.vue'
 import { useConstStore } from '@/store/constStore'
 import { useModalStore } from '@/store/modalStore'
 import { useInitializedStore } from '@/store/initializedStore'
@@ -248,17 +235,6 @@ onUnmounted(() => {
 .view-content {
   container-type: size;
   container-name: image-col;
-}
-
-/* Push mode: ViewBar takes space (relative), content fills remaining space via flex */
-.is-push-mode .view-content {
-  position: relative;
-  flex: 1 1 auto;
-  overflow: hidden;
-}
-
-/* Overlay mode: ViewBar is absolute (handled by ViewBar component), content fills container */
-.is-overlay-mode .view-content {
   position: absolute;
   top: 0;
   left: 0;
