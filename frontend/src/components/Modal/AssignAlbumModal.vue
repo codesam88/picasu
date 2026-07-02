@@ -265,11 +265,13 @@ async function handleSubmit() {
   submitting.value = true
   try {
     if (modalStore.assignAlbumBatch) {
-      // Batch: move all selected items
+      // Batch: move all selected items (images/videos move as a single
+      // file; albums move as a whole directory — assignAlbum/assign_album
+      // dispatch on the item's actual type either way).
       const indices = [...collectionStore.editModeCollection]
       for (const idx of indices) {
         const item = dataStore.data.get(idx)
-        if (!item || (item.type !== 'image' && item.type !== 'video')) continue
+        if (!item) continue
         await assignAlbum(item.id, selectedAlbumId.value, idx, isolationId)
       }
       collectionStore.leaveEdit()

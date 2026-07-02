@@ -19,7 +19,7 @@
       <ItemArchive :index-list="editModeList" />
       <ItemFavorite :index-list="editModeList" />
       <ItemBatchEditTags />
-      <ItemBatchEditAlbums v-if="!isInAlbumsPage" />
+      <ItemBatchEditAlbums />
 
       <v-divider></v-divider>
 
@@ -76,6 +76,4 @@ const shouldShowSetAsCover = computed(
 )
 
 const isInTrashedPath = computed(() => route.meta.baseName === 'trashed')
-
-const isInAlbumsPage = computed(() => route.meta.baseName === 'albums')
 </script>
