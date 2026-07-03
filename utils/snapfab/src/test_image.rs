@@ -313,7 +313,7 @@ pub fn generate_photo_file(
     Ok(mode)
 }
 
-/// Used by backend e2e tests (`backend/src/tests/backend_api.rs`).
+/// Used by backend API tests (`backend/src/tests/backend_api.rs`).
 #[allow(dead_code)]
 pub fn generate_batch(specs: &[PhotoSpec]) -> std::io::Result<()> {
     let mut rng = SmallRng::from_rng(&mut rand::rng());

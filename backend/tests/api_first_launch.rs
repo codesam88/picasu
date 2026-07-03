@@ -6,7 +6,7 @@ use picasu::{APP_CONFIG, AppConfig};
 /// should be written into config.toml and loaded into AppConfig.data_home
 /// and image_home.
 #[test]
-fn e2e_first_launch_resolves_paths() {
+fn api_first_launch_resolves_paths() {
     let dir = tempfile::tempdir().unwrap();
     let cfg_dir = dir.path().join("config");
     let dat_dir = dir.path().join("data");

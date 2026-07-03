@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use picasu::{APP_CONFIG, AppConfig, build_rocket_with_config};
 
-static E2E_LOCK: Mutex<()> = Mutex::new(());
+static API_LOCK: Mutex<()> = Mutex::new(());
 
 fn auth_and_config(client: &Client) -> Value {
     // Config.toml sets password = "secret123"
@@ -25,13 +25,13 @@ fn auth_and_config(client: &Client) -> Value {
     res.into_json().expect("valid JSON")
 }
 
-/// End-to-end test: defaults → config.toml → env vars → API.
+/// API test: defaults → config.toml → env vars → API.
 ///
 /// Spins up a Rocket client in-process after loading config through the
 /// real AppConfig::init() path, then verifies via GET /get/config.
 #[test]
-fn e2e_config_precedence() {
-    let _lock = E2E_LOCK.lock().unwrap();
+fn api_config_precedence() {
+    let _lock = API_LOCK.lock().unwrap();
 
     // ── Setup temp directories ────────────────────────────────────────
     let dir = tempfile::tempdir().unwrap();
