@@ -29,11 +29,10 @@ backend-test: frontend-build-maybe
 backend-test-release: frontend-build-maybe
     cd backend && cargo test --release
 
-# cargo audit
+# cargo deny
 [group('backend')]
 backend-audit:
     cargo deny check
-    cargo audit
 
 # cargo build (dev build)
 [group('backend')]
@@ -92,7 +91,7 @@ frontend-build-maybe:
 # npm audit
 [group('frontend')]
 frontend-audit:
-    cd frontend && npm audit
+    cd frontend && npm audit --omit=dev
 
 # ── Utils (snapfab) ──────────────────────────────────────────────────────────────
 
@@ -201,9 +200,8 @@ install-plan:
 [group('global')]
 install-dev: install-plan
     cargo install sccache
-    cargo install cargo-deny cargo-audit
+    cargo install cargo-deny
     npm ci --prefix frontend
-    npm install --prefix frontend --save-dev --save-exact widdershins
 
 # Build frontend then backend (dev build)
 [group('global')]

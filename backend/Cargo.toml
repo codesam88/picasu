@@ -63,7 +63,7 @@ unicode-normalization = "0.1.25"
 [dev-dependencies]
 tempfile = "3"
 serde_yaml = "0.9"
-snapfab = { path = "../utils/snapfab" }
+snapfab = { version = "0.1", path = "../utils/snapfab" }
 
 [features]
 embed-frontend = []
