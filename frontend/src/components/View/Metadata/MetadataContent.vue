@@ -4,25 +4,6 @@
       <v-toolbar class="bg-surface">
         <v-toolbar-title class="text-h5">Info</v-toolbar-title>
         <v-spacer />
-        <v-btn
-          v-if="
-            (abstractData.type === 'image' || abstractData.type === 'video') &&
-            (abstractData.exif.Make !== undefined || abstractData.exif.Model !== undefined)
-          "
-          :icon="constStore.showInfo ? 'mdi-information' : 'mdi-information-outline'"
-          @click="toggleExifDetail"
-        />
-        <template v-if="route.meta.baseName !== 'share'">
-          <DatabaseMenu
-            v-if="
-              (abstractData.type === 'image' || abstractData.type === 'video') && share === null
-            "
-            :database="abstractData"
-            :index="index"
-            :hash="hash"
-            :isolation-id="isolationId"
-          />
-        </template>
         <ShareMenu
           v-if="
             (abstractData.type === 'image' || abstractData.type === 'video') &&
@@ -137,7 +118,6 @@ import ItemTag from './ItemTag.vue'
 import ItemAlbum from './ItemAlbum.vue'
 import ItemTitle from './ItemTitle.vue'
 import ItemCount from './ItemCount.vue'
-import DatabaseMenu from '@Menu/SingleMenu.vue'
 import ShareMenu from '@Menu/ShareMenu.vue'
 import AlbumMenu from '@Menu/AlbumMenu.vue'
 
@@ -163,12 +143,6 @@ const isShareMode = computed(() => {
 const constStore = useConstStore('mainId')
 const shareStore = useShareStore('mainId')
 const share = computed(() => shareStore.resolvedShare?.share ?? null)
-
-// Gates the extra EXIF/shot-detail row (camera make/model, aperture,
-// exposure, ISO) so the default view stays uncluttered.
-function toggleExifDetail() {
-  void constStore.updateShowInfo(!constStore.showInfo)
-}
 
 function getUserDefinedDescription(abstractData: EnrichedUnifiedData): string {
   return abstractData.description ?? ''

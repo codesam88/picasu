@@ -4,11 +4,12 @@
     v-if="abstractData?.type === 'image' && imgStore.imgOriginal.get(index)"
     :src="imgStore.imgOriginal.get(index)"
     :style="{
-      width: `${abstractData?.width}px`,
-      height: `${abstractData?.height}px`,
-      maxWidth: isVertical ? '100cqh' : '100%',
-      maxHeight: isVertical ? '100cqw' : '100%',
-      objectFit: 'scale-down',
+      maxWidth: '98%',
+      maxHeight: '98%',
+      width: 'auto',
+      height: 'auto',
+      objectFit: 'contain',
+      border: '2px solid rgba(255, 255, 255, 0.8)',
       transform: `rotate(${-(editStore.rotationCounts.get(abstractData?.id ?? '') ?? 0) * 90}deg)`,
       transition: 'transform 0.3s ease'
     }"
@@ -19,7 +20,6 @@
 import { useImgStore } from '@/store/imgStore'
 import { useEditStore } from '@/store/editStore'
 import { EnrichedUnifiedData, IsolationId } from '@type/types'
-import { computed } from 'vue'
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -29,11 +29,4 @@ const props = defineProps<{
 
 const imgStore = useImgStore(props.isolationId)
 const editStore = useEditStore('mainId')
-
-const isVertical = computed(() => {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-  const rotationCount = editStore.rotationCounts.get(props.abstractData?.id ?? '') ?? 0
-  // If count is odd (1, 3, 5...), it is 90 or 270 degrees
-  return Math.abs(rotationCount % 2) === 1
-})
 </script>
