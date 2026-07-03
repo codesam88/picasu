@@ -3,7 +3,16 @@ targets = []
 
 [advisories]
 version = 2
-ignore = []
+ignore = [
+    # quick-xml <0.41.0 has quadratic attribute checking and unbounded namespace
+    # allocation. Both require crafted XML with many attributes/declarations on a
+    # single tag. quick-xml is only pulled in via little_exif -> snapfab, which is
+    # a dev-dependency used for test fixtures — the vulnerable code paths are not
+    # reachable with untrusted input. little_exif 0.6.23 (latest) pins
+    # quick-xml ^0.37.5; no upgrade path exists upstream yet.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
+]
 
 [licenses]
 version = 2
@@ -19,7 +28,6 @@ allow = [
     "Zlib",
     "CC0-1.0",
     "NCSA",
-    "OpenSSL",           # ring's custom license (see clarify block below)
     "CDLA-Permissive-2.0", # webpki-roots (TLS root certificates), via ureq v3
 ]
 
