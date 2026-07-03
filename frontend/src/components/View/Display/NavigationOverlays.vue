@@ -40,9 +40,15 @@ defineProps<{
   top: 50%;
   transform: translateY(-50%);
   z-index: 1;
-  inline-size: 48px;
-  block-size: 50%;
+  inline-size: 40px;
+  block-size: 60%;
   box-shadow: none;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+}
+.nav-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 .nav-left {
   left: 0;
