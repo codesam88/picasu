@@ -99,6 +99,8 @@ export async function executeWhen(
           }
         }
       }
+    } else if ('click.testid' in step) {
+      await page.getByTestId(step['click.testid']).click()
     } else if ('click.select_first' in step) {
       // .icon-hover is hidden by `.parent:not(:hover) .child { display:none }` CSS.
       // Playwright's visibility check fires before the mouse moves, so even force:true
@@ -110,13 +112,11 @@ export async function executeWhen(
         icon.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
       })
       // Wait for the edit-mode toolbar (three-dots menu button) to appear
-      await page
-        .locator('button:has(.mdi-dots-vertical)')
-        .waitFor({ state: 'visible', timeout: 5000 })
+      await page.getByTestId('batch-menu').waitFor({ state: 'visible', timeout: 5000 })
     } else {
       throw new Error(
         `Unknown when verb in step ${JSON.stringify(step)}. ` +
-          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.select_first`
+          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first`
       )
     }
   }

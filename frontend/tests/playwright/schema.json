@@ -173,6 +173,14 @@
       "required": ["click.select_first"],
       "additionalProperties": false
     },
+    "uiWhenClickTestId": {
+      "type": "object",
+      "properties": {
+        "click.testid": { "type": "string" }
+      },
+      "required": ["click.testid"],
+      "additionalProperties": false
+    },
     "uiWhenItem": {
       "oneOf": [
         { "$ref": "#/definitions/uiWhenNavigate" },
@@ -184,7 +192,8 @@
         { "$ref": "#/definitions/uiWhenClickText" },
         { "$ref": "#/definitions/uiWhenClickIcon" },
         { "$ref": "#/definitions/uiWhenClickFirst" },
-        { "$ref": "#/definitions/uiWhenClickSelectFirst" }
+        { "$ref": "#/definitions/uiWhenClickSelectFirst" },
+        { "$ref": "#/definitions/uiWhenClickTestId" }
       ]
     },
     "uiAssertVisible": {

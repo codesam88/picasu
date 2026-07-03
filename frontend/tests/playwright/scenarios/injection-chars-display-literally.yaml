@@ -41,7 +41,7 @@ steps:
 
   # Open Edit Tags and add a tag containing HTML markup
   - when:
-      - click.icon: mdi-dots-vertical
+      - click.testid: photo-menu
     assert:
       - ui.visible: main/
 

@@ -41,7 +41,7 @@ steps:
 
   # Open the three-dot menu and launch Edit Tags
   - when:
-      - click.icon: mdi-dots-vertical
+      - click.testid: photo-menu
     assert:
       - ui.visible: main/
 

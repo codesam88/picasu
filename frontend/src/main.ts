@@ -49,6 +49,16 @@ const vuetify = createVuetify({
   }
 })
 
+// Custom directive that adds data-testid to the root DOM element after mount.
+// Useful when a component (e.g. Vuetify VBtn) strips custom HTML attributes.
+import type { Directive } from 'vue'
+const testidDirective: Directive<HTMLElement, string> = {
+  mounted(el, { value }) {
+    el.setAttribute('data-testid', value)
+  }
+}
+app.directive('testid', testidDirective)
+
 // Apply necessary plugins and mount the app
 app.use(router)
 app.use(vuetify)

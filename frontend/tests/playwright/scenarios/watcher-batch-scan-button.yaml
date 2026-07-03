@@ -14,6 +14,6 @@ steps:
   - when:
       - navigate: /timeline
       - click.select_first: true
-      - click.icon: mdi-dots-vertical
+      - click.testid: batch-menu
     assert:
       - ui.text_visible: Scan for New Files

@@ -41,7 +41,7 @@ steps:
 
   # Soft-delete via the three-dot menu
   - when:
-      - click.icon: mdi-dots-vertical
+      - click.testid: photo-menu
     assert:
       - ui.visible: main/
 
@@ -70,7 +70,7 @@ steps:
 
   # Permanently delete via the three-dot menu
   - when:
-      - click.icon: mdi-dots-vertical
+      - click.testid: photo-menu
     assert:
       - ui.visible: main/
 
