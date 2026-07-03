@@ -1,7 +1,7 @@
 <template>
   <v-menu location="start">
     <template #activator="{ props: MenuBtn }">
-      <v-btn v-bind="MenuBtn" icon="mdi-dots-vertical"></v-btn>
+      <v-btn v-bind="MenuBtn" icon="mdi-dots-vertical" v-testid="'share-menu'"></v-btn>
     </template>
     <v-list>
       <ItemViewOriginalFile

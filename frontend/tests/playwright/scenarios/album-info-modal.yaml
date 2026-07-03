@@ -23,7 +23,7 @@ steps:
   # Select the "child" album card and open its context menu
   - when:
       - click.select_first: true
-      - click.icon: mdi-dots-vertical
+      - click.testid: batch-menu
     assert:
       - ui.visible: main/
 
@@ -52,7 +52,7 @@ steps:
 
   # Reopen (album still selected from before) and verify the edit persisted
   - when:
-      - click.icon: mdi-dots-vertical
+      - click.testid: batch-menu
       - click: option/Album Info
     assert:
       - ui.input_value: textbox/Title
@@ -68,6 +68,6 @@ steps:
   # opening the batch menu again must not resurrect the dialog on its own —
   # it must require a fresh explicit click on "Album Info".
   - when:
-      - click.icon: mdi-dots-vertical
+      - click.testid: batch-menu
     assert:
       - ui.modal: closed

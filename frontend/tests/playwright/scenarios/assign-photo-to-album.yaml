@@ -46,7 +46,7 @@ steps:
 
   # Open three-dot menu and launch Assign Album modal
   - when:
-      - click.icon: mdi-dots-vertical
+      - click.testid: photo-menu
     assert:
       - ui.visible: main/
 
