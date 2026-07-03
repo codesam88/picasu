@@ -153,7 +153,7 @@ export async function executeGiven(
       fs.mkdirSync(dirPath, { recursive: true })
       seedEntries.push({ type: 'dir_album', qualifiedPath: qualified, id_as: ga.id_as })
       if (ga.id_as) {
-        const ph = path.join(dirPath, '.__e2e_ph__.jpg')
+        const ph = path.join(dirPath, '.__test_ph__.jpg')
         photoManifest.push({ output: ph, minimal: true })
       }
     }

@@ -62,7 +62,7 @@ frontend-check:
 frontend-vitest:
     cd frontend && npm test
 
-# run frontend e2e (playwright) tests
+# run frontend playwright tests
 [group('frontend')]
 frontend-playwright: frontend-build-maybe
     #!/usr/bin/env bash

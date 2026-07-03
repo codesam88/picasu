@@ -89,7 +89,7 @@ under test.
 **Location:** `frontend/tests/playwright/scenarios/*.yaml`
 **Runner:** Zod-validated loader (`loadScenarios.ts`) drives
 `interpreter.spec.ts`.
-**Run:** `just frontend-e2e` (requires `npm run build` first — the backend
+**Run:** `just frontend-playwright` (requires `npm run build` first — the backend
 serves `dist/` directly; Vite's dev server is not used).
 
 Same given/when/assert structure as the API generator, and the **given** step

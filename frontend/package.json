@@ -12,7 +12,7 @@
     "format:check": "prettier --check .",
     "generateLexer": "ts-node-esm ./src/script/lexer/generateCstDts.ts",
     "test": "vitest run --reporter=verbose",
-    "test:e2e": "playwright test"
+    "test:ui": "playwright test"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",
