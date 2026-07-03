@@ -3,11 +3,11 @@
     <template v-if="index !== undefined">
       <div
         class="view-stage"
-        :class="{ 'view-stage--desktop': !configStore.isMobile, 'panel-open': panelOpen }"
+        :class="{ 'view-stage--desktop': !configStore.isMobile }"
         @click.self="handleClose"
       >
         <div class="view-container">
-          <div class="view-modal" :style="!configStore.isMobile ? modalStyle : undefined">
+          <div class="view-modal">
             <NavigationOverlays
               v-if="!configStore.isMobile"
               :previous-hash="previousHash"
@@ -16,10 +16,7 @@
               :next-page="nextPage"
               :show="!configStore.isMobile"
             />
-            <div
-              class="view-image-container"
-              :style="!configStore.isMobile ? imageContainerStyle : undefined"
-            >
+            <div class="view-image-container">
               <ViewPageDisplay
                 :abstract-data="abstractData"
                 :index="index"
@@ -59,7 +56,6 @@
           <ViewPageMetadata
             v-if="showMetadataPanel && abstractData"
             class="view-modal-sidepane"
-            :style="!configStore.isMobile ? sidepaneStyle : undefined"
             :abstract-data="abstractData"
             :index="index"
             :hash="hash"
@@ -103,10 +99,6 @@ const router = useRouter()
 // when the view is re-entered, rather than persisting like a global setting.
 const showMetadataPanel = ref(false)
 
-// Reactive window dimensions for responsive modal sizing
-const windowWidth = ref(window.innerWidth)
-const windowHeight = ref(window.innerHeight)
-
 const hash = computed(() => {
   return route.params.hash as string
 })
@@ -123,8 +115,6 @@ const abstractData = computed(() => {
   }
 })
 
-const SIDEPANE_WIDTH = 360
-const panelOpen = computed(() => showMetadataPanel.value && !configStore.isMobile)
 const share = computed(() => shareStore.resolvedShare?.share ?? null)
 
 const nextHash = computed(() => {
@@ -161,50 +151,6 @@ const previousPage = computed(() => {
   return undefined
 })
 
-const NAV_ELEMENT_SIZE = 64
-
-const modalStyle = computed(() => {
-  const maxWidth = windowWidth.value * 0.8
-  const maxHeight = windowHeight.value * 0.8
-
-  // Use the image's own aspect ratio so the modal matches its shape
-  const data = abstractData.value
-  const ratio =
-    data && (data.type === 'image' || data.type === 'video') && data.width && data.height
-      ? data.width / data.height
-      : 16 / 9
-
-  let width = maxWidth
-  let height = width / ratio
-
-  if (height > maxHeight) {
-    height = maxHeight
-    width = height * ratio
-  }
-
-  return {
-    width: `${width}px`,
-    height: `${height}px`
-  }
-})
-
-// Image container style with padding for navigation elements
-const imageContainerStyle = computed(() => ({
-  padding: `${NAV_ELEMENT_SIZE}px`
-}))
-
-const sidepaneStyle = computed(() => {
-  if (!configStore.isMobile && showMetadataPanel.value) {
-    return { height: modalStyle.value.height, width: `${SIDEPANE_WIDTH}px` }
-  }
-  return undefined
-})
-
-function handleResize() {
-  windowWidth.value = window.innerWidth
-  windowHeight.value = window.innerHeight
-}
-
 function toggleMetadataPanel() {
   showMetadataPanel.value = !showMetadataPanel.value
 }
@@ -220,18 +166,15 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown)
-  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown)
-  window.removeEventListener('resize', handleResize)
 })
 </script>
 <style scoped>
 .v-container::-webkit-scrollbar {
   display: none;
-  /* Hide scrollbar */
 }
 
 .view-stage {
@@ -241,36 +184,29 @@ onUnmounted(() => {
 }
 
 .view-stage--desktop {
-  /* width/height:auto overrides the base rule's 100% so the fixed box's
-     size comes from the inset offsets below (needed for `right` to actually
-     shrink the box once the sidepane opens, instead of being ignored in
-     favor of an explicit width). */
-  width: auto;
-  height: auto;
   position: fixed;
   inset: 0;
-  /* Above the persistent parent navbar (GalleryBar), below Vuetify's own
-     dialog/menu overlays (~2400) so modals like Assign Album still layer
-     correctly on top of this one. */
   z-index: 1000;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.35);
-  transition: right 0.2s ease;
+  background: black;
 }
 
 .view-container {
   display: flex;
-  align-items: stretch;
+  flex-direction: row;
+  width: 100vw;
+  height: 100vh;
 }
 
 .view-modal {
   position: relative;
-  height: 100%;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   background: black;
   overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .view-image-container {
@@ -294,6 +230,8 @@ onUnmounted(() => {
 }
 
 .view-modal-sidepane {
+  flex: 0 0 360px;
+  height: 100vh;
   z-index: 1001;
   background: var(--v-theme-surface);
 }
