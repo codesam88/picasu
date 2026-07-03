@@ -192,12 +192,16 @@ setup-dev: install-dev
     git config core.hooksPath .githooks
     @echo "✓ Pre-commit hook enabled — ready to develop"
 
+# Install plan tool from tablethat (pinned version)
+[group('global')]
+install-plan:
+    cargo install --git https://github.com/tedsamhain/tablethat --rev df81155
+
 # Install dev tools
 [group('global')]
-install-dev:
+install-dev: install-plan
     cargo install sccache
     cargo install cargo-deny cargo-audit
-    cargo install --git https://github.com/tedsamhain/tablethat --rev df81155
     npm ci --prefix frontend
     npm install --prefix frontend --save-dev --save-exact widdershins
 
