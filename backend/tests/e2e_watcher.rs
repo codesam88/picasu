@@ -15,7 +15,7 @@ use picasu::{APP_CONFIG, AppConfig, build_rocket_with_config};
 use rocket::http::{ContentType, Status};
 use rocket::local::blocking::Client;
 use serde_json::Value;
-use xtask::test_image::{PhotoSpec, generate_batch};
+use snapfab::test_image::{PhotoSpec, generate_batch};
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -95,6 +95,7 @@ fn place_photo(image_home: &Path, relative: &str) {
         height: Some(4),
         tags: None,
         exif_date: None,
+        minimal: false,
     }])
     .expect("generate test photo");
 }
