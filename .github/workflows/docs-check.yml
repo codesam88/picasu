@@ -24,5 +24,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
+      - run: just install-plan
       - run: just docs-check
       - run: just plan-lint

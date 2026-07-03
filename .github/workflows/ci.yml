@@ -55,6 +55,9 @@ jobs:
         run: npm ci
         working-directory: frontend
 
+      - name: Install plan tool
+        run: just install-plan
+
       - name: Cache Playwright browsers
         uses: actions/cache@v6
         with:
