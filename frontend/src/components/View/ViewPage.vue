@@ -161,21 +161,25 @@ const previousPage = computed(() => {
   return undefined
 })
 
-// Fixed 16:9 aspect ratio modal, sized to 80% of available screen space
 const NAV_ELEMENT_SIZE = 64
-const MODAL_ASPECT_RATIO = 16 / 9
 
 const modalStyle = computed(() => {
   const maxWidth = windowWidth.value * 0.8
   const maxHeight = windowHeight.value * 0.8
 
-  // Fit 16:9 ratio within the available space
+  // Use the image's own aspect ratio so the modal matches its shape
+  const data = abstractData.value
+  const ratio =
+    data && (data.type === 'image' || data.type === 'video') && data.width && data.height
+      ? data.width / data.height
+      : 16 / 9
+
   let width = maxWidth
-  let height = width / MODAL_ASPECT_RATIO
+  let height = width / ratio
 
   if (height > maxHeight) {
     height = maxHeight
-    width = height * MODAL_ASPECT_RATIO
+    width = height * ratio
   }
 
   return {
