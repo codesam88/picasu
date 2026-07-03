@@ -60,7 +60,7 @@ On `main` it also runs the full test suite.
 - `just check` — lint + format check (backend, frontend, docs)
 - `just test` — run all tests (backend cargo test + frontend vitest)
 - `just run` — build and launch against `sandbox/`
-- `just plan` — view the project board (see `.plan/tasks/`)
+- `just plan` — view the project board (see `.plan/`)
 
 Picasu aims to maximally leverage best practice development and validation
 infrastructure. Since everything is vibe-coded nowadays, the strategy is to

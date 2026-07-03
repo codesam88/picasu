@@ -38,7 +38,6 @@ Consolidated from `ui-notes.md` — remaining work after nav/settings cleanup.
 - [x] Verify image move operation works correctly.
 - [ ] Verify album move operation works correctly.
 
-
 ### UI bugs
 
 - [ ] All dialogs should be closable using Escape
@@ -90,7 +89,7 @@ Consolidated from `ui-notes.md` — remaining work after nav/settings cleanup.
 - Backend Settings / Global
   - scanning options
   - autorename pattern
-  - ...? 
+  - ...?
 
 - User Settings / Personal
   - frontend settings

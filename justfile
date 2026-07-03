@@ -94,23 +94,23 @@ frontend-build-maybe:
 frontend-audit:
     cd frontend && npm audit
 
-# ── Utils (snapfab, plan) ────────────────────────────────────────────────────────
+# ── Utils (snapfab) ──────────────────────────────────────────────────────────────
 
 # cargo fmt on utils/ crates
 [group('utils')]
 utils-format:
-    cargo fmt -p snapfab -p plan
+    cargo fmt -p snapfab
 
 # cargo fmt --check + cargo clippy on utils/ crates
 [group('utils')]
 utils-check:
-    cargo fmt --check -p snapfab -p plan
-    cargo clippy -p snapfab -p plan -- -D warnings -A clippy::unwrap_used
+    cargo fmt --check -p snapfab
+    cargo clippy -p snapfab -- -D warnings -A clippy::unwrap_used
 
 # cargo test on utils/ crates
 [group('utils')]
 utils-test:
-    cargo test -p snapfab -p plan
+    cargo test -p snapfab
 
 # ── Tooling ─────────────────────────────────────────────────────────────────────
 
@@ -123,17 +123,17 @@ openapi-gen:
 # Auto-format .plan task frontmatter and body
 [group('tooling')]
 plan-format:
-    cargo run -p plan -- --root {{justfile_directory()}} --format
+    plan --root {{justfile_directory()}} format
 
 # Validate .plan task frontmatter structure
 [group('tooling')]
 plan-lint:
-    cargo run -p plan -- --root {{justfile_directory()}} --lint
+    plan --root {{justfile_directory()}} lint
 
 # run plan <args>
 [group('tooling')]
 plan *args:
-    cargo run -p plan -- --root {{justfile_directory()}} {{args}}
+    plan --root {{justfile_directory()}} {{args}}
 
 # ── Documentation ───────────────────────────────────────────────────────────────
 
@@ -197,6 +197,7 @@ setup-dev: install-dev
 install-dev:
     cargo install sccache
     cargo install cargo-deny cargo-audit
+    cargo install --git https://github.com/tedsamhain/tablethat --rev df81155
     npm ci --prefix frontend
     npm install --prefix frontend --save-dev --save-exact widdershins
 

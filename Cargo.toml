@@ -1,5 +1,5 @@
 [workspace]
-members = ["backend", "utils/snapfab", "utils/plan", "utils/paste-shim"]
+members = ["backend", "utils/snapfab", "utils/paste-shim"]
 default-members = ["backend"]
 resolver = "2"
 
