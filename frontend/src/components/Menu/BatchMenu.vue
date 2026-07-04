@@ -1,48 +1,56 @@
 <!-- NavBarAppBarEditBarMenuNormal.vue -->
 <template>
-  <v-menu>
-    <template #activator="{ props: MenuBtn }">
-      <v-btn v-bind="MenuBtn" icon="mdi-dots-vertical" v-testid="'batch-menu'"></v-btn>
+  <v-tooltip location="top" text="Options">
+    <template #activator="{ props: tooltipProps }">
+      <v-menu>
+        <template #activator="{ props: menuProps }">
+          <v-btn
+            v-bind="mergeProps(tooltipProps, menuProps)"
+            icon="mdi-dots-vertical"
+            v-testid="'batch-menu'"
+          ></v-btn>
+        </template>
+        <v-list role="menu">
+          <!-- Conditional Set as Cover -->
+          <ItemSetAsCover v-if="shouldShowSetAsCover" />
+
+          <v-divider v-if="shouldShowSetAsCover"></v-divider>
+
+          <!-- Album Info: grayed out unless the single selected item is itself an album -->
+          <ItemAlbumInfo />
+
+          <v-divider></v-divider>
+
+          <!-- Archive and Favorite Actions -->
+          <ItemArchive :index-list="editModeList" />
+          <ItemFavorite :index-list="editModeList" />
+          <ItemBatchEditTags />
+          <ItemBatchEditAlbums />
+
+          <v-divider></v-divider>
+
+          <!-- Download Action -->
+          <ItemDownload :index-list="editModeList" />
+
+          <v-divider></v-divider>
+
+          <!-- Delete or Permanently Delete Actions -->
+          <ItemDelete :index-list="editModeList" v-if="!isInTrashedPath" />
+          <ItemRestore :index-list="editModeList" v-if="isInTrashedPath" />
+          <ItemPermanentlyDelete :index-list="editModeList" v-if="isInTrashedPath" />
+
+          <v-divider></v-divider>
+
+          <!-- Scan Action (only when fs_notify_watcher is disabled) -->
+          <ItemScanAlbum v-if="!(configStore.config?.fsNotifyWatcher ?? false)" />
+        </v-list>
+      </v-menu>
     </template>
-    <v-list role="menu">
-      <!-- Conditional Set as Cover -->
-      <ItemSetAsCover v-if="shouldShowSetAsCover" />
-
-      <v-divider v-if="shouldShowSetAsCover"></v-divider>
-
-      <!-- Album Info: grayed out unless the single selected item is itself an album -->
-      <ItemAlbumInfo />
-
-      <v-divider></v-divider>
-
-      <!-- Archive and Favorite Actions -->
-      <ItemArchive :index-list="editModeList" />
-      <ItemFavorite :index-list="editModeList" />
-      <ItemBatchEditTags />
-      <ItemBatchEditAlbums />
-
-      <v-divider></v-divider>
-
-      <!-- Download Action -->
-      <ItemDownload :index-list="editModeList" />
-
-      <v-divider></v-divider>
-
-      <!-- Delete or Permanently Delete Actions -->
-      <ItemDelete :index-list="editModeList" v-if="!isInTrashedPath" />
-      <ItemRestore :index-list="editModeList" v-if="isInTrashedPath" />
-      <ItemPermanentlyDelete :index-list="editModeList" v-if="isInTrashedPath" />
-
-      <v-divider></v-divider>
-
-      <!-- Scan Action (only when fs_notify_watcher is disabled) -->
-      <ItemScanAlbum v-if="!(configStore.config?.fsNotifyWatcher ?? false)" />
-    </v-list>
-  </v-menu>
+  </v-tooltip>
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
+import { mergeProps, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useConfigStore } from '@/store/configStore'

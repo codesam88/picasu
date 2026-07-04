@@ -1,20 +1,29 @@
 <template>
-  <v-menu>
-    <template #activator="{ props: MenuBtn }">
-      <v-btn v-bind="MenuBtn" icon="mdi-dots-vertical" v-testid="'album-menu'"></v-btn>
+  <v-tooltip location="top" text="Options">
+    <template #activator="{ props: tooltipProps }">
+      <v-menu>
+        <template #activator="{ props: menuProps }">
+          <v-btn
+            v-bind="mergeProps(tooltipProps, menuProps)"
+            icon="mdi-dots-vertical"
+            v-testid="'album-menu'"
+          ></v-btn>
+        </template>
+        <v-list>
+          <FindInTimeline :hash="props.hash" />
+          <v-divider></v-divider>
+          <EditTags />
+          <Delete v-if="!album.isTrashed" :index-list="[props.index]" />
+          <Restore v-if="album.isTrashed" :index-list="[props.index]" />
+          <PermanentlyDelete v-if="album.isTrashed" :index-list="[props.index]" />
+        </v-list>
+      </v-menu>
     </template>
-    <v-list>
-      <FindInTimeline :hash="props.hash" />
-      <v-divider></v-divider>
-      <EditTags />
-      <Delete v-if="!album.isTrashed" :index-list="[props.index]" />
-      <Restore v-if="album.isTrashed" :index-list="[props.index]" />
-      <PermanentlyDelete v-if="album.isTrashed" :index-list="[props.index]" />
-    </v-list>
-  </v-menu>
+  </v-tooltip>
 </template>
 
 <script setup lang="ts">
+import { mergeProps } from 'vue'
 import { GalleryAlbum, IsolationId } from '@type/types'
 import FindInTimeline from '@Menu/MenuItem/ItemFindInTimeline.vue'
 import EditTags from '@Menu/MenuItem/ItemEditTags.vue'

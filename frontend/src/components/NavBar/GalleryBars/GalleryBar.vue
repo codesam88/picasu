@@ -2,9 +2,16 @@
   <GalleryBarTemplate isolation-id="mainId">
     <template #content>
       <v-toolbar v-if="!collectionStore.editModeOn" class="bg-surface">
-        <v-btn v-if="route.meta.level === 1" @click="showDrawer = !showDrawer" icon="mdi-menu">
-        </v-btn>
-        <v-btn v-else icon="mdi mdi-arrow-left" @click="leaveView(route, router)"></v-btn>
+        <v-tooltip v-if="route.meta.level === 1" location="top" text="Menu">
+          <template #activator="{ props }">
+            <v-btn v-bind="props" @click="showDrawer = !showDrawer" icon="mdi-menu" />
+          </template>
+        </v-tooltip>
+        <v-tooltip v-else location="top" text="Back">
+          <template #activator="{ props }">
+            <v-btn v-bind="props" icon="mdi mdi-arrow-left" @click="leaveView(route, router)" />
+          </template>
+        </v-tooltip>
 
         <v-card-title class="page-title text-truncate">
           {{ pageTitle }}
@@ -37,22 +44,34 @@
           </v-card-text>
         </v-card>
 
-        <v-btn
-          v-if="route.meta.baseName === 'album'"
-          icon="mdi-share-variant"
-          @click="modalStore.showShareModal = true"
-        />
-        <v-btn
-          v-if="route.meta.level === 1"
-          :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
-          @click="themeIsLight = !themeIsLight"
-        />
-        <v-btn
-          v-if="route.meta.level === 1"
-          icon="mdi-upload"
-          :loading="loading"
-          @click="uploadStore.triggerFileInput(undefined)"
-        />
+        <v-tooltip v-if="route.meta.baseName === 'album'" location="top" text="Share">
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              icon="mdi-share-variant"
+              @click="modalStore.showShareModal = true"
+            />
+          </template>
+        </v-tooltip>
+        <v-tooltip v-if="route.meta.level === 1" location="top" text="Theme">
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
+              @click="themeIsLight = !themeIsLight"
+            />
+          </template>
+        </v-tooltip>
+        <v-tooltip v-if="route.meta.level === 1" location="top" text="Upload">
+          <template #activator="{ props }">
+            <v-btn
+              v-bind="props"
+              icon="mdi-upload"
+              :loading="loading"
+              @click="uploadStore.triggerFileInput(undefined)"
+            />
+          </template>
+        </v-tooltip>
       </v-toolbar>
       <EditBar v-else />
 

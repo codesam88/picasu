@@ -1,5 +1,9 @@
 <template>
-  <v-btn icon="mdi-checkbox-intermediate" @click="selectAll"></v-btn>
+  <v-tooltip location="top" text="All">
+    <template #activator="{ props: btnProps }">
+      <v-btn v-bind="btnProps" icon="mdi-checkbox-intermediate" @click="selectAll" />
+    </template>
+  </v-tooltip>
 </template>
 
 <script lang="ts" setup>

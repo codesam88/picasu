@@ -25,6 +25,23 @@
               />
             </div>
             <div class="view-modal-controls">
+              <v-tooltip location="top" text="Info">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    icon
+                    size="small"
+                    variant="text"
+                    class="control-btn"
+                    aria-label="Info"
+                    @click="toggleMetadataPanel"
+                  >
+                    <v-icon>{{
+                      showMetadataPanel ? 'mdi-information' : 'mdi-information-outline'
+                    }}</v-icon>
+                  </v-btn>
+                </template>
+              </v-tooltip>
               <DatabaseMenu
                 v-if="
                   abstractData &&
@@ -37,28 +54,21 @@
                 :hash="hash"
                 isolation-id="mainId"
               />
-              <v-btn
-                icon
-                size="small"
-                variant="text"
-                class="control-btn"
-                aria-label="Info"
-                @click="toggleMetadataPanel"
-              >
-                <v-icon>{{
-                  showMetadataPanel ? 'mdi-information' : 'mdi-information-outline'
-                }}</v-icon>
-              </v-btn>
-              <v-btn
-                icon
-                size="small"
-                variant="text"
-                class="control-btn"
-                aria-label="Close"
-                @click="handleClose"
-              >
-                <v-icon>mdi-close</v-icon>
-              </v-btn>
+              <v-tooltip location="top" text="Close">
+                <template #activator="{ props }">
+                  <v-btn
+                    v-bind="props"
+                    icon
+                    size="small"
+                    variant="text"
+                    class="control-btn"
+                    aria-label="Close"
+                    @click="handleClose"
+                  >
+                    <v-icon>mdi-close</v-icon>
+                  </v-btn>
+                </template>
+              </v-tooltip>
             </div>
           </div>
           <ViewPageMetadata

@@ -1,5 +1,9 @@
 <template>
-  <v-btn icon="mdi-checkbox-intermediate-variant" @click="selectInverse"></v-btn>
+  <v-tooltip location="top" text="Invert">
+    <template #activator="{ props: btnProps }">
+      <v-btn v-bind="btnProps" icon="mdi-checkbox-intermediate-variant" @click="selectInverse" />
+    </template>
+  </v-tooltip>
 </template>
 
 <script lang="ts" setup>

@@ -1,13 +1,18 @@
 <template>
   <v-container fluid class="fill-height">
     <!-- Theme toggle button positioned at top right -->
-    <v-btn
-      class="theme-toggle-btn"
-      :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
-      @click="themeIsLight = !themeIsLight"
-      size="large"
-      variant="text"
-    />
+    <v-tooltip location="top" text="Theme">
+      <template #activator="{ props }">
+        <v-btn
+          v-bind="props"
+          class="theme-toggle-btn"
+          :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
+          @click="themeIsLight = !themeIsLight"
+          size="large"
+          variant="text"
+        />
+      </template>
+    </v-tooltip>
 
     <v-row class="fill-height justify-center align-center">
       <v-col cols="12" sm="8" md="6" lg="4">

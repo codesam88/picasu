@@ -1,5 +1,9 @@
 <template>
-  <v-btn icon="mdi-download" @click="downloadAllFiles" class="wrap"></v-btn>
+  <v-tooltip location="top" text="Download">
+    <template #activator="{ props: btnProps }">
+      <v-btn v-bind="btnProps" icon="mdi-download" @click="downloadAllFiles" class="wrap" />
+    </template>
+  </v-tooltip>
 </template>
 <script lang="ts" setup>
 import { useRoute } from 'vue-router'

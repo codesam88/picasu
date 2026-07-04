@@ -18,14 +18,18 @@
           </v-toolbar-title>
 
           <template #append>
-            <v-btn
-              v-if="!hideClose"
-              icon="mdi-close"
-              variant="text"
-              density="comfortable"
-              :disabled="loading"
-              @click="internalValue = false"
-            ></v-btn>
+            <v-tooltip v-if="!hideClose" location="top" text="Close">
+              <template #activator="{ props: btnProps }">
+                <v-btn
+                  v-bind="btnProps"
+                  icon="mdi-close"
+                  variant="text"
+                  density="comfortable"
+                  :disabled="loading"
+                  @click="internalValue = false"
+                />
+              </template>
+            </v-tooltip>
           </template>
         </v-toolbar>
       </slot>
