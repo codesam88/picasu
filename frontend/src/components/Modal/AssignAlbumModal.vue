@@ -84,13 +84,18 @@
               :disabled="!selectedAlbumId"
               @keyup.enter="handleCreate"
             />
-            <v-btn
-              icon="mdi-folder-plus"
-              size="small"
-              :disabled="!selectedAlbumId || !newAlbumName.trim()"
-              :loading="creating"
-              @click="handleCreate"
-            />
+            <v-tooltip location="top" text="New">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon="mdi-folder-plus"
+                  size="small"
+                  :disabled="!selectedAlbumId || !newAlbumName.trim()"
+                  :loading="creating"
+                  @click="handleCreate"
+                />
+              </template>
+            </v-tooltip>
           </div>
         </div>
       </v-card-text>

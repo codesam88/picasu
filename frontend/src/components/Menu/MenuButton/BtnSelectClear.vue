@@ -1,5 +1,9 @@
 <template>
-  <v-btn icon="mdi-checkbox-blank-outline" @click="selectClear"></v-btn>
+  <v-tooltip location="top" text="Clear">
+    <template #activator="{ props: btnProps }">
+      <v-btn v-bind="btnProps" icon="mdi-checkbox-blank-outline" @click="selectClear" />
+    </template>
+  </v-tooltip>
 </template>
 
 <script lang="ts" setup>

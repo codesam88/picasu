@@ -1,5 +1,9 @@
 <template>
-  <v-btn icon="mdi-close" @click="collectionStore.leaveEdit"></v-btn>
+  <v-tooltip location="top" text="Close">
+    <template #activator="{ props }">
+      <v-btn v-bind="props" icon="mdi-close" @click="collectionStore.leaveEdit" />
+    </template>
+  </v-tooltip>
 </template>
 
 <script lang="ts" setup>

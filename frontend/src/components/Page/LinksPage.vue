@@ -82,17 +82,52 @@
         <!-- Actions -->
         <template #[`item.actions`]="{ item }">
           <div class="d-flex flex-row justify-center ga-1">
-            <v-btn icon="mdi-delete" variant="text" size="small" @click="openDeleteConfirm(item)" />
-            <v-btn icon="mdi-pencil" variant="text" size="small" @click="clickEditShare(item)" />
-            <v-btn
-              icon="mdi-open-in-new"
-              variant="text"
-              size="small"
-              :href="`${locationOrigin}/share/${item.albumId}-${item.share.url}`"
-              target="_blank"
-              tag="a"
-            />
-            <v-btn icon="mdi-content-copy" variant="text" size="small" @click="performCopy(item)" />
+            <v-tooltip location="top" text="Delete">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon="mdi-delete"
+                  variant="text"
+                  size="small"
+                  @click="openDeleteConfirm(item)"
+                />
+              </template>
+            </v-tooltip>
+            <v-tooltip location="top" text="Edit">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon="mdi-pencil"
+                  variant="text"
+                  size="small"
+                  @click="clickEditShare(item)"
+                />
+              </template>
+            </v-tooltip>
+            <v-tooltip location="top" text="Open">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon="mdi-open-in-new"
+                  variant="text"
+                  size="small"
+                  :href="`${locationOrigin}/share/${item.albumId}-${item.share.url}`"
+                  target="_blank"
+                  tag="a"
+                />
+              </template>
+            </v-tooltip>
+            <v-tooltip location="top" text="Copy">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon="mdi-content-copy"
+                  variant="text"
+                  size="small"
+                  @click="performCopy(item)"
+                />
+              </template>
+            </v-tooltip>
           </div>
         </template>
 
@@ -112,15 +147,20 @@
                 <span class="ms-4 font-weight-bold">
                   {{ albumStore.albums.get(item.value)?.displayName }}
                 </span>
-                <v-btn
-                  icon="mdi-open-in-new"
-                  variant="text"
-                  size="small"
-                  class="ms-2"
-                  :href="`${locationOrigin}/albums/view/${item.value}/read`"
-                  target="_blank"
-                  tag="a"
-                />
+                <v-tooltip location="top" text="Open">
+                  <template #activator="{ props }">
+                    <v-btn
+                      v-bind="props"
+                      icon="mdi-open-in-new"
+                      variant="text"
+                      size="small"
+                      class="ms-2"
+                      :href="`${locationOrigin}/albums/view/${item.value}/read`"
+                      target="_blank"
+                      tag="a"
+                    />
+                  </template>
+                </v-tooltip>
               </div>
             </td>
           </tr>

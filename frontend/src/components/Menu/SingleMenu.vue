@@ -1,37 +1,42 @@
 <template>
-  <v-menu location="start">
-    <template #activator="{ props: MenuBtn }">
-      <v-btn
-        v-bind="MenuBtn"
-        icon="mdi-dots-vertical"
-        variant="text"
-        size="small"
-        class="control-btn"
-        v-testid="'photo-menu'"
-      ></v-btn>
+  <v-tooltip location="top" text="Options">
+    <template #activator="{ props: tooltipProps }">
+      <v-menu location="start">
+        <template #activator="{ props: menuProps }">
+          <v-btn
+            v-bind="mergeProps(tooltipProps, menuProps)"
+            icon="mdi-dots-vertical"
+            variant="text"
+            size="small"
+            class="control-btn"
+            v-testid="'photo-menu'"
+          ></v-btn>
+        </template>
+        <v-list role="menu">
+          <ItemViewOriginalFile
+            :src="getSrc(database.id, true, database.ext, database.updateAt)"
+            :isolation-id="props.isolationId"
+            :hash="database.id"
+          />
+          <ItemDownload :index-list="[props.index]" />
+          <ItemFindInTimeline :hash="props.hash" />
+          <v-divider></v-divider>
+          <ItemEditTags />
+          <ItemEditAlbums />
+          <ItemDelete v-if="!database.isTrashed" :index-list="[props.index]" />
+          <ItemRestore v-if="database.isTrashed" :index-list="[props.index]" />
+          <ItemPermanentlyDelete v-if="database.isTrashed" :index-list="[props.index]" />
+          <v-divider></v-divider>
+          <ItemScanAlbum />
+          <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
+          <ItemRotateImage v-if="database.type === 'image'" />
+        </v-list>
+      </v-menu>
     </template>
-    <v-list role="menu">
-      <ItemViewOriginalFile
-        :src="getSrc(database.id, true, database.ext, database.updateAt)"
-        :isolation-id="props.isolationId"
-        :hash="database.id"
-      />
-      <ItemDownload :index-list="[props.index]" />
-      <ItemFindInTimeline :hash="props.hash" />
-      <v-divider></v-divider>
-      <ItemEditTags />
-      <ItemEditAlbums />
-      <ItemDelete v-if="!database.isTrashed" :index-list="[props.index]" />
-      <ItemRestore v-if="database.isTrashed" :index-list="[props.index]" />
-      <ItemPermanentlyDelete v-if="database.isTrashed" :index-list="[props.index]" />
-      <v-divider></v-divider>
-      <ItemScanAlbum />
-      <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
-      <ItemRotateImage v-if="database.type === 'image'" />
-    </v-list>
-  </v-menu>
+  </v-tooltip>
 </template>
 <script setup lang="ts">
+import { mergeProps } from 'vue'
 import { GalleryImage, GalleryVideo, IsolationId } from '@type/types'
 import { getSrc } from '@utils/getter'
 import ItemViewOriginalFile from '@Menu/MenuItem/ItemViewOriginalFile.vue'
