@@ -41,6 +41,7 @@
                 icon
                 size="small"
                 variant="text"
+                class="control-btn"
                 aria-label="Info"
                 @click="toggleMetadataPanel"
               >
@@ -48,7 +49,14 @@
                   showMetadataPanel ? 'mdi-information' : 'mdi-information-outline'
                 }}</v-icon>
               </v-btn>
-              <v-btn icon size="small" variant="text" aria-label="Close" @click="handleClose">
+              <v-btn
+                icon
+                size="small"
+                variant="text"
+                class="control-btn"
+                aria-label="Close"
+                @click="handleClose"
+              >
                 <v-icon>mdi-close</v-icon>
               </v-btn>
             </div>
@@ -224,9 +232,6 @@ onUnmounted(() => {
   z-index: 1;
   display: flex;
   gap: 4px;
-  background: rgba(0, 0, 0, 0.35);
-  border-radius: 24px;
-  padding: 2px;
 }
 
 .view-modal-sidepane {

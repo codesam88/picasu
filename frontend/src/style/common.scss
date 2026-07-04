@@ -19,6 +19,13 @@ html {
   min-height: 100vh;
 }
 
+// Hover-reveal circle for free-floating overlay buttons (lightbox controls, etc.)
+.control-btn {
+  &:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+}
+
 // Theme-aware placeholder background for image thumbnails
 .bg-placeholder {
   .v-theme--light & {

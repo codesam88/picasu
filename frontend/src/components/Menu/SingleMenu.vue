@@ -1,7 +1,14 @@
 <template>
   <v-menu location="start">
     <template #activator="{ props: MenuBtn }">
-      <v-btn v-bind="MenuBtn" icon="mdi-menu" v-testid="'photo-menu'"></v-btn>
+      <v-btn
+        v-bind="MenuBtn"
+        icon="mdi-dots-vertical"
+        variant="text"
+        size="small"
+        class="control-btn"
+        v-testid="'photo-menu'"
+      ></v-btn>
     </template>
     <v-list role="menu">
       <ItemViewOriginalFile
