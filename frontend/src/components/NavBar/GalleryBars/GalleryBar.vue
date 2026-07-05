@@ -13,7 +13,25 @@
           </template>
         </v-tooltip>
 
-        <v-card-title class="page-title text-truncate">
+        <v-breadcrumbs
+          v-if="route.meta.baseName === 'album' && breadcrumbs.length > 0"
+          class="page-title pa-0"
+          density="compact"
+        >
+          <template v-for="(crumb, i) in breadcrumbs" :key="crumb.id">
+            <v-breadcrumbs-item
+              :disabled="i === breadcrumbs.length - 1"
+              @click="i < breadcrumbs.length - 1 && navigateToAlbum(crumb.id)"
+              class="text-body-1"
+            >
+              {{ crumb.name }}
+            </v-breadcrumbs-item>
+            <v-breadcrumbs-divider v-if="i < breadcrumbs.length - 1" class="mx-1"
+              >/</v-breadcrumbs-divider
+            >
+          </template>
+        </v-breadcrumbs>
+        <v-card-title v-else class="page-title text-truncate">
           {{ pageTitle }}
         </v-card-title>
 
@@ -43,6 +61,8 @@
             </v-text-field>
           </v-card-text>
         </v-card>
+
+        <v-spacer />
 
         <v-tooltip v-if="route.meta.baseName === 'album'" location="top" text="Share">
           <template #activator="{ props }">
@@ -92,9 +112,9 @@
         v-if="
           modalStore.showShareModal &&
           route.meta.baseName === 'album' &&
-          typeof route.params.hash === 'string'
+          typeof route.params.albumHash === 'string'
         "
-        :album-id="route.params.hash"
+        :album-id="route.params.albumHash"
         :mode="'create'"
       />
     </template>
@@ -140,6 +160,38 @@ const router = useRouter()
 const searchQuery: Ref<LocationQueryValue | LocationQueryValue[] | undefined> = ref(null)
 const loading = ref(false)
 
+interface Breadcrumb {
+  name: string
+  id: string
+}
+
+const breadcrumbs = computed<Breadcrumb[]>(() => {
+  if (route.meta.baseName !== 'album') return []
+
+  const albumHash = route.params.albumHash
+  if (typeof albumHash !== 'string') return []
+
+  const trail: Breadcrumb[] = []
+  let currentId: string | null = albumHash
+
+  while (currentId !== null) {
+    const info = albumStore.albums.get(currentId)
+    if (!info) break
+    trail.unshift({ name: info.displayName, id: currentId })
+    currentId = info.parentAlbumId ?? null
+  }
+
+  if (trail.length > 3) {
+    return trail.slice(-3)
+  }
+
+  return trail
+})
+
+const navigateToAlbum = (albumHash: string) => {
+  void router.push({ name: 'album', params: { albumHash } })
+}
+
 const baseTitleMap: Record<string, string> = {
   timeline: 'Timeline',
   trashed: 'Trash',
@@ -153,9 +205,9 @@ const pageTitle = computed(() => {
   const baseName = route.meta.baseName
   if (typeof baseName !== 'string') return ''
   if (baseName === 'album') {
-    const id = route.params.hash
-    if (typeof id !== 'string') return 'Album'
-    const info = albumStore.albums.get(id)
+    const albumHash = route.params.albumHash
+    if (typeof albumHash !== 'string') return 'Album'
+    const info = albumStore.albums.get(albumHash)
     return info?.displayName ?? 'Album'
   }
   return baseTitleMap[baseName] ?? baseName
@@ -192,7 +244,7 @@ const collectionStore = useCollectionStore('mainId')
 
 <style scoped>
 .page-title {
-  flex: 0 1 200px;
+  flex: 0 1 auto;
   min-width: 100px;
   font-size: 1.125rem;
   font-weight: 500;
@@ -201,7 +253,7 @@ const collectionStore = useCollectionStore('mainId')
 }
 
 .search-card {
-  flex: 1 1 auto;
-  min-width: 200px;
+  flex: 0 1 35%;
+  min-width: 20vw;
 }
 </style>
