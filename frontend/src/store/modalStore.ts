@@ -13,7 +13,8 @@ const dialogKeys = [
   'showEditShareModal',
   'showDeleteShareModal',
   'showShareLoginModal',
-  'showAlbumInfoModal'
+  'showAlbumInfoModal',
+  'showUserSettingsModal'
 ] as const
 
 export const useModalStore = (isolationId: IsolationId) =>
@@ -30,6 +31,7 @@ export const useModalStore = (isolationId: IsolationId) =>
       showDeleteShareModal: boolean
       showShareLoginModal: boolean
       showAlbumInfoModal: boolean
+      showUserSettingsModal: boolean
     } => ({
       showEditTagsModal: false,
       showBatchEditTagsModal: false,
@@ -41,7 +43,8 @@ export const useModalStore = (isolationId: IsolationId) =>
       showEditShareModal: false,
       showDeleteShareModal: false,
       showShareLoginModal: false,
-      showAlbumInfoModal: false
+      showAlbumInfoModal: false,
+      showUserSettingsModal: false
     }),
     getters: {
       hasOpenDialog: (state) => dialogKeys.some((key) => state[key])

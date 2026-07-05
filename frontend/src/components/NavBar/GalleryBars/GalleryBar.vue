@@ -72,6 +72,19 @@
             />
           </template>
         </v-tooltip>
+        <v-menu v-if="route.meta.level === 1" location="bottom end">
+          <template #activator="{ props }">
+            <v-btn v-bind="props" icon="mdi-account-circle" />
+          </template>
+          <v-list density="compact" class="pa-1">
+            <v-list-item
+              prepend-icon="mdi-cog"
+              title="Settings"
+              @click="modalStore.showUserSettingsModal = true"
+            />
+            <v-list-item prepend-icon="mdi-logout" title="Log out" @click="handleLogout" />
+          </v-list>
+        </v-menu>
       </v-toolbar>
       <EditBar v-else />
 
@@ -90,6 +103,7 @@
 
 <script setup lang="ts">
 import { computed, inject, Ref, ref, watchEffect } from 'vue'
+import Cookies from 'js-cookie'
 import { LocationQueryValue, useRoute, useRouter } from 'vue-router'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useFilterStore } from '@/store/filterStore'
@@ -162,6 +176,11 @@ const handleSearch = async () => {
     path: route.path,
     query: nextQuery
   })
+}
+
+const handleLogout = async () => {
+  Cookies.remove('jwt')
+  await router.push({ name: 'login' })
 }
 
 watchEffect(() => {
