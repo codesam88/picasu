@@ -4,7 +4,7 @@
       <v-toolbar v-if="!collectionStore.editModeOn" class="bg-surface">
         <v-tooltip v-if="route.meta.level === 1" location="top" text="Menu">
           <template #activator="{ props }">
-            <v-btn v-bind="props" @click="showDrawer = !showDrawer" icon="mdi-menu" />
+            <v-btn v-bind="props" @click="showNavPanel = !showNavPanel" icon="mdi-menu" />
           </template>
         </v-tooltip>
         <v-tooltip v-else location="top" text="Back">
@@ -103,7 +103,7 @@ import { useTheme } from 'vuetify'
 import GalleryBarTemplate from '@/components/NavBar/GalleryBars/GalleryBarTemplate.vue'
 import { leaveView } from '@utils/leaveView'
 
-const showDrawer = inject('showDrawer')
+const showNavPanel = inject('showNavPanel')
 
 const albumStore = useAlbumStore('mainId')
 const uploadStore = useUploadStore('mainId')

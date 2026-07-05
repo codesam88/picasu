@@ -1,51 +1,53 @@
 <template>
   <GalleryBar />
-  <Drawer />
 
-  <div class="page-root" :style="{ height: `calc(100% - ${navBarHeight}px)` }">
-    <slot name="overlay"></slot>
+  <v-layout style="height: calc(100vh - 68px)">
+    <NavPanel />
 
-    <v-container
-      v-if="resolved.ready"
-      :id="resolved.containerId"
-      :class="resolved.containerClass"
-      fluid
-    >
-      <v-row justify="center" :class="wrapperRowClass">
-        <v-col
-          :cols="resolved.col.cols"
-          :sm="resolved.col.sm"
-          :md="resolved.col.md"
-          :lg="resolved.col.lg"
-          :class="wrapperColClass"
-        >
-          <v-card tile flat :class="wrapperCardClass">
-            <slot name="content"></slot>
-          </v-card>
-        </v-col>
-      </v-row>
-    </v-container>
+    <div class="flex-grow-1 overflow-hidden">
+      <slot name="overlay"></slot>
 
-    <v-container
-      v-else
-      fluid
-      class="fill-height d-flex align-center justify-center bg-surface-light"
-    >
-      <slot name="loading">
-        <v-progress-circular indeterminate />
-      </slot>
-    </v-container>
-  </div>
+      <v-container
+        v-if="resolved.ready"
+        :id="resolved.containerId"
+        :class="resolved.containerClass"
+        fluid
+      >
+        <v-row justify="center" :class="wrapperRowClass">
+          <v-col
+            :cols="resolved.col.cols"
+            :sm="resolved.col.sm"
+            :md="resolved.col.md"
+            :lg="resolved.col.lg"
+            :class="wrapperColClass"
+          >
+            <v-card tile flat :class="wrapperCardClass">
+              <slot name="content"></slot>
+            </v-card>
+          </v-col>
+        </v-row>
+      </v-container>
+
+      <v-container
+        v-else
+        fluid
+        class="fill-height d-flex align-center justify-center bg-surface-light"
+      >
+        <slot name="loading">
+          <v-progress-circular indeterminate />
+        </slot>
+      </v-container>
+    </div>
+  </v-layout>
 </template>
 
 <script setup lang="ts">
 import { computed, provide, ref, onMounted, onUnmounted } from 'vue'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import GalleryBar from '@/components/NavBar/GalleryBars/GalleryBar.vue'
-import Drawer from './Drawer.vue'
+import NavPanel from './NavPanel.vue'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useModalStore } from '@/store/modalStore'
-import { navBarHeight } from '@/type/constants'
 
 interface PageCol {
   cols?: number
@@ -133,11 +135,11 @@ const props = withDefaults(
   }
 )
 
-const showDrawer = ref(false)
+const showNavPanel = ref(window.innerWidth > window.innerHeight)
 const route = useRoute()
 const collectionStore = useCollectionStore('mainId')
 const modalStore = useModalStore('mainId')
-provide('showDrawer', showDrawer)
+provide('showNavPanel', showNavPanel)
 
 const exitEditMode = () => {
   if (collectionStore.editModeOn) {
