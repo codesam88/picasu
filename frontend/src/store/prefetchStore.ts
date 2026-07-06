@@ -14,6 +14,7 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       locateTo: number | null
       updateVisibleRowTrigger: boolean
       updateFetchRowTrigger: boolean
+      refreshVersion: number
     } => ({
       windowWidth: 0,
       timestamp: null,
@@ -23,7 +24,8 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       rowLength: 0,
       locateTo: null,
       updateVisibleRowTrigger: false,
-      updateFetchRowTrigger: false
+      updateFetchRowTrigger: false,
+      refreshVersion: 0
     }),
     actions: {
       calculateLength(dataLength: number) {

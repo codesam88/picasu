@@ -126,6 +126,7 @@ import { useAlbumStore } from '@/store/albumStore'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useDataStore } from '@/store/dataStore'
 import { useMessageStore } from '@/store/messageStore'
+import { usePrefetchStore } from '@/store/prefetchStore'
 import { assignAlbum } from '@/api/assignAlbum'
 import { createDirAlbum } from '@/api/createDirAlbum'
 import { getHashIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
@@ -139,6 +140,7 @@ const albumStore = useAlbumStore('mainId')
 const collectionStore = useCollectionStore(isolationId)
 const dataStore = useDataStore(isolationId)
 const messageStore = useMessageStore('mainId')
+const prefetchStore = usePrefetchStore(isolationId)
 
 const search = ref('')
 const selectedAlbumId = ref<string | null>(null)
@@ -333,6 +335,7 @@ async function handleSubmit() {
       const { hash, index } = parsed
       await assignAlbum(hash, selectedAlbumId.value, index, isolationId)
     }
+    prefetchStore.refreshVersion++
   } finally {
     submitting.value = false
     modalStore.showAssignAlbumModal = false
