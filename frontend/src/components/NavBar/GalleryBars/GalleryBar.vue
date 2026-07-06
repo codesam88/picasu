@@ -13,24 +13,21 @@
           </template>
         </v-tooltip>
 
-        <v-breadcrumbs
-          v-if="route.meta.baseName === 'album' && breadcrumbs.length > 0"
-          class="page-title pa-0"
-          density="compact"
-        >
-          <template v-for="(crumb, i) in breadcrumbs" :key="crumb.id">
-            <v-breadcrumbs-item
-              :disabled="i === breadcrumbs.length - 1"
-              @click="i < breadcrumbs.length - 1 && navigateToAlbum(crumb.id)"
-              class="text-body-1"
-            >
-              {{ crumb.name }}
-            </v-breadcrumbs-item>
-            <v-breadcrumbs-divider v-if="i < breadcrumbs.length - 1" class="mx-1"
-              >/</v-breadcrumbs-divider
-            >
-          </template>
-        </v-breadcrumbs>
+        <template v-if="route.meta.baseName === 'album'">
+          <v-card-title class="page-title">Albums</v-card-title>
+          <v-breadcrumbs v-if="breadcrumbs.length > 0" class="pa-0" density="compact">
+            <template v-for="(crumb, i) in breadcrumbs" :key="crumb.id">
+              <v-breadcrumbs-divider class="mx-1">/</v-breadcrumbs-divider>
+              <v-breadcrumbs-item
+                :disabled="i === breadcrumbs.length - 1"
+                @click="i < breadcrumbs.length - 1 && navigateToCrumb(crumb)"
+                class="text-body-1"
+              >
+                {{ crumb.name }}
+              </v-breadcrumbs-item>
+            </template>
+          </v-breadcrumbs>
+        </template>
         <v-card-title v-else class="page-title text-truncate">
           {{ pageTitle }}
         </v-card-title>
@@ -61,8 +58,6 @@
             </v-text-field>
           </v-card-text>
         </v-card>
-
-        <v-spacer />
 
         <v-tooltip v-if="route.meta.baseName === 'album'" location="top" text="Share">
           <template #activator="{ props }">
@@ -181,15 +176,15 @@ const breadcrumbs = computed<Breadcrumb[]>(() => {
     currentId = info.parentAlbumId ?? null
   }
 
-  if (trail.length > 3) {
-    return trail.slice(-3)
+  if (trail.length > 4) {
+    return trail.slice(trail.length - 4)
   }
 
   return trail
 })
 
-const navigateToAlbum = (albumHash: string) => {
-  void router.push({ name: 'album', params: { albumHash } })
+const navigateToCrumb = (crumb: Breadcrumb) => {
+  void router.push({ name: 'album', params: { albumHash: crumb.id } })
 }
 
 const baseTitleMap: Record<string, string> = {
@@ -253,7 +248,6 @@ const collectionStore = useCollectionStore('mainId')
 }
 
 .search-card {
-  flex: 0 1 35%;
-  min-width: 20vw;
+  flex: 1 1 auto;
 }
 </style>
