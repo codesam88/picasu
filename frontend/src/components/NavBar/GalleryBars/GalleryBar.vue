@@ -37,7 +37,7 @@
             <v-text-field
               id="nav-search-input"
               rounded
-              class="ma-0"
+              class="mx-3"
               v-model="searchQuery"
               bg-color="surface-light"
               @click:prepend-inner="handleSearch"
@@ -50,7 +50,6 @@
               prepend-inner-icon="mdi-magnify"
               single-line
               hide-details
-              style="margin-right: 10px"
             >
               <template #label>
                 <span class="text-body-small">Search</span>
@@ -249,5 +248,14 @@ const collectionStore = useCollectionStore('mainId')
 
 .search-card {
   flex: 1 1 auto;
+}
+
+.v-breadcrumbs-item:not(.v-breadcrumbs-item--disabled) {
+  cursor: pointer;
+}
+
+.v-breadcrumbs-item:not(.v-breadcrumbs-item--disabled):hover {
+  color: rgb(var(--v-theme-primary));
+  text-decoration: underline;
 }
 </style>
