@@ -128,8 +128,8 @@ import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useTagStore } from '@/store/tagStore'
-import { usePrefetchStore } from '@/store/prefetchStore'
 import { getIsolationIdByRoute } from '@utils/getter'
+import { refreshGalleryAfterMutation } from '@/script/hook/usePrefetch'
 import type { VForm } from 'vuetify/components'
 import { editTags } from '@/api/editTags'
 import { editFlags } from '@/api/editFlags'
@@ -186,7 +186,6 @@ const isolationId = getIsolationIdByRoute(route)
 const modalStore = useModalStore('mainId')
 const collectionStore = useCollectionStore(isolationId)
 const tagStore = useTagStore('mainId')
-const prefetchStore = usePrefetchStore(isolationId)
 
 // Merge virtual flag items with real tags into a single dropdown list.
 const allItems = computed<ComboboxItem[]>(() => {
@@ -245,7 +244,7 @@ onMounted(() => {
       await editFlags(hashes, flagChanges, isolationId)
     }
 
-    prefetchStore.refreshVersion++
+    await refreshGalleryAfterMutation(isolationId, route)
   }
 })
 

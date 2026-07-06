@@ -52,7 +52,7 @@ import { useWorkerStore } from '@/store/workerStore'
 import { useQueueStore } from '@/store/queueStore'
 import { LocationQueryValue, useRoute } from 'vue-router'
 import { useElementSize } from '@vueuse/core'
-import { usePrefetch, processPrefetchChain } from '@/script/hook/usePrefetch'
+import { usePrefetch } from '@/script/hook/usePrefetch'
 import { handleScroll } from '@/script/hook/useHandleScroll'
 import { useInitializeScrollPosition } from '@/script/hook/useInitializeScrollPosition'
 import { useImgStore } from '@/store/imgStore'
@@ -142,34 +142,6 @@ const bufferHeight = computed(() => {
   return 600000
 })
 
-// Re-run the prefetch chain when a data-mutation dialog action requests a
-// refresh (e.g. assign album, batch edit tags). The chain fetches fresh
-// server data, re-syncs the store, and toggles updateFetchRowTrigger so the
-// grid re-renders with the updated result set.
-const refreshing = ref(false)
-watch(
-  () => prefetchStore.refreshVersion,
-  async () => {
-    if (refreshing.value) return
-    refreshing.value = true
-    try {
-      const filterJsonString = filterStore.generateFilterJsonString(props.basicString)
-      const priorityId = typeof route.query.priority_id === 'string' ? route.query.priority_id : ''
-      const reverse = typeof route.query.reverse === 'string' ? route.query.reverse : ''
-      await processPrefetchChain(
-        filterJsonString,
-        priorityId,
-        reverse,
-        null,
-        props.isolationId,
-        route
-      )
-    } finally {
-      refreshing.value = false
-    }
-  }
-)
-
 // Remove the locate query param after the two-step jump fully completes,
 // so refreshing won't re-trigger the jump.
 // Uses history.replaceState instead of router.replace to avoid changing
@@ -188,6 +160,7 @@ watch(
 )
 
 onMounted(() => {
+  prefetchStore.filterBasicString = props.basicString
   filterStore.searchString = props.searchString
   usePrefetch(
     filterStore.generateFilterJsonString(props.basicString),

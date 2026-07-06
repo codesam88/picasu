@@ -10,6 +10,11 @@ import { useAlbumStore } from '@/store/albumStore'
 import { fetchScrollbar } from '@/api/fetchScrollbar'
 import { useShareStore } from '@/store/shareStore'
 import { useTokenStore } from '@/store/tokenStore'
+import { useFilterStore } from '@/store/filterStore'
+import { useQueueStore } from '@/store/queueStore'
+import { useRowStore } from '@/store/rowStore'
+import { useOffsetStore } from '@/store/offsetStore'
+import { useImgStore } from '@/store/imgStore'
 import { RouteLocationNormalizedLoadedGeneric } from 'vue-router'
 
 export function usePrefetch(
@@ -123,4 +128,37 @@ function syncStoreFromPrefetch(prefetchReturn: PrefetchReturn, isolationId: Isol
   tokenStore.timestampToken = token
 
   initializedStore.initialized = true
+}
+
+/**
+ * Clear gallery caches and re-fetch data after a mutation that changed the
+ * server-side index state (e.g. assign album, batch edit tags). Called
+ * directly from dialog actions after the backend confirms the operation.
+ */
+export async function refreshGalleryAfterMutation(
+  isolationId: IsolationId,
+  route: RouteLocationNormalizedLoadedGeneric
+) {
+  const prefetchStore = usePrefetchStore(isolationId)
+  const filterStore = useFilterStore(isolationId)
+
+  if (prefetchStore.filterBasicString === null) return
+
+  const filterJsonString = filterStore.generateFilterJsonString(prefetchStore.filterBasicString)
+
+  await processPrefetchChain(
+    filterJsonString,
+    typeof route.query.priority_id === 'string' ? route.query.priority_id : '',
+    typeof route.query.reverse === 'string' ? route.query.reverse : '',
+    null,
+    isolationId,
+    route
+  )
+
+  // Chain succeeded — clear stale per-row caches so fetchRowInWorker
+  // actually re-fetches rows instead of skipping old queue entries.
+  useQueueStore(isolationId).clearAll()
+  useRowStore(isolationId).clearAll()
+  useOffsetStore(isolationId).clearAll()
+  useImgStore(isolationId).clearForResize()
 }
