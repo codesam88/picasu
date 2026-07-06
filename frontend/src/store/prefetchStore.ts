@@ -9,12 +9,12 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       timestamp: number | null
       totalHeight: number
       totalHeightOriginal: number
-      dataLength: number // length of all photos
-      rowLength: number // length of all photo batches
+      dataLength: number
+      rowLength: number
       locateTo: number | null
       updateVisibleRowTrigger: boolean
       updateFetchRowTrigger: boolean
-      refreshVersion: number
+      filterBasicString: string | null
     } => ({
       windowWidth: 0,
       timestamp: null,
@@ -25,7 +25,7 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       locateTo: null,
       updateVisibleRowTrigger: false,
       updateFetchRowTrigger: false,
-      refreshVersion: 0
+      filterBasicString: null
     }),
     actions: {
       calculateLength(dataLength: number) {
