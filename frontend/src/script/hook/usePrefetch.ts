@@ -61,7 +61,7 @@ async function processConfigChain(isolationId: IsolationId) {
  * Chain 2: Handles Data Prefetching and dependent sequential operations.
  * Flow: Prefetch API -> Sync Store (Token) -> Scrollbar API (needs token) -> Final Trigger
  */
-async function processPrefetchChain(
+export async function processPrefetchChain(
   filterJsonString: string | null,
   priorityId: string,
   reverse: string,
