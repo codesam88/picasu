@@ -10,6 +10,7 @@ use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::DATA_TABLE;
 use crate::storage::db::TREE;
+use crate::storage::db::VERSION_COUNT_TIMESTAMP;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::INDEX_COORDINATOR;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
@@ -93,6 +94,13 @@ pub async fn assign_album(
         .execute_batch_waiting(UpdateTreeTask)
         .await
         .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
+
+    // Bump the version counter so subsequent prefetch calls create a new
+    // query cache entry instead of returning stale data from the snapshot
+    // taken before the mutation.  (UpdateExpireTask, which normally
+    // advances this counter, runs asynchronously — too late for the next
+    // frontend request.)
+    VERSION_COUNT_TIMESTAMP.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
     INDEX_COORDINATOR
         .execute_waiting(AlbumSelfUpdateTask::new(album_id))
