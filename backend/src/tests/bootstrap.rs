@@ -5,6 +5,7 @@ use redb::ReadableTable;
 use tempfile::TempDir;
 
 use crate::model::config::{APP_CONFIG, AppConfig};
+use crate::process::dir_album;
 use crate::router::builder::build_rocket_with_config;
 use crate::storage::cache::TREE_SNAPSHOT;
 use crate::storage::db::DATA_TABLE;
@@ -119,6 +120,9 @@ pub fn reset_backend_state() {
     }
     std::fs::create_dir_all(&image_home)
         .unwrap_or_else(|e| panic!("create image_home {}: {e}", image_home.display()));
+
+    // Clear directory album cache so stale album IDs are not reused.
+    dir_album::reset_dir_album_cache();
 
     // Reset config mutations (e.g. read_only_mode set by write_config).
     let mut config = APP_CONFIG
