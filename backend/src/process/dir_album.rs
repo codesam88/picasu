@@ -185,6 +185,16 @@ pub fn mark_dir_albums_for_path(file_path: &Path) {
     }
 }
 
+/// Clear `DIR_ALBUM_CACHE` and `PENDING_ALBUM_UPDATES`.
+/// Called from test teardown to avoid stale cache entries across test runs.
+#[cfg(test)]
+pub fn reset_dir_album_cache() {
+    let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
+    cache.clear();
+    let mut pending = PENDING_ALBUM_UPDATES.lock().expect("lock poisoned");
+    pending.clear();
+}
+
 /// Find or create the album corresponding to `dir_path`.
 /// Must be called from a blocking context (e.g., `tokio::task::spawn_blocking`).
 ///

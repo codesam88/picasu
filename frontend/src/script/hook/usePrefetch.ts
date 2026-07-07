@@ -141,10 +141,15 @@ export async function refreshGalleryAfterMutation(
 ) {
   const prefetchStore = usePrefetchStore(isolationId)
   const filterStore = useFilterStore(isolationId)
+  const albumStore = useAlbumStore('mainId')
 
   if (prefetchStore.filterBasicString === null) return
 
   const filterJsonString = filterStore.generateFilterJsonString(prefetchStore.filterBasicString)
+
+  // Always refresh the album store after a mutation so the album tree
+  // in Modal dialogs (e.g. AssignAlbumModal) shows the updated hierarchy.
+  await albumStore.fetchAlbums()
 
   await processPrefetchChain(
     filterJsonString,
