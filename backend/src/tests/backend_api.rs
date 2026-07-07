@@ -132,32 +132,43 @@ fn assert_array_where(root: &Value, val: &Value, vars: &HashMap<String, String>)
         .get("where")
         .and_then(|w| w.as_object())
         .expect("array_where requires 'where' object");
-    let assert_obj = aw
-        .get("assert")
-        .and_then(|a| a.as_object())
-        .expect("array_where requires 'assert' object");
 
     let arr = root
         .as_array()
         .expect("response must be an array for array_where");
 
-    let found = arr
-        .iter()
-        .find(|item| {
-            where_obj.iter().all(|(field, cond)| {
-                let cond_interp = interpolate_value(cond, vars);
-                item[field.as_str()] == cond_interp
-            })
+    let found = arr.iter().find(|item| {
+        where_obj.iter().all(|(field, cond)| {
+            let cond_interp = interpolate_value(cond, vars);
+            navigate_json(item, field.as_str()).clone() == cond_interp
         })
-        .expect("no element matching array_where conditions");
+    });
 
-    for (field, expected) in assert_obj {
-        let expected_interp = interpolate_value(expected, vars);
-        assert_eq!(
-            found[field.as_str()],
-            expected_interp,
-            "array_where {field} mismatch"
-        );
+    let expect = aw
+        .get("expect")
+        .and_then(|e| e.as_str())
+        .unwrap_or("present");
+    match expect {
+        "absent" => {
+            assert!(
+                found.is_none(),
+                "array_where: expected no element matching where conditions, but found one"
+            );
+        }
+        "present" => {
+            let found = found.expect("no element matching array_where conditions");
+            if let Some(assert_obj) = aw.get("assert").and_then(|a| a.as_object()) {
+                for (field, expected) in assert_obj {
+                    let expected_interp = interpolate_value(expected, vars);
+                    assert_eq!(
+                        navigate_json(found, field).clone(),
+                        expected_interp,
+                        "array_where {field} mismatch"
+                    );
+                }
+            }
+        }
+        other => panic!("array_where expect must be 'present' or 'absent', got '{other}'"),
     }
 }
 

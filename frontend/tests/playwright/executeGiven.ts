@@ -399,7 +399,7 @@ async function findAlbum(
   if (!res.ok()) return null
   const albums = (await res.json()) as any[]
   const match = albums.find((a: any) => a.dirPath && a.dirPath.endsWith(qualifiedPath))
-  return match ? String(match.album_id) : null
+  return match ? String(match.albumId) : null
 }
 
 function findPhotoHash(qualifiedPath: string, data: any[]): string | null {
