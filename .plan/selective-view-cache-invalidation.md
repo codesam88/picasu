@@ -9,6 +9,20 @@ area: backend
 
 <!-- Agents: append progress notes below, newest first. Do not edit existing lines. -->
 
+### 2026-07-08 — Observed: frontend DataStore stale after mutations
+
+Three Playwright tests (committed `f1a6b87e`) reproduce a frontend bug distinct from the backend cache invalidation this plan targets:
+
+| File | Mutation | Fault |
+|------|----------|-------|
+| `grid-stale-after-assign-album.spec.ts` | Assign album (flat) | `dataStore.data.size` is 1 not 0 after move |
+| `grid-stale-after-delete.spec.ts` | Delete/trash | `prefetchStore.dataLength` is 1 not 0 |
+| `grid-stale-after-subalbum-assign.spec.ts` | Assign album (nested) | `dataStore.data.size` is 1 not 0 after move |
+
+All three call `refreshGalleryAfterMutation()` after the mutation completes. The function correctly sets `prefetchStore.dataLength = 0` (for assign-album) but never clears `dataStore.data` or `dataStore.batchFetched`. The delete case doesn't even update `prefetchStore.dataLength`.
+
+This is a frontend-side fix, separate from the backend selective invalidation described below, but essential for correct UX after any mutation that changes grid content.
+
 ## Selective View Cache Invalidation
 
 ### Problem
