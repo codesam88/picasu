@@ -175,7 +175,7 @@ docs-check:
 
 # Format everything (backend + utils + frontend + docs + .plan)
 [group('global')]
-format: backend-format utils-format frontend-format docs-format plan-format
+format: backend-format utils-format frontend-format docs-format
 
 # Run all linters and static checks
 [group('global')]
