@@ -14,21 +14,17 @@
         </v-tooltip>
 
         <template v-if="route.meta.baseName === 'album'">
-          <v-card-title class="page-title">Albums</v-card-title>
+          <v-card-title class="page-title clickable" @click="reloadTopLevel">Albums</v-card-title>
           <v-breadcrumbs v-if="breadcrumbs.length > 0" class="pa-0" density="compact">
-            <template v-for="(crumb, i) in breadcrumbs" :key="crumb.id">
+            <template v-for="crumb in breadcrumbs" :key="crumb.id">
               <v-breadcrumbs-divider class="mx-1">/</v-breadcrumbs-divider>
-              <v-breadcrumbs-item
-                :disabled="i === breadcrumbs.length - 1"
-                @click="i < breadcrumbs.length - 1 && navigateToCrumb(crumb)"
-                class="text-body-1"
-              >
+              <v-breadcrumbs-item @click="navigateToCrumb(crumb)" class="text-body-1">
                 {{ crumb.name }}
               </v-breadcrumbs-item>
             </template>
           </v-breadcrumbs>
         </template>
-        <v-card-title v-else class="page-title text-truncate">
+        <v-card-title v-else class="page-title clickable text-truncate" @click="reloadTopLevel">
           {{ pageTitle }}
         </v-card-title>
 
@@ -207,6 +203,13 @@ const pageTitle = computed(() => {
   return baseTitleMap[baseName] ?? baseName
 })
 
+const reloadTopLevel = () => {
+  const baseName = route.meta.baseName
+  if (typeof baseName !== 'string') return
+  const path = baseName === 'album' ? '/albums' : `/${baseName}`
+  void router.push({ path })
+}
+
 const handleSearch = async () => {
   filterStore.searchString = searchQuery.value
 
@@ -244,6 +247,15 @@ const collectionStore = useCollectionStore('mainId')
   font-weight: 500;
   line-height: 1.175;
   letter-spacing: 0.0073529412em;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover {
+  color: rgb(var(--v-theme-primary));
+  text-decoration: underline;
 }
 
 .search-card {

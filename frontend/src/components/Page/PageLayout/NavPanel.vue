@@ -3,14 +3,14 @@
     <div v-show="showNavPanel" class="nav-panel__inner">
       <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized">
         <v-list-item slim prepend-icon="mdi-home" title="Home" @click="goHome" />
-        <v-list-item slim to="/albums" prepend-icon="mdi-image-album" title="Albums" />
-        <v-list-item slim to="/tags" prepend-icon="mdi-tag-multiple" title="Tags" />
+        <v-list-item slim prepend-icon="mdi-image-album" title="Albums" @click="goTo('/albums')" />
+        <v-list-item slim prepend-icon="mdi-tag-multiple" title="Tags" @click="goTo('/tags')" />
       </v-list>
 
       <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized" class="mt-auto">
         <v-divider />
-        <v-list-item slim to="/trashed" prepend-icon="mdi-trash-can" title="Trashed" />
-        <v-list-item slim to="/config" prepend-icon="mdi-tune" title="Config" />
+        <v-list-item slim prepend-icon="mdi-trash-can" title="Trashed" @click="goTo('/trashed')" />
+        <v-list-item slim prepend-icon="mdi-tune" title="Config" @click="goTo('/config')" />
       </v-list>
     </div>
   </nav>
@@ -28,9 +28,12 @@ const initializedStore = useInitializedStore('mainId')
 
 const goHome = () => {
   window.scrollTo({ top: 0, behavior: 'smooth' })
-  if (route.name !== 'timeline') {
-    void router.push({ name: 'timeline' })
-  }
+  void router.push({ name: 'timeline' })
+}
+
+const goTo = (path: string) => {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+  void router.push({ path })
 }
 </script>
 
