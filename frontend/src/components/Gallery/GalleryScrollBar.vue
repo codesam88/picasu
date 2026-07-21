@@ -222,6 +222,10 @@ const handleHover = (event?: MouseEvent) => {
     }
   }
   scrollbarStore.isHovering = true
+
+  if (scrollbarStore.isDragging) {
+    handleMove(event)
+  }
 }
 
 const handleMouseDown = (event: MouseEvent) => {
