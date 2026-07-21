@@ -96,23 +96,26 @@ const loadNextChunk = async () => {
   if (isLoading) return
   isLoading = true
 
-  const nextChunkIndex = chunkStore.currentChunkIndex
-  const startIndex = nextChunkIndex * chunkSize
+  try {
+    const nextChunkIndex = chunkStore.currentChunkIndex
+    const startIndex = nextChunkIndex * chunkSize
 
-  if (startIndex >= prefetchStore.dataLength) {
+    if (startIndex >= prefetchStore.dataLength) {
+      return
+    }
+
+    chunkStore.currentChunkIndex++
+    await fetchRowInWorker(nextChunkIndex, props.isolationId)
+    timestamp.value = Date.now()
+  } finally {
     isLoading = false
-    return
   }
-
-  chunkStore.currentChunkIndex++
-  await fetchRowInWorker(nextChunkIndex, props.isolationId)
-  timestamp.value = Date.now()
-  isLoading = false
 }
 
 watch(windowWidth, () => {
   chunkStore.clearAll()
   timestamp.value = Date.now()
+  isLoading = false
 })
 </script>
 
