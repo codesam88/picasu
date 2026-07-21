@@ -10,7 +10,7 @@
     :transition="transition"
     :id="id"
   >
-    <v-card rounded="lg" class="d-flex flex-column" color="#212121">
+    <v-card rounded="lg" class="d-flex flex-column" elevation="12">
       <slot name="header">
         <v-toolbar color="transparent" density="compact">
           <v-toolbar-title>

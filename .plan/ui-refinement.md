@@ -46,6 +46,13 @@ Consolidated from `ui-notes.md` — remaining work after nav/settings cleanup.
 - [ ] Back/Escape from Image view goes to blank grid, should go back to album
 - [ ] Back/Escape from Album should go to parent Album
 
+- [ ] image lightbox, when opening the info pane, the lightbox
+      close/properties/info buttons should stay in their location at top-right corner
+
+- [ ] move light/dark theme to user/settings and fix various hardcoded black shades
+
+- [ ] image lightbox/info pane, ordering of displayed details: - image file name, location (relative to image_home) - dimensions and size - Date, but make it human readable. not "in the afternoon" but give normal 12 or 24h time with timezone. - Location info, if any - Model/Make/exposure - make this a smaller technical detail field. name the fields, .e.g "Model: Canon EOS" - Description, if any - Rating - Tags
+
 ## UI definition
 
 ### Main Navi Items

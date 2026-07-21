@@ -27,7 +27,7 @@
           </div>
           <ViewPageMetadata
             v-if="showMetadataPanel && abstractData"
-            class="view-modal-sidepane"
+            class="view-modal-sidepane bg-surface elevation-4 elevation-overlay"
             :abstract-data="abstractData"
             :index="index"
             :hash="hash"
@@ -82,12 +82,7 @@
         </div>
       </div>
     </template>
-    <div
-      v-else
-      fluid
-      class="pa-0 h-100 w-100 overflow-hidden position-relative"
-      style="background-color: black"
-    >
+    <div v-else fluid class="pa-0 h-100 w-100 overflow-hidden position-relative bg-background">
       <div class="d-flex align-center justify-center w-100 h-100">
         <v-progress-circular indeterminate color="primary" size="64" />
       </div>
@@ -206,7 +201,7 @@ onUnmounted(() => {
   inset: 0;
   z-index: 1000;
   display: flex;
-  background: black;
+  background: rgb(var(--v-theme-background));
 }
 
 .view-container {
@@ -220,7 +215,7 @@ onUnmounted(() => {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
-  background: black;
+  background: rgb(var(--v-theme-background));
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -248,7 +243,6 @@ onUnmounted(() => {
   flex: 0 0 360px;
   height: 100vh;
   z-index: 1001;
-  background: var(--v-theme-surface);
 }
 
 @media (width <= 720px) {
