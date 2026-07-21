@@ -7,7 +7,6 @@ import { clamp } from 'lodash'
 import { bindActionDispatch } from 'typesafe-agent-events'
 import { IsolationId } from '@type/types'
 import { useTokenStore } from '@/store/tokenStore'
-import { useConstStore } from '@/store/constStore'
 import { batchNumber } from '@/type/constants'
 
 /**
@@ -20,7 +19,6 @@ export async function fetchRowInWorker(index: number, isolationId: IsolationId) 
   const locationStore = useLocationStore(isolationId)
   const queueStore = useQueueStore(isolationId)
   const tokenStore = useTokenStore(isolationId)
-  const constStore = useConstStore('mainId')
   if (prefetchStore.dataLength === 0) {
     return // No data to fetch
   }
@@ -67,8 +65,7 @@ export async function fetchRowInWorker(index: number, isolationId: IsolationId) 
       timestamp,
       windowWidth: prefetchStore.windowWidth,
       isLastRow: index === rowLength - 1,
-      timestampToken,
-      subRowHeightScale: constStore.subRowHeightScale
+      timestampToken
     })
   }
 }

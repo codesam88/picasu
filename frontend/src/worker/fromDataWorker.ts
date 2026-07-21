@@ -5,14 +5,12 @@ import { useMessageStore } from '@/store/messageStore'
 import { useTagStore } from '@/store/tagStore'
 import { createHandler } from 'typesafe-agent-events'
 import { fromDataWorker } from '@/worker/workerApi'
-import { useRowStore } from '@/store/rowStore'
 import { useLocationStore } from '@/store/locationStore'
 import { useModalStore } from '@/store/modalStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
-import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useTokenStore } from '@/store/tokenStore'
-import { useConstStore } from '@/store/constStore'
+import { useChunkStore } from '@/store/chunkStore'
 
 const workerHandlerMap = new Map<Worker, (e: MessageEvent) => void>()
 
@@ -28,14 +26,12 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
   const modalStore = useModalStore('mainId')
   const redirectionStore = useRedirectionStore('mainId')
   const tagStore = useTagStore('mainId')
-  const constStore = useConstStore('mainId')
   const tokenStore = useTokenStore(isolationId)
   const dataStore = useDataStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
-  const rowStore = useRowStore(isolationId)
   const locationStore = useLocationStore(isolationId)
-  const scrollTopStore = useScrollTopStore(isolationId)
   const optimisticUpdateStore = useOptimisticStore(isolationId)
+  const chunkStore = useChunkStore(isolationId)
 
   const handler = createHandler<typeof fromDataWorker>({
     returnData: (payload) => {
@@ -59,46 +55,35 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
     },
 
     fetchRowReturn: (payload) => {
-      const { timestamp, rowWithOffset, subRowHeightScale } = payload
-      const windowWidth = rowWithOffset.windowWidth
-
-      // Discard calculation if viewport changed during worker processing to avoid layout trashing.
-      if (windowWidth !== prefetchStore.windowWidth) {
-        return
-      }
-
-      const offset = rowWithOffset.offset
-      const row = rowWithOffset.row
+      const { timestamp, chunkIndex, displayElements, start } = payload
 
       // Prevent updates if the view is locked (anchored) to a specific row to maintain scroll stability.
-      if (locationStore.anchor !== null && locationStore.anchor !== row.rowIndex) {
+      if (locationStore.anchor !== null && locationStore.anchor !== chunkIndex) {
         return
       }
 
       const timestampMatched = timestamp === prefetchStore.timestamp
-      const subRowHeightScaleMatched = subRowHeightScale === constStore.subRowHeightScale
 
-      if (timestampMatched && subRowHeightScaleMatched) {
-        row.offset = offset
-        rowStore.rowData.set(row.rowIndex, row)
+      if (timestampMatched) {
+        chunkStore.setChunk(chunkIndex, displayElements)
       }
 
-      // Second step of two-step locate jump: refine scroll to exact subrow position.
+      // Second step of two-step locate jump: refine scroll to exact position.
       const pendingTarget = locationStore.pendingLocateTarget
-      if (pendingTarget !== null && pendingTarget >= row.start && pendingTarget <= row.end) {
-        const elementIndex = pendingTarget - row.start
-        const displayElement = row.displayElements[elementIndex]
-        if (displayElement !== undefined) {
-          scrollTopStore.scrollTop =
-            row.topPixelAccumulated + row.offset + displayElement.displayTopPixelAccumulated
+      if (
+        pendingTarget !== null &&
+        pendingTarget >= start &&
+        pendingTarget < start + displayElements.length
+      ) {
+        const elementIndex = pendingTarget - start
+        if (elementIndex >= 0 && elementIndex < displayElements.length) {
+          locationStore.highlightedIndex = pendingTarget
         }
         locationStore.pendingLocateTarget = null
-        locationStore.highlightedIndex = pendingTarget
       }
 
       prefetchStore.updateFetchRowTrigger = !prefetchStore.updateFetchRowTrigger
       prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
-      rowStore.firstRowFetched = true
     },
 
     editTagsReturn: (payload) => {

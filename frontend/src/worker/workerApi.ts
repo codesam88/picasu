@@ -1,5 +1,5 @@
 // ================== Imports ==================
-import { FetchDataMethod, MessageColor, RowWithOffset, SlicedData, TagInfo } from '@type/types'
+import { DisplayElement, FetchDataMethod, MessageColor, SlicedData, TagInfo } from '@type/types'
 import { createActionCreators } from 'typesafe-agent-events'
 
 // ================== Payload Types ==================
@@ -76,7 +76,6 @@ export interface FetchRowPayload {
   windowWidth: number
   isLastRow: boolean
   timestampToken: string
-  subRowHeightScale: number
 }
 
 // === From DataWorker Payloads ===
@@ -86,9 +85,10 @@ export interface ReturnDataPayload {
 }
 
 export interface FetchRowReturnPayload {
-  rowWithOffset: RowWithOffset
+  chunkIndex: number
+  displayElements: DisplayElement[]
+  start: number
   timestamp: number
-  subRowHeightScale: number
 }
 
 export interface EditTagsReturnPayload {
