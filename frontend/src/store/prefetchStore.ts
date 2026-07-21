@@ -8,16 +8,12 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
       timestamp: number | null
       dataLength: number
       locateTo: number | null
-      updateVisibleRowTrigger: boolean
-      updateFetchRowTrigger: boolean
       filterBasicString: string | null
     } => ({
       windowWidth: 0,
       timestamp: null,
       dataLength: 0,
       locateTo: null,
-      updateVisibleRowTrigger: false,
-      updateFetchRowTrigger: false,
       filterBasicString: null
     }),
     actions: {
@@ -28,7 +24,6 @@ export const usePrefetchStore = (isolationId: IsolationId) =>
         this.timestamp = null
         this.dataLength = 0
         this.locateTo = null
-        this.updateVisibleRowTrigger = !this.updateVisibleRowTrigger
       }
     }
   })()

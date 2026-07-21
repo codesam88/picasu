@@ -101,10 +101,6 @@ export async function processPrefetchChain(
 
   // Wait for all dependent fetches in this chain to complete
   await Promise.all(dependentPromises)
-
-  // 4. Trigger the final row fetch to display the grid
-  const prefetchStore = usePrefetchStore(isolationId)
-  prefetchStore.updateFetchRowTrigger = !prefetchStore.updateFetchRowTrigger
 }
 
 /**
@@ -121,7 +117,6 @@ function syncStoreFromPrefetch(prefetchReturn: PrefetchReturn, isolationId: Isol
   shareStore.resolvedShare = resolvedShare
   prefetchStore.timestamp = prefetch.timestamp
 
-  prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
   prefetchStore.calculateLength(prefetch.dataLength)
   prefetchStore.locateTo = prefetch.locateTo
   tokenStore.timestampToken = token

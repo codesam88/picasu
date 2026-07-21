@@ -21,7 +21,11 @@
         :timestamp="timestamp"
       />
     </div>
-    <div ref="sentinel" class="sentinel"></div>
+    <div
+      ref="sentinel"
+      class="sentinel"
+      :style="{ position: 'absolute', top: `${sentinelTop}px` }"
+    ></div>
   </div>
 </template>
 
@@ -49,6 +53,14 @@ const chunkSize = 50
 
 const totalHeight = computed(() => {
   return Math.ceil(prefetchStore.dataLength / chunkSize) * 400
+})
+
+const sentinelTop = computed(() => {
+  const chunks = loadedChunks.value
+  if (chunks.length === 0) return 0
+  const lastChunk = chunks[chunks.length - 1]
+  if (!lastChunk) return 0
+  return lastChunk.startY + 400
 })
 
 const loadedChunks = computed(() => {

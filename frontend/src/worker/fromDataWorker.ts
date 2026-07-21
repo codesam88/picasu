@@ -81,9 +81,6 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
         }
         locationStore.pendingLocateTarget = null
       }
-
-      prefetchStore.updateFetchRowTrigger = !prefetchStore.updateFetchRowTrigger
-      prefetchStore.updateVisibleRowTrigger = !prefetchStore.updateVisibleRowTrigger
     },
 
     editTagsReturn: (payload) => {
