@@ -12,7 +12,7 @@
         color="primary"
         link
         class="ma-1"
-        @click="navigateToAlbum(props.album, router)"
+        :to="`/album/${props.album}`"
       >
         {{ albumStore.albums.get(props.album)?.displayName ?? props.album }}
       </v-chip>
@@ -33,11 +33,9 @@
 </template>
 
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { useAlbumStore } from '@/store/albumStore'
 import { IsolationId } from '@type/types'
-import { navigateToAlbum } from '@/route/navigator'
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -47,7 +45,6 @@ const props = defineProps<{
 
 const modalStore = useModalStore('mainId')
 const albumStore = useAlbumStore('mainId')
-const router = useRouter()
 
 function openAssignAlbumModal() {
   modalStore.assignAlbumBatch = false

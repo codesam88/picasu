@@ -14,19 +14,24 @@
         </v-tooltip>
 
         <template v-if="route.meta.baseName === 'album'">
-          <v-card-title class="page-title clickable" @click="reloadTopLevel">Albums</v-card-title>
+          <router-link to="/albums" class="nav-title-link d-flex">
+            <v-card-title class="page-title">Albums</v-card-title>
+          </router-link>
           <v-breadcrumbs v-if="breadcrumbs.length > 0" class="pa-0" density="compact">
             <template v-for="crumb in breadcrumbs" :key="crumb.id">
               <v-breadcrumbs-divider class="mx-1">/</v-breadcrumbs-divider>
-              <v-breadcrumbs-item @click="navigateToCrumb(crumb)" class="text-body-1">
+              <v-breadcrumbs-item
+                :to="{ name: 'album', params: { albumHash: crumb.id } }"
+                class="text-body-1"
+              >
                 {{ crumb.name }}
               </v-breadcrumbs-item>
             </template>
           </v-breadcrumbs>
         </template>
-        <v-card-title v-else class="page-title clickable text-truncate" @click="reloadTopLevel">
-          {{ pageTitle }}
-        </v-card-title>
+        <router-link v-else :to="topLevelPath" class="nav-title-link d-flex">
+          <v-card-title class="page-title text-truncate">{{ pageTitle }}</v-card-title>
+        </router-link>
 
         <v-card elevation="0" class="search-card">
           <v-card-text class="pa-0 bg-surface">
@@ -178,10 +183,6 @@ const breadcrumbs = computed<Breadcrumb[]>(() => {
   return trail
 })
 
-const navigateToCrumb = (crumb: Breadcrumb) => {
-  void router.push({ name: 'album', params: { albumHash: crumb.id } })
-}
-
 const baseTitleMap: Record<string, string> = {
   timeline: 'Timeline',
   trashed: 'Trash',
@@ -203,12 +204,11 @@ const pageTitle = computed(() => {
   return baseTitleMap[baseName] ?? baseName
 })
 
-const reloadTopLevel = () => {
+const topLevelPath = computed(() => {
   const baseName = route.meta.baseName
-  if (typeof baseName !== 'string') return
-  const path = baseName === 'album' ? '/albums' : `/${baseName}`
-  void router.push({ path })
-}
+  if (typeof baseName !== 'string') return '/'
+  return baseName === 'album' ? '/albums' : `/${baseName}`
+})
 
 const handleSearch = async () => {
   filterStore.searchString = searchQuery.value
@@ -249,13 +249,9 @@ const collectionStore = useCollectionStore('mainId')
   letter-spacing: 0.0073529412em;
 }
 
-.clickable {
-  cursor: pointer;
-}
-
-.clickable:hover {
-  color: rgb(var(--v-theme-primary));
-  text-decoration: underline;
+.nav-title-link {
+  color: inherit;
+  text-decoration: none;
 }
 
 .search-card {
