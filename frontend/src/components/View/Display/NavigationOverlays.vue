@@ -44,11 +44,11 @@ defineProps<{
   block-size: 60%;
   box-shadow: none;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.5);
-  color: white;
+  background: rgba(var(--v-theme-on-surface), 0.15);
+  color: rgb(var(--v-theme-on-surface));
 }
 .nav-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(var(--v-theme-on-surface), 0.3);
 }
 .nav-left {
   left: 0;

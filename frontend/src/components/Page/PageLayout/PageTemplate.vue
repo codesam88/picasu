@@ -240,7 +240,7 @@ const wrapperCardClass = computed(() => {
   position: relative;
   padding: 4px;
   padding-top: 4px;
-  background-color: #3d3d3d;
+  background-color: rgb(var(--v-theme-surface-light));
   overflow-y: auto;
   height: 100%;
   width: 100%;

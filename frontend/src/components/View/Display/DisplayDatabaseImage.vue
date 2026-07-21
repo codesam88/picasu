@@ -9,7 +9,7 @@
       width: 'auto',
       height: 'auto',
       objectFit: 'contain',
-      border: '2px solid rgba(255, 255, 255, 0.8)',
+      border: '1px solid rgba(var(--v-theme-on-surface), 0.12)',
       transform: `rotate(${-(editStore.rotationCounts.get(abstractData?.id ?? '') ?? 0) * 90}deg)`,
       transition: 'transform 0.3s ease'
     }"
