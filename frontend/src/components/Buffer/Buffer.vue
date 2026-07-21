@@ -67,6 +67,7 @@ const loadedChunks = computed(() => {
 })
 
 let observer: IntersectionObserver | null = null
+let isLoading = false
 
 onMounted(() => {
   observer = new IntersectionObserver(
@@ -92,14 +93,21 @@ onBeforeUnmount(() => {
 })
 
 const loadNextChunk = async () => {
+  if (isLoading) return
+  isLoading = true
+
   const nextChunkIndex = chunkStore.currentChunkIndex
   const startIndex = nextChunkIndex * chunkSize
 
-  if (startIndex >= prefetchStore.dataLength) return
+  if (startIndex >= prefetchStore.dataLength) {
+    isLoading = false
+    return
+  }
 
-  await fetchRowInWorker(nextChunkIndex, props.isolationId)
   chunkStore.currentChunkIndex++
+  await fetchRowInWorker(nextChunkIndex, props.isolationId)
   timestamp.value = Date.now()
+  isLoading = false
 }
 
 watch(windowWidth, () => {
