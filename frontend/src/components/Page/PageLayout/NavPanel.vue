@@ -2,15 +2,15 @@
   <nav class="nav-panel no-select" :class="{ 'nav-panel--open': showNavPanel }">
     <div v-show="showNavPanel" class="nav-panel__inner">
       <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized">
-        <v-list-item slim prepend-icon="mdi-home" title="Home" @click="goHome" />
-        <v-list-item slim prepend-icon="mdi-image-album" title="Albums" @click="goTo('/albums')" />
-        <v-list-item slim prepend-icon="mdi-tag-multiple" title="Tags" @click="goTo('/tags')" />
+        <v-list-item slim prepend-icon="mdi-home" title="Home" :to="{ name: 'timeline' }" />
+        <v-list-item slim prepend-icon="mdi-image-album" title="Albums" to="/albums" />
+        <v-list-item slim prepend-icon="mdi-tag-multiple" title="Tags" to="/tags" />
       </v-list>
 
       <v-list nav :key="route.fullPath" :disabled="!initializedStore.initialized" class="mt-auto">
         <v-divider />
-        <v-list-item slim prepend-icon="mdi-trash-can" title="Trashed" @click="goTo('/trashed')" />
-        <v-list-item slim prepend-icon="mdi-tune" title="Config" @click="goTo('/config')" />
+        <v-list-item slim prepend-icon="mdi-trash-can" title="Trashed" to="/trashed" />
+        <v-list-item slim prepend-icon="mdi-tune" title="Config" to="/config" />
       </v-list>
     </div>
   </nav>
@@ -18,23 +18,12 @@
 
 <script setup lang="ts">
 import { inject, type Ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useInitializedStore } from '@/store/initializedStore'
 
 const showNavPanel = inject<Ref<boolean>>('showNavPanel')
 const route = useRoute()
-const router = useRouter()
 const initializedStore = useInitializedStore('mainId')
-
-const goHome = () => {
-  window.scrollTo({ top: 0, behavior: 'smooth' })
-  void router.push({ name: 'timeline' })
-}
-
-const goTo = (path: string) => {
-  window.scrollTo({ top: 0, behavior: 'smooth' })
-  void router.push({ path })
-}
 </script>
 
 <style scoped>
