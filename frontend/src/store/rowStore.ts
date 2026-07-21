@@ -10,7 +10,7 @@ export const useRowStore = (isolationId: IsolationId) =>
     } => ({
       rowData: new Map(),
       lastVisibleRow: new Map(),
-      firstRowFetched: false // prevent BufferPlaceholder showing when first row has not been fetched
+      firstRowFetched: false // prevent showing until first row is fetched
     }),
     actions: {
       clearAll() {

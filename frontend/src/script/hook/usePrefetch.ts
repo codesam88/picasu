@@ -13,7 +13,6 @@ import { useTokenStore } from '@/store/tokenStore'
 import { useFilterStore } from '@/store/filterStore'
 import { useQueueStore } from '@/store/queueStore'
 import { useRowStore } from '@/store/rowStore'
-import { useOffsetStore } from '@/store/offsetStore'
 import { useImgStore } from '@/store/imgStore'
 import { RouteLocationNormalizedLoadedGeneric } from 'vue-router'
 
@@ -164,6 +163,5 @@ export async function refreshGalleryAfterMutation(
   // actually re-fetches rows instead of skipping old queue entries.
   useQueueStore(isolationId).clearAll()
   useRowStore(isolationId).clearAll()
-  useOffsetStore(isolationId).clearAll()
   useImgStore(isolationId).clearForResize()
 }

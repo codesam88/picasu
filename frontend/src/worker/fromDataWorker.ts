@@ -5,7 +5,6 @@ import { useMessageStore } from '@/store/messageStore'
 import { useTagStore } from '@/store/tagStore'
 import { createHandler } from 'typesafe-agent-events'
 import { fromDataWorker } from '@/worker/workerApi'
-import { useOffsetStore } from '@/store/offsetStore'
 import { useRowStore } from '@/store/rowStore'
 import { useLocationStore } from '@/store/locationStore'
 import { useModalStore } from '@/store/modalStore'
@@ -33,7 +32,6 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
   const tokenStore = useTokenStore(isolationId)
   const dataStore = useDataStore(isolationId)
   const prefetchStore = usePrefetchStore(isolationId)
-  const offsetStore = useOffsetStore(isolationId)
   const rowStore = useRowStore(isolationId)
   const locationStore = useLocationStore(isolationId)
   const scrollTopStore = useScrollTopStore(isolationId)
@@ -77,27 +75,12 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
         return
       }
 
-      const index = row.rowIndex
       const timestampMatched = timestamp === prefetchStore.timestamp
-      const offsetNotComputed = !offsetStore.offset.has(index)
       const subRowHeightScaleMatched = subRowHeightScale === constStore.subRowHeightScale
 
-      //
-      // Why: If the computed height (offset) is valid and new, we must propagate this delta
-      // to all subsequent rows to ensure the virtual scroll total height remains accurate.
-      if (timestampMatched && offsetNotComputed && subRowHeightScaleMatched) {
-        offsetStore.offset.set(index, offset)
-        row.offset = offsetStore.accumulatedOffset(row.rowIndex)
-
-        rowStore.rowData.forEach((row) => {
-          if (row.rowIndex > index) {
-            row.offset = row.offset + offset
-          }
-        })
-
+      if (timestampMatched && subRowHeightScaleMatched) {
+        row.offset = offset
         rowStore.rowData.set(row.rowIndex, row)
-        prefetchStore.totalHeight = prefetchStore.totalHeight + offset
-        offsetStore.accumulatedAll = offsetStore.accumulatedAll + offset
       }
 
       // Second step of two-step locate jump: refine scroll to exact subrow position.

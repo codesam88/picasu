@@ -56,7 +56,6 @@ import { handleScroll } from '@/script/hook/useHandleScroll'
 import { useImgStore } from '@/store/imgStore'
 import Buffer from '@/components/Buffer/Buffer.vue'
 import ScrollBar from '@/components/Gallery/GalleryScrollBar.vue'
-import { useOffsetStore } from '@/store/offsetStore'
 import { useRowStore } from '@/store/rowStore'
 import { useLocationStore } from '@/store/locationStore'
 import GalleryEmptyCard from '@/components/Gallery/GalleryEmptyCard.vue'
@@ -73,7 +72,6 @@ const props = defineProps<{
   searchString: LocationQueryValue | LocationQueryValue[] | undefined
 }>()
 
-const offsetStore = useOffsetStore(props.isolationId)
 const rowStore = useRowStore(props.isolationId)
 const dataStore = useDataStore(props.isolationId)
 const filterStore = useFilterStore(props.isolationId)
@@ -174,7 +172,6 @@ onBeforeUnmount(() => {
   filterStore.searchString = null
   collectionStore.editModeCollection.clear()
   imgStore.clearAll()
-  offsetStore.clearAll()
   rowStore.clearAll()
   scrollbarStore.clearAll()
   locationStore.clearAll()

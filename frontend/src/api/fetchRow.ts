@@ -8,6 +8,7 @@ import { bindActionDispatch } from 'typesafe-agent-events'
 import { IsolationId } from '@type/types'
 import { useTokenStore } from '@/store/tokenStore'
 import { useConstStore } from '@/store/constStore'
+import { batchNumber } from '@/type/constants'
 
 /**
  * Fetches a row of data using a web worker if it isn't already queued.
@@ -20,11 +21,12 @@ export async function fetchRowInWorker(index: number, isolationId: IsolationId) 
   const queueStore = useQueueStore(isolationId)
   const tokenStore = useTokenStore(isolationId)
   const constStore = useConstStore('mainId')
-  if (prefetchStore.rowLength === 0) {
+  if (prefetchStore.dataLength === 0) {
     return // No data to fetch
   }
 
-  index = clamp(index, 0, prefetchStore.rowLength - 1)
+  const rowLength = Math.ceil(prefetchStore.dataLength / batchNumber)
+  index = clamp(index, 0, rowLength - 1)
 
   if (queueStore.row.has(index)) {
     return // Already fetched
@@ -64,7 +66,7 @@ export async function fetchRowInWorker(index: number, isolationId: IsolationId) 
       index,
       timestamp,
       windowWidth: prefetchStore.windowWidth,
-      isLastRow: index === prefetchStore.rowLength - 1,
+      isLastRow: index === rowLength - 1,
       timestampToken,
       subRowHeightScale: constStore.subRowHeightScale
     })

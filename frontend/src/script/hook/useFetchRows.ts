@@ -5,7 +5,6 @@ import { fetchRowInWorker } from '@/api/fetchRow'
 import debounce from 'lodash/debounce'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useRowStore } from '@/store/rowStore'
-import { useOffsetStore } from '@/store/offsetStore'
 import { useScrollTopStore } from '@/store/scrollTopStore'
 import { IsolationId } from '@type/types'
 
@@ -16,26 +15,14 @@ import { IsolationId } from '@type/types'
  * @returns The sum of offsets for all rows above the given scroll position.
  */
 function computeOffSetSumOfAboveRowsIndex(scrollTop: number, isolationId: IsolationId) {
-  const aboveRowsIndex: number[] = []
   const rowStore = useRowStore(isolationId)
 
+  let offsetSum = 0
   for (const row of rowStore.rowData.values()) {
     if (row.topPixelAccumulated + row.offset < scrollTop) {
-      aboveRowsIndex.push(row.rowIndex)
+      offsetSum += row.offset
     }
   }
-
-  const offsetStore = useOffsetStore(isolationId)
-  let offsetSum = 0
-
-  aboveRowsIndex.forEach((rowIndex) => {
-    const offset = offsetStore.offset.get(rowIndex)
-    if (offset !== undefined) {
-      offsetSum += offset
-    } else {
-      console.error('offset is undefined')
-    }
-  })
 
   return offsetSum
 }
