@@ -10,7 +10,11 @@
         ref="imageContainerRef"
         class="d-flex flex-wrap position-relative flex-grow-1 min-h-0 h-100 pa-1 pb-2 bg-surface-light"
         :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
-        @scroll="throttledHandleScroll"
+        @scroll="
+          prefetchStore.locateTo === null && locationStore.pendingLocateTarget === null
+            ? throttledHandleScroll()
+            : () => {}
+        "
       >
         <Buffer
           v-if="initializedStore.initialized && prefetchStore.dataLength > 0"
@@ -109,6 +113,9 @@ watch(windowWidth, () => {
   chunkStore.clearAll()
 })
 
+// Kept as a prop for Buffer.vue compatibility, but Buffer now computes its
+// own totalHeight from dataLength. This value is unused by Buffer and can be
+// removed once the prop is cleaned up.
 const bufferHeight = computed(() => {
   return 600000
 })
@@ -139,6 +146,23 @@ onMounted(() => {
     route,
     props.isolationId
   )
+
+  // Restore scroll position from locate query param (replaces
+  // useInitializeScrollPosition for the new chunk-based layout).
+  // Scrolls the container so the IntersectionObserver loads the chunk
+  // containing the target item.
+  if (prefetchStore.locateTo !== null) {
+    const chunkSize = 50
+    const chunkHeight = 400
+    const targetChunk = Math.floor(prefetchStore.locateTo / chunkSize)
+    const el = imageContainerRef.value
+    if (el) {
+      el.scrollTop = targetChunk * chunkHeight
+    }
+    chunkStore.currentChunkIndex = Math.max(chunkStore.currentChunkIndex, targetChunk)
+    locationStore.locationIndex = prefetchStore.locateTo
+    prefetchStore.locateTo = null
+  }
 })
 
 onBeforeUnmount(() => {
