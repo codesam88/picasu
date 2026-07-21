@@ -9,18 +9,6 @@
       <div class="config-stack">
         <div class="config-block">
           <v-row class="ma-0">
-            <FrontendConfig />
-          </v-row>
-        </div>
-
-        <div class="config-block">
-          <v-row class="ma-0">
-            <ChangePassword v-model:has-password="localSettings.hasPassword" />
-          </v-row>
-        </div>
-
-        <div class="config-block">
-          <v-row class="ma-0">
             <StorageAndSync
               :image-path="localSettings.imagePath"
               v-model:upload-folder="localSettings.uploadFolder"
@@ -51,10 +39,8 @@ import { useConfigStore } from '@/store/configStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import type { AppConfig } from '@/api/config'
 import PageTemplate from './PageLayout/PageTemplate.vue'
-import ChangePassword from './Config/ChangePassword.vue'
 import StorageAndSync from './Config/StorageAndSync.vue'
 import AdvancedConfig from './Config/AdvancedConfig.vue'
-import FrontendConfig from './Config/FrontendConfig.vue'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 const configStore = useConfigStore('mainId')
