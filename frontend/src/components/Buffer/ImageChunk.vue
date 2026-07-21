@@ -94,6 +94,7 @@ const pressTimer = ref<number | null>(null)
 const timeInterval = ref(0)
 const scrollingTimer = ref<number | null>(null)
 const isScrolling = ref(false)
+const intervalId = ref<ReturnType<typeof setInterval> | null>(null)
 
 watch(
   () => scrollTopStore.scrollTop,
@@ -170,16 +171,29 @@ watch(
 )
 
 onMounted(() => {
-  const intervalId = setInterval(() => {
+  intervalId.value = setInterval(() => {
     if (timeInterval.value < layoutBatchNumber) {
       timeInterval.value += layoutBatchNumber
-    } else {
-      clearInterval(intervalId)
+    } else if (intervalId.value !== null) {
+      clearInterval(intervalId.value)
+      intervalId.value = null
     }
   }, 0)
 })
 
 onBeforeUnmount(() => {
+  if (scrollingTimer.value !== null) {
+    clearTimeout(scrollingTimer.value)
+    scrollingTimer.value = null
+  }
+  if (pressTimer.value !== null) {
+    clearTimeout(pressTimer.value)
+    pressTimer.value = null
+  }
+  if (intervalId.value !== null) {
+    clearInterval(intervalId.value)
+    intervalId.value = null
+  }
   for (let i = 0; i < props.images.length; i++) {
     const abortIndex = props.startIndex + i
     const workerIndex = abortIndex % constStore.concurrencyNumber
