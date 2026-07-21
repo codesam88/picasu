@@ -24,52 +24,6 @@
                 isolation-id="mainId"
               />
             </div>
-            <div class="view-modal-controls">
-              <v-tooltip location="top" text="Info">
-                <template #activator="{ props }">
-                  <v-btn
-                    v-bind="props"
-                    icon
-                    size="small"
-                    variant="text"
-                    class="control-btn"
-                    aria-label="Info"
-                    @click="toggleMetadataPanel"
-                  >
-                    <v-icon>{{
-                      showMetadataPanel ? 'mdi-information' : 'mdi-information-outline'
-                    }}</v-icon>
-                  </v-btn>
-                </template>
-              </v-tooltip>
-              <DatabaseMenu
-                v-if="
-                  abstractData &&
-                  (abstractData.type === 'image' || abstractData.type === 'video') &&
-                  route.meta.baseName !== 'share' &&
-                  share === null
-                "
-                :database="abstractData"
-                :index="index"
-                :hash="hash"
-                isolation-id="mainId"
-              />
-              <v-tooltip location="top" text="Close">
-                <template #activator="{ props }">
-                  <v-btn
-                    v-bind="props"
-                    icon
-                    size="small"
-                    variant="text"
-                    class="control-btn"
-                    aria-label="Close"
-                    @click="handleClose"
-                  >
-                    <v-icon>mdi-close</v-icon>
-                  </v-btn>
-                </template>
-              </v-tooltip>
-            </div>
           </div>
           <ViewPageMetadata
             v-if="showMetadataPanel && abstractData"
@@ -79,6 +33,52 @@
             :hash="hash"
             isolation-id="mainId"
           />
+          <div class="view-modal-controls">
+            <v-tooltip location="top" text="Info">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon
+                  size="small"
+                  variant="text"
+                  class="control-btn"
+                  aria-label="Info"
+                  @click="toggleMetadataPanel"
+                >
+                  <v-icon>{{
+                    showMetadataPanel ? 'mdi-information' : 'mdi-information-outline'
+                  }}</v-icon>
+                </v-btn>
+              </template>
+            </v-tooltip>
+            <DatabaseMenu
+              v-if="
+                abstractData &&
+                (abstractData.type === 'image' || abstractData.type === 'video') &&
+                route.meta.baseName !== 'share' &&
+                share === null
+              "
+              :database="abstractData"
+              :index="index"
+              :hash="hash"
+              isolation-id="mainId"
+            />
+            <v-tooltip location="top" text="Close">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  icon
+                  size="small"
+                  variant="text"
+                  class="control-btn"
+                  aria-label="Close"
+                  @click="handleClose"
+                >
+                  <v-icon>mdi-close</v-icon>
+                </v-btn>
+              </template>
+            </v-tooltip>
+          </div>
         </div>
       </div>
     </template>
@@ -239,7 +239,7 @@ onUnmounted(() => {
   position: absolute;
   top: 8px;
   right: 8px;
-  z-index: 1;
+  z-index: 1002;
   display: flex;
   gap: 4px;
 }
