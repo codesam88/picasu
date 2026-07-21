@@ -74,7 +74,6 @@ export interface FetchRowPayload {
   index: number
   timestamp: number
   windowWidth: number
-  isLastRow: boolean
   timestampToken: string
 }
 

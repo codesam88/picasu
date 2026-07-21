@@ -64,7 +64,6 @@ export async function fetchRowInWorker(index: number, isolationId: IsolationId) 
       index,
       timestamp,
       windowWidth: prefetchStore.windowWidth,
-      isLastRow: index === rowLength - 1,
       timestampToken
     })
   }

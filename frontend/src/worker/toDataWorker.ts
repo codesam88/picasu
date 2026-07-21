@@ -1,5 +1,5 @@
 import { rowSchema, databaseTimestampSchema } from '@type/schemas'
-import { DisplayElement, FetchDataMethod, UnifiedData } from '@type/types'
+import { DisplayElement, FetchDataMethod, SlicedData, UnifiedData } from '@type/types'
 import { batchNumber } from '@/type/constants'
 import { enrichWithThumbhash } from '@utils/createData'
 
@@ -40,11 +40,7 @@ self.addEventListener('message', (e) => {
       if (result.size > 0) {
         const indices = Array.from({ length: endIndex - startIndex }, (_, i) => startIndex + i)
 
-        const slicedDataArray: {
-          index: number
-          data: UnifiedData & { thumbhashUrl: string | null; timestamp: number }
-          hashToken: string
-        }[] = []
+        const slicedDataArray: SlicedData[] = []
         for (const index of indices) {
           const getData = result.get(index)
           if (getData !== undefined) {
