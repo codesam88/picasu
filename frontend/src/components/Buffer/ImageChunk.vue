@@ -33,6 +33,7 @@
         />
         <HoverGradientDiv :mobile="mobile" />
         <MainBlock
+          v-if="localIndex < timeInterval"
           :index="startIndex + localIndex"
           :display-element="image"
           :isolation-id="isolationId"
@@ -54,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { IsolationId, DisplayElement } from '@type/types'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useHandleClick } from '@/script/hook/useHandleClick'
@@ -65,7 +66,7 @@ import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useConfigStore } from '@/store/configStore'
 import { useConstStore } from '@/store/constStore'
 import { useLocationStore } from '@/store/locationStore'
-import { paddingPixel } from '@/type/constants'
+import { paddingPixel, layoutBatchNumber } from '@/type/constants'
 import MainBlock from './FunctionalComponent/MainBlock'
 import DesktopHoverIcon from './FunctionalComponent/DesktopHoverIcon'
 import HoverGradientDiv from './FunctionalComponent/HoverGradientDiv'
@@ -90,6 +91,7 @@ const locationStore = useLocationStore(props.isolationId)
 const mobile = configStore.isMobile
 const isLongPress = ref(false)
 const pressTimer = ref<number | null>(null)
+const timeInterval = ref(0)
 const scrollingTimer = ref<number | null>(null)
 const isScrolling = ref(false)
 
@@ -167,6 +169,16 @@ watch(
   }
 )
 
+onMounted(() => {
+  const intervalId = setInterval(() => {
+    if (timeInterval.value < layoutBatchNumber) {
+      timeInterval.value += layoutBatchNumber
+    } else {
+      clearInterval(intervalId)
+    }
+  }, 0)
+})
+
 onBeforeUnmount(() => {
   for (let i = 0; i < props.images.length; i++) {
     const abortIndex = props.startIndex + i
@@ -176,6 +188,8 @@ onBeforeUnmount(() => {
       if (worker) {
         worker.processAbort({ index: abortIndex })
       }
+    } else {
+      console.error('workerStore.postToImgWorkerList is undefined')
     }
     queueStore.img.delete(abortIndex)
   }
@@ -202,6 +216,10 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   z-index: 100;
+}
+
+.image-wrapper:not(:hover) .icon-hover {
+  display: none;
 }
 
 .icon-hover {
