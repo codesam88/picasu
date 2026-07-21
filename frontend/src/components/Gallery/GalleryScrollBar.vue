@@ -95,7 +95,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, inject, Ref, computed, watch, watchEffect } from 'vue'
+import { ref, inject, Ref, computed, watch, watchEffect, onUnmounted } from 'vue'
 import { clamp } from 'lodash'
 import { useElementSize } from '@vueuse/core'
 import { usePrefetchStore } from '@/store/prefetchStore'
@@ -206,6 +206,30 @@ const handleClick = (event?: MouseEvent | TouchEvent) => {
   }
 }
 
+const handleGlobalMouseMove = (event: MouseEvent) => {
+  if (scrollbarStore.isDragging) {
+    handleClick(event)
+  }
+}
+
+const handleGlobalMouseUp = () => {
+  scrollbarStore.isDragging = false
+  window.removeEventListener('mousemove', handleGlobalMouseMove)
+  window.removeEventListener('mouseup', handleGlobalMouseUp)
+}
+
+const handleGlobalTouchMove = (event: TouchEvent) => {
+  if (scrollbarStore.isDragging) {
+    handleClick(event)
+  }
+}
+
+const handleGlobalTouchEnd = () => {
+  scrollbarStore.isDragging = false
+  window.removeEventListener('touchmove', handleGlobalTouchMove)
+  window.removeEventListener('touchend', handleGlobalTouchEnd)
+}
+
 const handleMove = (event?: MouseEvent | TouchEvent) => {
   if (scrollbarStore.isDragging && event) {
     handleClick(event)
@@ -231,10 +255,14 @@ const handleHover = (event?: MouseEvent) => {
 const handleMouseDown = (event: MouseEvent) => {
   scrollbarStore.isDragging = true
   handleClick(event)
+  window.addEventListener('mousemove', handleGlobalMouseMove)
+  window.addEventListener('mouseup', handleGlobalMouseUp)
 }
 
 const handleMouseUp = () => {
   scrollbarStore.isDragging = false
+  window.removeEventListener('mousemove', handleGlobalMouseMove)
+  window.removeEventListener('mouseup', handleGlobalMouseUp)
 }
 
 const handleMouseLeave = () => {
@@ -245,10 +273,14 @@ const handleMouseLeave = () => {
 const handleTouchStart = (event: TouchEvent) => {
   scrollbarStore.isDragging = true
   handleClick(event)
+  window.addEventListener('touchmove', handleGlobalTouchMove)
+  window.addEventListener('touchend', handleGlobalTouchEnd)
 }
 
 const handleTouchEnd = () => {
   scrollbarStore.isDragging = false
+  window.removeEventListener('touchmove', handleGlobalTouchMove)
+  window.removeEventListener('touchend', handleGlobalTouchEnd)
 }
 
 watchEffect(() => {
@@ -271,5 +303,12 @@ watch([() => locationStore.locationIndex, reachBottom], () => {
   } else {
     currentImageIndex.value = locationStore.locationIndex
   }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('mousemove', handleGlobalMouseMove)
+  window.removeEventListener('mouseup', handleGlobalMouseUp)
+  window.removeEventListener('touchmove', handleGlobalTouchMove)
+  window.removeEventListener('touchend', handleGlobalTouchEnd)
 })
 </script>
