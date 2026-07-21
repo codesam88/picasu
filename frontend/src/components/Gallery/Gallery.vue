@@ -10,11 +10,7 @@
         ref="imageContainerRef"
         class="d-flex flex-wrap position-relative flex-grow-1 min-h-0 h-100 pa-1 pb-2 bg-surface-light"
         :class="stopScroll ? 'overflow-y-hidden' : 'overflow-y-scroll'"
-        @scroll="
-          prefetchStore.locateTo === null && locationStore.pendingLocateTarget === null
-            ? throttledHandleScroll()
-            : () => {}
-        "
+        @scroll="throttledHandleScroll"
       >
         <Buffer
           v-if="initializedStore.initialized && prefetchStore.dataLength > 0"
@@ -49,28 +45,23 @@ import { useCollectionStore } from '@/store/collectionStore'
 import { useFilterStore } from '@/store/filterStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useWorkerStore } from '@/store/workerStore'
-import { useQueueStore } from '@/store/queueStore'
 import { LocationQueryValue, useRoute } from 'vue-router'
 import { useElementSize } from '@vueuse/core'
 import { usePrefetch } from '@/script/hook/usePrefetch'
 import { handleScroll } from '@/script/hook/useHandleScroll'
-import { useInitializeScrollPosition } from '@/script/hook/useInitializeScrollPosition'
 import { useImgStore } from '@/store/imgStore'
 import Buffer from '@/components/Buffer/Buffer.vue'
 import ScrollBar from '@/components/Gallery/GalleryScrollBar.vue'
-import { layoutBatchNumber } from '@/type/constants'
 import { useOffsetStore } from '@/store/offsetStore'
 import { useRowStore } from '@/store/rowStore'
 import { useLocationStore } from '@/store/locationStore'
-import { fetchRowInWorker } from '@/api/fetchRow'
 import GalleryEmptyCard from '@/components/Gallery/GalleryEmptyCard.vue'
-import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { IsolationId } from '@type/types'
 import { useTagStore } from '@/store/tagStore'
 import { useAlbumStore } from '@/store/albumStore'
-import { useConstStore } from '@/store/constStore'
 import { useScrollbarStore } from '@/store/scrollbarStore'
+import { useChunkStore } from '@/store/chunkStore'
 
 const props = defineProps<{
   isolationId: IsolationId
@@ -78,7 +69,6 @@ const props = defineProps<{
   searchString: LocationQueryValue | LocationQueryValue[] | undefined
 }>()
 
-const scrollTopStore = useScrollTopStore(props.isolationId)
 const offsetStore = useOffsetStore(props.isolationId)
 const rowStore = useRowStore(props.isolationId)
 const dataStore = useDataStore(props.isolationId)
@@ -87,7 +77,6 @@ const collectionStore = useCollectionStore(props.isolationId)
 const prefetchStore = usePrefetchStore(props.isolationId)
 const workerStore = useWorkerStore(props.isolationId)
 const initializedStore = useInitializedStore(props.isolationId)
-const queueStore = useQueueStore(props.isolationId)
 const imgStore = useImgStore(props.isolationId)
 const locationStore = useLocationStore(props.isolationId)
 const optimisticUpateStore = useOptimisticStore(props.isolationId)
@@ -95,12 +84,11 @@ const scrollbarStore = useScrollbarStore(props.isolationId)
 // albumStore should not use 'mainId'; otherwise clearAll will be called when the 'props.isolationId' component is unmounted.
 const albumStore = useAlbumStore(props.isolationId)
 const tagStore = useTagStore('mainId')
-const constStore = useConstStore('mainId')
+const chunkStore = useChunkStore(props.isolationId)
 
 const route = useRoute()
 const imageContainerRef = ref<HTMLElement | null>(null)
 const { width: windowWidth, height: windowHeight } = useElementSize(imageContainerRef)
-const clientHeight = ref<number>(0)
 
 const lastScrollTop = ref(0)
 const stopScroll = ref(false)
@@ -109,7 +97,7 @@ provide('imageContainerRef', imageContainerRef)
 provide('windowWidth', windowWidth)
 provide('windowHeight', windowHeight)
 
-const { throttledHandleScroll, onWheel } = handleScroll(
+const { throttledHandleScroll } = handleScroll(
   imageContainerRef,
   lastScrollTop,
   stopScroll,
@@ -117,25 +105,8 @@ const { throttledHandleScroll, onWheel } = handleScroll(
   props.isolationId
 )
 
-watch([windowWidth, () => constStore.subRowHeightScale], async () => {
-  // Guard against spurious 0-width reports from useElementSize (e.g. during
-  // initial layout) — treating one as a real resize wipes rowStore/
-  // offsetStore/queueStore for no reason, so the grid comes back empty.
-  if (windowWidth.value === 0) return
-
-  locationStore.triggerForResize()
-  prefetchStore.windowWidth = Math.round(windowWidth.value)
-  prefetchStore.clearForResize()
-  rowStore.clearForResize()
-  offsetStore.clearAll()
-  queueStore.clearAll()
-  imgStore.clearForResize()
-  const locationRowIndex = Math.floor(locationStore.locationIndex / layoutBatchNumber)
-
-  locationStore.anchor = initializedStore.initialized ? locationRowIndex : null
-
-  scrollTopStore.scrollTop = locationRowIndex * 2400
-  await fetchRowInWorker(locationRowIndex, props.isolationId)
+watch(windowWidth, () => {
+  chunkStore.clearAll()
 })
 
 const bufferHeight = computed(() => {
@@ -168,30 +139,14 @@ onMounted(() => {
     route,
     props.isolationId
   )
-  useInitializeScrollPosition(
-    imageContainerRef,
-    bufferHeight,
-    lastScrollTop,
-    clientHeight,
-    windowWidth,
-    props.isolationId
-  )
-  const el = imageContainerRef.value
-  if (el) {
-    el.addEventListener('wheel', onWheel, { passive: false })
-  }
 })
 
 onBeforeUnmount(() => {
-  const el = imageContainerRef.value
-  if (el) {
-    el.removeEventListener('wheel', onWheel)
-  }
   workerStore.terminateWorker()
   initializedStore.initialized = false
   dataStore.clearAll()
   prefetchStore.clearAll()
-  queueStore.clearAll()
+  chunkStore.clearAll()
   filterStore.searchString = null
   collectionStore.editModeCollection.clear()
   imgStore.clearAll()
