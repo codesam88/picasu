@@ -68,15 +68,6 @@
             />
           </template>
         </v-tooltip>
-        <v-tooltip v-if="route.meta.level === 1" location="top" text="Theme">
-          <template #activator="{ props }">
-            <v-btn
-              v-bind="props"
-              :icon="themeIsLight ? 'mdi-weather-sunny' : 'mdi-weather-night'"
-              @click="themeIsLight = !themeIsLight"
-            />
-          </template>
-        </v-tooltip>
         <v-tooltip v-if="route.meta.level === 1" location="top" text="Upload">
           <template #activator="{ props }">
             <v-btn
@@ -96,6 +87,11 @@
               prepend-icon="mdi-cog"
               title="Settings"
               @click="modalStore.showUserSettingsModal = true"
+            />
+            <v-list-item
+              :prepend-icon="themeIsLight ? 'mdi-weather-night' : 'mdi-weather-sunny'"
+              :title="themeIsLight ? 'Dark mode' : 'Light mode'"
+              @click="themeIsLight = !themeIsLight"
             />
             <v-list-item prepend-icon="mdi-logout" title="Log out" @click="handleLogout" />
           </v-list>
