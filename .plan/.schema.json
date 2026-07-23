@@ -8,7 +8,7 @@
       "enum": ["idea", "backlog", "open", "in-progress", "blocked", "done"]
     },
     "type": {
-      "enum": ["bug", "feature", "chore", "decision", "perf"]
+      "enum": ["meta", "bug", "feature", "chore", "decision", "perf"]
     },
     "priority": {
       "enum": ["high", "medium", "low"]
