@@ -1,0 +1,11 @@
+name: Upload a new photo to an album and verify success
+given:
+  - dir_album: /e2e_up_basic/target
+    id_as: $album
+  - photo: /e2e_up_basic/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_basic/src/photo.jpg
+      target_album: "${album}"
+then:
+  - response.status: 200

@@ -1,0 +1,17 @@
+name: Upload with on_conflict=skip — duplicate filename silently skipped
+given:
+  - dir_album: /e2e_up_skip/target
+    id_as: $album
+  - photo: /e2e_up_skip/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_skip/src/photo.jpg
+      target_album: "${album}"
+      on_conflict: replace
+  - upload:
+      file: /e2e_up_skip/src/photo.jpg
+      target_album: "${album}"
+      on_conflict: skip
+then:
+  - response.status: 200
+  - file_exists: /e2e_up_skip/target/photo.jpeg
