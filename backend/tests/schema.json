@@ -93,11 +93,14 @@
             "filename": { "type": "string" },
             "target_album": { "type": "string" },
             "on_conflict": { "type": "string", "enum": ["skip", "rename", "replace"] },
-            "last_modified": { "type": "integer" }
+            "last_modified": { "type": "integer" },
+            "auth": { "type": "boolean" },
+            "content_type": { "type": "string" }
           },
           "required": ["file"],
           "additionalProperties": false
-        }
+        },
+        "then": { "type": "array" }
       },
       "required": ["upload"],
       "additionalProperties": false

@@ -132,6 +132,7 @@ pub fn reset_backend_state() {
         .expect("APP_CONFIG lock");
     config.read_only_mode = false;
     config.fs_notify_watcher = true;
+    config.password = None;
 }
 
 /// Build a Rocket test client with the current APP_CONFIG.
