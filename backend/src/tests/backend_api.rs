@@ -347,6 +347,125 @@ fn execute_call<'c>(
     req.dispatch()
 }
 
+// ── Multipart upload body builder ──
+
+fn build_upload_multipart(
+    file_data: &[u8],
+    filename: &str,
+    last_modified: u64,
+) -> (Vec<u8>, String) {
+    let boundary = "----picasu-test-upload-boundary";
+    let mut body = Vec::new();
+
+    // File part
+    body.extend_from_slice(b"--");
+    body.extend_from_slice(boundary.as_bytes());
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"");
+    body.extend_from_slice(filename.as_bytes());
+    body.extend_from_slice(b"\"\r\n");
+    body.extend_from_slice(b"Content-Type: image/jpeg\r\n\r\n");
+    body.extend_from_slice(file_data);
+    body.extend_from_slice(b"\r\n");
+
+    // lastModified part
+    body.extend_from_slice(b"--");
+    body.extend_from_slice(boundary.as_bytes());
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"lastModified\"\r\n\r\n");
+    body.extend_from_slice(last_modified.to_string().as_bytes());
+    body.extend_from_slice(b"\r\n");
+
+    // Close
+    body.extend_from_slice(b"--");
+    body.extend_from_slice(boundary.as_bytes());
+    body.extend_from_slice(b"--\r\n");
+
+    (body, boundary.to_string())
+}
+
+// ── Execute an upload call ──
+
+fn execute_upload<'c>(
+    item: &Value,
+    vars: &HashMap<String, String>,
+    client: &'c Client,
+) -> rocket::local::blocking::LocalResponse<'c> {
+    let upload = &item["upload"];
+
+    let file_path = upload["file"].as_str().expect("upload.file is required");
+    let file_path = interpolate(file_path, vars);
+
+    let filename = upload["filename"]
+        .as_str()
+        .map(|s| interpolate(s, vars))
+        .unwrap_or_else(|| {
+            std::path::Path::new(&file_path)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        });
+
+    let image_home = test_image_home();
+    let full_path = image_home.join(file_path.trim_start_matches('/'));
+    let file_data = std::fs::read(&full_path)
+        .unwrap_or_else(|e| panic!("upload.file not found at {}: {e}", full_path.display()));
+
+    let last_modified = upload["last_modified"].as_u64().unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+    });
+
+    let (body, boundary) = build_upload_multipart(&file_data, &filename, last_modified);
+
+    let mut url = "/upload".to_string();
+    let mut query_parts: Vec<String> = Vec::new();
+
+    if let Some(album) = upload["target_album"].as_str() {
+        let album = interpolate(album, vars);
+        query_parts.push(format!("presigned_album_id_opt={album}"));
+    }
+
+    if let Some(oc) = upload["on_conflict"].as_str() {
+        query_parts.push(format!("on_conflict={oc}"));
+    }
+
+    if !query_parts.is_empty() {
+        url.push('?');
+        url.push_str(&query_parts.join("&"));
+    }
+
+    let url: &'static str = Box::leak(url.into_boxed_str());
+
+    let req = client
+        .post(url)
+        .cookie(auth_cookie(client))
+        .header(rocket::http::Header::new(
+            "Content-Type",
+            format!("multipart/form-data; boundary={boundary}"),
+        ))
+        .body(body);
+
+    req.dispatch()
+}
+
+// ── Dispatch a when item to call or upload ──
+
+fn dispatch_when_item<'c>(
+    item: &Value,
+    vars: &HashMap<String, String>,
+    client: &'c Client,
+) -> rocket::local::blocking::LocalResponse<'c> {
+    if item.get("upload").is_some() {
+        execute_upload(item, vars, client)
+    } else {
+        execute_call(item, vars, client)
+    }
+}
+
 // ── Process capture block ──
 
 fn process_capture(call: &Value, body_bytes: &[u8], vars: &mut HashMap<String, String>) {
@@ -564,7 +683,7 @@ fn interpret_scenario(scenario: &Value) {
                 client_opt = Some(make_client());
             }
             let client = client_opt.as_ref().expect("client");
-            let resp = execute_call(call, &vars, client);
+            let resp = dispatch_when_item(call, &vars, client);
 
             let is_last = i == calls.len() - 1;
 
@@ -593,7 +712,7 @@ fn interpret_scenario(scenario: &Value) {
         }
     } else {
         let client = make_client();
-        let resp = execute_call(when, &vars, &client);
+        let resp = dispatch_when_item(when, &vars, &client);
         check_status_assertions(&resp, then_items);
         let has_json = then_items.iter().any(has_json_assertions);
         if has_json {
