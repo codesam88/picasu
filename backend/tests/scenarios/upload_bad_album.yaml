@@ -1,0 +1,11 @@
+name: Upload targeting a non-existent album returns 400 with error details
+given:
+  - photo: /e2e_up_badal/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_badal/src/photo.jpg
+      target_album: "definitely-not-a-real-album-id"
+then:
+  - response.status: 400
+  - response.json.kind: "InvalidInput"
+  - response.json.message: "Target album not found"

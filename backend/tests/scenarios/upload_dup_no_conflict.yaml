@@ -1,0 +1,14 @@
+name: Upload same file twice without on_conflict — UUID suffix prevents collision
+given:
+  - dir_album: /e2e_up_dpnoc/target
+    id_as: $album
+  - photo: /e2e_up_dpnoc/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_dpnoc/src/photo.jpg
+      target_album: "${album}"
+  - upload:
+      file: /e2e_up_dpnoc/src/photo.jpg
+      target_album: "${album}"
+then:
+  - response.status: 200
