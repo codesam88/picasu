@@ -1,0 +1,14 @@
+name: Upload while read_only_mode is enabled returns 405
+given:
+  - dir_album: /e2e_up_roro/target
+    id_as: $album
+  - photo: /e2e_up_roro/src/photo.jpg
+when:
+  - call: "PUT /put/config"
+    body:
+      readOnlyMode: true
+  - upload:
+      file: /e2e_up_roro/src/photo.jpg
+      target_album: "${album}"
+then:
+  - response.status: 405
