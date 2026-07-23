@@ -1,0 +1,18 @@
+name: Upload with on_conflict=rename — duplicate gets -001 suffix
+given:
+  - dir_album: /e2e_up_rename/target
+    id_as: $album
+  - photo: /e2e_up_rename/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_rename/src/photo.jpg
+      target_album: "${album}"
+      on_conflict: replace
+  - upload:
+      file: /e2e_up_rename/src/photo.jpg
+      target_album: "${album}"
+      on_conflict: rename
+then:
+  - response.status: 200
+  - file_exists: /e2e_up_rename/target/photo.jpeg
+  - file_exists: /e2e_up_rename/target/photo-001.jpeg

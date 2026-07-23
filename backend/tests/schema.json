@@ -83,6 +83,25 @@
       "required": ["call"],
       "additionalProperties": false
     },
+    "apiUpload": {
+      "type": "object",
+      "properties": {
+        "upload": {
+          "type": "object",
+          "properties": {
+            "file": { "type": "string" },
+            "filename": { "type": "string" },
+            "target_album": { "type": "string" },
+            "on_conflict": { "type": "string", "enum": ["skip", "rename", "replace"] },
+            "last_modified": { "type": "integer" }
+          },
+          "required": ["file"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["upload"],
+      "additionalProperties": false
+    },
     "apiThenResponseStatus": {
       "type": "object",
       "properties": {
@@ -167,6 +186,12 @@
         { "$ref": "#/definitions/apiThenServeImageOk" }
       ]
     },
+    "whenItem": {
+      "oneOf": [
+        { "$ref": "#/definitions/apiCall" },
+        { "$ref": "#/definitions/apiUpload" }
+      ]
+    },
     "apiScenario": {
       "type": "object",
       "properties": {
@@ -178,10 +203,10 @@
         },
         "when": {
           "oneOf": [
-            { "$ref": "#/definitions/apiCall" },
+            { "$ref": "#/definitions/whenItem" },
             {
               "type": "array",
-              "items": { "$ref": "#/definitions/apiCall" },
+              "items": { "$ref": "#/definitions/whenItem" },
               "minItems": 1
             }
           ]
