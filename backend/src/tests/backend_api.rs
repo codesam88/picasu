@@ -353,6 +353,7 @@ fn build_upload_multipart(
     file_data: &[u8],
     filename: &str,
     last_modified: u64,
+    content_type: &str,
 ) -> (Vec<u8>, String) {
     let boundary = "----picasu-test-upload-boundary";
     let mut body = Vec::new();
@@ -364,7 +365,9 @@ fn build_upload_multipart(
     body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"");
     body.extend_from_slice(filename.as_bytes());
     body.extend_from_slice(b"\"\r\n");
-    body.extend_from_slice(b"Content-Type: image/jpeg\r\n\r\n");
+    body.extend_from_slice(b"Content-Type: ");
+    body.extend_from_slice(content_type.as_bytes());
+    body.extend_from_slice(b"\r\n\r\n");
     body.extend_from_slice(file_data);
     body.extend_from_slice(b"\r\n");
 
@@ -419,7 +422,10 @@ fn execute_upload<'c>(
             .as_millis() as u64
     });
 
-    let (body, boundary) = build_upload_multipart(&file_data, &filename, last_modified);
+    let content_type = upload["content_type"].as_str().unwrap_or("image/jpeg");
+
+    let (body, boundary) =
+        build_upload_multipart(&file_data, &filename, last_modified, content_type);
 
     let mut url = "/upload".to_string();
     let mut query_parts: Vec<String> = Vec::new();
@@ -440,9 +446,13 @@ fn execute_upload<'c>(
 
     let url: &'static str = Box::leak(url.into_boxed_str());
 
-    let req = client
-        .post(url)
-        .cookie(auth_cookie(client))
+    let auth = upload.get("auth").and_then(|v| v.as_bool()).unwrap_or(true);
+
+    let mut req = client.post(url);
+    if auth {
+        req = req.cookie(auth_cookie(client));
+    }
+    let req = req
         .header(rocket::http::Header::new(
             "Content-Type",
             format!("multipart/form-data; boundary={boundary}"),
