@@ -93,6 +93,7 @@
             "filename": { "type": "string" },
             "target_album": { "type": "string" },
             "on_conflict": { "type": "string", "enum": ["skip", "rename", "replace"] },
+            "auto_rename": { "type": "boolean" },
             "last_modified": { "type": "integer" },
             "auth": { "type": "boolean" },
             "content_type": { "type": "string" }

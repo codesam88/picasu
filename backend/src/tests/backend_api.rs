@@ -439,6 +439,10 @@ fn execute_upload<'c>(
         query_parts.push(format!("on_conflict={oc}"));
     }
 
+    if let Some(ar) = upload["auto_rename"].as_bool() {
+        query_parts.push(format!("auto_rename={ar}"));
+    }
+
     if !query_parts.is_empty() {
         url.push('?');
         url.push_str(&query_parts.join("&"));

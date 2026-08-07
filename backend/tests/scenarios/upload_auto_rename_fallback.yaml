@@ -1,0 +1,13 @@
+name: Upload with degenerate filename falls back to a generated name when auto_rename defaults true
+given:
+  - dir_album: /e2e_up_ar_fallback/target
+    id_as: $album
+  - photo: /e2e_up_ar_fallback/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_ar_fallback/src/photo.jpg
+      filename: "///"
+      target_album: "${album}"
+then:
+  - response.status: 200
+  - file_absent: /e2e_up_ar_fallback/target/.jpeg

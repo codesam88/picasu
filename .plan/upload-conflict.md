@@ -1,5 +1,5 @@
 ---
-status: done
+status: in-progress
 type: feature
 priority: high
 area: backend
@@ -58,6 +58,27 @@ The interpreter:
 - [x] Fix reset_backend_state to clear password between scenarios
 - [x] Add `then` field to apiUpload schema for per-item assertions
 
+## Tasks — Filename sanitization + auto_rename
+
+- [x] Sanitizer: move to `process/sanitize.rs`, tiers 0/1/2 + NFC flag
+- [x] Config: `normalize_upload_filenames` (AppConfig, Toml, update handler)
+- [x] Route: `auto_rename` query param, reject + generated fallback
+- [x] DSL: `auto_rename` in schema.json + execute_upload + scenarios
+
+### Extension handling note (2026-08-07)
+
+`TempFile::name()` in Rocket 0.5.1 returns a _sanitized_ name — it strips
+the extension and platform-forbidden characters (see `fs/file_name.rs`,
+`FileName::as_str`). The old code relied on this for both safety and naming
+(`photo.jpg` → `photo` → on-disk `photo.jpeg` via Content-Type extension).
+
+We switched `get_filename` to `raw_name().dangerous_unsafe_unsanitized_raw()`
+so the tier sanitizer sees the true client filename (Rocket's stripping
+defeated `auto_rename=false` rejection for `<`, `>`, `/` etc.). The extension
+strip is now done in `resolve_filename` via `Path::file_stem()`, preserving
+the pre-existing "stored extension comes from Content-Type" behaviour
+(`photo.jpg` → `photocat.jpeg`).
+
 ## Security Review (2026-07-27)
 
 Code reviewed: `backend/src/router/post/post_upload.rs`, `backend/src/router/auth.rs`,
@@ -106,13 +127,13 @@ upload partially applied.
 
 ### Overall Issues List
 
-| ID  | Severity | Description                                   | Status |
-| --- | -------- | --------------------------------------------- | ------ |
-| P0  | Critical | Filename not sanitized — path traversal       | Open   |
-| P1  | High     | Content-Type header trusted, not file content | Open   |
-| P2  | Medium   | No `last_modified` bounds check               | Open   |
-| P3  | Low      | `unreachable!()` panic path in rename loop    | Open   |
-| P4  | Low      | Partial failure on multi-file upload          | Open   |
+| ID  | Severity | Description                                   | Status      |
+| --- | -------- | --------------------------------------------- | ----------- |
+| P0  | Critical | Filename not sanitized — path traversal       | In progress |
+| P1  | High     | Content-Type header trusted, not file content | Open        |
+| P2  | Medium   | No `last_modified` bounds check               | Open        |
+| P3  | Low      | `unreachable!()` panic path in rename loop    | Open        |
+| P4  | Low      | Partial failure on multi-file upload          | Open        |
 
 ### Planned Remediation
 
@@ -131,6 +152,66 @@ via config (matching the existing `read_only_mode` pattern). Note:
 upload file size is already enforced by Rocket's `max_upload_size`
 config (`builder.rs:71-78`, default `100MiB`) — no additional work needed
 there.
+
+## Filename Sanitization Design (2026-08-07)
+
+Scope: P0 remediation plus robustness. Design decisions from review with
+user; implementation is TDD, one issue at a time, commit per issue.
+
+### Sanitization tiers (all ON by default)
+
+| Tier | Rule                                             | Examples                                                                 |
+| ---- | ------------------------------------------------ | ------------------------------------------------------------------------ |
+| 0    | Directory separators, null byte; reject `.`/`..` | `/`, `\`, `\0`                                                           |
+| 1    | Windows-forbidden chars + reserved names         | `< > : " \| ? *`, `CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`         |
+| 2    | Unicode landmines                                | noncharacters (U+FDD0–U+FDEF, U+FFFE, U+FFFF), zero-width/bidi overrides |
+| NFC  | Normalize composed form                          | macOS NFD → NFC dedup                                                    |
+
+- Tiers 0–2 are **always on** — not client-toggleable.
+- **NFC normalization is the only optional check**: config flag, enabled by
+  default (`normalize_upload_filenames`).
+- Sanitization logic lives in **one place**: backend `process/sanitize.rs`
+  (existing `sanitize_tag`/`sanitize_text` pattern). The frontend does NOT
+  model the rules — it only passes `auto_rename` and renders the server's
+  static description.
+
+### `auto_rename` query param on `POST /upload`
+
+- `auto_rename=true` (default): sanitize-and-proceed. Tiers 0–2 strips
+  applied; if the result degrades to empty/`.`, fall back to a generated
+  `upload-{uuid}.{ext}`.
+- `auto_rename=false`: if the filename needs _any_ sanitization → `400`
+  with a message naming the file and the offending characters. Tier 0 is
+  never disabled — `../` is never written raw even with `false`.
+- Backwards compatible: absent param behaves as `true`.
+
+### Frontend
+
+- [x] New pre-upload options dialog (flow: pick files → dialog → confirm →
+      POST). Currently no options dialog exists — upload is instant from a
+      hidden file input (`uploadStore.ts:43` `triggerFileInput`).
+- [x] Dialog has the `auto_rename` toggle (default ON) and an info icon →
+      `v-tooltip` popup (existing pattern, `LinksPage.vue:33`) listing the
+      applied rules as static copy.
+- [x] `uploadStore.fileUpload(files, albumId)` signature extends to carry
+      `autoRename`; appended as query param to the POST URL.
+- [x] On `auto_rename=false` reject: server 400 message surfaces via the
+      existing `errorDisplay` path (`uploadStore.ts:116`).
+
+Implementation notes (2026-08-07):
+
+- `uploadStore` gains `pendingFiles` / `pendingAlbumId` / `autoRename`
+  state; `prepareUpload` stages files and opens the dialog; `confirmUpload`
+  closes it and calls `fileUpload(files, albumId, autoRename)`;
+  `cancelUploadOptions` discards. Both `triggerFileInput` (file picker) and
+  `DropZoneModal` (drag-drop) route through `prepareUpload`.
+- New `buildUploadUrl(albumId, autoRename)` pure helper is unit-tested
+  (`uploadStore.test.ts`); component rendering deferred to E2E per
+  `docs/test-strategy.md`.
+- New `UploadOptionsModal.vue` (BaseModal) renders the pending file list,
+  the auto-rename switch with static rule copy in a `v-tooltip`, and
+  Cancel/Upload actions. Registered in `App.vue`; `showUploadOptionsModal`
+  added to `modalStore` dialog keys.
 
 ### Test Coverage Gaps
 
