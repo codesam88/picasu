@@ -25,6 +25,7 @@ pub struct PartialUpdateConfigRequest {
     pub read_only_mode: Option<bool>,
     pub disable_img: Option<bool>,
     pub fs_notify_watcher: Option<bool>,
+    pub normalize_upload_filenames: Option<bool>,
     pub auth_key: Option<String>,
 }
 
@@ -87,6 +88,9 @@ pub async fn update_config_handler(
         }
         if let Some(fs_notify_watcher) = req_data.fs_notify_watcher {
             current_config.fs_notify_watcher = fs_notify_watcher;
+        }
+        if let Some(normalize_upload_filenames) = req_data.normalize_upload_filenames {
+            current_config.normalize_upload_filenames = normalize_upload_filenames;
         }
         if let Some(key) = req_data.auth_key {
             let trimmed = key.trim();

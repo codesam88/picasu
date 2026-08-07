@@ -1,0 +1,13 @@
+name: Upload with path traversal filename is sanitized
+given:
+  - dir_album: /e2e_up_traversal/target
+    id_as: $album
+  - photo: /e2e_up_traversal/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_traversal/src/photo.jpg
+      filename: "../../etc/passwd.jpg"
+      target_album: "${album}"
+then:
+  - response.status: 200
+  - file_absent: e2e_up_traversal/target/../../etc/passwd.jpg
