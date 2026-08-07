@@ -36,6 +36,7 @@ fn default_max_upload_size() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[derive(utoipa::ToSchema)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct AppConfig {
     pub address: String,
     pub port: u16,
@@ -53,6 +54,10 @@ pub struct AppConfig {
     pub disable_img: bool,
     #[serde(default = "default_true")]
     pub fs_notify_watcher: bool,
+    /// NFC-normalize uploaded filenames so macOS NFD names collapse onto
+    /// their composed form. Optional (unlike the always-on sanitization tiers).
+    #[serde(default = "default_true")]
+    pub normalize_upload_filenames: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,6 +80,7 @@ impl Default for AppConfig {
             read_only_mode: false,
             disable_img: false,
             fs_notify_watcher: true,
+            normalize_upload_filenames: true,
             password: None,
             auth_key: None,
             web_root: None,
@@ -124,6 +130,7 @@ fn default_port() -> u16 {
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct TomlGallery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) data_home: Option<PathBuf>,
@@ -136,6 +143,8 @@ pub(crate) struct TomlGallery {
     pub(crate) disable_img: bool,
     #[serde(default = "default_true")]
     pub(crate) fs_notify_watcher: bool,
+    #[serde(default = "default_true")]
+    pub(crate) normalize_upload_filenames: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) web_root: Option<PathBuf>,
 }
@@ -149,6 +158,7 @@ impl Default for TomlGallery {
             read_only_mode: false,
             disable_img: false,
             fs_notify_watcher: true,
+            normalize_upload_filenames: true,
             web_root: None,
         }
     }
@@ -176,6 +186,7 @@ impl From<TomlFile> for AppConfig {
             read_only_mode: t.gallery.read_only_mode,
             disable_img: t.gallery.disable_img,
             fs_notify_watcher: t.gallery.fs_notify_watcher,
+            normalize_upload_filenames: t.gallery.normalize_upload_filenames,
             password: t.secrets.password,
             auth_key: t.secrets.auth_key,
             web_root: t.gallery.web_root,
@@ -198,6 +209,7 @@ impl From<AppConfig> for TomlFile {
                 read_only_mode: c.read_only_mode,
                 disable_img: c.disable_img,
                 fs_notify_watcher: c.fs_notify_watcher,
+                normalize_upload_filenames: c.normalize_upload_filenames,
                 web_root: c.web_root,
             },
             secrets: TomlSecrets {
@@ -468,6 +480,7 @@ mod tests {
             read_only_mode: true,
             disable_img: false,
             fs_notify_watcher: false,
+            normalize_upload_filenames: false,
             password: Some("secret".to_string()),
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),

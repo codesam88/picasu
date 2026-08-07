@@ -2,6 +2,7 @@ use crate::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::config::APP_CONFIG;
 use crate::process::dir_album::get_dir_path_for_album;
+use crate::process::sanitize::{FilenameSanitize, sanitize_filename};
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardUpload;
 use crate::router::put::assign_album::OnConflict;
@@ -28,9 +29,76 @@ pub struct UploadForm<'r> {
 }
 
 fn get_filename(file: &TempFile<'_>) -> String {
-    file.name()
-        .map(std::string::ToString::to_string)
+    file.raw_name()
+        .map(|n| n.dangerous_unsafe_unsanitized_raw().to_string())
         .unwrap_or_default()
+}
+
+/// Build the error shown when `auto_rename=false` and the filename needs
+/// sanitization. Names the file and the specific rules that would apply.
+fn auto_rename_rejected_error(raw_filename: &str, sanitize: &FilenameSanitize) -> AppError {
+    let mut reasons: Vec<String> = Vec::new();
+    if !sanitize.stripped.is_empty() {
+        let chars: Vec<String> = sanitize.stripped.iter().map(|c| format!("{c:?}")).collect();
+        reasons.push(format!("forbidden characters {}", chars.join(", ")));
+    }
+    if sanitize.reserved {
+        reasons.push("a reserved Windows device name".to_string());
+    }
+    if sanitize.normalized {
+        reasons.push("Unicode normalization required".to_string());
+    }
+    AppError::new(
+        ErrorKind::InvalidInput,
+        format!(
+            "Filename {raw_filename:?} is not safe as-is ({}). \
+             Set auto_rename=true to allow the server to rename it.",
+            reasons.join("; ")
+        ),
+    )
+}
+
+/// Resolve the final filename for an uploaded file given the sanitizer result
+/// and the `auto_rename` choice.
+///
+/// The returned name is the stem only -- `save_file` appends the extension
+/// derived from the request `Content-Type` (the stored extension is never
+/// taken from the client filename, matching pre-existing behaviour).
+///
+/// - `auto_rename=true` (default): use the sanitized stem; if the name
+///   degrades to empty, fall back to the generated `upload` stem (the UUID
+///   suffix added by `save_file` yields `upload-{uuid}.{ext}`).
+/// - `auto_rename=false`: reject with a clear message when any sanitization
+///   would be needed. Tier 0 (path traversal) is never written raw.
+fn resolve_filename(
+    raw_filename: &str,
+    auto_rename: bool,
+    normalize_nfc: bool,
+) -> Result<String, AppError> {
+    let sanitize = sanitize_filename(raw_filename, normalize_nfc);
+
+    let stem = if sanitize.name.is_empty() {
+        String::new()
+    } else {
+        Path::new(&sanitize.name)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+
+    if auto_rename {
+        if stem.is_empty() {
+            // save_file appends its own UUID when on_conflict is None, so the
+            // stem alone yields the documented "upload-{uuid}.{ext}" fallback.
+            Ok("upload".to_string())
+        } else {
+            Ok(stem)
+        }
+    } else if sanitize.changed || sanitize.name.is_empty() {
+        Err(auto_rename_rejected_error(raw_filename, &sanitize))
+    } else {
+        Ok(stem)
+    }
 }
 
 /// Resolve where uploaded files for this request should land on disk, under
@@ -84,12 +152,16 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
         )
     )
 ]
-#[post("/upload?<presigned_album_id_opt>&<on_conflict>", data = "<form>")]
+#[post(
+    "/upload?<presigned_album_id_opt>&<on_conflict>&<auto_rename>",
+    data = "<form>"
+)]
 pub async fn upload(
     auth: GuardResult<GuardUpload>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     presigned_album_id_opt: Option<String>,
     on_conflict: Option<String>,
+    auto_rename: Option<bool>,
     form: Result<Form<UploadForm<'_>>, Errors<'_>>,
 ) -> AppResult<()> {
     let _ = auth?;
@@ -126,6 +198,13 @@ pub async fn upload(
 
     let target_dir = resolve_upload_target_dir(album_id)?;
 
+    let normalize_nfc = APP_CONFIG
+        .get()
+        .expect("APP_CONFIG not initialized")
+        .read()
+        .expect("lock poisoned")
+        .normalize_upload_filenames;
+
     let on_conflict_strategy: Option<OnConflict> = match on_conflict.as_deref() {
         None => None,
         Some("skip") => Some(OnConflict::Skip),
@@ -141,7 +220,8 @@ pub async fn upload(
 
     for (i, file) in inner_form.files.iter_mut().enumerate() {
         let last_modified = inner_form.last_modified[i];
-        let filename = get_filename(file);
+        let raw_filename = get_filename(file);
+        let filename = resolve_filename(&raw_filename, auto_rename.unwrap_or(true), normalize_nfc)?;
         let extension = get_extension(file)?;
 
         if VALID_IMAGE_EXTENSIONS.contains(&extension.as_str())
