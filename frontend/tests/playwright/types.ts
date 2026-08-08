@@ -60,10 +60,21 @@ export const GivenPhotoRaw = z
   })
   .strict()
 
+export const GivenSourceFile = z
+  .object({
+    source_file: z.string().min(1),
+    format: z.enum(['jpeg', 'png']).optional(),
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional(),
+    id_as: VarName.optional()
+  })
+  .strict()
+
 export const GivenItem = z.union([
   GivenDirAlbum,
   GivenPhoto,
   GivenPhotoRaw,
+  GivenSourceFile,
   GivenEmpty,
   GivenRemove,
   GivenConfig,
@@ -152,6 +163,21 @@ export const UiWhenBrowserBack = z
   })
   .strict()
 
+export const UiWhenUploadFiles = z
+  .object({
+    'upload.files': z.object({
+      trigger: z.string(),
+      files: z.array(z.string()).min(1)
+    })
+  })
+  .strict()
+
+export const UiWhenSetAutoRename = z
+  .object({
+    'set.auto_rename': z.boolean()
+  })
+  .strict()
+
 export const UiWhenItem = z.union([
   UiWhenNavigate,
   UiWhenClick,
@@ -165,7 +191,9 @@ export const UiWhenItem = z.union([
   UiWhenClickSelectFirst,
   UiWhenClickTestId,
   UiWhenKeyboard,
-  UiWhenBrowserBack
+  UiWhenBrowserBack,
+  UiWhenUploadFiles,
+  UiWhenSetAutoRename
 ])
 
 export const UiAssertVisible = z

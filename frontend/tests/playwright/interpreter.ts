@@ -113,13 +113,60 @@ export async function executeWhen(
       })
       // Wait for the edit-mode toolbar (three-dots menu button) to appear
       await page.getByTestId('batch-menu').waitFor({ state: 'visible', timeout: 5000 })
+    } else if ('upload.files' in step) {
+      const spec = step['upload.files']
+      const files = spec.files.map((f) => interpolate(f, ctx.vars))
+      const chooserPromise = page.waitForEvent('filechooser')
+      await clickTrigger(page, spec.trigger, ctx.vars)
+      const chooser = await chooserPromise
+      await chooser.setFiles(files)
+    } else if ('set.auto_rename' in step) {
+      const desired = step['set.auto_rename']
+      const dialog = page.locator('#upload-options-modal')
+      const switchInput = dialog.locator('input[type="checkbox"]')
+      await dialog.waitFor({ state: 'visible', timeout: 5000 })
+      const current = await switchInput.isChecked()
+      if (current !== desired) {
+        await page.getByTestId('upload-auto-rename').click()
+      }
     } else {
       throw new Error(
         `Unknown when verb in step ${JSON.stringify(step)}. ` +
-          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first`
+          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, upload.files, set.auto_rename`
       )
     }
   }
+}
+
+/**
+ * Click the element referenced by a `trigger` spec. Supports the same
+ * reference forms as the click verbs: `icon/<class>` (retries up to 5×),
+ * `testid/<id>`, and `role/name` (role only if no name given).
+ */
+async function clickTrigger(
+  page: Page,
+  trigger: string,
+  vars: Record<string, string>
+): Promise<void> {
+  if (trigger.startsWith('icon/')) {
+    const iconClass = trigger.slice('icon/'.length)
+    for (let i = 0; i < 5; i++) {
+      const btn = page.locator(`button:has(.${iconClass})`)
+      if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await btn.click()
+        return
+      }
+      if (i < 4) {
+        await page.waitForTimeout(500)
+      }
+    }
+    throw new Error(`Icon button with class "${iconClass}" not found after 5 attempts`)
+  }
+  if (trigger.startsWith('testid/')) {
+    await page.getByTestId(trigger.slice('testid/'.length)).click()
+    return
+  }
+  await resolveLocator(page, trigger, vars).click()
 }
 
 export async function executeAssert(
