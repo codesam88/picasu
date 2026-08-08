@@ -1,0 +1,38 @@
+name: Upload with auto-rename off accepts a safe filename and succeeds
+covers:
+  api:
+    - POST /upload
+  ui:
+    - toast:success:Files uploaded successfully
+given:
+  - photo: seed/img01.jpg
+  - source_file: 'safe-name.jpg'
+    format: jpeg
+    width: 64
+    height: 64
+    id_as: $src_safe
+steps:
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.modal: closed
+
+  - when:
+      - upload.files:
+          trigger: icon/mdi-upload
+          files: ['${src_safe}']
+    assert:
+      - ui.modal: open
+
+  - when:
+      - set.auto_rename: false
+    assert:
+      - ui.modal: open
+
+  - when:
+      - click: button/Upload
+    assert:
+      - ui.toast:
+          type: success
+          contains: Files uploaded successfully
+      - ui.modal: closed

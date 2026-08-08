@@ -1,0 +1,40 @@
+name: Multi-file pick lists every file in the options dialog and uploads
+covers:
+  api:
+    - POST /upload
+  ui:
+    - toast:success:Files uploaded successfully
+given:
+  - photo: seed/img01.jpg
+  - source_file: 'first.jpg'
+    format: jpeg
+    width: 64
+    height: 64
+    id_as: $src_a
+  - source_file: 'second.png'
+    format: png
+    width: 64
+    height: 64
+    id_as: $src_b
+steps:
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.modal: closed
+
+  - when:
+      - upload.files:
+          trigger: icon/mdi-upload
+          files: ['${src_a}', '${src_b}']
+    assert:
+      - ui.modal: open
+      - ui.text_visible: first.jpg
+      - ui.text_visible: second.png
+
+  - when:
+      - click: button/Upload
+    assert:
+      - ui.toast:
+          type: success
+          contains: Files uploaded successfully
+      - ui.modal: closed
