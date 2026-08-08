@@ -1,0 +1,35 @@
+name: Upload client lastModified is ignored when client timestamp info is disabled
+given:
+  - dir_album: /e2e_utc_off/target
+    id_as: $album
+  - photo: /e2e_utc_off/src/screenshot.jpg
+  - config:
+      use_client_timestamp_info: false
+when:
+  - upload:
+      file: /e2e_utc_off/src/screenshot.jpg
+      target_album: "${album}"
+      content_type: image/jpeg
+      on_conflict: rename
+      last_modified: 0
+    id_as: $photo
+    discover_path: /e2e_utc_off/target/screenshot.jpeg
+    then:
+      - response.status: 200
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - compare:
+      response.json.[0].abstractData.alias.[0].modified:
+        ">": 1600000000000
+        "<": 2000000000000

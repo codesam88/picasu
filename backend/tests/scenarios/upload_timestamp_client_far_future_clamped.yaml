@@ -1,0 +1,36 @@
+name: Upload client lastModified far in the future is clamped to now+24h
+given:
+  - dir_album: /e2e_utc_clamp/target
+    id_as: $album
+  - photo: /e2e_utc_clamp/src/screenshot.jpg
+  - config:
+      use_client_timestamp_info: true
+when:
+  - upload:
+      file: /e2e_utc_clamp/src/screenshot.jpg
+      target_album: "${album}"
+      content_type: image/jpeg
+      on_conflict: rename
+      last_modified: 4102444800000
+    id_as: $photo
+    discover_path: /e2e_utc_clamp/target/screenshot.jpeg
+    then:
+      - response.status: 200
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - file_exists: /e2e_utc_clamp/target/screenshot.jpeg
+  - compare:
+      response.json.[0].abstractData.alias.[0].modified:
+        ">": 1600000000000
+        "<": 4102444800000
