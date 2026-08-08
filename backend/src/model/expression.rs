@@ -105,14 +105,23 @@ impl Expression {
                 let trash_root = image_home.join(&config.trash_directory);
                 drop(config);
                 Box::new(move |abstract_data: &AbstractData| {
-                    let aliases = abstract_data.alias();
-                    if aliases.is_empty() {
-                        return false;
+                    match abstract_data {
+                        AbstractData::Album(album) => {
+                            // For albums, check if dir_path is under trash_root
+                            std::path::Path::new(&album.metadata.dir_path).starts_with(&trash_root)
+                                == value
+                        }
+                        AbstractData::Image(_) | AbstractData::Video(_) => {
+                            let aliases = abstract_data.alias();
+                            if aliases.is_empty() {
+                                return false;
+                            }
+                            let all_in_trash = aliases
+                                .iter()
+                                .all(|a| std::path::Path::new(&a.file).starts_with(&trash_root));
+                            all_in_trash == value
+                        }
                     }
-                    let all_in_trash = aliases
-                        .iter()
-                        .all(|a| std::path::Path::new(&a.file).starts_with(&trash_root));
-                    all_in_trash == value
                 })
             }
             Expression::ExtType(ext_type) => {
@@ -455,7 +464,7 @@ mod tests {
         assert!(run(Expression::Trashed(false), &data_out));
         assert!(!run(Expression::Trashed(true), &data_out));
 
-        // Album (alias() returns empty slice) → never matches either
+        // Album NOT in trash → matches Trashed(false), not Trashed(true)
         let album = AbstractData::Album(crate::model::album::AlbumCombined {
             object: crate::model::object::ObjectSchema::new(
                 ArrayString::from("alb").unwrap(),
@@ -467,7 +476,7 @@ mod tests {
             },
         });
         assert!(!run(Expression::Trashed(true), &album));
-        assert!(!run(Expression::Trashed(false), &album));
+        assert!(run(Expression::Trashed(false), &album));
     }
 
     // ── Ext / ExtType ─────────────────────────────────────────────────────────
@@ -716,15 +725,21 @@ impl Expression {
                 let image_home = config.image_home.clone().expect("image_home not set");
                 let trash_root = image_home.join(&config.trash_directory);
                 drop(config);
-                Box::new(move |data: &AbstractData| {
-                    let aliases = data.alias();
-                    if aliases.is_empty() {
-                        return false;
+                Box::new(move |data: &AbstractData| match data {
+                    AbstractData::Album(album) => {
+                        std::path::Path::new(&album.metadata.dir_path).starts_with(&trash_root)
+                            == value
                     }
-                    let all_in_trash = aliases
-                        .iter()
-                        .all(|a| std::path::Path::new(&a.file).starts_with(&trash_root));
-                    all_in_trash == value
+                    AbstractData::Image(_) | AbstractData::Video(_) => {
+                        let aliases = data.alias();
+                        if aliases.is_empty() {
+                            return false;
+                        }
+                        let all_in_trash = aliases
+                            .iter()
+                            .all(|a| std::path::Path::new(&a.file).starts_with(&trash_root));
+                        all_in_trash == value
+                    }
                 })
             }
 
