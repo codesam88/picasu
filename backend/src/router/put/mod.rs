@@ -10,6 +10,7 @@ pub mod edit_rating;
 pub mod edit_share;
 pub mod edit_tag;
 pub mod regenerate_thumbnail;
+pub mod restore_from_trash;
 pub mod rotate_image;
 pub fn generate_put_routes() -> Vec<Route> {
     let r = routes![
@@ -25,6 +26,7 @@ pub fn generate_put_routes() -> Vec<Route> {
         regenerate_thumbnail::regenerate_thumbnail_with_frame,
         edit_config::update_config_handler,
         edit_config::update_password_handler,
+        restore_from_trash::restore_from_trash,
         rotate_image::rotate_image
     ];
     r
