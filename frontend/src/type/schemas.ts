@@ -8,6 +8,15 @@ export const AliasSchema = z.object({
   scanTime: z.number()
 })
 
+function isAliasInTrash(filePath: string): boolean {
+  return filePath.includes('/.trash/') || filePath.includes('\\.trash\\')
+}
+
+function computeIsTrashedFromAliases(aliases: { file: string }[]): boolean {
+  if (aliases.length === 0) return false
+  return aliases.every((a) => isAliasInTrash(a.file))
+}
+
 export const displayElementSchema = z.object({
   displayWidth: z.number(),
   displayHeight: z.number(),
@@ -71,7 +80,7 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
   description: data.description,
   isFavorite: data.isFavorite,
   isArchived: data.isArchived,
-  isTrashed: data.isTrashed,
+  isTrashed: computeIsTrashedFromAliases(data.alias),
   rating: data.rating,
   updateAt: data.updateAt
 }))
@@ -103,7 +112,7 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
   description: data.description,
   isFavorite: data.isFavorite,
   isArchived: data.isArchived,
-  isTrashed: data.isTrashed,
+  isTrashed: computeIsTrashedFromAliases(data.alias),
   rating: data.rating,
   updateAt: data.updateAt
 }))
@@ -135,7 +144,7 @@ const AlbumSchemaRaw = BaseObjectRaw.extend({
   description: data.description,
   isFavorite: data.isFavorite,
   isArchived: data.isArchived,
-  isTrashed: data.isTrashed,
+  isTrashed: false,
   rating: data.rating,
   updateAt: data.updateAt,
   shareList: data.shareList
