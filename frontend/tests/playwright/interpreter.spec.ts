@@ -8,6 +8,12 @@ import { test } from './scenarioFixtures'
 
 const scenarios = loadAllScenarios()
 
+/** True for paths the backend serves as JSON API routes (vs. SPA pages and
+ * static assets, which also originate from the backend in E2E). */
+function isBackendApiPath(pathname: string): boolean {
+  return /^\/(get|post|put|delete|object|upload)\b/.test(pathname)
+}
+
 test.describe('UI scenarios', () => {
   for (const scenario of scenarios) {
     test(scenario.name, async ({ page, request, backendPaths }) => {
@@ -15,6 +21,15 @@ test.describe('UI scenarios', () => {
       const tracer = new CoverageTracer()
       const ctx = createGivenContext()
       const seeded = await executeGiven(request, scenario.given, ctx, tracer, backendPaths)
+
+      // Record backend API calls the browser makes (e.g. POST /upload) so
+      // `covers.api` entries exercised from the frontend count as covered.
+      page.on('request', (req) => {
+        const url = new URL(req.url())
+        if (url.origin === backendPaths.BACKEND_URL && isBackendApiPath(url.pathname)) {
+          tracer.recordAPI(req.method(), url.pathname)
+        }
+      })
 
       if (scenario.steps) {
         await executeSteps(page, scenario.steps, seeded, tracer)

@@ -273,6 +273,26 @@ export async function executeGiven(
       // Deliberately NOT added to seedEntries — file is placed on disk but
       // no auto-scan is triggered, leaving it unindexed for scan-flow tests.
     }
+
+    if ('source_file' in item && item.source_file) {
+      const sf = item as {
+        source_file: string
+        format?: string
+        width?: number
+        height?: number
+        id_as?: string
+      }
+      // Written OUTSIDE IMAGE_HOME so the file is never auto-indexed; the
+      // scenario uploads it through the browser file chooser instead.
+      const sourceDir = path.join(overridePaths.DIR, 'source')
+      const sourcePath = path.join(sourceDir, sf.source_file)
+      const entry: PhotoManifestEntry = { output: sourcePath }
+      if (sf.format) entry.format = sf.format
+      if (sf.width) entry.width = sf.width
+      if (sf.height) entry.height = sf.height
+      photoManifest.push(entry)
+      if (sf.id_as) result.vars[sf.id_as] = sourcePath
+    }
   }
 
   if (photoManifest.length > 0) {
