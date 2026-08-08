@@ -6,14 +6,32 @@ use crate::router::{
 use crate::storage::db::open_data_table;
 use crate::storage::files::get_data_path;
 use rocket::fs::NamedFile;
-use rocket::response::Responder;
+use rocket::http::ContentType;
+use rocket::request::Request;
+use rocket::response::{Responder, Result as ResponseResult};
 use rocket_seek_stream::SeekStream;
 use std::path::PathBuf;
 
-#[derive(Responder)]
 pub enum CompressedFileResponse<'a> {
     SeekStream(SeekStream<'a>),
     NamedFile(NamedFile),
+}
+
+impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
+    fn respond_to(self, request: &'r Request<'_>) -> ResponseResult<'static> {
+        match self {
+            CompressedFileResponse::SeekStream(stream) => {
+                // Compressed video is always mp4, so pin the Content-Type to
+                // the stored extension instead of letting SeekStream sniff the
+                // bytes (which would leak the spoofed/mislabeled type to
+                // clients). Range requests for video seeking are unaffected.
+                let mut response = stream.respond_to(request)?;
+                response.set_header(ContentType::new("video", "mp4"));
+                Ok(response)
+            }
+            CompressedFileResponse::NamedFile(named_file) => named_file.respond_to(request),
+        }
+    }
 }
 
 #[utoipa::path(

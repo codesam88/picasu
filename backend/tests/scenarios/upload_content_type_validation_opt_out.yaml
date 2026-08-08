@@ -1,0 +1,16 @@
+name: Upload validation can be disabled via config
+given:
+  - dir_album: /e2e_up_voff/target
+    id_as: $album
+  - photo: /e2e_up_voff/src/photo.png
+    format: png
+  - config:
+      validate_upload_content: false
+when:
+  - upload:
+      file: /e2e_up_voff/src/photo.png
+      filename: photo.jpg
+      target_album: "${album}"
+      content_type: image/jpeg
+then:
+  - response.status: 200

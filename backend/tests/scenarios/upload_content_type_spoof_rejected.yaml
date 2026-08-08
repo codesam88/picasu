@@ -1,0 +1,16 @@
+name: Upload declaring image/jpeg but containing PNG bytes is rejected
+given:
+  - dir_album: /e2e_up_spoof/target
+    id_as: $album
+  - photo: /e2e_up_spoof/src/photo.png
+    format: png
+when:
+  - upload:
+      file: /e2e_up_spoof/src/photo.png
+      filename: photo.jpg
+      target_album: "${album}"
+      content_type: image/jpeg
+then:
+  - response.status: 400
+  - response.json.kind: "InvalidInput"
+  - response.json.message: "Uploaded content is png, but the declared type is jpeg"

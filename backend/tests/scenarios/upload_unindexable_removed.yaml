@@ -1,0 +1,19 @@
+name: Unindexable upload with validation off returns 400 and removes the file
+given:
+  - dir_album: /e2e_up_unidx/target
+    id_as: $album
+  - raw_file: /e2e_up_unidx/src/garbage.jpg
+    content: "this is not an image, just arbitrary text bytes"
+  - config:
+      validate_upload_content: false
+when:
+  - upload:
+      file: /e2e_up_unidx/src/garbage.jpg
+      filename: photo.jpg
+      target_album: "${album}"
+      on_conflict: replace
+then:
+  - response.status: 400
+  - response.json.kind: "InvalidInput"
+  - response.json.message: "Uploaded file could not be decoded as an image or video"
+  - file_absent: "${data_path}/e2e_up_unidx/target/photo.jpeg"

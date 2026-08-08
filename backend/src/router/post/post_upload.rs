@@ -198,12 +198,7 @@ pub async fn upload(
 
     let target_dir = resolve_upload_target_dir(album_id)?;
 
-    let normalize_nfc = APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned")
-        .normalize_upload_filenames;
+    let policy = read_upload_policy();
 
     let on_conflict_strategy: Option<OnConflict> = match on_conflict.as_deref() {
         None => None,
@@ -221,12 +216,19 @@ pub async fn upload(
     for (i, file) in inner_form.files.iter_mut().enumerate() {
         let last_modified = inner_form.last_modified[i];
         let raw_filename = get_filename(file);
-        let filename = resolve_filename(&raw_filename, auto_rename.unwrap_or(true), normalize_nfc)?;
+        let filename = resolve_filename(
+            &raw_filename,
+            auto_rename.unwrap_or(true),
+            policy.normalize_nfc,
+        )?;
         let extension = get_extension(file)?;
 
         if VALID_IMAGE_EXTENSIONS.contains(&extension.as_str())
             || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str())
         {
+            if policy.validate_content {
+                validate_upload_content(file, &extension)?;
+            }
             let Some(final_path) = save_file(
                 file,
                 &target_dir,
@@ -246,9 +248,21 @@ pub async fn upload(
                 .map_err(|_| {
                     AppError::new(ErrorKind::Internal, "Uploaded file path outside IMAGE_HOME")
                 })?;
-            crate::workflow::index_image(relative_src, None)
-                .await
-                .or_raise(|| (ErrorKind::Internal, "Failed to index file"))?;
+            if let Err(index_error) = crate::workflow::index_image(relative_src, None).await {
+                // The upload has not succeeded, and the user gets this error
+                // directly in the upload response, so the never-indexed file
+                // is removed as part of the failed upload action. Files are
+                // never deleted after a successful upload — only by an
+                // explicit user deletion action.
+                error!("Uploaded file could not be decoded as an image or video: {index_error}");
+                if let Err(remove_error) = std::fs::remove_file(&final_path) {
+                    error!("Failed to remove unindexable upload {final_path}: {remove_error}");
+                }
+                return Err(AppError::new(
+                    ErrorKind::InvalidInput,
+                    "Uploaded file could not be decoded as an image or video",
+                ));
+            }
         } else {
             error!("Rejected invalid file type: {}", extension);
             return Err(AppError::new(
@@ -372,4 +386,79 @@ fn get_extension(file: &TempFile<'_>) -> Result<String, AppError> {
             error!("Failed to determine file extension from Content-Type");
             AppError::new(ErrorKind::InvalidInput, "Missing or unknown file extension")
         })
+}
+
+/// Upload-related config flags, read once per request.
+struct UploadPolicy {
+    normalize_nfc: bool,
+    validate_content: bool,
+}
+
+fn read_upload_policy() -> UploadPolicy {
+    let config = APP_CONFIG
+        .get()
+        .expect("APP_CONFIG not initialized")
+        .read()
+        .expect("lock poisoned");
+    UploadPolicy {
+        normalize_nfc: config.normalize_upload_filenames,
+        validate_content: config.validate_upload_content,
+    }
+}
+
+/// Reject uploads whose bytes do not match the `Content-Type`-derived
+/// extension. Enabled via `validate_upload_content`. Detection is signature
+/// based via the `infer` crate — never a full decode — so unusual-but-valid
+/// variants still pass; the stored extension itself is still taken from the
+/// declared `Content-Type`.
+fn validate_upload_content(file: &TempFile<'_>, extension: &str) -> Result<(), AppError> {
+    use std::io::Read;
+    let path = file
+        .path()
+        .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Uploaded file is empty"))?;
+    let mut head = [0u8; 512];
+    let mut reader = std::fs::File::open(path)
+        .or_raise(|| (ErrorKind::IO, "Failed to read uploaded file for validation"))?;
+    let n = reader
+        .read(&mut head)
+        .or_raise(|| (ErrorKind::IO, "Failed to read uploaded file for validation"))?;
+    let head = &head[..n];
+
+    let Some(detected) = infer::get(head) else {
+        return Err(unrecognized_upload_content(extension));
+    };
+    let detected_ext = detected.extension();
+    let matches = match extension {
+        // JPEG family: jpg/jpeg/jfif/jpe are byte-identical in signature.
+        "jpg" | "jpeg" | "jfif" | "jpe" => detected_ext == "jpg",
+        "tif" | "tiff" => detected_ext == "tif",
+        // MP4 and QuickTime share the ISO BMFF box structure.
+        "mp4" | "mov" | "m4v" => matches!(detected_ext, "mp4" | "mov" | "m4v"),
+        // Matroska and WebM share the EBML container.
+        "mkv" | "webm" => matches!(detected_ext, "mkv" | "webm"),
+        // The whitelist spells the MPEG-PS extension "mpeg"; infer uses "mpg".
+        "mpeg" => detected_ext == "mpg",
+        // Remaining whitelisted types (png, webp, bmp, gif, avi, flv, wmv)
+        // map 1:1 onto infer's canonical extension.
+        other => detected_ext == other,
+    };
+    if matches {
+        Ok(())
+    } else {
+        Err(mismatched_upload_content(extension, detected_ext))
+    }
+}
+
+fn unrecognized_upload_content(extension: &str) -> AppError {
+    AppError::new(
+        ErrorKind::InvalidInput,
+        format!("Uploaded content is not recognized as {extension}"),
+    )
+}
+
+fn mismatched_upload_content(extension: &str, detected: &str) -> AppError {
+    AppError::new(
+        ErrorKind::InvalidInput,
+        format!("Uploaded content is {detected}, but the declared type is {extension}"),
+    )
 }

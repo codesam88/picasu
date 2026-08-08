@@ -58,6 +58,21 @@ pub struct AppConfig {
     /// their composed form. Optional (unlike the always-on sanitization tiers).
     #[serde(default = "default_true")]
     pub normalize_upload_filenames: bool,
+    /// Cross-check uploads against the declared `Content-Type`. When enabled,
+    /// the first 512 bytes of each uploaded file are sniffed with the
+    /// [`infer`](https://crates.io/crates/infer) magic-byte database and the
+    /// detected signature must fall in the family of the extension derived
+    /// from the `Content-Type`: `jpg|jpeg|jfif|jpe` → JPEG, `tif|tiff` →
+    /// TIFF, `mp4|mov|m4v` → ISO BMFF, `mkv|webm` → EBML, `mpeg` → MPEG-PS,
+    /// and `png`, `webp`, `bmp`, `gif`, `avi`, `flv`, `wmv` 1:1. Mismatches
+    /// and unrecognizable bytes are rejected with `400 InvalidInput`; the
+    /// check is signature-based only, never a full decode, so unusual-but-valid
+    /// variants still pass. The stored file extension remains the one derived
+    /// from the declared `Content-Type`. See
+    /// `backend/src/router/post/post_upload.rs` (`validate_upload_content`).
+    /// Disable only if legitimate media is being rejected.
+    #[serde(default = "default_true")]
+    pub validate_upload_content: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,6 +96,7 @@ impl Default for AppConfig {
             disable_img: false,
             fs_notify_watcher: true,
             normalize_upload_filenames: true,
+            validate_upload_content: true,
             password: None,
             auth_key: None,
             web_root: None,
@@ -145,6 +161,8 @@ pub(crate) struct TomlGallery {
     pub(crate) fs_notify_watcher: bool,
     #[serde(default = "default_true")]
     pub(crate) normalize_upload_filenames: bool,
+    #[serde(default = "default_true")]
+    pub(crate) validate_upload_content: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) web_root: Option<PathBuf>,
 }
@@ -159,6 +177,7 @@ impl Default for TomlGallery {
             disable_img: false,
             fs_notify_watcher: true,
             normalize_upload_filenames: true,
+            validate_upload_content: true,
             web_root: None,
         }
     }
@@ -187,6 +206,7 @@ impl From<TomlFile> for AppConfig {
             disable_img: t.gallery.disable_img,
             fs_notify_watcher: t.gallery.fs_notify_watcher,
             normalize_upload_filenames: t.gallery.normalize_upload_filenames,
+            validate_upload_content: t.gallery.validate_upload_content,
             password: t.secrets.password,
             auth_key: t.secrets.auth_key,
             web_root: t.gallery.web_root,
@@ -210,6 +230,7 @@ impl From<AppConfig> for TomlFile {
                 disable_img: c.disable_img,
                 fs_notify_watcher: c.fs_notify_watcher,
                 normalize_upload_filenames: c.normalize_upload_filenames,
+                validate_upload_content: c.validate_upload_content,
                 web_root: c.web_root,
             },
             secrets: TomlSecrets {
@@ -481,6 +502,7 @@ mod tests {
             disable_img: false,
             fs_notify_watcher: false,
             normalize_upload_filenames: false,
+            validate_upload_content: true,
             password: Some("secret".to_string()),
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),

@@ -26,6 +26,7 @@ pub struct PartialUpdateConfigRequest {
     pub disable_img: Option<bool>,
     pub fs_notify_watcher: Option<bool>,
     pub normalize_upload_filenames: Option<bool>,
+    pub validate_upload_content: Option<bool>,
     pub auth_key: Option<String>,
 }
 
@@ -91,6 +92,9 @@ pub async fn update_config_handler(
         }
         if let Some(normalize_upload_filenames) = req_data.normalize_upload_filenames {
             current_config.normalize_upload_filenames = normalize_upload_filenames;
+        }
+        if let Some(validate_upload_content) = req_data.validate_upload_content {
+            current_config.validate_upload_content = validate_upload_content;
         }
         if let Some(key) = req_data.auth_key {
             let trimmed = key.trim();
