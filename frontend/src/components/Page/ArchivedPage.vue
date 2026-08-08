@@ -9,5 +9,5 @@
 <script setup lang="ts">
 import GalleryMain from '@/components/Gallery/GalleryMain.vue'
 import PageTemplate from './PageLayout/PageTemplate.vue'
-const basicString = 'and(archived:true, not(album:.trash))'
+const basicString = 'and(archived:true, trashed:false)'
 </script>

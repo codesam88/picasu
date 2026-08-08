@@ -10,5 +10,5 @@
 import GalleryMain from '@/components/Gallery/GalleryMain.vue'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 
-const basicString = 'and(favorite:true, not(album:.trash))'
+const basicString = 'and(favorite:true, trashed:false)'
 </script>

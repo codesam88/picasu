@@ -30,11 +30,13 @@ pub enum Expression {
     RootAlbum(bool),
     Any(String),
     ParentAlbum(ArrayString<64>),
+    Trashed(bool),
     Archived(bool),
     Favorite(bool),
 }
 
 use crate::model::abstract_data::AbstractData;
+use crate::model::config::APP_CONFIG;
 
 impl Expression {
     #[allow(clippy::too_many_lines)]
@@ -91,6 +93,26 @@ impl Expression {
                     AbstractData::Image(img) => img.object.is_archived == value,
                     AbstractData::Video(vid) => vid.object.is_archived == value,
                     AbstractData::Album(alb) => alb.object.is_archived == value,
+                })
+            }
+            Expression::Trashed(value) => {
+                let config = APP_CONFIG
+                    .get()
+                    .expect("APP_CONFIG not initialized")
+                    .read()
+                    .expect("lock poisoned");
+                let image_home = config.image_home.clone().expect("image_home not set");
+                let trash_root = image_home.join(&config.trash_directory);
+                drop(config);
+                Box::new(move |abstract_data: &AbstractData| {
+                    let aliases = abstract_data.alias();
+                    if aliases.is_empty() {
+                        return false;
+                    }
+                    let all_in_trash = aliases
+                        .iter()
+                        .all(|a| std::path::Path::new(&a.file).starts_with(&trash_root));
+                    all_in_trash == value
                 })
             }
             Expression::ExtType(ext_type) => {
@@ -327,6 +349,7 @@ impl Expression {
 mod tests {
     use super::{AlbumFilterValue, Expression, FilterValue};
     use crate::model::abstract_data::AbstractData;
+    use crate::model::config::APP_CONFIG;
     use crate::model::image::{ImageCombined, ImageMetadata};
     use crate::model::object::{ObjectSchema, ObjectType};
     use crate::model::response::FileModify;
@@ -391,6 +414,60 @@ mod tests {
         let data = AbstractData::Image(img()); // is_archived = false by default
         assert!(run(Expression::Archived(false), &data));
         assert!(!run(Expression::Archived(true), &data));
+    }
+
+    #[test]
+    fn trashed_matches_path_prefix() {
+        // Ensure the test bootstrap is initialized (sets APP_CONFIG).
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+
+        let config = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG not initialized")
+            .read()
+            .expect("lock poisoned");
+        let image_home = config.image_home.clone().expect("image_home not set");
+        let trash_root = image_home.join(&config.trash_directory);
+        drop(config);
+
+        // Image with ALL aliases under trash → matches Trashed(true)
+        let mut in_trash = img();
+        in_trash.metadata.alias.push(FileModify {
+            file: trash_root.join("old.jpg").to_string_lossy().into_owned(),
+            modified: 0,
+            scan_time: 0,
+        });
+        let data_in = AbstractData::Image(in_trash);
+        assert!(run(Expression::Trashed(true), &data_in));
+        assert!(!run(Expression::Trashed(false), &data_in));
+
+        // Image with an alias outside trash → matches Trashed(false)
+        let mut outside = img();
+        outside.metadata.alias.push(FileModify {
+            file: image_home
+                .join("vacation/pic.jpg")
+                .to_string_lossy()
+                .into_owned(),
+            modified: 0,
+            scan_time: 0,
+        });
+        let data_out = AbstractData::Image(outside);
+        assert!(run(Expression::Trashed(false), &data_out));
+        assert!(!run(Expression::Trashed(true), &data_out));
+
+        // Album (alias() returns empty slice) → never matches either
+        let album = AbstractData::Album(crate::model::album::AlbumCombined {
+            object: crate::model::object::ObjectSchema::new(
+                ArrayString::from("alb").unwrap(),
+                crate::model::object::ObjectType::Album,
+            ),
+            metadata: crate::model::album::AlbumMetadata {
+                dir_path: image_home.join("summer").to_string_lossy().into_owned(),
+                ..Default::default()
+            },
+        });
+        assert!(!run(Expression::Trashed(true), &album));
+        assert!(!run(Expression::Trashed(false), &album));
     }
 
     // ── Ext / ExtType ─────────────────────────────────────────────────────────
@@ -630,6 +707,26 @@ impl Expression {
                 AbstractData::Video(vid) => vid.object.is_archived == value,
                 AbstractData::Album(alb) => alb.object.is_archived == value,
             }),
+            Expression::Trashed(value) => {
+                let config = APP_CONFIG
+                    .get()
+                    .expect("APP_CONFIG not initialized")
+                    .read()
+                    .expect("lock poisoned");
+                let image_home = config.image_home.clone().expect("image_home not set");
+                let trash_root = image_home.join(&config.trash_directory);
+                drop(config);
+                Box::new(move |data: &AbstractData| {
+                    let aliases = data.alias();
+                    if aliases.is_empty() {
+                        return false;
+                    }
+                    let all_in_trash = aliases
+                        .iter()
+                        .all(|a| std::path::Path::new(&a.file).starts_with(&trash_root));
+                    all_in_trash == value
+                })
+            }
 
             /* ---------- Still allowed embedded / file-related conditions ---------- */
             Expression::ExtType(ext_type) => Box::new(move |data| match data {

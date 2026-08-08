@@ -86,6 +86,10 @@ export async function executeWhen(
         }
       }
     } else if ('click.first' in step) {
+      await page
+        .locator('.desktop-small-image')
+        .first()
+        .waitFor({ state: 'visible', timeout: 10000 })
       for (let i = 0; i < 3; i++) {
         await page.locator('.desktop-small-image').first().click()
         try {

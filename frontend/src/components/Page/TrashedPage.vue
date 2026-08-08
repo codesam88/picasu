@@ -9,5 +9,5 @@
 <script setup lang="ts">
 import GalleryMain from '@/components/Gallery/GalleryMain.vue'
 import PageTemplate from './PageLayout/PageTemplate.vue'
-const basicString = 'album:.trash'
+const basicString = 'trashed:true'
 </script>

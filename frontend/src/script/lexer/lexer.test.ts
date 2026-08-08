@@ -103,6 +103,15 @@ describe('archived', () => {
   })
 })
 
+describe('trashed', () => {
+  test('true', () => {
+    expect(parse('trashed:true')).toEqual({ Trashed: true })
+  })
+  test('false', () => {
+    expect(parse('trashed:false')).toEqual({ Trashed: false })
+  })
+})
+
 // ── Compound expressions ──────────────────────────────────────────────────────
 
 describe('not', () => {
