@@ -17,7 +17,7 @@ concern — rating — falls out of the metadata work.
 
 | Area | Summary                            | Status         | Ticket                              |
 | ---- | ---------------------------------- | -------------- | ----------------------------------- |
-| 1a   | Filesystem-based trash + delete    | 🏗️ In progress | `delete-from-disk.md`               |
+| 1a   | Filesystem-based trash + delete    | ✅ Done        | `delete-from-disk.md`               |
 | 1b   | Watcher handles Remove events      | 🏗️ In progress | `watcher-remove-events.md`          |
 | 1c   | assign_album conflict handling     | 🏗️ In progress | `assign-album-conflict.md`          |
 | 1d   | Upload conflict handling           | ✅ Done        | `upload-conflict.md`                |
