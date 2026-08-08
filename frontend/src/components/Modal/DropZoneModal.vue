@@ -120,10 +120,8 @@ function onDrop(e: DragEvent) {
     presignedAlbumId = albumHashParam
   }
 
-  // 5. Perform upload (catch uses unknown to satisfy ESLint rule)
-  uploadStore.fileUpload(files, presignedAlbumId).catch((err: unknown) => {
-    console.error('Error occurred:', err)
-  })
+  // 5. Stage files for the pre-upload options dialog
+  uploadStore.prepareUpload(files, presignedAlbumId)
 }
 onMounted(() => {
   window.addEventListener('dragenter', onDragEnter)
