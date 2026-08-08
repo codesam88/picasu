@@ -21,6 +21,6 @@ const albumHash = computed(() => {
 
 const basicString = computed(() => {
   if (!albumHash.value) return null
-  return `and(trashed:false, or(album:"${albumHash.value}", parent_album:"${albumHash.value}"))`
+  return `and(not(album:.trash), or(album:"${albumHash.value}", parent_album:"${albumHash.value}"))`
 })
 </script>

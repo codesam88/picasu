@@ -10,5 +10,5 @@
 import GalleryMain from '@/components/Gallery/GalleryMain.vue'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 
-const basicString = 'and(not(type:"album"), archived:false, trashed:false)'
+const basicString = 'and(not(type:"album"), archived:false, not(album:.trash))'
 </script>
