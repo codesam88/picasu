@@ -1,5 +1,5 @@
 <template>
-  <v-list-item prepend-icon="mdi-restore" @click="restoreData">
+  <v-list-item prepend-icon="mdi-restore" value="restore" @click="restoreData">
     <v-list-item-title class="wrap">Restore</v-list-item-title>
   </v-list-item>
 </template>
