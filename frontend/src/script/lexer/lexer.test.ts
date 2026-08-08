@@ -103,15 +103,6 @@ describe('archived', () => {
   })
 })
 
-describe('trashed', () => {
-  test('true', () => {
-    expect(parse('trashed:true')).toEqual({ Trashed: true })
-  })
-  test('false', () => {
-    expect(parse('trashed:false')).toEqual({ Trashed: false })
-  })
-})
-
 // ── Compound expressions ──────────────────────────────────────────────────────
 
 describe('not', () => {
@@ -128,13 +119,13 @@ describe('and', () => {
     expect(parse('and(tag:"a", tag:"b")')).toEqual({ And: [{ Tag: 'a' }, { Tag: 'b' }] })
   })
   test('three terms', () => {
-    expect(parse('and(favorite:true, archived:false, trashed:false)')).toEqual({
-      And: [{ Favorite: true }, { Archived: false }, { Trashed: false }]
+    expect(parse('and(favorite:true, archived:false, model:false)')).toEqual({
+      And: [{ Favorite: true }, { Archived: false }, { Model: false }]
     })
   })
   test('nested inside not', () => {
-    expect(parse('not(and(archived:true, trashed:true))')).toEqual({
-      Not: { And: [{ Archived: true }, { Trashed: true }] }
+    expect(parse('not(and(archived:true, model:true))')).toEqual({
+      Not: { And: [{ Archived: true }, { Model: true }] }
     })
   })
 })

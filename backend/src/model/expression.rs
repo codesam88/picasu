@@ -30,7 +30,6 @@ pub enum Expression {
     RootAlbum(bool),
     Any(String),
     ParentAlbum(ArrayString<64>),
-    Trashed(bool),
     Archived(bool),
     Favorite(bool),
 }
@@ -92,13 +91,6 @@ impl Expression {
                     AbstractData::Image(img) => img.object.is_archived == value,
                     AbstractData::Video(vid) => vid.object.is_archived == value,
                     AbstractData::Album(alb) => alb.object.is_archived == value,
-                })
-            }
-            Expression::Trashed(value) => {
-                Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Image(img) => img.object.is_trashed == value,
-                    AbstractData::Video(vid) => vid.object.is_trashed == value,
-                    AbstractData::Album(alb) => alb.object.is_trashed == value,
                 })
             }
             Expression::ExtType(ext_type) => {
@@ -401,16 +393,6 @@ mod tests {
         assert!(!run(Expression::Archived(true), &data));
     }
 
-    #[test]
-    fn trashed_matches_flag() {
-        let mut i = img();
-        i.object.is_trashed = true;
-        let data = AbstractData::Image(i);
-
-        assert!(run(Expression::Trashed(true), &data));
-        assert!(!run(Expression::Trashed(false), &data));
-    }
-
     // ── Ext / ExtType ─────────────────────────────────────────────────────────
 
     #[test]
@@ -535,8 +517,10 @@ mod tests {
         let data = AbstractData::Image(i);
 
         let both = Expression::And(vec![Expression::Favorite(true), Expression::Archived(true)]);
-        let one_false =
-            Expression::And(vec![Expression::Favorite(true), Expression::Trashed(true)]);
+        let one_false = Expression::And(vec![
+            Expression::Favorite(true),
+            Expression::Archived(false),
+        ]);
 
         assert!(run(both, &data));
         assert!(!run(one_false, &data));
@@ -548,8 +532,11 @@ mod tests {
         i.object.is_favorite = true;
         let data = AbstractData::Image(i);
 
-        let either = Expression::Or(vec![Expression::Favorite(true), Expression::Trashed(true)]);
-        let neither = Expression::Or(vec![Expression::Favorite(false), Expression::Trashed(true)]);
+        let either = Expression::Or(vec![Expression::Favorite(true), Expression::Archived(true)]);
+        let neither = Expression::Or(vec![
+            Expression::Favorite(false),
+            Expression::Archived(true),
+        ]);
 
         assert!(run(either, &data));
         assert!(!run(neither, &data));
@@ -642,11 +629,6 @@ impl Expression {
                 AbstractData::Image(img) => img.object.is_archived == value,
                 AbstractData::Video(vid) => vid.object.is_archived == value,
                 AbstractData::Album(alb) => alb.object.is_archived == value,
-            }),
-            Expression::Trashed(value) => Box::new(move |data: &AbstractData| match data {
-                AbstractData::Image(img) => img.object.is_trashed == value,
-                AbstractData::Video(vid) => vid.object.is_trashed == value,
-                AbstractData::Album(alb) => alb.object.is_trashed == value,
             }),
 
             /* ---------- Still allowed embedded / file-related conditions ---------- */

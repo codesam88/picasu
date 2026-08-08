@@ -16,7 +16,6 @@ import {
   PathExpressionCstChildren,
   RootAlbumExpressionCstChildren,
   TagExpressionCstChildren,
-  TrashedExpressionCstChildren,
   TypeExpressionCstChildren
 } from '@type/MyParserCst'
 import { getArrayValue } from '@utils/getter'
@@ -42,7 +41,6 @@ const Path: TokenType = createToken({ name: 'Path', pattern: /path:/ })
 const Any: TokenType = createToken({ name: 'Any', pattern: /any:/ })
 const Favorite: TokenType = createToken({ name: 'Favorite', pattern: /favorite:/ })
 const Archived: TokenType = createToken({ name: 'Archived', pattern: /archived:/ })
-const Trashed: TokenType = createToken({ name: 'Trashed', pattern: /trashed:/ })
 const RootAlbum: TokenType = createToken({ name: 'RootAlbum', pattern: /root_album:/ })
 const ParentAlbum: TokenType = createToken({ name: 'ParentAlbum', pattern: /parent_album:/ })
 const Comma: TokenType = createToken({ name: 'Comma', pattern: /,/ })
@@ -80,7 +78,6 @@ const allTokens: TokenType[] = [
   Any,
   Favorite,
   Archived,
-  Trashed,
   RootAlbum,
   ParentAlbum,
   Comma,
@@ -139,7 +136,6 @@ export class MyParser extends CstParser {
       { ALT: () => this.SUBRULE(this.anyExpression) },
       { ALT: () => this.SUBRULE(this.favoriteExpression) },
       { ALT: () => this.SUBRULE(this.archivedExpression) },
-      { ALT: () => this.SUBRULE(this.trashedExpression) },
       { ALT: () => this.SUBRULE(this.rootAlbumExpression) },
       { ALT: () => this.SUBRULE(this.parentAlbumExpression) }
     ])
@@ -191,10 +187,6 @@ export class MyParser extends CstParser {
   })
   public archivedExpression = this.RULE('archivedExpression', () => {
     this.CONSUME1(Archived)
-    this.CONSUME2(BooleanValue)
-  })
-  public trashedExpression = this.RULE('trashedExpression', () => {
-    this.CONSUME1(Trashed)
     this.CONSUME2(BooleanValue)
   })
   public rootAlbumExpression = this.RULE('rootAlbumExpression', () => {
@@ -280,9 +272,6 @@ export class MyVisitor extends BaseVisitor {
     if (children.archivedExpression) {
       return this.visit(children.archivedExpression)
     }
-    if (children.trashedExpression) {
-      return this.visit(children.trashedExpression)
-    }
     if (children.rootAlbumExpression) {
       return this.visit(children.rootAlbumExpression)
     }
@@ -343,9 +332,6 @@ export class MyVisitor extends BaseVisitor {
   }
   archivedExpression(children: ArchivedExpressionCstChildren) {
     return { Archived: getArrayValue(children.BooleanValue, 0).image === 'true' }
-  }
-  trashedExpression(children: TrashedExpressionCstChildren) {
-    return { Trashed: getArrayValue(children.BooleanValue, 0).image === 'true' }
   }
   rootAlbumExpression(children: RootAlbumExpressionCstChildren) {
     return { RootAlbum: getArrayValue(children.BooleanValue, 0).image === 'true' }
