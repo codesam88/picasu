@@ -213,6 +213,77 @@ Implementation notes (2026-08-07):
   Cancel/Upload actions. Registered in `App.vue`; `showUploadOptionsModal`
   added to `modalStore` dialog keys.
 
+### Frontend E2E tests (2026-08-07)
+
+Component rendering + the options dialog flow are tested via Playwright
+scenario DSL (`frontend/tests/playwright/scenarios/*.yaml`), per
+`docs/test-strategy.md`. No browser-side upload scenario existed before —
+the DSL had no way to drive the hidden file input.
+
+#### DSL additions needed
+
+1. `given: source_file` — write a source file to a location OUTSIDE
+   `IMAGE_HOME` (so the file is not indexed before upload) and record its
+   absolute path in `ctx.vars`. Mirrors `photo_raw` (same flat shape, plus
+   `id_as`):
+
+   ```yaml
+   given:
+     - source_file: "bad:name.jpg" # literal filename, may contain unsafe chars
+       format: jpeg
+       width: 64
+       height: 64
+       id_as: $src_unsafe
+   ```
+
+   Implementation: snapfab batch with `output = {DIR}/source/{name}`,
+   `vars[$id_as] = abs path`. Do NOT add to `seedEntries` (no index).
+
+2. `when: upload.files` — click the upload trigger and set files via the
+   Playwright filechooser (the input is created dynamically by
+   `triggerFileInput`, so we cannot `setInputFiles` on a stable locator):
+
+   ```yaml
+   when:
+     - upload.files:
+         trigger: icon/mdi-upload # GalleryBar upload button (level-1 routes)
+         files: ["${src_unsafe}"] # var refs / abs paths, interpolated (${name} form)
+   ```
+
+   Implementation: `const [chooser] = await Promise.all([
+page.waitForEvent('filechooser'), clickTrigger() ])` then
+   `chooser.setFiles(paths)`.
+
+3. `when: set.auto_rename` — set the dialog switch to a specific state. Read
+   the current state from the switch input (`#upload-options-modal
+input[type="checkbox"]`, the only checkbox in the dialog) and click the
+   `data-testid="upload-auto-rename"` list item only if it differs:
+
+   ```yaml
+   when:
+     - set.auto_rename: false
+   ```
+
+4. `ui.toast`, `ui.modal`, `ui.text_visible`, `ui.count` already cover the
+   assertions. Success = `Files uploaded successfully`; reject 400 body
+   names the file + "Set auto_rename=true to allow the server to rename it."
+
+#### Scenarios
+
+| File                                               | Behavior                                                                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `upload-options-dialog-default-sanitizes.yaml`     | pick unsafe-named file, keep auto_rename ON (default), Upload → success toast; dialog lists the file before upload |
+| `upload-options-auto-rename-off-rejects.yaml`      | pick unsafe-named file, `set.auto_rename: false`, Upload → error toast naming the file                             |
+| `upload-options-auto-rename-off-safe-accepts.yaml` | pick safe-named file, `set.auto_rename: false`, Upload → success toast                                             |
+| `upload-options-cancel-discards.yaml`              | pick file, Cancel → dialog closes, no upload (no success toast, gallery count unchanged)                           |
+| `upload-options-multi-file-listed.yaml`            | pick 2 files, both listed in dialog, Upload → success                                                              |
+
+All scenarios seed one indexed photo (`given: photo: seed/img01.jpg`) so
+the timeline grid renders and the GalleryBar `mdi-upload` button is the
+trigger (avoids the empty-state onboarding dialog). Post-upload file-name
+verification stays in the backend DSL (predictable names via
+`on_conflict: replace`); here the success/error toast is the signal.
+
 ### Test Coverage Gaps
 
 The 10 existing scenarios cover happy paths, auth, conflict strategies,
