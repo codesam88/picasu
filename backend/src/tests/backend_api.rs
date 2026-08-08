@@ -22,7 +22,28 @@ fn interpolate(s: &str, vars: &HashMap<String, String>) -> String {
         let after = &rest[start + 2..];
         if let Some(end) = after.find('}') {
             let bare = &after[..end];
-            let val = vars.get(bare).cloned().unwrap_or_default();
+            let val = match bare.split_once(':') {
+                // `${var:start:end}` substring slice, e.g. `${hash:0:2}`
+                Some((var, range)) => {
+                    let src = vars.get(var).cloned().unwrap_or_default();
+                    let chars: Vec<char> = src.chars().collect();
+                    match range.split_once(':') {
+                        Some((s, e)) => {
+                            let s = s.parse::<usize>().unwrap_or(0);
+                            let e = e.parse::<usize>().unwrap_or(chars.len());
+                            if s >= e || s >= chars.len() {
+                                String::new()
+                            } else {
+                                chars[s.min(chars.len())..e.min(chars.len())]
+                                    .iter()
+                                    .collect()
+                            }
+                        }
+                        None => src,
+                    }
+                }
+                None => vars.get(bare).cloned().unwrap_or_default(),
+            };
             result.push_str(&val);
             rest = &after[end + 1..];
         } else {
@@ -178,12 +199,30 @@ fn assert_array_where(root: &Value, val: &Value, vars: &HashMap<String, String>)
 fn check_status_assertions(
     response: &rocket::local::blocking::LocalResponse<'_>,
     then_items: &[Value],
+    vars: &HashMap<String, String>,
 ) {
     for item in then_items {
         if let Some(code) = item["response.status"].as_i64() {
             assert_eq!(response.status(), Status::from_code(code as u16).unwrap(),);
         } else if let Some(code) = item["response.status_not"].as_i64() {
             assert_ne!(response.status(), Status::from_code(code as u16).unwrap(),);
+        } else if let Some(obj) = item.as_object() {
+            for (key, val) in obj {
+                if let Some(name) = key.strip_prefix("response.header.") {
+                    let expected = interpolate(
+                        val.as_str()
+                            .expect("response.header value must be a string"),
+                        vars,
+                    );
+                    let actual = response
+                        .headers()
+                        .get(name)
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    assert_eq!(actual, expected, "response header {name}");
+                }
+            }
         }
     }
 }
@@ -616,9 +655,18 @@ fn interpret_scenario(scenario: &Value) {
                     let exif_date = item["exif_date"].as_str();
                     let has_tags = !tags.is_empty();
 
+                    let format = item["format"]
+                        .as_str()
+                        .map(|f| f.to_string())
+                        .unwrap_or_else(|| "jpeg".to_string());
+                    assert!(
+                        matches!(format.as_str(), "jpeg" | "png"),
+                        "given photo format must be jpeg or png, got {format}"
+                    );
+
                     photo_specs.push(PhotoSpec {
                         output: Some(data.join(trimmed).to_string_lossy().to_string()),
-                        format: Some("jpeg".into()),
+                        format: Some(format),
                         width: Some(4),
                         height: Some(4),
                         tags: if has_tags { Some(tags) } else { None },
@@ -637,6 +685,12 @@ fn interpret_scenario(scenario: &Value) {
                     if let Some(enabled) = config.get("fs_notify_watcher").and_then(|v| v.as_bool())
                     {
                         write_config(&serde_json::json!({"fs_notify_watcher": enabled}));
+                    }
+                    if let Some(enabled) = config
+                        .get("validate_upload_content")
+                        .and_then(|v| v.as_bool())
+                    {
+                        write_config(&serde_json::json!({"validate_upload_content": enabled}));
                     }
                 }
             }
@@ -703,7 +757,7 @@ fn interpret_scenario(scenario: &Value) {
 
             if is_last {
                 let has_json = then_items.iter().any(has_json_assertions);
-                check_status_assertions(&resp, then_items);
+                check_status_assertions(&resp, then_items, &vars);
                 if has_json {
                     let body = resp.into_bytes().expect("response body");
                     check_body_assertions(&body, then_items, &vars);
@@ -711,7 +765,7 @@ fn interpret_scenario(scenario: &Value) {
                 check_file_and_serve_assertions(then_items, &data, client, &vars);
             } else {
                 if let Some(call_then) = call.get("then").and_then(|v| v.as_array()) {
-                    check_status_assertions(&resp, call_then);
+                    check_status_assertions(&resp, call_then, &vars);
                 }
                 if call
                     .get("capture")
@@ -722,12 +776,22 @@ fn interpret_scenario(scenario: &Value) {
                     process_capture(call, &body, &mut vars);
                 }
                 process_calc(call, &mut vars);
+                if let Some(id_as) = call.get("id_as").and_then(|v| v.as_str()) {
+                    let bare = id_as.trim_start_matches('$');
+                    let discover_path = call
+                        .get("discover_path")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_else(|| panic!("id_as {id_as}: requires discover_path"));
+                    let path = interpolate(discover_path, &vars);
+                    let hash = discover_photo_hash(client, &path);
+                    vars.insert(bare.to_string(), hash);
+                }
             }
         }
     } else {
         let client = make_client();
         let resp = dispatch_when_item(when, &vars, &client);
-        check_status_assertions(&resp, then_items);
+        check_status_assertions(&resp, then_items, &vars);
         let has_json = then_items.iter().any(has_json_assertions);
         if has_json {
             let body = resp.into_bytes().expect("response body");

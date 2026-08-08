@@ -130,7 +130,7 @@ upload partially applied.
 | ID  | Severity | Description                                   | Status      |
 | --- | -------- | --------------------------------------------- | ----------- |
 | P0  | Critical | Filename not sanitized — path traversal       | In progress |
-| P1  | High     | Content-Type header trusted, not file content | Open        |
+| P1  | High     | Content-Type header trusted, not file content | Done        |
 | P2  | Medium   | No `last_modified` bounds check               | Open        |
 | P3  | Low      | `unreachable!()` panic path in rename loop    | Open        |
 | P4  | Low      | Partial failure on multi-file upload          | Open        |
@@ -309,3 +309,71 @@ and basic error responses. Missing security cases:
 - Remaining plan scope: P1 (Content-Type spoofing), P2 (last_modified
   bounds), P3 (unreachable! in rename loop), P4 (partial multi-file
   failure) are still open.
+
+## Progress — P1 Content-Type spoofing (2026-08-08)
+
+Decision (user): add an **optional, default-enabled** backend gate that
+cross-checks claimed Content-Type against file content; keep spoofed but
+whitelisted media accepted (served with the whitelisted type); include
+nosniff as defense-in-depth. Do **not** derive naming from content.
+
+### Gate (`validate_upload_content`, default true)
+
+- Config flag `validate_upload_content` threaded through `AppConfig`,
+  `TomlGallery`, `AppConfig::from(TomlFile)` (+ `toml_round_trip_full`
+  test), `PUT /put/config` (`edit_config.rs`), `GET /get/config`
+  (`ConfigResponse`), test helper `write_config`, and reset in
+  `reset_backend_state`.
+- Implementation in `post_upload.rs`: reads the first 512 bytes of the
+  temp upload and detects the format with the **`infer` crate** (magic-byte
+  database, no runtime system dependency — `tree_magic_mini` was rejected
+  because it loads the host's shared-MIME DB at runtime; hand-rolled video
+  magic bytes were replaced with `infer` on review). Signature-based, never
+  a full decode, so unusual-but-valid variants still pass.
+- Family mapping (whitelisted extension → accepted signatures):
+  - `jpg|jpeg|jfif|jpe` → `infer` `jpg`
+  - `tif|tiff` → `tif`
+  - `mp4|mov|m4v` → ISO BMFF (`mp4`/`mov`/`m4v`)
+  - `mkv|webm` → EBML (`mkv`/`webm`)
+  - `mpeg` → `mpg` (infer's canonical spelling)
+  - everything else 1:1 (`png`, `webp`, `bmp`, `gif`, `avi`, `flv`, `wmv`)
+- Mismatch → `400 InvalidInput` `"Uploaded content is {detected}, but the
+declared type is {extension}"`; unrecognizable bytes → `400`
+  `"Uploaded content is not recognized as {extension}"`.
+- Stored extension is still derived from the declared `Content-Type`
+  (`get_extension`) — unchanged.
+
+### Serving-side defense-in-depth
+
+- `get_img.rs`: `CompressedFileResponse` no longer derives `Responder`;
+  manual `Responder` pins `Content-Type: video/mp4` on the `SeekStream`
+  (mp4) arm, replacing `rocket_seek_stream`'s byte-sniffed MIME. `NamedFile`
+  arms already set `Content-Type` from the file extension.
+- `builder.rs`: `.attach(Shield::default())` → `X-Content-Type-Options:
+nosniff` (plus X-Frame-Options, Permissions-Policy).
+
+### Test scenarios (new)
+
+| File                                          | Behavior                                                                                           |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `upload_content_type_spoof_rejected.yaml`     | PNG bytes declared `image/jpeg` → 400, message names png/jpeg                                      |
+| `upload_content_type_garbage_rejected.yaml`   | text bytes declared `image/jpeg` → 400 "not recognized"                                            |
+| `upload_content_type_validation_opt_out.yaml` | `given config validate_upload_content: false` → same spoof accepted (200)                          |
+| `upload_unindexable_removed.yaml`             | gate off + garbage → 400 "could not be decoded" (was 500) AND the orphan file is removed from disk |
+
+The last scenario also fixes a latent bug: unindexable bytes used to be
+saved to disk and only fail later at index time, leaving an orphan file
+and returning 500. Now `post_upload.rs` removes the file and returns 400.
+
+**Deletion boundary (user decision, 2026-08-08):** the removal above is
+only legal because it happens _within_ the failed upload request — the
+upload never succeeded, nothing is "committed", and the user gets the 400
+directly. Files must never be deleted after a successful upload; from that
+point on, only an explicit user deletion action may remove a file.
+
+DSL: `given config` handler extended with `validate_upload_content`;
+`givenConfig` schema entries added (`validate_upload_content`,
+`fs_notify_watcher`).
+
+Verification: `just check` and `just test` both green (backend 164,
+frontend vitest 12+12).
