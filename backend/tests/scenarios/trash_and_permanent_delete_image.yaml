@@ -1,0 +1,25 @@
+name: trash then permanent delete removes image completely
+given:
+  - photo: /e2e_trash_pd/photo.jpg
+    id_as: $photo
+when:
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[{"index":${idx},"aliasPath":"${image_home}/e2e_trash_pd/photo.jpg"}],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+      - file_absent: /e2e_trash_pd/photo.jpg
+      - file_exists: /.trash/e2e_trash_pd/photo.jpg
+  # Re-prefetch with same hash — the photo is now in .trash/
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts2: response.prefetch.timestamp
+      idx2: response.prefetch.locateTo
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[{"index":${idx2},"aliasPath":"${image_home}/.trash/e2e_trash_pd/photo.jpg"}],"timestamp":${ts2}}'
+then:
+  - response.status: 200
+  - file_absent: /.trash/e2e_trash_pd/photo.jpg

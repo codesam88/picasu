@@ -1,0 +1,40 @@
+name: permanent delete trash alias preserves record when live alias exists
+given:
+  - dir_album: /e2e_pd_preserve/album
+    id_as: $album
+  - photo: /e2e_pd_preserve/live.jpg
+    id_as: $photo
+when:
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  - call: PUT /put/assign_album
+    body:
+      hash: "${photo}"
+      albumId: "${album}"
+    then:
+      - response.status: 200
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts2: response.prefetch.timestamp
+      idx2: response.prefetch.locateTo
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[{"index":${idx2},"aliasPath":"${image_home}/e2e_pd_preserve/album/live.jpg"}],"timestamp":${ts2}}'
+    then:
+      - response.status: 200
+      - file_absent: /e2e_pd_preserve/live.jpg
+      - file_absent: /e2e_pd_preserve/album/live.jpg
+      - file_exists: /.trash/e2e_pd_preserve/album/live.jpg
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts3: response.prefetch.timestamp
+      idx3: response.prefetch.locateTo
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[{"index":${idx3},"aliasPath":"${image_home}/.trash/e2e_pd_preserve/album/live.jpg"}],"timestamp":${ts3}}'
+    then:
+      - response.status: 200
+      - file_absent: /.trash/e2e_pd_preserve/album/live.jpg
+  - call: POST /get/prefetch?locate=${photo}
+then:
+  - response.status: 200

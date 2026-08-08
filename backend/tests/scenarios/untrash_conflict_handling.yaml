@@ -1,0 +1,34 @@
+name: untrash with conflict renames restored file
+given:
+  - photo: /e2e_untrash_conflict/photo.jpg
+    id_as: $photo
+when:
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[{"index":${idx},"aliasPath":"${image_home}/e2e_untrash_conflict/photo.jpg"}],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+      - file_absent: /e2e_untrash_conflict/photo.jpg
+      - file_exists: /.trash/e2e_untrash_conflict/photo.jpg
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts2: response.prefetch.timestamp
+      idx2: response.prefetch.locateTo
+  - call: PUT /put/edit_tag
+    raw_body: '{"indexArray":[${idx2}],"addTagsArray":["untrash_marker"],"removeTagsArray":[],"timestamp":${ts2}}'
+    then:
+      - response.status: 200
+  - call: POST /post/index/album
+    body:
+      album: "/e2e_untrash_conflict"
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts3: response.prefetch.timestamp
+      idx3: response.prefetch.locateTo
+  - call: PUT /put/restore-from-trash
+    raw_body: '{"restoreList":[{"index":${idx3},"aliasPath":"${image_home}/.trash/e2e_untrash_conflict/photo.jpg"}],"timestamp":${ts3}}'
+then:
+  - response.status: 200

@@ -1,0 +1,17 @@
+name: delete blocked in read-only mode
+given:
+  - photo: /e2e_ro_trash/photo.jpg
+    id_as: $photo
+when:
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  - call: "PUT /put/config"
+    body:
+      readOnlyMode: true
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[{"index":${idx},"aliasPath":"${image_home}/e2e_ro_trash/photo.jpg"}],"timestamp":${ts}}'
+then:
+  - response.status: 405
+  - file_exists: /e2e_ro_trash/photo.jpg

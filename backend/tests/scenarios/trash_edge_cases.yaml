@@ -1,0 +1,31 @@
+name: delete handles nonexistent alias and idempotent second delete
+given:
+  - photo: /e2e_trash_edge/photo.jpg
+    id_as: $photo
+when:
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[{"index":${idx},"aliasPath":"${image_home}/e2e_trash_edge/nonexistent.jpg"}],"timestamp":${ts}}'
+    then:
+      - response.status: 400
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts2: response.prefetch.timestamp
+      idx2: response.prefetch.locateTo
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[{"index":${idx2},"aliasPath":"${image_home}/e2e_trash_edge/photo.jpg"}],"timestamp":${ts2}}'
+    then:
+      - response.status: 200
+      - file_absent: /e2e_trash_edge/photo.jpg
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts3: response.prefetch.timestamp
+      idx3: response.prefetch.locateTo
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[{"index":${idx3},"aliasPath":"${image_home}/.trash/e2e_trash_edge/photo.jpg"}],"timestamp":${ts3}}'
+then:
+  - response.status: 200
+  - file_absent: /.trash/e2e_trash_edge/photo.jpg
