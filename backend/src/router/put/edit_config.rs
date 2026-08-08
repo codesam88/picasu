@@ -27,6 +27,7 @@ pub struct PartialUpdateConfigRequest {
     pub fs_notify_watcher: Option<bool>,
     pub normalize_upload_filenames: Option<bool>,
     pub validate_upload_content: Option<bool>,
+    pub use_client_timestamp_info: Option<bool>,
     pub auth_key: Option<String>,
 }
 
@@ -95,6 +96,9 @@ pub async fn update_config_handler(
         }
         if let Some(validate_upload_content) = req_data.validate_upload_content {
             current_config.validate_upload_content = validate_upload_content;
+        }
+        if let Some(use_client_timestamp_info) = req_data.use_client_timestamp_info {
+            current_config.use_client_timestamp_info = use_client_timestamp_info;
         }
         if let Some(key) = req_data.auth_key {
             let trimmed = key.trim();

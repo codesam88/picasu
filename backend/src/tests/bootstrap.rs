@@ -66,6 +66,12 @@ pub fn write_config(updates: &serde_json::Value) {
         if let Some(val) = obj.get("validate_upload_content").and_then(|v| v.as_bool()) {
             config.validate_upload_content = val;
         }
+        if let Some(val) = obj
+            .get("use_client_timestamp_info")
+            .and_then(|v| v.as_bool())
+        {
+            config.use_client_timestamp_info = val;
+        }
     }
     // Write a copy to disk for documentation/debugging.
     use serde::Serialize;

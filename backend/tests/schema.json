@@ -102,6 +102,9 @@
             },
             "validate_upload_content": {
               "type": "boolean"
+            },
+            "use_client_timestamp_info": {
+              "type": "boolean"
             }
           },
           "additionalProperties": false
@@ -293,6 +296,18 @@
       ],
       "additionalProperties": false
     },
+    "apiThenCompare": {
+      "type": "object",
+      "properties": {
+        "compare": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "compare"
+      ],
+      "additionalProperties": false
+    },
     "apiThenFileExists": {
       "type": "object",
       "properties": {
@@ -345,6 +360,9 @@
         },
         {
           "$ref": "#/definitions/apiThenArrayWhere"
+        },
+        {
+          "$ref": "#/definitions/apiThenCompare"
         },
         {
           "$ref": "#/definitions/apiThenFileExists"
