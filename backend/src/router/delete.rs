@@ -108,7 +108,8 @@ fn compute_trash_root() -> PathBuf {
 }
 
 fn is_in_trash(alias_path: &str, trash_root: &Path) -> bool {
-    Path::new(alias_path).starts_with(trash_root)
+    let path = Path::new(alias_path);
+    path.starts_with(trash_root) && path != trash_root
 }
 
 fn trash_move_item(
@@ -343,6 +344,49 @@ fn permanent_delete_album(
     rewrite_dir_album_cache_prefix(&dir_path, &PathBuf::from(""));
 
     Ok(removed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn is_in_trash_returns_true_for_path_under_trash_root() {
+        let trash_root = PathBuf::from("/images/.trash");
+        assert!(is_in_trash("/images/.trash/photos/foo.jpg", &trash_root));
+    }
+
+    #[test]
+    fn is_in_trash_returns_false_for_path_outside_trash() {
+        let trash_root = PathBuf::from("/images/.trash");
+        assert!(!is_in_trash("/images/photos/foo.jpg", &trash_root));
+    }
+
+    #[test]
+    fn is_in_trash_returns_false_for_partial_prefix_match() {
+        let trash_root = PathBuf::from("/images/.trash");
+        assert!(!is_in_trash("/images/.trashy/foo.jpg", &trash_root));
+    }
+
+    #[test]
+    fn is_in_trash_returns_false_for_exact_trash_root() {
+        let trash_root = PathBuf::from("/images/.trash");
+        assert!(!is_in_trash("/images/.trash", &trash_root));
+    }
+
+    #[test]
+    fn is_in_trash_handles_relative_paths() {
+        let trash_root = PathBuf::from(".trash");
+        assert!(is_in_trash(".trash/foo.jpg", &trash_root));
+        assert!(!is_in_trash("photos/foo.jpg", &trash_root));
+    }
+
+    #[test]
+    fn is_in_trash_handles_nested_trash_path() {
+        let trash_root = PathBuf::from("/images/.trash");
+        assert!(is_in_trash("/images/.trash/a/b/c.jpg", &trash_root));
+    }
 }
 
 fn process_deletes(
