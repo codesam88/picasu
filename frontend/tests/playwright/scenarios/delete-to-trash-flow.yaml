@@ -1,0 +1,55 @@
+name: Delete via menu moves photo to trash view
+covers:
+  api:
+    - DELETE /delete/delete-data
+  ui:
+    - Delete menu item soft-deletes photo
+    - Trashed photo appears on /trashed page
+
+given:
+  - dir_album: trashflow/pool
+
+  - photo: trashflow/pool/img01.jpg
+
+steps:
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: trashflow
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: pool
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: option/Delete
+    assert:
+      - ui.toast:
+          type: success
+          contains: Successfully deleted data
+
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.visible: main/

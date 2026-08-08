@@ -1,0 +1,52 @@
+name: Batch delete from gallery moves selected photo to trash
+covers:
+  api:
+    - DELETE /delete/delete-data
+  ui:
+    - Batch menu appears in edit mode
+    - Batch delete moves selected photo to trash
+
+given:
+  - dir_album: batchdel/pool
+
+  - photo: batchdel/pool/img01.jpg
+
+  - photo: batchdel/pool/img02.jpg
+
+steps:
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: batchdel
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: pool
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.select_first: true
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.testid: batch-menu
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: option/Delete
+    assert:
+      - ui.toast:
+          type: success
+          contains: Successfully deleted data
+
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.visible: main/

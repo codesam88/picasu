@@ -1,16 +1,15 @@
-name: Soft-delete then permanently delete removes photo from library
+name: Restore from trash returns photo to original location
 covers:
   api:
-    - PUT /put/edit_flags
-    - DELETE /delete/delete-data
+    - PUT /put/restore-from-trash
   ui:
-    - Delete menu item moves photo to trash
-    - Permanently Delete removes photo from trash view
+    - Restore menu item removes photo from trash view
+    - Photo reappears on /timeline after restore
 
 given:
-  - dir_album: deletetest/pool
+  - dir_album: restoretest/pool
 
-  - photo: deletetest/pool/img01.jpg
+  - photo: restoretest/pool/img01.jpg
 
 steps:
   - when:
@@ -19,7 +18,7 @@ steps:
       - ui.visible: main/
 
   - when:
-      - click.text: deletetest
+      - click.text: restoretest
     assert:
       - ui.visible: main/
 
@@ -33,13 +32,11 @@ steps:
     assert:
       - ui.visible: main/
 
-  # The info sidepane (and its menu) is opt-in now.
   - when:
       - click.icon: mdi-information-outline
     assert:
       - ui.visible: main/
 
-  # Soft-delete via the three-dot menu
   - when:
       - click.testid: photo-menu
     assert:
@@ -52,33 +49,34 @@ steps:
           type: success
           contains: Successfully deleted data
 
-  # Navigate to trash — the photo should be there
   - when:
       - navigate: /trashed
     assert:
       - ui.visible: main/
 
-  # Open the trashed photo
   - when:
       - click.first: true
     assert:
       - ui.visible: main/
 
-  # The info sidepane (and its menu) is opt-in now.
   - when:
       - click.icon: mdi-information-outline
     assert:
       - ui.visible: main/
 
-  # Permanently delete via the three-dot menu
   - when:
       - click.testid: photo-menu
     assert:
       - ui.visible: main/
 
   - when:
-      - click: option/Permanently Delete
+      - click: option/Restore
     assert:
       - ui.toast:
           type: success
-          contains: Successfully deleted data
+          contains: Successfully restored data
+
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.visible: main/

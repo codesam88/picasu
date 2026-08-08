@@ -1,16 +1,15 @@
-name: Soft-delete then permanently delete removes photo from library
+name: Permanently delete from trash removes photo entirely
 covers:
   api:
-    - PUT /put/edit_flags
     - DELETE /delete/delete-data
   ui:
-    - Delete menu item moves photo to trash
-    - Permanently Delete removes photo from trash view
+    - Permanently Delete menu item removes photo from trash
+    - Photo absent from /trashed after permanent delete
 
 given:
-  - dir_album: deletetest/pool
+  - dir_album: permdel/pool
 
-  - photo: deletetest/pool/img01.jpg
+  - photo: permdel/pool/img01.jpg
 
 steps:
   - when:
@@ -19,7 +18,7 @@ steps:
       - ui.visible: main/
 
   - when:
-      - click.text: deletetest
+      - click.text: permdel
     assert:
       - ui.visible: main/
 
@@ -33,13 +32,11 @@ steps:
     assert:
       - ui.visible: main/
 
-  # The info sidepane (and its menu) is opt-in now.
   - when:
       - click.icon: mdi-information-outline
     assert:
       - ui.visible: main/
 
-  # Soft-delete via the three-dot menu
   - when:
       - click.testid: photo-menu
     assert:
@@ -52,25 +49,21 @@ steps:
           type: success
           contains: Successfully deleted data
 
-  # Navigate to trash — the photo should be there
   - when:
       - navigate: /trashed
     assert:
       - ui.visible: main/
 
-  # Open the trashed photo
   - when:
       - click.first: true
     assert:
       - ui.visible: main/
 
-  # The info sidepane (and its menu) is opt-in now.
   - when:
       - click.icon: mdi-information-outline
     assert:
       - ui.visible: main/
 
-  # Permanently delete via the three-dot menu
   - when:
       - click.testid: photo-menu
     assert:
@@ -82,3 +75,8 @@ steps:
       - ui.toast:
           type: success
           contains: Successfully deleted data
+
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.visible: main/

@@ -1,0 +1,15 @@
+name: Empty trash page shows placeholder message
+covers:
+  ui:
+    - route:/trashed
+    - Empty state message visible on /trashed
+
+given:
+  - empty: true
+
+steps:
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.visible: main/
+      - ui.text_visible: Deleted photos and videos appear here.
