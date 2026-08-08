@@ -216,11 +216,28 @@ fn handle_removed_file(removed: &Path) {
 fn new_watcher() -> Result<RecommendedWatcher> {
     notify::recommended_watcher(move |result: Result<Event, notify::Error>| match result {
         Ok(event) => {
+            // Compute trash root to skip events under it
+            let trash_root = {
+                let config = APP_CONFIG
+                    .get()
+                    .expect("APP_CONFIG not initialized")
+                    .read()
+                    .expect("lock poisoned");
+                config
+                    .image_home
+                    .as_ref()
+                    .unwrap()
+                    .join(&config.trash_directory)
+            };
+
             match event.kind {
                 EventKind::Create(_) => {
                     let mut path_list: HashSet<PathBuf> = HashSet::new();
 
                     for path in event.paths {
+                        if path.starts_with(&trash_root) {
+                            continue;
+                        }
                         if path.is_file() {
                             path_list.insert(path);
                         } else if path.is_dir() {
@@ -245,6 +262,9 @@ fn new_watcher() -> Result<RecommendedWatcher> {
                     let mut path_list: HashSet<PathBuf> = HashSet::new();
 
                     for path in event.paths {
+                        if path.starts_with(&trash_root) {
+                            continue;
+                        }
                         if path.is_file() {
                             path_list.insert(path);
                         }
@@ -259,6 +279,9 @@ fn new_watcher() -> Result<RecommendedWatcher> {
 
                 EventKind::Remove(_) => {
                     for path in event.paths {
+                        if path.starts_with(&trash_root) {
+                            continue;
+                        }
                         if is_valid_media_file(&path) {
                             submit_removal_to_watcher(path);
                         }
