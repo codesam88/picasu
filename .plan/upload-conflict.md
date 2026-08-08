@@ -296,3 +296,16 @@ and basic error responses. Missing security cases:
 - `last_modified` edge values
 - File exists on disk after `upload_dup_no_conflict` (currently only
   asserts status 200, not that two distinct files exist)
+
+## Progress (2026-08-08)
+
+- Frontend E2E upload-options scenarios implemented and passing (24
+  Playwright scenarios total, 5 new). DSL gained `given: source_file`,
+  `when: upload.files`, `when: set.auto_rename`; `interpreter.spec.ts`
+  traces browser-originated backend API calls so `covers.api` matches
+  `POST /upload`. `just check` + `just test` green. Committed on
+  `feat/pre01` and pushed (`ca0e67e1`, `7e9db125`, `7218f4e6`,
+  `36eba57a`).
+- Remaining plan scope: P1 (Content-Type spoofing), P2 (last_modified
+  bounds), P3 (unreachable! in rename loop), P4 (partial multi-file
+  failure) are still open.
