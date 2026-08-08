@@ -112,6 +112,30 @@ fn assert_json_contains(root: &Value, key: &str, val: &Value, vars: &HashMap<Str
     );
 }
 
+fn assert_json_compare(root: &Value, key: &str, val: &Value, vars: &HashMap<String, String>) {
+    let field_path = key.strip_prefix("response.json.").unwrap_or(key);
+    let actual = navigate_json(root, field_path);
+    let Some(actual) = actual.as_i64() else {
+        panic!("{key}: compare requires an integer field, got {actual}");
+    };
+    let conds = val
+        .as_object()
+        .expect("compare value must be an object of operator -> value");
+    for (op, expected_val) in conds {
+        let expected = interpolate_value(expected_val, vars);
+        let Some(expected) = expected.as_i64() else {
+            panic!("{key}: compare requires integer expected values, got {expected_val}");
+        };
+        match op.as_str() {
+            "<" => assert!(actual < expected, "{key}: {actual} is not < {expected}"),
+            "<=" => assert!(actual <= expected, "{key}: {actual} is not <= {expected}"),
+            ">" => assert!(actual > expected, "{key}: {actual} is not > {expected}"),
+            ">=" => assert!(actual >= expected, "{key}: {actual} is not >= {expected}"),
+            other => panic!("compare: unknown operator '{other}'"),
+        }
+    }
+}
+
 fn assert_all_absolute(root: &Value, key: &str) {
     let field_path = key.strip_prefix("response.json.").unwrap_or(key);
     let arr = navigate_json(root, field_path)
@@ -250,6 +274,11 @@ fn check_body_assertions(body_bytes: &[u8], then_items: &[Value], vars: &HashMap
                     assert_array_min_counts(&parsed, val, vars);
                 } else if key == "array_where" {
                     assert_array_where(&parsed, val, vars);
+                } else if key == "compare" {
+                    let pairs = val.as_object().expect("compare must be an object");
+                    for (sub_key, sub_val) in pairs {
+                        assert_json_compare(&parsed, sub_key, sub_val, vars);
+                    }
                 }
             }
         }
@@ -563,7 +592,10 @@ fn process_calc(call: &Value, vars: &mut HashMap<String, String>) {
 fn has_json_assertions(item: &Value) -> bool {
     item.as_object().is_some_and(|m| {
         m.keys().any(|k| {
-            k.starts_with("response.json.") || k == "array_min_counts" || k == "array_where"
+            k.starts_with("response.json.")
+                || k == "array_min_counts"
+                || k == "array_where"
+                || k == "compare"
         })
     })
 }
@@ -691,6 +723,12 @@ fn interpret_scenario(scenario: &Value) {
                         .and_then(|v| v.as_bool())
                     {
                         write_config(&serde_json::json!({"validate_upload_content": enabled}));
+                    }
+                    if let Some(enabled) = config
+                        .get("use_client_timestamp_info")
+                        .and_then(|v| v.as_bool())
+                    {
+                        write_config(&serde_json::json!({"use_client_timestamp_info": enabled}));
                     }
                 }
             }

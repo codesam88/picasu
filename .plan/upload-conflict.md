@@ -127,13 +127,13 @@ upload partially applied.
 
 ### Overall Issues List
 
-| ID  | Severity | Description                                   | Status      |
-| --- | -------- | --------------------------------------------- | ----------- |
-| P0  | Critical | Filename not sanitized — path traversal       | In progress |
-| P1  | High     | Content-Type header trusted, not file content | Done        |
-| P2  | Medium   | No `last_modified` bounds check               | Open        |
-| P3  | Low      | `unreachable!()` panic path in rename loop    | Open        |
-| P4  | Low      | Partial failure on multi-file upload          | Open        |
+| ID  | Severity | Description                                   | Status |
+| --- | -------- | --------------------------------------------- | ------ |
+| P0  | Critical | Filename not sanitized — path traversal       | Done   |
+| P1  | High     | Content-Type header trusted, not file content | Done   |
+| P2  | Medium   | No `last_modified` bounds check               | Done   |
+| P3  | Low      | `unreachable!()` panic path in rename loop    | Done   |
+| P4  | Low      | Partial failure on multi-file upload          | Done   |
 
 ### Planned Remediation
 
@@ -306,9 +306,10 @@ and basic error responses. Missing security cases:
   `POST /upload`. `just check` + `just test` green. Committed on
   `feat/pre01` and pushed (`ca0e67e1`, `7e9db125`, `7218f4e6`,
   `36eba57a`).
-- Remaining plan scope: P1 (Content-Type spoofing), P2 (last_modified
-  bounds), P3 (unreachable! in rename loop), P4 (partial multi-file
-  failure) are still open.
+- Remaining plan scope (as of that date): P1 (Content-Type spoofing), P2
+  (last_modified bounds), P3 (unreachable! in rename loop), P4 (partial
+  multi-file failure) were still open. All four are now done — see the
+  P1 section and the "P2/P3/P4 upload robustness" section below.
 
 ## Progress — P1 Content-Type spoofing (2026-08-08)
 
@@ -377,3 +378,63 @@ DSL: `given config` handler extended with `validate_upload_content`;
 
 Verification: `just check` and `just test` both green (backend 164,
 frontend vitest 12+12).
+
+## Progress — P2/P3/P4 upload robustness (2026-08-08)
+
+### P2 — `use_client_timestamp_info` gate (default **false**)
+
+Decision (user): the client-provided `lastModified` must not be trusted by
+default. The flag **defaults to `false`** ("the safe default for
+use_client_timestamp_info should be 'false'").
+
+- Config: `use_client_timestamp_info` (JSON `useClientTimestampInfo`) threaded
+  through `AppConfig`, `TomlGallery`, both `From` conversions, `PUT /put/config`,
+  test `write_config`, reset in `reset_backend_state`.
+- Semantics: applies only to files without embedded metadata — `compute_timestamp`
+  priority (`DateTimeOriginal` → `filename` → `scan_time` → `modified`) means
+  EXIF-dated uploads keep their EXIF date regardless; the flag only affects
+  undated files (e.g. screenshots) via the stored mtime (`set_last_modified_time`).
+- Enabled: client value used but clamped to `[1970-01-01, now + 24h]` so a
+  broken clock cannot date a file to 1970 or the distant future (Unix-ms lower
+  bound is implicit). Disabled (default): server always uses `now()`.
+- Implementation: `resolve_upload_timestamp(client_ms, use_client_timestamp)` →
+  pure `resolve_upload_timestamp_at(client_ms, use_client_timestamp, now_ms)`
+  with an injectable clock; 6 unit tests in `post_upload.rs` (far-future clamp
+  to now+24h, zero→epoch, in-range preserved, boundary, `u64::MAX` no overflow,
+  disabled→now).
+
+### P3 — bounded `find_unique_upload_path`
+
+Rename loop is now `for n in 1u32..u32::MAX` returning
+`Result<PathBuf, AppError>` instead of `unreachable!()` on exhaustion; caller
+uses `?`.
+
+### P4 — pre-flight validation for multi-file uploads
+
+`upload()` restructured into a pre-flight loop (`validate_upload_batch`: filename
+sanitization, extension whitelist, `validate_upload_content` when enabled) that
+runs before anything is written; a single bad file → 400 with nothing written.
+Write+index loop is unchanged (incl. per-file remove-on-index-failure within the
+failed request). `validate_upload_batch` extracted so `upload` stays under the
+clippy `too_many_lines` threshold.
+
+### Test DSL and scenarios
+
+- New `compare:` verb in `then:` with `assert_json_compare` (operators `<`,
+  `<=`, `>`, `>=`); schema `apiThenCompare` registered in `apiThenItem`.
+- JSON-path navigation note: `navigate_json` only treats `[N]` as a standalone
+  segment, so array indexing mid-path is written `alias.[0]` (not `alias[0]`).
+- `discover_photo_hash` (`backend/src/tests/fixtures/discover.rs`) now polls
+  prefetch/get-data up to 10 s (50 ms sleeps) because uploads commit via a
+  detached `FlushTreeTask` batch and the path may not be immediately locatable.
+- `ImageCombined` flattens metadata (`#[serde(flatten)]`), so the response path
+  is `abstractData.alias.[0].modified` — and `clear_abstract_data_metadata`
+  keeps only the last alias, so `alias[0]` is the upload target.
+- Scenarios (both pass consistently):
+  - `upload_timestamp_client_far_future_clamped.yaml` — flag on, client
+    `lastModified` 4102444800000 → stored mtime in `(1600000000000, 4102444800000)`.
+  - `upload_timestamp_disabled_uses_now.yaml` — flag off, `lastModified` 0 →
+    stored mtime ≈ now.
+
+Verification: `just check` and `just test` both green (backend 172 lib +
+scenarios, snapfab, frontend vitest 40, Playwright 24).

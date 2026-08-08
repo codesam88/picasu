@@ -73,6 +73,18 @@ pub struct AppConfig {
     /// Disable only if legitimate media is being rejected.
     #[serde(default = "default_true")]
     pub validate_upload_content: bool,
+    /// Trust the `lastModified` the upload client sends with each file. When
+    /// enabled, the value is used as the stored file modification time but
+    /// clamped to `[1970-01-01, now + 24h]` so a broken client clock cannot
+    /// push an undated file (e.g. a screenshot) into year 1970 or the distant
+    /// future. Disabled by default: the server uses `now()` instead of the
+    /// provided value, since a client's clock or timezone cannot be relied on.
+    /// Only affects files without embedded metadata: photos with a
+    /// `DateTimeOriginal` EXIF tag keep their EXIF-derived date regardless.
+    /// See `backend/src/router/post/post_upload.rs`
+    /// (`resolve_upload_timestamp`).
+    #[serde(default)]
+    pub use_client_timestamp_info: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -97,6 +109,7 @@ impl Default for AppConfig {
             fs_notify_watcher: true,
             normalize_upload_filenames: true,
             validate_upload_content: true,
+            use_client_timestamp_info: false,
             password: None,
             auth_key: None,
             web_root: None,
@@ -163,6 +176,8 @@ pub(crate) struct TomlGallery {
     pub(crate) normalize_upload_filenames: bool,
     #[serde(default = "default_true")]
     pub(crate) validate_upload_content: bool,
+    #[serde(default)]
+    pub(crate) use_client_timestamp_info: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) web_root: Option<PathBuf>,
 }
@@ -178,6 +193,7 @@ impl Default for TomlGallery {
             fs_notify_watcher: true,
             normalize_upload_filenames: true,
             validate_upload_content: true,
+            use_client_timestamp_info: false,
             web_root: None,
         }
     }
@@ -207,6 +223,7 @@ impl From<TomlFile> for AppConfig {
             fs_notify_watcher: t.gallery.fs_notify_watcher,
             normalize_upload_filenames: t.gallery.normalize_upload_filenames,
             validate_upload_content: t.gallery.validate_upload_content,
+            use_client_timestamp_info: t.gallery.use_client_timestamp_info,
             password: t.secrets.password,
             auth_key: t.secrets.auth_key,
             web_root: t.gallery.web_root,
@@ -231,6 +248,7 @@ impl From<AppConfig> for TomlFile {
                 fs_notify_watcher: c.fs_notify_watcher,
                 normalize_upload_filenames: c.normalize_upload_filenames,
                 validate_upload_content: c.validate_upload_content,
+                use_client_timestamp_info: c.use_client_timestamp_info,
                 web_root: c.web_root,
             },
             secrets: TomlSecrets {
@@ -503,6 +521,7 @@ mod tests {
             fs_notify_watcher: false,
             normalize_upload_filenames: false,
             validate_upload_content: true,
+            use_client_timestamp_info: false,
             password: Some("secret".to_string()),
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),
