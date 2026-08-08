@@ -81,6 +81,7 @@ pub fn abstract_data_to_database_timestamp_return(
     }
 }
 
+#[allow(dead_code)]
 pub fn index_to_abstract_data(
     tree_snapshot: &MyCow,
     data_table: &ReadOnlyTable<&'static str, AbstractData>,

@@ -266,7 +266,7 @@ fn move_album_into_album(
 
 /// Rewrite `data`'s stored path(s) from under `old_prefix` to the equivalent
 /// location under `new_prefix`. Returns whether anything changed.
-fn rewrite_paths_under(data: &mut AbstractData, old_prefix: &Path, new_prefix: &Path) -> bool {
+pub fn rewrite_paths_under(data: &mut AbstractData, old_prefix: &Path, new_prefix: &Path) -> bool {
     match data {
         AbstractData::Album(album) => {
             let dir = PathBuf::from(&album.metadata.dir_path);

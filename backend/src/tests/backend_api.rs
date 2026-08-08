@@ -630,6 +630,11 @@ fn interpret_scenario(scenario: &Value) {
             vars.insert("data_path".to_string(), data_path);
         }
 
+        if scenario.to_string().contains("${image_home}") {
+            let image_home = data.to_string_lossy().to_string();
+            vars.insert("image_home".to_string(), image_home);
+        }
+
         if let Some(items) = given {
             let has_non_config = items.iter().any(|item| item.get("config").is_none());
             let has_scan_items = has_given && has_non_config;
