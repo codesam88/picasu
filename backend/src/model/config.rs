@@ -31,6 +31,10 @@ fn default_max_upload_size() -> String {
     "100MiB".to_string()
 }
 
+fn default_trash_directory() -> String {
+    ".trash".to_string()
+}
+
 // ── JSON API format (camelCase) ───────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -85,6 +89,10 @@ pub struct AppConfig {
     /// (`resolve_upload_timestamp`).
     #[serde(default)]
     pub use_client_timestamp_info: bool,
+    #[serde(default = "default_true")]
+    pub trash_enabled: bool,
+    #[serde(default = "default_trash_directory")]
+    pub trash_directory: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,6 +118,8 @@ impl Default for AppConfig {
             normalize_upload_filenames: true,
             validate_upload_content: true,
             use_client_timestamp_info: false,
+            trash_enabled: true,
+            trash_directory: default_trash_directory(),
             password: None,
             auth_key: None,
             web_root: None,
@@ -178,6 +188,10 @@ pub(crate) struct TomlGallery {
     pub(crate) validate_upload_content: bool,
     #[serde(default)]
     pub(crate) use_client_timestamp_info: bool,
+    #[serde(default = "default_true")]
+    pub(crate) trash_enabled: bool,
+    #[serde(default = "default_trash_directory")]
+    pub(crate) trash_directory: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) web_root: Option<PathBuf>,
 }
@@ -194,6 +208,8 @@ impl Default for TomlGallery {
             normalize_upload_filenames: true,
             validate_upload_content: true,
             use_client_timestamp_info: false,
+            trash_enabled: true,
+            trash_directory: default_trash_directory(),
             web_root: None,
         }
     }
@@ -224,6 +240,8 @@ impl From<TomlFile> for AppConfig {
             normalize_upload_filenames: t.gallery.normalize_upload_filenames,
             validate_upload_content: t.gallery.validate_upload_content,
             use_client_timestamp_info: t.gallery.use_client_timestamp_info,
+            trash_enabled: t.gallery.trash_enabled,
+            trash_directory: t.gallery.trash_directory,
             password: t.secrets.password,
             auth_key: t.secrets.auth_key,
             web_root: t.gallery.web_root,
@@ -249,6 +267,8 @@ impl From<AppConfig> for TomlFile {
                 normalize_upload_filenames: c.normalize_upload_filenames,
                 validate_upload_content: c.validate_upload_content,
                 use_client_timestamp_info: c.use_client_timestamp_info,
+                trash_enabled: c.trash_enabled,
+                trash_directory: c.trash_directory,
                 web_root: c.web_root,
             },
             secrets: TomlSecrets {
@@ -522,6 +542,8 @@ mod tests {
             normalize_upload_filenames: false,
             validate_upload_content: true,
             use_client_timestamp_info: false,
+            trash_enabled: true,
+            trash_directory: ".trash".to_string(),
             password: Some("secret".to_string()),
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),
@@ -569,6 +591,42 @@ mod tests {
         assert!(toml_str.contains("image_home = \"/images\""));
         assert!(toml_str.contains("password = \"hunter2\""));
         assert!(toml_str.contains("auth_key = \"jwt-secret\""));
+    }
+
+    #[test]
+    fn trash_config_defaults() {
+        let config = AppConfig::default();
+        assert!(config.trash_enabled, "trash_enabled should default to true");
+        assert_eq!(
+            config.trash_directory, ".trash",
+            "trash_directory should default to '.trash'"
+        );
+    }
+
+    #[test]
+    fn trash_config_from_toml_defaults() {
+        let toml_str = r#"
+[server]
+port = 5673
+"#;
+        let parsed: TomlFile = toml::from_str(toml_str).expect("failed to deserialize toml");
+        let config = AppConfig::from(parsed);
+        assert!(config.trash_enabled);
+        assert_eq!(config.trash_directory, ".trash");
+    }
+
+    #[test]
+    fn trash_config_toml_round_trip() {
+        let config = AppConfig {
+            trash_enabled: false,
+            trash_directory: "custom_trash".to_string(),
+            ..AppConfig::default()
+        };
+        let tf = TomlFile::from(config.clone());
+        let toml_str = toml::to_string_pretty(&tf).expect("serialize");
+        let parsed: TomlFile = toml::from_str(&toml_str).expect("deserialize");
+        let restored = AppConfig::from(parsed);
+        assert_eq!(config, restored);
     }
 
     #[test]

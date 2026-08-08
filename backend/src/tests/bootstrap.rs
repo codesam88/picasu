@@ -72,6 +72,12 @@ pub fn write_config(updates: &serde_json::Value) {
         {
             config.use_client_timestamp_info = val;
         }
+        if let Some(val) = obj.get("trash_enabled").and_then(|v| v.as_bool()) {
+            config.trash_enabled = val;
+        }
+        if let Some(val) = obj.get("trash_directory").and_then(|v| v.as_str()) {
+            config.trash_directory = val.to_string();
+        }
     }
     // Write a copy to disk for documentation/debugging.
     use serde::Serialize;
@@ -143,6 +149,8 @@ pub fn reset_backend_state() {
     config.fs_notify_watcher = true;
     config.normalize_upload_filenames = true;
     config.validate_upload_content = true;
+    config.trash_enabled = true;
+    config.trash_directory = ".trash".to_string();
     config.password = None;
 }
 
