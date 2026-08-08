@@ -7,43 +7,85 @@
     "givenDirAlbum": {
       "type": "object",
       "properties": {
-        "dir_album": { "type": "string" },
-        "id_as": { "type": "string", "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$" }
+        "dir_album": {
+          "type": "string"
+        },
+        "id_as": {
+          "type": "string",
+          "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
+        }
       },
-      "required": ["dir_album"],
+      "required": [
+        "dir_album"
+      ],
       "additionalProperties": false
     },
     "givenPhoto": {
       "type": "object",
       "properties": {
-        "photo": { "type": "string" },
-        "id_as": { "type": "string", "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$" },
-        "tags": { "type": "array", "items": { "type": "string" } },
-        "exif_date": { "type": "string" },
+        "photo": {
+          "type": "string"
+        },
+        "id_as": {
+          "type": "string",
+          "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exif_date": {
+          "type": "string"
+        },
         "color": {
           "type": "array",
-          "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255
+          },
           "minItems": 3,
           "maxItems": 3
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "jpeg",
+            "png"
+          ],
+          "default": "jpeg"
         }
       },
-      "required": ["photo"],
+      "required": [
+        "photo"
+      ],
       "additionalProperties": false
     },
     "givenRemove": {
       "type": "object",
       "properties": {
-        "remove": { "type": "string" }
+        "remove": {
+          "type": "string"
+        }
       },
-      "required": ["remove"],
+      "required": [
+        "remove"
+      ],
       "additionalProperties": false
     },
     "givenEmpty": {
       "type": "object",
       "properties": {
-        "empty": { "type": "boolean", "const": true }
+        "empty": {
+          "type": "boolean",
+          "const": true
+        }
       },
-      "required": ["empty"],
+      "required": [
+        "empty"
+      ],
       "additionalProperties": false
     },
     "givenConfig": {
@@ -52,35 +94,70 @@
         "config": {
           "type": "object",
           "properties": {
-            "read_only_mode": { "type": "boolean" }
+            "read_only_mode": {
+              "type": "boolean"
+            },
+            "fs_notify_watcher": {
+              "type": "boolean"
+            },
+            "validate_upload_content": {
+              "type": "boolean"
+            }
           },
-          "required": ["read_only_mode"],
           "additionalProperties": false
         }
       },
-      "required": ["config"],
+      "required": [
+        "config"
+      ],
       "additionalProperties": false
     },
     "givenItem": {
       "oneOf": [
-        { "$ref": "#/definitions/givenDirAlbum" },
-        { "$ref": "#/definitions/givenPhoto" },
-        { "$ref": "#/definitions/givenEmpty" },
-        { "$ref": "#/definitions/givenRemove" },
-        { "$ref": "#/definitions/givenConfig" }
+        {
+          "$ref": "#/definitions/givenDirAlbum"
+        },
+        {
+          "$ref": "#/definitions/givenPhoto"
+        },
+        {
+          "$ref": "#/definitions/givenEmpty"
+        },
+        {
+          "$ref": "#/definitions/givenRemove"
+        },
+        {
+          "$ref": "#/definitions/givenConfig"
+        }
       ]
     },
     "apiCall": {
       "type": "object",
       "properties": {
-        "call": { "type": "string", "pattern": "^(GET|POST|PUT|DELETE) /" },
-        "body": { "type": "object" },
-        "auth": { "type": "boolean", "default": true },
-        "capture": { "type": "object" },
-        "calc": { "type": "object" },
-        "then": { "type": "array" }
+        "call": {
+          "type": "string",
+          "pattern": "^(GET|POST|PUT|DELETE) /"
+        },
+        "body": {
+          "type": "object"
+        },
+        "auth": {
+          "type": "boolean",
+          "default": true
+        },
+        "capture": {
+          "type": "object"
+        },
+        "calc": {
+          "type": "object"
+        },
+        "then": {
+          "type": "array"
+        }
       },
-      "required": ["call"],
+      "required": [
+        "call"
+      ],
       "additionalProperties": false
     },
     "apiUpload": {
@@ -89,37 +166,83 @@
         "upload": {
           "type": "object",
           "properties": {
-            "file": { "type": "string" },
-            "filename": { "type": "string" },
-            "target_album": { "type": "string" },
-            "on_conflict": { "type": "string", "enum": ["skip", "rename", "replace"] },
-            "auto_rename": { "type": "boolean" },
-            "last_modified": { "type": "integer" },
-            "auth": { "type": "boolean" },
-            "content_type": { "type": "string" }
+            "file": {
+              "type": "string"
+            },
+            "filename": {
+              "type": "string"
+            },
+            "target_album": {
+              "type": "string"
+            },
+            "on_conflict": {
+              "type": "string",
+              "enum": [
+                "skip",
+                "rename",
+                "replace"
+              ]
+            },
+            "auto_rename": {
+              "type": "boolean"
+            },
+            "last_modified": {
+              "type": "integer"
+            },
+            "auth": {
+              "type": "boolean"
+            },
+            "content_type": {
+              "type": "string"
+            }
           },
-          "required": ["file"],
+          "required": [
+            "file"
+          ],
           "additionalProperties": false
         },
-        "then": { "type": "array" }
+        "then": {
+          "type": "array"
+        },
+        "id_as": {
+          "type": "string",
+          "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "discover_path": {
+          "type": "string"
+        }
       },
-      "required": ["upload"],
+      "required": [
+        "upload"
+      ],
       "additionalProperties": false
     },
     "apiThenResponseStatus": {
       "type": "object",
       "properties": {
-        "response.status": { "type": "integer", "minimum": 100, "maximum": 599 }
+        "response.status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        }
       },
-      "required": ["response.status"],
+      "required": [
+        "response.status"
+      ],
       "additionalProperties": false
     },
     "apiThenResponseStatusNot": {
       "type": "object",
       "properties": {
-        "response.status_not": { "type": "integer", "minimum": 100, "maximum": 599 }
+        "response.status_not": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        }
       },
-      "required": ["response.status_not"],
+      "required": [
+        "response.status_not"
+      ],
       "additionalProperties": false
     },
     "apiThenResponseField": {
@@ -127,10 +250,18 @@
       "patternProperties": {
         "^response\\.[a-zA-Z_][a-zA-Z0-9_.]*$": {
           "oneOf": [
-            { "type": "string" },
-            { "type": "integer" },
-            { "type": "boolean" },
-            { "type": "null" }
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
           ]
         }
       },
@@ -141,87 +272,155 @@
     "apiThenArrayMinCounts": {
       "type": "object",
       "properties": {
-        "array_min_counts": { "type": "object" }
+        "array_min_counts": {
+          "type": "object"
+        }
       },
-      "required": ["array_min_counts"],
+      "required": [
+        "array_min_counts"
+      ],
       "additionalProperties": false
     },
     "apiThenArrayWhere": {
       "type": "object",
       "properties": {
-        "array_where": { "type": "object" }
+        "array_where": {
+          "type": "object"
+        }
       },
-      "required": ["array_where"],
+      "required": [
+        "array_where"
+      ],
       "additionalProperties": false
     },
     "apiThenFileExists": {
       "type": "object",
       "properties": {
-        "file_exists": { "type": "string" }
+        "file_exists": {
+          "type": "string"
+        }
       },
-      "required": ["file_exists"],
+      "required": [
+        "file_exists"
+      ],
       "additionalProperties": false
     },
     "apiThenFileAbsent": {
       "type": "object",
       "properties": {
-        "file_absent": { "type": "string" }
+        "file_absent": {
+          "type": "string"
+        }
       },
-      "required": ["file_absent"],
+      "required": [
+        "file_absent"
+      ],
       "additionalProperties": false
     },
     "apiThenServeImageOk": {
       "type": "object",
       "properties": {
-        "serve_image_ok": { "type": "string" }
+        "serve_image_ok": {
+          "type": "string"
+        }
       },
-      "required": ["serve_image_ok"],
+      "required": [
+        "serve_image_ok"
+      ],
       "additionalProperties": false
     },
     "apiThenItem": {
       "oneOf": [
-        { "$ref": "#/definitions/apiThenResponseStatus" },
-        { "$ref": "#/definitions/apiThenResponseStatusNot" },
-        { "$ref": "#/definitions/apiThenResponseField" },
-        { "$ref": "#/definitions/apiThenArrayMinCounts" },
-        { "$ref": "#/definitions/apiThenArrayWhere" },
-        { "$ref": "#/definitions/apiThenFileExists" },
-        { "$ref": "#/definitions/apiThenFileAbsent" },
-        { "$ref": "#/definitions/apiThenServeImageOk" }
+        {
+          "$ref": "#/definitions/apiThenResponseStatus"
+        },
+        {
+          "$ref": "#/definitions/apiThenResponseStatusNot"
+        },
+        {
+          "$ref": "#/definitions/apiThenResponseField"
+        },
+        {
+          "$ref": "#/definitions/apiThenArrayMinCounts"
+        },
+        {
+          "$ref": "#/definitions/apiThenArrayWhere"
+        },
+        {
+          "$ref": "#/definitions/apiThenFileExists"
+        },
+        {
+          "$ref": "#/definitions/apiThenFileAbsent"
+        },
+        {
+          "$ref": "#/definitions/apiThenServeImageOk"
+        },
+        {
+          "$ref": "#/definitions/apiThenResponseHeader"
+        }
       ]
     },
     "whenItem": {
       "oneOf": [
-        { "$ref": "#/definitions/apiCall" },
-        { "$ref": "#/definitions/apiUpload" }
+        {
+          "$ref": "#/definitions/apiCall"
+        },
+        {
+          "$ref": "#/definitions/apiUpload"
+        }
       ]
     },
     "apiScenario": {
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
+        "name": {
+          "type": "string"
+        },
         "given": {
           "type": "array",
-          "items": { "$ref": "#/definitions/givenItem" },
+          "items": {
+            "$ref": "#/definitions/givenItem"
+          },
           "minItems": 0
         },
         "when": {
           "oneOf": [
-            { "$ref": "#/definitions/whenItem" },
+            {
+              "$ref": "#/definitions/whenItem"
+            },
             {
               "type": "array",
-              "items": { "$ref": "#/definitions/whenItem" },
+              "items": {
+                "$ref": "#/definitions/whenItem"
+              },
               "minItems": 1
             }
           ]
         },
         "then": {
           "type": "array",
-          "items": { "$ref": "#/definitions/apiThenItem" },
+          "items": {
+            "$ref": "#/definitions/apiThenItem"
+          },
           "minItems": 1
         }
       },
-      "required": ["name", "when", "then"],
+      "required": [
+        "name",
+        "when",
+        "then"
+      ],
+      "additionalProperties": false
+    },
+    "apiThenResponseHeader": {
+      "type": "object",
+      "patternProperties": {
+        "^response\\.header\\.[A-Za-z0-9][A-Za-z0-9-]*$": {
+          "type": "string"
+        }
+      },
+      "minProperties": 1,
+      "maxProperties": 1,
       "additionalProperties": false
     }
   }
