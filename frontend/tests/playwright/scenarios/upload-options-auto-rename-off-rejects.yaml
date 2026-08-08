@@ -1,0 +1,38 @@
+name: Upload with auto-rename off rejects an unsafe filename with an error toast
+covers:
+  api:
+    - POST /upload
+  ui:
+    - toast:error:Set auto_rename=true to allow the server to rename it.
+given:
+  - photo: seed/img01.jpg
+  - source_file: 'bad:name.jpg'
+    format: jpeg
+    width: 64
+    height: 64
+    id_as: $src_unsafe
+steps:
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.modal: closed
+
+  - when:
+      - upload.files:
+          trigger: icon/mdi-upload
+          files: ['${src_unsafe}']
+    assert:
+      - ui.modal: open
+
+  - when:
+      - set.auto_rename: false
+    assert:
+      - ui.modal: open
+
+  - when:
+      - click: button/Upload
+    assert:
+      - ui.toast:
+          type: error
+          contains: Set auto_rename=true to allow the server to rename it.
+      - ui.modal: closed
