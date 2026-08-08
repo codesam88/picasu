@@ -425,15 +425,6 @@ impl AbstractData {
         }
     }
 
-    /// Set trashed status
-    pub fn set_trashed(&mut self, is_trashed: bool) {
-        match self {
-            AbstractData::Image(img) => img.object.is_trashed = is_trashed,
-            AbstractData::Video(vid) => vid.object.is_trashed = is_trashed,
-            AbstractData::Album(alb) => alb.object.is_trashed = is_trashed,
-        }
-    }
-
     /// Set rating (0–5); None clears it
     pub fn set_rating(&mut self, rating: Option<u8>) {
         match self {

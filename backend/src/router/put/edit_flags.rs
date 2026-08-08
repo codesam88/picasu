@@ -6,13 +6,10 @@ use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{open_data_table, open_tree_snapshot_table};
 use crate::tasks::BATCH_COORDINATOR;
-use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
-use arrayvec::ArrayString;
 use rocket::serde::{Deserialize, Serialize, json::Json};
-use std::collections::HashSet;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,8 +21,6 @@ pub struct EditFlagsData {
     is_favorite: Option<bool>,
     #[serde(default)]
     is_archived: Option<bool>,
-    #[serde(default)]
-    is_trashed: Option<bool>,
 }
 
 #[utoipa::path(
@@ -47,61 +42,48 @@ pub async fn edit_flags(
     let _ = auth?;
     let _ = read_only_mode?;
 
-    // Check if trashed flag is being modified
-    let is_trashed_involved = json_data.is_trashed.is_some();
+    tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+        let data_table = open_data_table();
+        let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
+            .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
 
-    let affected_album_ids =
-        tokio::task::spawn_blocking(move || -> Result<HashSet<ArrayString<64>>, AppError> {
-            let data_table = open_data_table();
-            let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
-                .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
+        let mut data_to_flush: Vec<AbstractData> = Vec::new();
 
-            let mut affected_album_ids = HashSet::new();
-            let mut data_to_flush: Vec<AbstractData> = Vec::new();
+        for &index in &json_data.index_array {
+            let hash = index_to_hash(&tree_snapshot, index).or_raise(|| {
+                (
+                    ErrorKind::Database,
+                    format!("Failed to get hash for index {index}"),
+                )
+            })?;
 
-            for &index in &json_data.index_array {
-                let hash = index_to_hash(&tree_snapshot, index).or_raise(|| {
-                    (
-                        ErrorKind::Database,
-                        format!("Failed to get hash for index {index}"),
-                    )
-                })?;
+            if let Some(guard) = data_table
+                .get(&*hash)
+                .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
+            {
+                let mut abstract_data = guard.value();
 
-                if let Some(guard) = data_table
-                    .get(&*hash)
-                    .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
-                {
-                    let mut abstract_data = guard.value();
-
-                    // If trashed is involved, record the album this data belongs to
-                    if is_trashed_involved && let Some(album_id) = abstract_data.album() {
-                        affected_album_ids.insert(album_id);
-                    }
-
-                    // Apply flag changes
-                    if let Some(is_favorite) = json_data.is_favorite {
-                        abstract_data.set_favorite(is_favorite);
-                    }
-                    if let Some(is_archived) = json_data.is_archived {
-                        abstract_data.set_archived(is_archived);
-                    }
-                    if let Some(is_trashed) = json_data.is_trashed {
-                        abstract_data.set_trashed(is_trashed);
-                    }
-
-                    data_to_flush.push(abstract_data);
+                // Apply flag changes
+                if let Some(is_favorite) = json_data.is_favorite {
+                    abstract_data.set_favorite(is_favorite);
                 }
-            }
+                if let Some(is_archived) = json_data.is_archived {
+                    abstract_data.set_archived(is_archived);
+                }
 
-            // Flush data
-            if !data_to_flush.is_empty() {
-                BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(data_to_flush));
+                data_to_flush.push(abstract_data);
             }
+        }
 
-            Ok(affected_album_ids)
-        })
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
+        // Flush data
+        if !data_to_flush.is_empty() {
+            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(data_to_flush));
+        }
+
+        Ok(())
+    })
+    .await
+    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
 
     // Drain pending flush before rebuilding the in-memory tree.
     let _ = BATCH_COORDINATOR
@@ -111,13 +93,6 @@ pub async fn edit_flags(
         .execute_batch_waiting(UpdateTreeTask)
         .await
         .or_raise(|| (ErrorKind::Internal, "Failed to update tree"))?;
-
-    // After memory update, trigger album self-update
-    if !affected_album_ids.is_empty() {
-        for album_id in affected_album_ids {
-            BATCH_COORDINATOR.execute_detached(AlbumSelfUpdateTask::new(album_id));
-        }
-    }
 
     Ok(Json(()))
 }

@@ -57,7 +57,7 @@ impl AlbumCombined {
             .filter_map(
                 |database_timestamp| match &database_timestamp.abstract_data {
                     AbstractData::Image(img) => {
-                        if !img.object.is_trashed && belongs_to_album(&img.metadata.alias) {
+                        if belongs_to_album(&img.metadata.alias) {
                             Some(MediaItemInfo {
                                 hash: img.object.id,
                                 size: img.metadata.size,
@@ -69,7 +69,7 @@ impl AlbumCombined {
                         }
                     }
                     AbstractData::Video(vid) => {
-                        if !vid.object.is_trashed && belongs_to_album(&vid.metadata.alias) {
+                        if belongs_to_album(&vid.metadata.alias) {
                             Some(MediaItemInfo {
                                 hash: vid.object.id,
                                 size: vid.metadata.size,
