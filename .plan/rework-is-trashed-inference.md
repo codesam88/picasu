@@ -43,3 +43,32 @@ stores or returns an `is_trashed` boolean.
 
 Option 1 is the most robust and simplest. Option 3 is a lighter alternative
 if avoiding schema changes is preferred.
+
+## user feedback
+
+actually, the trashed status should be globally obvious based on the root path
+we're browsing, either we're on the trashed page browsing in .trash, or
+elsewhere. Furthermore, as we add more special folders and multi-user support,
+we can probably generalize this to support multiple image roots:
+
+- shared / public
+- user / private
+- trashed
+
+Each of these may trigger different dialogs and options to be available when
+browsing them via the frontend, and we can just pass them as a global 'root'
+property or similar to the frontend.
+
+In particular:
+
+- shared and trashed are single global folders
+- user is a placeholder name with actual backend path selected depending on the
+  logged in username
+- browsing the trashed folder opens the permanent-delete option
+- browsing the shared folder opens the delete(trash) and 'move to private' option
+- browsing the user folder opens the 'elete(trash) and 'move to shared' option
+- by default, each logged in user can only see shared and their respective own folders
+
+- location of these folders relative to IMAGE_ROOT is configured in the backend.
+  the frontend only sees abstracted folder roots and adapts the presented
+  interface accordingly.
