@@ -25,6 +25,8 @@ export const useModalStore = (isolationId: IsolationId) =>
       showBatchEditTagsModal: boolean
       showAssignAlbumModal: boolean
       assignAlbumBatch: boolean
+      assignAlbumRestore: boolean
+      restoreIndexList: number[]
       showUploadModal: boolean
       showUploadOptionsModal: boolean
       showIsolatedHomeModal: boolean
@@ -39,6 +41,8 @@ export const useModalStore = (isolationId: IsolationId) =>
       showBatchEditTagsModal: false,
       showAssignAlbumModal: false,
       assignAlbumBatch: false,
+      assignAlbumRestore: false,
+      restoreIndexList: [] as number[],
       showUploadModal: false,
       showUploadOptionsModal: false,
       showIsolatedHomeModal: false,

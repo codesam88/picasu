@@ -21,15 +21,18 @@
           <ItemDownload :index-list="[props.index]" />
           <ItemFindInTimeline :hash="props.hash" />
           <v-divider></v-divider>
-          <ItemEditTags />
-          <ItemEditAlbums />
+          <!-- Trashed items get no tag/album edits here: restore is the recovery
+               action and moves the item out of .trash/ into an album via the
+               assign-album dialog. -->
+          <ItemEditTags v-if="!isTrashedContext" />
+          <ItemEditAlbums v-if="!isTrashedContext" />
           <ItemDelete v-if="!isTrashedContext" :index-list="[props.index]" />
           <ItemRestore v-if="isTrashedContext" :index-list="[props.index]" />
           <ItemPermanentlyDelete v-if="isTrashedContext" :index-list="[props.index]" />
           <v-divider></v-divider>
-          <ItemScanAlbum />
+          <ItemScanAlbum v-if="!isTrashedContext" />
           <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
-          <ItemRotateImage v-if="database.type === 'image'" />
+          <ItemRotateImage v-if="!isTrashedContext && database.type === 'image'" />
         </v-list>
       </v-menu>
     </template>

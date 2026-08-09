@@ -12,7 +12,7 @@
         <v-list>
           <FindInTimeline :hash="props.hash" />
           <v-divider></v-divider>
-          <EditTags />
+          <EditTags v-if="!isTrashedContext" />
           <Delete v-if="!isTrashedContext" :index-list="[props.index]" />
           <Restore v-if="isTrashedContext" :index-list="[props.index]" />
           <PermanentlyDelete v-if="isTrashedContext" :index-list="[props.index]" />

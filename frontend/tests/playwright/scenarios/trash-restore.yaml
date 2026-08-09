@@ -1,10 +1,10 @@
-name: Restore from trash returns photo to original location
+name: Restore from trash via album dialog returns photo out of trash
 covers:
   api:
-    - PUT /put/restore-from-trash
+    - PUT /put/assign_album
   ui:
-    - Restore menu item removes photo from trash view
-    - Photo reappears on /timeline after restore
+    - Restore menu item opens the album dialog prefilled to original album
+    - Confirming restore removes photo from trash view and reappears on timeline
 
 given:
   - dir_album: restoretest/pool
@@ -69,14 +69,26 @@ steps:
     assert:
       - ui.visible: main/
 
+  # Restore opens the album-selection dialog prefilled to the source album;
+  # confirming the default target moves the photo back out of .trash/.
   - when:
       - click: option/Restore
     assert:
+      - ui.modal: open
+
+  - when:
+      - click: button/Restore
+    assert:
       - ui.toast:
           type: success
-          contains: Successfully restored data
+          contains: Moved to album
 
   - when:
       - navigate: /trashed
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - navigate: /timeline
     assert:
       - ui.visible: main/

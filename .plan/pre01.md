@@ -41,9 +41,11 @@ auto-rename, multi-file preflight validation, and frontend upload-option coverag
 
 ### Next, in order
 
-1. Complete filesystem-based trash + delete lifecycle: two-stage delete, untrash,
-   album cascade, multi-alias handling, config, filter changes, frontend wiring
-   (`delete-from-disk.md`). Spec: `docs/superpowers/specs/2026-08-08-delete-lifecycle-design.md`.
+1. Complete filesystem-based trash + delete lifecycle: two-stage delete,
+   restore-as-assign-album, album cascade, multi-alias handling, config, filter
+   changes, frontend wiring (`delete-from-disk.md`). Spec:
+   `docs/superpowers/specs/2026-08-08-delete-lifecycle-design.md` and
+   `docs/superpowers/specs/2026-08-09-restore-as-assign-album-design.md`.
 2. Handle externally deleted files in the watcher and during manual album indexing
    (`watcher-remove-events.md`). Note: watcher now also ignores `.trash/` prefix
    (covered by delete lifecycle).

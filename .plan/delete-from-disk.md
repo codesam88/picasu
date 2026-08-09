@@ -36,13 +36,21 @@ Spec: `docs/superpowers/specs/2026-08-08-delete-lifecycle-design.md`
 - [ ] Permanent-delete (image/video partial alias): remove targeted alias, delete
       file + sidecar. If last alias: delete thumbnail + DB record.
 
-### Untrash endpoint (`PUT /put/restore-from-trash`)
+### Restore (reuses `PUT /put/assign_album`)
 
-- [ ] New endpoint: `RestoreItem { index, alias_path }`, `RestoreList`.
-- [ ] Restore (album): `fs::rename` from `.trash/` back, `rewrite_paths_under()`,
+Restore is not a dedicated endpoint. It is the same as assign_album: moving a
+trashed item out of `.trash/` into a target album's directory. The trash page
+opens the album-selection dialog prefilled to the item's original album (the
+`album` membership field is preserved through trash); the user confirms to
+restore there or picks another album. Multi-select restores all items to one
+chosen album.
+
+- [ ] Restore (image/video): `assign_album` `fs::rename` from `.trash/` into
+      target album dir, update alias entry, set album membership.
+- [ ] Restore (album): `assign_album` `move_album_into_album`, `rewrite_paths_under()`,
       `rewrite_dir_album_cache_prefix()`.
-- [ ] Restore (image/video): `fs::rename` back, update alias entry.
-- [ ] Conflict handling: `on_conflict` parameter (skip/rename/replace).
+- [ ] Conflict handling: `on_conflict` parameter (skip/rename/replace); restore
+      frontend uses `rename`.
 
 ### Filter system
 
@@ -63,7 +71,9 @@ Spec: `docs/superpowers/specs/2026-08-08-delete-lifecycle-design.md`
 
 - [ ] `ItemDelete.vue`: resolve aliasPath, send `(index, aliasPath)` pairs.
 - [ ] `ItemPermanentlyDelete.vue`: same, plus `refreshGalleryAfterMutation()`.
-- [ ] `ItemRestore.vue`: call `PUT /put/restore-from-trash`.
+- [ ] `ItemRestore.vue`: open the assign-album modal (restore mode) prefilled to
+      the item's original album; submit via `PUT /put/assign_album` with
+      `on_conflict: rename`.
 - [ ] Update page filter strings (7 pages).
 
 ### Tests (API E2E — 12 scenarios)
@@ -76,9 +86,8 @@ Spec: `docs/superpowers/specs/2026-08-08-delete-lifecycle-design.md`
 - [ ] `custom_trash_directory.yaml`
 - [ ] `trash_read_only_mode_blocked.yaml`
 - [ ] `trash_edge_cases.yaml`
-- [ ] `untrash_image_and_album.yaml`
-- [ ] `untrash_conflict_handling.yaml`
-- [ ] `untrash_not_in_trash_rejected.yaml`
+- [ ] `restore_via_assign_to_original_album.yaml`
+- [ ] `restore_via_assign_conflict_rename.yaml`
 - [ ] `watcher_ignores_trash_events.yaml`
 
 ### Tests (Playwright UI — 6 scenarios)

@@ -17,17 +17,17 @@
           <v-divider v-if="shouldShowSetAsCover"></v-divider>
 
           <!-- Album Info: grayed out unless the single selected item is itself an album -->
-          <ItemAlbumInfo />
+          <ItemAlbumInfo v-if="!isInTrashedPath" />
 
-          <v-divider></v-divider>
+          <v-divider v-if="!isInTrashedPath"></v-divider>
 
-          <!-- Archive and Favorite Actions -->
-          <ItemArchive :index-list="editModeList" />
-          <ItemFavorite :index-list="editModeList" />
-          <ItemBatchEditTags />
-          <ItemBatchEditAlbums />
+          <!-- Archive and Favorite Actions (not offered in trash context) -->
+          <ItemArchive v-if="!isInTrashedPath" :index-list="editModeList" />
+          <ItemFavorite v-if="!isInTrashedPath" :index-list="editModeList" />
+          <ItemBatchEditTags v-if="!isInTrashedPath" />
+          <ItemBatchEditAlbums v-if="!isInTrashedPath" />
 
-          <v-divider></v-divider>
+          <v-divider v-if="!isInTrashedPath"></v-divider>
 
           <!-- Download Action -->
           <ItemDownload :index-list="editModeList" />
@@ -39,7 +39,7 @@
           <ItemRestore :index-list="editModeList" v-if="isInTrashedPath" />
           <ItemPermanentlyDelete :index-list="editModeList" v-if="isInTrashedPath" />
 
-          <v-divider></v-divider>
+          <v-divider v-if="isInTrashedPath"></v-divider>
 
           <!-- Scan Action (only when fs_notify_watcher is disabled) -->
           <ItemScanAlbum v-if="!(configStore.config?.fsNotifyWatcher ?? false)" />

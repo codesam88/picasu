@@ -2,8 +2,8 @@
   <v-dialog v-model="modalStore.showAssignAlbumModal" persistent max-width="480" scrollable>
     <v-card>
       <v-card-title class="d-flex align-center gap-2 pt-4 pb-2 px-4">
-        <v-icon>mdi-folder-move</v-icon>
-        Move to Album
+        <v-icon>{{ isRestore ? 'mdi-restore' : 'mdi-folder-move' }}</v-icon>
+        {{ isRestore ? 'Restore to Album' : 'Move to Album' }}
       </v-card-title>
 
       <v-divider />
@@ -41,7 +41,7 @@
               <v-list-item-title>
                 {{ node.title }}
                 <v-chip
-                  v-if="node.id === currentAlbumId"
+                  v-if="!isRestore && node.id === currentAlbumId"
                   size="x-small"
                   color="secondary"
                   class="ml-2"
@@ -108,10 +108,10 @@
         <v-btn
           variant="tonal"
           color="primary"
-          :disabled="!selectedAlbumId || selectedAlbumId === currentAlbumId"
+          :disabled="!selectedAlbumId || (!isRestore && selectedAlbumId === currentAlbumId)"
           :loading="submitting"
           @click="handleSubmit"
-          >Move</v-btn
+          >{{ isRestore ? 'Restore' : 'Move' }}</v-btn
         >
       </v-card-actions>
     </v-card>
@@ -147,6 +147,8 @@ const newAlbumName = ref('')
 const submitting = ref(false)
 const creating = ref(false)
 
+const isRestore = computed(() => modalStore.assignAlbumRestore)
+
 // The album the item(s) currently belong to (for single-item mode, from route context)
 const currentAlbumId = computed<string | null>(() => {
   if (modalStore.assignAlbumBatch) return null
@@ -156,6 +158,28 @@ const currentAlbumId = computed<string | null>(() => {
   if (data.type !== 'image' && data.type !== 'video') return null
   return data.album
 })
+
+// In restore mode, the default target is the album the item was trashed from:
+// the original album recorded on the first selected image/video (chosen from
+// `restoreIndexList`, or the edit-mode selection when restoring from the grid).
+const restoreDefaultAlbumId = computed<string | null>(() => {
+  const indices =
+    modalStore.restoreIndexList.length > 0
+      ? modalStore.restoreIndexList
+      : [...collectionStore.editModeCollection]
+  for (const idx of indices) {
+    const item = dataStore.data.get(idx)
+    if (item === undefined) continue
+    if (item.type === 'image' || item.type === 'video') {
+      if (item.album != null) return item.album
+    }
+  }
+  return currentAlbumId.value
+})
+
+const defaultAlbumId = computed<string | null>(() =>
+  isRestore.value ? restoreDefaultAlbumId.value : currentAlbumId.value
+)
 
 // ── Tree building ──────────────────────────────────────────────────────────────
 
@@ -258,14 +282,16 @@ onMounted(() => {
   if (!albumStore.fetched) {
     void albumStore.fetchAlbums()
   }
-  // Pre-select the item's current album
-  selectedAlbumId.value = currentAlbumId.value
+  // Pre-select the item's current album (normal mode) or the album it was
+  // trashed from (restore mode)
+  selectedAlbumId.value = defaultAlbumId.value
 })
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 function cancel() {
   modalStore.showAssignAlbumModal = false
+  modalStore.restoreIndexList = []
 }
 
 // True if `albumId` is nested (at any depth) under one of the other
@@ -307,7 +333,16 @@ function hasNestedAlbumSelection(indices: number[]): boolean {
 async function handleSubmit() {
   if (selectedAlbumId.value === null) return
 
-  const indices = [...collectionStore.editModeCollection]
+  const indices = isRestore.value
+    ? modalStore.restoreIndexList.length > 0
+      ? modalStore.restoreIndexList
+      : [...collectionStore.editModeCollection]
+    : modalStore.assignAlbumBatch
+      ? [...collectionStore.editModeCollection]
+      : [getHashIndexDataFromRoute(route)?.index].filter((i): i is number => i !== undefined)
+
+  if (indices.length === 0) return
+
   if (modalStore.assignAlbumBatch && hasNestedAlbumSelection(indices)) {
     messageStore.error(
       'Cannot move an album together with one of its own sub-albums. Deselect one and try again.'
@@ -316,28 +351,29 @@ async function handleSubmit() {
   }
 
   submitting.value = true
+  const onConflict = isRestore.value ? 'rename' : 'skip'
   try {
-    if (modalStore.assignAlbumBatch) {
-      // Batch: move all selected items (images/videos move as a single
-      // file; albums move as a whole directory — assignAlbum/assign_album
-      // dispatch on the item's actual type either way).
-      for (const idx of indices) {
-        const item = dataStore.data.get(idx)
-        if (!item) continue
-        await assignAlbum(item.id, selectedAlbumId.value, idx, isolationId)
-      }
-      collectionStore.leaveEdit()
-    } else {
-      // Single item from route context
+    if (indices.length === 1 && !modalStore.assignAlbumBatch && !isRestore.value) {
+      // Single normal move from route context
       const parsed = getHashIndexDataFromRoute(route)
       if (!parsed) return
       const { hash, index } = parsed
-      await assignAlbum(hash, selectedAlbumId.value, index, isolationId)
+      await assignAlbum(hash, selectedAlbumId.value, index, isolationId, onConflict)
+    } else {
+      // Batch (or restore): iterate the index list; assignAlbum dispatches on
+      // each item's actual type (image/video file or album directory).
+      for (const idx of indices) {
+        const item = dataStore.data.get(idx)
+        if (!item) continue
+        await assignAlbum(item.id, selectedAlbumId.value, idx, isolationId, onConflict)
+      }
+      collectionStore.leaveEdit()
     }
     await refreshGalleryAfterMutation(isolationId, route)
   } finally {
     submitting.value = false
     modalStore.showAssignAlbumModal = false
+    modalStore.restoreIndexList = []
   }
 }
 
