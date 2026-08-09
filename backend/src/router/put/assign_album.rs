@@ -402,3 +402,138 @@ fn find_unique_path(base: &Path) -> PathBuf {
     }
     unreachable!("filesystem has finite capacity")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::abstract_data::AbstractData;
+    use crate::model::album::{AlbumCombined, AlbumMetadata};
+    use crate::model::image::{ImageCombined, ImageMetadata};
+    use crate::model::object::{ObjectSchema, ObjectType};
+    use crate::model::video::{VideoCombined, VideoMetadata};
+    use std::path::Path;
+
+    fn image_at(file: &str) -> AbstractData {
+        let id = ArrayString::from("img").expect("failed to create ArrayString");
+        let mut metadata = ImageMetadata::new(id, 0, 0, 0, "jpg".to_string());
+        metadata.alias.push(FileModify {
+            file: file.to_string(),
+            modified: 0,
+            scan_time: 0,
+        });
+        AbstractData::Image(ImageCombined {
+            object: ObjectSchema::new(id, ObjectType::Image),
+            metadata,
+        })
+    }
+
+    fn video_at(file: &str) -> AbstractData {
+        let id = ArrayString::from("vid").expect("failed to create ArrayString");
+        let mut metadata = VideoMetadata::new(id, 0, 0, 0, "mp4".to_string());
+        metadata.alias.push(FileModify {
+            file: file.to_string(),
+            modified: 0,
+            scan_time: 0,
+        });
+        AbstractData::Video(VideoCombined {
+            object: ObjectSchema::new(id, ObjectType::Video),
+            metadata,
+        })
+    }
+
+    fn album_at(dir_path: &str) -> AbstractData {
+        let id = ArrayString::from("album").expect("failed to create ArrayString");
+        let metadata = AlbumMetadata {
+            dir_path: dir_path.to_string(),
+            ..Default::default()
+        };
+        AbstractData::Album(AlbumCombined {
+            object: ObjectSchema::new(id, ObjectType::Album),
+            metadata,
+        })
+    }
+
+    #[test]
+    fn rewrite_paths_under_rewrites_album_dir_path() {
+        let mut data = album_at("/.trash/summer/vacation");
+        let changed =
+            rewrite_paths_under(&mut data, Path::new("/.trash/summer"), Path::new("/photos"));
+        assert!(changed);
+        assert!(matches!(
+            data,
+            AbstractData::Album(a) if a.metadata.dir_path == "/photos/vacation"
+        ));
+    }
+
+    #[test]
+    fn rewrite_paths_under_rewrites_nested_album_dir_path() {
+        let mut data = album_at("/.trash/summer/2024/beach");
+        let changed =
+            rewrite_paths_under(&mut data, Path::new("/.trash/summer"), Path::new("/photos"));
+        assert!(changed);
+        assert!(matches!(
+            data,
+            AbstractData::Album(a) if a.metadata.dir_path == "/photos/2024/beach"
+        ));
+    }
+
+    #[test]
+    fn rewrite_paths_under_rewrites_image_and_video_aliases() {
+        let mut img = image_at("/.trash/summer/vacation/photo.jpg");
+        let mut vid = video_at("/.trash/summer/vacation/clip.mp4");
+        let changed_img = rewrite_paths_under(&mut img, Path::new("/.trash"), Path::new("/"));
+        let changed_vid = rewrite_paths_under(&mut vid, Path::new("/.trash"), Path::new("/"));
+        assert!(changed_img);
+        assert!(changed_vid);
+        assert!(matches!(
+            img,
+            AbstractData::Image(i)
+                if i.metadata.alias[0].file == "/summer/vacation/photo.jpg"
+        ));
+        assert!(matches!(
+            vid,
+            AbstractData::Video(v)
+                if v.metadata.alias[0].file == "/summer/vacation/clip.mp4"
+        ));
+    }
+
+    #[test]
+    fn rewrite_paths_under_leaves_paths_outside_source_untouched() {
+        let mut img = image_at("/other/photos/photo.jpg");
+        let changed = rewrite_paths_under(&mut img, Path::new("/.trash"), Path::new("/"));
+        assert!(!changed);
+        assert!(matches!(
+            img,
+            AbstractData::Image(i)
+                if i.metadata.alias[0].file == "/other/photos/photo.jpg"
+        ));
+    }
+
+    #[test]
+    fn find_unique_path_renames_incrementally() {
+        let mut base = std::env::temp_dir().join("picasu_uniq_test_nonexistent");
+        base.set_extension("jpg");
+        let stem = base.as_path();
+        let unique = find_unique_path(Path::new(stem));
+        let name = unique
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap()
+            .to_string();
+        assert!(
+            name.starts_with("picasu_uniq_test_nonexistent-"),
+            "expected -NNN suffix, got {name}"
+        );
+        assert!(name.ends_with(".jpg"));
+    }
+
+    #[test]
+    fn find_unique_path_skips_existing_files() {
+        let dir = std::env::temp_dir();
+        let base = dir.join("picasu_uniq_existing_photo.jpg");
+        let _ = fs::write(&base, b"x");
+        let second = find_unique_path(&base);
+        assert_ne!(second, base, "must not reuse the existing filename");
+        let _ = fs::remove_file(&base);
+    }
+}
