@@ -8,22 +8,6 @@ export const AliasSchema = z.object({
   scanTime: z.number()
 })
 
-// TODO: isTrashed is inferred from alias paths because the backend no longer
-// sends an is_trashed field. This is a stopgap — the trash directory name is
-// hardcoded as a path substring, which breaks if the user configures a
-// non-default trash_directory. Rework: either restore is_trashed as a
-// denormalized field on the backend, or pass the trash_directory config to
-// the frontend so the check can use the actual configured path.
-// See .plan/rework-is-trashed-inference.md
-function isAliasInTrash(filePath: string): boolean {
-  return filePath.includes('/.trash/') || filePath.includes('\\.trash\\')
-}
-
-function computeIsTrashedFromAliases(aliases: { file: string }[]): boolean {
-  if (aliases.length === 0) return false
-  return aliases.every((a) => isAliasInTrash(a.file))
-}
-
 export const displayElementSchema = z.object({
   displayWidth: z.number(),
   displayHeight: z.number(),
@@ -55,7 +39,6 @@ const BaseObjectRaw = z.object({
   exifVec: z.record(z.string(), z.string()).default({}),
   isFavorite: z.boolean().default(false),
   isArchived: z.boolean().default(false),
-  isTrashed: z.boolean().default(false),
   rating: z.number().int().min(0).max(5).nullable().optional().default(null),
   updateAt: z.number().default(0)
 })
@@ -87,7 +70,6 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
   description: data.description,
   isFavorite: data.isFavorite,
   isArchived: data.isArchived,
-  isTrashed: computeIsTrashedFromAliases(data.alias),
   rating: data.rating,
   updateAt: data.updateAt
 }))
@@ -119,7 +101,6 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
   description: data.description,
   isFavorite: data.isFavorite,
   isArchived: data.isArchived,
-  isTrashed: computeIsTrashedFromAliases(data.alias),
   rating: data.rating,
   updateAt: data.updateAt
 }))
@@ -151,7 +132,6 @@ const AlbumSchemaRaw = BaseObjectRaw.extend({
   description: data.description,
   isFavorite: data.isFavorite,
   isArchived: data.isArchived,
-  isTrashed: false,
   rating: data.rating,
   updateAt: data.updateAt,
   shareList: data.shareList

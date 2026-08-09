@@ -23,9 +23,9 @@
           <v-divider></v-divider>
           <ItemEditTags />
           <ItemEditAlbums />
-          <ItemDelete v-if="!database.isTrashed" :index-list="[props.index]" />
-          <ItemRestore v-if="database.isTrashed" :index-list="[props.index]" />
-          <ItemPermanentlyDelete v-if="database.isTrashed" :index-list="[props.index]" />
+          <ItemDelete v-if="!isTrashedContext" :index-list="[props.index]" />
+          <ItemRestore v-if="isTrashedContext" :index-list="[props.index]" />
+          <ItemPermanentlyDelete v-if="isTrashedContext" :index-list="[props.index]" />
           <v-divider></v-divider>
           <ItemScanAlbum />
           <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
@@ -36,7 +36,7 @@
   </v-tooltip>
 </template>
 <script setup lang="ts">
-import { mergeProps } from 'vue'
+import { computed, mergeProps } from 'vue'
 import { GalleryImage, GalleryVideo, IsolationId } from '@type/types'
 import { getSrc } from '@utils/getter'
 import ItemViewOriginalFile from '@Menu/MenuItem/ItemViewOriginalFile.vue'
@@ -51,6 +51,9 @@ import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
 import ItemRegenerateThumbnailByFrame from '@Menu/MenuItem/ItemRegenerateThumbnailByFrame.vue'
 import ItemRotateImage from '@Menu/MenuItem/ItemRotateImage.vue'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
+import { useRoute } from 'vue-router'
+const route = useRoute()
+const isTrashedContext = computed(() => route.meta.baseName === 'trashed')
 const props = defineProps<{
   isolationId: IsolationId
   hash: string

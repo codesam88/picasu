@@ -10,11 +10,10 @@ export interface EditFlagsPayload {
   timestamp: number
   isFavorite?: boolean
   isArchived?: boolean
-  isTrashed?: boolean
 }
 
 /**
- * Update boolean flags (isFavorite, isArchived, isTrashed) on one or more items.
+ * Update boolean flags (isFavorite, isArchived) on one or more items.
  *
  * This is the dedicated API for flag mutations, separate from `editTags` which
  * handles string tags. The edit-tags modals (EditTagsModal / EditBatchTagsModal)
@@ -23,7 +22,7 @@ export interface EditFlagsPayload {
  */
 export async function editFlags(
   indexArray: number[],
-  flags: { isFavorite?: boolean; isArchived?: boolean; isTrashed?: boolean },
+  flags: { isFavorite?: boolean; isArchived?: boolean },
   isolationId: IsolationId
 ) {
   const prefetchStore = usePrefetchStore(isolationId)
@@ -46,9 +45,6 @@ export async function editFlags(
       if (flags.isArchived !== undefined) {
         data.isArchived = flags.isArchived
       }
-      if (flags.isTrashed !== undefined) {
-        data.isTrashed = flags.isTrashed
-      }
     }
   }
 
@@ -70,8 +66,4 @@ export async function setFavorite(indexArray: number[], value: boolean, isolatio
 
 export async function setArchived(indexArray: number[], value: boolean, isolationId: IsolationId) {
   await editFlags(indexArray, { isArchived: value }, isolationId)
-}
-
-export async function setTrashed(indexArray: number[], value: boolean, isolationId: IsolationId) {
-  await editFlags(indexArray, { isTrashed: value }, isolationId)
 }

@@ -13,9 +13,9 @@
           <FindInTimeline :hash="props.hash" />
           <v-divider></v-divider>
           <EditTags />
-          <Delete v-if="!album.isTrashed" :index-list="[props.index]" />
-          <Restore v-if="album.isTrashed" :index-list="[props.index]" />
-          <PermanentlyDelete v-if="album.isTrashed" :index-list="[props.index]" />
+          <Delete v-if="!isTrashedContext" :index-list="[props.index]" />
+          <Restore v-if="isTrashedContext" :index-list="[props.index]" />
+          <PermanentlyDelete v-if="isTrashedContext" :index-list="[props.index]" />
         </v-list>
       </v-menu>
     </template>
@@ -23,13 +23,17 @@
 </template>
 
 <script setup lang="ts">
-import { mergeProps } from 'vue'
+import { computed, mergeProps } from 'vue'
 import { GalleryAlbum, IsolationId } from '@type/types'
 import FindInTimeline from '@Menu/MenuItem/ItemFindInTimeline.vue'
 import EditTags from '@Menu/MenuItem/ItemEditTags.vue'
 import Delete from '@Menu/MenuItem/ItemDelete.vue'
 import PermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
 import Restore from '@Menu/MenuItem/ItemRestore.vue'
+import { useRoute } from 'vue-router'
+
+const route = useRoute()
+const isTrashedContext = computed(() => route.meta.baseName === 'trashed')
 
 const props = defineProps<{
   isolationId: IsolationId
