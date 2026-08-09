@@ -1,5 +1,5 @@
 ---
-status: idea
+status: done
 type: feature
 priority: medium
 area: frontend
@@ -72,3 +72,11 @@ In particular:
 - location of these folders relative to IMAGE_ROOT is configured in the backend.
   the frontend only sees abstracted folder roots and adapts the presented
   interface accordingly.
+
+## Resolution
+
+Removed `isTrashed` from the frontend data model entirely. Menu actions
+(Delete, Restore, Permanently Delete) now use `route.meta.baseName === 'trashed'`
+to determine which items to show — matching the pattern `BatchMenu` already used.
+No per-item trash inference needed. The `setTrashed` convenience function and
+`isTrashed` field were removed from `editFlags.ts` and `schemas.ts`.
