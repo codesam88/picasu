@@ -96,16 +96,3 @@ pub fn get_data_path() -> &'static PathBuf {
     DATA_PATH
         .get_or_init(|| resolve_root("PICASU_DATA_HOME", "data", |p| p.data_dir().to_path_buf()))
 }
-
-use crate::model::config::APP_CONFIG;
-
-/// Get the image path from the current config.
-pub fn get_resolved_image_home() -> Option<std::path::PathBuf> {
-    APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("RwLock poisoned")
-        .image_home
-        .clone()
-}

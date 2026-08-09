@@ -2,12 +2,12 @@ use crate::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::config::APP_CONFIG;
 use crate::process::dir_album::get_dir_path_for_album;
+use crate::process::namespace::namespace_root;
 use crate::process::sanitize::{FilenameSanitize, sanitize_filename};
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardUpload;
 use crate::router::put::assign_album::OnConflict;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::files::get_resolved_image_home;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use rocket::form::{Errors, Form};
@@ -117,10 +117,10 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
             .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Target album not found"));
     }
 
-    let image_root = get_resolved_image_home().ok_or_else(|| {
+    let image_root = namespace_root("shared").ok_or_else(|| {
         AppError::new(
             ErrorKind::InvalidInput,
-            "No imagePath configured -- set one in Settings before uploading without a target album",
+            "No shared namespace configured -- add a [[namespace]] entry with name=\"shared\" in config.toml",
         )
     })?;
 
@@ -244,8 +244,8 @@ pub async fn upload(
         else {
             continue; // on_conflict=skip and destination existed
         };
-        let image_root = get_resolved_image_home()
-            .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "No imagePath configured"))?;
+        let image_root = namespace_root("shared")
+            .ok_or_else(|| AppError::new(ErrorKind::Internal, "Shared namespace not configured"))?;
         let relative_src = Path::new(&final_path)
             .strip_prefix(&image_root)
             .map_err(|_| {

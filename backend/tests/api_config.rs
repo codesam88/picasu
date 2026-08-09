@@ -41,18 +41,12 @@ fn api_config_precedence() {
     std::fs::create_dir_all(&dat_dir).unwrap();
 
     // ── Write config.toml ─────────────────────────────────────────────
-    // For each field type:
-    //   server.*  ← address, port, max_upload_size
-    //   gallery.* ← data_home, image_home, upload_folder, read_only_mode, disable_img
-    //   secrets.* ← password, auth_key
-    //
-    // Env overrides are set for port and upload_folder (verify env wins),
-    // while max_upload_size and read_only_mode are left to the config file
-    // (verify config wins over default).
-    // address and disable_img are left out entirely (verify default).
+    let shared_dir = dir.path().join("shared");
+    std::fs::create_dir_all(&shared_dir).unwrap();
     std::fs::write(
         cfg_dir.join("config.toml"),
-        r#"
+        format!(
+            r#"
 [server]
 port = 9999
 max_upload_size = "200MiB"
@@ -60,11 +54,18 @@ max_upload_size = "200MiB"
 [gallery]
 read_only_mode = true
 upload_folder = "my_uploads"
+trash_enabled = false
+
+[[gallery.namespaces]]
+name = "shared"
+path = "{}"
 
 [secrets]
 password = "secret123"
 auth_key = "jwt-key-from-toml"
 "#,
+            shared_dir.display()
+        ),
     )
     .unwrap();
 
@@ -72,10 +73,6 @@ auth_key = "jwt-key-from-toml"
     unsafe {
         std::env::set_var("PICASU_CONFIG_HOME", cfg_dir.to_str().unwrap());
         std::env::set_var("PICASU_DATA_HOME", dat_dir.to_str().unwrap());
-        std::env::set_var(
-            "PICASU_IMAGE_HOME",
-            dat_dir.join("images").to_str().unwrap(),
-        );
 
         // Override config file values
         std::env::set_var("PICASU_PORT", "7777");
@@ -127,16 +124,11 @@ auth_key = "jwt-key-from-toml"
             "password from secrets block"
         );
 
-        // ── DATA_HOME / IMAGE_HOME from env ───────
+        // ── DATA_HOME from env ────────────────────
         assert_eq!(
             cfg.data_home.as_deref(),
             Some(dat_dir.as_path()),
             "PICASU_DATA_HOME"
-        );
-        assert_eq!(
-            cfg.image_home.as_deref(),
-            Some(dat_dir.join("images").as_path()),
-            "PICASU_IMAGE_HOME"
         );
     }
 
@@ -152,13 +144,16 @@ auth_key = "jwt-key-from-toml"
         assert_eq!(json["uploadFolder"].as_str(), Some("env_folder"));
         assert_eq!(json["maxUploadSize"].as_str(), Some("300MiB"));
         assert_eq!(json["disableImg"].as_bool(), Some(true));
+        assert!(
+            json["namespaces"].is_array(),
+            "namespaces should be present"
+        );
     }
 
     // ── Cleanup ───────────────────────────────────────────────────────
     unsafe {
         std::env::remove_var("PICASU_CONFIG_HOME");
         std::env::remove_var("PICASU_DATA_HOME");
-        std::env::remove_var("PICASU_IMAGE_HOME");
         std::env::remove_var("PICASU_PORT");
         std::env::remove_var("PICASU_ADDRESS");
         std::env::remove_var("PICASU_READ_ONLY_MODE");

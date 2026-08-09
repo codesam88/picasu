@@ -7,9 +7,9 @@
       <v-list-item
         title="Scan Image Path"
         :subtitle="
-          imagePath
-            ? `Index existing files under ${imagePath} the watcher hasn't seen yet`
-            : 'Set an Image Path above first'
+          sharedNamespacePath
+            ? `Index existing files under ${sharedNamespacePath} the watcher hasn't seen yet`
+            : 'Configure a shared namespace first'
         "
         prepend-icon="mdi-folder-refresh-outline"
         lines="two"
@@ -20,7 +20,7 @@
             variant="flat"
             prepend-icon="mdi-magnify-scan"
             class="text-none font-weight-medium"
-            :disabled="!imagePath || isRunning"
+            :disabled="!sharedNamespacePath || isRunning"
             :loading="scanLoading"
             @click="startScan"
           >
@@ -93,7 +93,10 @@ const cancelLoading = ref(false)
 const status = ref<AlbumIndexStatus>(emptyStatus())
 let pollTimer: ReturnType<typeof setInterval> | undefined
 
-const imagePath = computed(() => configStore.config?.imagePath ?? null)
+const sharedNamespacePath = computed(() => {
+  const shared = configStore.config?.namespaces.find((ns) => ns.name === 'shared')
+  return shared?.path ?? null
+})
 const isRunning = computed(() => status.value.state === 'running')
 
 const counters = computed(() => [
@@ -163,8 +166,8 @@ const refreshStatus = async () => {
 }
 
 const startScan = async () => {
-  if (imagePath.value === null) {
-    messageStore.error('Set an Image Path before scanning')
+  if (sharedNamespacePath.value === null) {
+    messageStore.error('Configure a shared namespace before scanning')
     return
   }
 

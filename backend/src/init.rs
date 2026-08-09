@@ -92,7 +92,7 @@ pub fn check_ffmpeg_and_ffprobe() {
 use crate::model::config::APP_CONFIG;
 
 pub fn initialize_folder() {
-    let (data_home, image_home, upload_folder) = {
+    let (data_home, upload_folder, namespaces) = {
         let config = APP_CONFIG
             .get()
             .expect("APP_CONFIG not initialized")
@@ -102,9 +102,9 @@ pub fn initialize_folder() {
             .data_home
             .clone()
             .unwrap_or_else(|| get_data_path().clone());
-        let image_home = config.image_home.clone();
         let upload_folder = config.upload_folder.clone();
-        (data_home, image_home, upload_folder)
+        let namespaces = config.namespaces.clone();
+        (data_home, upload_folder, namespaces)
     };
 
     info!("Storage root initialized at: {}", data_home.display());
@@ -112,12 +112,22 @@ pub fn initialize_folder() {
     std::fs::create_dir_all(data_home.join("object/compressed"))
         .expect("failed to create object/compressed directory");
 
-    // Pre-create image root and uploads directory from config
-    if let Some(ref root) = image_home {
-        info!("Creating image root: {}", root.display());
-        std::fs::create_dir_all(root).expect("failed to create image root directory");
-        std::fs::create_dir_all(root.join(&upload_folder))
-            .expect("failed to create upload folder directory");
+    // Pre-create namespace root directories and their upload folders
+    for ns in &namespaces {
+        info!(
+            "Creating namespace root \"{}\": {}",
+            ns.name,
+            ns.path.display()
+        );
+        std::fs::create_dir_all(&ns.path).unwrap_or_else(|e| {
+            panic!("failed to create namespace root {}: {e}", ns.path.display())
+        });
+        std::fs::create_dir_all(ns.path.join(&upload_folder)).unwrap_or_else(|e| {
+            panic!(
+                "failed to create upload folder in namespace {}: {e}",
+                ns.name
+            )
+        });
     }
 }
 

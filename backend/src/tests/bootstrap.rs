@@ -6,12 +6,12 @@ use tempfile::TempDir;
 
 use crate::model::config::{APP_CONFIG, AppConfig, NamespaceConfig};
 use crate::process::dir_album;
+use crate::process::namespace::namespace_root;
 use crate::router::builder::build_rocket_with_config;
 use crate::storage::cache::TREE_SNAPSHOT;
 use crate::storage::db::DATA_TABLE;
 use crate::storage::db::TREE;
 use crate::storage::files::DATA_PATH;
-use crate::storage::files::get_resolved_image_home;
 use rocket::local::blocking::Client;
 
 /// Holds the tempdir alive for the entire test binary run.
@@ -30,7 +30,6 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
     let mut test_config = AppConfig::default();
     let image_home = data_path.join("images");
     std::fs::create_dir_all(&image_home).unwrap();
-    test_config.image_home = Some(image_home.clone());
     test_config.namespaces = vec![NamespaceConfig {
         name: "shared".to_string(),
         path: image_home,
@@ -52,7 +51,7 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
 /// Derived from the test config that TEST_ENV sets up.
 pub fn test_image_home() -> PathBuf {
     let _ = &*TEST_ENV;
-    get_resolved_image_home().expect("IMAGE_HOME must be configured in test config")
+    namespace_root("shared").expect("shared namespace must be configured in test config")
 }
 
 /// Serialize the fields from `updates` into the config and write a
@@ -78,9 +77,6 @@ pub fn write_config(updates: &serde_json::Value) {
         }
         if let Some(val) = obj.get("trash_enabled").and_then(|v| v.as_bool()) {
             config.trash_enabled = val;
-        }
-        if let Some(val) = obj.get("trash_directory").and_then(|v| v.as_str()) {
-            config.trash_directory = val.to_string();
         }
     }
     // Write a copy to disk for documentation/debugging.
@@ -154,7 +150,6 @@ pub fn reset_backend_state() {
     config.normalize_upload_filenames = true;
     config.validate_upload_content = true;
     config.trash_enabled = true;
-    config.trash_directory = ".trash".to_string();
     config.password = None;
     config.namespaces = vec![NamespaceConfig {
         name: "shared".to_string(),

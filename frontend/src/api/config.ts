@@ -1,5 +1,10 @@
 import axios from 'axios'
 
+export interface NamespaceConfig {
+  name: string
+  path: string
+}
+
 export interface AppConfig {
   // Rocket settings
   address: string
@@ -14,9 +19,9 @@ export interface AppConfig {
   authKey: string | null
   hasAuthKey: boolean
   hasPassword: boolean
-  imagePath: string | null
   uploadFolder: string
   maxUploadSize: string
+  namespaces: NamespaceConfig[]
 }
 
 export const getConfig = async (): Promise<AppConfig> => {

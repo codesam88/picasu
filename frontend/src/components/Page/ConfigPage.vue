@@ -10,7 +10,7 @@
         <div class="config-block">
           <v-row class="ma-0">
             <StorageAndSync
-              :image-path="localSettings.imagePath"
+              :namespaces="localSettings.namespaces"
               v-model:upload-folder="localSettings.uploadFolder"
               v-model:max-upload-size="localSettings.maxUploadSize"
               v-model:fs-notify-watcher="localSettings.fsNotifyWatcher"
@@ -57,10 +57,10 @@ const localSettings = reactive<AppConfig>({
   hasPassword: false,
   hasAuthKey: false,
   authKey: '',
-  imagePath: null,
   uploadFolder: 'uploads',
   maxUploadSize: '100MiB',
   address: '',
+  namespaces: [],
 
   port: 0,
   limits: {}

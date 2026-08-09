@@ -51,12 +51,11 @@ common transaction, with associated journal.
 
 - Basic functions:
 
-  - Single image indexing via `index_image(src, dst)`
-    - src path relative to `IMAGE_HOME`
-    - dst path is optionally assigned target folder (album) relative to `IMAGE_HOME`
+  - Single image indexing via `index_image(namespace, src)`
+    - src path relative to namespace root
 
-  - Folder indexing via `index_path(src)`
-    - src path must be relative to `IMAGE_HOME`
+  - Folder indexing via `index_album(namespace, src)`
+    - src path must be relative to namespace root
     - loop recursively over src path and execute `index_image(src)` on every image file
 
 - On re-indexing, images with existing/known hash become aliases of the same
@@ -85,12 +84,14 @@ common transaction, with associated journal.
 ### Moving / Deleting
 
 - User may reassign image or selection of images to another album
-  - also moves the underlying original file to the respective dir under `IMAGE_PATH`
+  - also moves the underlying original file to the respective namespace directory
   - option to auto-rename files if target already exists but has different hash (else skip)
   - option to auto-replace files if target already exists and has same hash (else skip)
 
 - User may delete files via API
-  - we know the image and hash, can remove associated context if its the last alias
+  - When trash is enabled, files are moved to the trash namespace (namespace flip from "shared" to "trash")
+  - When trash is disabled or item is already in trash, files are permanently deleted
+  - We know the image and hash, can remove associated context if its the last alias
 
 - Directory indexing or watcher do not move files
 

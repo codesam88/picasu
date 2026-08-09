@@ -738,9 +738,6 @@ fn interpret_scenario(scenario: &Value) {
                     if let Some(enabled) = config.get("trash_enabled").and_then(|v| v.as_bool()) {
                         write_config(&serde_json::json!({"trash_enabled": enabled}));
                     }
-                    if let Some(dir) = config.get("trash_directory").and_then(|v| v.as_str()) {
-                        write_config(&serde_json::json!({"trash_directory": dir}));
-                    }
                 }
             }
 
@@ -853,8 +850,7 @@ fn interpret_scenario(scenario: &Value) {
         write_config(&serde_json::json!({
             "read_only_mode": false,
             "fs_notify_watcher": true,
-            "trash_enabled": true,
-            "trash_directory": ".trash"
+            "trash_enabled": true
         }));
     }
 }

@@ -31,10 +31,6 @@ fn default_max_upload_size() -> String {
     "100MiB".to_string()
 }
 
-fn default_trash_directory() -> String {
-    ".trash".to_string()
-}
-
 // ── Namespace config ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -58,9 +54,6 @@ pub struct AppConfig {
     #[schema(value_type = Option<String>)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_home: Option<PathBuf>,
-    #[schema(value_type = Option<String>)]
-    #[serde(rename = "imagePath", alias = "imageHome")]
-    pub image_home: Option<PathBuf>,
     #[serde(default = "default_upload_folder")]
     pub upload_folder: String,
     #[serde(default = "default_max_upload_size")]
@@ -102,8 +95,6 @@ pub struct AppConfig {
     pub use_client_timestamp_info: bool,
     #[serde(default = "default_true")]
     pub trash_enabled: bool,
-    #[serde(default = "default_trash_directory")]
-    pub trash_directory: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -122,7 +113,6 @@ impl Default for AppConfig {
             address: "0.0.0.0".to_string(),
             port: 5673,
             data_home: None,
-            image_home: None,
             upload_folder: default_upload_folder(),
             max_upload_size: default_max_upload_size(),
             read_only_mode: false,
@@ -132,7 +122,6 @@ impl Default for AppConfig {
             validate_upload_content: true,
             use_client_timestamp_info: false,
             trash_enabled: true,
-            trash_directory: default_trash_directory(),
             password: None,
             auth_key: None,
             web_root: None,
@@ -187,7 +176,6 @@ fn default_port() -> u16 {
 pub(crate) struct TomlGallery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) data_home: Option<PathBuf>,
-    pub(crate) image_home: Option<PathBuf>,
     #[serde(default = "default_upload_folder")]
     pub(crate) upload_folder: String,
     #[serde(default)]
@@ -204,8 +192,6 @@ pub(crate) struct TomlGallery {
     pub(crate) use_client_timestamp_info: bool,
     #[serde(default = "default_true")]
     pub(crate) trash_enabled: bool,
-    #[serde(default = "default_trash_directory")]
-    pub(crate) trash_directory: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) web_root: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -216,7 +202,6 @@ impl Default for TomlGallery {
     fn default() -> Self {
         Self {
             data_home: None,
-            image_home: None,
             upload_folder: default_upload_folder(),
             read_only_mode: false,
             disable_img: false,
@@ -225,7 +210,6 @@ impl Default for TomlGallery {
             validate_upload_content: true,
             use_client_timestamp_info: false,
             trash_enabled: true,
-            trash_directory: default_trash_directory(),
             web_root: None,
             namespaces: Vec::new(),
         }
@@ -248,7 +232,6 @@ impl From<TomlFile> for AppConfig {
             address: t.server.address,
             port: t.server.port,
             data_home: t.gallery.data_home,
-            image_home: t.gallery.image_home,
             upload_folder: t.gallery.upload_folder,
             max_upload_size: t.server.max_upload_size,
             read_only_mode: t.gallery.read_only_mode,
@@ -258,7 +241,6 @@ impl From<TomlFile> for AppConfig {
             validate_upload_content: t.gallery.validate_upload_content,
             use_client_timestamp_info: t.gallery.use_client_timestamp_info,
             trash_enabled: t.gallery.trash_enabled,
-            trash_directory: t.gallery.trash_directory,
             password: t.secrets.password,
             auth_key: t.secrets.auth_key,
             web_root: t.gallery.web_root,
@@ -277,7 +259,6 @@ impl From<AppConfig> for TomlFile {
             },
             gallery: TomlGallery {
                 data_home: c.data_home,
-                image_home: c.image_home,
                 upload_folder: c.upload_folder,
                 read_only_mode: c.read_only_mode,
                 disable_img: c.disable_img,
@@ -286,7 +267,6 @@ impl From<AppConfig> for TomlFile {
                 validate_upload_content: c.validate_upload_content,
                 use_client_timestamp_info: c.use_client_timestamp_info,
                 trash_enabled: c.trash_enabled,
-                trash_directory: c.trash_directory,
                 web_root: c.web_root,
                 namespaces: c.namespaces,
             },
@@ -330,11 +310,14 @@ impl AppConfig {
                 anyhow::bail!("duplicate namespace name: \"{}\"", ns.name);
             }
             if !ns.path.exists() {
-                anyhow::bail!(
-                    "namespace \"{}\" path does not exist: {}",
-                    ns.name,
-                    ns.path.display()
-                );
+                // Create the directory if it doesn't exist
+                std::fs::create_dir_all(&ns.path).map_err(|e| {
+                    anyhow::anyhow!(
+                        "failed to create namespace \"{}\" path {}: {e}",
+                        ns.name,
+                        ns.path.display()
+                    )
+                })?;
             }
         }
 
@@ -389,29 +372,35 @@ impl AppConfig {
             let data_home =
                 resolve_root("PICASU_DATA_HOME", "data", |p| p.data_dir().to_path_buf());
 
-            let image_home = match std::env::var("PICASU_IMAGE_HOME") {
-                Ok(p) => Some(PathBuf::from(p)),
-                Err(_) => Some(data_home.join("images")),
-            };
-
             let web_root = match std::env::var("PICASU_WEB_ROOT") {
                 Ok(p) => Some(PathBuf::from(p)),
                 Err(_) => Some(data_home.join("www")),
             };
 
-            let namespaces = image_home
-                .as_ref()
-                .map(|ih| {
-                    vec![NamespaceConfig {
-                        name: "shared".to_string(),
-                        path: ih.clone(),
-                    }]
-                })
-                .unwrap_or_default();
+            let shared_path = data_home.join("images");
+            let trash_path = data_home.join("trash");
+            // Create default namespace directories so validation passes
+            for p in [&shared_path, &trash_path] {
+                if let Err(e) = fs::create_dir_all(p) {
+                    warn!(
+                        "Failed to create default namespace directory {}: {e}",
+                        p.display()
+                    );
+                }
+            }
+            let namespaces = vec![
+                NamespaceConfig {
+                    name: "shared".to_string(),
+                    path: shared_path,
+                },
+                NamespaceConfig {
+                    name: "trash".to_string(),
+                    path: trash_path,
+                },
+            ];
 
             let config = AppConfig {
                 data_home: Some(data_home),
-                image_home,
                 web_root,
                 namespaces,
                 ..AppConfig::default()
@@ -501,12 +490,6 @@ impl AppConfig {
                 config.data_home = Some(PathBuf::from(p));
             }
         }
-        if let Ok(val) = std::env::var("PICASU_IMAGE_HOME") {
-            let p = val.trim().to_string();
-            if !p.is_empty() {
-                config.image_home = Some(PathBuf::from(p));
-            }
-        }
         if let Ok(val) = std::env::var("PICASU_PORT")
             && let Ok(port) = val.parse()
         {
@@ -569,15 +552,6 @@ impl AppConfig {
 
         info!("Updating configuration...");
 
-        new_config.image_home = new_config.image_home.and_then(|p| {
-            let cleaned = p.to_string_lossy().trim().trim_matches('"').to_string();
-            if cleaned.is_empty() {
-                None
-            } else {
-                Some(PathBuf::from(cleaned))
-            }
-        });
-
         new_config.upload_folder = new_config.upload_folder.trim().to_string();
 
         if new_config.auth_key.as_deref().is_none_or(str::is_empty) {
@@ -629,7 +603,6 @@ mod tests {
             address: "127.0.0.1".to_string(),
             port: 8080,
             data_home: Some(PathBuf::from("/tmp/data")),
-            image_home: Some(PathBuf::from("/tmp/images")),
             upload_folder: "test_uploads".to_string(),
             max_upload_size: "500MiB".to_string(),
             read_only_mode: true,
@@ -639,7 +612,6 @@ mod tests {
             validate_upload_content: true,
             use_client_timestamp_info: false,
             trash_enabled: true,
-            trash_directory: ".trash".to_string(),
             password: Some("secret".to_string()),
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),
@@ -659,7 +631,6 @@ mod tests {
             address: "10.0.0.1".to_string(),
             port: 8000,
             data_home: Some(PathBuf::from("/data")),
-            image_home: Some(PathBuf::from("/images")),
             max_upload_size: "200MiB".to_string(),
             password: Some("hunter2".to_string()),
             auth_key: Some("jwt-secret".to_string()),
@@ -685,7 +656,6 @@ mod tests {
         assert!(toml_str.contains("port = 8000"));
         assert!(toml_str.contains("max_upload_size = \"200MiB\""));
         assert!(toml_str.contains("data_home = \"/data\""));
-        assert!(toml_str.contains("image_home = \"/images\""));
         assert!(toml_str.contains("password = \"hunter2\""));
         assert!(toml_str.contains("auth_key = \"jwt-secret\""));
     }
@@ -694,10 +664,6 @@ mod tests {
     fn trash_config_defaults() {
         let config = AppConfig::default();
         assert!(config.trash_enabled, "trash_enabled should default to true");
-        assert_eq!(
-            config.trash_directory, ".trash",
-            "trash_directory should default to '.trash'"
-        );
     }
 
     #[test]
@@ -709,14 +675,12 @@ port = 5673
         let parsed: TomlFile = toml::from_str(toml_str).expect("failed to deserialize toml");
         let config = AppConfig::from(parsed);
         assert!(config.trash_enabled);
-        assert_eq!(config.trash_directory, ".trash");
     }
 
     #[test]
     fn trash_config_toml_round_trip() {
         let config = AppConfig {
             trash_enabled: false,
-            trash_directory: "custom_trash".to_string(),
             ..AppConfig::default()
         };
         let tf = TomlFile::from(config.clone());
@@ -828,17 +792,20 @@ path = "/mnt/photos/trash"
     }
 
     #[test]
-    fn validate_namespaces_missing_path_fails() {
+    fn validate_namespaces_missing_path_creates_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("nonexistent");
+        assert!(!missing.exists());
         let config = AppConfig {
+            trash_enabled: false,
             namespaces: vec![NamespaceConfig {
                 name: "shared".to_string(),
-                path: PathBuf::from("/nonexistent/path"),
+                path: missing.clone(),
             }],
             ..AppConfig::default()
         };
-        let result = config.validate_namespaces();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("does not exist"));
+        assert!(config.validate_namespaces().is_ok());
+        assert!(missing.exists(), "namespace directory should be created");
     }
 
     #[test]

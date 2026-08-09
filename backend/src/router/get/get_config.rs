@@ -2,7 +2,7 @@ use rocket::get;
 use rocket::http::ContentType;
 use rocket::serde::json::Json;
 
-use crate::model::config::APP_CONFIG;
+use crate::model::config::{APP_CONFIG, NamespaceConfig};
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardShare;
 use serde::Serialize;
@@ -16,9 +16,6 @@ use crate::router::{AppResult, GuardResult};
 pub struct ConfigResponse {
     pub address: String,
     pub port: u16,
-    #[schema(value_type = Option<String>)]
-    #[serde(rename = "imagePath", alias = "imageHome")]
-    pub image_home: Option<std::path::PathBuf>,
     pub upload_folder: String,
     pub max_upload_size: String,
     pub read_only_mode: bool,
@@ -26,9 +23,9 @@ pub struct ConfigResponse {
     pub fs_notify_watcher: bool,
     pub validate_upload_content: bool,
     pub trash_enabled: bool,
-    pub trash_directory: String,
     pub has_password: bool,
     pub has_auth_key: bool,
+    pub namespaces: Vec<NamespaceConfig>,
 }
 
 #[utoipa::path(
@@ -51,7 +48,6 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
     let response = ConfigResponse {
         address: config.address.clone(),
         port: config.port,
-        image_home: config.image_home.clone(),
         upload_folder: config.upload_folder.clone(),
         max_upload_size: config.max_upload_size.clone(),
         read_only_mode: config.read_only_mode,
@@ -59,9 +55,9 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
         fs_notify_watcher: config.fs_notify_watcher,
         validate_upload_content: config.validate_upload_content,
         trash_enabled: config.trash_enabled,
-        trash_directory: config.trash_directory.clone(),
         has_password: config.password.is_some(),
         has_auth_key: config.auth_key.is_some(),
+        namespaces: config.namespaces.clone(),
     };
     Ok(Json(response))
 }

@@ -100,13 +100,7 @@ pub async fn delete_data(
 }
 
 fn compute_trash_root() -> PathBuf {
-    let config = APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned");
-    let image_home = config.image_home.as_ref().expect("image_home not set");
-    image_home.join(&config.trash_directory)
+    crate::process::namespace::namespace_root("trash").expect("trash namespace must be configured")
 }
 
 /// Check if an alias belongs to the "trash" namespace.

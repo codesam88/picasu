@@ -37,7 +37,7 @@
               Database is empty, scan now or upload?
             </v-card-title>
             <v-card-subtitle class="text-center text-caption text-medium-emphasis mb-6">
-              Library Path: {{ imagePath ?? '…' }}
+              Library Path: {{ sharedNamespacePath ?? '…' }}
             </v-card-subtitle>
 
             <v-row dense>
@@ -60,7 +60,7 @@
                   style="cursor: pointer; min-height: 180px"
                   variant="outlined"
                   rounded="lg"
-                  :disabled="!imagePath"
+                  :disabled="!sharedNamespacePath"
                   @click="onStartScan"
                 >
                   <v-icon size="64" color="grey">mdi-folder-refresh-outline</v-icon>
@@ -152,7 +152,10 @@ const uploadStore = useUploadStore('mainId')
 const configStore = useConfigStore('mainId')
 
 const showDialog = ref(true)
-const imagePath = computed(() => configStore.config?.imagePath ?? null)
+const sharedNamespacePath = computed(() => {
+  const shared = configStore.config?.namespaces.find((ns) => ns.name === 'shared')
+  return shared?.path ?? null
+})
 
 type ClickHandler = (() => void | Promise<void>) | undefined
 

@@ -29,7 +29,6 @@ pub struct PartialUpdateConfigRequest {
     pub validate_upload_content: Option<bool>,
     pub use_client_timestamp_info: Option<bool>,
     pub trash_enabled: Option<bool>,
-    pub trash_directory: Option<String>,
     pub auth_key: Option<String>,
 }
 
@@ -104,9 +103,6 @@ pub async fn update_config_handler(
         }
         if let Some(trash_enabled) = req_data.trash_enabled {
             current_config.trash_enabled = trash_enabled;
-        }
-        if let Some(trash_directory) = req_data.trash_directory {
-            current_config.trash_directory = trash_directory;
         }
         if let Some(key) = req_data.auth_key {
             let trimmed = key.trim();

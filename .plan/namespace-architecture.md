@@ -244,18 +244,18 @@ Verify: `api_watcher` reworked to namespace roots; watcher-ignores-trash test.
 
 ### P9 — Config removal & frontend
 
-- [ ] Remove `image_home`/`trash_directory` from config, `PICASU_IMAGE_HOME`, JSON response → expose `namespaces`;
+- [x] Remove `image_home`/`trash_directory` from config, `PICASU_IMAGE_HOME`, JSON response → expose `namespaces`;
       fail fast when absent; `edit_config` updated
-- [ ] Frontend: AppConfig type + configStore; StorageAndSync/AlbumIndex/ GalleryEmptyCard/ServerFilePicker
+- [x] Frontend: AppConfig type + configStore; StorageAndSync/AlbumIndex/ GalleryEmptyCard/ServerFilePicker
       namespace-aware; index-files flow sends namespace
-- [ ] ItemDelete/ItemPermanentlyDelete match alias by `(namespace, relative parent)` instead of `startsWith`
+- [x] ItemDelete/ItemPermanentlyDelete match alias by `(namespace, relative parent)` instead of `startsWith`
 
 Verify: `api_config`/`api_first_launch` updated; vitest + config-page Playwright.
 
 ### P10 — Full verification & docs
 
-- [ ] `just check; just test`; full Playwright
-- [ ] Update `docs/design.md` storage section + `docs/config.md`
+- [x] `just check; just test`; full Playwright
+- [x] Update `docs/design.md` storage section + `docs/config.md`
 
 ## Progress
 

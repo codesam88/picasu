@@ -4,19 +4,22 @@
       <v-card-title class="font-weight-bold">Image Library</v-card-title>
       <v-divider thickness="4" variant="double"></v-divider>
 
-      <!-- Image Path (always first) -->
-      <v-list-item
-        v-if="imagePath"
-        title="Image Path"
-        :subtitle="imagePath"
-        prepend-icon="mdi-folder-open-outline"
-        lines="two"
-      ></v-list-item>
+      <!-- Namespace list -->
+      <template v-if="namespaces.length > 0">
+        <v-list-item
+          v-for="ns in namespaces"
+          :key="ns.name"
+          :title="`Namespace: ${ns.name}`"
+          :subtitle="ns.path"
+          prepend-icon="mdi-folder-open-outline"
+          lines="two"
+        ></v-list-item>
+      </template>
       <v-empty-state
         v-else
         icon="mdi-folder-open-outline"
-        title="No image path set"
-        text="Set an image path in config.toml or via PICASU_IMAGE_HOME env var"
+        title="No namespaces configured"
+        text="Configure namespaces in config.toml via [[namespace]] entries"
       ></v-empty-state>
 
       <v-divider></v-divider>
@@ -81,7 +84,7 @@
               variant="flat"
               prepend-icon="mdi-magnify-scan"
               class="text-none font-weight-medium"
-              :disabled="!imagePath || isScanRunning"
+              :disabled="namespaces.length === 0 || isScanRunning"
               :loading="scanLoading"
               @click="startScan"
             >
@@ -116,7 +119,7 @@
               variant="flat"
               prepend-icon="mdi-folder-search-outline"
               class="text-none font-weight-medium"
-              :disabled="!imagePath"
+              :disabled="namespaces.length === 0"
               @click="showFolderPicker = true"
             >
               Browse
@@ -165,8 +168,8 @@
   <!-- Upload folder browser -->
   <ServerFilePicker
     v-model="showFolderPicker"
-    :root-path="imagePath ?? undefined"
-    :initial-path="imagePath ?? ''"
+    :root-path="sharedNamespacePath ?? undefined"
+    :initial-path="sharedNamespacePath ?? ''"
     @select="onFolderSelected"
   />
 </template>
@@ -182,14 +185,20 @@ import {
   type AlbumIndexStatus,
   type AlbumIndexState
 } from '@/api/fs'
+import type { NamespaceConfig } from '@/api/config'
 import ServerFilePicker from '@/components/Page/Config/ServerFilePicker.vue'
 
-const props = defineProps<{ imagePath: string | null }>()
+const props = defineProps<{ namespaces: NamespaceConfig[] }>()
 const uploadFolder = defineModel<string>('uploadFolder', { required: true })
 const maxUploadSize = defineModel<string>('maxUploadSize', { required: true })
 const fsNotifyWatcher = defineModel<boolean>('fsNotifyWatcher', { required: true })
 const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
+
+const sharedNamespacePath = computed(() => {
+  const shared = props.namespaces.find((ns) => ns.name === 'shared')
+  return shared?.path ?? null
+})
 
 const saving = ref(false)
 const scanLoading = ref(false)
@@ -283,8 +292,8 @@ const refreshStatus = async () => {
 }
 
 const startScan = async () => {
-  if (props.imagePath === null) {
-    messageStore.error('Set an Image Path before scanning')
+  if (props.namespaces.length === 0) {
+    messageStore.error('Configure at least one namespace before scanning')
     return
   }
   scanLoading.value = true

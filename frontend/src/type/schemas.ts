@@ -4,6 +4,7 @@ import { fixedBigRowHeight } from '@/type/constants'
 
 export const AliasSchema = z.object({
   file: z.string(),
+  namespace: z.string().default('shared'),
   modified: z.number(),
   scanTime: z.number()
 })
@@ -211,16 +212,21 @@ export const SubRowSchema = z.object({
   displayElements: z.array(displayElementSchema)
 })
 
+export const NamespaceConfigSchema = z.object({
+  name: z.string(),
+  path: z.string()
+})
+
 export const PublicConfigSchema = z.object({
   address: z.string(),
   port: z.number(),
   limits: z.record(z.string(), z.string()), // HashMap<String, String>
-  imagePath: z.string().nullable(), // Option<PathBuf>
   uploadFolder: z.string(),
   maxUploadSize: z.string(),
   readOnlyMode: z.boolean(),
   disableImg: z.boolean(),
-  fsNotifyWatcher: z.boolean()
+  fsNotifyWatcher: z.boolean(),
+  namespaces: z.array(NamespaceConfigSchema)
 })
 
 export const TokenResponseSchema = z.object({
