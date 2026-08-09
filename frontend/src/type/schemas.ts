@@ -8,6 +8,13 @@ export const AliasSchema = z.object({
   scanTime: z.number()
 })
 
+// TODO: isTrashed is inferred from alias paths because the backend no longer
+// sends an is_trashed field. This is a stopgap — the trash directory name is
+// hardcoded as a path substring, which breaks if the user configures a
+// non-default trash_directory. Rework: either restore is_trashed as a
+// denormalized field on the backend, or pass the trash_directory config to
+// the frontend so the check can use the actual configured path.
+// See .plan/rework-is-trashed-inference.md
 function isAliasInTrash(filePath: string): boolean {
   return filePath.includes('/.trash/') || filePath.includes('\\.trash\\')
 }
