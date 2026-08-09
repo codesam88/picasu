@@ -169,11 +169,11 @@ move in the same commit; "green" is only guaranteed at the end of P6, not per st
 
 ### P1 — Config & resolver (foundation)
 
-- [ ] Add `NamespaceConfig { name, path }` to `AppConfigInternal`/`AppConfig`
-- [ ] Add `process/namespace.rs`: `namespace_resolve`, `namespace_from_path` (longest-prefix), `namespace_root`
-- [ ] Startup validation: ≥1 namespace, unique names; when `trash_enabled` is true a `trash` namespace must exist; all
+- [x] Add `NamespaceConfig { name, path }` to `AppConfigInternal`/`AppConfig`
+- [x] Add `process/namespace.rs`: `namespace_resolve`, `namespace_from_path` (longest-prefix), `namespace_root`
+- [x] Startup validation: ≥1 namespace, unique names; when `trash_enabled` is true a `trash` namespace must exist; all
       roots same `st_dev` (fail fast)
-- [ ] `image_home` stays wired this step — nothing consumes namespaces yet
+- [x] `image_home` stays wired this step — nothing consumes namespaces yet
 
 Verify: config parse/round-trip tests; resolver unit tests (round-trip, nested roots, unknown/absent namespace →
 `None`/error); `just check; just test`.
@@ -259,3 +259,15 @@ Verify: `api_config`/`api_first_launch` updated; vitest + config-page Playwright
 
 - [ ] `just check; just test`; full Playwright
 - [ ] Update `docs/design.md` storage section + `docs/config.md`
+
+## Progress
+
+### 2026-08-09 — P1 complete
+
+- Added `NamespaceConfig { name, path }` struct to `config.rs` (JSON API + TOML + `utoipa::ToSchema`)
+- Added `namespaces: Vec<NamespaceConfig>` to `AppConfig`, `TomlGallery`, `From` conversions, `Default`
+- Created `process/namespace.rs` with `namespace_resolve`, `namespace_from_path` (longest-prefix), `namespace_root`
+- Added startup validation in `AppConfig::init()`: ≥1 namespace, unique names, trash namespace when `trash_enabled`, same `st_dev`
+- On first launch, auto-populates a "shared" namespace from `image_home`
+- Updated test bootstrap to include a "shared" namespace
+- 21 tests passing (14 config + 7 resolver); `just check` clean; dead-code `#[allow]` on resolver fns (consumed in P3)

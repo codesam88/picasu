@@ -35,6 +35,17 @@ fn default_trash_directory() -> String {
     ".trash".to_string()
 }
 
+// ── Namespace config ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[derive(utoipa::ToSchema)]
+pub struct NamespaceConfig {
+    pub name: String,
+    #[schema(value_type = String)]
+    pub path: PathBuf,
+}
+
 // ── JSON API format (camelCase) ───────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -101,6 +112,8 @@ pub struct AppConfig {
     /// Not exposed via the JSON API; set via config.toml or `PICASU_WEB_ROOT` env var.
     #[serde(skip)]
     pub web_root: Option<PathBuf>,
+    #[serde(default)]
+    pub namespaces: Vec<NamespaceConfig>,
 }
 
 impl Default for AppConfig {
@@ -123,6 +136,7 @@ impl Default for AppConfig {
             password: None,
             auth_key: None,
             web_root: None,
+            namespaces: Vec::new(),
         }
     }
 }
@@ -194,6 +208,8 @@ pub(crate) struct TomlGallery {
     pub(crate) trash_directory: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) web_root: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) namespaces: Vec<NamespaceConfig>,
 }
 
 impl Default for TomlGallery {
@@ -211,6 +227,7 @@ impl Default for TomlGallery {
             trash_enabled: true,
             trash_directory: default_trash_directory(),
             web_root: None,
+            namespaces: Vec::new(),
         }
     }
 }
@@ -245,6 +262,7 @@ impl From<TomlFile> for AppConfig {
             password: t.secrets.password,
             auth_key: t.secrets.auth_key,
             web_root: t.gallery.web_root,
+            namespaces: t.gallery.namespaces,
         }
     }
 }
@@ -270,6 +288,7 @@ impl From<AppConfig> for TomlFile {
                 trash_enabled: c.trash_enabled,
                 trash_directory: c.trash_directory,
                 web_root: c.web_root,
+                namespaces: c.namespaces,
             },
             secrets: TomlSecrets {
                 password: c.password,
@@ -292,6 +311,67 @@ impl AppConfig {
                 .as_bytes()
                 .to_vec(),
         }
+    }
+
+    /// Validate namespace configuration:
+    /// - At least one namespace configured, names unique
+    /// - When `trash_enabled` is true, a namespace named "trash" must exist
+    /// - All namespace roots on the same filesystem (`st_dev`), else fail fast
+    fn validate_namespaces(&self) -> anyhow::Result<()> {
+        use std::collections::HashSet;
+
+        if self.namespaces.is_empty() {
+            anyhow::bail!("at least one [[namespace]] must be configured");
+        }
+
+        let mut seen = HashSet::new();
+        for ns in &self.namespaces {
+            if !seen.insert(&ns.name) {
+                anyhow::bail!("duplicate namespace name: \"{}\"", ns.name);
+            }
+            if !ns.path.exists() {
+                anyhow::bail!(
+                    "namespace \"{}\" path does not exist: {}",
+                    ns.name,
+                    ns.path.display()
+                );
+            }
+        }
+
+        if self.trash_enabled && !self.namespaces.iter().any(|ns| ns.name == "trash") {
+            anyhow::bail!("trash_enabled is true but no namespace named \"trash\" is configured");
+        }
+
+        // All namespace roots must be on the same filesystem
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let mut dev: Option<u64> = None;
+            for ns in &self.namespaces {
+                let metadata = std::fs::metadata(&ns.path).map_err(|e| {
+                    anyhow::anyhow!(
+                        "failed to stat namespace \"{}\" path {}: {e}",
+                        ns.name,
+                        ns.path.display()
+                    )
+                })?;
+                match dev {
+                    Some(d) if d != metadata.dev() => {
+                        anyhow::bail!(
+                            "namespace \"{}\" ({}) is on a different filesystem than other namespaces (dev {} vs {})",
+                            ns.name,
+                            ns.path.display(),
+                            metadata.dev(),
+                            d
+                        );
+                    }
+                    None => dev = Some(metadata.dev()),
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// # Panics
@@ -319,10 +399,21 @@ impl AppConfig {
                 Err(_) => Some(data_home.join("www")),
             };
 
+            let namespaces = image_home
+                .as_ref()
+                .map(|ih| {
+                    vec![NamespaceConfig {
+                        name: "shared".to_string(),
+                        path: ih.clone(),
+                    }]
+                })
+                .unwrap_or_default();
+
             let config = AppConfig {
                 data_home: Some(data_home),
                 image_home,
                 web_root,
+                namespaces,
                 ..AppConfig::default()
             };
 
@@ -388,6 +479,11 @@ impl AppConfig {
         if config.auth_key.as_deref().is_none_or(str::is_empty) {
             config.auth_key = None;
             FALLBACK_SECRET_KEY.get_or_init(generate_secret_key);
+        }
+
+        // Validate namespace configuration
+        if let Err(e) = config.validate_namespaces() {
+            panic!("Namespace configuration error: {e}");
         }
 
         APP_CONFIG
@@ -547,6 +643,7 @@ mod tests {
             password: Some("secret".to_string()),
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),
+            namespaces: Vec::new(),
         };
 
         let tf = TomlFile::from(config.clone());
@@ -647,5 +744,159 @@ read_only_mode = true
         assert_eq!(config.max_upload_size, "100MiB");
         assert_eq!(config.upload_folder, "uploads");
         assert!(!config.disable_img);
+    }
+
+    #[test]
+    fn namespace_config_toml_round_trip() {
+        let config = AppConfig {
+            namespaces: vec![
+                NamespaceConfig {
+                    name: "shared".to_string(),
+                    path: PathBuf::from("/mnt/photos/shared"),
+                },
+                NamespaceConfig {
+                    name: "trash".to_string(),
+                    path: PathBuf::from("/mnt/photos/trash"),
+                },
+            ],
+            ..AppConfig::default()
+        };
+        let tf = TomlFile::from(config.clone());
+        let toml_str = toml::to_string_pretty(&tf).expect("serialize");
+        assert!(toml_str.contains("[[gallery.namespaces]]"));
+        let parsed: TomlFile = toml::from_str(&toml_str).expect("deserialize");
+        let restored = AppConfig::from(parsed);
+        assert_eq!(config, restored);
+    }
+
+    #[test]
+    fn namespace_toml_parsing() {
+        let toml_str = r#"
+[server]
+port = 5673
+
+[[gallery.namespaces]]
+name = "shared"
+path = "/mnt/photos/shared"
+
+[[gallery.namespaces]]
+name = "trash"
+path = "/mnt/photos/trash"
+"#;
+        let parsed: TomlFile = toml::from_str(toml_str).expect("failed to deserialize toml");
+        let config = AppConfig::from(parsed);
+        assert_eq!(config.namespaces.len(), 2);
+        assert_eq!(config.namespaces[0].name, "shared");
+        assert_eq!(
+            config.namespaces[0].path,
+            PathBuf::from("/mnt/photos/shared")
+        );
+        assert_eq!(config.namespaces[1].name, "trash");
+        assert_eq!(
+            config.namespaces[1].path,
+            PathBuf::from("/mnt/photos/trash")
+        );
+    }
+
+    #[test]
+    fn validate_namespaces_empty_fails() {
+        let config = AppConfig::default();
+        let result = config.validate_namespaces();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("at least one"));
+    }
+
+    #[test]
+    fn validate_namespaces_duplicate_names_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = AppConfig {
+            namespaces: vec![
+                NamespaceConfig {
+                    name: "shared".to_string(),
+                    path: dir.path().to_path_buf(),
+                },
+                NamespaceConfig {
+                    name: "shared".to_string(),
+                    path: dir.path().to_path_buf(),
+                },
+            ],
+            ..AppConfig::default()
+        };
+        let result = config.validate_namespaces();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("duplicate"));
+    }
+
+    #[test]
+    fn validate_namespaces_missing_path_fails() {
+        let config = AppConfig {
+            namespaces: vec![NamespaceConfig {
+                name: "shared".to_string(),
+                path: PathBuf::from("/nonexistent/path"),
+            }],
+            ..AppConfig::default()
+        };
+        let result = config.validate_namespaces();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("does not exist"));
+    }
+
+    #[test]
+    fn validate_namespaces_trash_enabled_no_trash_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = AppConfig {
+            trash_enabled: true,
+            namespaces: vec![NamespaceConfig {
+                name: "shared".to_string(),
+                path: dir.path().to_path_buf(),
+            }],
+            ..AppConfig::default()
+        };
+        let result = config.validate_namespaces();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("trash_enabled is true")
+        );
+    }
+
+    #[test]
+    fn validate_namespaces_trash_disabled_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = AppConfig {
+            trash_enabled: false,
+            namespaces: vec![NamespaceConfig {
+                name: "shared".to_string(),
+                path: dir.path().to_path_buf(),
+            }],
+            ..AppConfig::default()
+        };
+        assert!(config.validate_namespaces().is_ok());
+    }
+
+    #[test]
+    fn validate_namespaces_same_fs_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub1 = dir.path().join("ns1");
+        let sub2 = dir.path().join("ns2");
+        std::fs::create_dir_all(&sub1).unwrap();
+        std::fs::create_dir_all(&sub2).unwrap();
+        let config = AppConfig {
+            trash_enabled: false,
+            namespaces: vec![
+                NamespaceConfig {
+                    name: "a".to_string(),
+                    path: sub1,
+                },
+                NamespaceConfig {
+                    name: "b".to_string(),
+                    path: sub2,
+                },
+            ],
+            ..AppConfig::default()
+        };
+        assert!(config.validate_namespaces().is_ok());
     }
 }

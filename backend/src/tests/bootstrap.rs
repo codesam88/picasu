@@ -4,7 +4,7 @@ use std::sync::{LazyLock, Mutex, RwLock};
 use redb::ReadableTable;
 use tempfile::TempDir;
 
-use crate::model::config::{APP_CONFIG, AppConfig};
+use crate::model::config::{APP_CONFIG, AppConfig, NamespaceConfig};
 use crate::process::dir_album;
 use crate::router::builder::build_rocket_with_config;
 use crate::storage::cache::TREE_SNAPSHOT;
@@ -30,7 +30,11 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
     let mut test_config = AppConfig::default();
     let image_home = data_path.join("images");
     std::fs::create_dir_all(&image_home).unwrap();
-    test_config.image_home = Some(image_home);
+    test_config.image_home = Some(image_home.clone());
+    test_config.namespaces = vec![NamespaceConfig {
+        name: "shared".to_string(),
+        path: image_home,
+    }];
     APP_CONFIG
         .set(RwLock::new(test_config))
         .expect("APP_CONFIG already set");
@@ -152,6 +156,10 @@ pub fn reset_backend_state() {
     config.trash_enabled = true;
     config.trash_directory = ".trash".to_string();
     config.password = None;
+    config.namespaces = vec![NamespaceConfig {
+        name: "shared".to_string(),
+        path: test_image_home(),
+    }];
 }
 
 /// Build a Rocket test client with the current APP_CONFIG.

@@ -3,6 +3,7 @@ pub mod exif;
 pub mod hash;
 pub mod index;
 pub mod misc;
+pub mod namespace;
 pub mod sanitize;
 pub mod thumbnail;
 pub mod transitor;
