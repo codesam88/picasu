@@ -30,7 +30,7 @@ use std::collections::HashMap;
 //   2. Copy the current structs to AbstractDataVN / AlbumCombinedVN / etc.
 //   3. Add a match arm for the old version in from_bytes.
 
-const SCHEMA_VERSION: u8 = 6;
+const SCHEMA_VERSION: u8 = 7;
 
 // ── v2 schema types (ImageMetadata/VideoMetadata with albums: HashSet) ────────
 
@@ -295,12 +295,166 @@ struct AlbumCombinedV5 {
     metadata: AlbumMetadataV5,
 }
 
+// ── v6 schema types (FileModify without namespace, AlbumMetadata without
+// namespace — the schema just before the namespace architecture) ──────────────
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+struct FileModifyV6 {
+    file: String,
+    modified: i64,
+    scan_time: i64,
+}
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+struct AlbumMetadataV6 {
+    id: ArrayString<64>,
+    title: Option<String>,
+    created_time: i64,
+    start_time: Option<i64>,
+    end_time: Option<i64>,
+    last_modified_time: i64,
+    cover: Option<ArrayString<64>>,
+    item_count: usize,
+    item_size: u64,
+    share_list: HashMap<ArrayString<64>, Share>,
+    dir_path: String,
+    custom_title: Option<String>,
+}
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+struct ImageMetadataV6 {
+    id: ArrayString<64>,
+    size: u64,
+    width: u32,
+    height: u32,
+    ext: String,
+    phash: Option<Vec<u8>>,
+    album: Option<ArrayString<64>>,
+    exif_vec: std::collections::BTreeMap<String, String>,
+    alias: Vec<FileModifyV6>,
+}
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+struct VideoMetadataV6 {
+    id: ArrayString<64>,
+    size: u64,
+    width: u32,
+    height: u32,
+    ext: String,
+    duration: f64,
+    album: Option<ArrayString<64>>,
+    exif_vec: std::collections::BTreeMap<String, String>,
+    alias: Vec<FileModifyV6>,
+}
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+struct ImageCombinedV6 {
+    object: ObjectSchema,
+    metadata: ImageMetadataV6,
+}
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+struct VideoCombinedV6 {
+    object: ObjectSchema,
+    metadata: VideoMetadataV6,
+}
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+struct AlbumCombinedV6 {
+    object: ObjectSchema,
+    metadata: AlbumMetadataV6,
+}
+
+#[derive(bitcode::Decode)]
+#[cfg_attr(test, derive(bitcode::Encode))]
+enum AbstractDataV6 {
+    Image(ImageCombinedV6),
+    Video(VideoCombinedV6),
+    Album(AlbumCombinedV6),
+}
+
+impl From<FileModifyV6> for crate::model::response::FileModify {
+    fn from(v6: FileModifyV6) -> Self {
+        crate::model::response::FileModify {
+            namespace: String::new(),
+            file: v6.file,
+            modified: v6.modified,
+            scan_time: v6.scan_time,
+        }
+    }
+}
+
+impl From<AbstractDataV6> for AbstractData {
+    fn from(v6: AbstractDataV6) -> Self {
+        use crate::model::{
+            image::{ImageCombined, ImageMetadata},
+            video::{VideoCombined, VideoMetadata},
+        };
+        match v6 {
+            AbstractDataV6::Image(img) => AbstractData::Image(ImageCombined {
+                object: img.object,
+                metadata: ImageMetadata {
+                    id: img.metadata.id,
+                    size: img.metadata.size,
+                    width: img.metadata.width,
+                    height: img.metadata.height,
+                    ext: img.metadata.ext,
+                    phash: img.metadata.phash,
+                    album: img.metadata.album,
+                    exif_vec: img.metadata.exif_vec,
+                    alias: img.metadata.alias.into_iter().map(Into::into).collect(),
+                },
+            }),
+            AbstractDataV6::Video(vid) => AbstractData::Video(VideoCombined {
+                object: vid.object,
+                metadata: VideoMetadata {
+                    id: vid.metadata.id,
+                    size: vid.metadata.size,
+                    width: vid.metadata.width,
+                    height: vid.metadata.height,
+                    ext: vid.metadata.ext,
+                    duration: vid.metadata.duration,
+                    album: vid.metadata.album,
+                    exif_vec: vid.metadata.exif_vec,
+                    alias: vid.metadata.alias.into_iter().map(Into::into).collect(),
+                },
+            }),
+            AbstractDataV6::Album(alb) => AbstractData::Album(AlbumCombined {
+                object: alb.object,
+                metadata: crate::model::album::AlbumMetadata {
+                    id: alb.metadata.id,
+                    namespace: String::new(),
+                    title: alb.metadata.title,
+                    created_time: alb.metadata.created_time,
+                    start_time: alb.metadata.start_time,
+                    end_time: alb.metadata.end_time,
+                    last_modified_time: alb.metadata.last_modified_time,
+                    cover: alb.metadata.cover,
+                    item_count: alb.metadata.item_count,
+                    item_size: alb.metadata.item_size,
+                    share_list: alb.metadata.share_list,
+                    dir_path: alb.metadata.dir_path,
+                    custom_title: alb.metadata.custom_title,
+                },
+            }),
+        }
+    }
+}
+
 impl From<AlbumCombinedV5> for AlbumCombined {
     fn from(v5: AlbumCombinedV5) -> Self {
         AlbumCombined {
             object: v5.object,
             metadata: AlbumMetadata {
                 id: v5.metadata.id,
+                namespace: String::new(),
                 title: v5.metadata.title,
                 created_time: v5.metadata.created_time,
                 start_time: v5.metadata.start_time,
@@ -383,6 +537,7 @@ impl From<AbstractDataV1> for AbstractData {
                 object: alb.object,
                 metadata: AlbumMetadata {
                     id: alb.metadata.id,
+                    namespace: String::new(),
                     title: alb.metadata.title,
                     created_time: alb.metadata.created_time,
                     start_time: alb.metadata.start_time,
@@ -446,8 +601,12 @@ impl Value for AbstractData {
                     bitcode::decode::<AbstractDataV5>(payload)
                         .expect("Failed to decode AbstractData v5"),
                 ),
-                6 => bitcode::decode::<AbstractData>(payload)
-                    .expect("Failed to decode AbstractData v6"),
+                6 => AbstractData::from(
+                    bitcode::decode::<AbstractDataV6>(payload)
+                        .expect("Failed to decode AbstractData v6"),
+                ),
+                7 => bitcode::decode::<AbstractData>(payload)
+                    .expect("Failed to decode AbstractData v7"),
                 v => panic!("Unknown AbstractData schema version {v}"),
             }
         } else {
@@ -605,10 +764,10 @@ mod tests {
     }
 
     #[test]
-    fn v6_bytes_have_correct_prefix() {
+    fn v7_bytes_have_correct_prefix() {
         let bytes = AbstractData::as_bytes(&make_image_v3());
         assert_eq!(bytes[0], 0xFF, "magic marker must be 0xFF");
-        assert_eq!(bytes[1], 6, "version byte must match SCHEMA_VERSION");
+        assert_eq!(bytes[1], 7, "version byte must match SCHEMA_VERSION");
     }
 
     fn make_album_v3_bytes() -> Vec<u8> {

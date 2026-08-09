@@ -18,6 +18,12 @@ pub struct IndexAlbumRequest {
 pub struct IndexImageRequest {
     image: String,
     album: Option<String>,
+    #[serde(default = "default_namespace")]
+    namespace: String,
+}
+
+fn default_namespace() -> String {
+    "shared".to_string()
 }
 
 /// Walk a directory under `IMAGE_HOME` and index all media files in the
@@ -66,8 +72,9 @@ pub fn index_image_handler(
     let inner = req.into_inner();
     let src = PathBuf::from(inner.image);
     let dst = inner.album.map(PathBuf::from);
+    let namespace = inner.namespace;
     rocket::tokio::spawn(async move {
-        if let Err(e) = crate::workflow::index_image(&src, dst.as_deref()).await {
+        if let Err(e) = crate::workflow::index_image(&namespace, &src, dst.as_deref()).await {
             log::error!("index_image failed: {e}");
         }
     });

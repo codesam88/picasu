@@ -59,7 +59,9 @@ use std::path::PathBuf;
 /// from its thumbnail, adding *context* at every fallible step.
 pub fn generate_dynamic_image(abstract_data: &AbstractData) -> Result<DynamicImage> {
     let img_path = if abstract_data.is_image() {
-        abstract_data.source_path()
+        abstract_data
+            .source_path_resolved()
+            .ok_or_else(|| anyhow::anyhow!("Cannot resolve source path"))?
     } else {
         PathBuf::from(abstract_data.thumbnail_path())
     };

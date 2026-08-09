@@ -8,6 +8,7 @@ use std::{mem, path::Path, path::PathBuf};
 use tokio::task::spawn_blocking;
 
 pub struct DeduplicateTask {
+    pub namespace: String,
     pub path: PathBuf,
     pub hash: ArrayString<64>,
     pub presigned_album_id: Option<ArrayString<64>>,
@@ -15,11 +16,13 @@ pub struct DeduplicateTask {
 
 impl DeduplicateTask {
     pub fn new(
+        namespace: String,
         path: PathBuf,
         hash: ArrayString<64>,
         presigned_album_id: Option<ArrayString<64>>,
     ) -> Self {
         Self {
+            namespace,
             path,
             hash,
             presigned_album_id,
@@ -39,7 +42,7 @@ impl Task for DeduplicateTask {
 }
 
 fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
-    let mut abstract_data = AbstractData::new(&task.path, task.hash)?;
+    let mut abstract_data = AbstractData::new(&task.namespace, &task.path, task.hash)?;
 
     let data_table = open_data_table();
 

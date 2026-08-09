@@ -60,11 +60,14 @@ pub fn video_duration(file_path: &str) -> Result<f64> {
 
 /// Get video dimensions using ffprobe
 pub fn generate_video_width_height(abstract_data: &AbstractData) -> Result<(u32, u32)> {
-    let source = abstract_data.source_path_string();
-    let width = video_width_height("width", source)
-        .context(format!("failed to obtain video width for {source:?}"))?;
-    let height = video_width_height("height", source)
-        .context(format!("failed to obtain video height for {source:?}"))?;
+    let source = abstract_data
+        .source_path_resolved()
+        .ok_or_else(|| anyhow::anyhow!("Cannot resolve source path"))?;
+    let source_str = source.to_string_lossy();
+    let width = video_width_height("width", &source_str)
+        .context(format!("failed to obtain video width for {source_str:?}"))?;
+    let height = video_width_height("height", &source_str)
+        .context(format!("failed to obtain video height for {source_str:?}"))?;
     Ok((width, height))
 }
 
@@ -74,12 +77,14 @@ pub fn generate_compressed_video(abstract_data: &AbstractData) -> Result<()> {
     // Data rate to target ~25 MB output
     const TARGET_SIZE_BITS: f64 = 25.0 * 1024.0 * 1024.0 * 8.0; // 25 MB in bits
 
-    let source_path = abstract_data.source_path();
-    let source_path_str = abstract_data.source_path_string();
+    let source_path = abstract_data
+        .source_path_resolved()
+        .ok_or_else(|| anyhow::anyhow!("Cannot resolve source path"))?;
+    let source_path_str = source_path.to_string_lossy().into_owned();
     let target_path = abstract_data.compressed_path_string();
 
     // Compute video duration from ffprobe
-    let duration: f64 = video_duration(source_path_str)?;
+    let duration: f64 = video_duration(&source_path_str)?;
     debug!("Video duration: {duration} seconds for {source_path_str}");
     let target_bitrate = if duration > 0.0 {
         (TARGET_SIZE_BITS / duration) as u64
@@ -105,7 +110,7 @@ pub fn generate_compressed_video(abstract_data: &AbstractData) -> Result<()> {
     cmd.args([
         "-y",
         "-i",
-        source_path_str,
+        &source_path_str,
         "-b:v",
         &target_bitrate.to_string(),
         "-maxrate",
@@ -147,11 +152,16 @@ pub fn generate_thumbnail_for_video(abstract_data: &AbstractData) -> Result<()> 
     std::fs::create_dir_all(abstract_data.compressed_path_parent())
         .context("failed to create parent directory for video thumbnail")?;
 
+    let source = abstract_data
+        .source_path_resolved()
+        .ok_or_else(|| anyhow::anyhow!("Cannot resolve source path"))?;
+    let source_str = source.to_string_lossy();
+
     let mut cmd = create_silent_ffmpeg_command();
     cmd.args([
         "-y",
         "-i",
-        abstract_data.source_path_string(),
+        &source_str,
         "-ss",
         "0",
         "-vframes",

@@ -194,7 +194,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
             };
 
             handles.push(tokio::spawn(async move {
-                match crate::workflow::index_image(&relative, None).await {
+                match crate::workflow::index_image("shared", &relative, None).await {
                     Ok(()) => increment_processed(job_id),
                     Err(err) => {
                         handle_error(err);

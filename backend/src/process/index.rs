@@ -19,7 +19,11 @@ pub fn process_image_info(abstract_data: &mut AbstractData) -> Result<()> {
     }
 
     // Extract XMP metadata from sidecar (preferred) or embedded packet.
-    let xmp = extract_xmp_data_from_file(&abstract_data.source_path());
+    let xmp = extract_xmp_data_from_file(
+        &abstract_data
+            .source_path_resolved()
+            .ok_or_else(|| anyhow::anyhow!("Cannot resolve source path"))?,
+    );
     abstract_data.tag_mut().extend(xmp.tags);
     if abstract_data.description().is_none() {
         abstract_data.set_description(xmp.description);
@@ -62,7 +66,11 @@ pub fn process_video_info(abstract_data: &mut AbstractData) -> Result<()> {
     }
 
     // Extract XMP metadata from sidecar (preferred) or embedded packet.
-    let xmp = extract_xmp_data_from_file(&abstract_data.source_path());
+    let xmp = extract_xmp_data_from_file(
+        &abstract_data
+            .source_path_resolved()
+            .ok_or_else(|| anyhow::anyhow!("Cannot resolve source path"))?,
+    );
     abstract_data.tag_mut().extend(xmp.tags);
     if abstract_data.description().is_none() {
         abstract_data.set_description(xmp.description);

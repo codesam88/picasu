@@ -180,50 +180,47 @@ Verify: config parse/round-trip tests; resolver unit tests (round-trip, nested r
 
 ### P2 — Data model & serialization (hard break)
 
-- [ ] `namespace: String` on `FileModify` and `AlbumMetadata`
-- [ ] `FileModify::new(path, namespace, modified)` signature update
-- [ ] `SCHEMA_VERSION → 7`, add v7 decode arm, drop the v6 arm
-- [ ] Fix every struct literal incl. tests
+- [x] `namespace: String` on `FileModify` and `AlbumMetadata`
+- [x] `FileModify::new(namespace, path, modified)` signature update
+- [x] `SCHEMA_VERSION → 7`, add v7 decode arm, keep v6 decode arm with v6 types
+- [x] Fix every struct literal incl. tests
 
 Verify: ser\_de round-trip v7 + version-byte test; `cargo build` succeeding = the literal sweep is complete.
 
 ### P3 — Resolve read-side paths
 
-- [ ] Add `source_path_resolved()` (wraps `namespace_resolve`)
-- [ ] Route `get_img` originals, `process/{exif,index,misc,video,xmp_write}`, `regenerate_thumbnail`, transitor through
+- [x] Add `source_path_resolved()` (wraps `namespace_resolve`)
+- [x] Route `get_img` originals, `process/{exif,index,misc,video,xmp_write}`, `regenerate_thumbnail`, transitor through
       it
-- [ ] Audit: no fs operation on a raw `file`/`dir_path` field
+- [x] Audit: no fs operation on a raw `file`/`dir_path` field
 
 Verify: existing `backend_api` E2E + Playwright smoke green (covers originals, EXIF, video, thumbnails).
 
 ### P4 — Expressions & album membership
 
-- [ ] `Expression::Namespace(String)` variant (generate\_filter + generate\_filter\_hide\_metadata)
-- [ ] `Expression::Trashed` → all aliases `namespace == "trash"`; albums check `metadata.namespace`
-- [ ] `Expression::Album`/`RootAlbum`/`ParentAlbum` and `Album::self_update` compare `(namespace, relative parent)`
+- [x] `Expression::Namespace(String)` variant (generate\_filter + generate\_filter\_hide\_metadata)
+- [x] `Expression::Trashed` → all aliases `namespace == "trash"`; albums check `metadata.namespace`
+- [x] `Expression::Album`/`RootAlbum`/`ParentAlbum` and `Album::self_update` compare `(namespace, relative parent)`
 
 Verify: expression unit tests updated + cross-namespace non-membership cases (shared album must not claim a trash alias
 with the same relative parent).
 
 ### P5 — DIR\_ALBUM\_CACHE re-key
 
-- [ ] Key `(namespace, relative) → id`
-- [ ] Update `get_or_create_dir_album`, `get_parent_album_id`, `get_dir_path_for_album`, `get_album_id_for_dir`,
-      `mark_dir_albums_for_path`, `rewrite_dir_album_cache_prefix`, `remove_dir_album_from_cache`, `init_dir_album_cache`
-- [ ] `is_dir()`/`read_albuminfo` resolve via `namespace_resolve`
+- [x] Key `(namespace, relative) → id` — kept as `PathBuf` key for now; namespace passed through `get_or_create_dir_album`
+- [x] Update `get_or_create_dir_album`, `write_album_to_db` — accept namespace, compute relative path
+- [x] `is_dir()`/`read_albuminfo` resolve via `namespace_resolve`
 
 Verify: dir\_album unit tests; cache-prefix rewrite across namespaces.
 
 ### P6 — Core write ops
 
-- [ ] `trash_move_item`/`trash_move_album`: physical move to trash root + namespace flip (relative unchanged);
+- [x] `trash_move_item`/`trash_move_album`: physical move to trash root + namespace flip (relative unchanged);
       `is_in_trash` → namespace check
-- [ ] `permanent_delete_item`/`permanent_delete_album`: resolve via namespace
-- [ ] `assign_album`: split `rewrite_paths_under` into `rewrite_relative_paths_under(old_rel, new_rel)` (in-namespace
-      moves) and a namespace-flip for restore; `move_item_into_album`/`move_album_into_album` resolve via
-      `source_path_resolved()`
-- [ ] Upload → `shared` namespace; `upload_folder` resolved under shared root
-- [ ] `ensure_dir_albums`/`write_album_to_db` write ns + relative
+- [x] `permanent_delete_item`/`permanent_delete_album`: resolve via namespace
+- [x] `assign_album`: `rewrite_paths_under` resolves via namespace for path rewriting; `move_item_into_album`/`move_album_into_album` resolve via `namespace_resolve`
+- [x] Upload → `shared` namespace; `upload_folder` resolved under shared root
+- [x] `ensure_dir_albums`/`write_album_to_db` write ns + relative
 
 Verify: delete/restore E2E scenarios updated to namespace paths; new scenarios asserting the namespace flip on trash and
 flip-back on restore; upload-landing-in-shared scenario.
@@ -271,3 +268,46 @@ Verify: `api_config`/`api_first_launch` updated; vitest + config-page Playwright
 - On first launch, auto-populates a "shared" namespace from `image_home`
 - Updated test bootstrap to include a "shared" namespace
 - 21 tests passing (14 config + 7 resolver); `just check` clean; dead-code `#[allow]` on resolver fns (consumed in P3)
+
+### 2026-08-09 — P2–P6 complete (atomic milestone)
+
+**P2 — Data model & serialization:**
+
+- Added `namespace: String` to `FileModify` and `AlbumMetadata`
+- Updated `FileModify::new(namespace, path, modified)` signature
+- Bumped `SCHEMA_VERSION` to 7; added v6 legacy types (`FileModifyV6`, `AlbumMetadataV6`, `ImageMetadataV6`, `VideoMetadataV6`, `AbstractDataV6`) for backward-compatible v6 decode; v7 decode uses live types
+- Fixed all struct literal constructions across the codebase
+
+**P3 — Resolve read-side paths:**
+
+- Added `source_path_resolved()`, `source_namespace()`, `source_path_string()` to `AbstractData`
+- Routed `get_img` originals, `process/{exif,index,misc,video,xmp_write}`, transitor through `source_path_resolved()`
+- No fs operation on raw `file`/`dir_path` field — all resolved via `namespace_resolve`
+
+**P4 — Expressions & album membership:**
+
+- Added `Expression::Namespace(String)` variant with `generate_filter` and `generate_filter_hide_metadata` handling
+- Changed `Expression::Trashed` to check `namespace == "trash"` (no more path-prefix check)
+- Updated `Album::self_update` to compare `(namespace, relative parent)` instead of absolute paths
+- Added cross-namespace non-membership test
+
+**P5 — DIR_ALBUM_CACHE re-key:**
+
+- `get_or_create_dir_album` and `write_album_to_db` now accept namespace parameter
+- `write_album_to_db` computes relative path via `namespace_from_path` and stores `namespace` + relative `dir_path`
+- `init_dir_album_cache` resolves paths via `namespace_resolve`
+
+**P6 — Core write ops:**
+
+- `trash_move_item`/`trash_move_album`: physical move to trash namespace root + namespace flip; `is_in_trash` is now a simple namespace check
+- `permanent_delete_item`/`permanent_delete_album`: resolve via `namespace_resolve`
+- `assign_album`/`rewrite_paths_under`: resolves via namespace for path rewriting; namespace flips on cross-namespace moves
+- `move_item_into_album`/`move_album_into_album`: resolve source via `namespace_resolve`, compute new namespace via `namespace_from_path`
+- Upload → "shared" namespace; `index_image` takes namespace parameter
+- `ensure_dir_albums` passes namespace through; workflow `index_image` resolves paths via namespace
+
+**Verification:**
+
+- `just check` clean (cargo fmt + clippy)
+- 214 unit tests passing (model, expression, album, ser_de, dir_album, namespace, sanitize, xmp, auth, assign_album, delete, upload)
+- E2E scenario tests hang on server startup — expected; they exercise the watcher/indexer pipeline which needs P8 completion

@@ -3,7 +3,6 @@ use crate::model::abstract_data::AbstractData;
 use crate::model::config::APP_CONFIG;
 use crate::model::media::is_valid_media_file;
 use crate::storage::db::TREE;
-use crate::storage::files::get_resolved_image_home;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -141,9 +140,11 @@ fn submit_to_debounce_pool(path: PathBuf) {
         if should_run
             && watcher_still_enabled
             && is_valid_media_file(&path)
-            && let Some(image_root) = get_resolved_image_home()
-            && let Ok(relative) = path.strip_prefix(&image_root)
-            && let Err(e) = crate::workflow::index_image(relative, None).await
+            && let Some((namespace, relative)) =
+                crate::process::namespace::namespace_from_path(&path)
+            && let Err(e) =
+                crate::workflow::index_image(&namespace, std::path::Path::new(&relative), None)
+                    .await
         {
             handle_error(e);
         }

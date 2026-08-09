@@ -126,14 +126,16 @@ use std::{cmp::Ordering, path::Path};
 #[derive(Debug, Default, Clone, Deserialize, Serialize, Decode, Encode)]
 #[serde(rename_all = "camelCase")]
 pub struct FileModify {
+    pub namespace: String,
     pub file: String,
     pub modified: i64,
     pub scan_time: i64,
 }
 
 impl FileModify {
-    pub fn new(file: &Path, modified: i64) -> Self {
+    pub fn new(namespace: &str, file: &Path, modified: i64) -> Self {
         Self {
+            namespace: namespace.to_string(),
             file: file.to_string_lossy().into_owned(),
             modified,
             scan_time: Utc::now().timestamp_millis(),

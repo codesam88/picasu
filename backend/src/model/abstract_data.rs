@@ -277,7 +277,7 @@ impl AbstractData {
     }
 
     /// Create a new `AbstractData` from a file path and hash
-    pub fn new(path: &Path, hash: ArrayString<64>) -> Result<Self> {
+    pub fn new(namespace: &str, path: &Path, hash: ArrayString<64>) -> Result<Self> {
         let ext = path
             .extension()
             .ok_or_else(|| anyhow::anyhow!("File has no extension: {}", path.display()))?
@@ -296,7 +296,7 @@ impl AbstractData {
             .as_millis();
         let modified_millis = i64::try_from(modified_millis).unwrap_or(0);
 
-        let file_modify = FileModify::new(path, modified_millis);
+        let file_modify = FileModify::new(namespace, path, modified_millis);
         let obj_type = Self::determine_type(&ext);
 
         match obj_type {
@@ -335,7 +335,27 @@ impl AbstractData {
         }
     }
 
-    /// Get the source path
+    /// Get the namespace of the first alias
+    pub fn source_namespace(&self) -> &str {
+        match self {
+            AbstractData::Image(img) => &img.metadata.alias[0].namespace,
+            AbstractData::Video(vid) => &vid.metadata.alias[0].namespace,
+            AbstractData::Album(_) => "",
+        }
+    }
+
+    /// Get the resolved source path (namespace + relative → absolute)
+    pub fn source_path_resolved(&self) -> Option<PathBuf> {
+        let ns = self.source_namespace();
+        let rel = self.source_path_string();
+        if ns.is_empty() || rel.is_empty() {
+            return None;
+        }
+        crate::process::namespace::namespace_resolve(ns, rel)
+    }
+
+    /// Get the source path (raw relative path, for backward compatibility)
+    #[allow(dead_code)]
     pub fn source_path(&self) -> PathBuf {
         PathBuf::from(self.source_path_string())
     }
@@ -510,6 +530,7 @@ mod tests {
         let mut metadata = ImageMetadata::new(id, 0, 0, 0, "jpg".to_string());
         for (file, modified, scan_time) in files {
             metadata.alias.push(FileModify {
+                namespace: "shared".to_string(),
                 file: file.to_string(),
                 modified: *modified,
                 scan_time: *scan_time,

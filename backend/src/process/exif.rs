@@ -8,7 +8,9 @@ use std::{collections::BTreeMap, io, path::Path, process::Command, sync::LazyLoc
 pub fn generate_exif_for_image(abstract_data: &AbstractData) -> BTreeMap<String, String> {
     let mut exif_tuple = BTreeMap::new();
 
-    if let Ok(exif) = read_exif(&abstract_data.source_path()) {
+    if let Some(source_path) = abstract_data.source_path_resolved()
+        && let Ok(exif) = read_exif(&source_path)
+    {
         for field in exif.fields() {
             if field.ifd_num == exif::In::PRIMARY {
                 let tag = field.tag.to_string();
@@ -47,7 +49,10 @@ static RE_VIDEO_INFO: LazyLock<Regex> =
 /// Use `ffprobe` to retrieve metadata for videos, propagating every error
 /// with rich context strings.
 pub fn generate_exif_for_video(abstract_data: &AbstractData) -> Result<BTreeMap<String, String>> {
-    let source_path = abstract_data.source_path_string();
+    let source_path = abstract_data
+        .source_path_resolved()
+        .ok_or_else(|| anyhow::anyhow!("Cannot resolve source path"))?;
+    let source_path_str = source_path.to_string_lossy();
     let mut exif_tuple = BTreeMap::new();
 
     // Spawn ffprobe and capture its output
@@ -56,26 +61,26 @@ pub fn generate_exif_for_video(abstract_data: &AbstractData) -> Result<BTreeMap<
         .arg("error")
         .arg("-show_format")
         .arg("-show_streams")
-        .arg(source_path)
+        .arg(&*source_path_str)
         .output()
-        .context(format!("failed to spawn ffprobe for {source_path}"))?;
+        .context(format!("failed to spawn ffprobe for {source_path_str}"))?;
 
     if output.status.success() {
         // Convert raw bytes to UTF‑8 text
         let stdout = String::from_utf8(output.stdout).context(format!(
-            "failed to convert ffprobe stdout to UTF‑8 for {source_path}"
+            "failed to convert ffprobe stdout to UTF‑8 for {source_path_str}"
         ))?;
 
         // Regex‑parse key/value pairs
         for cap in RE_VIDEO_INFO.captures_iter(&stdout) {
             let key = cap
                 .get(1)
-                .context(format!("capture group 1 missing in {source_path}"))?
+                .context(format!("capture group 1 missing in {source_path_str}"))?
                 .as_str()
                 .to_string();
             let value = cap
                 .get(2)
-                .context(format!("capture group 2 missing in {source_path}"))?
+                .context(format!("capture group 2 missing in {source_path_str}"))?
                 .as_str()
                 .to_string();
             exif_tuple.insert(key, value);
@@ -86,7 +91,7 @@ pub fn generate_exif_for_video(abstract_data: &AbstractData) -> Result<BTreeMap<
         Err(anyhow!(
             "ffprobe exited with status {:?} for {}",
             output.status.code().unwrap_or(-1),
-            source_path
+            source_path_str
         ))
     }
 }

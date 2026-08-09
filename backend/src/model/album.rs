@@ -41,15 +41,15 @@ impl AlbumCombined {
     pub fn self_update(&mut self) {
         let ref_data = TREE.in_memory.read().expect("lock poisoned");
 
-        let dir_path = Path::new(&self.metadata.dir_path).to_path_buf();
+        let ns = self.metadata.namespace.clone();
+        let dir_path = self.metadata.dir_path.clone();
 
-        // Membership is path-based: a file belongs to this album iff its
-        // immediate parent directory is this album's directory. Files in
-        // sub-directories belong to the corresponding child album instead.
+        // Membership is namespace+path-based: a file belongs to this album iff
+        // its alias matches (namespace, parent==dir_path).
         let belongs_to_album = move |alias: &[crate::model::response::FileModify]| -> bool {
-            alias
-                .iter()
-                .any(|a| Path::new(&a.file).parent() == Some(dir_path.as_path()))
+            alias.iter().any(|a| {
+                a.namespace == ns && Path::new(&a.file).parent() == Some(Path::new(&dir_path))
+            })
         };
 
         let mut data_in_album: Vec<MediaItemInfo> = ref_data
@@ -123,17 +123,18 @@ mod tests {
 
     use crate::model::response::FileModify;
 
-    fn belongs_to_album(alias: &[FileModify], dir_path: &str) -> bool {
+    fn belongs_to_album(alias: &[FileModify], namespace: &str, dir_path: &str) -> bool {
         let dir_path = Path::new(dir_path);
         alias
             .iter()
-            .any(|a| Path::new(&a.file).parent() == Some(dir_path))
+            .any(|a| a.namespace == namespace && Path::new(&a.file).parent() == Some(dir_path))
     }
 
-    fn alias(paths: &[&str]) -> Vec<FileModify> {
+    fn alias(namespace: &str, paths: &[&str]) -> Vec<FileModify> {
         paths
             .iter()
             .map(|p| FileModify {
+                namespace: namespace.to_string(),
                 file: p.to_string(),
                 modified: 0,
                 scan_time: 0,
@@ -143,32 +144,39 @@ mod tests {
 
     #[test]
     fn dir_album_matches_file_inside_dir() {
-        let a = alias(&["/photos/vacation/img.jpg"]);
-        assert!(belongs_to_album(&a, "/photos/vacation"));
+        let a = alias("shared", &["vacation/img.jpg"]);
+        assert!(belongs_to_album(&a, "shared", "vacation"));
     }
 
     #[test]
     fn dir_album_does_not_match_file_in_subdirectory() {
-        let a = alias(&["/photos/vacation/day1/img.jpg"]);
-        assert!(!belongs_to_album(&a, "/photos/vacation"));
+        let a = alias("shared", &["vacation/day1/img.jpg"]);
+        assert!(!belongs_to_album(&a, "shared", "vacation"));
     }
 
     #[test]
     fn child_dir_album_matches_its_own_direct_file() {
-        let a = alias(&["/photos/vacation/day1/img.jpg"]);
-        assert!(belongs_to_album(&a, "/photos/vacation/day1"));
+        let a = alias("shared", &["vacation/day1/img.jpg"]);
+        assert!(belongs_to_album(&a, "shared", "vacation/day1"));
     }
 
     #[test]
     fn dir_album_does_not_match_sibling_dir() {
-        let a = alias(&["/photos/other/img.jpg"]);
-        assert!(!belongs_to_album(&a, "/photos/vacation"));
+        let a = alias("shared", &["other/img.jpg"]);
+        assert!(!belongs_to_album(&a, "shared", "vacation"));
     }
 
     #[test]
     fn dir_album_does_not_match_partial_name_prefix() {
-        let a = alias(&["/photos/vacation2/img.jpg"]);
-        assert!(!belongs_to_album(&a, "/photos/vacation"));
+        let a = alias("shared", &["vacation2/img.jpg"]);
+        assert!(!belongs_to_album(&a, "shared", "vacation"));
+    }
+
+    #[test]
+    fn cross_namespace_non_membership() {
+        let a = alias("trash", &["vacation/img.jpg"]);
+        assert!(!belongs_to_album(&a, "shared", "vacation"));
+        assert!(belongs_to_album(&a, "trash", "vacation"));
     }
 }
 
@@ -179,6 +187,7 @@ use std::collections::HashMap;
 #[serde(rename_all = "camelCase")]
 pub struct AlbumMetadata {
     pub id: ArrayString<64>,
+    pub namespace: String,
     pub title: Option<String>,
     pub created_time: i64,
     pub start_time: Option<i64>,
@@ -188,9 +197,10 @@ pub struct AlbumMetadata {
     pub item_count: usize,
     pub item_size: u64,
     pub share_list: HashMap<ArrayString<64>, Share>,
-    /// Every album corresponds to a subdirectory under `IMAGE_HOME`. Membership
-    /// is derived from source file paths: a file belongs to this album iff
-    /// its immediate parent directory is `dir_path`.
+    /// Every album corresponds to a subdirectory under its namespace root.
+    /// Membership is derived from source file paths: a file belongs to this
+    /// album iff its immediate parent directory is `dir_path` (resolved via
+    /// `namespace_resolve(namespace, dir_path)`).
     pub dir_path: String,
     /// The user-set title override, as explicitly written via `PUT
     /// /put/set_album_title` (or hydrated from a pre-existing `.albuminfo.xmp`

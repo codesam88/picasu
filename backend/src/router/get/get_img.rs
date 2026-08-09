@@ -138,7 +138,9 @@ pub async fn imported_file(
             .or_raise(|| (ErrorKind::Database, "Failed to fetch DB record"))?
             .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Hash not found"))?
             .value();
-        Ok(abstract_data.source_path())
+        abstract_data
+            .source_path_resolved()
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Item has no resolved path"))
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;

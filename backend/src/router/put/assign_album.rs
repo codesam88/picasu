@@ -190,7 +190,11 @@ fn move_album_into_album(
                 return Err(AppError::new(ErrorKind::InvalidInput, "Expected an album"));
             };
 
-            let source_dir = PathBuf::from(&moved_album.metadata.dir_path);
+            let source_dir = crate::process::namespace::namespace_resolve(
+                &moved_album.metadata.namespace,
+                &moved_album.metadata.dir_path,
+            )
+            .ok_or_else(|| AppError::new(ErrorKind::Internal, "Namespace not found"))?;
             if !source_dir.is_dir() {
                 return Err(AppError::new(
                     ErrorKind::InvalidInput,
@@ -284,25 +288,52 @@ fn move_album_into_album(
 }
 
 /// Rewrite `data`'s stored path(s) from under `old_prefix` to the equivalent
-/// location under `new_prefix`. Returns whether anything changed.
+/// location under `new_prefix`. Both `old_prefix` and `new_prefix` are
+/// absolute paths. Returns whether anything changed.
 pub fn rewrite_paths_under(data: &mut AbstractData, old_prefix: &Path, new_prefix: &Path) -> bool {
     match data {
         AbstractData::Album(album) => {
-            let dir = PathBuf::from(&album.metadata.dir_path);
-            if let Ok(rel) = dir.strip_prefix(old_prefix) {
-                album.metadata.dir_path = new_prefix.join(rel).to_string_lossy().into_owned();
-                true
-            } else {
-                false
+            // Resolve the album's relative dir_path to absolute, check if under old_prefix
+            let abs_dir = crate::process::namespace::namespace_resolve(
+                &album.metadata.namespace,
+                &album.metadata.dir_path,
+            );
+            if let Some(abs) = abs_dir
+                && let Ok(rel) = abs.strip_prefix(old_prefix)
+            {
+                // Rewrite: compute new absolute path, then extract new relative path
+                let new_abs = new_prefix.join(rel);
+                // Try to find the new namespace from the new absolute path
+                if let Some((new_ns, new_rel)) =
+                    crate::process::namespace::namespace_from_path(&new_abs)
+                {
+                    album.metadata.namespace = new_ns;
+                    album.metadata.dir_path = new_rel;
+                } else {
+                    // Fallback: just rewrite the relative path
+                    album.metadata.dir_path = new_abs.to_string_lossy().into_owned();
+                }
+                return true;
             }
+            false
         }
         AbstractData::Image(_) | AbstractData::Video(_) => {
             let mut changed = false;
             if let Some(alias) = data.alias_mut() {
                 for a in alias.iter_mut() {
-                    let p = PathBuf::from(&a.file);
-                    if let Ok(rel) = p.strip_prefix(old_prefix) {
-                        a.file = new_prefix.join(rel).to_string_lossy().into_owned();
+                    let abs = crate::process::namespace::namespace_resolve(&a.namespace, &a.file);
+                    if let Some(abs) = abs
+                        && let Ok(rel) = abs.strip_prefix(old_prefix)
+                    {
+                        let new_abs = new_prefix.join(rel);
+                        if let Some((new_ns, new_rel)) =
+                            crate::process::namespace::namespace_from_path(&new_abs)
+                        {
+                            a.namespace = new_ns;
+                            a.file = new_rel;
+                        } else {
+                            a.file = new_abs.to_string_lossy().into_owned();
+                        }
                         changed = true;
                     }
                 }
@@ -338,7 +369,11 @@ fn move_item_into_album(
         if alias.is_empty() {
             return Err(AppError::new(ErrorKind::InvalidInput, "Item has no alias"));
         }
-        let current_path = PathBuf::from(&alias[0].file);
+        let alias_namespace = alias[0].namespace.clone();
+        let alias_file = alias[0].file.clone();
+        let current_path =
+            crate::process::namespace::namespace_resolve(&alias_namespace, &alias_file)
+                .ok_or_else(|| AppError::new(ErrorKind::Internal, "Namespace not found"))?;
 
         if !current_path.exists() {
             return Err(AppError::new(
@@ -380,8 +415,12 @@ fn move_item_into_album(
         let modified = alias[0].modified;
         let scan_time = alias[0].scan_time;
         if let Some(alias_mut) = abstract_data.alias_mut() {
+            // Compute new relative path in the target namespace
+            let (new_ns, new_rel) = crate::process::namespace::namespace_from_path(&dest_path)
+                .unwrap_or((alias_namespace, dest_path.to_string_lossy().into_owned()));
             *alias_mut = vec![FileModify {
-                file: dest_path.to_string_lossy().into_owned(),
+                namespace: new_ns,
+                file: new_rel,
                 modified,
                 scan_time,
             }];
@@ -466,6 +505,7 @@ mod tests {
         let id = ArrayString::from("img").expect("failed to create ArrayString");
         let mut metadata = ImageMetadata::new(id, 0, 0, 0, "jpg".to_string());
         metadata.alias.push(FileModify {
+            namespace: "shared".to_string(),
             file: file.to_string(),
             modified: 0,
             scan_time: 0,
@@ -480,6 +520,7 @@ mod tests {
         let id = ArrayString::from("vid").expect("failed to create ArrayString");
         let mut metadata = VideoMetadata::new(id, 0, 0, 0, "mp4".to_string());
         metadata.alias.push(FileModify {
+            namespace: "shared".to_string(),
             file: file.to_string(),
             modified: 0,
             scan_time: 0,
@@ -493,6 +534,7 @@ mod tests {
     fn album_at(dir_path: &str) -> AbstractData {
         let id = ArrayString::from("album").expect("failed to create ArrayString");
         let metadata = AlbumMetadata {
+            namespace: "shared".to_string(),
             dir_path: dir_path.to_string(),
             ..Default::default()
         };

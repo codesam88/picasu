@@ -62,7 +62,11 @@ pub async fn create_dir_album(
             )
         })?;
 
-        let album_id = get_or_create_dir_album(new_dir).map_err(|e| {
+        // Resolve namespace from the absolute dir path
+        let namespace = crate::process::namespace::namespace_from_path(&new_dir)
+            .map_or_else(|| "shared".to_string(), |(ns, _)| ns);
+
+        let album_id = get_or_create_dir_album(new_dir, &namespace).map_err(|e| {
             AppError::new(
                 ErrorKind::Internal,
                 format!("Failed to register album: {e}"),

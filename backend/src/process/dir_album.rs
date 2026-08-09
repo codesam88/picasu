@@ -208,14 +208,14 @@ pub fn reset_dir_album_cache() {
 ///
 /// Holds `DIR_ALBUM_CACHE`'s mutex for the entire duration to guarantee
 /// at-most-once album creation per directory under concurrent indexing.
-pub fn get_or_create_dir_album(dir_path: PathBuf) -> Result<ArrayString<64>> {
+pub fn get_or_create_dir_album(dir_path: PathBuf, namespace: &str) -> Result<ArrayString<64>> {
     let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
 
     if let Some(&id) = cache.get(&dir_path) {
         return Ok(id);
     }
 
-    let album_id = write_album_to_db(&dir_path)
+    let album_id = write_album_to_db(&dir_path, namespace)
         .with_context(|| format!("Failed to create album for {}", dir_path.display()))?;
 
     cache.insert(dir_path, album_id);
@@ -239,20 +239,18 @@ fn read_albuminfo(dir_path: &Path) -> crate::process::xmp::XmpData {
     }
 }
 
-fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
+fn write_album_to_db(dir_path: &Path, namespace: &str) -> Result<ArrayString<64>> {
     let album_id = generate_random_hash();
     let dir_path_str = dir_path.to_string_lossy().into_owned();
     let default_title = derive_default_title(&dir_path_str);
 
     let albuminfo = read_albuminfo(dir_path);
-    // `custom_title` reflects only what was actually persisted to the sidecar
-    // (i.e. explicitly set via the frontend/API at some point) — `title` is
-    // the resolved display value, falling back to the directory name when
-    // there is no custom title. Only `custom_title` may ever be written back
-    // to the sidecar (see `write_sidecar_for`); baking the resolved default
-    // into it would freeze the title across later directory renames.
     let custom_title = albuminfo.title.clone();
     let title = custom_title.clone().unwrap_or(default_title);
+
+    // Compute relative path within the namespace
+    let relative = crate::process::namespace::namespace_from_path(dir_path)
+        .map_or_else(|| dir_path_str.clone(), |(_, rel)| rel);
 
     let now = Utc::now().timestamp_millis();
     let object = ObjectSchema {
@@ -269,6 +267,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
     };
     let metadata = AlbumMetadata {
         id: album_id,
+        namespace: namespace.to_string(),
         title: Some(title.clone()),
         created_time: now,
         start_time: None,
@@ -278,7 +277,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         item_count: 0,
         item_size: 0,
         share_list: std::collections::HashMap::new(),
-        dir_path: dir_path_str,
+        dir_path: relative,
         custom_title,
     };
     let abstract_data = AbstractData::Album(AlbumCombined { object, metadata });

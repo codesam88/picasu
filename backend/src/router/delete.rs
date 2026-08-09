@@ -109,9 +109,9 @@ fn compute_trash_root() -> PathBuf {
     image_home.join(&config.trash_directory)
 }
 
-fn is_in_trash(alias_path: &str, trash_root: &Path) -> bool {
-    let path = Path::new(alias_path);
-    path.starts_with(trash_root) && path != trash_root
+/// Check if an alias belongs to the "trash" namespace.
+fn is_in_trash(namespace: &str) -> bool {
+    namespace == "trash"
 }
 
 fn trash_move_item(
@@ -132,17 +132,17 @@ fn trash_move_item(
         .position(|a| a.file == alias_path)
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Alias not found"))?;
 
-    let source = Path::new(alias_path);
-    let image_home = {
-        let config = APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned");
-        config.image_home.clone().expect("image_home not set")
-    };
-    let relative = source.strip_prefix(&image_home).unwrap_or(source);
-    let dest = trash_root.join(relative);
+    let source_ns = abstract_data.alias()[alias_idx].namespace.clone();
+    if is_in_trash(&source_ns) {
+        return Ok(());
+    }
+
+    // Resolve the absolute source path from namespace + relative
+    let source = crate::process::namespace::namespace_resolve(&source_ns, alias_path)
+        .ok_or_else(|| AppError::new(ErrorKind::Internal, "Source namespace not found"))?;
+
+    // Compute destination: same relative path under trash namespace root
+    let dest = trash_root.join(alias_path);
 
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).map_err(|e| {
@@ -152,7 +152,7 @@ fn trash_move_item(
             )
         })?;
     }
-    fs::rename(source, &dest)
+    fs::rename(&source, &dest)
         .map_err(|e| AppError::new(ErrorKind::IO, format!("Failed to move file to trash: {e}")))?;
 
     let src_sidecar = source.with_extension("xmp");
@@ -163,8 +163,9 @@ fn trash_move_item(
         }
     }
 
+    // Flip namespace to "trash", keep relative path unchanged
     if let Some(alias_mut) = abstract_data.alias_mut() {
-        alias_mut[alias_idx].file = dest.to_string_lossy().into_owned();
+        alias_mut[alias_idx].namespace = "trash".to_string();
     }
     data_table
         .insert(hash, abstract_data)
@@ -187,7 +188,15 @@ fn trash_move_album(
         return Err(AppError::new(ErrorKind::InvalidInput, "Expected album"));
     };
 
-    let source_dir = PathBuf::from(&album.metadata.dir_path);
+    if is_in_trash(&album.metadata.namespace) {
+        return Ok(());
+    }
+
+    let source_ns = album.metadata.namespace.clone();
+    let source_dir =
+        crate::process::namespace::namespace_resolve(&source_ns, &album.metadata.dir_path)
+            .ok_or_else(|| AppError::new(ErrorKind::Internal, "Source namespace not found"))?;
+
     let dir_name = source_dir
         .file_name()
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Album directory has no name"))?;
@@ -248,8 +257,10 @@ fn permanent_delete_item(
         .position(|a| a.file == alias_path)
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Alias not found"))?;
 
-    let file_path = Path::new(alias_path);
-    let _ = fs::remove_file(file_path);
+    let namespace = abstract_data.alias()[alias_idx].namespace.clone();
+    let file_path = crate::process::namespace::namespace_resolve(&namespace, alias_path)
+        .ok_or_else(|| AppError::new(ErrorKind::Internal, "Namespace not found"))?;
+    let _ = fs::remove_file(&file_path);
     let sidecar = file_path.with_extension("xmp");
     let _ = fs::remove_file(&sidecar);
 
@@ -288,7 +299,11 @@ fn permanent_delete_album(
         return Err(AppError::new(ErrorKind::InvalidInput, "Expected album"));
     };
 
-    let dir_path = PathBuf::from(&album.metadata.dir_path);
+    let dir_path = crate::process::namespace::namespace_resolve(
+        &album.metadata.namespace,
+        &album.metadata.dir_path,
+    )
+    .ok_or_else(|| AppError::new(ErrorKind::Internal, "Namespace not found"))?;
     let mut removed = Vec::new();
 
     let mut to_remove = Vec::new();
@@ -300,11 +315,17 @@ fn permanent_delete_album(
             entry.or_raise(|| (ErrorKind::Database, "Failed to read table entry"))?;
         let data: AbstractData = val_guard.value();
         let dominated = match &data {
-            AbstractData::Album(a) => PathBuf::from(&a.metadata.dir_path).starts_with(&dir_path),
-            AbstractData::Image(_) | AbstractData::Video(_) => data
-                .alias()
-                .iter()
-                .any(|a| Path::new(&a.file).starts_with(&dir_path)),
+            AbstractData::Album(a) => {
+                let abs = crate::process::namespace::namespace_resolve(
+                    &a.metadata.namespace,
+                    &a.metadata.dir_path,
+                );
+                abs.is_some_and(|p| p.starts_with(&dir_path))
+            }
+            AbstractData::Image(_) | AbstractData::Video(_) => data.alias().iter().any(|a| {
+                crate::process::namespace::namespace_resolve(&a.namespace, &a.file)
+                    .is_some_and(|p| p.starts_with(&dir_path))
+            }),
         };
         if dominated {
             let key: ArrayString<64> =
@@ -318,8 +339,12 @@ fn permanent_delete_album(
             AbstractData::Album(_) => {}
             AbstractData::Image(_) | AbstractData::Video(_) => {
                 for alias in data.alias() {
-                    let _ = fs::remove_file(&alias.file);
-                    let _ = fs::remove_file(Path::new(&alias.file).with_extension("xmp"));
+                    if let Some(abs) =
+                        crate::process::namespace::namespace_resolve(&alias.namespace, &alias.file)
+                    {
+                        let _ = fs::remove_file(&abs);
+                        let _ = fs::remove_file(abs.with_extension("xmp"));
+                    }
                 }
                 let thumb = data.compressed_path();
                 if !thumb.as_os_str().is_empty() {
@@ -395,12 +420,11 @@ pub fn purge_empty_albums(
     Ok(())
 }
 
-/// Find and remove the album DB record whose `dir_path` matches `dir`.
+/// Find and remove the album DB record whose resolved path matches `dir`.
 fn remove_album_for_dir(
     data_table: &mut redb::Table<&str, AbstractData>,
     dir: &Path,
 ) -> Result<(), AppError> {
-    let dir_str = dir.to_string_lossy().into_owned();
     let mut to_remove: Vec<ArrayString<64>> = Vec::new();
 
     for entry in data_table
@@ -409,12 +433,16 @@ fn remove_album_for_dir(
     {
         let (key_guard, val_guard) =
             entry.or_raise(|| (ErrorKind::Database, "Failed to read table entry"))?;
-        if let AbstractData::Album(album) = val_guard.value()
-            && album.metadata.dir_path == dir_str
-        {
-            let key: ArrayString<64> =
-                ArrayString::from(key_guard.value()).expect("stored key must fit ArrayString<64>");
-            to_remove.push(key);
+        if let AbstractData::Album(album) = val_guard.value() {
+            let resolved = crate::process::namespace::namespace_resolve(
+                &album.metadata.namespace,
+                &album.metadata.dir_path,
+            );
+            if resolved.as_deref() == Some(dir) {
+                let key: ArrayString<64> = ArrayString::from(key_guard.value())
+                    .expect("stored key must fit ArrayString<64>");
+                to_remove.push(key);
+            }
         }
     }
 
@@ -433,43 +461,26 @@ fn remove_album_for_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
-    fn is_in_trash_returns_true_for_path_under_trash_root() {
-        let trash_root = PathBuf::from("/images/.trash");
-        assert!(is_in_trash("/images/.trash/photos/foo.jpg", &trash_root));
+    fn is_in_trash_returns_true_for_trash_namespace() {
+        assert!(is_in_trash("trash"));
     }
 
     #[test]
-    fn is_in_trash_returns_false_for_path_outside_trash() {
-        let trash_root = PathBuf::from("/images/.trash");
-        assert!(!is_in_trash("/images/photos/foo.jpg", &trash_root));
+    fn is_in_trash_returns_false_for_shared_namespace() {
+        assert!(!is_in_trash("shared"));
     }
 
     #[test]
-    fn is_in_trash_returns_false_for_partial_prefix_match() {
-        let trash_root = PathBuf::from("/images/.trash");
-        assert!(!is_in_trash("/images/.trashy/foo.jpg", &trash_root));
+    fn is_in_trash_returns_false_for_empty_namespace() {
+        assert!(!is_in_trash(""));
     }
 
     #[test]
-    fn is_in_trash_returns_false_for_exact_trash_root() {
-        let trash_root = PathBuf::from("/images/.trash");
-        assert!(!is_in_trash("/images/.trash", &trash_root));
-    }
-
-    #[test]
-    fn is_in_trash_handles_relative_paths() {
-        let trash_root = PathBuf::from(".trash");
-        assert!(is_in_trash(".trash/foo.jpg", &trash_root));
-        assert!(!is_in_trash("photos/foo.jpg", &trash_root));
-    }
-
-    #[test]
-    fn is_in_trash_handles_nested_trash_path() {
-        let trash_root = PathBuf::from("/images/.trash");
-        assert!(is_in_trash("/images/.trash/a/b/c.jpg", &trash_root));
+    fn is_in_trash_returns_false_for_partial_match() {
+        assert!(!is_in_trash("trashy"));
+        assert!(!is_in_trash("not_trash"));
     }
 }
 
@@ -532,7 +543,12 @@ fn process_deletes(
             };
 
             // Determine action: trash-move or permanent-delete
-            let should_trash = trash_enabled && !is_in_trash(&alias_path, &trash_root);
+            let source_ns = match &abstract_data {
+                AbstractData::Image(img) => img.metadata.alias.first().map(|a| a.namespace.clone()),
+                AbstractData::Video(vid) => vid.metadata.alias.first().map(|a| a.namespace.clone()),
+                AbstractData::Album(alb) => Some(alb.metadata.namespace.clone()),
+            };
+            let should_trash = trash_enabled && !source_ns.as_deref().is_some_and(is_in_trash);
 
             match &abstract_data {
                 AbstractData::Album(album) => {

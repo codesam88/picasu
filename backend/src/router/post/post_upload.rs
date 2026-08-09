@@ -251,7 +251,7 @@ pub async fn upload(
             .map_err(|_| {
                 AppError::new(ErrorKind::Internal, "Uploaded file path outside IMAGE_HOME")
             })?;
-        if let Err(index_error) = crate::workflow::index_image(relative_src, None).await {
+        if let Err(index_error) = crate::workflow::index_image("shared", relative_src, None).await {
             // The upload has not succeeded, and the user gets this error
             // directly in the upload response, so the never-indexed file
             // is removed as part of the failed upload action. Files are

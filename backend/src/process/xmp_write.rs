@@ -24,7 +24,12 @@ use std::path::Path;
 /// treat them as non-fatal.
 pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
     if let AbstractData::Album(album) = abstract_data {
-        let sidecar = Path::new(&album.metadata.dir_path).join(".albuminfo.xmp");
+        let dir_path = crate::process::namespace::namespace_resolve(
+            &album.metadata.namespace,
+            &album.metadata.dir_path,
+        )
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Namespace not found"))?;
+        let sidecar = dir_path.join(".albuminfo.xmp");
         let content = format_xmp_packet(
             abstract_data.tag(),
             abstract_data.description(),
@@ -38,7 +43,8 @@ pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
     if alias.is_empty() {
         return Ok(());
     }
-    let primary = Path::new(&alias[0].file);
+    let primary = crate::process::namespace::namespace_resolve(&alias[0].namespace, &alias[0].file)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Namespace not found"))?;
     let sidecar = primary.with_extension("xmp");
     let content = format_xmp_packet(
         abstract_data.tag(),
@@ -185,6 +191,7 @@ mod tests {
                 object,
                 metadata: AlbumMetadata {
                     id,
+                    namespace: "shared".to_string(),
                     // The auto-derived display title. Populated regardless of
                     // whether the user ever customized it — write_sidecar_for
                     // must key off `custom_title`, not this field.
