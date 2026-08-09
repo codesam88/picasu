@@ -2,7 +2,8 @@ name: restore via assign_album renames when destination file already exists
 # Covers the trash-page "Restore" action with a colliding filename at the
 # destination: response of the frontend's rename restore. The target album
 # already holds a same-named photo, so on_conflict=rename must write
-# photo-001.jpg rather than overwrite or skip.
+# photo-001.jpg rather than overwrite or skip. cleanupEmptySource purges
+# the empty trash directory after restore.
 given:
   - dir_album: /e2e_untrash_conflict/album
     id_as: $album
@@ -34,8 +35,11 @@ when:
       hash: "${photo}"
       albumId: "${album}"
       onConflict: "rename"
+      cleanupEmptySource: true
 then:
   - response.status: 200
   - file_absent: /.trash/e2e_untrash_conflict/album/photo.jpg
+  - file_absent: /.trash/e2e_untrash_conflict/album
+  - file_absent: /.trash/e2e_untrash_conflict
   - file_exists: /e2e_untrash_conflict/album/photo-001.jpg
   - file_exists: /e2e_untrash_conflict/album/photo.jpg

@@ -5,6 +5,7 @@ name: restore a trashed album by assigning it back to its parent
 # rewrites every child record's path (rewrite_paths_under); assigning the
 # trashed album back to its parent must reverse that — the directory (with its
 # photo) returns to the original location and the child alias paths follow.
+# cleanupEmptySource purges the now-empty .trash/child directory.
 given:
   - dir_album: /e2e_restore_album/source
     id_as: $source
@@ -28,6 +29,7 @@ when:
     body:
       hash: "${child}"
       albumId: "${source}"
+      cleanupEmptySource: true
     then:
       - response.status: 200
 then:

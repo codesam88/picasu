@@ -352,20 +352,35 @@ async function handleSubmit() {
 
   submitting.value = true
   const onConflict = isRestore.value ? 'rename' : 'skip'
+  const cleanupEmptySource = isRestore.value
   try {
     if (indices.length === 1 && !modalStore.assignAlbumBatch && !isRestore.value) {
       // Single normal move from route context
       const parsed = getHashIndexDataFromRoute(route)
       if (!parsed) return
       const { hash, index } = parsed
-      await assignAlbum(hash, selectedAlbumId.value, index, isolationId, onConflict)
+      await assignAlbum(
+        hash,
+        selectedAlbumId.value,
+        index,
+        isolationId,
+        onConflict,
+        cleanupEmptySource
+      )
     } else {
       // Batch (or restore): iterate the index list; assignAlbum dispatches on
       // each item's actual type (image/video file or album directory).
       for (const idx of indices) {
         const item = dataStore.data.get(idx)
         if (!item) continue
-        await assignAlbum(item.id, selectedAlbumId.value, idx, isolationId, onConflict)
+        await assignAlbum(
+          item.id,
+          selectedAlbumId.value,
+          idx,
+          isolationId,
+          onConflict,
+          cleanupEmptySource
+        )
       }
       collectionStore.leaveEdit()
     }

@@ -2,7 +2,7 @@ name: restore via assign_album returns trashed image to original album
 # Covers the trash-page "Restore" action: instead of a dedicated untrash
 # endpoint, restore is implemented as assign_album targeting the item's
 # original album. Moving the file out of .trash/ back into that directory
-# un-trashes it.
+# un-trashes it. cleanupEmptySource purges the now-empty trash directory.
 given:
   - dir_album: /e2e_untrash_album
     id_as: $album
@@ -24,8 +24,10 @@ when:
       hash: "${photo}"
       albumId: "${album}"
       onConflict: "rename"
+      cleanupEmptySource: true
     then:
       - response.status: 200
 then:
   - file_exists: /e2e_untrash_album/photo.jpg
   - file_absent: /.trash/e2e_untrash_album/photo.jpg
+  - file_absent: /.trash/e2e_untrash_album

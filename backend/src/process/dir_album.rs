@@ -185,6 +185,14 @@ pub fn mark_dir_albums_for_path(file_path: &Path) {
     }
 }
 
+/// Remove a single entry from `DIR_ALBUM_CACHE`.
+/// Used when an album's directory is deleted from disk (e.g. cleanup of empty
+/// albums after restore or permanent-delete).
+pub fn remove_dir_album_from_cache(dir_path: &Path) {
+    let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
+    cache.remove(dir_path);
+}
+
 /// Clear `DIR_ALBUM_CACHE` and `PENDING_ALBUM_UPDATES`.
 /// Called from test teardown to avoid stale cache entries across test runs.
 #[cfg(test)]

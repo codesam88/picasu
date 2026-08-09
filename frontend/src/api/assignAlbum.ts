@@ -11,13 +11,19 @@ export async function assignAlbum(
   albumId: string,
   index: number,
   isolationId: IsolationId,
-  onConflict: OnConflict = 'skip'
+  onConflict: OnConflict = 'skip',
+  cleanupEmptySource = false
 ): Promise<boolean> {
   const messageStore = useMessageStore('mainId')
   const dataStore = useDataStore(isolationId)
 
   const success = await tryWithMessageStore('mainId', async () => {
-    const response = await axios.put('/put/assign_album', { hash, albumId, onConflict })
+    const response = await axios.put('/put/assign_album', {
+      hash,
+      albumId,
+      onConflict,
+      cleanupEmptySource
+    })
     if (response.status !== 200) {
       throw new Error(`Server responded with status ${response.status}`)
     }

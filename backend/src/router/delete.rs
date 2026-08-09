@@ -10,7 +10,8 @@ use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
 use crate::model::config::APP_CONFIG;
 use crate::process::dir_album::{
-    get_parent_album_id, mark_album_for_update, rewrite_dir_album_cache_prefix,
+    get_parent_album_id, mark_album_for_update, remove_dir_album_from_cache,
+    rewrite_dir_album_cache_prefix,
 };
 use crate::process::transitor::index_to_hash;
 use crate::router::auth::GuardAuth;
@@ -28,6 +29,7 @@ use futures::future::try_join_all;
 use log::warn;
 use redb::ReadableTable;
 use rocket::serde::{Deserialize, Serialize, json::Json};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -346,6 +348,88 @@ fn permanent_delete_album(
     Ok(removed)
 }
 
+/// Walk upward from `leaf_dir`, removing album records and empty directories
+/// at each level. Stops at the first non-empty directory.
+///
+/// For each directory visited:
+/// - If it doesn't exist on disk: remove the stale album DB record + cache entry.
+/// - If it exists but is empty (after removing `.albuminfo.xmp` if present):
+///   remove album DB record, directory, and cache entry.
+/// - If it has other contents: stop.
+pub fn purge_empty_albums(
+    leaf_dir: &Path,
+    data_table: &mut redb::Table<&str, AbstractData>,
+) -> Result<(), AppError> {
+    let mut evicted = Vec::new();
+    let mut current = Some(leaf_dir.to_path_buf());
+
+    while let Some(dir) = current {
+        if !dir.is_dir() {
+            remove_album_for_dir(data_table, &dir)?;
+            evicted.push(dir.clone());
+            current = dir.parent().map(Path::to_path_buf);
+            continue;
+        }
+
+        let sidecar = dir.join(".albuminfo.xmp");
+        if sidecar.exists() {
+            let _ = fs::remove_file(&sidecar);
+        }
+
+        let is_empty = fs::read_dir(&dir).is_ok_and(|mut entries| entries.next().is_none());
+
+        if is_empty {
+            remove_album_for_dir(data_table, &dir)?;
+            let _ = fs::remove_dir(&dir);
+            evicted.push(dir.clone());
+            current = dir.parent().map(Path::to_path_buf);
+        } else {
+            break;
+        }
+    }
+
+    for path in evicted {
+        remove_dir_album_from_cache(&path);
+    }
+
+    Ok(())
+}
+
+/// Find and remove the album DB record whose `dir_path` matches `dir`.
+fn remove_album_for_dir(
+    data_table: &mut redb::Table<&str, AbstractData>,
+    dir: &Path,
+) -> Result<(), AppError> {
+    let dir_str = dir.to_string_lossy().into_owned();
+    let mut to_remove: Vec<ArrayString<64>> = Vec::new();
+
+    for entry in data_table
+        .iter()
+        .or_raise(|| (ErrorKind::Database, "Failed to iterate data table"))?
+    {
+        let (key_guard, val_guard) =
+            entry.or_raise(|| (ErrorKind::Database, "Failed to read table entry"))?;
+        if let AbstractData::Album(album) = val_guard.value()
+            && album.metadata.dir_path == dir_str
+        {
+            let key: ArrayString<64> =
+                ArrayString::from(key_guard.value()).expect("stored key must fit ArrayString<64>");
+            to_remove.push(key);
+        }
+    }
+
+    for key in to_remove {
+        data_table.remove(&*key).or_raise(|| {
+            (
+                ErrorKind::Database,
+                format!("Failed to remove album record {key}"),
+            )
+        })?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -418,6 +502,7 @@ fn process_deletes(
 
     let mut all_affected_album_ids = Vec::new();
     let mut abstract_data_to_remove = Vec::new();
+    let mut purge_leaf_dirs: BTreeSet<PathBuf> = BTreeSet::new();
 
     let txn = TREE
         .in_disk
@@ -450,12 +535,16 @@ fn process_deletes(
             let should_trash = trash_enabled && !is_in_trash(&alias_path, &trash_root);
 
             match &abstract_data {
-                AbstractData::Album(_) => {
+                AbstractData::Album(album) => {
                     if should_trash {
                         trash_move_album(&mut data_table, &hash, &trash_root)?;
                     } else {
+                        let dir_path = PathBuf::from(&album.metadata.dir_path);
                         let removed = permanent_delete_album(&mut data_table, &hash)?;
                         abstract_data_to_remove.extend(removed);
+                        if let Some(parent) = dir_path.parent() {
+                            purge_leaf_dirs.insert(parent.to_path_buf());
+                        }
                     }
                 }
                 AbstractData::Image(_) | AbstractData::Video(_) => {
@@ -466,11 +555,20 @@ fn process_deletes(
                         if let Some(data) = removed {
                             abstract_data_to_remove.push(data);
                         }
+                        if let Some(parent) = Path::new(&alias_path).parent() {
+                            purge_leaf_dirs.insert(parent.to_path_buf());
+                        }
                     }
                 }
             }
 
             all_affected_album_ids.extend(affected_albums);
+        }
+
+        // Purge empty albums left behind by permanent deletes (deepest-first
+        // so child dirs are handled before parents).
+        for leaf in purge_leaf_dirs.iter().rev() {
+            purge_empty_albums(leaf, &mut data_table)?;
         }
     }
     txn.commit()

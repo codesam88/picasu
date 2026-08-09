@@ -7,6 +7,7 @@ use crate::process::dir_album::{
 };
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
+use crate::router::delete::purge_empty_albums;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::DATA_TABLE;
 use crate::storage::db::TREE;
@@ -41,6 +42,10 @@ pub struct AssignAlbumData {
     pub album_id: ArrayString<64>,
     #[serde(default)]
     pub on_conflict: OnConflict,
+    /// When true, purge empty source albums (and their parents) after the move.
+    /// The frontend sets this for restore-from-trash operations.
+    #[serde(default)]
+    pub cleanup_empty_source: Option<bool>,
 }
 
 /// Move a media item into the album's directory on disk, update the DB alias,
@@ -69,6 +74,7 @@ pub async fn assign_album(
     let hash = data.hash;
     let album_id = data.album_id;
     let on_conflict = data.on_conflict;
+    let cleanup_empty_source = data.cleanup_empty_source.unwrap_or(false);
 
     // Resolve album's directory from the in-memory cache.
     let album_dir = get_dir_path_for_album(album_id)
@@ -85,7 +91,13 @@ pub async fn assign_album(
     }
 
     tokio::task::spawn_blocking(move || {
-        move_hash_into_album(hash, album_id, &album_dir, on_conflict)
+        move_hash_into_album(
+            hash,
+            album_id,
+            &album_dir,
+            on_conflict,
+            cleanup_empty_source,
+        )
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
@@ -120,6 +132,7 @@ fn move_hash_into_album(
     album_id: ArrayString<64>,
     album_dir: &Path,
     on_conflict: OnConflict,
+    cleanup_empty_source: bool,
 ) -> Result<(), AppError> {
     let is_album = {
         let txn = TREE
@@ -138,9 +151,9 @@ fn move_hash_into_album(
     };
 
     if is_album {
-        move_album_into_album(hash, album_id, album_dir, on_conflict)
+        move_album_into_album(hash, album_id, album_dir, on_conflict, cleanup_empty_source)
     } else {
-        move_item_into_album(hash, album_id, album_dir, on_conflict)
+        move_item_into_album(hash, album_id, album_dir, on_conflict, cleanup_empty_source)
     }
 }
 
@@ -156,13 +169,14 @@ fn move_album_into_album(
     target_album_id: ArrayString<64>,
     target_dir: &Path,
     on_conflict: OnConflict,
+    cleanup_empty_source: bool,
 ) -> Result<(), AppError> {
-    let (old_dir, new_dir) = {
+    let (old_dir, new_dir, source_parent) = {
         let txn = TREE
             .in_disk
             .begin_write()
             .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
-        let (old_dir, new_dir) = {
+        let (old_dir, new_dir, source_parent) = {
             let mut data_table = txn
                 .open_table(DATA_TABLE)
                 .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
@@ -247,11 +261,12 @@ fn move_album_into_album(
                     .or_raise(|| (ErrorKind::Database, "Failed to update moved record"))?;
             }
 
-            (source_dir, dest_dir)
+            let source_parent = source_dir.parent().map(Path::to_path_buf);
+            (source_dir, dest_dir, source_parent)
         };
         txn.commit()
             .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
-        (old_dir, new_dir)
+        (old_dir, new_dir, source_parent)
     };
 
     rewrite_dir_album_cache_prefix(&old_dir, &new_dir);
@@ -260,6 +275,10 @@ fn move_album_into_album(
         mark_album_for_update(old_parent_id);
     }
     mark_album_for_update(target_album_id);
+
+    if cleanup_empty_source {
+        purge_source_if_empty(source_parent)?;
+    }
 
     Ok(())
 }
@@ -298,12 +317,13 @@ fn move_item_into_album(
     album_id: ArrayString<64>,
     album_dir: &Path,
     on_conflict: OnConflict,
+    cleanup_empty_source: bool,
 ) -> Result<(), AppError> {
     let txn = TREE
         .in_disk
         .begin_write()
         .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
-    {
+    let old_album_dir = {
         let mut data_table = txn
             .open_table(DATA_TABLE)
             .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
@@ -376,9 +396,38 @@ fn move_item_into_album(
             mark_album_for_update(old_id);
         }
         mark_album_for_update(album_id);
-    }
+
+        // Capture file's current parent directory for post-commit cleanup.
+        // This is the trash directory (or any source directory) that may become
+        // empty after the move.
+        current_path.parent().map(Path::to_path_buf)
+    };
     txn.commit()
         .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
+
+    if cleanup_empty_source {
+        purge_source_if_empty(old_album_dir)?;
+    }
+
+    Ok(())
+}
+
+/// Purge empty albums starting from `source_dir` upward, in a new write transaction.
+fn purge_source_if_empty(source_dir: Option<PathBuf>) -> Result<(), AppError> {
+    if let Some(dir) = source_dir {
+        let txn = TREE
+            .in_disk
+            .begin_write()
+            .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
+        {
+            let mut data_table = txn
+                .open_table(DATA_TABLE)
+                .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
+            purge_empty_albums(&dir, &mut data_table)?;
+        }
+        txn.commit()
+            .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
+    }
     Ok(())
 }
 
