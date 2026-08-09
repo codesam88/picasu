@@ -227,17 +227,17 @@ flip-back on restore; upload-landing-in-shared scenario.
 
 ### P7 — Query scoping
 
-- [ ] `get_albums?space=` (reject unknown values)
-- [ ] Timeline/trash/search prefetch scoped via `Expression::Namespace`
+- [x] `get_albums?space=` (reject unknown values)
+- [x] Timeline/trash/search prefetch scoped via `Expression::Namespace`
 
 Verify: API tests `?space=`; prefetch cache-namespacing test (same filter, different space → different cache entry).
 
 ### P8 — Watcher & indexer
 
-- [ ] One watcher per namespace root, namespace predetermined; events → `(namespace, relative)`; removal handler
+- [x] One watcher per namespace root, namespace predetermined; events → `(namespace, relative)`; removal handler
       compares relative
-- [ ] Trash namespace not watched (or events ignored)
-- [ ] `index_album(namespace, rel)`; `POST /post/index/album` gains `namespace` (default `shared`);
+- [x] Trash namespace not watched (or events ignored)
+- [x] `index_album(namespace, rel)`; `POST /post/index/album` gains `namespace` (default `shared`);
       `workflow::index_image(namespace, rel, dst)`
 
 Verify: `api_watcher` reworked to namespace roots; watcher-ignores-trash test.
@@ -311,3 +311,29 @@ Verify: `api_config`/`api_first_launch` updated; vitest + config-page Playwright
 - `just check` clean (cargo fmt + clippy)
 - 214 unit tests passing (model, expression, album, ser_de, dir_album, namespace, sanitize, xmp, auth, assign_album, delete, upload)
 - E2E scenario tests hang on server startup — expected; they exercise the watcher/indexer pipeline which needs P8 completion
+
+### 2026-08-09 — P7–P8 complete
+
+**P7 — Query scoping:**
+
+- Added `Space` enum (`Shared`, `Trash`) with `FromFormField` derive to `get_list.rs`
+- Added `space` query parameter to `GET /get/get-albums`; validates against configured namespaces, rejects unknown values with 400
+- Albums filtered by `namespace` when `space` is provided; returns all namespaces when omitted
+- `Expression::Namespace` already works in `generate_filter` and `generate_filter_hide_metadata` — frontend can compose it into prefetch/search filters for automatic namespace-aware query hashing
+
+**P8 — Watcher & indexer:**
+
+- Reworked `start_watcher.rs`: replaced single `WATCHER_HANDLE` with `WATCHER_HANDLES: HashMap<String, RecommendedWatcher>` (one per namespace)
+- `start_watcher_task_internal` iterates configured namespaces, skips trash, creates a watcher per non-trash root
+- `new_namespace_watcher(namespace)` closure captures namespace, strips root prefix to produce `(namespace, relative)` pairs
+- `submit_to_debounce_pool` and `submit_removal_to_watcher` now take `(namespace, relative)` instead of absolute paths
+- `handle_removed_file(namespace, relative)` matches aliases by `(namespace, file)` instead of just `file`
+- `DEBOUNCE_POOL` keyed by `(String, PathBuf)` instead of `PathBuf`
+- `IndexAlbumRequest` gains `namespace` field (default `"shared"`)
+- `index_album(namespace, src)` uses `namespace_root(namespace)` instead of `get_resolved_image_home()`; spawned tasks pass namespace to `workflow::index_image`
+
+**Verification:**
+
+- `just backend-check` clean (cargo fmt + clippy)
+- 134 unit tests passing (expression, model, ser_de, dir_album, namespace, sanitize, xmp, auth, assign_album, delete, upload)
+- E2E scenario tests still hang on server startup — known blocker for P10

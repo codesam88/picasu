@@ -12,6 +12,8 @@ use std::path::PathBuf;
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct IndexAlbumRequest {
     album: String,
+    #[serde(default = "default_namespace")]
+    namespace: String,
 }
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
@@ -26,8 +28,8 @@ fn default_namespace() -> String {
     "shared".to_string()
 }
 
-/// Walk a directory under `IMAGE_HOME` and index all media files in the
-/// background.  `album` is a path relative to `IMAGE_HOME` — use `"/"` for
+/// Walk a directory under a namespace root and index all media files in the
+/// background.  `album` is a path relative to the namespace root — use `"/"` for
 /// the root.  Status can be polled via `GET /get/index/status`.
 #[utoipa::path(
         post,
@@ -46,7 +48,8 @@ pub fn index_album_handler(
     req: Json<IndexAlbumRequest>,
 ) -> AppResult<Status> {
     let _ = read_only?;
-    index_album(&req.into_inner().album)?;
+    let inner = req.into_inner();
+    index_album(&inner.namespace, &inner.album)?;
     Ok(Status::Accepted)
 }
 

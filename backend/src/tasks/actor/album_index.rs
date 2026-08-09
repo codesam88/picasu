@@ -15,7 +15,6 @@ use crate::error::{AppError, ErrorKind, handle_error};
 use crate::model::media::is_valid_media_file;
 use crate::router::AppResult;
 use crate::storage::files::get_data_path;
-use crate::storage::files::get_resolved_image_home;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -82,17 +81,21 @@ static INDEX_STATUS: LazyLock<Mutex<IndexStatusSlot>> = LazyLock::new(|| {
 });
 static ACTIVE_INDEX: LazyLock<Mutex<Option<ActiveIndex>>> = LazyLock::new(|| Mutex::new(None));
 
-/// Index all media files under `src` (a directory path relative to
-/// `IMAGE_HOME`).  Walks recursively, calling `index_image` on each valid
+/// Index all media files under `src` (a directory path relative to the
+/// namespace root).  Walks recursively, calling `index_image` on each valid
 /// media file.  Album is always resolved from the file's parent directory.
 ///
 /// Runs as a background job; status can be polled via `album_index_status()`.
 #[allow(clippy::too_many_lines)]
-pub fn index_album(src: &str) -> AppResult<()> {
-    let image_root = get_resolved_image_home()
-        .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "No imagePath configured to scan"))?;
+pub fn index_album(namespace: &str, src: &str) -> AppResult<()> {
+    let ns_root = crate::process::namespace::namespace_root(namespace).ok_or_else(|| {
+        AppError::new(
+            ErrorKind::InvalidInput,
+            format!("Unknown namespace: {namespace}"),
+        )
+    })?;
 
-    let root = image_root.join(src.trim_start_matches('/'));
+    let root = ns_root.join(src.trim_start_matches('/'));
 
     if !root.is_dir() {
         return Err(AppError::new(
@@ -125,7 +128,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
         }
 
         slot.job_id = job_id;
-        let root_display = root.strip_prefix(&image_root).map_or_else(
+        let root_display = root.strip_prefix(&ns_root).map_or_else(
             |_| root.to_string_lossy().into_owned(),
             |rel| rel.to_string_lossy().into_owned(),
         );
@@ -147,10 +150,13 @@ pub fn index_album(src: &str) -> AppResult<()> {
         cancel: cancel.clone(),
     });
 
-    let image_root_clone = image_root;
+    let namespace_owned = namespace.to_string();
     let root_clone = root.clone();
     tokio::spawn(async move {
-        info!("Starting one-time album index: {}", root_clone.display());
+        info!(
+            "Starting one-time album index (namespace={namespace_owned}): {}",
+            root_clone.display()
+        );
 
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
         let walker = WalkDir::new(&root)
@@ -185,16 +191,20 @@ pub fn index_album(src: &str) -> AppResult<()> {
 
             increment_matched(job_id);
 
-            let relative = if let Ok(r) = abs_path.strip_prefix(&image_root_clone) {
+            let relative = if let Ok(r) = abs_path.strip_prefix(&ns_root) {
                 r.to_path_buf()
             } else {
-                warn!("File outside IMAGE_HOME, skipping: {}", abs_path.display());
+                warn!(
+                    "File outside namespace root, skipping: {}",
+                    abs_path.display()
+                );
                 increment_failed(job_id);
                 continue;
             };
 
+            let ns = namespace_owned.clone();
             handles.push(tokio::spawn(async move {
-                match crate::workflow::index_image("shared", &relative, None).await {
+                match crate::workflow::index_image(&ns, &relative, None).await {
                     Ok(()) => increment_processed(job_id),
                     Err(err) => {
                         handle_error(err);

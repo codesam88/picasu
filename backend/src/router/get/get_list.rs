@@ -1,11 +1,13 @@
-use crate::error::AppError;
+use crate::error::{AppError, ErrorKind};
 use crate::model::album::Share;
+use crate::model::config::APP_CONFIG;
 use crate::process::dir_album::get_parent_album_id;
 use crate::router::auth::GuardAuth;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::TREE;
 use crate::storage::db::TagInfo;
 use arrayvec::ArrayString;
+use rocket::form::FromFormField;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -43,23 +45,70 @@ pub struct AlbumInfo {
     pub parent_album_id: Option<String>,
 }
 
+#[derive(Debug, Clone, FromFormField)]
+pub enum Space {
+    Shared,
+    Trash,
+}
+
 #[utoipa::path(
         get,
         path = "/get/get-albums",
+        params(
+            ("space" = Option<String>, Query, description = "Filter albums by namespace (e.g. \"shared\", \"trash\")")
+        ),
         responses(
             (status = 200, description = "List of albums", body = Vec<AlbumInfo>),
+            (status = 400, description = "Invalid space value"),
         )
     )
 ]
-#[get("/get/get-albums")]
-pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<AlbumInfo>>> {
+#[get("/get/get-albums?<space>")]
+pub async fn get_albums(
+    auth: GuardResult<GuardAuth>,
+    space: Option<Space>,
+) -> AppResult<Json<Vec<AlbumInfo>>> {
     let _ = auth?;
+
+    // Validate space against configured namespaces
+    if let Some(ref s) = space {
+        let ns_name = match s {
+            Space::Shared => "shared",
+            Space::Trash => "trash",
+        };
+        let valid = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG not initialized")
+            .read()
+            .expect("lock poisoned")
+            .namespaces
+            .iter()
+            .any(|ns| ns.name == ns_name);
+        if !valid {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                format!("Unknown space: {ns_name}"),
+            ));
+        }
+    }
+
     tokio::task::spawn_blocking(move || {
         let album_list = TREE
             .read_albums()
             .map_err(|e| e.context("Failed to read albums"))?;
         let album_info_list = album_list
             .into_iter()
+            .filter(|album| {
+                if let Some(ref s) = space {
+                    let ns_name = match s {
+                        Space::Shared => "shared",
+                        Space::Trash => "trash",
+                    };
+                    album.metadata.namespace == ns_name
+                } else {
+                    true
+                }
+            })
             .map(|album| {
                 // Resolve the absolute dir_path from namespace + relative for parent lookup
                 let abs_dir_path = crate::process::namespace::namespace_resolve(

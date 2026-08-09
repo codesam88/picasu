@@ -25,11 +25,12 @@ use walkdir::WalkDir;
 
 static IS_WATCHING: AtomicBool = AtomicBool::new(false);
 
-static WATCHER_HANDLE: LazyLock<Mutex<Option<RecommendedWatcher>>> =
-    LazyLock::new(|| Mutex::new(None));
+/// One watcher handle per namespace (keyed by namespace name).
+static WATCHER_HANDLES: LazyLock<Mutex<HashMap<String, RecommendedWatcher>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
-/// The last trigger time for each path
-static DEBOUNCE_POOL: LazyLock<Mutex<HashMap<PathBuf, Instant>>> =
+/// The last trigger time for each `(namespace, relative_path)`.
+static DEBOUNCE_POOL: LazyLock<Mutex<HashMap<(String, PathBuf), Instant>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub struct StartWatcherTask;
@@ -42,20 +43,20 @@ impl BatchTask for StartWatcherTask {
     }
 }
 
-/// Reload watcher with the new path from config
+/// Reload watchers for all non-trash namespace roots.
 pub fn reload_watcher() {
-    info!("Reloading watcher...");
+    info!("Reloading watchers...");
 
     {
-        let mut guard = WATCHER_HANDLE.lock().expect("lock poisoned");
-        *guard = None; // Drop old watcher
+        let mut guard = WATCHER_HANDLES.lock().expect("lock poisoned");
+        guard.clear(); // Drop all old watchers
     }
 
     // Reset the flag so we can start again
     IS_WATCHING.store(false, Ordering::SeqCst);
 
     if let Err(e) = start_watcher_task_internal() {
-        error!("Failed to reload watcher: {e}");
+        error!("Failed to reload watchers: {e}");
     }
 }
 
@@ -65,13 +66,13 @@ fn start_watcher_task_internal() -> Result<()> {
         return Ok(());
     }
 
-    let (fs_notify_watcher_enabled, raw_image_path) = {
+    let (fs_notify_watcher_enabled, namespaces) = {
         let cfg = APP_CONFIG
             .get()
             .expect("APP_CONFIG not initialized")
             .read()
             .expect("lock poisoned");
-        (cfg.fs_notify_watcher, cfg.image_home.clone())
+        (cfg.fs_notify_watcher, cfg.namespaces.clone())
     };
 
     if !fs_notify_watcher_enabled {
@@ -80,37 +81,55 @@ fn start_watcher_task_internal() -> Result<()> {
         return Ok(());
     }
 
-    let Some(raw_image_path) = raw_image_path else {
-        info!("No path to watch");
+    if namespaces.is_empty() {
+        info!("No namespaces configured — skipping filesystem watcher");
         IS_WATCHING.store(false, Ordering::SeqCst);
         return Ok(());
-    };
-
-    // Path is already absolute from config
-    let image_path = raw_image_path;
-
-    // Build the watcher.
-    let mut watcher = new_watcher()?;
-    if image_path.exists() {
-        watcher
-            .watch(&image_path, RecursiveMode::Recursive)
-            .map_err(|e| anyhow::anyhow!("Failed to watch path {}: {e}", image_path.display()))?;
-        info!("Watching path {}", image_path.display());
-    } else {
-        error!("Path not found, skipped: {}", image_path.display());
     }
 
-    // Store it globally to keep it alive.
-    *WATCHER_HANDLE.lock().expect("lock poisoned") = Some(watcher);
+    let mut handles = WATCHER_HANDLES.lock().expect("lock poisoned");
+
+    for ns in &namespaces {
+        // Trash namespace is not watched
+        if ns.name == "trash" {
+            info!("Skipping trash namespace for watching");
+            continue;
+        }
+
+        let root = &ns.path;
+        if !root.exists() {
+            warn!(
+                "Namespace root not found, skipped: {} ({})",
+                ns.name,
+                root.display()
+            );
+            continue;
+        }
+
+        let namespace = ns.name.clone();
+        let mut watcher = new_namespace_watcher(namespace.clone())?;
+        if let Err(e) = watcher.watch(root, RecursiveMode::Recursive) {
+            warn!(
+                "Failed to watch namespace root {} ({}): {e}",
+                namespace,
+                root.display()
+            );
+            continue;
+        }
+        info!("Watching namespace '{}' at {}", namespace, root.display());
+        handles.insert(namespace, watcher);
+    }
+
     Ok(())
 }
 
-fn submit_to_debounce_pool(path: PathBuf) {
+fn submit_to_debounce_pool(namespace: String, relative: PathBuf) {
     let now = Instant::now();
+    let key = (namespace.clone(), relative.clone());
 
     {
         let mut pool = DEBOUNCE_POOL.lock().expect("lock poisoned");
-        pool.insert(path.clone(), now);
+        pool.insert(key.clone(), now);
     }
 
     // Start a task to check after 1 second (running on INDEX_RUNTIME)
@@ -120,10 +139,10 @@ fn submit_to_debounce_pool(path: PathBuf) {
         // Check if there are any events for the same path within this 1 second (i.e., whether the last time is still now)
         let should_run = {
             let mut pool = DEBOUNCE_POOL.lock().expect("lock poisoned");
-            match pool.get(&path).copied() {
+            match pool.get(&key).copied() {
                 Some(last) if last == now => {
                     // Not updated, remove and execute
-                    pool.remove(&path);
+                    pool.remove(&key);
                     true
                 }
                 _ => false, // There are later events or it has been removed, abandon this time
@@ -139,9 +158,6 @@ fn submit_to_debounce_pool(path: PathBuf) {
 
         if should_run
             && watcher_still_enabled
-            && is_valid_media_file(&path)
-            && let Some((namespace, relative)) =
-                crate::process::namespace::namespace_from_path(&path)
             && let Err(e) =
                 crate::workflow::index_image(&namespace, std::path::Path::new(&relative), None)
                     .await
@@ -151,11 +167,14 @@ fn submit_to_debounce_pool(path: PathBuf) {
     });
 }
 
-/// Handle an external file removal: find the DB record that owns `path`,
-/// remove that alias, and if no aliases remain remove the record + thumbnail.
-fn submit_removal_to_watcher(path: PathBuf) {
+/// Handle an external file removal: find the DB record that owns
+/// `(namespace, relative)`, remove that alias, and if no aliases remain
+/// remove the record + thumbnail.
+fn submit_removal_to_watcher(namespace: String, relative: PathBuf) {
     INDEX_RUNTIME.spawn(async move {
-        if let Err(e) = tokio::task::spawn_blocking(move || handle_removed_file(&path)).await {
+        if let Err(e) =
+            tokio::task::spawn_blocking(move || handle_removed_file(&namespace, &relative)).await
+        {
             warn!("Join error in removal handler: {e}");
         }
         let _ = BATCH_COORDINATOR
@@ -170,17 +189,15 @@ fn submit_removal_to_watcher(path: PathBuf) {
     });
 }
 
-fn handle_removed_file(removed: &Path) {
-    // Scan in-memory tree to find the record that owns this path.
-    let removed_str = removed.to_string_lossy();
+fn handle_removed_file(namespace: &str, relative: &Path) {
+    // Scan in-memory tree to find the record that owns this (namespace, relative) alias.
     let matching: Option<AbstractData> = {
         let tree = TREE.in_memory.read().expect("lock poisoned");
         tree.iter()
             .find(|dt| {
-                dt.abstract_data
-                    .alias()
-                    .iter()
-                    .any(|a| a.file == removed_str.as_ref())
+                dt.abstract_data.alias().iter().any(|a| {
+                    a.namespace == namespace && a.file == relative.to_string_lossy().as_ref()
+                })
             })
             .map(|dt| dt.abstract_data.clone())
     };
@@ -192,7 +209,7 @@ fn handle_removed_file(removed: &Path) {
     let remaining_aliases: Vec<_> = abstract_data
         .alias()
         .iter()
-        .filter(|a| a.file != removed_str.as_ref())
+        .filter(|a| !(a.namespace == namespace && a.file == relative.to_string_lossy().as_ref()))
         .cloned()
         .collect();
 
@@ -214,31 +231,15 @@ fn handle_removed_file(removed: &Path) {
     }
 }
 
-fn new_watcher() -> Result<RecommendedWatcher> {
+fn new_namespace_watcher(namespace: String) -> Result<RecommendedWatcher> {
+    let ns_label = namespace.clone();
     notify::recommended_watcher(move |result: Result<Event, notify::Error>| match result {
         Ok(event) => {
-            // Compute trash root to skip events under it
-            let trash_root = {
-                let config = APP_CONFIG
-                    .get()
-                    .expect("APP_CONFIG not initialized")
-                    .read()
-                    .expect("lock poisoned");
-                config
-                    .image_home
-                    .as_ref()
-                    .unwrap()
-                    .join(&config.trash_directory)
-            };
-
             match event.kind {
                 EventKind::Create(_) => {
                     let mut path_list: HashSet<PathBuf> = HashSet::new();
 
                     for path in event.paths {
-                        if path.starts_with(&trash_root) {
-                            continue;
-                        }
                         if path.is_file() {
                             path_list.insert(path);
                         } else if path.is_dir() {
@@ -253,8 +254,12 @@ fn new_watcher() -> Result<RecommendedWatcher> {
                     }
 
                     for path in path_list {
-                        if is_valid_media_file(&path) {
-                            submit_to_debounce_pool(path);
+                        // Resolve the namespace root to compute relative path
+                        if let Some(root) = crate::process::namespace::namespace_root(&namespace)
+                            && let Ok(relative) = path.strip_prefix(&root)
+                            && is_valid_media_file(&path)
+                        {
+                            submit_to_debounce_pool(namespace.clone(), relative.to_path_buf());
                         }
                     }
                 }
@@ -263,28 +268,28 @@ fn new_watcher() -> Result<RecommendedWatcher> {
                     let mut path_list: HashSet<PathBuf> = HashSet::new();
 
                     for path in event.paths {
-                        if path.starts_with(&trash_root) {
-                            continue;
-                        }
                         if path.is_file() {
                             path_list.insert(path);
                         }
                     }
 
                     for path in path_list {
-                        if is_valid_media_file(&path) {
-                            submit_to_debounce_pool(path);
+                        if let Some(root) = crate::process::namespace::namespace_root(&namespace)
+                            && let Ok(relative) = path.strip_prefix(&root)
+                            && is_valid_media_file(&path)
+                        {
+                            submit_to_debounce_pool(namespace.clone(), relative.to_path_buf());
                         }
                     }
                 }
 
                 EventKind::Remove(_) => {
                     for path in event.paths {
-                        if path.starts_with(&trash_root) {
-                            continue;
-                        }
-                        if is_valid_media_file(&path) {
-                            submit_removal_to_watcher(path);
+                        if let Some(root) = crate::process::namespace::namespace_root(&namespace)
+                            && let Ok(relative) = path.strip_prefix(&root)
+                            && is_valid_media_file(&path)
+                        {
+                            submit_removal_to_watcher(namespace.clone(), relative.to_path_buf());
                         }
                     }
                 }
@@ -293,8 +298,10 @@ fn new_watcher() -> Result<RecommendedWatcher> {
             }
         }
         Err(err) => {
-            handle_error(anyhow::anyhow!("Watch error: {err:#?}"));
+            handle_error(anyhow::anyhow!(
+                "Watch error in namespace '{namespace}': {err:#?}"
+            ));
         }
     })
-    .map_err(|e| anyhow::anyhow!("Failed to create watcher: {e}"))
+    .map_err(|e| anyhow::anyhow!("Failed to create watcher for namespace '{ns_label}': {e}"))
 }
