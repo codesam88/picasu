@@ -5,7 +5,7 @@ use log::kv::Key;
 use std::io::Write;
 
 pub fn initialize_logger() {
-    Builder::new()
+    Builder::from_default_env()
         .write_style(WriteStyle::Auto)
         .format(|buf, record| {
             let ts = buf.timestamp();
@@ -55,7 +55,8 @@ pub fn initialize_logger() {
         })
         .filter(None, log::LevelFilter::Info)
         .filter(Some("rocket"), log::LevelFilter::Warn)
-        .init();
+        .try_init()
+        .ok();
 }
 
 use log::{error, info};

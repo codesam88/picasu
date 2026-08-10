@@ -185,20 +185,15 @@ const ui = computed<UIState>(() => {
     return {
       isSearchEmpty: false,
       showUploadCard: false,
-      hasHoverEffect: true,
-      message: 'Upload some photos here!',
-      icon: 'mdi-image-plus',
-      onClick: () => {
-        uploadStore.triggerFileInput(
-          typeof route.params.hash === 'string' ? route.params.hash : undefined
-        )
-      }
+      hasHoverEffect: false,
+      message: 'This album is empty.',
+      icon: 'mdi-folder-open-outline',
+      onClick: undefined
     }
   }
 
   switch (route.meta.baseName) {
     case 'timeline':
-    case 'album':
       return {
         isSearchEmpty: false,
         showUploadCard: false,
@@ -208,6 +203,16 @@ const ui = computed<UIState>(() => {
         onClick: () => {
           uploadStore.triggerFileInput(undefined)
         }
+      }
+
+    case 'album':
+      return {
+        isSearchEmpty: false,
+        showUploadCard: false,
+        hasHoverEffect: false,
+        message: 'This album is empty.',
+        icon: 'mdi-folder-open-outline',
+        onClick: undefined
       }
 
     case 'albums':
