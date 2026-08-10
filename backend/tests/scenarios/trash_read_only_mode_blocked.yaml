@@ -11,7 +11,7 @@ when:
     body:
       readOnlyMode: true
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[{"index":${idx},"aliasPath":"${image_home}/e2e_ro_trash/photo.jpg"}],"timestamp":${ts}}'
+    raw_body: '{"deleteList":[{"index":${idx},"aliasPath":"e2e_ro_trash/photo.jpg"}],"timestamp":${ts}}'
 then:
   - response.status: 405
   - file_exists: /e2e_ro_trash/photo.jpg

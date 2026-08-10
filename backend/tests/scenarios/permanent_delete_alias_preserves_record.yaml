@@ -20,7 +20,7 @@ when:
       ts2: response.prefetch.timestamp
       idx2: response.prefetch.locateTo
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[{"index":${idx2},"aliasPath":"${image_home}/e2e_pd_preserve/album/live.jpg"}],"timestamp":${ts2}}'
+    raw_body: '{"deleteList":[{"index":${idx2},"aliasPath":"e2e_pd_preserve/album/live.jpg"}],"timestamp":${ts2}}'
     then:
       - response.status: 200
       - file_absent: /e2e_pd_preserve/live.jpg
@@ -31,7 +31,7 @@ when:
       ts3: response.prefetch.timestamp
       idx3: response.prefetch.locateTo
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[{"index":${idx3},"aliasPath":"${image_home}/.trash/e2e_pd_preserve/album/live.jpg"}],"timestamp":${ts3}}'
+    raw_body: '{"deleteList":[{"index":${idx3},"aliasPath":"e2e_pd_preserve/album/live.jpg"}],"timestamp":${ts3}}'
     then:
       - response.status: 200
       - file_absent: /.trash/e2e_pd_preserve/album/live.jpg

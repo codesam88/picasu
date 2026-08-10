@@ -13,7 +13,7 @@ when:
       on_conflict: rename
       last_modified: 4102444800000
     id_as: $photo
-    discover_path: /e2e_utc_clamp/target/screenshot.jpeg
+    discover_path: e2e_utc_clamp/target/screenshot.jpeg
     then:
       - response.status: 200
   - call: POST /get/prefetch?locate=${photo}

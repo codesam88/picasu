@@ -21,7 +21,7 @@ when:
       ts2: response.prefetch.timestamp
       idx2: response.prefetch.locateTo
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[{"index":${idx2},"aliasPath":"${image_home}/e2e_trash_ma/album/original.jpg"}],"timestamp":${ts2}}'
+    raw_body: '{"deleteList":[{"index":${idx2},"aliasPath":"e2e_trash_ma/album/original.jpg"}],"timestamp":${ts2}}'
 then:
   - response.status: 200
   - file_absent: /e2e_trash_ma/original.jpg

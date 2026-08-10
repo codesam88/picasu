@@ -15,7 +15,7 @@ when:
     capture:
       idx_b: response.prefetch.locateTo
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[{"index":${idx_a},"aliasPath":"${image_home}/e2e_trash_album/photo_a.jpg"},{"index":${idx_b},"aliasPath":"${image_home}/e2e_trash_album/photo_b.jpg"}],"timestamp":${ts}}'
+    raw_body: '{"deleteList":[{"index":${idx_a},"aliasPath":"e2e_trash_album/photo_a.jpg"},{"index":${idx_b},"aliasPath":"e2e_trash_album/photo_b.jpg"}],"timestamp":${ts}}'
     then:
       - response.status: 200
       - file_absent: /e2e_trash_album/photo_a.jpg
@@ -30,7 +30,7 @@ when:
     capture:
       idx_b2: response.prefetch.locateTo
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[{"index":${idx_a2},"aliasPath":"${image_home}/.trash/e2e_trash_album/photo_a.jpg"},{"index":${idx_b2},"aliasPath":"${image_home}/.trash/e2e_trash_album/photo_b.jpg"}],"timestamp":${ts2}}'
+    raw_body: '{"deleteList":[{"index":${idx_a2},"aliasPath":"e2e_trash_album/photo_a.jpg"},{"index":${idx_b2},"aliasPath":"e2e_trash_album/photo_b.jpg"}],"timestamp":${ts2}}'
 then:
   - response.status: 200
   - file_absent: /.trash/e2e_trash_album/photo_a.jpg

@@ -20,6 +20,7 @@ pub struct TestEnv {
 }
 
 pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
+    crate::init::initialize_logger();
     let dir = tempfile::tempdir().expect("create tempdir");
     let data_path = dir.path().to_path_buf();
 
@@ -30,10 +31,18 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
     let mut test_config = AppConfig::default();
     let image_home = data_path.join("images");
     std::fs::create_dir_all(&image_home).unwrap();
-    test_config.namespaces = vec![NamespaceConfig {
-        name: "shared".to_string(),
-        path: image_home,
-    }];
+    let trash_home = data_path.join("trash");
+    std::fs::create_dir_all(&trash_home).unwrap();
+    test_config.namespaces = vec![
+        NamespaceConfig {
+            name: "shared".to_string(),
+            path: image_home,
+        },
+        NamespaceConfig {
+            name: "trash".to_string(),
+            path: trash_home,
+        },
+    ];
     APP_CONFIG
         .set(RwLock::new(test_config))
         .expect("APP_CONFIG already set");
@@ -103,6 +112,8 @@ pub static TEST_SERIAL_GUARD: Mutex<()> = Mutex::new(());
 /// This prevents data contamination across serialized scenarios
 /// by clearing the database, caches, filesystem, and config mutations.
 pub fn reset_backend_state() {
+    use log::debug;
+    debug!("resetting backend state");
     // Clear in-memory caches.
     TREE_SNAPSHOT.in_memory.clear();
     TREE.in_memory.write().expect("TREE in_memory lock").clear();
@@ -151,10 +162,22 @@ pub fn reset_backend_state() {
     config.validate_upload_content = true;
     config.trash_enabled = true;
     config.password = None;
-    config.namespaces = vec![NamespaceConfig {
-        name: "shared".to_string(),
-        path: test_image_home(),
-    }];
+    let trash_home = image_home
+        .parent()
+        .expect("image_home must have parent")
+        .join("trash");
+    std::fs::create_dir_all(&trash_home).ok();
+    config.namespaces = vec![
+        NamespaceConfig {
+            name: "shared".to_string(),
+            path: image_home,
+        },
+        NamespaceConfig {
+            name: "trash".to_string(),
+            path: trash_home,
+        },
+    ];
+    debug!("backend state reset complete");
 }
 
 /// Build a Rocket test client with the current APP_CONFIG.

@@ -117,7 +117,11 @@ fn watcher_disabled_and_album_index_targeting() {
     // Start with watcher disabled so nothing is auto-indexed via FS events.
     std::fs::write(
         cfg_dir.join("config.toml"),
-        "[gallery]\nfs_notify_watcher = false\n",
+        format!(
+            "[gallery]\nfs_notify_watcher = false\n\n[[gallery.namespaces]]\nname = \"shared\"\npath = \"{}\"\n\n[[gallery.namespaces]]\nname = \"trash\"\npath = \"{}\"\n",
+            image_home.display(),
+            dir.path().join("trash").display()
+        ),
     )
     .unwrap();
 

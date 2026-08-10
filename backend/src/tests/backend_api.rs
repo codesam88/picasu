@@ -285,6 +285,22 @@ fn check_body_assertions(body_bytes: &[u8], then_items: &[Value], vars: &HashMap
     }
 }
 
+/// Resolve a scenario file assertion path against the filesystem.
+/// Paths are relative to the shared namespace root; a leading `.trash/`
+/// maps into the trash namespace root instead (aliases are stored
+/// namespace-relative, so a trashed file keeps its relative path under a
+/// different root).
+fn resolve_file_assertion_path(data: &Path, file_path: &str) -> std::path::PathBuf {
+    let trimmed = file_path.trim_start_matches('/');
+    if let Some(rest) = trimmed.strip_prefix(".trash/") {
+        crate::process::namespace::namespace_root("trash")
+            .expect("trash namespace must be configured in test config")
+            .join(rest)
+    } else {
+        data.join(trimmed)
+    }
+}
+
 fn check_file_and_serve_assertions(
     then_items: &[Value],
     data: &Path,
@@ -293,14 +309,11 @@ fn check_file_and_serve_assertions(
 ) {
     for item in then_items {
         if let Some(file_path) = item["file_exists"].as_str() {
-            let trimmed = file_path.trim_start_matches('/');
-            assert!(data.join(trimmed).exists(), "file should exist: {trimmed}");
+            let target = resolve_file_assertion_path(data, file_path);
+            assert!(target.exists(), "file should exist: {file_path}");
         } else if let Some(file_path) = item["file_absent"].as_str() {
-            let trimmed = file_path.trim_start_matches('/');
-            assert!(
-                !data.join(trimmed).exists(),
-                "file should be absent: {trimmed}"
-            );
+            let target = resolve_file_assertion_path(data, file_path);
+            assert!(!target.exists(), "file should be absent: {file_path}");
         } else if let Some(photo_var) = item["serve_image_ok"].as_str() {
             let bare = photo_var.trim_start_matches('$');
             let hash = vars
@@ -603,11 +616,23 @@ fn has_json_assertions(item: &Value) -> bool {
 // ── Interpreter main logic ──
 
 fn interpret_scenario(scenario: &Value) {
+    log::debug!("interpret_scenario START");
     let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
     let _ = &*TEST_ENV;
+    log::debug!("reset_backend_state");
     reset_backend_state();
     let data = test_image_home();
     set_image_home(data.clone());
+    let ns_names: Vec<String> = crate::model::config::APP_CONFIG
+        .get()
+        .unwrap()
+        .read()
+        .unwrap()
+        .namespaces
+        .iter()
+        .map(|n| n.name.clone())
+        .collect();
+    log::debug!("data={} namespaces={ns_names:?}", data.display());
 
     let given = scenario["given"].as_array();
     let then_items = scenario["then"].as_array().expect("then must be an array");
@@ -754,7 +779,9 @@ fn interpret_scenario(scenario: &Value) {
                     .header(ContentType::JSON)
                     .body(serde_json::json!({"album": "/"}).to_string())
                     .dispatch();
+                log::debug!("scan status: {}", _scan_resp.status());
                 assert_eq!(_scan_resp.status(), Status::Accepted, "scan trigger");
+                log::debug!("wait_for_album_index");
                 wait_for_album_index(&client, 30000);
 
                 for rp in &remove_files {

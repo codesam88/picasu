@@ -22,7 +22,12 @@ fn image_home() -> PathBuf {
 
 pub fn discover_photo_hash(client: &Client, relative_path: &str) -> String {
     let image_home = image_home();
-    let abs_path = image_home.join(relative_path);
+    // The parameter is documented as relative to IMAGE_HOME.  Defend against
+    // a leading slash: `Path::join` treats an absolute RHS as replacing the
+    // whole prefix, which would turn the query into a root-relative path that
+    // can never match a namespace-relative alias.
+    let rel = relative_path.strip_prefix('/').unwrap_or(relative_path);
+    let abs_path = image_home.join(rel);
 
     let cookie = auth_cookie(client);
     let body = serde_json::json!({"Path": abs_path.to_string_lossy()});
@@ -73,6 +78,7 @@ pub fn discover_photo_hash(client: &Client, relative_path: &str) -> String {
             let data_body: Value =
                 serde_json::from_slice(&data_resp.into_bytes().expect("get-data body"))
                     .expect("valid get-data JSON");
+            log::debug!("discover_photo_hash: dataLength={data_length}");
             found = data_body[0]["abstractData"]["id"]
                 .as_str()
                 .map(|s| s.to_owned());
