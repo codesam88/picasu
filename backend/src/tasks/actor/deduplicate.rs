@@ -4,7 +4,7 @@ use crate::{error::handle_error, model::abstract_data::AbstractData};
 use anyhow::Result;
 use arrayvec::ArrayString;
 use mini_executor::Task;
-use std::{mem, path::Path, path::PathBuf};
+use std::{mem, path::PathBuf};
 use tokio::task::spawn_blocking;
 
 pub struct DeduplicateTask {
@@ -57,10 +57,14 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
                 // aliased file is a real file/DB inconsistency -- external
                 // manipulation or data loss outside the app, e.g. the file
                 // was moved/deleted without going through assign_album --
-                // so surface it instead of pruning silently.
-                let (still_present, missing): (Vec<_>, Vec<_>) = mem::take(exist_alias)
-                    .into_iter()
-                    .partition(|a| Path::new(&a.file).exists());
+                // so surface it instead of pruning silently. Alias `file`
+                // is relative to its namespace, so resolve to an absolute
+                // path before the existence check.
+                let (still_present, missing): (Vec<_>, Vec<_>) =
+                    mem::take(exist_alias).into_iter().partition(|a| {
+                        crate::process::namespace::namespace_resolve(&a.namespace, &a.file)
+                            .is_some_and(|p| p.exists())
+                    });
                 if !missing.is_empty() {
                     warn!(
                         "Pruning {} missing alias path(s) for hash {}, no longer on disk: {:?}",
@@ -70,7 +74,6 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
                     );
                 }
                 *exist_alias = still_present;
-
                 // Add the current path only if it isn't already present --
                 // rediscovering the same file at its current, unchanged
                 // path on every watcher re-index is routine, not a

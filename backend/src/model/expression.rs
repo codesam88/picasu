@@ -199,14 +199,37 @@ impl Expression {
             }
             Expression::Path(path) => {
                 let path_lower = path.to_ascii_lowercase();
-                Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Image(img) => img.metadata.alias.iter().any(|file_modify| {
-                        file_modify.file.to_ascii_lowercase().contains(&path_lower)
-                    }),
-                    AbstractData::Video(vid) => vid.metadata.alias.iter().any(|file_modify| {
-                        file_modify.file.to_ascii_lowercase().contains(&path_lower)
-                    }),
-                    AbstractData::Album(_) => false,
+                // Aliases are stored namespace-relative (e.g.
+                // "2024/photo.jpg"), but a Path query may be an absolute
+                // filesystem path (test fixtures, external tooling) or a
+                // relative substring (frontend search box).  Resolve an
+                // absolute query against the configured namespaces once so
+                // both forms match.
+                let rel_candidates: Vec<String> = {
+                    let p = std::path::Path::new(&path);
+                    if p.is_absolute() {
+                        crate::process::namespace::namespace_from_path(p)
+                            .map(|(_, rel)| vec![rel.to_ascii_lowercase()])
+                            .unwrap_or_default()
+                    } else {
+                        Vec::new()
+                    }
+                };
+                Box::new(move |abstract_data: &AbstractData| {
+                    let matches = |file: &str| {
+                        let lower = file.to_ascii_lowercase();
+                        lower.contains(&path_lower)
+                            || rel_candidates.iter().any(|cand| lower.contains(cand))
+                    };
+                    match abstract_data {
+                        AbstractData::Image(img) => {
+                            img.metadata.alias.iter().any(|fm| matches(&fm.file))
+                        }
+                        AbstractData::Video(vid) => {
+                            vid.metadata.alias.iter().any(|fm| matches(&fm.file))
+                        }
+                        AbstractData::Album(_) => false,
+                    }
                 })
             }
             Expression::Album(album_id) => match album_id {
@@ -221,12 +244,22 @@ impl Expression {
                         Some(dir) => {
                             // Only files whose immediate parent equals this album's directory.
                             // Files in sub-directories belong to the corresponding child album.
+                            // Alias `file` is relative to its namespace; the dir cache holds
+                            // absolute paths, so resolve the alias before comparing parents.
                             Box::new(move |abstract_data: &AbstractData| match abstract_data {
                                 AbstractData::Image(img) => img.metadata.alias.iter().any(|a| {
-                                    std::path::Path::new(&a.file).parent() == Some(dir.as_path())
+                                    crate::process::namespace::namespace_resolve(
+                                        &a.namespace,
+                                        &a.file,
+                                    )
+                                    .is_some_and(|abs| abs.parent() == Some(dir.as_path()))
                                 }),
                                 AbstractData::Video(vid) => vid.metadata.alias.iter().any(|a| {
-                                    std::path::Path::new(&a.file).parent() == Some(dir.as_path())
+                                    crate::process::namespace::namespace_resolve(
+                                        &a.namespace,
+                                        &a.file,
+                                    )
+                                    .is_some_and(|abs| abs.parent() == Some(dir.as_path()))
                                 }),
                                 AbstractData::Album(_) => false,
                             })
@@ -245,9 +278,13 @@ impl Expression {
             Expression::RootAlbum(value) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::Album(alb) => {
-                        let is_root = crate::process::dir_album::get_parent_album_id(
-                            std::path::Path::new(&alb.metadata.dir_path),
+                        let is_root = crate::process::namespace::namespace_resolve(
+                            &alb.metadata.namespace,
+                            &alb.metadata.dir_path,
                         )
+                        .and_then(|abs| {
+                            crate::process::dir_album::get_parent_album_id(abs.as_path())
+                        })
                         .is_none();
                         is_root == value
                     }
@@ -257,9 +294,13 @@ impl Expression {
             Expression::ParentAlbum(parent_id) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::Album(alb) => {
-                        crate::process::dir_album::get_parent_album_id(std::path::Path::new(
+                        crate::process::namespace::namespace_resolve(
+                            &alb.metadata.namespace,
                             &alb.metadata.dir_path,
-                        )) == Some(parent_id)
+                        )
+                        .and_then(|abs| {
+                            crate::process::dir_album::get_parent_album_id(abs.as_path())
+                        }) == Some(parent_id)
                     }
                     AbstractData::Image(_) | AbstractData::Video(_) => false,
                 })

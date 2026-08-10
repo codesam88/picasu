@@ -276,8 +276,16 @@ impl AbstractData {
         matches!(self, AbstractData::Video(_))
     }
 
-    /// Create a new `AbstractData` from a file path and hash
+    /// Create a new `AbstractData` from a file path and hash.
+    ///
+    /// `path` is relative to the namespace root; it is resolved against the
+    /// configured namespace for filesystem access and stored as the relative
+    /// path in the resulting `FileModify` alias.
     pub fn new(namespace: &str, path: &Path, hash: ArrayString<64>) -> Result<Self> {
+        let abs_path =
+            crate::process::namespace::namespace_resolve(namespace, &path.to_string_lossy())
+                .ok_or_else(|| anyhow::anyhow!("Namespace not found: {namespace}"))?;
+
         let ext = path
             .extension()
             .ok_or_else(|| anyhow::anyhow!("File has no extension: {}", path.display()))?
@@ -285,14 +293,19 @@ impl AbstractData {
             .ok_or_else(|| anyhow::anyhow!("Extension is not valid UTF-8: {}", path.display()))?
             .to_ascii_lowercase();
 
-        let md = metadata(path)
-            .with_context(|| format!("Failed to read metadata: {}", path.display()))?;
+        let md = metadata(&abs_path)
+            .with_context(|| format!("Failed to read metadata: {}", abs_path.display()))?;
         let size = md.len();
 
         let modified_millis = md
             .modified()?
             .duration_since(UNIX_EPOCH)
-            .with_context(|| format!("Modification time is before UNIX_EPOCH: {}", path.display()))?
+            .with_context(|| {
+                format!(
+                    "Modification time is before UNIX_EPOCH: {}",
+                    abs_path.display()
+                )
+            })?
             .as_millis();
         let modified_millis = i64::try_from(modified_millis).unwrap_or(0);
 

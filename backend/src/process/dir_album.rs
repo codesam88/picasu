@@ -46,8 +46,16 @@ pub fn init_dir_album_cache() {
     {
         let (_, guard) = entry;
         if let AbstractData::Album(album) = guard.value() {
-            let path = PathBuf::from(&album.metadata.dir_path);
-            if path.is_dir() {
+            // dir_path is stored relative to the album's namespace; resolve it
+            // to an absolute path so cache keys match the write-side
+            // (`get_or_create_dir_album` receives `namespace_resolve` output).
+            let path = crate::process::namespace::namespace_resolve(
+                &album.metadata.namespace,
+                &album.metadata.dir_path,
+            );
+            if let Some(path) = path
+                && path.is_dir()
+            {
                 cache.insert(path, album.metadata.id);
             } else {
                 stale_count += 1;

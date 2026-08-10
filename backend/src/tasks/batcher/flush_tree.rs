@@ -1,5 +1,4 @@
 use mini_executor::BatchTask;
-use std::path::Path;
 
 use crate::{
     model::abstract_data::AbstractData,
@@ -69,7 +68,14 @@ fn flush_tree_task(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
             mark_album_for_update(album_id);
         }
         for file_modify in abstract_data.alias() {
-            mark_dir_albums_for_path(Path::new(&file_modify.file));
+            // Alias `file` is relative to its namespace; cache keys are
+            // absolute, so resolve before matching prefixes.
+            if let Some(abs) = crate::process::namespace::namespace_resolve(
+                &file_modify.namespace,
+                &file_modify.file,
+            ) {
+                mark_dir_albums_for_path(&abs);
+            }
         }
     }
 

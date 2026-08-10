@@ -103,7 +103,10 @@ pub async fn index_image(namespace: &str, src: &Path, dst: Option<&Path>) -> Res
             .parent()
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_default();
-        crate::process::dir_album::get_album_id_for_dir(std::path::Path::new(&dir_str))
+        // Cache keys are absolute; resolve the relative parent dir first.
+        crate::process::namespace::namespace_resolve(namespace, &dir_str)
+            .as_deref()
+            .and_then(crate::process::dir_album::get_album_id_for_dir)
     };
     let resolved_dir_album_id = match already_known_album_id {
         Some(id) => Some(id),
