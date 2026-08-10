@@ -13,23 +13,27 @@
           ></v-btn>
         </template>
         <v-list role="menu">
-          <ItemViewOriginalFile
-            :src="getSrc(database.id, true, database.ext, database.updateAt)"
-            :isolation-id="props.isolationId"
-            :hash="database.id"
-          />
-          <ItemDownload :index-list="[props.index]" />
-          <ItemFindInTimeline :hash="props.hash" />
-          <v-divider></v-divider>
-          <ItemEditTags />
-          <ItemEditAlbums />
-          <ItemDelete v-if="!database.isTrashed" :index-list="[props.index]" />
-          <ItemRestore v-if="database.isTrashed" :index-list="[props.index]" />
-          <ItemPermanentlyDelete v-if="database.isTrashed" :index-list="[props.index]" />
-          <v-divider></v-divider>
-          <ItemScanAlbum />
-          <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
-          <ItemRotateImage v-if="database.type === 'image'" />
+          <template v-if="database.isTrashed">
+            <ItemRestore :index-list="[props.index]" />
+            <ItemEditAlbums />
+          </template>
+          <template v-else>
+            <ItemViewOriginalFile
+              :src="getSrc(database.id, true, database.ext, database.updateAt)"
+              :isolation-id="props.isolationId"
+              :hash="database.id"
+            />
+            <ItemDownload :index-list="[props.index]" />
+            <ItemFindInTimeline :hash="props.hash" />
+            <v-divider></v-divider>
+            <ItemEditTags />
+            <ItemEditAlbums />
+            <ItemDelete :index-list="[props.index]" />
+            <v-divider></v-divider>
+            <ItemScanAlbum />
+            <ItemRegenerateThumbnailByFrame v-if="currentFrameStore.video !== null" />
+            <ItemRotateImage v-if="database.type === 'image'" />
+          </template>
         </v-list>
       </v-menu>
     </template>
@@ -45,7 +49,6 @@ import ItemFindInTimeline from '@Menu/MenuItem/ItemFindInTimeline.vue'
 import ItemEditTags from '@Menu/MenuItem/ItemEditTags.vue'
 import ItemEditAlbums from '@Menu/MenuItem/ItemEditAlbums.vue'
 import ItemDelete from '@Menu/MenuItem/ItemDelete.vue'
-import ItemPermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
 import ItemScanAlbum from '@Menu/MenuItem/ItemScanAlbum.vue'
 import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
 import ItemRegenerateThumbnailByFrame from '@Menu/MenuItem/ItemRegenerateThumbnailByFrame.vue'

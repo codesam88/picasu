@@ -127,6 +127,7 @@ import { useCollectionStore } from '@/store/collectionStore'
 import { useDataStore } from '@/store/dataStore'
 import { useMessageStore } from '@/store/messageStore'
 import { assignAlbum } from '@/api/assignAlbum'
+import { setTrashed } from '@/api/editFlags'
 import { createDirAlbum } from '@/api/createDirAlbum'
 import { getHashIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
 import { refreshGalleryAfterMutation } from '@/script/hook/usePrefetch'
@@ -318,9 +319,16 @@ async function handleSubmit() {
   submitting.value = true
   try {
     if (modalStore.assignAlbumBatch) {
-      // Batch: move all selected items (images/videos move as a single
-      // file; albums move as a whole directory — assignAlbum/assign_album
-      // dispatch on the item's actual type either way).
+      // Restore trashed items first, then move to target album
+      const trashedIndices = indices.filter((idx) => {
+        const item = dataStore.data.get(idx)
+        return item?.isTrashed === true
+      })
+      if (trashedIndices.length > 0) {
+        await setTrashed(trashedIndices, false, isolationId)
+      }
+
+      // Move all selected items to target album
       for (const idx of indices) {
         const item = dataStore.data.get(idx)
         if (!item) continue
@@ -332,6 +340,12 @@ async function handleSubmit() {
       const parsed = getHashIndexDataFromRoute(route)
       if (!parsed) return
       const { hash, index } = parsed
+
+      // Restore if trashed, then move to target album
+      const item = dataStore.data.get(index)
+      if (item?.isTrashed === true) {
+        await setTrashed([index], false, isolationId)
+      }
       await assignAlbum(hash, selectedAlbumId.value, index, isolationId)
     }
     await refreshGalleryAfterMutation(isolationId, route)
