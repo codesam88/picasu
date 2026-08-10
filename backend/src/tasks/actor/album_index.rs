@@ -1,5 +1,5 @@
 use chrono::Utc;
-use log::{info, warn};
+use log::{debug, info, warn};
 use serde::Serialize;
 use std::{
     path::PathBuf,
@@ -19,6 +19,7 @@ use crate::storage::files::get_resolved_image_home;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::runtime::INDEX_RUNTIME;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -149,7 +150,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
 
     let image_root_clone = image_root;
     let root_clone = root.clone();
-    tokio::spawn(async move {
+    INDEX_RUNTIME.spawn(async move {
         info!("Starting one-time album index: {}", root_clone.display());
 
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
@@ -204,21 +205,29 @@ pub fn index_album(src: &str) -> AppResult<()> {
             }));
         }
 
+        debug!(
+            "walk done, joining {} file handles (job {job_id})",
+            handles.len()
+        );
         for handle in handles {
             if let Err(err) = handle.await {
                 warn!("Album index file task join error: {err}");
                 increment_failed(job_id);
             }
         }
+        debug!("file handles joined (job {job_id})");
 
         // Drain detached FlushTreeTask and UpdateTreeTask queues so the
         // in-memory tree is fully visible before we transition to Completed.
+        debug!("BATCH flush_tree (job {job_id})");
         let _ = BATCH_COORDINATOR
             .execute_batch_waiting(FlushTreeTask::insert(vec![]))
             .await;
+        debug!("BATCH update_tree (job {job_id})");
         let _ = BATCH_COORDINATOR
             .execute_batch_waiting(UpdateTreeTask)
             .await;
+        debug!("BATCH drained (job {job_id})");
 
         let state = if cancel.load(Ordering::SeqCst) {
             AlbumIndexState::Canceled
@@ -228,7 +237,9 @@ pub fn index_album(src: &str) -> AppResult<()> {
             AlbumIndexState::Completed
         };
 
+        debug!("finishing job {job_id} state={state:?}");
         finish_job(job_id, state);
+        debug!("job {job_id} finished");
     });
 
     Ok(())
