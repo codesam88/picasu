@@ -109,9 +109,17 @@ export async function executeWhen(
       // .icon-hover is hidden by `.parent:not(:hover) .child { display:none }` CSS.
       // Playwright's visibility check fires before the mouse moves, so even force:true
       // fails. Dispatch a synthetic click directly to bypass the display:none guard.
-      await page.locator('.parent').first().waitFor({ state: 'visible', timeout: 10000 })
-      await page.evaluate(() => {
-        const icon = document.querySelector<HTMLElement>('.parent .icon-hover')
+      // Tiles unmount/remount during route transitions and prefetch refreshes
+      // (BufferRowBlock re-keys on prefetchStore.timestamp), so wait and dispatch in
+      // a single browser-side task to avoid a stale-DOM race.
+      await page.evaluate(async () => {
+        const deadline = Date.now() + 10000
+        let icon: HTMLElement | null = null
+        while (Date.now() < deadline) {
+          icon = document.querySelector<HTMLElement>('.parent .icon-hover')
+          if (icon) break
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        }
         if (!icon) throw new Error('.icon-hover not found in DOM')
         icon.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
       })
