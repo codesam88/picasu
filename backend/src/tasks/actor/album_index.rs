@@ -2,7 +2,7 @@ use chrono::Utc;
 use log::{debug, info, warn};
 use serde::Serialize;
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc, LazyLock, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -14,6 +14,7 @@ use walkdir::{DirEntry, WalkDir};
 use crate::error::{AppError, ErrorKind, handle_error};
 use crate::model::media::is_valid_media_file;
 use crate::router::AppResult;
+use crate::storage::db::TREE;
 use crate::storage::files::get_data_path;
 use crate::storage::files::get_resolved_image_home;
 use crate::tasks::BATCH_COORDINATOR;
@@ -217,6 +218,15 @@ pub fn index_album(src: &str) -> AppResult<()> {
         }
         debug!("file handles joined (job {job_id})");
 
+        // Sweep stale aliases: remove DB records whose alias files no
+        // longer exist on disk under the target root.
+        debug!(
+            "sweeping stale aliases under {} (job {job_id})",
+            root.display()
+        );
+        sweep_stale_aliases(&root, &image_root_clone);
+        debug!("stale alias sweep done (job {job_id})");
+
         // Drain detached FlushTreeTask and UpdateTreeTask queues so the
         // in-memory tree is fully visible before we transition to Completed.
         debug!("BATCH flush_tree (job {job_id})");
@@ -283,6 +293,75 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
             std::fs::canonicalize(&path).unwrap_or(path)
         })
         .collect()
+}
+
+/// Sweep stale aliases: for every DB record that has at least one alias
+/// path under `root`, check each alias.  If an alias points to a file
+/// that no longer exists on disk, prune it.  If no aliases remain, remove
+/// the entire record (and its compressed thumbnail).
+fn sweep_stale_aliases(root: &Path, image_root: &Path) {
+    let candidates: Vec<_> = {
+        let tree = TREE.in_memory.read().expect("lock poisoned");
+        tree.iter()
+            .filter(|dt| {
+                dt.abstract_data.alias().iter().any(|a| {
+                    let path = Path::new(&a.file);
+                    // Alias files may be stored as absolute paths or
+                    // relative to IMAGE_HOME; handle both.
+                    let abs = if path.is_absolute() {
+                        path.to_path_buf()
+                    } else {
+                        image_root.join(path)
+                    };
+                    abs.starts_with(root)
+                })
+            })
+            .map(|dt| dt.abstract_data.clone())
+            .collect()
+    };
+
+    let mut to_remove = Vec::new();
+    let mut to_update = Vec::new();
+
+    for mut data in candidates {
+        let original: Vec<_> = data.alias().to_vec();
+        let remaining: Vec<_> = original
+            .into_iter()
+            .filter(|a| {
+                let path = Path::new(&a.file);
+                let abs = if path.is_absolute() {
+                    path.to_path_buf()
+                } else {
+                    image_root.join(path)
+                };
+                abs.exists()
+            })
+            .collect();
+
+        if remaining.is_empty() {
+            let thumb = data.compressed_path();
+            if thumb.exists()
+                && let Err(e) = std::fs::remove_file(&thumb)
+            {
+                warn!("Failed to delete thumbnail {}: {e}", thumb.display());
+            }
+            to_remove.push(data);
+        } else if remaining.len() < data.alias().len() {
+            if let Some(alias_mut) = data.alias_mut() {
+                *alias_mut = remaining;
+            }
+            to_update.push(data);
+        }
+    }
+
+    if !to_remove.is_empty() {
+        debug!("pruning {} stale record(s)", to_remove.len());
+        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::remove(to_remove));
+    }
+    if !to_update.is_empty() {
+        debug!("updating {} record(s) with pruned aliases", to_update.len());
+        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(to_update));
+    }
 }
 
 fn is_inside_internal_subtree(path: &std::path::Path, internal_roots: &[PathBuf]) -> bool {
