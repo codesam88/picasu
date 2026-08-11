@@ -8,6 +8,7 @@ pub fn generate_delete_routes() -> Vec<Route> {
 // src/router/delete/delete_data.rs
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
+use crate::process::dir_album::evict_dir_album;
 use crate::process::transitor::index_to_abstract_data;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
@@ -105,7 +106,12 @@ fn process_deletes(
         let affected_albums = match &abstract_data {
             AbstractData::Image(img) => img.metadata.album.iter().copied().collect(),
             AbstractData::Video(vid) => vid.metadata.album.iter().copied().collect(),
-            AbstractData::Album(alb) => vec![alb.object.id],
+            AbstractData::Album(alb) => {
+                if !alb.metadata.dir_path.is_empty() {
+                    evict_dir_album(Path::new(&alb.metadata.dir_path));
+                }
+                vec![alb.object.id]
+            }
         };
 
         // Delete original file(s) and sidecar(s) from disk.
