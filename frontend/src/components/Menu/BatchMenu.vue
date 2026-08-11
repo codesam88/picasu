@@ -13,6 +13,7 @@
         <v-list role="menu">
           <template v-if="isInTrashedPath">
             <ItemRestore :index-list="editModeList" />
+            <ItemPermanentlyDelete :index-list="editModeList" />
             <ItemBatchEditAlbums />
           </template>
           <template v-else>
@@ -69,6 +70,7 @@ import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
 import ItemDelete from '@Menu/MenuItem/ItemDelete.vue'
 import ItemScanAlbum from '@Menu/MenuItem/ItemScanAlbum.vue'
 import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
+import ItemPermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
 
 import { getIsolationIdByRoute } from '@utils/getter'
 
