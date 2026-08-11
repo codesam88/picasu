@@ -541,6 +541,14 @@ fn dispatch_when_item<'c>(
     vars: &HashMap<String, String>,
     client: &'c Client,
 ) -> rocket::local::blocking::LocalResponse<'c> {
+    if item
+        .get("wait_index")
+        .is_some_and(|v| v.as_bool() == Some(true))
+    {
+        wait_for_album_index(client, 30000);
+        let cookie = auth_cookie(client);
+        return client.get("/get/index/status").cookie(cookie).dispatch();
+    }
     if item.get("upload").is_some() {
         execute_upload(item, vars, client)
     } else {

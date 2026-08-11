@@ -1,0 +1,27 @@
+name: album_index_removes_stale_aliases_when_file_deleted
+# Verifies that manual album indexing (POST /post/index/album) prunes
+# DB records whose alias files no longer exist on disk after external
+# deletion.  Without the fix, the stale alias persists until server
+# restart or watcher event.
+given:
+  - photo: /test_stale/photo_a.jpg
+    id_as: $photo_a
+  - photo: /test_stale/photo_b.jpg
+    id_as: $photo_b
+  - remove: /test_stale/photo_b.jpg
+when:
+  # Re-index the directory after external file deletion
+  - call: POST /post/index/album
+    raw_body: '{"album": "/test_stale"}'
+    then:
+      - response.status: 202
+  # Wait for the re-index to complete
+  - wait_index: true
+  # Check if the removed photo is still locatable via prefetch.
+  # If the stale alias was pruned, prefetch returns dataLength: 0.
+  - call: POST /get/prefetch
+    raw_body: '{"Path": "${data_path}/test_stale/photo_b.jpg"}'
+then:
+  - response.status: 200
+  # The removed photo should no longer be locatable (stale alias pruned)
+  - response.json.prefetch.dataLength: 0
