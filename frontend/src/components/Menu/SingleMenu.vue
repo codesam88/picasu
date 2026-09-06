@@ -15,7 +15,8 @@
         <v-list role="menu">
           <template v-if="database.isTrashed">
             <ItemRestore :index-list="[props.index]" />
-            <ItemEditAlbums />
+            <ItemEditAlbums label="Restore to Album..." />
+            <ItemPermanentlyDelete :index-list="[props.index]" />
           </template>
           <template v-else>
             <ItemViewOriginalFile
@@ -51,6 +52,7 @@ import ItemEditAlbums from '@Menu/MenuItem/ItemEditAlbums.vue'
 import ItemDelete from '@Menu/MenuItem/ItemDelete.vue'
 import ItemScanAlbum from '@Menu/MenuItem/ItemScanAlbum.vue'
 import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
+import ItemPermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
 import ItemRegenerateThumbnailByFrame from '@Menu/MenuItem/ItemRegenerateThumbnailByFrame.vue'
 import ItemRotateImage from '@Menu/MenuItem/ItemRotateImage.vue'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
