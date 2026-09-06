@@ -13,8 +13,8 @@
         <v-list role="menu">
           <template v-if="isInTrashedPath">
             <ItemRestore :index-list="editModeList" />
+            <ItemBatchEditAlbums label="Restore to Album..." />
             <ItemPermanentlyDelete :index-list="editModeList" />
-            <ItemBatchEditAlbums />
           </template>
           <template v-else>
             <!-- Conditional Set as Cover -->
