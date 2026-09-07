@@ -143,6 +143,7 @@ pub fn reset_backend_state() {
     config.fs_notify_watcher = true;
     config.normalize_upload_filenames = true;
     config.validate_upload_content = true;
+    config.use_client_timestamp_info = false;
     config.password = None;
 }
 

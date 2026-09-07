@@ -1,0 +1,15 @@
+name: Upload behavior flags set via PUT /put/config are reported by GET /get/config
+when:
+  - call: "PUT /put/config"
+    body:
+      normalizeUploadFilenames: false
+      validateUploadContent: false
+      useClientTimestampInfo: true
+    then:
+      - response.status: 200
+  - call: "GET /get/config"
+then:
+  - response.status: 200
+  - response.json.normalizeUploadFilenames: false
+  - response.json.validateUploadContent: false
+  - response.json.useClientTimestampInfo: true
