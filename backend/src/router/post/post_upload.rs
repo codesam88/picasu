@@ -7,9 +7,11 @@ use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardUpload;
 use crate::router::put::assign_album::OnConflict;
 use crate::router::{AppResult, GuardResult};
+use crate::storage::db::{DATA_TABLE, TREE};
 use crate::storage::files::get_resolved_image_home;
 use anyhow::Result;
 use arrayvec::ArrayString;
+use redb::{ReadableDatabase, ReadableTable};
 use rocket::form::{Errors, Form};
 use rocket::fs::TempFile;
 use std::path::{Path, PathBuf};
@@ -252,6 +254,18 @@ pub async fn upload(
                 AppError::new(ErrorKind::Internal, "Uploaded file path outside IMAGE_HOME")
             })?;
         if let Err(index_error) = crate::workflow::index_image(relative_src, None).await {
+            // A mid-pipeline failure can occur after a partial commit: the
+            // uploaded file is only safely removable when no index record
+            // references it. Only a content-decode failure guarantees that,
+            // so check before deleting — otherwise the file would be removed
+            // while a committed alias still points at it.
+            if record_exists_for(Path::new(&final_path), relative_src) {
+                error!("Uploaded file was indexed but the pipeline failed: {index_error}");
+                return Err(AppError::new(
+                    ErrorKind::Internal,
+                    "Upload failed during indexing",
+                ));
+            }
             // The upload has not succeeded, and the user gets this error
             // directly in the upload response, so the never-indexed file
             // is removed as part of the failed upload action. Files are
@@ -466,6 +480,45 @@ fn read_upload_policy() -> UploadPolicy {
         validate_content: config.validate_upload_content,
         use_client_timestamp: config.use_client_timestamp_info,
     }
+}
+
+/// Whether any index record references the uploaded file as either the
+/// absolute path or an `IMAGE_HOME`-relative path.
+///
+/// Checks the on-disk `DATA_TABLE` (authoritative for a committed insert that
+/// a mid-pipeline failure may leave before it reaches the in-memory tree) and
+/// the in-memory snapshot. Used by the upload error path to decide whether an
+/// uploaded file can be safely deleted: deleting is only safe when no record
+/// references it. If the database cannot be read, defaults to `true` (keep the
+/// file) so an uncertain lookup never deletes an uploaded file.
+fn record_exists_for(path: &Path, relative: &Path) -> bool {
+    let matches = |alias_file: &str| {
+        let alias = Path::new(alias_file);
+        alias == path || alias == relative
+    };
+
+    let mem = TREE.in_memory.read().expect("lock poisoned");
+    if mem
+        .iter()
+        .any(|dt| dt.abstract_data.alias().iter().any(|a| matches(&a.file)))
+    {
+        return true;
+    }
+    drop(mem);
+
+    if let Ok(txn) = TREE.in_disk.begin_read()
+        && let Ok(table) = txn.open_table(DATA_TABLE)
+        && let Ok(mut iter) = table.iter()
+    {
+        return iter.any(|entry| {
+            entry
+                .ok()
+                .is_some_and(|(_, guard)| guard.value().alias().iter().any(|a| matches(&a.file)))
+        });
+    }
+
+    warn!("Could not verify index records for upload {path:?}; keeping file");
+    true
 }
 
 /// Reject uploads whose bytes do not match the `Content-Type`-derived
