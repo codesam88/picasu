@@ -149,6 +149,9 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
         post,
         path = "/upload",
         request_body = Value,
+        params(
+            ("auto_rename" = Option<bool>, Query, description = "When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error."),
+        ),
         responses(
             (status = 200, description = "Upload successful"),
             (status = 400, description = "Invalid input"),
