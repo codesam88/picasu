@@ -218,6 +218,14 @@ pub fn index_album(src: &str) -> AppResult<()> {
         }
         debug!("file handles joined (job {job_id})");
 
+        // Drain the per-file FlushTreeTask inserts so the in-memory tree
+        // reflects all walk results before the sweep reads it.
+        debug!("BATCH flush_tree pre-sweep (job {job_id})");
+        let _ = BATCH_COORDINATOR
+            .execute_batch_waiting(FlushTreeTask::insert(vec![]))
+            .await;
+        debug!("BATCH flush_tree pre-sweep done (job {job_id})");
+
         // Sweep stale aliases: remove DB records whose alias files no
         // longer exist on disk under the target root.
         debug!(
@@ -227,9 +235,9 @@ pub fn index_album(src: &str) -> AppResult<()> {
         sweep_stale_aliases(&root, &image_root_clone);
         debug!("stale alias sweep done (job {job_id})");
 
-        // Drain detached FlushTreeTask and UpdateTreeTask queues so the
-        // in-memory tree is fully visible before we transition to Completed.
-        debug!("BATCH flush_tree (job {job_id})");
+        // Drain the sweep's detached remove/update batches, then
+        // UpdateTreeTask for album metadata.
+        debug!("BATCH flush_tree post-sweep (job {job_id})");
         let _ = BATCH_COORDINATOR
             .execute_batch_waiting(FlushTreeTask::insert(vec![]))
             .await;
