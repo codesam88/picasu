@@ -12,7 +12,7 @@
         <v-list>
           <template v-if="album.isTrashed">
             <Restore :index-list="[props.index]" />
-            <EditAlbums />
+            <EditAlbums label="Restore to Album..." />
           </template>
           <template v-else>
             <FindInTimeline :hash="props.hash" />
