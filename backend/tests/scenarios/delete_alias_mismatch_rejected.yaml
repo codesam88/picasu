@@ -1,0 +1,20 @@
+name: delete rejects aliasList entry that does not match the record
+# When aliasList contains a path that does not match any alias of the record
+# at the given index, the endpoint must return 400 instead of silently
+# deleting the wrong data.
+given:
+  - photo: /e2e_mismatch/photo.jpg
+    id_as: $photo
+when:
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  # Attempt delete with a bogus alias path.
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[${idx}],"aliasList":["/nonexistent/path/photo.jpg"],"timestamp":${ts}}'
+then:
+  - response.status: 400
+  - response.json.kind: "InvalidInput"
+  # The file is still on disk.
+  - file_exists: /e2e_mismatch/photo.jpg
