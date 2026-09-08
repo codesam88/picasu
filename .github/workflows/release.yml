@@ -8,6 +8,9 @@ on:
       - "test"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-linux:
     name: Build Linux Binary
