@@ -627,3 +627,90 @@ mod tests {
         assert_eq!(resolve_upload_timestamp_at(u64::MAX, false, NOW_MS), NOW_MS);
     }
 }
+
+#[cfg(test)]
+mod resolve_filename_tests {
+    use super::resolve_filename;
+
+    #[test]
+    fn degenerate_name_falls_back_to_upload_stem() {
+        let name = resolve_filename("///", true, true)
+            .expect("auto_rename fallback should always succeed");
+        assert_eq!(name, "upload");
+    }
+
+    #[test]
+    fn pin_dotdot_extension_stem() {
+        // Path::file_stem("..jpg") is "." (the last dot splits the extension),
+        // not "..". save_file always appends a validated extension, so the
+        // final on-disk name stays inside the album dir -- never a bare ".".
+        assert_eq!(resolve_filename("..jpg", true, true).unwrap(), ".");
+    }
+
+    #[test]
+    fn pin_triple_dot_extension_stem() {
+        // Path::file_stem("...jpg") is "..". As above, save_file appends the
+        // extension, so the final name is a literal "...jpg", not "..".
+        assert_eq!(resolve_filename("...jpg", true, true).unwrap(), "..");
+    }
+
+    #[test]
+    fn pin_leading_dot_filename() {
+        // A leading dot is not an extension separator: file_stem is the full
+        // name, so ".jpg" survives as-is.
+        assert_eq!(resolve_filename(".jpg", true, true).unwrap(), ".jpg");
+    }
+
+    #[test]
+    fn pin_trailing_dot_stem() {
+        assert_eq!(resolve_filename("foo.", true, true).unwrap(), "foo");
+    }
+
+    #[test]
+    fn auto_rename_false_rejects_forbidden_chars() {
+        let err = resolve_filename("a/b.jpg", false, false).unwrap_err();
+        assert!(
+            err.message.contains("forbidden"),
+            "unexpected message: {err}"
+        );
+    }
+
+    #[test]
+    fn auto_rename_false_rejects_reserved_windows_name() {
+        let err = resolve_filename("con.jpg", false, false).unwrap_err();
+        assert!(
+            err.message.contains("reserved Windows"),
+            "unexpected message: {err}"
+        );
+    }
+
+    #[test]
+    fn auto_rename_false_rejects_unicode_normalization() {
+        let err = resolve_filename("cafe\u{0301}.jpg", false, true).unwrap_err();
+        assert!(
+            err.message.contains("normalization"),
+            "unexpected message: {err}"
+        );
+    }
+
+    #[test]
+    fn auto_rename_false_accepts_safe_name() {
+        let name =
+            resolve_filename("photo.jpg", false, false).expect("a safe name should pass unchanged");
+        assert_eq!(name, "photo");
+    }
+
+    #[test]
+    fn control_characters_strip_when_auto_rename_true() {
+        assert_eq!(resolve_filename("a\nb.jpg", true, false).unwrap(), "ab");
+    }
+
+    #[test]
+    fn control_characters_reject_when_auto_rename_false() {
+        let err = resolve_filename("a\nb.jpg", false, false).unwrap_err();
+        assert!(
+            err.message.contains("forbidden"),
+            "unexpected message: {err}"
+        );
+    }
+}
