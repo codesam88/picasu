@@ -6,4 +6,4 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [dependencies]
-pastey = "0.1"
+pastey = "0.2"
