@@ -80,11 +80,24 @@
       "required": ["photo_raw"],
       "additionalProperties": false
     },
+    "givenSourceFile": {
+      "type": "object",
+      "properties": {
+        "source_file": { "type": "string", "minLength": 1 },
+        "format": { "type": "string", "enum": ["jpeg", "png"] },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "id_as": { "type": "string", "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$" }
+      },
+      "required": ["source_file"],
+      "additionalProperties": false
+    },
     "givenItem": {
       "oneOf": [
         { "$ref": "#/definitions/givenDirAlbum" },
         { "$ref": "#/definitions/givenPhoto" },
         { "$ref": "#/definitions/givenPhotoRaw" },
+        { "$ref": "#/definitions/givenSourceFile" },
         { "$ref": "#/definitions/givenEmpty" },
         { "$ref": "#/definitions/givenRemove" },
         { "$ref": "#/definitions/givenConfig" },
@@ -181,6 +194,30 @@
       "required": ["click.testid"],
       "additionalProperties": false
     },
+    "uiWhenUploadFiles": {
+      "type": "object",
+      "properties": {
+        "upload.files": {
+          "type": "object",
+          "properties": {
+            "trigger": { "type": "string" },
+            "files": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          },
+          "required": ["trigger", "files"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["upload.files"],
+      "additionalProperties": false
+    },
+    "uiWhenSetAutoRename": {
+      "type": "object",
+      "properties": {
+        "set.auto_rename": { "type": "boolean" }
+      },
+      "required": ["set.auto_rename"],
+      "additionalProperties": false
+    },
     "uiWhenItem": {
       "oneOf": [
         { "$ref": "#/definitions/uiWhenNavigate" },
@@ -193,7 +230,9 @@
         { "$ref": "#/definitions/uiWhenClickIcon" },
         { "$ref": "#/definitions/uiWhenClickFirst" },
         { "$ref": "#/definitions/uiWhenClickSelectFirst" },
-        { "$ref": "#/definitions/uiWhenClickTestId" }
+        { "$ref": "#/definitions/uiWhenClickTestId" },
+        { "$ref": "#/definitions/uiWhenUploadFiles" },
+        { "$ref": "#/definitions/uiWhenSetAutoRename" }
       ]
     },
     "uiAssertVisible": {

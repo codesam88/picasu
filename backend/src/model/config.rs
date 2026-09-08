@@ -36,6 +36,7 @@ fn default_max_upload_size() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 #[derive(utoipa::ToSchema)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct AppConfig {
     pub address: String,
     pub port: u16,
@@ -53,6 +54,37 @@ pub struct AppConfig {
     pub disable_img: bool,
     #[serde(default = "default_true")]
     pub fs_notify_watcher: bool,
+    /// NFC-normalize uploaded filenames so macOS NFD names collapse onto
+    /// their composed form. Optional (unlike the always-on sanitization tiers).
+    #[serde(default = "default_true")]
+    pub normalize_upload_filenames: bool,
+    /// Cross-check uploads against the declared `Content-Type`. When enabled,
+    /// the first 512 bytes of each uploaded file are sniffed with the
+    /// [`infer`](https://crates.io/crates/infer) magic-byte database and the
+    /// detected signature must fall in the family of the extension derived
+    /// from the `Content-Type`: `jpg|jpeg|jfif|jpe` → JPEG, `tif|tiff` →
+    /// TIFF, `mp4|mov|m4v` → ISO BMFF, `mkv|webm` → EBML, `mpeg` → MPEG-PS,
+    /// and `png`, `webp`, `bmp`, `gif`, `avi`, `flv`, `wmv` 1:1. Mismatches
+    /// and unrecognizable bytes are rejected with `400 InvalidInput`; the
+    /// check is signature-based only, never a full decode, so unusual-but-valid
+    /// variants still pass. The stored file extension remains the one derived
+    /// from the declared `Content-Type`. See
+    /// `backend/src/router/post/post_upload.rs` (`validate_upload_content`).
+    /// Disable only if legitimate media is being rejected.
+    #[serde(default = "default_true")]
+    pub validate_upload_content: bool,
+    /// Trust the `lastModified` the upload client sends with each file. When
+    /// enabled, the value is used as the stored file modification time but
+    /// clamped to `[1970-01-01, now + 24h]` so a broken client clock cannot
+    /// push an undated file (e.g. a screenshot) into year 1970 or the distant
+    /// future. Disabled by default: the server uses `now()` instead of the
+    /// provided value, since a client's clock or timezone cannot be relied on.
+    /// Only affects files without embedded metadata: photos with a
+    /// `DateTimeOriginal` EXIF tag keep their EXIF-derived date regardless.
+    /// See `backend/src/router/post/post_upload.rs`
+    /// (`resolve_upload_timestamp`).
+    #[serde(default)]
+    pub use_client_timestamp_info: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,6 +107,9 @@ impl Default for AppConfig {
             read_only_mode: false,
             disable_img: false,
             fs_notify_watcher: true,
+            normalize_upload_filenames: true,
+            validate_upload_content: true,
+            use_client_timestamp_info: false,
             password: None,
             auth_key: None,
             web_root: None,
@@ -124,6 +159,7 @@ fn default_port() -> u16 {
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct TomlGallery {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) data_home: Option<PathBuf>,
@@ -136,6 +172,12 @@ pub(crate) struct TomlGallery {
     pub(crate) disable_img: bool,
     #[serde(default = "default_true")]
     pub(crate) fs_notify_watcher: bool,
+    #[serde(default = "default_true")]
+    pub(crate) normalize_upload_filenames: bool,
+    #[serde(default = "default_true")]
+    pub(crate) validate_upload_content: bool,
+    #[serde(default)]
+    pub(crate) use_client_timestamp_info: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) web_root: Option<PathBuf>,
 }
@@ -149,6 +191,9 @@ impl Default for TomlGallery {
             read_only_mode: false,
             disable_img: false,
             fs_notify_watcher: true,
+            normalize_upload_filenames: true,
+            validate_upload_content: true,
+            use_client_timestamp_info: false,
             web_root: None,
         }
     }
@@ -176,6 +221,9 @@ impl From<TomlFile> for AppConfig {
             read_only_mode: t.gallery.read_only_mode,
             disable_img: t.gallery.disable_img,
             fs_notify_watcher: t.gallery.fs_notify_watcher,
+            normalize_upload_filenames: t.gallery.normalize_upload_filenames,
+            validate_upload_content: t.gallery.validate_upload_content,
+            use_client_timestamp_info: t.gallery.use_client_timestamp_info,
             password: t.secrets.password,
             auth_key: t.secrets.auth_key,
             web_root: t.gallery.web_root,
@@ -198,6 +246,9 @@ impl From<AppConfig> for TomlFile {
                 read_only_mode: c.read_only_mode,
                 disable_img: c.disable_img,
                 fs_notify_watcher: c.fs_notify_watcher,
+                normalize_upload_filenames: c.normalize_upload_filenames,
+                validate_upload_content: c.validate_upload_content,
+                use_client_timestamp_info: c.use_client_timestamp_info,
                 web_root: c.web_root,
             },
             secrets: TomlSecrets {
@@ -468,6 +519,9 @@ mod tests {
             read_only_mode: true,
             disable_img: false,
             fs_notify_watcher: false,
+            normalize_upload_filenames: false,
+            validate_upload_content: true,
+            use_client_timestamp_info: false,
             password: Some("secret".to_string()),
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),

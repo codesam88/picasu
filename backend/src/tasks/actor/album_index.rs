@@ -1,8 +1,8 @@
 use chrono::Utc;
-use log::{info, warn};
+use log::{debug, info, warn};
 use serde::Serialize;
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc, LazyLock, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -14,11 +14,13 @@ use walkdir::{DirEntry, WalkDir};
 use crate::error::{AppError, ErrorKind, handle_error};
 use crate::model::media::is_valid_media_file;
 use crate::router::AppResult;
+use crate::storage::db::TREE;
 use crate::storage::files::get_data_path;
 use crate::storage::files::get_resolved_image_home;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
+use crate::tasks::runtime::INDEX_RUNTIME;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -149,7 +151,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
 
     let image_root_clone = image_root;
     let root_clone = root.clone();
-    tokio::spawn(async move {
+    INDEX_RUNTIME.spawn(async move {
         info!("Starting one-time album index: {}", root_clone.display());
 
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
@@ -204,21 +206,46 @@ pub fn index_album(src: &str) -> AppResult<()> {
             }));
         }
 
+        debug!(
+            "walk done, joining {} file handles (job {job_id})",
+            handles.len()
+        );
         for handle in handles {
             if let Err(err) = handle.await {
                 warn!("Album index file task join error: {err}");
                 increment_failed(job_id);
             }
         }
+        debug!("file handles joined (job {job_id})");
 
-        // Drain detached FlushTreeTask and UpdateTreeTask queues so the
-        // in-memory tree is fully visible before we transition to Completed.
+        // Drain the per-file FlushTreeTask inserts so the in-memory tree
+        // reflects all walk results before the sweep reads it.
+        debug!("BATCH flush_tree pre-sweep (job {job_id})");
         let _ = BATCH_COORDINATOR
             .execute_batch_waiting(FlushTreeTask::insert(vec![]))
             .await;
+        debug!("BATCH flush_tree pre-sweep done (job {job_id})");
+
+        // Sweep stale aliases: remove DB records whose alias files no
+        // longer exist on disk under the target root.
+        debug!(
+            "sweeping stale aliases under {} (job {job_id})",
+            root.display()
+        );
+        sweep_stale_aliases(&root, &image_root_clone);
+        debug!("stale alias sweep done (job {job_id})");
+
+        // Drain the sweep's detached remove/update batches, then
+        // UpdateTreeTask for album metadata.
+        debug!("BATCH flush_tree post-sweep (job {job_id})");
+        let _ = BATCH_COORDINATOR
+            .execute_batch_waiting(FlushTreeTask::insert(vec![]))
+            .await;
+        debug!("BATCH update_tree (job {job_id})");
         let _ = BATCH_COORDINATOR
             .execute_batch_waiting(UpdateTreeTask)
             .await;
+        debug!("BATCH drained (job {job_id})");
 
         let state = if cancel.load(Ordering::SeqCst) {
             AlbumIndexState::Canceled
@@ -228,7 +255,9 @@ pub fn index_album(src: &str) -> AppResult<()> {
             AlbumIndexState::Completed
         };
 
+        debug!("finishing job {job_id} state={state:?}");
         finish_job(job_id, state);
+        debug!("job {job_id} finished");
     });
 
     Ok(())
@@ -272,6 +301,75 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
             std::fs::canonicalize(&path).unwrap_or(path)
         })
         .collect()
+}
+
+/// Sweep stale aliases: for every DB record that has at least one alias
+/// path under `root`, check each alias.  If an alias points to a file
+/// that no longer exists on disk, prune it.  If no aliases remain, remove
+/// the entire record (and its compressed thumbnail).
+fn sweep_stale_aliases(root: &Path, image_root: &Path) {
+    let candidates: Vec<_> = {
+        let tree = TREE.in_memory.read().expect("lock poisoned");
+        tree.iter()
+            .filter(|dt| {
+                dt.abstract_data.alias().iter().any(|a| {
+                    let path = Path::new(&a.file);
+                    // Alias files may be stored as absolute paths or
+                    // relative to IMAGE_HOME; handle both.
+                    let abs = if path.is_absolute() {
+                        path.to_path_buf()
+                    } else {
+                        image_root.join(path)
+                    };
+                    abs.starts_with(root)
+                })
+            })
+            .map(|dt| dt.abstract_data.clone())
+            .collect()
+    };
+
+    let mut to_remove = Vec::new();
+    let mut to_update = Vec::new();
+
+    for mut data in candidates {
+        let original: Vec<_> = data.alias().to_vec();
+        let remaining: Vec<_> = original
+            .into_iter()
+            .filter(|a| {
+                let path = Path::new(&a.file);
+                let abs = if path.is_absolute() {
+                    path.to_path_buf()
+                } else {
+                    image_root.join(path)
+                };
+                abs.exists()
+            })
+            .collect();
+
+        if remaining.is_empty() {
+            let thumb = data.compressed_path();
+            if thumb.exists()
+                && let Err(e) = std::fs::remove_file(&thumb)
+            {
+                warn!("Failed to delete thumbnail {}: {e}", thumb.display());
+            }
+            to_remove.push(data);
+        } else if remaining.len() < data.alias().len() {
+            if let Some(alias_mut) = data.alias_mut() {
+                *alias_mut = remaining;
+            }
+            to_update.push(data);
+        }
+    }
+
+    if !to_remove.is_empty() {
+        debug!("pruning {} stale record(s)", to_remove.len());
+        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::remove(to_remove));
+    }
+    if !to_update.is_empty() {
+        debug!("updating {} record(s) with pruned aliases", to_update.len());
+        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(to_update));
+    }
 }
 
 fn is_inside_internal_subtree(path: &std::path::Path, internal_roots: &[PathBuf]) -> bool {

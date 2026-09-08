@@ -1,0 +1,15 @@
+name: Upload declaring image/jpeg but containing garbage bytes is rejected
+given:
+  - dir_album: /e2e_up_garb/target
+    id_as: $album
+  - raw_file: /e2e_up_garb/src/garbage.jpg
+    content: "this is not an image, just arbitrary text bytes"
+when:
+  - upload:
+      file: /e2e_up_garb/src/garbage.jpg
+      filename: garbage.jpg
+      target_album: "${album}"
+then:
+  - response.status: 400
+  - response.json.kind: "InvalidInput"
+  - response.json.message: "Uploaded content is not recognized as jpeg"

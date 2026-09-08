@@ -1,0 +1,14 @@
+name: Upload with auto_rename=false rejects path traversal even when false
+given:
+  - dir_album: /e2e_up_ar_trav/target
+    id_as: $album
+  - photo: /e2e_up_ar_trav/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_ar_trav/src/photo.jpg
+      filename: "../../etc/passwd.jpg"
+      target_album: "${album}"
+      auto_rename: false
+then:
+  - response.status: 400
+  - file_absent: e2e_up_ar_trav/target/../../etc/passwd.jpg

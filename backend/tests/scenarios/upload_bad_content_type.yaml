@@ -1,0 +1,14 @@
+name: Upload with unsupported content-type returns 400
+given:
+  - dir_album: /e2e_up_badct/target
+    id_as: $album
+  - photo: /e2e_up_badct/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_badct/src/photo.jpg
+      target_album: "${album}"
+      content_type: application/octet-stream
+then:
+  - response.status: 400
+  - response.json.kind: "InvalidInput"
+  - response.json.message: "Invalid file type: bin"

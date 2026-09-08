@@ -1,0 +1,15 @@
+name: Upload with auto_rename unset (default true) sanitizes filename and proceeds
+given:
+  - dir_album: /e2e_up_ar_default/target
+    id_as: $album
+  - photo: /e2e_up_ar_default/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_ar_default/src/photo.jpg
+      filename: "photo<cat>.jpg"
+      target_album: "${album}"
+      on_conflict: replace
+then:
+  - response.status: 200
+  - file_exists: /e2e_up_ar_default/target/photocat.jpeg
+  - file_absent: /e2e_up_ar_default/target/photo<cat>.jpeg

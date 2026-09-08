@@ -11,38 +11,43 @@
           ></v-btn>
         </template>
         <v-list role="menu">
-          <!-- Conditional Set as Cover -->
-          <ItemSetAsCover v-if="shouldShowSetAsCover" />
+          <template v-if="isInTrashedPath">
+            <ItemRestore :index-list="editModeList" />
+            <ItemBatchEditAlbums label="Restore to Album..." />
+            <ItemPermanentlyDelete :index-list="editModeList" />
+          </template>
+          <template v-else>
+            <!-- Conditional Set as Cover -->
+            <ItemSetAsCover v-if="shouldShowSetAsCover" />
 
-          <v-divider v-if="shouldShowSetAsCover"></v-divider>
+            <v-divider v-if="shouldShowSetAsCover"></v-divider>
 
-          <!-- Album Info: grayed out unless the single selected item is itself an album -->
-          <ItemAlbumInfo />
+            <!-- Album Info: grayed out unless the single selected item is itself an album -->
+            <ItemAlbumInfo />
 
-          <v-divider></v-divider>
+            <v-divider></v-divider>
 
-          <!-- Archive and Favorite Actions -->
-          <ItemArchive :index-list="editModeList" />
-          <ItemFavorite :index-list="editModeList" />
-          <ItemBatchEditTags />
-          <ItemBatchEditAlbums />
+            <!-- Archive and Favorite Actions -->
+            <ItemArchive :index-list="editModeList" />
+            <ItemFavorite :index-list="editModeList" />
+            <ItemBatchEditTags />
+            <ItemBatchEditAlbums />
 
-          <v-divider></v-divider>
+            <v-divider></v-divider>
 
-          <!-- Download Action -->
-          <ItemDownload :index-list="editModeList" />
+            <!-- Download Action -->
+            <ItemDownload :index-list="editModeList" />
 
-          <v-divider></v-divider>
+            <v-divider></v-divider>
 
-          <!-- Delete or Permanently Delete Actions -->
-          <ItemDelete :index-list="editModeList" v-if="!isInTrashedPath" />
-          <ItemRestore :index-list="editModeList" v-if="isInTrashedPath" />
-          <ItemPermanentlyDelete :index-list="editModeList" v-if="isInTrashedPath" />
+            <!-- Delete Action -->
+            <ItemDelete :index-list="editModeList" />
 
-          <v-divider></v-divider>
+            <v-divider></v-divider>
 
-          <!-- Scan Action (only when fs_notify_watcher is disabled) -->
-          <ItemScanAlbum v-if="!(configStore.config?.fsNotifyWatcher ?? false)" />
+            <!-- Scan Action (only when fs_notify_watcher is disabled) -->
+            <ItemScanAlbum v-if="!(configStore.config?.fsNotifyWatcher ?? false)" />
+          </template>
         </v-list>
       </v-menu>
     </template>
@@ -63,9 +68,9 @@ import ItemBatchEditTags from '@Menu/MenuItem/ItemBatchEditTags.vue'
 import ItemBatchEditAlbums from '@Menu/MenuItem/ItemBatchEditAlbums.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
 import ItemDelete from '@Menu/MenuItem/ItemDelete.vue'
-import ItemPermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
 import ItemScanAlbum from '@Menu/MenuItem/ItemScanAlbum.vue'
 import ItemRestore from '@Menu/MenuItem/ItemRestore.vue'
+import ItemPermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
 
 import { getIsolationIdByRoute } from '@utils/getter'
 

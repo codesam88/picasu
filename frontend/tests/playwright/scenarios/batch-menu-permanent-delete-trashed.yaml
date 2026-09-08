@@ -1,0 +1,58 @@
+name: Batch menu on trashed page includes Permanently Delete option
+covers:
+  api: []
+  ui:
+    - Permanently Delete text is visible in batch menu on trashed page
+
+given:
+  - photo: batch-permdelete/img01.jpg
+
+steps:
+  # Soft-delete the photo to move it to trash
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: Batch Permdelete
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: option/Delete
+    assert:
+      - ui.visible: main/
+
+  # Navigate to trashed page
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.visible: main/
+
+  # Select the trashed photo to activate batch menu
+  - when:
+      - click.select_first: true
+    assert:
+      - ui.visible: main/
+
+  # Open the batch menu and verify Permanently Delete is present
+  - when:
+      - click.testid: batch-menu
+    assert:
+      - ui.text_visible: Permanently Delete

@@ -24,6 +24,9 @@ pub struct ConfigResponse {
     pub read_only_mode: bool,
     pub disable_img: bool,
     pub fs_notify_watcher: bool,
+    pub normalize_upload_filenames: bool,
+    pub validate_upload_content: bool,
+    pub use_client_timestamp_info: bool,
     pub has_password: bool,
     pub has_auth_key: bool,
 }
@@ -54,6 +57,9 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
         read_only_mode: config.read_only_mode,
         disable_img: config.disable_img,
         fs_notify_watcher: config.fs_notify_watcher,
+        normalize_upload_filenames: config.normalize_upload_filenames,
+        validate_upload_content: config.validate_upload_content,
+        use_client_timestamp_info: config.use_client_timestamp_info,
         has_password: config.password.is_some(),
         has_auth_key: config.auth_key.is_some(),
     };

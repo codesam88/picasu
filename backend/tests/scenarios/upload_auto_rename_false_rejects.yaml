@@ -1,0 +1,14 @@
+name: Upload with auto_rename=false rejects a filename that needs sanitization
+given:
+  - dir_album: /e2e_up_ar_false/target
+    id_as: $album
+  - photo: /e2e_up_ar_false/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_ar_false/src/photo.jpg
+      filename: "photo<cat>.jpg"
+      target_album: "${album}"
+      auto_rename: false
+then:
+  - response.status: 400
+  - file_absent: /e2e_up_ar_false/target/photo<cat>.jpeg

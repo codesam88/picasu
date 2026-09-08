@@ -1,11 +1,16 @@
 use crate::model::config::AppConfig;
 use crate::storage::files::get_data_path;
-use env_logger::{Builder, WriteStyle};
+use env_logger::{Builder, Env, WriteStyle};
 use log::kv::Key;
 use std::io::Write;
 
+/// Initializes the global logger.
+///
+/// The `RUST_LOG` environment variable is authoritative when set: its directives
+/// apply as-is (e.g. `RUST_LOG=warn`, `RUST_LOG=rocket=debug,info`). When unset,
+/// logging defaults to `info` globally and `warn` for the `rocket` target.
 pub fn initialize_logger() {
-    Builder::new()
+    Builder::from_env(Env::default().default_filter_or("info,rocket=warn"))
         .write_style(WriteStyle::Auto)
         .format(|buf, record| {
             let ts = buf.timestamp();
@@ -53,9 +58,8 @@ pub fn initialize_logger() {
             }
             Ok(())
         })
-        .filter(None, log::LevelFilter::Info)
-        .filter(Some("rocket"), log::LevelFilter::Warn)
-        .init();
+        .try_init()
+        .ok();
 }
 
 use log::{error, info};

@@ -1,0 +1,8 @@
+name: Upload without target album — file goes to uploads/ directory
+given:
+  - photo: /e2e_up_notarg/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_notarg/src/photo.jpg
+then:
+  - response.status: 200

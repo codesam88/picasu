@@ -153,6 +153,15 @@ pub fn get_dir_path_for_album(album_id: ArrayString<64>) -> Option<PathBuf> {
         })
 }
 
+/// Remove a single directory album entry from `DIR_ALBUM_CACHE`.
+/// Called when an album directory is deleted from disk.
+pub fn evict_dir_album(dir_path: &Path) {
+    DIR_ALBUM_CACHE
+        .lock()
+        .expect("lock poisoned")
+        .remove(dir_path);
+}
+
 /// Rewrite `DIR_ALBUM_CACHE` entries after a directory (and everything
 /// nested under it) has been physically moved from `old_prefix` to
 /// `new_prefix` — the moved album's own entry and any nested sub-album
@@ -331,6 +340,21 @@ mod tests {
     #[test]
     fn unicode_first_char_is_uppercased() {
         assert_eq!(prettify_dir_name("été_photos"), "Été Photos");
+    }
+
+    #[test]
+    fn evict_dir_album_removes_entry_from_cache() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let path = dir.path().to_path_buf();
+
+        let id: ArrayString<64> = "test-album-id".parse().unwrap();
+        DIR_ALBUM_CACHE.lock().unwrap().insert(path.clone(), id);
+
+        assert_eq!(get_album_id_for_dir(&path), Some(id));
+
+        super::evict_dir_album(&path);
+
+        assert_eq!(get_album_id_for_dir(&path), None);
     }
 
     mod read_albuminfo_tests {

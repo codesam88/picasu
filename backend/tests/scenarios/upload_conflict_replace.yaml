@@ -1,0 +1,17 @@
+name: Upload with on_conflict=replace — duplicate overwrites existing
+given:
+  - dir_album: /e2e_up_replace/target
+    id_as: $album
+  - photo: /e2e_up_replace/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_replace/src/photo.jpg
+      target_album: "${album}"
+      on_conflict: replace
+  - upload:
+      file: /e2e_up_replace/src/photo.jpg
+      target_album: "${album}"
+      on_conflict: replace
+then:
+  - response.status: 200
+  - file_exists: /e2e_up_replace/target/photo.jpeg

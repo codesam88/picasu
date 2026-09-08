@@ -63,6 +63,15 @@ pub fn write_config(updates: &serde_json::Value) {
         if let Some(val) = obj.get("fs_notify_watcher").and_then(|v| v.as_bool()) {
             config.fs_notify_watcher = val;
         }
+        if let Some(val) = obj.get("validate_upload_content").and_then(|v| v.as_bool()) {
+            config.validate_upload_content = val;
+        }
+        if let Some(val) = obj
+            .get("use_client_timestamp_info")
+            .and_then(|v| v.as_bool())
+        {
+            config.use_client_timestamp_info = val;
+        }
     }
     // Write a copy to disk for documentation/debugging.
     use serde::Serialize;
@@ -132,6 +141,10 @@ pub fn reset_backend_state() {
         .expect("APP_CONFIG lock");
     config.read_only_mode = false;
     config.fs_notify_watcher = true;
+    config.normalize_upload_filenames = true;
+    config.validate_upload_content = true;
+    config.use_client_timestamp_info = false;
+    config.password = None;
 }
 
 /// Build a Rocket test client with the current APP_CONFIG.

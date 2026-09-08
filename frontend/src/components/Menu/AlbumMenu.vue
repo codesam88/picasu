@@ -10,12 +10,16 @@
           ></v-btn>
         </template>
         <v-list>
-          <FindInTimeline :hash="props.hash" />
-          <v-divider></v-divider>
-          <EditTags />
-          <Delete v-if="!album.isTrashed" :index-list="[props.index]" />
-          <Restore v-if="album.isTrashed" :index-list="[props.index]" />
-          <PermanentlyDelete v-if="album.isTrashed" :index-list="[props.index]" />
+          <template v-if="album.isTrashed">
+            <Restore :index-list="[props.index]" />
+            <EditAlbums label="Restore to Album..." />
+          </template>
+          <template v-else>
+            <FindInTimeline :hash="props.hash" />
+            <v-divider></v-divider>
+            <EditTags />
+            <Delete :index-list="[props.index]" />
+          </template>
         </v-list>
       </v-menu>
     </template>
@@ -27,8 +31,8 @@ import { mergeProps } from 'vue'
 import { GalleryAlbum, IsolationId } from '@type/types'
 import FindInTimeline from '@Menu/MenuItem/ItemFindInTimeline.vue'
 import EditTags from '@Menu/MenuItem/ItemEditTags.vue'
+import EditAlbums from '@Menu/MenuItem/ItemEditAlbums.vue'
 import Delete from '@Menu/MenuItem/ItemDelete.vue'
-import PermanentlyDelete from '@Menu/MenuItem/ItemPermanentlyDelete.vue'
 import Restore from '@Menu/MenuItem/ItemRestore.vue'
 
 const props = defineProps<{

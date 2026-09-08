@@ -9,6 +9,7 @@ use rocket::data::{ByteUnit, Limits};
 #[cfg(not(feature = "embed-frontend"))]
 use rocket::fs::FileServer;
 use rocket::info;
+use rocket::shield::Shield;
 use std::path::PathBuf;
 
 #[cfg(test)]
@@ -18,7 +19,6 @@ fn create_dummy_config() -> AppConfig {
     config.port = 8000;
     config
 }
-
 /// Handle routes for embedded frontend assets
 #[cfg(feature = "embed-frontend")]
 #[get("/assets/<file..>")]
@@ -85,6 +85,7 @@ pub fn build_rocket_with_config(mut app_config: AppConfig) -> rocket::Rocket<roc
     let web_root = app_config.web_root.clone();
     let base_app = rocket::custom(rocket_config)
         .manage(app_config)
+        .attach(Shield::default())
         .attach(cache_control_fairing());
 
     let app = mount_frontend(base_app, web_root.as_ref());

@@ -22,7 +22,28 @@ fn interpolate(s: &str, vars: &HashMap<String, String>) -> String {
         let after = &rest[start + 2..];
         if let Some(end) = after.find('}') {
             let bare = &after[..end];
-            let val = vars.get(bare).cloned().unwrap_or_default();
+            let val = match bare.split_once(':') {
+                // `${var:start:end}` substring slice, e.g. `${hash:0:2}`
+                Some((var, range)) => {
+                    let src = vars.get(var).cloned().unwrap_or_default();
+                    let chars: Vec<char> = src.chars().collect();
+                    match range.split_once(':') {
+                        Some((s, e)) => {
+                            let s = s.parse::<usize>().unwrap_or(0);
+                            let e = e.parse::<usize>().unwrap_or(chars.len());
+                            if s >= e || s >= chars.len() {
+                                String::new()
+                            } else {
+                                chars[s.min(chars.len())..e.min(chars.len())]
+                                    .iter()
+                                    .collect()
+                            }
+                        }
+                        None => src,
+                    }
+                }
+                None => vars.get(bare).cloned().unwrap_or_default(),
+            };
             result.push_str(&val);
             rest = &after[end + 1..];
         } else {
@@ -89,6 +110,30 @@ fn assert_json_contains(root: &Value, key: &str, val: &Value, vars: &HashMap<Str
         arr.contains(&expected_val),
         "{key} does not contain {expected_val}"
     );
+}
+
+fn assert_json_compare(root: &Value, key: &str, val: &Value, vars: &HashMap<String, String>) {
+    let field_path = key.strip_prefix("response.json.").unwrap_or(key);
+    let actual = navigate_json(root, field_path);
+    let Some(actual) = actual.as_i64() else {
+        panic!("{key}: compare requires an integer field, got {actual}");
+    };
+    let conds = val
+        .as_object()
+        .expect("compare value must be an object of operator -> value");
+    for (op, expected_val) in conds {
+        let expected = interpolate_value(expected_val, vars);
+        let Some(expected) = expected.as_i64() else {
+            panic!("{key}: compare requires integer expected values, got {expected_val}");
+        };
+        match op.as_str() {
+            "<" => assert!(actual < expected, "{key}: {actual} is not < {expected}"),
+            "<=" => assert!(actual <= expected, "{key}: {actual} is not <= {expected}"),
+            ">" => assert!(actual > expected, "{key}: {actual} is not > {expected}"),
+            ">=" => assert!(actual >= expected, "{key}: {actual} is not >= {expected}"),
+            other => panic!("compare: unknown operator '{other}'"),
+        }
+    }
 }
 
 fn assert_all_absolute(root: &Value, key: &str) {
@@ -178,12 +223,30 @@ fn assert_array_where(root: &Value, val: &Value, vars: &HashMap<String, String>)
 fn check_status_assertions(
     response: &rocket::local::blocking::LocalResponse<'_>,
     then_items: &[Value],
+    vars: &HashMap<String, String>,
 ) {
     for item in then_items {
         if let Some(code) = item["response.status"].as_i64() {
             assert_eq!(response.status(), Status::from_code(code as u16).unwrap(),);
         } else if let Some(code) = item["response.status_not"].as_i64() {
             assert_ne!(response.status(), Status::from_code(code as u16).unwrap(),);
+        } else if let Some(obj) = item.as_object() {
+            for (key, val) in obj {
+                if let Some(name) = key.strip_prefix("response.header.") {
+                    let expected = interpolate(
+                        val.as_str()
+                            .expect("response.header value must be a string"),
+                        vars,
+                    );
+                    let actual = response
+                        .headers()
+                        .get(name)
+                        .map(|v| v.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    assert_eq!(actual, expected, "response header {name}");
+                }
+            }
         }
     }
 }
@@ -211,6 +274,11 @@ fn check_body_assertions(body_bytes: &[u8], then_items: &[Value], vars: &HashMap
                     assert_array_min_counts(&parsed, val, vars);
                 } else if key == "array_where" {
                     assert_array_where(&parsed, val, vars);
+                } else if key == "compare" {
+                    let pairs = val.as_object().expect("compare must be an object");
+                    for (sub_key, sub_val) in pairs {
+                        assert_json_compare(&parsed, sub_key, sub_val, vars);
+                    }
                 }
             }
         }
@@ -347,6 +415,147 @@ fn execute_call<'c>(
     req.dispatch()
 }
 
+// ── Multipart upload body builder ──
+
+fn build_upload_multipart(
+    file_data: &[u8],
+    filename: &str,
+    last_modified: u64,
+    content_type: &str,
+) -> (Vec<u8>, String) {
+    let boundary = "----picasu-test-upload-boundary";
+    let mut body = Vec::new();
+
+    // File part
+    body.extend_from_slice(b"--");
+    body.extend_from_slice(boundary.as_bytes());
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"file\"; filename=\"");
+    body.extend_from_slice(filename.as_bytes());
+    body.extend_from_slice(b"\"\r\n");
+    body.extend_from_slice(b"Content-Type: ");
+    body.extend_from_slice(content_type.as_bytes());
+    body.extend_from_slice(b"\r\n\r\n");
+    body.extend_from_slice(file_data);
+    body.extend_from_slice(b"\r\n");
+
+    // lastModified part
+    body.extend_from_slice(b"--");
+    body.extend_from_slice(boundary.as_bytes());
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"lastModified\"\r\n\r\n");
+    body.extend_from_slice(last_modified.to_string().as_bytes());
+    body.extend_from_slice(b"\r\n");
+
+    // Close
+    body.extend_from_slice(b"--");
+    body.extend_from_slice(boundary.as_bytes());
+    body.extend_from_slice(b"--\r\n");
+
+    (body, boundary.to_string())
+}
+
+// ── Execute an upload call ──
+
+fn execute_upload<'c>(
+    item: &Value,
+    vars: &HashMap<String, String>,
+    client: &'c Client,
+) -> rocket::local::blocking::LocalResponse<'c> {
+    let upload = &item["upload"];
+
+    let file_path = upload["file"].as_str().expect("upload.file is required");
+    let file_path = interpolate(file_path, vars);
+
+    let filename = upload["filename"]
+        .as_str()
+        .map(|s| interpolate(s, vars))
+        .unwrap_or_else(|| {
+            std::path::Path::new(&file_path)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        });
+
+    let image_home = test_image_home();
+    let full_path = image_home.join(file_path.trim_start_matches('/'));
+    let file_data = std::fs::read(&full_path)
+        .unwrap_or_else(|e| panic!("upload.file not found at {}: {e}", full_path.display()));
+
+    let last_modified = upload["last_modified"].as_u64().unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+    });
+
+    let content_type = upload["content_type"].as_str().unwrap_or("image/jpeg");
+
+    let (body, boundary) =
+        build_upload_multipart(&file_data, &filename, last_modified, content_type);
+
+    let mut url = "/upload".to_string();
+    let mut query_parts: Vec<String> = Vec::new();
+
+    if let Some(album) = upload["target_album"].as_str() {
+        let album = interpolate(album, vars);
+        query_parts.push(format!("presigned_album_id_opt={album}"));
+    }
+
+    if let Some(oc) = upload["on_conflict"].as_str() {
+        query_parts.push(format!("on_conflict={oc}"));
+    }
+
+    if let Some(ar) = upload["auto_rename"].as_bool() {
+        query_parts.push(format!("auto_rename={ar}"));
+    }
+
+    if !query_parts.is_empty() {
+        url.push('?');
+        url.push_str(&query_parts.join("&"));
+    }
+
+    let url: &'static str = Box::leak(url.into_boxed_str());
+
+    let auth = upload.get("auth").and_then(|v| v.as_bool()).unwrap_or(true);
+
+    let mut req = client.post(url);
+    if auth {
+        req = req.cookie(auth_cookie(client));
+    }
+    let req = req
+        .header(rocket::http::Header::new(
+            "Content-Type",
+            format!("multipart/form-data; boundary={boundary}"),
+        ))
+        .body(body);
+
+    req.dispatch()
+}
+
+// ── Dispatch a when item to call or upload ──
+
+fn dispatch_when_item<'c>(
+    item: &Value,
+    vars: &HashMap<String, String>,
+    client: &'c Client,
+) -> rocket::local::blocking::LocalResponse<'c> {
+    if item
+        .get("wait_index")
+        .is_some_and(|v| v.as_bool() == Some(true))
+    {
+        wait_for_album_index(client, 30000);
+        let cookie = auth_cookie(client);
+        return client.get("/get/index/status").cookie(cookie).dispatch();
+    }
+    if item.get("upload").is_some() {
+        execute_upload(item, vars, client)
+    } else {
+        execute_call(item, vars, client)
+    }
+}
+
 // ── Process capture block ──
 
 fn process_capture(call: &Value, body_bytes: &[u8], vars: &mut HashMap<String, String>) {
@@ -391,7 +600,10 @@ fn process_calc(call: &Value, vars: &mut HashMap<String, String>) {
 fn has_json_assertions(item: &Value) -> bool {
     item.as_object().is_some_and(|m| {
         m.keys().any(|k| {
-            k.starts_with("response.json.") || k == "array_min_counts" || k == "array_where"
+            k.starts_with("response.json.")
+                || k == "array_min_counts"
+                || k == "array_where"
+                || k == "compare"
         })
     })
 }
@@ -483,9 +695,18 @@ fn interpret_scenario(scenario: &Value) {
                     let exif_date = item["exif_date"].as_str();
                     let has_tags = !tags.is_empty();
 
+                    let format = item["format"]
+                        .as_str()
+                        .map(|f| f.to_string())
+                        .unwrap_or_else(|| "jpeg".to_string());
+                    assert!(
+                        matches!(format.as_str(), "jpeg" | "png"),
+                        "given photo format must be jpeg or png, got {format}"
+                    );
+
                     photo_specs.push(PhotoSpec {
                         output: Some(data.join(trimmed).to_string_lossy().to_string()),
-                        format: Some("jpeg".into()),
+                        format: Some(format),
                         width: Some(4),
                         height: Some(4),
                         tags: if has_tags { Some(tags) } else { None },
@@ -504,6 +725,18 @@ fn interpret_scenario(scenario: &Value) {
                     if let Some(enabled) = config.get("fs_notify_watcher").and_then(|v| v.as_bool())
                     {
                         write_config(&serde_json::json!({"fs_notify_watcher": enabled}));
+                    }
+                    if let Some(enabled) = config
+                        .get("validate_upload_content")
+                        .and_then(|v| v.as_bool())
+                    {
+                        write_config(&serde_json::json!({"validate_upload_content": enabled}));
+                    }
+                    if let Some(enabled) = config
+                        .get("use_client_timestamp_info")
+                        .and_then(|v| v.as_bool())
+                    {
+                        write_config(&serde_json::json!({"use_client_timestamp_info": enabled}));
                     }
                 }
             }
@@ -564,13 +797,13 @@ fn interpret_scenario(scenario: &Value) {
                 client_opt = Some(make_client());
             }
             let client = client_opt.as_ref().expect("client");
-            let resp = execute_call(call, &vars, client);
+            let resp = dispatch_when_item(call, &vars, client);
 
             let is_last = i == calls.len() - 1;
 
             if is_last {
                 let has_json = then_items.iter().any(has_json_assertions);
-                check_status_assertions(&resp, then_items);
+                check_status_assertions(&resp, then_items, &vars);
                 if has_json {
                     let body = resp.into_bytes().expect("response body");
                     check_body_assertions(&body, then_items, &vars);
@@ -578,7 +811,7 @@ fn interpret_scenario(scenario: &Value) {
                 check_file_and_serve_assertions(then_items, &data, client, &vars);
             } else {
                 if let Some(call_then) = call.get("then").and_then(|v| v.as_array()) {
-                    check_status_assertions(&resp, call_then);
+                    check_status_assertions(&resp, call_then, &vars);
                 }
                 if call
                     .get("capture")
@@ -589,12 +822,22 @@ fn interpret_scenario(scenario: &Value) {
                     process_capture(call, &body, &mut vars);
                 }
                 process_calc(call, &mut vars);
+                if let Some(id_as) = call.get("id_as").and_then(|v| v.as_str()) {
+                    let bare = id_as.trim_start_matches('$');
+                    let discover_path = call
+                        .get("discover_path")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_else(|| panic!("id_as {id_as}: requires discover_path"));
+                    let path = interpolate(discover_path, &vars);
+                    let hash = discover_photo_hash(client, &path);
+                    vars.insert(bare.to_string(), hash);
+                }
             }
         }
     } else {
         let client = make_client();
-        let resp = execute_call(when, &vars, &client);
-        check_status_assertions(&resp, then_items);
+        let resp = dispatch_when_item(when, &vars, &client);
+        check_status_assertions(&resp, then_items, &vars);
         let has_json = then_items.iter().any(has_json_assertions);
         if has_json {
             let body = resp.into_bytes().expect("response body");
