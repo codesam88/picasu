@@ -5,7 +5,6 @@ import { escapeAndWrap } from '@utils/escape'
 import { useShareStore } from '@/store/shareStore'
 import { IsolationId } from '@type/types'
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function getIsolationIdByRoute(_route: RouteLocationNormalizedLoaded): IsolationId {
   return 'mainId'
 }

@@ -196,7 +196,6 @@ function buildFlatTree(albums: Map<string, AlbumInfo>, query: string): FlatNode[
     const nodeChildren = children.get(id) ?? []
 
     // Recurse first to determine if any descendant matches
-    const childStartIdx = result.length
     // We'll push a placeholder and fill it after recursing children
     const placeholder: FlatNode = {
       id,
@@ -224,7 +223,6 @@ function buildFlatTree(albums: Map<string, AlbumInfo>, query: string): FlatNode[
 
     placeholder.hasVisibleDescendant = childHasVisible
     placeholder.visible = matchesSelf || childHasVisible
-    void childStartIdx // suppress unused warning
   }
 
   // Roots: albums without a parent that exists in the map

@@ -4,12 +4,10 @@ import { prefetchReturnSchema } from '@type/schemas'
 
 export async function prefetch(
   filterJsonString: string | null,
-  priorityId: string | undefined = 'default',
-  reverse: string | undefined = 'false',
+  _priorityId: string | undefined = 'default',
+  _reverse: string | undefined = 'false',
   locate: null | string = null
 ): Promise<PrefetchReturn> {
-  void priorityId
-  void reverse
   const fetchUrl = `/get/prefetch?${locate !== null ? `locate=${locate}` : ''}`
 
   const axiosResponse = await axios.post<Prefetch>(fetchUrl, filterJsonString, {
