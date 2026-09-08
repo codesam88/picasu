@@ -1,3 +1,4 @@
+pub mod alias;
 pub mod dir_album;
 pub mod exif;
 pub mod hash;
