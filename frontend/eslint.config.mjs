@@ -39,6 +39,7 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/strict-boolean-expressions': 'error',
       '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'vue/multi-word-component-names': 'off',
       '@typescript-eslint/no-unnecessary-type-parameters': 'off'
     }
