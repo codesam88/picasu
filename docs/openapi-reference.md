@@ -349,13 +349,17 @@ func main() {
 {
   "address": "string",
   "disableImg": true,
+  "fsNotifyWatcher": true,
   "hasAuthKey": true,
   "hasPassword": true,
   "imagePath": "string",
   "maxUploadSize": "string",
+  "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
-  "uploadFolder": "string"
+  "uploadFolder": "string",
+  "useClientTimestampInfo": true,
+  "validateUploadContent": true
 }
 ```
 
@@ -721,7 +725,7 @@ Status Code **200**
 | _anonymous_                 | [[AlbumInfo](#schemaalbuminfo)] | false    | none         | none                                                                                                              |
 | » albumId                   | string                          | true     | none         | none                                                                                                              |
 | » albumName                 | string,null                     | false    | none         | none                                                                                                              |
-| » dirPath                   | string,null                     | false    | none         | Set for filesystem-hierarchy albums; `None` for user-created albums.                                              |
+| » dirPath                   | string,null                     | false    | none         | none                                                                                                              |
 | » parentAlbumId             | string,null                     | false    | none         | Album ID of the direct parent directory album, or `None` for top-level<br>dir albums and all user-created albums. |
 | » shareList                 | object                          | true     | none         | none                                                                                                              |
 | »» **additionalProperties** | [Share](#schemashare)           | false    | none         | none                                                                                                              |
@@ -2564,12 +2568,16 @@ const inputBody = '{
   "authKey": "string",
   "dataHome": "string",
   "disableImg": true,
+  "fsNotifyWatcher": true,
   "imagePath": "string",
   "maxUploadSize": "string",
+  "normalizeUploadFilenames": true,
   "password": "string",
   "port": 0,
   "readOnlyMode": true,
-  "uploadFolder": "string"
+  "uploadFolder": "string",
+  "useClientTimestampInfo": true,
+  "validateUploadContent": true
 }';
 const headers = {
   'Content-Type':'application/json'
@@ -2700,12 +2708,16 @@ func main() {
   "authKey": "string",
   "dataHome": "string",
   "disableImg": true,
+  "fsNotifyWatcher": true,
   "imagePath": "string",
   "maxUploadSize": "string",
+  "normalizeUploadFilenames": true,
   "password": "string",
   "port": 0,
   "readOnlyMode": true,
-  "uploadFolder": "string"
+  "uploadFolder": "string",
+  "useClientTimestampInfo": true,
+  "validateUploadContent": true
 }
 ```
 
@@ -3597,7 +3609,7 @@ This operation does not require authentication
 
 ## Move a media item into the album's directory on disk, update the DB alias,
 
-and record the explicit album membership. Returns 422 if the file is not
+and record the explicit album membership. Returns 400 if the file is not
 found at the recorded alias path (stale alias — user must re-index first).
 
 <a id="opIdassign_album"></a>
@@ -3621,7 +3633,8 @@ Content-Type: application/json
 ```javascript
 const inputBody = '{
   "albumId": "string",
-  "hash": "string"
+  "hash": "string",
+  "onConflict": "skip"
 }';
 const headers = {
   'Content-Type':'application/json'
@@ -3749,12 +3762,13 @@ func main() {
 ```json
 {
   "albumId": "string",
-  "hash": "string"
+  "hash": "string",
+  "onConflict": "skip"
 }
 ```
 
 <h3 id="move-a-media-item-into-the-album's-directory-on-disk,-update-the-db-alias,
-and-record-the-explicit-album-membership.--returns-422-if-the-file-is-not
+and-record-the-explicit-album-membership.--returns-400-if-the-file-is-not
 found-at-the-recorded-alias-path-(stale-alias-—-user-must-re-index-first).-parameters">Parameters</h3>
 
 | Name | In   | Type                                      | Required | Description |
@@ -3762,7 +3776,7 @@ found-at-the-recorded-alias-path-(stale-alias-—-user-must-re-index-first).-par
 | body | body | [AssignAlbumData](#schemaassignalbumdata) | true     | none        |
 
 <h3 id="move-a-media-item-into-the-album's-directory-on-disk,-update-the-db-alias,
-and-record-the-explicit-album-membership.--returns-422-if-the-file-is-not
+and-record-the-explicit-album-membership.--returns-400-if-the-file-is-not
 found-at-the-recorded-alias-path-(stale-alias-—-user-must-re-index-first).-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                     | Schema |
@@ -3799,10 +3813,14 @@ const inputBody = '{
   "address": "string",
   "authKey": "string",
   "disableImg": true,
+  "fsNotifyWatcher": true,
   "maxUploadSize": "string",
+  "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
-  "uploadFolder": "string"
+  "uploadFolder": "string",
+  "useClientTimestampInfo": true,
+  "validateUploadContent": true
 }';
 const headers = {
   'Content-Type':'application/json'
@@ -3932,10 +3950,14 @@ func main() {
   "address": "string",
   "authKey": "string",
   "disableImg": true,
+  "fsNotifyWatcher": true,
   "maxUploadSize": "string",
+  "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
-  "uploadFolder": "string"
+  "uploadFolder": "string",
+  "useClientTimestampInfo": true,
+  "validateUploadContent": true
 }
 ```
 
@@ -4475,6 +4497,182 @@ func main() {
 | ------ | ---------------------------------------------------------------- | ------------- | ------ |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Flags updated | None   |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## edit_rating
+
+<a id="opIdedit_rating"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X PUT /put/edit_rating \
+  -H 'Content-Type: application/json'
+
+```
+
+```http
+PUT /put/edit_rating HTTP/1.1
+
+Content-Type: application/json
+
+```
+
+```javascript
+const inputBody = '{
+  "indexArray": [
+    0
+  ],
+  "rating": 0,
+  "timestamp": 0
+}';
+const headers = {
+  'Content-Type':'application/json'
+};
+
+fetch('/put/edit_rating',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Content-Type' => 'application/json'
+}
+
+result = RestClient.put '/put/edit_rating',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json'
+}
+
+r = requests.put('/put/edit_rating', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Content-Type' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('PUT','/put/edit_rating', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/put/edit_rating");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("PUT");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("PUT", "/put/edit_rating", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`PUT /put/edit_rating`
+
+> Body parameter
+
+```json
+{
+  "indexArray": [0],
+  "rating": 0,
+  "timestamp": 0
+}
+```
+
+<h3 id="edit_rating-parameters">Parameters</h3>
+
+| Name | In   | Type                                    | Required | Description |
+| ---- | ---- | --------------------------------------- | -------- | ----------- |
+| body | body | [EditRatingData](#schemaeditratingdata) | true     | none        |
+
+<h3 id="edit_rating-responses">Responses</h3>
+
+| Status | Meaning                                                          | Description    | Schema |
+| ------ | ---------------------------------------------------------------- | -------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Rating updated | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input  | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -5045,180 +5243,6 @@ null
 This operation does not require authentication
 </aside>
 
-## reindex
-
-<a id="opIdreindex"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X POST /put/reindex \
-  -H 'Content-Type: application/json'
-
-```
-
-```http
-POST /put/reindex HTTP/1.1
-
-Content-Type: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "indexArray": [
-    0
-  ],
-  "timestamp": 0
-}';
-const headers = {
-  'Content-Type':'application/json'
-};
-
-fetch('/put/reindex',
-{
-  method: 'POST',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json'
-}
-
-result = RestClient.post '/put/reindex',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json'
-}
-
-r = requests.post('/put/reindex', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('POST','/put/reindex', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/put/reindex");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("POST");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/put/reindex", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`POST /put/reindex`
-
-> Body parameter
-
-```json
-{
-  "indexArray": [0],
-  "timestamp": 0
-}
-```
-
-<h3 id="reindex-parameters">Parameters</h3>
-
-| Name | In   | Type                                    | Required | Description |
-| ---- | ---- | --------------------------------------- | -------- | ----------- |
-| body | body | [RegenerateData](#schemaregeneratedata) | true     | none        |
-
-<h3 id="reindex-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description      | Schema |
-| ------ | ---------------------------------------------------------------- | ---------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Reindex complete | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input    | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## rotate_image
 
 <a id="opIdrotate_image"></a>
@@ -5707,6 +5731,11 @@ func main() {
 
 `PUT /put/set_album_title`
 
+Sets both the raw display `title` and `custom_title` (the value actually
+persisted to `.albuminfo.xmp` by `write_sidecar_for`). Clearing the title
+(`title: None`) falls back `title` to the directory-derived default for
+dir-albums, so the sidecar-freezing bug can't reappear via this path.
+
 > Body parameter
 
 ```json
@@ -6057,9 +6086,10 @@ null
 
 <h3 id="upload-parameters">Parameters</h3>
 
-| Name | In   | Type | Required | Description |
-| ---- | ---- | ---- | -------- | ----------- |
-| body | body | any  | true     | none        |
+| Name        | In    | Type    | Required | Description                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------- | ----- | ------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| auto_rename | query | boolean | false    | When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error. |
+| body        | body  | any     | true     | none                                                                                                                                                                                                                                                                                                                                                                              |
 
 <h3 id="upload-responses">Responses</h3>
 
@@ -6446,260 +6476,6 @@ func main() {
 `GET /albums/view/{path}`
 
 <h3 id="albums_view-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## all
-
-<a id="opIdall"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /all
-
-```
-
-```http
-GET /all HTTP/1.1
-
-```
-
-```javascript
-fetch("/all", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/all',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/all')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/all', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/all");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/all", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /all`
-
-<h3 id="all-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## all_view
-
-<a id="opIdall_view"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /all/view/{path}
-
-```
-
-```http
-GET /all/view/{path} HTTP/1.1
-
-```
-
-```javascript
-fetch("/all/view/{path}", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/all/view/{path}',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/all/view/{path}')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/all/view/{path}', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/all/view/{path}");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/all/view/{path}", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /all/view/{path}`
-
-<h3 id="all_view-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -7462,260 +7238,6 @@ func main() {
 `GET /favorite/view/{path}`
 
 <h3 id="favorite_view-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## home
-
-<a id="opIdhome"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /home
-
-```
-
-```http
-GET /home HTTP/1.1
-
-```
-
-```javascript
-fetch("/home", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/home',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/home')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/home', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/home");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/home", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /home`
-
-<h3 id="home-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## home_view
-
-<a id="opIdhome_view"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /home/view/{path}
-
-```
-
-```http
-GET /home/view/{path} HTTP/1.1
-
-```
-
-```javascript
-fetch("/home/view/{path}", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/home/view/{path}',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/home/view/{path}')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/home/view/{path}', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/home/view/{path}");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/home/view/{path}", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /home/view/{path}`
-
-<h3 id="home_view-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -8741,6 +8263,260 @@ func main() {
 This operation does not require authentication
 </aside>
 
+## timeline
+
+<a id="opIdtimeline"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /timeline
+
+```
+
+```http
+GET /timeline HTTP/1.1
+
+```
+
+```javascript
+fetch("/timeline", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/timeline',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/timeline')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/timeline', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/timeline");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/timeline", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /timeline`
+
+<h3 id="timeline-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## timeline_view
+
+<a id="opIdtimeline_view"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /timeline/view/{path}
+
+```
+
+```http
+GET /timeline/view/{path} HTTP/1.1
+
+```
+
+```javascript
+fetch("/timeline/view/{path}", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/timeline/view/{path}',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/timeline/view/{path}')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/timeline/view/{path}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/timeline/view/{path}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/timeline/view/{path}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /timeline/view/{path}`
+
+<h3 id="timeline_view-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 ## trashed
 
 <a id="opIdtrashed"></a>
@@ -9504,6 +9280,140 @@ func main() {
 This operation does not require authentication
 </aside>
 
+## Catch-all SPA fallback — serves index.html for valid Vue Router routes.
+
+Paths matching `/album/<hash>` validate the album exists before serving
+the SPA; invalid album hashes return 404. Rank 11 ensures specific
+routes (assets at rank 10, API, pages) take priority.
+
+<a id="opIdspa_fallback"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /{path}
+
+```
+
+```http
+GET /{path} HTTP/1.1
+
+```
+
+```javascript
+fetch("/{path}", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/{path}',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/{path}')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/{path}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/{path}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/{path}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /{path}`
+
+<h3 id="catch-all-spa-fallback-—-serves-index.html-for-valid-vue-router-routes.
+paths-matching-`/album/<hash>`-validate-the-album-exists-before-serving
+the-spa;-invalid-album-hashes-return-404.-rank-11-ensures-specific
+routes-(assets-at-rank-10,-api,-pages)-take-priority.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description                                            | Schema |
+| ------ | ------------------------------------------------------- | ------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA fallback — serves index.html for Vue Router routes | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 # Schemas
 
 <h2 id="tocS_AlbumIndexState">AlbumIndexState</h2>
@@ -9610,7 +9520,7 @@ This operation does not require authentication
 | -------------------------- | --------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------- |
 | albumId                    | string                | true     | none         | none                                                                                                              |
 | albumName                  | string,null           | false    | none         | none                                                                                                              |
-| dirPath                    | string,null           | false    | none         | Set for filesystem-hierarchy albums; `None` for user-created albums.                                              |
+| dirPath                    | string,null           | false    | none         | none                                                                                                              |
 | parentAlbumId              | string,null           | false    | none         | Album ID of the direct parent directory album, or `None` for top-level<br>dir albums and all user-created albums. |
 | shareList                  | object                | true     | none         | none                                                                                                              |
 | » **additionalProperties** | [Share](#schemashare) | false    | none         | none                                                                                                              |
@@ -9628,29 +9538,37 @@ This operation does not require authentication
   "authKey": "string",
   "dataHome": "string",
   "disableImg": true,
+  "fsNotifyWatcher": true,
   "imagePath": "string",
   "maxUploadSize": "string",
+  "normalizeUploadFilenames": true,
   "password": "string",
   "port": 0,
   "readOnlyMode": true,
-  "uploadFolder": "string"
+  "uploadFolder": "string",
+  "useClientTimestampInfo": true,
+  "validateUploadContent": true
 }
 ```
 
 ### Properties
 
-| Name          | Type           | Required | Restrictions | Description |
-| ------------- | -------------- | -------- | ------------ | ----------- |
-| address       | string         | true     | none         | none        |
-| authKey       | string,null    | false    | none         | none        |
-| dataHome      | string,null    | false    | none         | none        |
-| disableImg    | boolean        | true     | none         | none        |
-| imagePath     | string,null    | false    | none         | none        |
-| maxUploadSize | string         | false    | none         | none        |
-| password      | string,null    | false    | none         | none        |
-| port          | integer(int32) | true     | none         | none        |
-| readOnlyMode  | boolean        | true     | none         | none        |
-| uploadFolder  | string         | false    | none         | none        |
+| Name                     | Type           | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------ | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| address                  | string         | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| authKey                  | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| dataHome                 | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| disableImg               | boolean        | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| fsNotifyWatcher          | boolean        | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| imagePath                | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| maxUploadSize            | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| normalizeUploadFilenames | boolean        | false    | none         | NFC-normalize uploaded filenames so macOS NFD names collapse onto<br>their composed form. Optional (unlike the always-on sanitization tiers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| password                 | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| port                     | integer(int32) | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| readOnlyMode             | boolean        | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| uploadFolder             | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| useClientTimestampInfo   | boolean        | false    | none         | Trust the `lastModified` the upload client sends with each file. When<br>enabled, the value is used as the stored file modification time but<br>clamped to `[1970-01-01, now + 24h]` so a broken client clock cannot<br>push an undated file (e.g. a screenshot) into year 1970 or the distant<br>future. Disabled by default: the server uses `now()` instead of the<br>provided value, since a client's clock or timezone cannot be relied on.<br>Only affects files without embedded metadata: photos with a<br>`DateTimeOriginal` EXIF tag keep their EXIF-derived date regardless.<br>See `backend/src/router/post/post_upload.rs`<br>(`resolve_upload_timestamp`). |
+| validateUploadContent    | boolean        | false    | none         | Cross-check uploads against the declared `Content-Type`. When enabled,<br>the first 512 bytes of each uploaded file are sniffed with the<br>[`infer`](https://crates.io/crates/infer) magic-byte database and the<br>detected signature must fall in the family of the extension derived<br>from the `Content-Type`: `jpg                                                                                                                                                                                                                                                                                                                                                | jpeg | jfif | jpe`→ JPEG,`tif | tiff`→<br>TIFF,`mp4 | mov | m4v`→ ISO BMFF,`mkv | webm`→ EBML,`mpeg`→ MPEG-PS,<br>and`png`, `webp`, `bmp`, `gif`, `avi`, `flv`, `wmv`1:1. Mismatches<br>and unrecognizable bytes are rejected with`400 InvalidInput`; the<br>check is signature-based only, never a full decode, so unusual-but-valid<br>variants still pass. The stored file extension remains the one derived<br>from the declared `Content-Type`. See<br>`backend/src/router/post/post_upload.rs` (`validate_upload_content`).<br>Disable only if legitimate media is being rejected. |
 
 <h2 id="tocS_AssignAlbumData">AssignAlbumData</h2>
 <!-- backwards compatibility -->
@@ -9662,16 +9580,18 @@ This operation does not require authentication
 ```json
 {
   "albumId": "string",
-  "hash": "string"
+  "hash": "string",
+  "onConflict": "skip"
 }
 ```
 
 ### Properties
 
-| Name    | Type   | Required | Restrictions | Description |
-| ------- | ------ | -------- | ------------ | ----------- |
-| albumId | string | true     | none         | none        |
-| hash    | string | true     | none         | none        |
+| Name       | Type                            | Required | Restrictions | Description |
+| ---------- | ------------------------------- | -------- | ------------ | ----------- |
+| albumId    | string                          | true     | none         | none        |
+| hash       | string                          | true     | none         | none        |
+| onConflict | [OnConflict](#schemaonconflict) | false    | none         | none        |
 
 <h2 id="tocS_ConfigResponse">ConfigResponse</h2>
 <!-- backwards compatibility -->
@@ -9684,29 +9604,37 @@ This operation does not require authentication
 {
   "address": "string",
   "disableImg": true,
+  "fsNotifyWatcher": true,
   "hasAuthKey": true,
   "hasPassword": true,
   "imagePath": "string",
   "maxUploadSize": "string",
+  "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
-  "uploadFolder": "string"
+  "uploadFolder": "string",
+  "useClientTimestampInfo": true,
+  "validateUploadContent": true
 }
 ```
 
 ### Properties
 
-| Name          | Type           | Required | Restrictions | Description |
-| ------------- | -------------- | -------- | ------------ | ----------- |
-| address       | string         | true     | none         | none        |
-| disableImg    | boolean        | true     | none         | none        |
-| hasAuthKey    | boolean        | true     | none         | none        |
-| hasPassword   | boolean        | true     | none         | none        |
-| imagePath     | string,null    | false    | none         | none        |
-| maxUploadSize | string         | true     | none         | none        |
-| port          | integer(int32) | true     | none         | none        |
-| readOnlyMode  | boolean        | true     | none         | none        |
-| uploadFolder  | string         | true     | none         | none        |
+| Name                     | Type           | Required | Restrictions | Description |
+| ------------------------ | -------------- | -------- | ------------ | ----------- |
+| address                  | string         | true     | none         | none        |
+| disableImg               | boolean        | true     | none         | none        |
+| fsNotifyWatcher          | boolean        | true     | none         | none        |
+| hasAuthKey               | boolean        | true     | none         | none        |
+| hasPassword              | boolean        | true     | none         | none        |
+| imagePath                | string,null    | false    | none         | none        |
+| maxUploadSize            | string         | true     | none         | none        |
+| normalizeUploadFilenames | boolean        | true     | none         | none        |
+| port                     | integer(int32) | true     | none         | none        |
+| readOnlyMode             | boolean        | true     | none         | none        |
+| uploadFolder             | string         | true     | none         | none        |
+| useClientTimestampInfo   | boolean        | true     | none         | none        |
+| validateUploadContent    | boolean        | true     | none         | none        |
 
 <h2 id="tocS_CreateDirAlbumData">CreateDirAlbumData</h2>
 <!-- backwards compatibility -->
@@ -9873,6 +9801,29 @@ This operation does not require authentication
 | isTrashed  | boolean,null   | false    | none         | none        |
 | timestamp  | integer(int64) | true     | none         | none        |
 
+<h2 id="tocS_EditRatingData">EditRatingData</h2>
+<!-- backwards compatibility -->
+<a id="schemaeditratingdata"></a>
+<a id="schema_EditRatingData"></a>
+<a id="tocSeditratingdata"></a>
+<a id="tocseditratingdata"></a>
+
+```json
+{
+  "indexArray": [0],
+  "rating": 0,
+  "timestamp": 0
+}
+```
+
+### Properties
+
+| Name       | Type                | Required | Restrictions | Description                        |
+| ---------- | ------------------- | -------- | ------------ | ---------------------------------- |
+| indexArray | [integer]           | true     | none         | none                               |
+| rating     | integer,null(int32) | false    | none         | Rating value 0–5, or null to clear |
+| timestamp  | integer(int64)      | true     | none         | none                               |
+
 <h2 id="tocS_EditShare">EditShare</h2>
 <!-- backwards compatibility -->
 <a id="schemaeditshare"></a>
@@ -9990,6 +9941,31 @@ This operation does not require authentication
 | album | string,null | false    | none         | none        |
 | image | string      | true     | none         | none        |
 
+<h2 id="tocS_OnConflict">OnConflict</h2>
+<!-- backwards compatibility -->
+<a id="schemaonconflict"></a>
+<a id="schema_OnConflict"></a>
+<a id="tocSonconflict"></a>
+<a id="tocsonconflict"></a>
+
+```json
+"skip"
+```
+
+### Properties
+
+| Name        | Type   | Required | Restrictions | Description |
+| ----------- | ------ | -------- | ------------ | ----------- |
+| _anonymous_ | string | false    | none         | none        |
+
+#### Enumerated Values
+
+| Property    | Value   |
+| ----------- | ------- |
+| _anonymous_ | skip    |
+| _anonymous_ | rename  |
+| _anonymous_ | replace |
+
 <h2 id="tocS_PartialUpdateConfigRequest">PartialUpdateConfigRequest</h2>
 <!-- backwards compatibility -->
 <a id="schemapartialupdateconfigrequest"></a>
@@ -10002,24 +9978,32 @@ This operation does not require authentication
   "address": "string",
   "authKey": "string",
   "disableImg": true,
+  "fsNotifyWatcher": true,
   "maxUploadSize": "string",
+  "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
-  "uploadFolder": "string"
+  "uploadFolder": "string",
+  "useClientTimestampInfo": true,
+  "validateUploadContent": true
 }
 ```
 
 ### Properties
 
-| Name          | Type                | Required | Restrictions | Description                                                         |
-| ------------- | ------------------- | -------- | ------------ | ------------------------------------------------------------------- |
-| address       | string,null         | false    | none         | none                                                                |
-| authKey       | string,null         | false    | none         | none                                                                |
-| disableImg    | boolean,null        | false    | none         | none                                                                |
-| maxUploadSize | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("100MiB").  |
-| port          | integer,null(int32) | false    | none         | none                                                                |
-| readOnlyMode  | boolean,null        | false    | none         | none                                                                |
-| uploadFolder  | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("uploads"). |
+| Name                     | Type                | Required | Restrictions | Description                                                         |
+| ------------------------ | ------------------- | -------- | ------------ | ------------------------------------------------------------------- |
+| address                  | string,null         | false    | none         | none                                                                |
+| authKey                  | string,null         | false    | none         | none                                                                |
+| disableImg               | boolean,null        | false    | none         | none                                                                |
+| fsNotifyWatcher          | boolean,null        | false    | none         | none                                                                |
+| maxUploadSize            | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("100MiB").  |
+| normalizeUploadFilenames | boolean,null        | false    | none         | none                                                                |
+| port                     | integer,null(int32) | false    | none         | none                                                                |
+| readOnlyMode             | boolean,null        | false    | none         | none                                                                |
+| uploadFolder             | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("uploads"). |
+| useClientTimestampInfo   | boolean,null        | false    | none         | none                                                                |
+| validateUploadContent    | boolean,null        | false    | none         | none                                                                |
 
 <h2 id="tocS_Prefetch">Prefetch</h2>
 <!-- backwards compatibility -->
@@ -10087,27 +10071,6 @@ continued
 | Name  | Type   | Required | Restrictions | Description |
 | ----- | ------ | -------- | ------------ | ----------- |
 | token | string | true     | none         | none        |
-
-<h2 id="tocS_RegenerateData">RegenerateData</h2>
-<!-- backwards compatibility -->
-<a id="schemaregeneratedata"></a>
-<a id="schema_RegenerateData"></a>
-<a id="tocSregeneratedata"></a>
-<a id="tocsregeneratedata"></a>
-
-```json
-{
-  "indexArray": [0],
-  "timestamp": 0
-}
-```
-
-### Properties
-
-| Name       | Type           | Required | Restrictions | Description |
-| ---------- | -------------- | -------- | ------------ | ----------- |
-| indexArray | [integer]      | true     | none         | none        |
-| timestamp  | integer(int64) | true     | none         | none        |
 
 <h2 id="tocS_ResolvedShare">ResolvedShare</h2>
 <!-- backwards compatibility -->
