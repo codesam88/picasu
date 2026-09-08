@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: bug
 priority: medium
 area: backend
@@ -32,3 +32,11 @@ concerns:
 - [ ] Sweep currently cascades thumbnail deletion when a record's last alias vanishes (`compressed_path` remove) —
       confirm that is the intended behavior and that multi-root (multi-alias) records are handled (partial prune vs. full
       record removal), with a test if missing.
+
+## Progress (2026-09-08)
+
+Fixed in PR \#17 (`album_index.rs`): the walk's `FlushTreeTask` inserts are now drained with `execute_batch_waiting`
+BEFORE `sweep_stale_aliases`, so the sweep reads a current in-memory tree and the later drain cannot re-apply a record
+for a file deleted between the walk and the sweep. Concern 1 re-checked: the sweep already holds the read lock only for
+candidate collection (cloned under the lock); `exists()`/`remove_file` run lock-free. Remaining: the thumbnail
+cascade/multi-alias behavior (third task) was confirmed unchanged but is not directly tested.

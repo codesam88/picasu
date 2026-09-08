@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: low
 area: backend
@@ -30,3 +30,10 @@ Possible positions:
       `decision`).
 - [ ] Otherwise add the two flags to `ConfigResponse` and cover with a backend scenario asserting the round-trip through
       `PUT /put/config`.
+
+## Progress (2026-09-08)
+
+Fixed in PR \#17: `ConfigResponse` now includes `normalize_upload_filenames` and `use_client_timestamp_info`; backend
+scenario `config_get_reports_upload_flags` asserts the PUT/GET round-trip. Test harness reset also restores
+`use_client_timestamp_info = false` so the scenario does not leak config state. The "by design subset" reading was
+rejected — the flags ship with this upload hardening, so omitting them from the read API was pure asymmetry.

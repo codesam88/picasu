@@ -42,3 +42,13 @@ tests on `sanitize_filename` (`backend/src/process/sanitize.rs`, `mod tests`) an
 
 Tracked in `upload-conflict.md` (done) is the tier design + auto\_rename decision; this ticket tracks the remaining
 test/decision space only.
+
+## Progress (2026-09-08)
+
+Items 1 and 2 resolved in PR \#17: control chars (C0 U+0000–U+001F, DEL U+007F, C1 U+0080–U+009F) are now stripped by
+the always-on control-char tier in `sanitize_filename` (`filename_strips_c0_controls`/`_del`/`_c1_controls` +
+`filename_only_controls_degrade_to_empty`); `resolve_filename` gained 11 unit tests
+(`resolve_filename_tests` module) covering the `upload` fallback stem, `file_stem` edges (`.jpg`, `..jpg`, `foo.`), the
+four `auto_rename=false` reject reasons, and control-char strip/reject. Remaining open: fullwidth/homoglyph separators
+(item 3), extended tier-2 boundary coverage (item 4), and an NFC-off backend scenario (item 5). Merged fix data point:
+`cargo test` 190 lib tests pass.
