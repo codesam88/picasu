@@ -25,3 +25,9 @@ widespread absence of annotations — so nothing currently tracks these missing 
       bool) and the note that `auto_rename=false` rejects unsanitizable names.
 - [ ] Decide whether to document just this route or widen the scope back to a general OpenAPI backfill pass; if the
       latter, reopen `openapi-backfill.md`.
+
+## Progress (2026-09-08)
+
+`auto_rename` done in PR \#17 (utoipa 5 `params(("auto_rename" = Option<bool>, Query, description = ...))`, confirmed
+in a `--dump-openapi` run). `presigned_album_id_opt` and `on_conflict` remain undocumented — pre-existing drift, kept
+out of PR scope.

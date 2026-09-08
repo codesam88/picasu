@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: bug
 priority: low
 area: backend
@@ -28,3 +28,11 @@ target. Consequence being verified:
 - [ ] Confirm precedence claim against the pinned env\_logger version (check `backend/Cargo.lock`) — add a behavior
       test if the codebase has one for logging, or document the nuance on `initialize_logger`.
 - [ ] Decide the intended RUST\_LOG contract and align the builder call.
+
+## Progress (2026-09-08)
+
+Fixed in PR \#17: precedence claim confirmed against `env_filter 2.0.0` (pinned via `env_logger 0.11.11`) — the explicit
+`.filter(None, Info)` replaced the RUST\_LOG global directive, so `RUST_LOG=warn|error` could not lower verbosity.
+Removed the explicit filters and moved the defaults into `Env::default().default_filter_or("info,rocket=warn")`:
+RUST\_LOG is now authoritative when set; defaults unchanged when unset. Verified empirically (unset / `=warn` / `=error` /
+`=rocket=debug,info`). `.try_init().ok()` retained — a second init is intentionally silent.

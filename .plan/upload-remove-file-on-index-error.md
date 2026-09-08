@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: bug
 priority: medium
 area: backend
@@ -33,3 +33,12 @@ guarantees nothing was committed.
 
 Deletion boundary agreed 2026-08-08 (recorded in `upload-conflict.md`): removal is only legal within the failed upload
 request; never after a successful upload. This ticket is about narrowing _which_ failures are "never succeeded".
+
+## Progress (2026-09-08)
+
+Fixed in PR \#17 via `post_upload.rs` `record_exists_for`: on any `index_image` error the route now checks the in-memory
+tree and on-disk `DATA_TABLE` for a committed record referencing the file; if one exists (partial commit) the file is
+kept and `Internal` is returned, otherwise (never-indexed case, incl. decode failure) the file is removed and the 400 is
+returned as before. `record_exists_for` defaults to keeping the file if the DB cannot be read. `scenario_upload_unindexable_removed`
+still passes. Remaining gap: an internal-error path after partial commit is not deterministically reachable by the
+scenario harness, so no test asserts the keep-file branch directly.
