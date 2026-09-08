@@ -514,9 +514,7 @@ fn record_exists_for(path: &Path, relative: &Path) -> bool {
         && let Ok(mut iter) = table.iter()
     {
         return iter.any(|entry| {
-            entry
-                .ok()
-                .is_some_and(|(_, guard)| guard.value().alias().iter().any(|a| matches(&a.file)))
+            entry.is_ok_and(|(_, guard)| guard.value().alias().iter().any(|a| matches(&a.file)))
         });
     }
 
