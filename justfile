@@ -259,7 +259,6 @@ precommit:
         echo "[ precommit ] On main — full test suite is required to pass."
         just check
         just test
-        just docs-openapi
         exit 0
     fi
 
