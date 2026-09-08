@@ -87,6 +87,7 @@
     "immutable": "^5.1.5",
     "flatted": "^3.4.2",
     "follow-redirects": "^1.16.0",
+    "form-data": "^3.0.5",
     "picomatch": "^4.0.4",
     "yaml": "^2.8.3",
     "axios": "^1.18.0",
