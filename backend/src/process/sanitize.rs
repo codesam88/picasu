@@ -37,7 +37,7 @@ pub fn sanitize_text(s: &str) -> String {
 pub struct FilenameSanitize {
     /// The sanitized filename (empty if it degrades to nothing).
     pub name: String,
-    /// Forbidden characters removed by tier 0/1/2 filtering.
+    /// Forbidden characters removed by tier 0/1/2/3 filtering.
     pub stripped: Vec<char>,
     /// NFC normalization altered the name.
     pub normalized: bool,
@@ -75,6 +75,10 @@ fn is_forbidden_filename_char(c: char) -> bool {
     if ('\u{202A}'..='\u{202E}').contains(&c) || ('\u{2066}'..='\u{2069}').contains(&c) {
         return true;
     }
+    // Tier 3: control characters (C0 U+0000–U+001F, DEL U+007F, C1 U+0080–U+009F).
+    if c.is_control() {
+        return true;
+    }
     false
 }
 
@@ -95,8 +99,8 @@ fn is_reserved_windows_name(name: &str) -> bool {
 
 /// Sanitize an uploaded filename for safe storage.
 ///
-/// Tier 0/1/2 filtering (separators, Windows-forbidden characters, Unicode
-/// landmines) is always applied. When `normalize_nfc` is set, the name is
+/// Tier 0/1/2/3 filtering (separators, Windows-forbidden characters, Unicode
+/// landmines, control characters) is always applied. When `normalize_nfc` is set, the name is
 /// NFC-normalised so macOS NFD names collapse onto their composed form.
 /// Windows reserved names get a `_` prefix so they remain recognizable.
 ///
@@ -355,5 +359,42 @@ mod tests {
         let r = s("///", true);
         assert_eq!(r.name, "");
         assert!(r.changed);
+    }
+
+    #[test]
+    fn filename_strips_c0_controls() {
+        let r = s("a\x01\x08\x0Cb.jpg", true);
+        assert_eq!(r.name, "ab.jpg");
+        for ch in ['\x01', '\x08', '\x0C'] {
+            assert!(r.stripped.contains(&ch), "should have stripped {ch:?}");
+        }
+        assert!(r.changed);
+    }
+
+    #[test]
+    fn filename_strips_del() {
+        let r = s("a\x7Fb.jpg", true);
+        assert_eq!(r.name, "ab.jpg");
+        assert!(r.stripped.contains(&'\x7F'));
+        assert!(r.changed);
+    }
+
+    #[test]
+    fn filename_strips_c1_controls() {
+        // U+0080 (PAD) and U+009F (APC) are C1 controls
+        let r = s("a\u{0080}b\u{009F}.jpg", true);
+        assert_eq!(r.name, "ab.jpg");
+        assert!(r.stripped.contains(&'\u{0080}'));
+        assert!(r.stripped.contains(&'\u{009F}'));
+        assert!(r.changed);
+    }
+
+    #[test]
+    fn filename_only_controls_degrade_to_empty() {
+        let r = s("/\x01/", true);
+        assert_eq!(r.name, "");
+        assert!(r.changed);
+        assert!(r.stripped.contains(&'/'));
+        assert!(r.stripped.contains(&'\x01'));
     }
 }
