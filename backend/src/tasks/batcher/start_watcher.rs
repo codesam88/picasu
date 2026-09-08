@@ -36,10 +36,11 @@ static DEBOUNCE_POOL: LazyLock<Mutex<HashMap<PathBuf, Instant>>> =
 pub struct StartWatcherTask;
 
 impl BatchTask for StartWatcherTask {
-    async fn batch_run(_: Vec<Self>) {
+    fn batch_run(_: Vec<Self>) -> impl std::future::Future<Output = ()> + Send {
         if let Err(e) = start_watcher_task_internal() {
             handle_error(e);
         }
+        std::future::ready(())
     }
 }
 
