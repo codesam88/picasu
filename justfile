@@ -139,7 +139,7 @@ plan *args:
 # Generate OpenAPI spec and reference doc
 [group('docs')]
 docs-openapi: openapi-gen
-    npx --yes widdershins --summary backend/openapi.json -o docs/openapi-reference.md
+    npx --yes widdershins@4.0.1 --summary backend/openapi.json -o docs/openapi-reference.md
     npx prettier --write docs/openapi-reference.md
 
 # Build mdBook site at target/docs/
