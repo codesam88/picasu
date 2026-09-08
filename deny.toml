@@ -12,6 +12,14 @@ ignore = [
     # quick-xml ^0.37.5; no upgrade path exists upstream yet.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
+    # h2 <0.4.16 accepts unbounded empty DATA frames (resource-exhaustion DoS,
+    # low severity). h2 0.3.x is not patched (fix is >=0.4.16 only); hyper 0.14
+    # and rocket_http 0.5.1 pin h2 ^0.3, and rocket 0.5.1 is the newest release
+    # with no path to hyper 1.x / h2 0.4 yet. Rocket 0.5 negotiates HTTP/2 only
+    # over TLS (ALPN h2) and this server runs plaintext with no TLS configured,
+    # so the h2 code path is never active at runtime. Revisit when upstream
+    # rocket moves to hyper 1.x or if TLS support is added.
+    "RUSTSEC-2026-0258",
 ]
 
 [licenses]
