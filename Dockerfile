@@ -6,7 +6,7 @@
 # backend/src/public/embedded.rs), so the dist directory has to
 # already exist when `cargo build` runs.
 ######################
-FROM node:lts AS frontend-builder
+FROM node:lts@sha256:be23f54a88d34e8824c741b19b91064094f92c1c97b194144bfc8b50d67258e2 AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
@@ -16,7 +16,7 @@ RUN npm run build:only
 ######################
 # Backend builder stage
 ######################
-FROM rust:bookworm AS builder
+FROM rust:bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS builder
 
 ARG BUILD_TYPE=release
 ENV BUILD_TYPE=${BUILD_TYPE}
@@ -51,7 +51,7 @@ RUN cp /app/backend/target/${BUILD_TYPE}/picasu /app/backend/picasu
 ######################
 # Runtime stage
 ######################
-FROM debian:bookworm-slim AS runtime
+FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
