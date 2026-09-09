@@ -232,7 +232,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
             "sweeping stale aliases under {} (job {job_id})",
             root.display()
         );
-        sweep_stale_aliases(&root, &image_root_clone);
+        sweep_stale_aliases(&root);
         debug!("stale alias sweep done (job {job_id})");
 
         // Drain the sweep's detached remove/update batches, then
@@ -307,20 +307,15 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
 /// path under `root`, check each alias.  If an alias points to a file
 /// that no longer exists on disk, prune it.  If no aliases remain, remove
 /// the entire record (and its compressed thumbnail).
-fn sweep_stale_aliases(root: &Path, image_root: &Path) {
+fn sweep_stale_aliases(root: &Path) {
+    use crate::process::alias::normalize_alias_path;
+
     let candidates: Vec<_> = {
         let tree = TREE.in_memory.read().expect("lock poisoned");
         tree.iter()
             .filter(|dt| {
                 dt.abstract_data.alias().iter().any(|a| {
-                    let path = Path::new(&a.file);
-                    // Alias files may be stored as absolute paths or
-                    // relative to IMAGE_HOME; handle both.
-                    let abs = if path.is_absolute() {
-                        path.to_path_buf()
-                    } else {
-                        image_root.join(path)
-                    };
+                    let abs = normalize_alias_path(&a.file);
                     abs.starts_with(root)
                 })
             })
@@ -332,32 +327,12 @@ fn sweep_stale_aliases(root: &Path, image_root: &Path) {
     let mut to_update = Vec::new();
 
     for mut data in candidates {
-        let original: Vec<_> = data.alias().to_vec();
-        let remaining: Vec<_> = original
-            .into_iter()
-            .filter(|a| {
-                let path = Path::new(&a.file);
-                let abs = if path.is_absolute() {
-                    path.to_path_buf()
-                } else {
-                    image_root.join(path)
-                };
-                abs.exists()
-            })
-            .collect();
+        let had_aliases = !data.alias().is_empty();
+        let remaining = crate::process::alias::prune_stale_aliases(&mut data);
 
-        if remaining.is_empty() {
-            let thumb = data.compressed_path();
-            if thumb.exists()
-                && let Err(e) = std::fs::remove_file(&thumb)
-            {
-                warn!("Failed to delete thumbnail {}: {e}", thumb.display());
-            }
+        if !remaining && had_aliases {
             to_remove.push(data);
-        } else if remaining.len() < data.alias().len() {
-            if let Some(alias_mut) = data.alias_mut() {
-                *alias_mut = remaining;
-            }
+        } else if remaining {
             to_update.push(data);
         }
     }

@@ -8,14 +8,13 @@ pub fn generate_delete_routes() -> Vec<Route> {
 // src/router/delete/delete_data.rs
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
-use crate::process::alias::prune_alias_paths;
+use crate::process::alias::{normalize_alias_path, prune_alias_paths};
 use crate::process::dir_album::evict_dir_album;
 use crate::process::transitor::index_to_abstract_data;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{open_data_table, open_tree_snapshot_table};
-use crate::storage::files::get_resolved_image_home;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -25,7 +24,7 @@ use arrayvec::ArrayString;
 use futures::future::try_join_all;
 use log::warn;
 use rocket::serde::{Deserialize, Serialize, json::Json};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,17 +107,6 @@ pub async fn delete_data(
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to update affected albums"))?;
     Ok(())
-}
-
-fn normalize_alias_path(file: &str) -> PathBuf {
-    let p = Path::new(file);
-    if p.is_absolute() {
-        p.to_path_buf()
-    } else if let Some(image_home) = get_resolved_image_home() {
-        image_home.join(p)
-    } else {
-        p.to_path_buf()
-    }
 }
 
 fn process_deletes(
