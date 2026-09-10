@@ -16,7 +16,7 @@ RUN npm run build:only
 ######################
 # Backend builder stage
 ######################
-FROM rust:bookworm@sha256:82150a52ec202c1b14d7817e14516c392bb7f5cfebd88f1ed531cb37ebd39922 AS builder
+FROM rust:bookworm@sha256:9a73a5088750b4c95158ab26629c854c3d6fc4b173cb7bc8079ad252d8ed7bfa AS builder
 
 ARG BUILD_TYPE=release
 ENV BUILD_TYPE=${BUILD_TYPE}
