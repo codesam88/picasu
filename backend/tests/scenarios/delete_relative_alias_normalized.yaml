@@ -1,0 +1,19 @@
+name: delete normalizes a relative aliasList path against the image home before matching
+# The delete endpoint normalizes a relative aliasList path (no leading slash)
+# against IMAGE_HOME before comparing it to the record's aliases, so passing
+# the relative form of a real alias path resolves correctly and the delete
+# succeeds and prunes the record.
+given:
+  - photo: /e2e_rel/photo.jpg
+    id_as: $photo
+when:
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  # No leading slash: deliberately the relative form of the alias path.
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[${idx}],"aliasList":["e2e_rel/photo.jpg"],"timestamp":${ts}}'
+then:
+  - response.status: 200
+  - file_absent: /e2e_rel/photo.jpg

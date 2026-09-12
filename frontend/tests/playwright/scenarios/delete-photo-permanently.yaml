@@ -80,3 +80,10 @@ steps:
       - ui.toast:
           type: success
           contains: Successfully deleted data
+
+  # The trash grid should now be empty — the file left the trashed grid, not just the toast.
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 0

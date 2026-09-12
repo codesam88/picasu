@@ -1,8 +1,9 @@
-name: delete multi-alias removes only the surfaced alias and keeps the record
+name: delete multi-alias purges the record only when the last alias is deleted
 # Group 4c corner case: a record with several alias paths (dedup) is deleted
-# from the trash view, which only surfaces one alias. The delete must remove
-# exactly that alias's file (+ sidecar), keep the record and thumbnail while
-# other aliases remain, and only purge the record when the last alias goes.
+# from the trash view, which only surfaces one alias. Deleting that alias must
+# remove exactly that file (+ sidecar) while the record and thumbnail stay and
+# other aliases remain. Deleting the last remaining alias must fully purge the
+# record, its thumbnail, and the final file from disk.
 given:
   - dir_album: /e2e_dup/target
     id_as: $album
@@ -40,14 +41,40 @@ when:
       Authorization: "Bearer ${token}"
     capture:
       alias_file: response.[0].abstractData.alias.[0].file
-  # Permanently delete exactly the surfaced alias.
+  # Permanently delete exactly the surfaced alias (the last-position alias).
   - call: DELETE /delete/delete-data
     raw_body: '{"deleteList":[${idx}],"aliasList":["${alias_file}"],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Second phase: re-locate the record, which now has a single alias
+  # (src/photo.jpg), and capture the fresh tree timestamp and token.
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+      token: response.token
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      alias_file: response.[0].abstractData.alias.[0].file
+  # Delete the last remaining alias (src/photo.jpg). The record now has no
+  # aliases left, so the delete must purge the record and its thumbnail.
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[${idx}],"aliasList":["${alias_file}"],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Verify the record is gone. This is now the last when call, so the top-level
+  # then asserts against this prefetch response.
+  - call: POST /get/prefetch?locate=${photo}
 then:
   - response.status: 200
-  # Only the targeted alias is removed from disk…
+  # Both alias files are gone from disk…
   - file_absent: /e2e_dup/target/photo.jpeg
-  # …the sibling alias survives…
-  - file_exists: /e2e_dup/src/photo.jpg
-  # …and the record is still locatable with its thumbnail intact.
-  - serve_image_ok: $photo
+  - file_absent: /e2e_dup/src/photo.jpg
+  # …and the record is no longer locatable (locateTo null), so it was purged
+  # along with its thumbnail.
+  - response.json.prefetch.locateTo: null
