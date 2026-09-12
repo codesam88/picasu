@@ -1,0 +1,53 @@
+name: delete multi-alias removes only the surfaced alias and keeps the record
+# Group 4c corner case: a record with several alias paths (dedup) is deleted
+# from the trash view, which only surfaces one alias. The delete must remove
+# exactly that alias's file (+ sidecar), keep the record and thumbnail while
+# other aliases remain, and only purge the record when the last alias goes.
+given:
+  - dir_album: /e2e_dup/target
+    id_as: $album
+  - photo: /e2e_dup/src/photo.jpg
+    id_as: $photo
+when:
+  # Upload identical content to the target album. The dedup task detects the
+  # same blake3 hash and merges into the existing record, giving it two aliases:
+  # [src/photo.jpg, target/photo.jpeg]. The UI surfaces the last alias
+  # (photo.jpeg) via abstractData.alias.[0].file.
+  - upload:
+      file: /e2e_dup/src/photo.jpg
+      target_album: "${album}"
+      on_conflict: replace
+    then:
+      - response.status: 200
+  # Re-index so the tree snapshot includes the deduped, multi-alias record.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_dup"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Locate the record and read the alias the UI surfaces (alias[0] after
+  # metadata trimming = the last alias = target/photo.jpeg).
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+      token: response.token
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      alias_file: response.[0].abstractData.alias.[0].file
+  # Permanently delete exactly the surfaced alias.
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[${idx}],"aliasList":["${alias_file}"],"timestamp":${ts}}'
+then:
+  - response.status: 200
+  # Only the targeted alias is removed from disk…
+  - file_absent: /e2e_dup/target/photo.jpeg
+  # …the sibling alias survives…
+  - file_exists: /e2e_dup/src/photo.jpg
+  # …and the record is still locatable with its thumbnail intact.
+  - serve_image_ok: $photo

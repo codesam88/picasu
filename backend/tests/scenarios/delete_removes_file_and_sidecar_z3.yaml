@@ -19,9 +19,19 @@ when:
     capture:
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo
-  # Delete the item
+      token: response.token
+    calc:
+      end: "${idx}+1"
+  # Read the surfaced alias to pass in aliasList.
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      alias_file: response.[0].abstractData.alias.[0].file
+  # Delete the item, passing the surfaced alias.
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[${idx}],"timestamp":${ts}}'
+    raw_body: '{"deleteList":[${idx}],"aliasList":["${alias_file}"],"timestamp":${ts}}'
 then:
   - response.status: 200
   - file_absent: /e2e_z3/photo.jpg

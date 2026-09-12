@@ -171,6 +171,8 @@ fn submit_removal_to_watcher(path: PathBuf) {
 }
 
 fn handle_removed_file(removed: &Path) {
+    use crate::process::alias::prune_alias_paths;
+
     // Scan in-memory tree to find the record that owns this path.
     let removed_str = removed.to_string_lossy();
     let matching: Option<AbstractData> = {
@@ -189,28 +191,14 @@ fn handle_removed_file(removed: &Path) {
         return; // Unknown file, nothing to do.
     };
 
-    let remaining_aliases: Vec<_> = abstract_data
-        .alias()
-        .iter()
-        .filter(|a| a.file != removed_str.as_ref())
-        .cloned()
-        .collect();
+    // prune_alias_paths removes the file (already gone — harmless NotFound),
+    // prunes the alias, and removes the thumbnail if no aliases remain.
+    let remaining = prune_alias_paths(&mut abstract_data, removed);
 
-    if remaining_aliases.is_empty() {
-        // Last alias gone — delete thumbnail and remove the DB record.
-        let thumb = abstract_data.compressed_path();
-        if thumb.exists()
-            && let Err(e) = std::fs::remove_file(&thumb)
-        {
-            warn!("Failed to delete thumbnail {}: {e}", thumb.display());
-        }
-        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::remove(vec![abstract_data]));
-    } else {
-        // Still other aliases — just prune this one.
-        if let Some(alias_mut) = abstract_data.alias_mut() {
-            *alias_mut = remaining_aliases;
-        }
+    if remaining {
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
+    } else {
+        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::remove(vec![abstract_data]));
     }
 }
 
