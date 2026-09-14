@@ -46,10 +46,12 @@ impl AlbumCombined {
         // Membership is path-based: a file belongs to this album iff its
         // immediate parent directory is this album's directory. Files in
         // sub-directories belong to the corresponding child album instead.
+        // A file counts only while it has at least one live (non-trashed)
+        // alias under the directory.
         let belongs_to_album = move |alias: &[crate::model::response::FileModify]| -> bool {
             alias
                 .iter()
-                .any(|a| Path::new(&a.file).parent() == Some(dir_path.as_path()))
+                .any(|a| !a.is_trashed && Path::new(&a.file).parent() == Some(dir_path.as_path()))
         };
 
         let mut data_in_album: Vec<MediaItemInfo> = ref_data
@@ -57,7 +59,7 @@ impl AlbumCombined {
             .filter_map(
                 |database_timestamp| match &database_timestamp.abstract_data {
                     AbstractData::Image(img) => {
-                        if !img.object.is_trashed && belongs_to_album(&img.metadata.alias) {
+                        if belongs_to_album(&img.metadata.alias) {
                             Some(MediaItemInfo {
                                 hash: img.object.id,
                                 size: img.metadata.size,
@@ -69,7 +71,7 @@ impl AlbumCombined {
                         }
                     }
                     AbstractData::Video(vid) => {
-                        if !vid.object.is_trashed && belongs_to_album(&vid.metadata.alias) {
+                        if belongs_to_album(&vid.metadata.alias) {
                             Some(MediaItemInfo {
                                 hash: vid.object.id,
                                 size: vid.metadata.size,
@@ -137,6 +139,7 @@ mod tests {
                 file: p.to_string(),
                 modified: 0,
                 scan_time: 0,
+                is_trashed: false,
             })
             .collect()
     }
@@ -199,6 +202,10 @@ pub struct AlbumMetadata {
     /// NOT be written back to the sidecar, or it would freeze and survive a
     /// later directory rename instead of being re-derived from the new name.
     pub custom_title: Option<String>,
+    /// Record-level trash flag for albums. Albums have no alias set, so the
+    /// flag lives here rather than on the per-alias `FileModify` used for
+    /// images/videos.
+    pub is_trashed: bool,
 }
 
 #[derive(

@@ -28,6 +28,7 @@ export async function fetchDataInWorker(
   await tokenStore.refreshTimestampTokenIfExpired()
 
   const timestamp = prefetchStore.timestamp
+  const trashed = prefetchStore.filterBasicString?.includes('trashed:true') ?? false
 
   const timestampToken = tokenStore.timestampToken
 
@@ -38,7 +39,8 @@ export async function fetchDataInWorker(
       fetchMethod: fetchMethod,
       batch: batch,
       timestamp: timestamp,
-      timestampToken
+      timestampToken,
+      trashed
     })
   }
 }

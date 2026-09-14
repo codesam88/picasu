@@ -5,7 +5,8 @@ import { fixedBigRowHeight } from '@/type/constants'
 export const AliasSchema = z.object({
   file: z.string(),
   modified: z.number(),
-  scanTime: z.number()
+  scanTime: z.number(),
+  isTrashed: z.boolean().default(false)
 })
 
 export const displayElementSchema = z.object({
@@ -71,7 +72,7 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
   description: data.description,
   isFavorite: data.isFavorite,
   isArchived: data.isArchived,
-  isTrashed: data.isTrashed,
+  isTrashed: data.alias[0]?.isTrashed ?? false,
   rating: data.rating,
   updateAt: data.updateAt
 }))
@@ -103,7 +104,7 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
   description: data.description,
   isFavorite: data.isFavorite,
   isArchived: data.isArchived,
-  isTrashed: data.isTrashed,
+  isTrashed: data.alias[0]?.isTrashed ?? false,
   rating: data.rating,
   updateAt: data.updateAt
 }))

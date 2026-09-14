@@ -425,12 +425,24 @@ impl AbstractData {
         }
     }
 
-    /// Set trashed status
+    /// Set trashed status.
+    ///
+    /// For images/videos the flag lives per alias, so this toggles every
+    /// alias (the whole record is buried/restored). Albums carry a single
+    /// record-level flag on `AlbumMetadata`.
     pub fn set_trashed(&mut self, is_trashed: bool) {
         match self {
-            AbstractData::Image(img) => img.object.is_trashed = is_trashed,
-            AbstractData::Video(vid) => vid.object.is_trashed = is_trashed,
-            AbstractData::Album(alb) => alb.object.is_trashed = is_trashed,
+            AbstractData::Image(img) => {
+                for alias in &mut img.metadata.alias {
+                    alias.is_trashed = is_trashed;
+                }
+            }
+            AbstractData::Video(vid) => {
+                for alias in &mut vid.metadata.alias {
+                    alias.is_trashed = is_trashed;
+                }
+            }
+            AbstractData::Album(alb) => alb.metadata.is_trashed = is_trashed,
         }
     }
 
@@ -522,6 +534,7 @@ mod tests {
                 file: file.to_string(),
                 modified: *modified,
                 scan_time: *scan_time,
+                is_trashed: false,
             });
         }
         AbstractData::Image(ImageCombined {

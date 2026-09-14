@@ -96,9 +96,17 @@ impl Expression {
             }
             Expression::Trashed(value) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Image(img) => img.object.is_trashed == value,
-                    AbstractData::Video(vid) => vid.object.is_trashed == value,
-                    AbstractData::Album(alb) => alb.object.is_trashed == value,
+                    AbstractData::Image(img) => img
+                        .metadata
+                        .alias
+                        .iter()
+                        .any(|alias| alias.is_trashed == value),
+                    AbstractData::Video(vid) => vid
+                        .metadata
+                        .alias
+                        .iter()
+                        .any(|alias| alias.is_trashed == value),
+                    AbstractData::Album(alb) => alb.metadata.is_trashed == value,
                 })
             }
             Expression::ExtType(ext_type) => {
@@ -404,7 +412,12 @@ mod tests {
     #[test]
     fn trashed_matches_flag() {
         let mut i = img();
-        i.object.is_trashed = true;
+        i.metadata.alias.push(FileModify {
+            file: "/Photos/trashed.jpg".to_string(),
+            modified: 0,
+            scan_time: 0,
+            is_trashed: true,
+        });
         let data = AbstractData::Image(i);
 
         assert!(run(Expression::Trashed(true), &data));
@@ -440,6 +453,7 @@ mod tests {
             file: "/Photos/Vacation/IMG_001.jpg".to_string(),
             modified: 0,
             scan_time: 0,
+            is_trashed: false,
         });
         let data = AbstractData::Image(i);
 
@@ -644,9 +658,17 @@ impl Expression {
                 AbstractData::Album(alb) => alb.object.is_archived == value,
             }),
             Expression::Trashed(value) => Box::new(move |data: &AbstractData| match data {
-                AbstractData::Image(img) => img.object.is_trashed == value,
-                AbstractData::Video(vid) => vid.object.is_trashed == value,
-                AbstractData::Album(alb) => alb.object.is_trashed == value,
+                AbstractData::Image(img) => img
+                    .metadata
+                    .alias
+                    .iter()
+                    .any(|alias| alias.is_trashed == value),
+                AbstractData::Video(vid) => vid
+                    .metadata
+                    .alias
+                    .iter()
+                    .any(|alias| alias.is_trashed == value),
+                AbstractData::Album(alb) => alb.metadata.is_trashed == value,
             }),
 
             /* ---------- Still allowed embedded / file-related conditions ---------- */

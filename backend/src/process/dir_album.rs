@@ -265,7 +265,6 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         tags: albuminfo.tags,
         is_favorite: false,
         is_archived: false,
-        is_trashed: false,
         rating: albuminfo.rating,
         update_at: now,
     };
@@ -282,6 +281,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         share_list: std::collections::HashMap::new(),
         dir_path: dir_path_str,
         custom_title,
+        is_trashed: false,
     };
     let abstract_data = AbstractData::Album(AlbumCombined { object, metadata });
 
