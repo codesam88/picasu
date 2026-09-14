@@ -129,6 +129,10 @@ pub struct FileModify {
     pub file: String,
     pub modified: i64,
     pub scan_time: i64,
+    /// Per-alias trash flag. A record is visible as long as it has at least one
+    /// non-trashed alias, and appears in the trash view while it has at least
+    /// one trashed alias. Newly discovered aliases are always live.
+    pub is_trashed: bool,
 }
 
 impl FileModify {
@@ -137,6 +141,7 @@ impl FileModify {
             file: file.to_string_lossy().into_owned(),
             modified,
             scan_time: Utc::now().timestamp_millis(),
+            is_trashed: false,
         }
     }
 }

@@ -199,6 +199,7 @@ mod tests {
                     share_list: Default::default(),
                     dir_path,
                     custom_title,
+                    is_trashed: false,
                 },
             })
         }

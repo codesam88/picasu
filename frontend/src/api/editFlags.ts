@@ -47,7 +47,13 @@ export async function editFlags(
         data.isArchived = flags.isArchived
       }
       if (flags.isTrashed !== undefined) {
-        data.isTrashed = flags.isTrashed
+        const isTrashed = flags.isTrashed
+        data.isTrashed = isTrashed
+        if (data.type === 'image' || data.type === 'video') {
+          data.alias.forEach((alias) => {
+            alias.isTrashed = isTrashed
+          })
+        }
       }
     }
   }

@@ -1,0 +1,51 @@
+name: re-uploading identical content to a trashed record surfaces the content
+# When a record is trashed and then identical content is uploaded again, the
+# dedup merge must not keep the record hidden forever: the freshly uploaded
+# copy is an explicit user action and must turn up in the gallery. Trash is
+# tracked per alias, so the merged-in copy is live and the record reappears.
+given:
+  - dir_album: /e2e_reup/pool
+    id_as: $album
+  - photo: /e2e_reup/pool/photo.jpg
+    id_as: $p1
+when:
+  # Trash the first photo.
+  - call: POST /get/prefetch?locate=${p1}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  - call: PUT /put/edit_flags
+    raw_body: '{"indexArray":[${idx}],"timestamp":${ts},"isTrashed":true}'
+    then:
+      - response.status: 200
+  # Upload a byte-identical copy into the same album directory. The dedup task
+  # merges it into the existing (trashed) record as a new alias.
+  - upload:
+      file: /e2e_reup/pool/photo.jpg
+      filename: photo_up.jpg
+      target_album: "${album}"
+    then:
+      - response.status: 200
+  # Re-index so the tree snapshot reflects the deduped, multi-alias record.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_reup"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Locate the content and inspect the merged record's trashed flag.
+  - call: POST /get/prefetch?locate=${p1}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+      token: response.token
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  # The surfaced alias must be the freshly uploaded, live copy: the record may
+  # not stay hidden after a new alias was merged in by an explicit upload.
+  - response.json.[0].abstractData.alias.[0].isTrashed: false

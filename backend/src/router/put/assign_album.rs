@@ -359,11 +359,13 @@ fn move_item_into_album(
         let old_album = abstract_data.album();
         let modified = alias[0].modified;
         let scan_time = alias[0].scan_time;
+        let is_trashed = alias[0].is_trashed;
         if let Some(alias_mut) = abstract_data.alias_mut() {
             *alias_mut = vec![FileModify {
                 file: dest_path.to_string_lossy().into_owned(),
                 modified,
                 scan_time,
+                is_trashed,
             }];
         }
         abstract_data.set_album(Some(album_id));
