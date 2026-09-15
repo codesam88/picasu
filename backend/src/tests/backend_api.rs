@@ -9,6 +9,7 @@ use serde_json::Value;
 
 use snapfab::{PhotoSpec, generate_batch};
 
+use crate::DATA_PATH;
 use crate::tests::bootstrap::*;
 use crate::tests::fixtures::*;
 
@@ -301,15 +302,35 @@ fn check_file_and_serve_assertions(
                 !data.join(trimmed).exists(),
                 "file should be absent: {trimmed}"
             );
-        } else if let Some(photo_var) = item["serve_image_ok"].as_str() {
+        } else if let Some(photo_var) = item["thumb_absent"].as_str() {
             let bare = photo_var.trim_start_matches('$');
             let hash = vars
                 .get(bare)
-                .unwrap_or_else(|| panic!("serve_image_ok: unknown var {photo_var}"));
-            assert_eq!(
-                serve_compressed_image(client, hash),
-                Status::Ok,
-                "serve_image_ok: {photo_var}"
+                .unwrap_or_else(|| panic!("thumb_absent: unknown var {photo_var}"));
+            let prefix = &hash[..2];
+            let thumb = DATA_PATH
+                .get()
+                .expect("DATA_PATH set")
+                .join(format!("object/compressed/{prefix}/{hash}.jpg"));
+            assert!(
+                !thumb.exists(),
+                "thumbnail should be absent: {}",
+                thumb.display()
+            );
+        } else if let Some(photo_var) = item["thumb_exists"].as_str() {
+            let bare = photo_var.trim_start_matches('$');
+            let hash = vars
+                .get(bare)
+                .unwrap_or_else(|| panic!("thumb_exists: unknown var {photo_var}"));
+            let prefix = &hash[..2];
+            let thumb = DATA_PATH
+                .get()
+                .expect("DATA_PATH set")
+                .join(format!("object/compressed/{prefix}/{hash}.jpg"));
+            assert!(
+                thumb.exists(),
+                "thumbnail should exist: {}",
+                thumb.display()
             );
         } else if let Some(file_path) = item["file.contains"].as_str() {
             let trimmed = file_path.trim_start_matches('/');
