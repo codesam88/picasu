@@ -121,12 +121,31 @@ pub fn reset_backend_state() {
     }
     txn.commit().expect("commit DATA_TABLE drain");
 
-    // Wipe and recreate the image directory.
-    let image_home = test_image_home();
-    if image_home.exists() {
-        std::fs::remove_dir_all(&image_home)
-            .unwrap_or_else(|e| panic!("remove image_home {}: {e}", image_home.display()));
+    // Wipe everything under DATA_PATH except the open `db/` directory.
+    // `TREE_SNAPSHOT_IN_DISK` keeps `db/index_v5.redb` open for the whole
+    // test binary, so its file must not be unlinked. This removes residual
+    // content-addressed thumbnails (`object/compressed/...`), stale config
+    // files, and any other on-disk residue a previous scenario left behind.
+    let data_path = DATA_PATH.get().expect("DATA_PATH set");
+    for entry in std::fs::read_dir(data_path)
+        .unwrap_or_else(|e| panic!("read DATA_PATH {}: {e}", data_path.display()))
+    {
+        let entry = entry.expect("read DATA_PATH entry");
+        if entry.file_name() == "db" {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            std::fs::remove_dir_all(&path)
+                .unwrap_or_else(|e| panic!("remove {}: {e}", path.display()));
+        } else {
+            std::fs::remove_file(&path)
+                .unwrap_or_else(|e| panic!("remove {}: {e}", path.display()));
+        }
     }
+
+    // Recreate the image directory.
+    let image_home = test_image_home();
     std::fs::create_dir_all(&image_home)
         .unwrap_or_else(|e| panic!("create image_home {}: {e}", image_home.display()));
 
@@ -152,4 +171,35 @@ pub fn make_client() -> Client {
     let _ = &*TEST_ENV;
     let config = APP_CONFIG.get().unwrap().read().unwrap().clone();
     Client::tracked(build_rocket_with_config(config)).expect("valid rocket instance")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `reset_backend_state` must leave no on-disk residue between scenarios
+    /// except the still-open redb database under `db/`. Otherwise a delete
+    /// scenario can remove shared thumbnails in `object/compressed` that a
+    /// later scenario still expects.
+    #[test]
+    fn reset_backend_state_wipes_data_path_residue() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        let data_path = DATA_PATH.get().expect("DATA_PATH set");
+
+        let thumb = data_path.join("object/compressed/ab/abcdef0123456789.jpg");
+        std::fs::create_dir_all(thumb.parent().unwrap()).unwrap();
+        std::fs::write(&thumb, b"stale thumbnail").unwrap();
+        let config_file = data_path.join("config.toml");
+        std::fs::write(&config_file, b"stale config").unwrap();
+        let db_file = data_path.join("db/index_v5.redb");
+        assert!(db_file.exists(), "open redb file must exist before reset");
+
+        reset_backend_state();
+
+        assert!(!thumb.exists(), "residual thumbnail must be wiped");
+        assert!(!config_file.exists(), "stale config.toml must be wiped");
+        assert!(db_file.exists(), "open redb file must survive the wipe");
+        assert!(test_image_home().exists(), "image_home must be recreated");
+    }
 }
