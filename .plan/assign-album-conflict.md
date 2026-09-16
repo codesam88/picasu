@@ -139,11 +139,13 @@ reflects destination. **No** batch, trash-restore→move, or create-album→move
 11. Response contract — each branch returns its outcome (`moved` / `renamed-from` / `deduplicated-removed` / error),
     and the frontend maps it to toast/chip state (G3).
 
-### DSL limitation to lift first
+### DSL limitation — RESOLVED (2026-09-16)
 
-get-data/prefetch responses surface only the last alias (transitor trims the alias list), so merge's alias-entry removal
-— and G1's sibling-preservation — are not observable through the API response. Options: a test-only DB introspection
-hook, or scope assertions to disk effects + single-alias responses. Resolve before writing scenarios 1, 2, 5.
+get-data/prefetch responses surface only the last alias (transitor trims the alias list), so merge's alias-entry
+removal — and G1's sibling-preservation — are not observable through the API response. **Decision:** add a **test-only
+DB probe** — a gated endpoint returning a record's full `alias[]`, 404/403 unless enabled via env (`PICASU_TEST_PROBE=1`
+guarded by debug assertions), driven from scenarios via the existing `when.call` verb. Landed as its own commit (C2)
+before the merge/G1 scenarios are written.
 
 ## Suspected gaps & untested corner cases
 
@@ -236,18 +238,21 @@ current_path` branch makes it a 200 no-op today; stays a no-op under both redesi
   - Response must report per-file outcome (`moved` / `renamed-from` / `deduplicated-removed` / `not-moved-with-reason`)
     so the UI is never silent — see G3.
 
-  Open sub-points to settle before implementation:
+  Open sub-points — RESOLVED (2026-09-16):
 
-  - Upload `on_conflict` is a query param, historically optional; absent → unique-suffix name (rename-like). Keep
-    upload optional (default rename) or require it there too?
-  - The dedup lookup is scoped to "aliases inside the target album dir" — confirm that scoping (exact dir, not the
-    album's subtree).
+  - Upload `on_conflict` stays optional; **absent → `rename`** (matches today's
+    unique-suffix behavior); `merge` is opt-in via the query param.
+  - Dedup lookup scoping: **the exact target album dir** (a record alias whose
+    normalised path lives directly under `album_dir`), not the album's
+    subtree.
 
-- **G3 — frontend on\_conflict pass-through.** `assignAlbum()` (`frontend/src/api/assignAlbum.ts`) sends neither
-  `alias` (G1) nor an `onConflict` strategy; with `skip`/`replace` gone the "silent 200 no-op" is no longer a default,
-  but the UI must still reflect merge outcomes (`deduplicated-removed` vs `renamed-from`) and send `alias` + the
-  required `onConflict`. The batch flow (`ItemBatchEditAlbums.vue` + `AssignAlbumModal.vue`) must surface per-file
-  results.
+- **G3 — frontend on\_conflict pass-through — decisions recorded.** `assignAlbum()`
+  (`frontend/src/api/assignAlbum.ts`) sends neither `alias` (G1) nor an `onConflict` strategy; with `skip`/`replace`
+  gone the "silent 200 no-op" is no longer a default, but the UI must still reflect merge outcomes
+  (`deduplicated-removed` vs `renamed-from`) and send `alias` + the required `onConflict`. **Decision:** `AssignAlbumModal`
+  gains a Merge (smart) / Rename (keep both) radio, **Merge default**; outcome maps to toast/chip (moved /
+  renamed-from / deduplicated-removed); the batch flow (`ItemBatchEditAlbums.vue` + `AssignAlbumModal.vue`) surfaces
+  per-file results. Implementation is commit C9.
 
 ## Race conditions to cover
 
@@ -281,6 +286,72 @@ once; single `find_unique_path` (delete `find_unique_upload_path`). Also share t
 (`get_dir_path_for_album` + the is-a-directory check). Low blast radius; best done together with the conflict-model
 implementation. Spin off as its own ticket when scheduled.
 
+## Implementation plan (commits)
+
+Sequence agreed 2026-09-16. Phases 1–3 are the plan; C10 is optional cleanup.
+Each commit is small and self-contained. Verification: `just check` after every
+commit; `just test` full-green at C1, C2, C5, C8, C9, C10 — the suite is red
+between C3 and C5 by the chosen strict tests-first ordering.
+
+### Phase 1 — Tests
+
+- **C1 — disable deprecated scenarios.** Delete 7 YAMLs (build.rs scans the
+  dir; removal disables them, git preserves history):
+  `assign_conflict_default_skip`, `assign_conflict_skip_z4`,
+  `assign_conflict_replace_z6`, `assign_album_dir_conflict_skip_zz8`,
+  `assign_album_dir_conflict_replace_rejected_zza`, `upload_conflict_skip`,
+  `upload_conflict_replace`. Green.
+- **C2 — test-only DB probe.** Gated endpoint returning a record's full
+  `alias[]` (404/403 unless `PICASU_TEST_PROBE=1` + debug assertions).
+  Reachable from scenarios via `when.call`. Self-test included. Green.
+- **C3 — new + updated scenarios.** Add the scenario groups from "Test changes
+  under the conflict redesign" (1–11), asserting alias lists via the probe (1,
+  2, 5). Update ~17 surviving `assign_*` bodies: add `alias` +
+  `onConflict: rename` (extra body fields are ignored by the backend today).
+  Red window starts.
+
+### Phase 2 — Backend
+
+- **C4 — API contract + G1.** `OnConflict` → `{Rename, Merge}` (drop Skip /
+  Replace and `#[default]`); `AssignAlbumData` gains required `alias` +
+  required `on_conflict` (missing/unknown alias → 400, alias validated against
+  the record, mirror `delete.rs:157-168`); move rewrites only the selected
+  alias entry, stale-check on the selected alias; rename path unchanged;
+  utoipa request schema updated. Greens: on_conflict-required, self-move, G1
+  sibling.
+- **C5 — merge file semantics.** In `move_item_into_album`: record alias under
+  `album_dir` (exact dir) → verify `blake3_hasher(selected) == hash` (else
+  error, never delete) → `prune_alias_paths(selected)` (file + sidecar, record
+  kept) → `set_album` → persist; else rename-move with auto-rename. Greens:
+  merge dedup ×3, verify-mismatch, G1∩G2 sibling. Suite green again.
+- **C6 — outcome reporting.** New `AssignResult` JSON body
+  `{ outcome: moved | renamedFrom | deduplicatedRemoved }` from both assign
+  paths + utoipa. Greens outcome-contract.
+- **C7 — dir-album recursive merge.** For `Merge`, migrate dir content
+  leaf→root with per-file merge semantics, then remove emptied dirs + their
+  dir-album records; never remove a non-empty dir nor its ancestors. `Rename`
+  dir path stays whole-dir `fs::rename`. Self/subtree guard retained. Greens
+  dir-merge scenarios.
+- **C8 — upload rename|merge.** `post_upload.rs` strict parse → `rename|merge`;
+  `schema.json:181-188` enum + DSL upload verb aligned; upload merge = after
+  hash computed in the write+index loop, same-record alias under the album dir
+  → delete the just-written file, skip insert (dedup); absent param = `rename`.
+  Greens upload-merge, keeps upload_conflict_rename.
+
+### Phase 3 — Frontend (G3)
+
+- **C9 — assignAlbum + modal.** `assignAlbum()` sends `alias`
+  (`data.get(index).alias[0].file`) + strategy; AssignAlbumModal gains the
+  Merge/Rename radio (Merge default); outcome → toast/chip (moved /
+  renamed-from / deduplicated-removed); batch reports per-file. Update
+  `assign-photo-to-album.yaml`, add batch scenario. Greens Playwright.
+
+### Phase 4 — Cleanup (optional)
+
+- **C10 — consolidation.** Optional `place_file` helper (spec'd in the
+  refactor-candidate section), utoipa/OpenAPI sweep, cross-ref notes in
+  `upload-conflict.md` / `delete-from-disk.md`, dead-code sweep.
+
 ## Progress
 
 - 2026-09-16: consistency pass — fixed dangling "Conflict model (redesign)" references (model lives under G2); gap 5
@@ -300,6 +371,10 @@ implementation. Spin off as its own ticket when scheduled.
   untouched, mirroring the `aliasList` pattern already in `delete_data`. Records the implied required
   `AssignAlbumData.alias` field + selective alias rewrite in `move_item_into_album` (missing/unknown alias → 400; no
   server-side alias picking; pre-v0.1, no backward-compat carve-out). Gap 1 re-framed as the proving coverage.
+- 2026-09-16: implementation plan (commits C1–C10) appended, folding in four settled decisions: test-only DB probe as
+  its own commit (C2) for alias-list observability (DSL limitation resolved); frontend modal gains a Merge-default
+  radio (G3); upload `on_conflict` absent → `rename`; dedup lookup scoped to the exact target album dir. Strict
+  tests-first: suite green at C1/C2, red from C3 until the C5 merge semantics land.
 - 2026-09-16: full investigation appended — vectors, per-scenario test inventory, Gap 1–11 corner cases, race and
   security notes, G1–G3 open decisions, `place_file` unification candidate. Corrected from a first draft: upload
   conflict scenarios do exist but are same-content-only and skip is weakly asserted. Plan rewritten plain after an
