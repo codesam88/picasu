@@ -10,6 +10,7 @@ pub mod get_img;
 pub mod get_list;
 pub mod get_page;
 pub mod get_prefetch;
+pub mod get_test_probe;
 
 pub fn generate_get_routes() -> Vec<Route> {
     routes![
@@ -52,5 +53,6 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_config::export_config_handler,
         get_fs_completion::get_fs_completion,
         get_album_index::get_album_index_status,
+        get_test_probe::probe_record,
     ]
 }
