@@ -86,8 +86,29 @@ common transaction, with associated journal.
 
 - User may reassign image or selection of images to another album
   - also moves the underlying original file to the respective dir under `IMAGE_PATH`
-  - option to auto-rename files if target already exists but has different hash (else skip)
-  - option to auto-replace files if target already exists and has same hash (else skip)
+  - the backend knows the content hash of every file (duplicates share a
+    record whose aliases are the paths), so conflict resolution is hash-aware.
+    A move always completes — there is no "do nothing" state that would leave
+    leftover, partially-moved sub-albums:
+    - `rename` — move unconditionally; on a filename collision pick a unique
+      name (`photo-001.jpg`). Dumb but safe and predictable: never
+      overwrites, may end up with two aliases of the same content in one
+      album.
+    - `merge` — dedup first: if the target album already holds another alias
+      of the same record (identical content), verify the source copy still
+      matches its recorded hash, then remove the redundant source copy and
+      its alias instead of moving it. All remaining files move, with
+      auto-rename on filename collision. Content is never overwritten with
+      different bytes.
+    - `skip` and `replace` are not offered: a conflicting filename is always
+      resolved by renaming, and an identical file always by merging.
+
+- Sub-albums are directories whose identity is their path — they have no
+  aliases of their own, only the files inside them. Moving a sub-album into a
+  target whose path already exists: migrate the content recursively from leaf
+  to root, then remove the emptied source directories together with their
+  album records. A directory that still contains files (e.g. a failed move)
+  must not be removed, neither it nor any ancestor that stays non-empty.
 
 - User may delete files via API
   - we know the image and hash, can remove associated context if its the last alias
