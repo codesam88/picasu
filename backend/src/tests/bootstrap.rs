@@ -20,6 +20,10 @@ pub struct TestEnv {
 }
 
 pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
+    // Enable the test-only DB probe route for the entire `cargo test` process
+    // (all scenario tests share one process).
+    crate::router::get::get_test_probe::enable_test_probe();
+
     let dir = tempfile::tempdir().expect("create tempdir");
     let data_path = dir.path().to_path_buf();
 
