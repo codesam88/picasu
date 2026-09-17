@@ -300,6 +300,51 @@ fn rewrite_paths_under(data: &mut AbstractData, old_prefix: &Path, new_prefix: &
     }
 }
 
+/// Determine whether `idx` (the selected alias of `data`) can be merge-deduped
+/// into an album-resident alias: another alias of the same record must sit
+/// directly under `album_dir`. If a candidate exists, verify the on-disk bytes
+/// at the selected path still match the recorded `hash` before the caller
+/// prunes anything. Returns `Ok(true)` when dedup should proceed, `Ok(false)`
+/// when the caller must fall through to a normal move, and `Err` when the
+/// verify fails (source copy left untouched).
+fn merge_dedup_candidate(
+    data: &AbstractData,
+    idx: usize,
+    album_dir: &Path,
+    current_path: &Path,
+    hash: ArrayString<64>,
+) -> Result<bool, AppError> {
+    let has_candidate = data.alias().iter().enumerate().any(|(i, a)| {
+        i != idx && crate::process::alias::normalize_alias_path(&a.file).parent() == Some(album_dir)
+    });
+    if !has_candidate {
+        return Ok(false);
+    }
+
+    let file = fs::File::open(current_path).map_err(|e| {
+        AppError::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "Failed to open selected alias for verification: {} — {e}",
+                current_path.display()
+            ),
+        )
+    })?;
+    let actual_hash = crate::process::hash::blake3_hasher(file).map_err(|e| {
+        AppError::new(
+            ErrorKind::Internal,
+            format!("Failed to hash selected alias: {e}"),
+        )
+    })?;
+    if actual_hash != hash {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "merge verify mismatch: on-disk content does not match the recorded hash",
+        ));
+    }
+    Ok(true)
+}
+
 fn move_item_into_album(
     hash: ArrayString<64>,
     album_id: ArrayString<64>,
@@ -354,6 +399,28 @@ fn move_item_into_album(
             ));
         }
 
+        if on_conflict == OnConflict::Merge
+            && merge_dedup_candidate(&abstract_data, idx, album_dir, &current_path, hash)?
+        {
+            let old_album = abstract_data.album();
+            crate::process::alias::prune_alias_paths(&mut abstract_data, &current_path);
+            abstract_data.set_album(Some(album_id));
+
+            data_table
+                .insert(&*hash, abstract_data)
+                .or_raise(|| (ErrorKind::Database, "Failed to update item in database"))?;
+
+            if let Some(old_id) = old_album {
+                mark_album_for_update(old_id);
+            }
+            mark_album_for_update(album_id);
+
+            drop(data_table);
+            txn.commit()
+                .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
+            return Ok(());
+        }
+
         let file_name = current_path
             .file_name()
             .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Alias has no filename"))?;
@@ -361,7 +428,9 @@ fn move_item_into_album(
 
         let dest_path = if base_dest.exists() && base_dest != current_path {
             match on_conflict {
-                // TODO(C5): merge currently behaves like rename; C5 adds merge dedup
+                // Merge with no redundant album-resident alias falls through to
+                // a safe rename (matches Rename) — never overwrite an existing
+                // album file.
                 OnConflict::Rename | OnConflict::Merge => find_unique_path(&base_dest),
             }
         } else {

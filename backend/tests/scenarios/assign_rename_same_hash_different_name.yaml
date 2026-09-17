@@ -35,8 +35,11 @@ when:
   - call: GET /get/test/record/${src}
 then:
   - response.status: 200
-  - response.json.aliases.[0].file: "${data_path}/e2e_rsdn/album/photo.jpeg"
-  - response.json.aliases.[1].file: "${data_path}/e2e_rsdn/album/other.jpg"
+  # Source alias is created first (during the given scan); the album copy is
+  # appended during upload. The rename move updates the SELECTED alias (idx 0)
+  # in place, so the list stays [other.jpg, photo.jpeg] under the album dir.
+  - response.json.aliases.[0].file: "${data_path}/e2e_rsdn/album/other.jpg"
+  - response.json.aliases.[1].file: "${data_path}/e2e_rsdn/album/photo.jpeg"
   - file_exists: /e2e_rsdn/album/photo.jpeg
   - file_exists: /e2e_rsdn/album/other.jpg
   - file_absent: /e2e_rsdn/src/other.jpg

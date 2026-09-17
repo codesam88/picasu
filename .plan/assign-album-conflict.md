@@ -354,6 +354,13 @@ between C3 and C5 by the chosen strict tests-first ordering.
 
 ## Progress
 
+- 2026-09-17: C5 done — merge dedup implemented in `move_item_into_album` (G2 step 1): finds a same-record alias sitting directly
+  under the target album dir, verifies the selected source's bytes still equal the recorded hash (blake3, else InvalidInput and
+  never delete), then `prune_alias_paths` removes only the redundant source copy + sidecar + its alias entry and sets the album.
+  Verify-mismatch test is now GENUINE: added a minimal `write_file` `when`-verb to the DSL (overwrite a file post-index) and
+  repurposed `assign_merge_verify_mismatch` to corrupt a real dedup-candidate source. `assign_rename_same_hash_different_name`
+  alias-order asserts corrected to the deterministic G1 order `[other.jpg, photo.jpeg]`. Suite 202 pass / 2 fail (remaining:
+  C7 dir-merge, C8 upload-merge).
 - 2026-09-17: C4 done — `OnConflict` narrowed to `rename|merge` (no default); `AssignAlbumData` gains required `on_conflict`
   - `alias: Option<String>` (required & validated for items, 400-must-be-absent for albums); G1 rewrite moves only the
     selected alias entry, stale-check on it. Upload parse tightened to `rename|merge` (merge→rename placeholder). Scenario
