@@ -354,6 +354,7 @@ between C3 and C5 by the chosen strict tests-first ordering.
 
 ## Progress
 
+- 2026-09-17: C6 done — outcome reporting. `AssignResult { outcome: AssignOutcome }` JSON body (`moved` / `renamedFrom` / `deduplicatedRemoved`); handler + both movers return the outcome, utoipa 200 `body = AssignResult`. Scenario asserts added: `moved` (`assign_album_h`), `renamedFrom` (`assign_conflict_rename_z5`), `deduplicatedRemoved` (new `assign_outcome_dedup` — merge dedup as final when, byte-identity pattern from `assign_merge_dedup_different_name`, source absent + album copy present). Suite 203 pass / 2 fail (remaining: C7 dir-merge, C8 upload-merge).
 - 2026-09-17: C5 done — merge dedup implemented in `move_item_into_album` (G2 step 1): finds a same-record alias sitting directly
   under the target album dir, verifies the selected source's bytes still equal the recorded hash (blake3, else InvalidInput and
   never delete), then `prune_alias_paths` removes only the redundant source copy + sidecar + its alias entry and sets the album.

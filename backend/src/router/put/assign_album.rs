@@ -19,7 +19,7 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 use log::warn;
 use redb::{ReadableDatabase, ReadableTable};
-use rocket::serde::{Deserialize, json::Json};
+use rocket::serde::{Deserialize, Serialize, json::Json};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -42,6 +42,25 @@ pub struct AssignAlbumData {
     pub on_conflict: OnConflict,
 }
 
+/// Outcome of an `assign_album` call, reported to the caller so the UI is never
+/// silent about what happened to the selected item.
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AssignResult {
+    pub outcome: AssignOutcome,
+}
+
+/// The concrete result of a successful assign: `moved`, `renamedFrom` (an
+/// auto-`-001` suffix collision), or `deduplicatedRemoved` (a merge dedup
+/// pruned the redundant source copy).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum AssignOutcome {
+    Moved,
+    RenamedFrom,
+    DeduplicatedRemoved,
+}
+
 /// Move a media item into the album's directory on disk, update the DB alias,
 /// and record the explicit album membership.  Returns 400 if the file is not
 /// found at the recorded alias path (stale alias — user must re-index first).
@@ -50,7 +69,7 @@ pub struct AssignAlbumData {
         path = "/put/assign_album",
         request_body = AssignAlbumData,
         responses(
-            (status = 200, description = "Item assigned to album"),
+            (status = 200, description = "Item assigned to album", body = AssignResult),
             (status = 400, description = "Invalid input or item not found"),
         )
     )
@@ -60,7 +79,7 @@ pub async fn assign_album(
     auth: GuardResult<GuardAuth>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     json_data: Json<AssignAlbumData>,
-) -> AppResult<()> {
+) -> AppResult<Json<AssignResult>> {
     let _ = auth?;
     let _ = read_only_mode?;
 
@@ -84,7 +103,7 @@ pub async fn assign_album(
         ));
     }
 
-    tokio::task::spawn_blocking(move || {
+    let outcome = tokio::task::spawn_blocking(move || {
         move_hash_into_album(hash, album_id, &album_dir, on_conflict, selected_alias)
     })
     .await
@@ -108,7 +127,7 @@ pub async fn assign_album(
         .or_raise(|| (ErrorKind::Internal, "Failed to update album stats"))?
         .map_err(|e| AppError::new(ErrorKind::Internal, format!("Album update failed: {e}")))?;
 
-    Ok(())
+    Ok(Json(AssignResult { outcome }))
 }
 
 /// Dispatch on whichever kind of item `hash` resolves to: images/videos move
@@ -121,7 +140,7 @@ fn move_hash_into_album(
     album_dir: &Path,
     on_conflict: OnConflict,
     selected_alias: Option<String>,
-) -> Result<(), AppError> {
+) -> Result<AssignOutcome, AppError> {
     let is_album = {
         let txn = TREE
             .in_disk
@@ -164,19 +183,19 @@ fn move_album_into_album(
     target_dir: &Path,
     on_conflict: OnConflict,
     selected_alias: Option<&str>,
-) -> Result<(), AppError> {
+) -> Result<AssignOutcome, AppError> {
     if selected_alias.is_some() {
         return Err(AppError::new(
             ErrorKind::InvalidInput,
             "aliases do not apply to album records",
         ));
     }
-    let (old_dir, new_dir) = {
+    let (old_dir, new_dir, outcome) = {
         let txn = TREE
             .in_disk
             .begin_write()
             .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
-        let (old_dir, new_dir) = {
+        let (old_dir, new_dir, outcome) = {
             let mut data_table = txn
                 .open_table(DATA_TABLE)
                 .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
@@ -212,6 +231,14 @@ fn move_album_into_album(
                 AppError::new(ErrorKind::InvalidInput, "Album directory has no name")
             })?;
             let base_dest = target_dir.join(dir_name);
+
+            // A suffix-collision (dest already exists) yields a RenamedFrom
+            // outcome; otherwise the dir tree lands in place (Moved).
+            let outcome = if base_dest.exists() {
+                AssignOutcome::RenamedFrom
+            } else {
+                AssignOutcome::Moved
+            };
 
             let dest_dir = if base_dest.exists() {
                 match on_conflict {
@@ -254,11 +281,11 @@ fn move_album_into_album(
                     .or_raise(|| (ErrorKind::Database, "Failed to update moved record"))?;
             }
 
-            (source_dir, dest_dir)
+            (source_dir, dest_dir, outcome)
         };
         txn.commit()
             .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
-        (old_dir, new_dir)
+        (old_dir, new_dir, outcome)
     };
 
     rewrite_dir_album_cache_prefix(&old_dir, &new_dir);
@@ -268,7 +295,7 @@ fn move_album_into_album(
     }
     mark_album_for_update(target_album_id);
 
-    Ok(())
+    Ok(outcome)
 }
 
 /// Rewrite `data`'s stored path(s) from under `old_prefix` to the equivalent
@@ -345,18 +372,19 @@ fn merge_dedup_candidate(
     Ok(true)
 }
 
+#[allow(clippy::too_many_lines)]
 fn move_item_into_album(
     hash: ArrayString<64>,
     album_id: ArrayString<64>,
     album_dir: &Path,
     on_conflict: OnConflict,
     selected_alias: Option<String>,
-) -> Result<(), AppError> {
+) -> Result<AssignOutcome, AppError> {
     let txn = TREE
         .in_disk
         .begin_write()
         .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
-    {
+    let outcome = {
         let mut data_table = txn
             .open_table(DATA_TABLE)
             .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
@@ -418,7 +446,7 @@ fn move_item_into_album(
             drop(data_table);
             txn.commit()
                 .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
-            return Ok(());
+            return Ok(AssignOutcome::DeduplicatedRemoved);
         }
 
         let file_name = current_path
@@ -426,7 +454,8 @@ fn move_item_into_album(
             .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Alias has no filename"))?;
         let base_dest = album_dir.join(file_name);
 
-        let dest_path = if base_dest.exists() && base_dest != current_path {
+        let renamed = base_dest.exists() && base_dest != current_path;
+        let dest_path = if renamed {
             match on_conflict {
                 // Merge with no redundant album-resident alias falls through to
                 // a safe rename (matches Rename) — never overwrite an existing
@@ -462,10 +491,15 @@ fn move_item_into_album(
             mark_album_for_update(old_id);
         }
         mark_album_for_update(album_id);
-    }
+        if renamed {
+            AssignOutcome::RenamedFrom
+        } else {
+            AssignOutcome::Moved
+        }
+    };
     txn.commit()
         .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
-    Ok(())
+    Ok(outcome)
 }
 
 /// Append `-NNN` before the extension until we find a path that doesn't exist.

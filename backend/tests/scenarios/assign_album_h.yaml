@@ -13,5 +13,6 @@ when:
     alias: "${data_path}/gen_e2e_h_import/gen_e2e_h_photo.jpg"
 then:
   - response.status: 200
+  - response.json.outcome: moved
   - file_exists: /gen_e2e_h_album/gen_e2e_h_photo.jpg
   - file_absent: /gen_e2e_h_import/gen_e2e_h_photo.jpg
