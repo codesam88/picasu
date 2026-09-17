@@ -572,6 +572,22 @@ fn dispatch_when_item<'c>(
     }
     if item.get("upload").is_some() {
         execute_upload(item, vars, client)
+    } else if item.get("write_file").is_some() {
+        // Overwrite a file's bytes AFTER it has been indexed, so a scenario can
+        // exercise genuine verify paths (e.g. merge verify-mismatch). Paths are
+        // IMAGE_HOME-relative with a leading slash.
+        let path = item["write_file"].as_str().expect("write_file is required");
+        let full = test_image_home().join(path.trim_start_matches('/'));
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent)
+                .unwrap_or_else(|e| panic!("create dir for write_file {path}: {e}"));
+        }
+        let content = item["content"].as_str().unwrap_or("");
+        std::fs::write(&full, content).unwrap_or_else(|e| panic!("write_file {path}: {e}"));
+        // Return a status-200 probe response so this branches cleanly in the
+        // `when` flow like any other call/upload verb.
+        let cookie = auth_cookie(client);
+        client.get("/get/index/status").cookie(cookie).dispatch()
     } else {
         execute_call(item, vars, client)
     }

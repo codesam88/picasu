@@ -385,6 +385,9 @@
         },
         {
           "$ref": "#/definitions/apiUpload"
+        },
+        {
+          "$ref": "#/definitions/apiWriteFile"
         }
       ]
     },
@@ -427,6 +430,22 @@
         "name",
         "when",
         "then"
+      ],
+      "additionalProperties": false
+    },
+    "apiWriteFile": {
+      "type": "object",
+      "properties": {
+        "write_file": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "write_file",
+        "content"
       ],
       "additionalProperties": false
     },
