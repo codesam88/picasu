@@ -69,8 +69,9 @@ fn auto_rename_rejected_error(raw_filename: &str, sanitize: &FilenameSanitize) -
 /// taken from the client filename, matching pre-existing behaviour).
 ///
 /// - `auto_rename=true` (default): use the sanitized stem; if the name
-///   degrades to empty, fall back to the generated `upload` stem (the UUID
-///   suffix added by `save_file` yields `upload-{uuid}.{ext}`).
+///   degrades to empty, fall back to the generated `upload` stem, which
+///   `save_file` resolves to `upload.{ext}` (renamed `upload-001…` on
+///   collision under the default rename strategy).
 /// - `auto_rename=false`: reject with a clear message when any sanitization
 ///   would be needed. Tier 0 (path traversal) is never written raw.
 fn resolve_filename(
@@ -91,8 +92,8 @@ fn resolve_filename(
 
     if auto_rename {
         if stem.is_empty() {
-            // save_file appends its own UUID when on_conflict is None, so the
-            // stem alone yields the documented "upload-{uuid}.{ext}" fallback.
+            // save_file appends the extension, so the stem alone yields the
+            // documented "upload.{ext}" fallback.
             Ok("upload".to_string())
         } else {
             Ok(stem)
@@ -206,9 +207,10 @@ pub async fn upload(
 
     let policy = read_upload_policy();
 
+    // Absent `on_conflict` defaults to `rename` (base name, auto-`-001` suffix
+    // on collision) rather than the legacy unique UUID suffix.
     let on_conflict_strategy: Option<OnConflict> = match on_conflict.as_deref() {
-        None => None,
-        Some("rename") => Some(OnConflict::Rename),
+        None | Some("rename") => Some(OnConflict::Rename),
         Some("merge") => Some(OnConflict::Merge),
         Some(other) => {
             return Err(AppError::new(
@@ -255,6 +257,18 @@ pub async fn upload(
             .map_err(|_| {
                 AppError::new(ErrorKind::Internal, "Uploaded file path outside IMAGE_HOME")
             })?;
+        // Merge uploads dedup against album-resident copies of the same
+        // content, which requires the dedup pass to see the state committed by
+        // every prior upload's detached index flush. Drain the flush queue so
+        // `index_image`'s DeduplicateTask reads the true alias set, not a
+        // half-written DB.
+        if on_conflict_strategy == Some(OnConflict::Merge) {
+            let _ = crate::tasks::BATCH_COORDINATOR
+                .execute_batch_waiting(crate::tasks::batcher::flush_tree::FlushTreeTask::insert(
+                    Vec::new(),
+                ))
+                .await;
+        }
         if let Err(index_error) = crate::workflow::index_image(relative_src, None).await {
             // A mid-pipeline failure can occur after a partial commit: the
             // uploaded file is only safely removable when no index record
@@ -281,6 +295,15 @@ pub async fn upload(
                 ErrorKind::InvalidInput,
                 "Uploaded file could not be decoded as an image or video",
             ));
+        }
+
+        // Merge re-upload of content already present in the target album: the
+        // just-written file is a redundant byte-for-byte copy of an
+        // album-resident alias. Dedup it away so no second file accumulates.
+        if on_conflict_strategy == Some(OnConflict::Merge) {
+            merge_dedup_upload(Path::new(&final_path), &target_dir).await?;
+            // Nothing further to do for this file (the redundant copy, if any,
+            // was already pruned); the loop advances to the next upload.
         }
     }
 
@@ -322,9 +345,9 @@ fn validate_upload_batch(
 /// Persists the temporary file directly into `target_dir` (its real, final
 /// location under `IMAGE_HOME`) with the correct modification time.
 ///
-/// When `on_conflict` is `None` (default), a UUID suffix is appended to the
-/// filename to guarantee uniqueness.  When `on_conflict` is `Some`, the
-/// original filename is used and the conflict strategy is applied.
+/// The original filename is used and the conflict strategy applied. The
+/// legacy `None` unique-UUID path is retained for back-compat but is
+/// unreachable (`on_conflict` now defaults to `Rename` upstream).
 ///
 /// Returns the absolute path of the saved file.
 async fn save_file(
@@ -365,7 +388,9 @@ async fn save_file(
         let final_path = if let Some(strategy) = on_conflict {
             if base_final.exists() {
                 match strategy {
-                    // TODO(C8): merge currently behaves like rename; C8 adds upload merge dedup
+                    // Merge physically lands a collision as `-001` too; the
+                    // same-content dedup back onto the album copy happens after
+                    // indexing (see `merge_dedup_upload`), not at save time.
                     OnConflict::Rename | OnConflict::Merge => find_unique_upload_path(&base_final)?,
                 }
             } else {
@@ -513,6 +538,109 @@ fn record_exists_for(path: &Path, relative: &Path) -> bool {
 
     warn!("Could not verify index records for upload {path:?}; keeping file");
     true
+}
+
+/// Dedup a `merge` re-upload against a same-content album-resident alias.
+///
+/// After the just-written file has been indexed, look up the record for its
+/// content hash and check whether the record has a *different* alias sitting
+/// directly under `target_dir`. If so, the just-written `final_path` is a
+/// byte-for-byte duplicate of that album-resident copy: prune it (file +
+/// `.xmp` sidecar + alias entry), persisting the record when it still has
+/// aliases or removing it entirely otherwise. This mirrors the merge dedup in
+/// `move_item_into_album`.
+///
+/// A flush barrier runs first so the detached index flush that appended the
+/// just-written alias is committed before reading, and so this write txn
+/// commits after it (no stale alias is left pointing at the deleted file).
+///
+/// Robustness: if the record cannot be read (e.g. racing the detached dedup
+/// batch), the uploaded file is kept — a file is never deleted on uncertainty.
+async fn merge_dedup_upload(final_path: &Path, target_dir: &Path) -> Result<(), AppError> {
+    let file = match std::fs::File::open(final_path) {
+        Ok(f) => f,
+        Err(e) => {
+            warn!(
+                "Could not open uploaded file {} for merge dedup: {e}; keeping it",
+                final_path.display()
+            );
+            return Ok(());
+        }
+    };
+    let hash = match crate::process::hash::blake3_hasher(file) {
+        Ok(h) => h,
+        Err(e) => {
+            warn!(
+                "Could not hash uploaded file {} for merge dedup: {e}; keeping it",
+                final_path.display()
+            );
+            return Ok(());
+        }
+    };
+
+    // Sequence this prune after any in-flight index flush.
+    let _ = crate::tasks::BATCH_COORDINATOR
+        .execute_batch_waiting(crate::tasks::batcher::flush_tree::FlushTreeTask::insert(
+            Vec::new(),
+        ))
+        .await;
+
+    let txn = match TREE.in_disk.begin_write() {
+        Ok(t) => t,
+        Err(e) => {
+            warn!("Could not begin write txn for merge dedup: {e}; keeping uploaded file");
+            return Ok(());
+        }
+    };
+    {
+        let mut data_table = match txn.open_table(DATA_TABLE) {
+            Ok(t) => t,
+            Err(e) => {
+                warn!("Could not open data table for merge dedup: {e}; keeping uploaded file");
+                return Ok(());
+            }
+        };
+        // A record read failure (e.g. the contents were indexed but the record
+        // is not yet committed) default to not pruning — keep the file.
+        let record = match data_table.get(&*hash) {
+            Ok(Some(record)) => record.value(),
+            _ => return Ok(()),
+        };
+
+        // Another alias already directly under the target dir, other than the
+        // just-written file, is the album-resident copy to collapse onto.
+        let has_album_alias = record.alias().iter().any(|a| {
+            crate::process::alias::normalize_alias_path(&a.file).parent() == Some(target_dir)
+                && crate::process::alias::normalize_alias_path(&a.file) != final_path
+        });
+        if !has_album_alias {
+            return Ok(());
+        }
+
+        let mut record = record;
+        let keep = crate::process::alias::prune_alias_paths(&mut record, final_path);
+        if keep {
+            data_table.insert(&*hash, record).or_raise(|| {
+                (
+                    ErrorKind::Database,
+                    "Failed to update record after merge dedup",
+                )
+            })?;
+        } else {
+            data_table.remove(&*hash).or_raise(|| {
+                (
+                    ErrorKind::Database,
+                    "Failed to remove record after merge dedup",
+                )
+            })?;
+        }
+    }
+    txn.commit().or_raise(|| {
+        (
+            ErrorKind::Database,
+            "Failed to commit merge dedup transaction",
+        )
+    })
 }
 
 /// Reject uploads whose bytes do not match the `Content-Type`-derived
