@@ -13,7 +13,7 @@ when:
       hash: "${p}"
       albumId: "${album}"
       onConflict: "merge"
-      alias: "/e2e_mss/album/photo.jpg"
+      alias: "${data_path}/e2e_mss/album/photo.jpg"
     then:
       - response.status: 200
   - call: GET /get/test/record/${p}

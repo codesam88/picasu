@@ -11,7 +11,7 @@ when:
       file: /e2e_up_unidx/src/garbage.jpg
       filename: photo.jpg
       target_album: "${album}"
-      on_conflict: replace
+      on_conflict: rename
 then:
   - response.status: 400
   - response.json.kind: "InvalidInput"

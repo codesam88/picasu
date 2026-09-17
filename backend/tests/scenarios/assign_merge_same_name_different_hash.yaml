@@ -14,7 +14,7 @@ when:
       hash: "${src}"
       albumId: "${album}"
       onConflict: "merge"
-      alias: "/e2e_msd/src/photo.jpg"
+      alias: "${data_path}/e2e_msd/src/photo.jpg"
     then:
       - response.status: 200
   - call: GET /get/test/record/${src}

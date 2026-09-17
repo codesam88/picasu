@@ -1,6 +1,6 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
-use crate::model::response::FileModify;
+
 use crate::process::dir_album::{
     get_dir_path_for_album, get_parent_album_id, mark_album_for_update,
     rewrite_dir_album_cache_prefix,
@@ -23,13 +23,11 @@ use rocket::serde::{Deserialize, json::Json};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Deserialize, utoipa::ToSchema, Default, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Deserialize, utoipa::ToSchema, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 pub enum OnConflict {
-    #[default]
-    Skip,
     Rename,
-    Replace,
+    Merge,
 }
 
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
@@ -39,7 +37,8 @@ pub struct AssignAlbumData {
     pub hash: ArrayString<64>,
     #[schema(value_type = String)]
     pub album_id: ArrayString<64>,
-    #[serde(default)]
+    /// Selected alias path for item records; must be absent (null) for albums.
+    pub alias: Option<String>,
     pub on_conflict: OnConflict,
 }
 
@@ -69,6 +68,7 @@ pub async fn assign_album(
     let hash = data.hash;
     let album_id = data.album_id;
     let on_conflict = data.on_conflict;
+    let selected_alias = data.alias;
 
     // Resolve album's directory from the in-memory cache.
     let album_dir = get_dir_path_for_album(album_id)
@@ -85,7 +85,7 @@ pub async fn assign_album(
     }
 
     tokio::task::spawn_blocking(move || {
-        move_hash_into_album(hash, album_id, &album_dir, on_conflict)
+        move_hash_into_album(hash, album_id, &album_dir, on_conflict, selected_alias)
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
@@ -120,6 +120,7 @@ fn move_hash_into_album(
     album_id: ArrayString<64>,
     album_dir: &Path,
     on_conflict: OnConflict,
+    selected_alias: Option<String>,
 ) -> Result<(), AppError> {
     let is_album = {
         let txn = TREE
@@ -138,9 +139,15 @@ fn move_hash_into_album(
     };
 
     if is_album {
-        move_album_into_album(hash, album_id, album_dir, on_conflict)
+        move_album_into_album(
+            hash,
+            album_id,
+            album_dir,
+            on_conflict,
+            selected_alias.as_deref(),
+        )
     } else {
-        move_item_into_album(hash, album_id, album_dir, on_conflict)
+        move_item_into_album(hash, album_id, album_dir, on_conflict, selected_alias)
     }
 }
 
@@ -156,7 +163,14 @@ fn move_album_into_album(
     target_album_id: ArrayString<64>,
     target_dir: &Path,
     on_conflict: OnConflict,
+    selected_alias: Option<&str>,
 ) -> Result<(), AppError> {
+    if selected_alias.is_some() {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "aliases do not apply to album records",
+        ));
+    }
     let (old_dir, new_dir) = {
         let txn = TREE
             .in_disk
@@ -201,15 +215,8 @@ fn move_album_into_album(
 
             let dest_dir = if base_dest.exists() {
                 match on_conflict {
-                    OnConflict::Skip => return Ok(()),
-                    OnConflict::Rename => find_unique_path(&base_dest),
-                    OnConflict::Replace => {
-                        return Err(AppError::new(
-                            ErrorKind::InvalidInput,
-                            "An album with that name already exists at the destination; \
-                             replacing an existing album directory isn't supported",
-                        ));
-                    }
+                    // TODO(C7): merge currently behaves like rename; C7 adds recursive merge
+                    OnConflict::Rename | OnConflict::Merge => find_unique_path(&base_dest),
                 }
             } else {
                 base_dest
@@ -298,6 +305,7 @@ fn move_item_into_album(
     album_id: ArrayString<64>,
     album_dir: &Path,
     on_conflict: OnConflict,
+    selected_alias: Option<String>,
 ) -> Result<(), AppError> {
     let txn = TREE
         .in_disk
@@ -318,7 +326,23 @@ fn move_item_into_album(
         if alias.is_empty() {
             return Err(AppError::new(ErrorKind::InvalidInput, "Item has no alias"));
         }
-        let current_path = PathBuf::from(&alias[0].file);
+        let Some(selected_alias) = selected_alias else {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                "alias is required for item records",
+            ));
+        };
+        let norm = crate::process::alias::normalize_alias_path(&selected_alias);
+        let idx = alias
+            .iter()
+            .position(|a| crate::process::alias::normalize_alias_path(&a.file) == norm)
+            .ok_or_else(|| {
+                AppError::new(
+                    ErrorKind::InvalidInput,
+                    "alias does not match any alias of this record",
+                )
+            })?;
+        let current_path = PathBuf::from(&alias[idx].file);
 
         if !current_path.exists() {
             return Err(AppError::new(
@@ -337,9 +361,8 @@ fn move_item_into_album(
 
         let dest_path = if base_dest.exists() && base_dest != current_path {
             match on_conflict {
-                OnConflict::Skip => return Ok(()),
-                OnConflict::Replace => base_dest,
-                OnConflict::Rename => find_unique_path(&base_dest),
+                // TODO(C5): merge currently behaves like rename; C5 adds merge dedup
+                OnConflict::Rename | OnConflict::Merge => find_unique_path(&base_dest),
             }
         } else {
             base_dest
@@ -357,16 +380,8 @@ fn move_item_into_album(
         }
 
         let old_album = abstract_data.album();
-        let modified = alias[0].modified;
-        let scan_time = alias[0].scan_time;
-        let is_trashed = alias[0].is_trashed;
         if let Some(alias_mut) = abstract_data.alias_mut() {
-            *alias_mut = vec![FileModify {
-                file: dest_path.to_string_lossy().into_owned(),
-                modified,
-                scan_time,
-                is_trashed,
-            }];
+            alias_mut[idx].file = dest_path.to_string_lossy().into_owned();
         }
         abstract_data.set_album(Some(album_id));
 

@@ -208,13 +208,12 @@ pub async fn upload(
 
     let on_conflict_strategy: Option<OnConflict> = match on_conflict.as_deref() {
         None => None,
-        Some("skip") => Some(OnConflict::Skip),
         Some("rename") => Some(OnConflict::Rename),
-        Some("replace") => Some(OnConflict::Replace),
+        Some("merge") => Some(OnConflict::Merge),
         Some(other) => {
             return Err(AppError::new(
                 ErrorKind::InvalidInput,
-                format!("Unknown on_conflict value: {other}; expected skip, rename, or replace"),
+                format!("Unknown on_conflict value: {other}; expected rename, or merge"),
             ));
         }
     };
@@ -247,7 +246,7 @@ pub async fn upload(
         )
         .await?
         else {
-            continue; // on_conflict=skip and destination existed
+            continue; // defensive: no current strategy produces None
         };
         let image_root = get_resolved_image_home()
             .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "No imagePath configured"))?;
@@ -327,8 +326,7 @@ fn validate_upload_batch(
 /// filename to guarantee uniqueness.  When `on_conflict` is `Some`, the
 /// original filename is used and the conflict strategy is applied.
 ///
-/// Returns the absolute path of the saved file, or `None` if `on_conflict` is
-/// `Skip` and the destination already exists.
+/// Returns the absolute path of the saved file.
 async fn save_file(
     file: &mut TempFile<'_>,
     target_dir: &Path,
@@ -367,13 +365,8 @@ async fn save_file(
         let final_path = if let Some(strategy) = on_conflict {
             if base_final.exists() {
                 match strategy {
-                    OnConflict::Skip => {
-                        // Remove the temp file and signal nothing to index.
-                        let _ = std::fs::remove_file(&tmp_path_owned);
-                        return Ok(None);
-                    }
-                    OnConflict::Replace => base_final,
-                    OnConflict::Rename => find_unique_upload_path(&base_final)?,
+                    // TODO(C8): merge currently behaves like rename; C8 adds upload merge dedup
+                    OnConflict::Rename | OnConflict::Merge => find_unique_upload_path(&base_final)?,
                 }
             } else {
                 base_final

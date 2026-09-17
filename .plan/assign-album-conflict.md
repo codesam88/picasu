@@ -354,6 +354,14 @@ between C3 and C5 by the chosen strict tests-first ordering.
 
 ## Progress
 
+- 2026-09-17: C4 done — `OnConflict` narrowed to `rename|merge` (no default); `AssignAlbumData` gains required `on_conflict`
+  - `alias: Option<String>` (required & validated for items, 400-must-be-absent for albums); G1 rewrite moves only the
+    selected alias entry, stale-check on it. Upload parse tightened to `rename|merge` (merge→rename placeholder). Scenario
+    `alias:` values corrected to the absolute `${data_path}/...` form (the stored `.file` is absolute); 6 upload setups using
+    removed `replace` → `rename`; `complex_move_between_albums` step-2 alias points at the post-move path. Suite
+    199 pass / 5 fail (remaining = C5 dedup ×2, C5 alias-order, C7 dir, C8 upload). openapi.json gitignored (no diff to stage).
+    Note: verify-mismatch test passes via the alias-mismatch 400, i.e. it does NOT yet exercise true verify-hash — C5 should
+    strengthen it.
 - 2026-09-17: C1 done — deleted the 7 obsolete `skip`/`replace` scenario YAMLs (suite green). C2 done — test-only DB probe
   `GET /get/test/record/<hash>` returning full `alias[]`; gated by a `cfg(test)` static opt-in flag (the `PICASU_TEST_PROBE`
   env idea was impractical under `#![deny(unsafe_code)]` + edition 2024, so opt-in uses a static instead), selftest included.
