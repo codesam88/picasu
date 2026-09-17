@@ -1,0 +1,42 @@
+name: assign_album on_conflict=rename same hash under a different name creates a duplicate alias, both copies kept
+# Pins the "dumb" rename outcome: when the moved file's content (hash) already
+# has an alias in the target album but under a DIFFERENT filename, rename does a
+# plain move (no collision) and must keep BOTH aliases — the album-resident
+# photo.jpeg and the newly-moved other.jpg — rather than replacing the alias
+# list. Order assumed: existing album alias first, then the freshly moved one.
+given:
+  - dir_album: /e2e_rsdn/album
+    id_as: $album
+  - photo: /e2e_rsdn/src/other.jpg
+    id_as: $src
+when:
+  # Upload the byte-identical source into the album under a different name.
+  - upload:
+      file: /e2e_rsdn/src/other.jpg
+      filename: photo.jpg
+      target_album: "${album}"
+      on_conflict: rename
+    then:
+      - response.status: 200
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_rsdn"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Dumb rename: move source into the album keeping the existing alias too.
+  - call: PUT /put/assign_album
+    body:
+      hash: "${src}"
+      albumId: "${album}"
+      onConflict: "rename"
+      alias: "/e2e_rsdn/src/other.jpg"
+    then:
+      - response.status: 200
+  - call: GET /get/test/record/${src}
+then:
+  - response.status: 200
+  - response.json.aliases.[0].file: "${data_path}/e2e_rsdn/album/photo.jpeg"
+  - response.json.aliases.[1].file: "${data_path}/e2e_rsdn/album/other.jpg"
+  - file_exists: /e2e_rsdn/album/photo.jpeg
+  - file_exists: /e2e_rsdn/album/other.jpg
+  - file_absent: /e2e_rsdn/src/other.jpg

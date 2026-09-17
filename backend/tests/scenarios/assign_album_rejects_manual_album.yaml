@@ -7,5 +7,7 @@ when:
   body:
     hash: "${photo}"
     albumId: "bogus-manual-album"
+    onConflict: "rename"
+    alias: "/manual_album_test/photo.jpg"
 then:
   - response.status: 400

@@ -354,6 +354,14 @@ between C3 and C5 by the chosen strict tests-first ordering.
 
 ## Progress
 
+- 2026-09-17: C1 done — deleted the 7 obsolete `skip`/`replace` scenario YAMLs (suite green). C2 done — test-only DB probe
+  `GET /get/test/record/<hash>` returning full `alias[]`; gated by a `cfg(test)` static opt-in flag (the `PICASU_TEST_PROBE`
+  env idea was impractical under `#![deny(unsafe_code)]` + edition 2024, so opt-in uses a static instead), selftest included.
+  C3 done (red window) — updated 20 surviving `assign_*` callers with `onConflict: "rename"` (+ `alias` for item moves, none
+  for dir moves) and added 10 new scenarios (merge dedup ×3, verify-mismatch emulated, G1∩G2 sibling, rename-same-hash, ugly
+  on_conflict-required, upload-merge, dir-merge-recursive, self-move no-op). Suite: 194 pass / 10 fail, failures exactly the
+  new scenarios. Response-outcome scenario deferred to C6 (keeps C5 full-green achievable). Verify-mismatch is emulated (no
+  post-index file-write verb exists); may strengthen at C5. Dir-merge-recursive pins leaf→root flattening `dest/{root,leaf}.jpg`.
 - 2026-09-16: consistency pass — fixed dangling "Conflict model (redesign)" references (model lives under G2); gap 5
   self-move and gap 7 on\_conflict validation updated for the new model; added "Test changes under the conflict
   redesign" (deprecated/update/new scenario inventory incl. merge dedup, verify-mismatch, G1∩G2 sibling, dir

@@ -9,6 +9,8 @@ when:
   body:
     hash: "${photo}"
     albumId: "${album}"
+    onConflict: "rename"
+    alias: "/gen_e2e_h_import/gen_e2e_h_photo.jpg"
 then:
   - response.status: 200
   - file_exists: /gen_e2e_h_album/gen_e2e_h_photo.jpg

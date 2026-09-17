@@ -19,6 +19,7 @@ when:
     body:
       hash: "${child_album}"
       albumId: "${target_album}"
+      onConflict: "rename"
     then:
       - response.status: 200
   - call: POST /get/prefetch
