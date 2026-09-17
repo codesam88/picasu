@@ -13,7 +13,7 @@ when:
     body:
       hash: "${src}"
       albumId: "${album}"
-      alias: "/e2e_oc/src/p.jpg"
+      alias: "${data_path}/e2e_oc/src/p.jpg"
     then:
       - response.status_not: 200
   - call: PUT /put/assign_album
@@ -21,7 +21,7 @@ when:
       hash: "${src}"
       albumId: "${album}"
       onConflict: "skip"
-      alias: "/e2e_oc/src/p.jpg"
+      alias: "${data_path}/e2e_oc/src/p.jpg"
     then:
       - response.status_not: 200
   - call: PUT /put/assign_album
@@ -29,7 +29,7 @@ when:
       hash: "${src}"
       albumId: "${album}"
       onConflict: "replace"
-      alias: "/e2e_oc/src/p.jpg"
+      alias: "${data_path}/e2e_oc/src/p.jpg"
     then:
       - response.status_not: 200
   - call: PUT /put/assign_album
@@ -37,7 +37,7 @@ when:
       hash: "${src}"
       albumId: "${album}"
       onConflict: "rename"
-      alias: "/e2e_oc/src/p.jpg"
+      alias: "${data_path}/e2e_oc/src/p.jpg"
     then:
       - response.status: 200
 then:

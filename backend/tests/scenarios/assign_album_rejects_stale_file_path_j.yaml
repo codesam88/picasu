@@ -11,6 +11,6 @@ when:
       hash: "${photo}"
       albumId: "${album}"
       onConflict: "rename"
-      alias: "/e2e_j/photo.jpg"
+      alias: "${data_path}/e2e_j/photo.jpg"
 then:
   - response.status_not: 200

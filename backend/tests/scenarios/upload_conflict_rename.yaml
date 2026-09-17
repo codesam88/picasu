@@ -7,7 +7,7 @@ when:
   - upload:
       file: /e2e_up_rename/src/photo.jpg
       target_album: "${album}"
-      on_conflict: replace
+      on_conflict: rename
   - upload:
       file: /e2e_up_rename/src/photo.jpg
       target_album: "${album}"

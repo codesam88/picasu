@@ -17,7 +17,7 @@ when:
       hash: "${src}"
       albumId: "${album}"
       onConflict: "merge"
-      alias: "/e2e_mvm/tampered/t.jpg"
+      alias: "${data_path}/e2e_mvm/tampered/t.jpg"
 then:
   - response.status_not: 200
   # Verify-mismatch surfaces as an app error (JSON body), not a transport 4xx.

@@ -32,7 +32,7 @@ when:
       hash: "${src}"
       albumId: "${album}"
       onConflict: "merge"
-      alias: "/e2e_mdd/src/same.jpg"
+      alias: "${data_path}/e2e_mdd/src/same.jpg"
     then:
       - response.status: 200
   # Probe the DB: only the album-resident alias remains.

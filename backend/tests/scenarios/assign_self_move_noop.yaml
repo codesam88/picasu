@@ -13,7 +13,7 @@ when:
       hash: "${p}"
       albumId: "${album}"
       onConflict: "rename"
-      alias: "/e2e_self/a/photo.jpg"
+      alias: "${data_path}/e2e_self/a/photo.jpg"
     then:
       - response.status: 200
   - call: PUT /put/assign_album
@@ -21,7 +21,7 @@ when:
       hash: "${p}"
       albumId: "${album}"
       onConflict: "merge"
-      alias: "/e2e_self/a/photo.jpg"
+      alias: "${data_path}/e2e_self/a/photo.jpg"
     then:
       - response.status: 200
   - call: GET /get/test/record/${p}
