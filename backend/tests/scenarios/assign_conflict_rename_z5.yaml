@@ -15,6 +15,7 @@ when:
       alias: "${data_path}/e2e_z5/import/photo.jpg"
 then:
   - response.status: 200
+  - response.json.outcome: renamedFrom
   - file_exists: /e2e_z5/album/photo-001.jpg
   - file_absent: /e2e_z5/import/photo.jpg
   - file_exists: /e2e_z5/album/photo.jpg
