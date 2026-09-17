@@ -354,6 +354,17 @@ between C3 and C5 by the chosen strict tests-first ordering.
 
 ## Progress
 
+- 2026-09-17: C7 done — dir-album recursive merge. `move_album_into_album` splits on collision:
+  no-collision keeps the whole-dir rename (both modes, `Moved`); collision `Rename` keeps `find_unique_path`
+  (`RenamedFrom`); collision `Merge` recursively migrates the source tree. Files are collected under `source_dir`
+  (`.xmp` sidecars skipped — they travel with their media), flattened into the target album root with per-file merge
+  semantics (byte-identical → `prune_alias_paths` dedup; distinct content → `find_unique_path`), then emptied source
+  dirs are removed deepest-first with a stop-at-first-non-empty safety rule and their `AbstractData::Album` rows are
+  deleted + `evict_dir_album`'d; moved aliases are rewritten from an explicit old→new map (flatten is not a prefix
+  change). All mutations share the existing write txn. New `assign_dir_merge_no_collision` scenario; rewrote
+  `assign_dir_merge_recursive` to use a real `target/source` name collision (guard 400, flatten, source + sub records
+  probed 404, pre-existing target/source untouched). `just backend-check` clean; full backend suite 205 pass / 1 fail
+  (remaining: C8 upload-merge, as expected). No commit.
 - 2026-09-17: C6 done — outcome reporting. `AssignResult { outcome: AssignOutcome }` JSON body (`moved` / `renamedFrom` / `deduplicatedRemoved`); handler + both movers return the outcome, utoipa 200 `body = AssignResult`. Scenario asserts added: `moved` (`assign_album_h`), `renamedFrom` (`assign_conflict_rename_z5`), `deduplicatedRemoved` (new `assign_outcome_dedup` — merge dedup as final when, byte-identity pattern from `assign_merge_dedup_different_name`, source absent + album copy present). Suite 203 pass / 2 fail (remaining: C7 dir-merge, C8 upload-merge).
 - 2026-09-17: C5 done — merge dedup implemented in `move_item_into_album` (G2 step 1): finds a same-record alias sitting directly
   under the target album dir, verifies the selected source's bytes still equal the recorded hash (blake3, else InvalidInput and

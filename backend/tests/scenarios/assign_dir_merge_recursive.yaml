@@ -1,21 +1,21 @@
-name: assign_album on_conflict=merge dir moves recursively migrate content and drop emptied sub-album records
-# Dir (sub-album) recursive merge. Selecting a source album whose tree already
-# hybridizes with content: merge should migrate the tree's leaf files up into
-# the target album dir, then remove the emptied source dirs and their dir-album
-# records. A separate guard step asserts that assigning a dir into its own
-# descendant is rejected (400). Note: a "blocked file keeps its containing dir
-# and all ancestors" variant is not expressible in the current harness (no way
-# to deterministically force a single-file move failure), so it is not covered
-# here.
+name: assign_album on_conflict=merge recursively migrates a colliding dir tree into the target album root and drops emptied dir-album records
+# C7: on a name collision (an existing target/<name> path), Merge dissolves the
+# source dir tree — files flatten leaf-to-root into the target album root,
+# byte-identical collision dedups, distinct-content collisions auto-rename, and
+# the emptied source dirs + their dir-album records are removed. A self/subtree
+# guard still 400s before any of this runs.
 given:
-  - dir_album: /e2e_mr9/dest
+  - dir_album: /e2e_mrd/dest
     id_as: $dest
-  - dir_album: /e2e_mr9/source
+  # Pre-existing /e2e_mrd/dest/source makes the source dir name collide.
+  - dir_album: /e2e_mrd/dest/source
+  - photo: /e2e_mrd/dest/source/original.jpg
+  - dir_album: /e2e_mrd/source
     id_as: $source
-  - photo: /e2e_mr9/source/root.jpg
-  - dir_album: /e2e_mr9/source/sub
+  - photo: /e2e_mrd/source/root.jpg
+  - dir_album: /e2e_mrd/source/sub
     id_as: $sub
-  - photo: /e2e_mr9/source/sub/leaf.jpg
+  - photo: /e2e_mrd/source/sub/leaf.jpg
 when:
   # Guard: a dir album cannot be assigned into its own descendant.
   - call: PUT /put/assign_album
@@ -25,7 +25,8 @@ when:
       onConflict: "merge"
     then:
       - response.status: 400
-  # Recursive merge of the whole source tree into the dest album dir.
+  # /e2e_mrd/dest/source already exists, so the source dir name collides →
+  # recursive merge (files flatten into the dest album root).
   - call: PUT /put/assign_album
     body:
       hash: "${source}"
@@ -33,13 +34,21 @@ when:
       onConflict: "merge"
     then:
       - response.status: 200
-  # Probe the (former) source album record: it must be gone after its dir was
-  # emptied and removed.
+  # The (former) nested sub album's record: gone after its dir was removed.
+  - call: GET /get/test/record/${sub}
+    then:
+      - response.status: 404
+  # The (former) source album's record: gone after its dir was removed.
   - call: GET /get/test/record/${source}
 then:
   - response.status: 404
-  # Leaf files migrated up to the target album root; source tree emptied.
-  - file_exists: /e2e_mr9/dest/root.jpg
-  - file_exists: /e2e_mr9/dest/leaf.jpg
-  - file_absent: /e2e_mr9/source/root.jpg
-  - file_absent: /e2e_mr9/source/sub/leaf.jpg
+  # Leaf files flattened into the target album root.
+  - file_exists: /e2e_mrd/dest/root.jpg
+  - file_exists: /e2e_mrd/dest/leaf.jpg
+  # Source tree emptied and removed.
+  - file_absent: /e2e_mrd/source/root.jpg
+  - file_absent: /e2e_mrd/source/sub/leaf.jpg
+  - file_absent: /e2e_mrd/source/sub
+  - file_absent: /e2e_mrd/source
+  # The pre-existing target/source directory is untouched.
+  - file_exists: /e2e_mrd/dest/source/original.jpg
