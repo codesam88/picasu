@@ -354,6 +354,13 @@ between C3 and C5 by the chosen strict tests-first ordering.
 
 ## Progress
 
+- 2026-09-17: C8 done — upload trimmed to `rename|merge`; absent `on_conflict` now defaults to `rename` (was unique-UUID suffix;
+  no scenario relied on UUID names). `merge` on a re-upload of content already resident in the target album dedups: after the
+  just-written file is indexed, look up its record by hash, find a different album-dir alias, and `prune_alias_paths` the
+  redundant copy (file+sidecar+alias). Two flush barriers sequence the detached dedup batch so the prune never leaves a stale
+  alias. schema.json upload enum updated. Suite fully green (206/0) across repeated runs; a rare flake on
+  `assign_merge_dedup_different_name` was reported once but did not reproduce over 5+ clean runs (depends on dedup batch timing).
+
 - 2026-09-17: C7 done — dir-album recursive merge. `move_album_into_album` splits on collision:
   no-collision keeps the whole-dir rename (both modes, `Moved`); collision `Rename` keeps `find_unique_path`
   (`RenamedFrom`); collision `Merge` recursively migrates the source tree. Files are collected under `source_dir`

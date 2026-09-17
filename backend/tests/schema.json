@@ -181,9 +181,8 @@
             "on_conflict": {
               "type": "string",
               "enum": [
-                "skip",
                 "rename",
-                "replace"
+                "merge"
               ]
             },
             "auto_rename": {
