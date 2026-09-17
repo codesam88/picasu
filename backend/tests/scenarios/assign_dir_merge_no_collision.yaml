@@ -1,0 +1,31 @@
+name: assign_album on_conflict=merge without a name collision keeps the source tree in place under the target
+# C7: Merge only performs the recursive leaf-to-root migration when the target
+# path (the descendant dir name under the target) already exists. With no
+# collision, Merge behaves like Rename: the whole directory tree lands in place
+# as target/<name>/... (outcome moved, tree preserved).
+given:
+  - dir_album: /e2e_mnc/dest
+    id_as: $dest
+  - dir_album: /e2e_mnc/source
+    id_as: $source
+  - photo: /e2e_mnc/source/root.jpg
+  - dir_album: /e2e_mnc/source/sub
+    id_as: $sub
+  - photo: /e2e_mnc/source/sub/leaf.jpg
+when:
+  # No existing /e2e_mnc/dest/source → no name collision → whole-dir rename.
+  - call: PUT /put/assign_album
+    body:
+      hash: "${source}"
+      albumId: "${dest}"
+      onConflict: "merge"
+    then:
+      - response.status: 200
+then:
+  - response.status: 200
+  # Tree preserved under the target: target/source/... (not flattened).
+  - file_exists: /e2e_mnc/dest/source/root.jpg
+  - file_exists: /e2e_mnc/dest/source/sub/leaf.jpg
+  # Source tree moved; nothing remains at the old location.
+  - file_absent: /e2e_mnc/source/root.jpg
+  - file_absent: /e2e_mnc/source/sub/leaf.jpg

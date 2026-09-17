@@ -2,7 +2,7 @@ use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
 
 use crate::process::dir_album::{
-    get_dir_path_for_album, get_parent_album_id, mark_album_for_update,
+    evict_dir_album, get_dir_path_for_album, get_parent_album_id, mark_album_for_update,
     rewrite_dir_album_cache_prefix,
 };
 use crate::router::auth::GuardAuth;
@@ -20,6 +20,7 @@ use arrayvec::ArrayString;
 use log::warn;
 use redb::{ReadableDatabase, ReadableTable};
 use rocket::serde::{Deserialize, Serialize, json::Json};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -171,12 +172,25 @@ fn move_hash_into_album(
 }
 
 /// Move a sub-album's whole directory into `target_dir` (another album's
-/// directory), then rewrite every DB record whose path lived under the old
-/// directory — the moved album's own `dir_path`, any further-nested
-/// sub-albums' `dir_path`, and every image/video alias — to the new prefix.
-/// The physical `fs::rename` already moved each file's `.xmp` sidecar along
-/// with it (renaming a directory carries its full contents), so only the
-/// stored path *strings* need updating here.
+/// directory), then update every DB record whose path lived under the old
+/// directory.
+///
+/// When the descendant directory name does not collide with an existing target
+/// path, the whole tree is renamed to `target_dir/<name>/...` under both
+/// `Rename` and `Merge`, and every record under the old prefix is rewritten
+/// (nested sub-albums' `dir_path` and every image/video alias). The physical
+/// rename carries each file's `.xmp` sidecar along, so only the stored path
+/// *strings* need updating.
+///
+/// On a name collision (`base_dest` already exists) the modes diverge:
+/// - `Rename` keeps today's behavior: the whole directory is renamed to a
+///   unique `-001` sibling (`find_unique_path`) with the same path-rewrite,
+///   reported as `RenamedFrom`.
+/// - `Merge` dissolves the source tree instead (reported as `Moved`): files are
+///   migrated leaf-to-root into the target album root — deduping
+///   byte-identical copies, auto-renaming distinct-content collisions — then
+///   the emptied source directories and their dir-album records are removed.
+///   Any source directory that still holds a file (and every ancestor) is kept.
 fn move_album_into_album(
     album_hash: ArrayString<64>,
     target_album_id: ArrayString<64>,
@@ -190,12 +204,12 @@ fn move_album_into_album(
             "aliases do not apply to album records",
         ));
     }
-    let (old_dir, new_dir, outcome) = {
+    let (old_dir, new_dir_opt, outcome, removed_dirs) = {
         let txn = TREE
             .in_disk
             .begin_write()
             .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
-        let (old_dir, new_dir, outcome) = {
+        let result = {
             let mut data_table = txn
                 .open_table(DATA_TABLE)
                 .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
@@ -232,63 +246,47 @@ fn move_album_into_album(
             })?;
             let base_dest = target_dir.join(dir_name);
 
-            // A suffix-collision (dest already exists) yields a RenamedFrom
-            // outcome; otherwise the dir tree lands in place (Moved).
-            let outcome = if base_dest.exists() {
-                AssignOutcome::RenamedFrom
-            } else {
-                AssignOutcome::Moved
-            };
-
-            let dest_dir = if base_dest.exists() {
+            if base_dest.exists() {
                 match on_conflict {
-                    // TODO(C7): merge currently behaves like rename; C7 adds recursive merge
-                    OnConflict::Rename | OnConflict::Merge => find_unique_path(&base_dest),
+                    // Collision + Rename: whole-dir rename to a unique sibling.
+                    OnConflict::Rename => {
+                        let dest_dir = find_unique_path(&base_dest);
+                        rename_whole_dir(&mut data_table, &source_dir, &dest_dir)?;
+                        (
+                            source_dir,
+                            Some(dest_dir),
+                            AssignOutcome::RenamedFrom,
+                            Vec::new(),
+                        )
+                    }
+                    // Collision + Merge: recursive leaf-to-root migration.
+                    OnConflict::Merge => {
+                        let removed = merge_album_tree(&mut data_table, &source_dir, target_dir)?;
+                        (source_dir, None, AssignOutcome::Moved, removed)
+                    }
                 }
             } else {
-                base_dest
-            };
-
-            fs::rename(&source_dir, &dest_dir).map_err(|e| {
-                AppError::new(
-                    ErrorKind::Internal,
-                    format!("Failed to move album directory: {e}"),
-                )
-            })?;
-
-            // Rewrite every record whose path lived under source_dir: the
-            // moved album itself, any nested sub-albums, and every
-            // image/video alias. Collect matches first (immutable iteration)
-            // before inserting, since redb doesn't allow mutating a table
-            // while iterating it.
-            let mut updates: Vec<(ArrayString<64>, AbstractData)> = Vec::new();
-            for entry in data_table
-                .iter()
-                .or_raise(|| (ErrorKind::Database, "Failed to iterate data table"))?
-            {
-                let (key_guard, val_guard) =
-                    entry.or_raise(|| (ErrorKind::Database, "Failed to read table entry"))?;
-                let key: ArrayString<64> = ArrayString::from(key_guard.value())
-                    .expect("stored key must fit ArrayString<64>");
-                let mut data = val_guard.value();
-                if rewrite_paths_under(&mut data, &source_dir, &dest_dir) {
-                    updates.push((key, data));
-                }
+                // No collision: both modes land the whole tree in place (Moved).
+                let dest_dir = base_dest;
+                rename_whole_dir(&mut data_table, &source_dir, &dest_dir)?;
+                (source_dir, Some(dest_dir), AssignOutcome::Moved, Vec::new())
             }
-            for (key, data) in updates {
-                data_table
-                    .insert(&*key, data)
-                    .or_raise(|| (ErrorKind::Database, "Failed to update moved record"))?;
-            }
-
-            (source_dir, dest_dir, outcome)
         };
         txn.commit()
             .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
-        (old_dir, new_dir, outcome)
+        result
     };
 
-    rewrite_dir_album_cache_prefix(&old_dir, &new_dir);
+    if let Some(new_dir) = new_dir_opt {
+        // Whole-dir move: re-key every nested cache entry under the new prefix.
+        rewrite_dir_album_cache_prefix(&old_dir, &new_dir);
+    } else {
+        // Merge dissolved the source tree: drop the cache entries for the
+        // removed directories (kept, non-empty directories were not removed).
+        for dir in removed_dirs {
+            evict_dir_album(&dir);
+        }
+    }
 
     if let Some(old_parent_id) = get_parent_album_id(&old_dir) {
         mark_album_for_update(old_parent_id);
@@ -296,6 +294,310 @@ fn move_album_into_album(
     mark_album_for_update(target_album_id);
 
     Ok(outcome)
+}
+
+/// `fs::rename` a whole album directory from `source_dir` to `dest_dir`, then
+/// rewrite every DB record whose path lived under `source_dir` — the moved
+/// album's own `dir_path`, any further-nested sub-albums' `dir_path`, and every
+/// image/video alias — to `dest_dir`.
+fn rename_whole_dir(
+    data_table: &mut redb::Table<'_, &str, AbstractData>,
+    source_dir: &Path,
+    dest_dir: &Path,
+) -> Result<(), AppError> {
+    fs::rename(source_dir, dest_dir).map_err(|e| {
+        AppError::new(
+            ErrorKind::Internal,
+            format!("Failed to move album directory: {e}"),
+        )
+    })?;
+
+    // Collect matches first (immutable iteration) before inserting, since redb
+    // doesn't allow mutating a table while iterating it.
+    let mut updates: Vec<(ArrayString<64>, AbstractData)> = Vec::new();
+    for entry in data_table
+        .iter()
+        .or_raise(|| (ErrorKind::Database, "Failed to iterate data table"))?
+    {
+        let (key_guard, val_guard) =
+            entry.or_raise(|| (ErrorKind::Database, "Failed to read table entry"))?;
+        let key: ArrayString<64> =
+            ArrayString::from(key_guard.value()).expect("stored key must fit ArrayString<64>");
+        let mut data = val_guard.value();
+        if rewrite_paths_under(&mut data, source_dir, dest_dir) {
+            updates.push((key, data));
+        }
+    }
+    for (key, data) in updates {
+        data_table
+            .insert(&*key, data)
+            .or_raise(|| (ErrorKind::Database, "Failed to update moved record"))?;
+    }
+    Ok(())
+}
+
+/// Recursive `Merge` when the source directory name collides with an existing
+/// target path. Migrates every regular file under `source_dir` up into the
+/// target album root, applies per-file merge semantics, then removes the
+/// emptied source directories and updates/removes the affected DB records.
+///
+/// Returns the list of source directories that were physically removed (their
+/// dir-album records are deleted and their cache entries evicted by the
+/// caller).
+fn merge_album_tree(
+    data_table: &mut redb::Table<'_, &str, AbstractData>,
+    source_dir: &Path,
+    target_dir: &Path,
+) -> Result<Vec<PathBuf>, AppError> {
+    let mut files = Vec::new();
+    collect_regular_files(source_dir, &mut files)?;
+
+    // old flattened path -> new path, for records whose alias physically moved.
+    let mut moved: HashMap<PathBuf, PathBuf> = HashMap::new();
+    // Old alias paths removed by content dedup (alias entries already pruned on
+    // disk and recorded here for the DB pass).
+    let mut deleted: HashSet<PathBuf> = HashSet::new();
+
+    for src in files {
+        let file_name = src
+            .file_name()
+            .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Source file has no name"))?;
+        let base_dest = target_dir.join(file_name);
+
+        if base_dest.exists() {
+            if files_hash_equal(&src, &base_dest)? {
+                // Same content: dedup — drop the redundant source copy + its
+                // alias entry (pruned in the DB pass via `prune_alias_paths`).
+                deleted.insert(src);
+                continue;
+            }
+            // Different content: auto-`-001` suffix, never overwrite.
+            let dest = find_unique_path(&base_dest);
+            rename_file_with_sidecar(&src, &dest)?;
+            moved.insert(src, dest);
+        } else {
+            rename_file_with_sidecar(&src, &base_dest)?;
+            moved.insert(src, base_dest);
+        }
+    }
+
+    let removed_dirs = remove_emptied_dirs(source_dir)?;
+    let removed_set: HashSet<PathBuf> = removed_dirs.iter().cloned().collect();
+    apply_merge_records(data_table, &moved, &deleted, &removed_set)?;
+
+    Ok(removed_dirs)
+}
+
+/// Recursively collect the absolute path of every regular file under `dir`,
+/// recursing into subdirectories. `.xmp` sidecars are skipped — a sidecar
+/// travels with its media file in `rename_file_with_sidecar`, so collecting it
+/// independently would double-move it. A leftover orphan sidecar keeps its
+/// directory (and ancestors) non-empty.
+fn collect_regular_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), AppError> {
+    for entry in std::fs::read_dir(dir).or_raise(|| {
+        (
+            ErrorKind::Internal,
+            format!("Failed to read dir {}", dir.display()),
+        )
+    })? {
+        let entry = entry.or_raise(|| (ErrorKind::Internal, "Failed to read dir entry"))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .or_raise(|| (ErrorKind::Internal, "Failed to stat entry"))?;
+        if file_type.is_dir() {
+            collect_regular_files(&path, out)?;
+        } else if file_type.is_file() && path.extension().and_then(|e| e.to_str()) != Some("xmp") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+/// Whether two files contain identical bytes, per BLAKE3 content hash.
+fn files_hash_equal(a: &Path, b: &Path) -> Result<bool, AppError> {
+    let fa = std::fs::File::open(a).map_err(|e| {
+        AppError::new(
+            ErrorKind::InvalidInput,
+            format!("Failed to open source {}: {e}", a.display()),
+        )
+    })?;
+    let fb = std::fs::File::open(b).map_err(|e| {
+        AppError::new(
+            ErrorKind::InvalidInput,
+            format!("Failed to open dest {}: {e}", b.display()),
+        )
+    })?;
+    let ha = crate::process::hash::blake3_hasher(fa).map_err(|e| {
+        AppError::new(
+            ErrorKind::Internal,
+            format!("Failed to hash {}: {e}", a.display()),
+        )
+    })?;
+    let hb = crate::process::hash::blake3_hasher(fb).map_err(|e| {
+        AppError::new(
+            ErrorKind::Internal,
+            format!("Failed to hash {}: {e}", b.display()),
+        )
+    })?;
+    Ok(ha == hb)
+}
+
+/// `fs::rename` a media file to `dest` and move its `.xmp` sidecar alongside
+/// (best-effort, mirroring `move_item_into_album`). Sidecar move failures are
+/// logged, not fatal.
+fn rename_file_with_sidecar(src: &Path, dest: &Path) -> Result<(), AppError> {
+    fs::rename(src, dest).map_err(|e| {
+        AppError::new(
+            ErrorKind::Internal,
+            format!("Failed to move file {}: {e}", src.display()),
+        )
+    })?;
+    let src_sidecar = src.with_extension("xmp");
+    if src_sidecar.exists() {
+        let dst_sidecar = dest.with_extension("xmp");
+        if let Err(e) = fs::rename(&src_sidecar, &dst_sidecar) {
+            warn!("Failed to move XMP sidecar: {e}");
+        }
+    }
+    Ok(())
+}
+
+/// Walk every nested directory under `root` from the deepest upward, removing
+/// each one that is empty. Stops at the first directory that is still
+/// non-empty — keeping it and every ancestor (safety rule). Returns the
+/// removed directories (deepest-first).
+fn remove_emptied_dirs(root: &Path) -> Result<Vec<PathBuf>, AppError> {
+    let mut dirs = Vec::new();
+    collect_dirs(root, &mut dirs)?;
+    // Deepest directories first so a parent is only considered after its
+    // children have been removed (making it eligible to become empty).
+    dirs.sort_by_key(|d| std::cmp::Reverse(d.components().count()));
+
+    let mut removed = Vec::new();
+    for dir in dirs {
+        if dir_is_empty(&dir)? {
+            std::fs::remove_dir(&dir).map_err(|e| {
+                AppError::new(
+                    ErrorKind::Internal,
+                    format!("Failed to remove emptied dir {}: {e}", dir.display()),
+                )
+            })?;
+            removed.push(dir);
+        } else {
+            break;
+        }
+    }
+    Ok(removed)
+}
+
+/// Collect `dir` and every nested directory path (recursively).
+fn collect_dirs(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), AppError> {
+    if dir.is_dir() {
+        out.push(dir.to_path_buf());
+    }
+    for entry in std::fs::read_dir(dir).or_raise(|| {
+        (
+            ErrorKind::Internal,
+            format!("Failed to read dir {}", dir.display()),
+        )
+    })? {
+        let entry = entry.or_raise(|| (ErrorKind::Internal, "Failed to read dir entry"))?;
+        let file_type = entry
+            .file_type()
+            .or_raise(|| (ErrorKind::Internal, "Failed to stat entry"))?;
+        if file_type.is_dir() {
+            collect_dirs(&entry.path(), out)?;
+        }
+    }
+    Ok(())
+}
+
+/// Returns whether `dir` currently contains no entries.
+fn dir_is_empty(dir: &Path) -> Result<bool, AppError> {
+    Ok(std::fs::read_dir(dir)
+        .or_raise(|| {
+            (
+                ErrorKind::Internal,
+                format!("Failed to read dir {}", dir.display()),
+            )
+        })?
+        .next()
+        .is_none())
+}
+
+/// Persist the effects of a recursive `Merge` to `data_table`: rewrite each
+/// moved alias path to its flattened destination, drop alias entries deleted by
+/// content-dedup (via `prune_alias_paths`), and remove the dir-album records of
+/// every removed source directory. Flattening is not a uniform prefix change,
+/// so records are rewritten from the explicit old→new map rather than reusing
+/// `rewrite_paths_under`.
+fn apply_merge_records(
+    data_table: &mut redb::Table<'_, &str, AbstractData>,
+    moved: &HashMap<PathBuf, PathBuf>,
+    deleted: &HashSet<PathBuf>,
+    removed_dirs: &HashSet<PathBuf>,
+) -> Result<(), AppError> {
+    let mut updates: Vec<(ArrayString<64>, AbstractData)> = Vec::new();
+    let mut removals: Vec<ArrayString<64>> = Vec::new();
+
+    for entry in data_table
+        .iter()
+        .or_raise(|| (ErrorKind::Database, "Failed to iterate data table"))?
+    {
+        let (key_guard, val_guard) =
+            entry.or_raise(|| (ErrorKind::Database, "Failed to read table entry"))?;
+        let key: ArrayString<64> =
+            ArrayString::from(key_guard.value()).expect("stored key must fit ArrayString<64>");
+        let mut data = val_guard.value();
+
+        match &mut data {
+            AbstractData::Album(album) => {
+                if removed_dirs.contains(Path::new(&album.metadata.dir_path)) {
+                    removals.push(key);
+                }
+            }
+            AbstractData::Image(_) | AbstractData::Video(_) => {
+                let to_prune: Vec<PathBuf> = data
+                    .alias()
+                    .iter()
+                    .map(|a| PathBuf::from(&a.file))
+                    .filter(|p| deleted.contains(p))
+                    .collect();
+                let mut keep = true;
+                for p in &to_prune {
+                    keep = crate::process::alias::prune_alias_paths(&mut data, p);
+                }
+                let mut changed = false;
+                if let Some(aliases) = data.alias_mut() {
+                    for a in aliases.iter_mut() {
+                        let p = PathBuf::from(&a.file);
+                        if let Some(new_path) = moved.get(&p) {
+                            a.file = new_path.to_string_lossy().into_owned();
+                            changed = true;
+                        }
+                    }
+                }
+                if !keep {
+                    removals.push(key);
+                } else if changed || !to_prune.is_empty() {
+                    updates.push((key, data));
+                }
+            }
+        }
+    }
+
+    for (key, data) in updates {
+        data_table
+            .insert(&*key, data)
+            .or_raise(|| (ErrorKind::Database, "Failed to rewrite moved record"))?;
+    }
+    for key in removals {
+        data_table
+            .remove(&*key)
+            .or_raise(|| (ErrorKind::Database, "Failed to remove record"))?;
+    }
+    Ok(())
 }
 
 /// Rewrite `data`'s stored path(s) from under `old_prefix` to the equivalent
