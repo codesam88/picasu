@@ -1,0 +1,32 @@
+name: assign_album moving a file into the album it already lives in is a 200 no-op
+# Self-move under both surviving modes: the selected file is already inside the
+# target album dir. rename and merge must both return 200 with no physical
+# change — file at the same path, single alias, no photo-001.
+given:
+  - dir_album: /e2e_self/a
+    id_as: $album
+  - photo: /e2e_self/a/photo.jpg
+    id_as: $p
+when:
+  - call: PUT /put/assign_album
+    body:
+      hash: "${p}"
+      albumId: "${album}"
+      onConflict: "rename"
+      alias: "/e2e_self/a/photo.jpg"
+    then:
+      - response.status: 200
+  - call: PUT /put/assign_album
+    body:
+      hash: "${p}"
+      albumId: "${album}"
+      onConflict: "merge"
+      alias: "/e2e_self/a/photo.jpg"
+    then:
+      - response.status: 200
+  - call: GET /get/test/record/${p}
+then:
+  - response.status: 200
+  - response.json.aliases.[0].file: "${data_path}/e2e_self/a/photo.jpg"
+  - file_exists: /e2e_self/a/photo.jpg
+  - file_absent: /e2e_self/a/photo-001.jpg

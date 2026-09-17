@@ -15,6 +15,8 @@ when:
     body:
       hash: "${photo}"
       albumId: "${album_a}"
+      onConflict: "rename"
+      alias: "/e2e_x/import/photo.jpg"
     then:
       - response.status: 200
   # Step 2: Reassign photo to album B
@@ -22,6 +24,8 @@ when:
     body:
       hash: "${photo}"
       albumId: "${album_b}"
+      onConflict: "rename"
+      alias: "/e2e_x/import/photo.jpg"
     then:
       - response.status: 200
   # Step 3: Locate and get-data to verify album membership

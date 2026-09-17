@@ -1,0 +1,57 @@
+name: assign_album on_conflict=merge only removes the selected alias; sibling album alias stays
+# G1 ∩ G2: a record has three aliases (all identical content) — the selected
+# source, plus a sibling alias inside the target album dir, plus a second
+# sibling elsewhere. Merge selecting the source must dedup exactly that source
+# copy; both sibling files and aliases survive.
+given:
+  - dir_album: /e2e_mma/album
+    id_as: $album
+  - dir_album: /e2e_mma/sib
+    id_as: $sib_album
+  - photo: /e2e_mma/srcA/x.jpg
+    id_as: $src
+when:
+  # Build a 3-alias record by uploading the same bytes into two albums.
+  - upload:
+      file: /e2e_mma/srcA/x.jpg
+      filename: photo.jpg
+      target_album: "${album}"
+      on_conflict: rename
+    then:
+      - response.status: 200
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_mma"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - upload:
+      file: /e2e_mma/srcA/x.jpg
+      filename: photo.jpg
+      target_album: "${sib_album}"
+      on_conflict: rename
+    then:
+      - response.status: 200
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_mma"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Merge the source: an identical-content alias already sits in the target
+  # album dir, so only the selected source copy is removed.
+  - call: PUT /put/assign_album
+    body:
+      hash: "${src}"
+      albumId: "${album}"
+      onConflict: "merge"
+      alias: "/e2e_mma/srcA/x.jpg"
+    then:
+      - response.status: 200
+  - call: GET /get/test/record/${src}
+then:
+  - response.status: 200
+  # The album-resident sibling alias persists as the surviving (first) alias.
+  - response.json.aliases.[0].file: "${data_path}/e2e_mma/album/photo.jpeg"
+  # Selected source copy is gone from disk; both sibling copies remain.
+  - file_absent: /e2e_mma/srcA/x.jpg
+  - file_exists: /e2e_mma/album/photo.jpeg
+  - file_exists: /e2e_mma/sib/photo.jpeg

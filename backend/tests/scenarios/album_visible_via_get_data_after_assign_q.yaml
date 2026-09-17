@@ -9,6 +9,8 @@ when:
     body:
       hash: "${photo}"
       albumId: "${album}"
+      onConflict: "rename"
+      alias: "/e2e_q_import/e2e_q_photo.jpg"
     then:
       - response.status: 200
   - call: POST /get/prefetch?locate=${photo}
