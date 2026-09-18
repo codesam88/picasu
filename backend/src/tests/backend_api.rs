@@ -289,7 +289,6 @@ fn check_body_assertions(body_bytes: &[u8], then_items: &[Value], vars: &HashMap
 fn check_file_and_serve_assertions(
     then_items: &[Value],
     data: &Path,
-    client: &Client,
     vars: &HashMap<String, String>,
 ) {
     for item in then_items {
@@ -845,7 +844,7 @@ fn interpret_scenario(scenario: &Value) {
                     let body = resp.into_bytes().expect("response body");
                     check_body_assertions(&body, then_items, &vars);
                 }
-                check_file_and_serve_assertions(then_items, &data, client, &vars);
+                check_file_and_serve_assertions(then_items, &data, &vars);
             } else {
                 if let Some(call_then) = call.get("then").and_then(|v| v.as_array()) {
                     check_status_assertions(&resp, call_then, &vars);
@@ -880,7 +879,7 @@ fn interpret_scenario(scenario: &Value) {
             let body = resp.into_bytes().expect("response body");
             check_body_assertions(&body, then_items, &vars);
         }
-        check_file_and_serve_assertions(then_items, &data, &client, &vars);
+        check_file_and_serve_assertions(then_items, &data, &vars);
     }
 
     if has_config_item {
