@@ -4,22 +4,46 @@ import { IsolationId } from '@/type/types'
 import axios from 'axios'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 
+export type AssignOutcome = 'moved' | 'renamedFrom' | 'deduplicatedRemoved'
+
+interface AssignAlbumResult {
+  outcome: AssignOutcome
+}
+
 export async function assignAlbum(
   hash: string,
   albumId: string,
   index: number,
-  isolationId: IsolationId
+  isolationId: IsolationId,
+  onConflict: 'merge' | 'rename'
 ): Promise<boolean> {
   const messageStore = useMessageStore('mainId')
   const dataStore = useDataStore(isolationId)
 
   const success = await tryWithMessageStore('mainId', async () => {
-    const response = await axios.put('/put/assign_album', { hash, albumId })
+    const item = dataStore.data.get(index)
+    const body: { hash: string; albumId: string; onConflict: 'merge' | 'rename'; alias?: string } =
+      {
+        hash,
+        albumId,
+        onConflict
+      }
+    if (item !== undefined && item.type !== 'album') {
+      const alias = item.alias[0]?.file
+      if (alias !== undefined) body.alias = alias
+    }
+    const response = await axios.put<AssignAlbumResult>('/put/assign_album', body)
     if (response.status !== 200) {
       throw new Error(`Server responded with status ${response.status}`)
     }
     dataStore.setAlbum(index, albumId)
-    messageStore.success('Moved to album.')
+    if (response.data.outcome === 'renamedFrom') {
+      messageStore.success('Moved to album (file renamed).')
+    } else if (response.data.outcome === 'deduplicatedRemoved') {
+      messageStore.success('Already in album; duplicate removed.')
+    } else {
+      messageStore.success('Moved to album.')
+    }
     return true
   })
 

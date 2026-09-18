@@ -354,6 +354,12 @@ between C3 and C5 by the chosen strict tests-first ordering.
 
 ## Progress
 
+- 2026-09-17: C9 done — frontend (G3). `assignAlbum()` sends the selected `alias` (`item.alias[0].file`, omitted for albums) +
+  the required `onConflict`; AssignAlbumModal gains a Merge (default) / Rename radio and passes it to single and batch flows;
+  outcome toasts per file (moved / renamed-from / deduplicated-removed). Batch Playwright scenario added
+  (`assign-batch-album`); `album-tree-refresh-after-move.spec.ts` direct API call now sends `onConflict: rename`.
+  frontend-check passes; Playwright `--grep assign` (3 scenarios) green.
+
 - 2026-09-17: C8 done — upload trimmed to `rename|merge`; absent `on_conflict` now defaults to `rename` (was unique-UUID suffix;
   no scenario relied on UUID names). `merge` on a re-upload of content already resident in the target album dedups: after the
   just-written file is indexed, look up its record by hash, find a different album-dir alias, and `prune_alias_paths` the

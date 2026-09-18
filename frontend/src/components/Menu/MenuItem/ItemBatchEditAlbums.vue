@@ -1,5 +1,5 @@
 <template>
-  <v-list-item prepend-icon="mdi-folder-move" @click="openModal">
+  <v-list-item prepend-icon="mdi-folder-move" value="assign-album" @click="openModal">
     <v-list-item-title class="wrap">{{ label }}</v-list-item-title>
   </v-list-item>
 </template>
