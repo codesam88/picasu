@@ -2,7 +2,7 @@ use crate::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::config::APP_CONFIG;
 use crate::process::dir_album::get_dir_path_for_album;
-use crate::process::sanitize::{FilenameSanitize, sanitize_filename};
+use crate::process::sanitize::{FilenameSanitize, find_unique_path, sanitize_filename};
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardUpload;
 use crate::router::put::assign_album::OnConflict;
@@ -238,18 +238,15 @@ pub async fn upload(
         )?;
         let extension = get_extension(file)?;
 
-        let Some(final_path) = save_file(
+        let final_path = save_file(
             file,
             &target_dir,
             filename,
             extension,
             last_modified,
-            on_conflict_strategy,
+            on_conflict_strategy.unwrap_or(OnConflict::Rename),
         )
-        .await?
-        else {
-            continue; // defensive: no current strategy produces None
-        };
+        .await?;
         let image_root = get_resolved_image_home()
             .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "No imagePath configured"))?;
         let relative_src = Path::new(&final_path)
@@ -345,9 +342,11 @@ fn validate_upload_batch(
 /// Persists the temporary file directly into `target_dir` (its real, final
 /// location under `IMAGE_HOME`) with the correct modification time.
 ///
-/// The original filename is used and the conflict strategy applied. The
-/// legacy `None` unique-UUID path is retained for back-compat but is
-/// unreachable (`on_conflict` now defaults to `Rename` upstream).
+/// The original filename is used and the conflict strategy applied. On a
+/// collision at the final path, both `Rename` and `Merge` auto-suffix a unique
+/// `-NNN` variant (see `find_unique_path`); neither mode overwrites an
+/// existing file. For `Merge`, same-content dedup onto the album copy happens
+/// after indexing (see `merge_dedup_upload`), not at save time.
 ///
 /// Returns the absolute path of the saved file.
 async fn save_file(
@@ -356,12 +355,11 @@ async fn save_file(
     filename: String,
     extension: String,
     last_modified_ms: u64,
-    on_conflict: Option<OnConflict>,
-) -> Result<Option<String>, AppError> {
-    let unique_id = Uuid::new_v4();
+    on_conflict: OnConflict,
+) -> Result<String, AppError> {
     let target_dir = target_dir.to_path_buf();
 
-    let tmp_path = target_dir.join(format!("{filename}-{unique_id}.tmp"));
+    let tmp_path = target_dir.join(format!("{filename}-{}.tmp", Uuid::new_v4()));
 
     // Move to a temp location first to avoid blocking the async runtime with IO.
     // The watcher ignores ".tmp" (not a recognised media extension), so this
@@ -378,23 +376,15 @@ async fn save_file(
     // 2. Atomic rename to .ext (final state).
     // This ensures the file watcher only picks up the file once it is fully
     // written and has the correct timestamp.
-    let result = spawn_blocking(move || -> Result<Option<String>, AppError> {
-        let base_final = if on_conflict.is_some() {
-            target_dir.join(format!("{filename_owned}.{extension}"))
-        } else {
-            target_dir.join(format!("{filename_owned}-{unique_id}.{extension}"))
-        };
+    let result = spawn_blocking(move || -> Result<String, AppError> {
+        let base_final = target_dir.join(format!("{filename_owned}.{extension}"));
 
-        let final_path = if let Some(strategy) = on_conflict {
-            if base_final.exists() {
-                match strategy {
-                    // Merge physically lands a collision as `-001` too; the
-                    // same-content dedup back onto the album copy happens after
-                    // indexing (see `merge_dedup_upload`), not at save time.
-                    OnConflict::Rename | OnConflict::Merge => find_unique_upload_path(&base_final)?,
-                }
-            } else {
-                base_final
+        let final_path = if base_final.exists() {
+            match on_conflict {
+                // Merge physically lands a collision as `-001` too; the
+                // same-content dedup back onto the album copy happens after
+                // indexing (see `merge_dedup_upload`), not at save time.
+                OnConflict::Rename | OnConflict::Merge => find_unique_path(&base_final)?,
             }
         } else {
             base_final
@@ -404,38 +394,12 @@ async fn save_file(
         std::fs::rename(&tmp_path_owned, &final_path)
             .or_raise(|| (ErrorKind::IO, "Failed to rename file"))?;
 
-        Ok(Some(final_path.to_string_lossy().into_owned()))
+        Ok(final_path.to_string_lossy().into_owned())
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
 
     Ok(result)
-}
-
-/// Append `-NNN` before the extension until we find a path that doesn't exist.
-/// `photo.jpg` → `photo-001.jpg`, `photo-002.jpg`, … Gives up after
-/// `u32::MAX - 1` collisions and returns an error instead of panicking; a
-/// filesystem cannot realistically hold that many variants.
-fn find_unique_upload_path(base: &Path) -> Result<PathBuf, AppError> {
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
-    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let parent = base.parent().unwrap_or(Path::new("."));
-
-    for n in 1u32..u32::MAX {
-        let name = if ext.is_empty() {
-            format!("{stem}-{n:03}")
-        } else {
-            format!("{stem}-{n:03}.{ext}")
-        };
-        let candidate = parent.join(&name);
-        if !candidate.exists() {
-            return Ok(candidate);
-        }
-    }
-    Err(AppError::new(
-        ErrorKind::IO,
-        format!("Could not find a free filename for {}", base.display()),
-    ))
 }
 
 #[allow(clippy::cast_possible_wrap)]

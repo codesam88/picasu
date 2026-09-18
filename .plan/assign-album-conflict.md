@@ -354,6 +354,14 @@ between C3 and C5 by the chosen strict tests-first ordering.
 
 ## Progress
 
+- 2026-09-17: C10 done (consolidation). One shared capped `find_unique_path` in `process::sanitize` replaces the duplicated
+  `find_unique_path` (assign, unbounded) and `find_unique_upload_path` (upload, capped). `save_file` simplified: `on_conflict`
+  is now a plain `OnConflict` returning `Result<String, _>` (the unreachable `None`/UUID branch removed; caller unwraps with
+  `unwrap_or(Rename)`); `contents` unchanged. docs/design.md already accurate on the rename|merge model (no doc edit).
+  Suite stays 206/0. The full `place_file` save_file/assign unification from the refactor-candidate section was NOT attempted:
+  upload (temp-file atomic write) and assign (direct rename + sidecar + pre-move dedup) differ enough that a forced shared
+  helper would obscure more than it clarifies for marginal DRY gain.
+
 - 2026-09-17: C9 done — frontend (G3). `assignAlbum()` sends the selected `alias` (`item.alias[0].file`, omitted for albums) +
   the required `onConflict`; AssignAlbumModal gains a Merge (default) / Rename radio and passes it to single and batch flows;
   outcome toasts per file (moved / renamed-from / deduplicated-removed). Batch Playwright scenario added
