@@ -1,0 +1,83 @@
+name: Batch-assigning two photos to an album via the modal moves them all
+covers:
+  api:
+    - PUT /put/assign_album
+  ui:
+    - AssignAlbumModal batch selects album and confirms move
+    - destination album reflects both moved photos
+
+given:
+  - dir_album: assignbatch/imports
+
+  # id_as generates the album's seeded cover placeholder, which also makes the
+  # empty destination directory produce a dir-album record at scan time
+  - dir_album: assignbatch/destination
+    id_as: $dest
+
+  - photo: assignbatch/imports/photo-batch-1.jpg
+
+  - photo: assignbatch/imports/photo-batch-2.jpg
+
+steps:
+  # Navigate through albums so the data store is populated before we select
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: assignbatch
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: imports
+    assert:
+      - ui.visible: main/
+
+  # Enter edit mode on the first photo, then select all so both are batched
+  - when:
+      - click.select_first: true
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.icon: mdi-checkbox-intermediate
+    assert:
+      - ui.visible: main/
+
+  # Open batch menu and launch Assign Album modal
+  # The batch menu item carries a value like the photo menu, exposing it as an option
+  - when:
+      - click.testid: batch-menu
+      - click: option/Assign Album
+    assert:
+      - ui.modal: open
+
+  # Select the destination album in the tree and confirm the move
+  - when:
+      - click: option/Destination
+      - click: button/Move
+    assert:
+      - ui.toast:
+          type: success
+          contains: Moved to album
+
+  # Both photos should now live in the destination album
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: assignbatch
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: destination
+    assert:
+      - ui.visible: main/
+      # destination holds its 1 seeded cover placeholder plus the 2 moved photos
+      - ui.count: .desktop-small-image
+        equals: 3

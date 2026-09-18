@@ -102,6 +102,35 @@
 
       <v-divider />
 
+      <!-- Conflict resolution mode -->
+      <div class="px-4 py-2">
+        <div class="text-body-2 text-medium-emphasis mb-1">
+          When a file with the same name already exists:
+        </div>
+        <v-radio-group v-model="onConflict" density="compact" hide-details>
+          <v-radio value="merge">
+            <template #label>
+              <div>
+                <div>Merge (recommended)</div>
+                <div class="text-caption text-medium-emphasis">
+                  Avoid duplicates in the album; identical files merge into one.
+                </div>
+              </div>
+            </template>
+          </v-radio>
+          <v-radio value="rename">
+            <template #label>
+              <div>
+                <div>Rename</div>
+                <div class="text-caption text-medium-emphasis">
+                  Always move the file, renaming if the name already exists.
+                </div>
+              </div>
+            </template>
+          </v-radio>
+        </v-radio-group>
+      </div>
+
       <v-card-actions>
         <v-spacer />
         <v-btn variant="text" @click="cancel">Cancel</v-btn>
@@ -145,6 +174,7 @@ const messageStore = useMessageStore('mainId')
 const search = ref('')
 const selectedAlbumId = ref<string | null>(null)
 const newAlbumName = ref('')
+const onConflict = ref<'merge' | 'rename'>('merge')
 const submitting = ref(false)
 const creating = ref(false)
 
@@ -330,7 +360,7 @@ async function handleSubmit() {
       for (const idx of indices) {
         const item = dataStore.data.get(idx)
         if (!item) continue
-        await assignAlbum(item.id, selectedAlbumId.value, idx, isolationId)
+        await assignAlbum(item.id, selectedAlbumId.value, idx, isolationId, onConflict.value)
       }
       collectionStore.leaveEdit()
     } else {
@@ -344,7 +374,7 @@ async function handleSubmit() {
       if (item?.isTrashed === true) {
         await setTrashed([index], false, isolationId)
       }
-      await assignAlbum(hash, selectedAlbumId.value, index, isolationId)
+      await assignAlbum(hash, selectedAlbumId.value, index, isolationId, onConflict.value)
     }
     await refreshGalleryAfterMutation(isolationId, route)
   } finally {
