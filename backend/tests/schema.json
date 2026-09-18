@@ -182,7 +182,7 @@
               "type": "string",
               "enum": [
                 "rename",
-                "merge"
+                "skip"
               ]
             },
             "auto_rename": {

@@ -1,14 +1,13 @@
-name: assign_album on_conflict becomes required; legacy skip and replace are rejected
-# Red window: on_conflict is REQUIRED on assign and the legacy values skip and
-# replace are removed. Missing on_conflict, on_conflict=skip, and
-# on_conflict=replace must each be rejected (non-200). A final rename call
-# proves the endpoint still accepts the surviving value.
+name: assign_album on_conflict is required; replace is rejected
+# on_conflict is REQUIRED on assign. Missing on_conflict and on_conflict=replace
+# are rejected (non-200). skip and rename are accepted.
 given:
   - dir_album: /e2e_oc/album
     id_as: $album
   - photo: /e2e_oc/src/p.jpg
     id_as: $src
 when:
+  # Missing on_conflict → 400
   - call: PUT /put/assign_album
     body:
       hash: "${src}"
@@ -16,14 +15,7 @@ when:
       alias: "${data_path}/e2e_oc/src/p.jpg"
     then:
       - response.status_not: 200
-  - call: PUT /put/assign_album
-    body:
-      hash: "${src}"
-      albumId: "${album}"
-      onConflict: "skip"
-      alias: "${data_path}/e2e_oc/src/p.jpg"
-    then:
-      - response.status_not: 200
+  # replace is no longer a valid enum value → 400
   - call: PUT /put/assign_album
     body:
       hash: "${src}"
@@ -32,6 +24,7 @@ when:
       alias: "${data_path}/e2e_oc/src/p.jpg"
     then:
       - response.status_not: 200
+  # rename: move the file (no collision, so Moved)
   - call: PUT /put/assign_album
     body:
       hash: "${src}"
@@ -40,6 +33,17 @@ when:
       alias: "${data_path}/e2e_oc/src/p.jpg"
     then:
       - response.status: 200
+      - response.json.outcome: "moved"
+  # skip: same file, now already in album → Skipped
+  - call: PUT /put/assign_album
+    body:
+      hash: "${src}"
+      albumId: "${album}"
+      onConflict: "skip"
+      alias: "${data_path}/e2e_oc/album/p.jpg"
+    then:
+      - response.status: 200
+      - response.json.outcome: "skipped"
 then:
   - response.status: 200
   - file_exists: /e2e_oc/album/p.jpg
