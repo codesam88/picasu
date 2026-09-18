@@ -5,6 +5,7 @@ use crate::process::dir_album::{
     evict_dir_album, get_dir_path_for_album, get_parent_album_id, mark_album_for_update,
     rewrite_dir_album_cache_prefix,
 };
+use crate::process::sanitize::find_unique_path;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
@@ -250,7 +251,7 @@ fn move_album_into_album(
                 match on_conflict {
                     // Collision + Rename: whole-dir rename to a unique sibling.
                     OnConflict::Rename => {
-                        let dest_dir = find_unique_path(&base_dest);
+                        let dest_dir = find_unique_path(&base_dest)?;
                         rename_whole_dir(&mut data_table, &source_dir, &dest_dir)?;
                         (
                             source_dir,
@@ -372,7 +373,7 @@ fn merge_album_tree(
                 continue;
             }
             // Different content: auto-`-001` suffix, never overwrite.
-            let dest = find_unique_path(&base_dest);
+            let dest = find_unique_path(&base_dest)?;
             rename_file_with_sidecar(&src, &dest)?;
             moved.insert(src, dest);
         } else {
@@ -762,7 +763,7 @@ fn move_item_into_album(
                 // Merge with no redundant album-resident alias falls through to
                 // a safe rename (matches Rename) — never overwrite an existing
                 // album file.
-                OnConflict::Rename | OnConflict::Merge => find_unique_path(&base_dest),
+                OnConflict::Rename | OnConflict::Merge => find_unique_path(&base_dest)?,
             }
         } else {
             base_dest
@@ -802,25 +803,4 @@ fn move_item_into_album(
     txn.commit()
         .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
     Ok(outcome)
-}
-
-/// Append `-NNN` before the extension until we find a path that doesn't exist.
-/// `photo.jpg` → `photo-001.jpg`, `photo-002.jpg`, …
-fn find_unique_path(base: &Path) -> PathBuf {
-    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
-    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let parent = base.parent().unwrap_or(Path::new("."));
-
-    for n in 1u32.. {
-        let name = if ext.is_empty() {
-            format!("{stem}-{n:03}")
-        } else {
-            format!("{stem}-{n:03}.{ext}")
-        };
-        let candidate = parent.join(&name);
-        if !candidate.exists() {
-            return candidate;
-        }
-    }
-    unreachable!("filesystem has finite capacity")
 }

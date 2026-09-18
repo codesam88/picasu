@@ -1,3 +1,5 @@
+use crate::error::{AppError, ErrorKind};
+use std::path::{Path, PathBuf};
 use unicode_normalization::UnicodeNormalization as _;
 
 /// Returns true if `c` is a valid XML 1.0 character and not a C1 control.
@@ -143,6 +145,32 @@ pub fn sanitize_filename(name: &str, normalize_nfc: bool) -> FilenameSanitize {
         normalized,
         reserved,
     }
+}
+
+/// Append `-NNN` before the extension until a non-existent path is found.
+/// `photo.jpg` → `photo-001.jpg`, `photo-002.jpg`, … Gives up after
+/// `u32::MAX - 1` collisions and returns an error instead of panicking; a
+/// filesystem cannot realistically hold that many variants.
+pub fn find_unique_path(base: &Path) -> Result<PathBuf, AppError> {
+    let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let ext = base.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let parent = base.parent().unwrap_or(Path::new("."));
+
+    for n in 1u32..u32::MAX {
+        let name = if ext.is_empty() {
+            format!("{stem}-{n:03}")
+        } else {
+            format!("{stem}-{n:03}.{ext}")
+        };
+        let candidate = parent.join(&name);
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    Err(AppError::new(
+        ErrorKind::IO,
+        format!("Could not find a free filename for {}", base.display()),
+    ))
 }
 
 #[cfg(test)]
