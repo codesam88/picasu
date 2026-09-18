@@ -30,24 +30,42 @@
 
 ## Detailed Design
 
-Each image or video belongs to exactly one album, which corresponds to the
-directory it lives in on disk. The album hierarchy is the filesystem directory
-tree under the single configured `imagePath` root.
+### Filesystem and identity
 
-Consequence: moving a file to a different album moves it on disk. Refreshing
-the frontend after a filesystem move reflects the change without re-indexing.
+The filesystem below `IMAGE_PATH` is the source of truth. The media files,
+their sidecars, and the directory tree are the user's photo repository. An
+image or video belongs to the album represented by its containing directory,
+and an ordinary move changes that tree on disk.
 
-Source of truth is the actual file repo at `IMAGE_PATH`. The backend will
-manage metadata and thumbnails in (currently in `DATA_HOME`, soon to be
-`STATE_HOME`) but also always write back added metadata to the photo repository
-in form of sidecar XMP files.
+The database, hashes, aliases, thumbnails, and other generated state are an
+index that helps the application search, group, and present the repository.
+They must be rebuildable from the filesystem. A hash match identifies files
+that may contain the same bytes; it does not establish user intent or give one
+file authority over another. Each indexed media file and its sidecar remains a
+distinct filesystem item, even when several files share a hash.
 
-Duplicate images are detected based on their original image file hash.
+The distinction between these operations is important:
 
-Consistency is ensured by locking the DB + file access change in a
-common transaction, with associated journal.
+- **Index/ingest** discovers files and never moves or deletes existing files.
+- **Move** moves the selected media file and its sidecar to another album.
+  On filename conflict the file is either left in place (`skip`) or moved
+  under a unique name (`rename`). No file is ever overwritten.
 
-### Importing Images
+The backend manages metadata and thumbnails in `STATE_HOME`, and writes
+user-authored photo metadata back to the repository as sidecar XMP files.
+Moving or copying a photo moves or copies its sidecar with it. `.albuminfo` is
+an optional, app-specific helper stored next to a directory; it customizes the
+presentation of that folder but does not define the folder, its membership, or
+its identity. Losing or rebuilding `.albuminfo` must not lose photos.
+
+Database updates and filesystem operations are not one atomic transaction. A
+journal records the intended filesystem operation and its progress; startup
+recovery and indexing rebuild or reconcile generated state from the repository.
+No operation may report success until its required filesystem changes are
+durable, and a partial operation must remain visible for repair rather than
+silently deleting user files.
+
+### Importing and filesystem synchronization
 
 - Basic functions:
 
@@ -59,73 +77,68 @@ common transaction, with associated journal.
     - src path must be relative to `IMAGE_HOME`
     - loop recursively over src path and execute `index_image(src)` on every image file
 
-- On re-indexing, images with existing/known hash become aliases of the same
-  internal image representation. Same DB entry and thumbnails. But another
-  existing alias image may have an existing sidecar XMP with customized metadata
-  Options:
-  - [ ] ignore the duplicate file, but since it exists in the FS we would be hiding it
-  - [ ] copy and synchronize the metadata...but then we must do this consistently
-  - [x] ignore the possible drifted metadata and allow drifted sidecar files
+- On re-indexing, images with an existing hash may be grouped in the generated
+  index and share thumbnails. Every physical file remains visible in its
+  actual album. Its sidecar remains paired with that file; indexing must not
+  overwrite one file's sidecar or metadata with another file's metadata.
 
-- Watcher or image upload encounters image with same hash...
-  So the image and same metadata are known, and the existing images may have
-  additional metadata assigned and stored in their sidecar files
+- A watcher or upload that encounters an existing hash still adds the physical
+  file by default. It must not silently discard a file merely because it is a
+  duplicate: filesystem sync tools can intentionally maintain copies and can
+  re-send a file after a temporary disappearance.
 
-  Options:
-  - [/] discard the file as duplicate - on interactive use, not useful for watcher?
-  - [x] add the file, thumb/db will refer to same existing hash, allow tags/album to drift
-  - [ ] add the file and synchronize metadata between sidecar files (bit crazy?)
+- Missing or changed files discovered by a watcher are reconciled after a
+  debounce period. A sync tool may temporarily remove or replace a path while
+  transferring it. A changed media file is treated as removal of the old
+  indexed item followed by indexing the new file; it is never an in-place
+  mutation of the old hash record. The event is recorded as a filesystem
+  change and surfaced to the user; it is not treated as permission to delete
+  another indexed file or its metadata.
 
-- Managing duplicate/drifted files?
-  - Keep a list of detected duplicates, report to user
-  - Button to globally merge aliased files in same album (unique per album)
-  - Button to globally remove aliased files without sidecar (keep modified)
-  - Button to globally remove duplicates with no or duplicate sidecar (keep oldest unique)
+- The duplicate view groups files by hash and shows their paths, albums,
+  sidecars, and metadata differences. Per-group cleanup actions are an explicit,
+  separate operation with preview and recovery; they must never run as a side
+  effect of moving or uploading files.
 
 ### Moving / Deleting
 
-- User may reassign image or selection of images to another album
-  - also moves the underlying original file to the respective dir under `IMAGE_PATH`
-  - the backend knows the content hash of every file (duplicates share a
-    record whose aliases are the paths), so conflict resolution is hash-aware.
-    A move always completes — there is no "do nothing" state that would leave
-    leftover, partially-moved sub-albums:
-    - `rename` — move unconditionally; on a filename collision pick a unique
-      name (`photo-001.jpg`). Dumb but safe and predictable: never
-      overwrites, may end up with two aliases of the same content in one
-      album.
-    - `merge` — dedup first: if the target album already holds another alias
-      of the same record (identical content), verify the source copy still
-      matches its recorded hash, then remove the redundant source copy and
-      its alias instead of moving it. All remaining files move, with
-      auto-rename on filename collision. Content is never overwritten with
-      different bytes.
-    - `skip` and `replace` are not offered: a conflicting filename is always
-      resolved by renaming, and an identical file always by merging.
+- User may move a selected file or selection of files to another album. The
+  selected physical files and their sidecars move under `IMAGE_PATH`; other
+  same-hash files remain untouched. A normal move never deduplicates or
+  deletes another file as a side effect.
 
-- Sub-albums are directories whose identity is their path — they have no
-  aliases of their own, only the files inside them. Moving a sub-album into a
-  target whose path already exists: migrate the content recursively from leaf
-  to root, then remove the emptied source directories together with their
-  album records. A directory that still contains files (e.g. a failed move)
-  must not be removed, neither it nor any ancestor that stays non-empty.
+- Filename conflicts never overwrite bytes or sidecars. `skip` leaves both
+  source and destination untouched. `rename` moves the source under a
+  deterministic unique name (`photo-001.jpg`, then `photo-002.jpg`) and reports
+  the final path.
 
-- User may delete files via API
-  - we know the image and hash, can remove associated context if its the last alias
+- A selected file may be deleted explicitly. The file and its sidecar are
+  removed only after confirmation. Generated records and thumbnails may remain
+  only as temporary cleanup state; the filesystem is authoritative.
+
+- Moving a directory into a target with the same child name is a single
+  `fs::rename` operation. `skip` leaves both source and target untouched.
+  `rename` moves the source directory under a unique sibling name. No recursive
+  directory merge or file flattening occurs. The source directory is always
+  moved as one unit.
 
 - Directory indexing or watcher do not move files
 
 - Directory indexing or watcher may also encounter deleted files.
-  When the last image alias is removed, the thumbnails should be removed. But if the
-  last alias is removed by file access, we cannot compute its hash anymore.
+  When the last indexed reference to an image is removed, derived thumbnails may be removed after
+  reconciliation. If the last alias is removed by external file access, the
+  watcher must use the recorded path to identify it because it cannot compute
+  the hash anymore.
   - the watcher may notice delete operations and can lookup the file in DB,
     delete the associated metadata and thumbnails
 
   - On manual indexing, consult the DB for the selected target path and check
-    if all known files exist. Delete thumbnails and metadata for any removed files.
+    if all known files exist. Mark missing aliases for reconciliation before
+    removing derived thumbnails or metadata.
     This cleanup sweep should be done after scanning for any new files, so that
     moved/renamed files only result in alias remapping and not require recomputing
-    all thumbnails. note that sidecar files are not transferred between aliases as by above.
+    all thumbnails. A sidecar is treated as part of the physical alias and is
+    not transferred between unrelated aliases during indexing.
   - A semi-regular cleanup sweep could be done on schedule. Could also verify hashes.
 
   - Discovery of deleted files or changed hashes should be logged...may point
@@ -168,4 +181,3 @@ common transaction, with associated journal.
   - report storage per album, keep track of raw vs post-processed/compressed
   - offer some reasonable default compression ratios
   - detect duplicate / redundant, offer to select best
-  - merge metadata back into originals
