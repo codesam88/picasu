@@ -108,22 +108,22 @@
           When a file with the same name already exists:
         </div>
         <v-radio-group v-model="onConflict" density="compact" hide-details>
-          <v-radio value="merge">
-            <template #label>
-              <div>
-                <div>Merge (recommended)</div>
-                <div class="text-caption text-medium-emphasis">
-                  Avoid duplicates in the album; identical files merge into one.
-                </div>
-              </div>
-            </template>
-          </v-radio>
           <v-radio value="rename">
             <template #label>
               <div>
                 <div>Rename</div>
                 <div class="text-caption text-medium-emphasis">
                   Always move the file, renaming if the name already exists.
+                </div>
+              </div>
+            </template>
+          </v-radio>
+          <v-radio value="skip">
+            <template #label>
+              <div>
+                <div>Skip</div>
+                <div class="text-caption text-medium-emphasis">
+                  Leave files with matching names untouched.
                 </div>
               </div>
             </template>
@@ -174,7 +174,7 @@ const messageStore = useMessageStore('mainId')
 const search = ref('')
 const selectedAlbumId = ref<string | null>(null)
 const newAlbumName = ref('')
-const onConflict = ref<'merge' | 'rename'>('merge')
+const onConflict = ref<'skip' | 'rename'>('rename')
 const submitting = ref(false)
 const creating = ref(false)
 
