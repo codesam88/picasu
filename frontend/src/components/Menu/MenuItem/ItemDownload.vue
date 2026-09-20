@@ -79,7 +79,13 @@ const downloadAllFiles = async () => {
         if (abstractData.type === 'image' || abstractData.type === 'video') {
           const hash = abstractData.id
 
-          const url = getSrcOriginal(hash, true, abstractData.ext, abstractData.updateAt)
+          const url = getSrcOriginal(
+            hash,
+            true,
+            abstractData.ext,
+            abstractData.updateAt,
+            abstractData.assetId
+          )
           await tokenStore.tryRefreshAndStoreTokenToDb(hash)
           const hashToken = tokenStore.hashTokenMap.get(hash)
           if (hashToken === undefined) {

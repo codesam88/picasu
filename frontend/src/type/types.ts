@@ -38,7 +38,11 @@ export type GalleryImage = Extract<UnifiedData, { type: 'image' }>
 export type GalleryVideo = Extract<UnifiedData, { type: 'video' }>
 export type GalleryAlbum = Extract<UnifiedData, { type: 'album' }>
 
-export type EnrichedUnifiedData = UnifiedData & { thumbhashUrl: string | null; timestamp: number }
+export type EnrichedUnifiedData = UnifiedData & {
+  thumbhashUrl: string | null
+  timestamp: number
+  assetId?: string
+}
 
 // List view data structure
 export interface SlicedData {

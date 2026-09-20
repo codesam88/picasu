@@ -175,7 +175,8 @@ async function fetchData(
 
     const dataWithCorrectTimestamp = {
       ...item.abstractData,
-      timestamp: item.timestamp
+      timestamp: item.timestamp,
+      assetId: item.assetId
     }
     const enrichedData = enrichWithThumbhash(dataWithCorrectTimestamp)
     data.set(key, { abstractData: enrichedData, hashToken: item.token, assetId: item.assetId })
