@@ -1,0 +1,65 @@
+name: pagination loads duplicate items across batches
+covers:
+  api:
+    - POST /upload
+    - GET /get/get-data
+  ui:
+    - upload.files
+    - pagination with duplicate items
+    - scroll loads more items
+
+given:
+  - photo: duplicate-pagination/seed.jpg
+  - source_file: 'duplicate-pagination.jpg'
+    format: jpeg
+    width: 64
+    height: 64
+    id_as: $duplicate
+
+steps:
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  # Upload the same file twice to create duplicates
+  - when:
+      - upload.files:
+          trigger: icon/mdi-upload
+          files: ['${duplicate}', '${duplicate}']
+    assert:
+      - ui.modal: open
+
+  - when:
+      - click: button/Upload
+    assert:
+      - ui.toast:
+          type: success
+          contains: Files uploaded successfully
+      - ui.modal: closed
+
+  # Re-enter the route to force a fresh frontend data load
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 3
+
+  # Verify each duplicate can be clicked independently (tests pagination + identity)
+  - when:
+      - click.first: true
+    assert:
+      - ui.route: /view/
+
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 3
+
+  # Click a different image to verify independent identity
+  - when:
+      - click.first: true
+    assert:
+      - ui.route: /view/

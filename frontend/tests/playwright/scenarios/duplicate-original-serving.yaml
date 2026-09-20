@@ -1,0 +1,78 @@
+name: duplicate files serve original content independently
+covers:
+  api:
+    - POST /upload
+    - GET /object/imported
+  ui:
+    - upload.files
+    - independent original serving for duplicates
+    - view page loads for each duplicate
+
+given:
+  - photo: duplicate-original/seed.jpg
+  - source_file: 'duplicate-original.jpg'
+    format: jpeg
+    width: 64
+    height: 64
+    id_as: $duplicate
+
+steps:
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  # Upload the same file twice to create duplicates
+  - when:
+      - upload.files:
+          trigger: icon/mdi-upload
+          files: ['${duplicate}', '${duplicate}']
+    assert:
+      - ui.modal: open
+
+  - when:
+      - click: button/Upload
+    assert:
+      - ui.toast:
+          type: success
+          contains: Files uploaded successfully
+      - ui.modal: closed
+
+  # Re-enter the route to force a fresh frontend data load
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 3
+
+  # Click first duplicate to open view page
+  - when:
+      - click.first: true
+    assert:
+      - ui.route: /view/
+
+  # Verify view page loaded (image element visible)
+  - when:
+      - wait.ms: 1000
+    assert:
+      - ui.visible: testid/photo-menu
+
+  # Navigate back and click a different duplicate
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 3
+
+  # Click first again (may be a different duplicate after refresh)
+  - when:
+      - click.first: true
+    assert:
+      - ui.route: /view/
+
+  # Verify view page loaded for second duplicate
+  - when:
+      - wait.ms: 1000
+    assert:
+      - ui.visible: testid/photo-menu

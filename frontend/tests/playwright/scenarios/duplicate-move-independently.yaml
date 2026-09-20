@@ -1,0 +1,88 @@
+name: duplicate files can be moved to album independently
+covers:
+  api:
+    - POST /upload
+    - PUT /put/assign_album
+  ui:
+    - upload.files
+    - independent duplicate grid items
+    - independent move of duplicates
+
+given:
+  - photo: duplicate-move/seed.jpg
+  - source_file: 'duplicate-move.jpg'
+    format: jpeg
+    width: 64
+    height: 64
+    id_as: $duplicate
+  - dir_album: /target
+    id_as: $target_album
+
+steps:
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  # Upload the same file twice to create duplicates
+  - when:
+      - upload.files:
+          trigger: icon/mdi-upload
+          files: ['${duplicate}', '${duplicate}']
+    assert:
+      - ui.modal: open
+
+  - when:
+      - click: button/Upload
+    assert:
+      - ui.toast:
+          type: success
+          contains: Files uploaded successfully
+      - ui.modal: closed
+
+  # Re-enter the route to force a fresh frontend data load
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 3
+
+  # Select the first image to enter edit mode
+  - when:
+      - click.select_first: true
+    assert:
+      - ui.visible: testid/batch-menu
+
+  # Open the batch menu and choose Move to Album
+  - when:
+      - click.testid: batch-menu
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: option/assign-album
+    assert:
+      - ui.modal: open
+
+  # Select the target album and move
+  - when:
+      - click.text: target
+    assert:
+      - ui.text: button/Move
+        contains: Move
+
+  - when:
+      - click: button/Move
+    assert:
+      - ui.toast:
+          type: success
+          contains: Moved to album
+      - ui.modal: closed
+
+  # Verify we're back at the timeline with 2 images remaining
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 2
