@@ -123,8 +123,11 @@ async function checkAndFetch(index: number): Promise<boolean> {
   const hash = abstractData.type === 'album' ? abstractData.cover : abstractData.id
   if (hash == null) return false
 
+  // Use assetId for media items, content hash for album covers
+  const assetId = abstractData.type === 'album' ? hash : (abstractData.assetId ?? hash)
+
   await tokenStore.refreshTimestampTokenIfExpired()
-  await tokenStore.refreshHashTokenIfExpired(hash)
+  await tokenStore.refreshAssetTokenIfExpired(assetId)
 
   const timestampToken = tokenStore.timestampToken
   if (timestampToken === null) {
@@ -132,9 +135,9 @@ async function checkAndFetch(index: number): Promise<boolean> {
     return false
   }
 
-  const hashToken = tokenStore.hashTokenMap.get(hash)
-  if (hashToken === undefined) {
-    console.error(`hashToken is undefined after refresh for hash: ${hash}`)
+  const assetToken = tokenStore.assetTokenMap.get(assetId)
+  if (assetToken === undefined) {
+    console.error(`assetToken is undefined after refresh for assetId: ${assetId}`)
     return false
   }
 
@@ -146,7 +149,7 @@ async function checkAndFetch(index: number): Promise<boolean> {
     shareId: shareStore.shareId,
     password: shareStore.password,
     timestampToken,
-    hashToken,
+    hashToken: assetToken,
     updatedAt: abstractData.updateAt
   })
 

@@ -3,7 +3,7 @@ import { jwtDecode } from 'jwt-decode'
 import { defineStore } from 'pinia'
 import axios from 'axios'
 import { TokenResponseSchema } from '@/type/schemas'
-import { storeHashToken } from '@/db/db'
+import { storeAssetToken } from '@/db/db'
 
 interface JwtPayload {
   timestamp: number
@@ -15,11 +15,11 @@ export const useTokenStore = (isolationId: IsolationId) =>
   defineStore('tokenStore' + isolationId, {
     state: (): {
       timestampToken: string | null
-      hashTokenMap: Map<string, string>
+      assetTokenMap: Map<string, string>
       _renewingTimestamp: Promise<void> | null
     } => ({
       timestampToken: null,
-      hashTokenMap: new Map<string, string>(),
+      assetTokenMap: new Map<string, string>(),
       _renewingTimestamp: null
     }),
 
@@ -48,8 +48,8 @@ export const useTokenStore = (isolationId: IsolationId) =>
         return decoded?.timestamp ?? null
       },
 
-      _getTimestampFromHashToken(hash: string): number | undefined {
-        const token = this.hashTokenMap.get(hash)
+      _getTimestampFromAssetToken(assetId: string): number | undefined {
+        const token = this.assetTokenMap.get(assetId)
         if (token === undefined) return undefined
         const decoded = this._decodeToken(token)
         return decoded?.timestamp
@@ -67,7 +67,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
         }
       },
 
-      async _updateHashToken(expiredToken: string): Promise<string | null> {
+      async _updateAssetToken(expiredToken: string): Promise<string | null> {
         if (this.timestampToken == null) {
           console.error('Missing timestampToken for authorization')
           return null
@@ -82,7 +82,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
           const parsed: TokenResponse = TokenResponseSchema.parse(response.data)
           return parsed.token
         } catch (err) {
-          console.error('Failed to update hash token:', err)
+          console.error('Failed to update asset token:', err)
           return null
         }
       },
@@ -105,10 +105,10 @@ export const useTokenStore = (isolationId: IsolationId) =>
         await this._renewingTimestamp
       },
 
-      async _ensureHashTokenFresh(hash: string): Promise<string | null> {
-        const currentToken = this.hashTokenMap.get(hash)
+      async _ensureAssetTokenFresh(assetId: string): Promise<string | null> {
+        const currentToken = this.assetTokenMap.get(assetId)
         if (currentToken === undefined) {
-          console.error(`No token found for hash: ${hash}`)
+          console.error(`No token found for assetId: ${assetId}`)
           return null
         }
 
@@ -118,9 +118,9 @@ export const useTokenStore = (isolationId: IsolationId) =>
 
         await this.refreshTimestampTokenIfExpired()
 
-        const newToken = await this._updateHashToken(currentToken)
+        const newToken = await this._updateAssetToken(currentToken)
         if (newToken !== null) {
-          this.hashTokenMap.set(hash, newToken)
+          this.assetTokenMap.set(assetId, newToken)
         }
         return newToken
       },
@@ -130,15 +130,15 @@ export const useTokenStore = (isolationId: IsolationId) =>
         await this._refreshTimestampTokenWithLock()
       },
 
-      async refreshHashTokenIfExpired(hash: string): Promise<void> {
-        await this._ensureHashTokenFresh(hash)
+      async refreshAssetTokenIfExpired(assetId: string): Promise<void> {
+        await this._ensureAssetTokenFresh(assetId)
       },
 
-      async tryRefreshAndStoreTokenToDb(hash: string): Promise<void> {
-        const freshToken = await this._ensureHashTokenFresh(hash)
+      async tryRefreshAndStoreTokenToDb(assetId: string): Promise<void> {
+        const freshToken = await this._ensureAssetTokenFresh(assetId)
         if (freshToken === null) return
 
-        await storeHashToken(hash, freshToken)
+        await storeAssetToken(assetId, freshToken)
       }
     }
   })()

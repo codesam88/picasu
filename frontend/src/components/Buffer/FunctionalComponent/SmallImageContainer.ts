@@ -135,10 +135,11 @@ async function checkAndFetch(
 
   if (abstractData.type === 'image' || abstractData.type === 'video') {
     const hash = abstractData.id
-    await tokenStore.refreshHashTokenIfExpired(hash)
-    const hashToken = tokenStore.hashTokenMap.get(hash)
-    if (hashToken === undefined) {
-      throw new Error(`hashToken is undefined after refresh for hash: ${hash}`)
+    const assetId = abstractData.assetId ?? hash
+    await tokenStore.refreshAssetTokenIfExpired(assetId)
+    const assetToken = tokenStore.assetTokenMap.get(assetId)
+    if (assetToken === undefined) {
+      throw new Error(`assetToken is undefined after refresh for assetId: ${assetId}`)
     }
 
     getArrayValue(workerStore.postToImgWorkerList, workerIndex).processSmallImage({
@@ -151,17 +152,17 @@ async function checkAndFetch(
       shareId: shareStore.shareId,
       password: shareStore.password,
       timestampToken,
-      hashToken,
+      hashToken: assetToken,
       updatedAt: abstractData.updateAt
     })
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   } else if (abstractData.type === 'album' && abstractData.cover != null) {
     const hash = abstractData.cover
-    await tokenStore.refreshHashTokenIfExpired(hash)
+    await tokenStore.refreshAssetTokenIfExpired(hash)
 
-    const hashToken = tokenStore.hashTokenMap.get(hash)
-    if (hashToken === undefined) {
-      throw new Error(`hashToken is undefined after refresh for cover: ${hash}`)
+    const assetToken = tokenStore.assetTokenMap.get(hash)
+    if (assetToken === undefined) {
+      throw new Error(`assetToken is undefined after refresh for cover: ${hash}`)
     }
 
     getArrayValue(workerStore.postToImgWorkerList, workerIndex).processSmallImage({
@@ -175,7 +176,7 @@ async function checkAndFetch(
       shareId: shareStore.shareId,
       password: shareStore.password,
       timestampToken,
-      hashToken,
+      hashToken: assetToken,
       updatedAt: abstractData.updateAt
     })
   }

@@ -51,14 +51,16 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
           dataStore.assetIdMapData.set(assetId, index)
         }
 
-        // Business Logic: Albums rely on 'cover' for token validation,
-        // whereas distinct media types (Images/Videos) use their unique ID.
+        // Token storage: key by assetId for media items, by content hash for album covers
         if (data.type === 'album') {
           if (data.cover !== null) {
-            tokenStore.hashTokenMap.set(data.cover, hashToken)
+            tokenStore.assetTokenMap.set(data.cover, hashToken)
           }
+        } else if (assetId !== undefined) {
+          tokenStore.assetTokenMap.set(assetId, hashToken)
         } else {
-          tokenStore.hashTokenMap.set(data.id, hashToken)
+          // Fallback: use content hash when assetId is not available
+          tokenStore.assetTokenMap.set(data.id, hashToken)
         }
       })
       dataStore.batchFetched.set(payload.batch, true)
@@ -145,7 +147,7 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
     },
 
     refreshHashToken: (payload) => {
-      tokenStore.hashTokenMap.set(payload.hash, payload.hashToken)
+      tokenStore.assetTokenMap.set(payload.hash, payload.hashToken)
     }
   })
 
