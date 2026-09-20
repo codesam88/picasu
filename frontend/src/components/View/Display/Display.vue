@@ -124,7 +124,11 @@ async function checkAndFetch(index: number): Promise<boolean> {
   if (hash == null) return false
 
   // Use assetId for media items, content hash for album covers
-  const assetId = abstractData.type === 'album' ? hash : (abstractData.assetId ?? hash)
+  const assetId = abstractData.type === 'album' ? hash : abstractData.assetId
+  if (assetId === undefined) {
+    console.error(`Media item has no assetId; cannot fetch`)
+    return false
+  }
 
   await tokenStore.refreshTimestampTokenIfExpired()
   await tokenStore.refreshAssetTokenIfExpired(assetId)

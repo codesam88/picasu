@@ -59,8 +59,9 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
         } else if (assetId !== undefined) {
           tokenStore.assetTokenMap.set(assetId, hashToken)
         } else {
-          // Fallback: use content hash when assetId is not available
-          tokenStore.assetTokenMap.set(data.id, hashToken)
+          // No assetId available — token cannot be stored by asset identity.
+          // This item will not be servable until re-indexed with assetId.
+          console.warn(`Media item ${data.id} has no assetId; token not stored`)
         }
       })
       dataStore.batchFetched.set(payload.batch, true)

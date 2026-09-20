@@ -25,10 +25,14 @@ const regenerateThumbnailByFrame = async () => {
   const hash = route.params.hash
   if (typeof hash !== 'string') return
 
-  // Resolve assetId from data store; fall back to hash for backward compat
+  // Resolve assetId from data store
   const index = dataStore.hashMapData.get(hash)
   const data = index !== undefined ? dataStore.data.get(index) : undefined
-  const assetId = data?.assetId ?? hash
+  const assetId = data?.assetId
+  if (assetId === undefined) {
+    messageStore.error('Item has no assetId; cannot regenerate')
+    return
+  }
 
   if (editStore.hasRegenerate(assetId)) return
 
