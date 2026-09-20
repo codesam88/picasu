@@ -8,7 +8,7 @@ given:
 when:
   - call: PUT /put/assign_album
     body:
-      hash: "${photo}"
+      assetId: "${asset_id}"
       albumId: "${album}"
       onConflict: "rename"
       alias: "${data_path}/e2e_q_import/e2e_q_photo.jpg"

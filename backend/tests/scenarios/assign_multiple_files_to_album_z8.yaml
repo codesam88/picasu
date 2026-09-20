@@ -5,14 +5,17 @@ given:
     id_as: $album
   - photo: /e2e_z8/import/alpha.jpg
     id_as: $alpha
+    asset_id_as: $alpha_asset
   - photo: /e2e_z8/import/beta.jpg
     id_as: $beta
+    asset_id_as: $beta_asset
   - photo: /e2e_z8/import/gamma.jpg
     id_as: $gamma
+    asset_id_as: $gamma_asset
 when:
   - call: PUT /put/assign_album
     body:
-      hash: "${alpha}"
+      assetId: "${alpha_asset}"
       albumId: "${album}"
       onConflict: "rename"
       alias: "${data_path}/e2e_z8/import/alpha.jpg"
@@ -20,7 +23,7 @@ when:
       - response.status: 200
   - call: PUT /put/assign_album
     body:
-      hash: "${beta}"
+      assetId: "${beta_asset}"
       albumId: "${album}"
       onConflict: "rename"
       alias: "${data_path}/e2e_z8/import/beta.jpg"
@@ -28,7 +31,7 @@ when:
       - response.status: 200
   - call: PUT /put/assign_album
     body:
-      hash: "${gamma}"
+      assetId: "${gamma_asset}"
       albumId: "${album}"
       onConflict: "rename"
       alias: "${data_path}/e2e_z8/import/gamma.jpg"

@@ -45,6 +45,8 @@ pub fn asset_id_to_abstract_data(
 
 /// Convert an `AssetRecord` to an `AbstractData` for API responses.
 /// This is a lossy conversion — EXIF, tags, and other metadata are not preserved.
+/// Uses content hash as `object.id` for media items (required for compressed
+/// thumbnail path resolution). Uses `asset_id` for albums (no thumbnails).
 pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) -> AbstractData {
     use crate::model::album::{AlbumCombined, AlbumMetadata};
     use crate::model::asset::AssetKind;
@@ -53,8 +55,9 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
     use crate::model::response::FileModify;
     use crate::model::video::{VideoCombined, VideoMetadata};
 
-    // Use asset_id as the display ID.
-    let display_id = record.asset_id;
+    // Media items use content hash as object.id (required for compressed
+    // thumbnail path resolution). Albums use asset_id (no thumbnails).
+    let display_id = record.content_hash.unwrap_or(record.asset_id);
 
     match record.kind {
         AssetKind::Image => {
@@ -82,9 +85,11 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
             AbstractData::Video(VideoCombined { object, metadata })
         }
         AssetKind::Album => {
-            let object = ObjectSchema::new(display_id, ObjectType::Album);
+            // Albums use asset_id as display_id (no compressed thumbnails).
+            let album_id = record.asset_id;
+            let object = ObjectSchema::new(album_id, ObjectType::Album);
             let metadata = AlbumMetadata {
-                id: display_id,
+                id: album_id,
                 title: None,
                 created_time: record.scan_time,
                 start_time: None,

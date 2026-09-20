@@ -10,11 +10,13 @@ given:
       - e2e_w_city
       - e2e_w_travel
     id_as: $photo1
+    asset_id_as: $photo1_asset
   - photo: /e2e_w/photo2.jpg
     tags:
       - e2e_w_city
       - e2e_w_architecture
     id_as: $photo2
+    asset_id_as: $photo2_asset
 when:
   # Step 1: Create a child album via API (adds directory + registers)
   - call: POST /post/create_dir_album
@@ -26,7 +28,7 @@ when:
   # Step 2: Assign first photo to parent album
   - call: PUT /put/assign_album
     body:
-      hash: "${photo1}"
+      assetId: "${photo1_asset}"
       albumId: "${parent}"
       onConflict: "rename"
       alias: "${data_path}/e2e_w/photo1.jpg"
@@ -35,7 +37,7 @@ when:
   # Step 3: Assign second photo to parent album
   - call: PUT /put/assign_album
     body:
-      hash: "${photo2}"
+      assetId: "${photo2_asset}"
       albumId: "${parent}"
       onConflict: "rename"
       alias: "${data_path}/e2e_w/photo2.jpg"

@@ -6,6 +6,7 @@ given:
     id_as: $album
   - photo: /e2e_rsdn/src/other.jpg
     id_as: $src
+    asset_id_as: $src_asset
 when:
   # Upload the byte-identical source into the album under a different name.
   - upload:
@@ -23,7 +24,7 @@ when:
   # Move source into the album.
   - call: PUT /put/assign_album
     body:
-      hash: "${src}"
+      assetId: "${src_asset}"
       albumId: "${album}"
       onConflict: "rename"
       alias: "${data_path}/e2e_rsdn/src/other.jpg"
