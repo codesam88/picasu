@@ -161,24 +161,42 @@ Unit tests (4 pass):
 - These require extending `AssetRecord` with metadata fields (description,
   tags, rating) which is part of the Phase 4 indexing pipeline work.
 
-## Phase 4: Indexing and Duplicate Handling
+## Phase 4: Indexing and Duplicate Handling — COMPLETED (write path only)
 
-Change `index_image` and `DeduplicateTask`:
+### Path-primary indexing function — DONE
 
-- lookup by canonical path first;
-- update the path asset if it already exists;
-- otherwise allocate a new asset ID;
-- update the hash group independently;
-- never append a path to another asset record;
-- never delete a path because its hash already exists.
+`process/index_asset.rs` provides `index_asset(src, image_root)` which:
 
-Tests:
+- looks up canonical path in `ASSET_BY_PATH` first;
+- updates existing asset if path already indexed (hash, size, modified time);
+- allocates a fresh `asset_id` for new paths;
+- updates `DUPE_INDEX` independently (removes from old group on hash change);
+- never appends a path to another asset record;
+- never deletes a path because its hash already exists;
+- derives album membership from parent directory asset.
 
-- indexing identical bytes at two paths creates two asset IDs;
-- indexing either path again is idempotent;
-- changing bytes at an existing path updates that asset’s hash group;
-- deleting/replacing one path does not affect the other;
-- a concurrent duplicate index does not create two assets for one path.
+### Unit tests — DONE (4 pass)
+
+- `index_identical_bytes_at_two_paths_creates_two_assets` — separate asset IDs,
+  same DUPE_INDEX group
+- `index_same_path_again_is_idempotent` — same path → same asset ID, DUPE_INDEX
+  has exactly 1 entry
+- `index_changed_bytes_updates_hash_group` — hash change removes from old group,
+  adds to new; asset ID preserved
+- `index_delete_one_path_does_not_affect_other` — removing one asset leaves the
+  other and its DUPE_INDEX entry intact
+
+### Not yet wired
+
+The new `index_asset()` function is not yet called from the production indexing
+pipeline (`workflow::index_image`). The existing `DeduplicateTask` still uses
+hash-merging for the old `DATA_TABLE`. Wiring `index_asset` into the production
+pipeline is deferred until Phase 5+ when the read path is also migrated.
+
+The red API tests (`dup_same_album_two_items`, `dup_move_one_leaves_other`,
+`dup_delete_record_does_not_destroy_other`, `duplicate_files_are_independent_album_items`)
+still fail because the API read path uses the old `DATA_TABLE`, not the new
+asset stores.
 
 ## Phase 5: Snapshot and Query Read Path
 

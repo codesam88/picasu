@@ -3,6 +3,7 @@ pub mod dir_album;
 pub mod exif;
 pub mod hash;
 pub mod index;
+pub mod index_asset;
 pub mod misc;
 pub mod rebuild;
 pub mod sanitize;

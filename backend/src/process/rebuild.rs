@@ -207,7 +207,6 @@ mod tests {
     use super::*;
     use crate::storage::db::TREE;
     use crate::tests::bootstrap::*;
-    use redb::ReadableTable;
 
     fn ensure_asset_tables() {
         let _ = &*TEST_ENV;
