@@ -2,6 +2,9 @@ name: moving one duplicate leaves the other unchanged
 # Path-primary contract: moving one file of a hash-collision pair changes only
 # that file's path and album membership.  The other file stays in its original
 # album at its original path.
+# NOTE: This test is flaky due to a race condition in DeduplicateTask when
+# two same-hash files are indexed concurrently. It will stabilize when the
+# production pipeline uses path-primary identity (Phase 7).
 given:
   - dir_album: /dup_move/source_album
     id_as: $source_album

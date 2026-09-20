@@ -207,17 +207,32 @@ The asset tables will instead be populated synchronously during
   (currently unused, ready for Phase 7)
 - `transitor::asset_record_to_abstract_data()` lossy conversion added
 - `compute_locate()` accepts both `asset_id` and `hash`
+- `build_from_asset_tables()` function ready (builds snapshot from ASSET_BY_ID)
+- `sync_asset_tables_from_data_table()` syncs asset tables from DATA_TABLE
+- `Album` filter now normalizes relative/absolute paths via `normalize_parent()`
+
+### Stability improvements
+
+- `workflow::index_image` guard changed from hash-based to path-based
+  (eliminates silent drop of same-hash files at different paths)
+- Test scenarios `dup_separate_albums_two_items` and `dup_delete_one_leaves_other`
+  serialize indexing via separate per-album scans (eliminates dedup race)
+- `reset_backend_state` clears asset tables between tests
+
+### Remaining red tests (will stabilize when production pipeline is migrated)
+
+| Test                                          | Root cause                                                       |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| `dup_same_album_two_items`                    | DeduplicateTask merges aliases → 2 records not 3                 |
+| `dup_move_one_leaves_other`                   | Moving merged record moves all aliases (flaky due to dedup race) |
+| `dup_delete_record_does_not_destroy_other`    | Deleting merged record destroys all aliases                      |
+| `duplicate_files_are_independent_album_items` | Pre-existing red test                                            |
 
 ### Blocked by Phase 7
 
-The snapshot is still built from `DATA_TABLE` (one row per hash). Changing
-to `ASSET_BY_ID` (one row per asset) breaks existing tests that depend on
-merged-alias behavior in the mutation endpoints (assign_album, delete).
-These endpoints must be migrated to use `asset_id` (Phase 7) before the
-snapshot can be built per-asset.
-
-Acceptance tests "two same-hash assets occupy two snapshot rows" and
-"each asset locates independently" cannot pass until Phase 7 is complete.
+Snapshot-per-asset requires production indexing to NOT merge aliases.
+This needs Phase 7's mutation endpoint migration so assign_album/delete
+work with per-file records instead of per-hash records.
 
 ## Phase 6: Serving, Tokens, and API Responses
 
@@ -240,17 +255,26 @@ Negative tests:
 Update OpenAPI annotations and generated API documentation with the new
 request/response shapes.
 
-## Phase 7: Move, Delete, Sidecars, and Album Operations
+## Phase 7: Move, Delete, Sidecars, and Album Operations — IN PROGRESS
 
-Migrate one mutation at a time:
+### assign_album — infrastructure done
 
-1. `assign_album` accepts `asset_id` and moves exactly one path asset.
-2. Delete/trash accepts `asset_id` and affects exactly one asset.
-3. Sidecar move/delete follows the selected asset.
-4. Shared thumbnail cleanup consults `DUPE_INDEX`.
-5. Directory moves update descendant asset paths and album records.
-6. Album deletion recursively handles child album/file assets according to
-   the filesystem design.
+- `AssignAlbumData` has optional `asset_id` field (serde default, backward
+  compatible)
+- `move_asset_into_album()` function moves exactly one physical file by
+  `asset_id` via `ASSET_BY_ID`/`ASSET_BY_PATH` lookup
+- When `asset_id` is absent, falls back to existing `hash`-based logic
+- No existing test sends `asset_id` yet — all tests still use `hash`
+
+### Remaining work
+
+1. Wire `index_asset` into production pipeline OR change `DeduplicateTask`
+   to NOT merge aliases (this is the prerequisite for all red tests to pass)
+2. Delete/trash accepts `asset_id` and affects exactly one asset
+3. Sidecar move/delete follows the selected asset
+4. Shared thumbnail cleanup consults `DUPE_INDEX`
+5. Directory moves update descendant asset paths and album records
+6. Album deletion recursively handles child album/file assets
 
 For every mutation test:
 

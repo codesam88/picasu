@@ -37,6 +37,21 @@ pub enum Expression {
 
 use crate::model::abstract_data::AbstractData;
 
+/// Normalize a file path and return its parent directory.
+/// Handles both absolute and relative paths by resolving relative paths
+/// against the configured image home.
+fn normalize_parent(file_path: &str) -> Option<std::path::PathBuf> {
+    let p = std::path::Path::new(file_path);
+    let abs = if p.is_absolute() {
+        p.to_path_buf()
+    } else if let Some(image_home) = crate::storage::files::get_resolved_image_home() {
+        image_home.join(p)
+    } else {
+        p.to_path_buf()
+    };
+    abs.parent().map(std::path::Path::to_path_buf)
+}
+
 impl Expression {
     #[allow(clippy::too_many_lines)]
     pub fn generate_filter(self) -> Box<dyn Fn(&AbstractData) -> bool + Sync + Send> {
@@ -222,13 +237,18 @@ impl Expression {
                         Some(dir) => {
                             // Only files whose immediate parent equals this album's directory.
                             // Files in sub-directories belong to the corresponding child album.
+                            // Normalize both paths to handle relative vs absolute mismatches.
                             Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                                AbstractData::Image(img) => img.metadata.alias.iter().any(|a| {
-                                    std::path::Path::new(&a.file).parent() == Some(dir.as_path())
-                                }),
-                                AbstractData::Video(vid) => vid.metadata.alias.iter().any(|a| {
-                                    std::path::Path::new(&a.file).parent() == Some(dir.as_path())
-                                }),
+                                AbstractData::Image(img) => img
+                                    .metadata
+                                    .alias
+                                    .iter()
+                                    .any(|a| normalize_parent(&a.file) == Some(dir.clone())),
+                                AbstractData::Video(vid) => vid
+                                    .metadata
+                                    .alias
+                                    .iter()
+                                    .any(|a| normalize_parent(&a.file) == Some(dir.clone())),
                                 AbstractData::Album(_) => false,
                             })
                         }

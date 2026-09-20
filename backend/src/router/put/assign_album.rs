@@ -36,6 +36,12 @@ pub enum OnConflict {
 pub struct AssignAlbumData {
     #[schema(value_type = String)]
     pub hash: ArrayString<64>,
+    /// Optional `asset_id` for path-primary identity. When provided, the
+    /// handler resolves the record via `ASSET_BY_ID` instead of `DATA_TABLE`,
+    /// allowing independent movement of same-hash files.
+    #[serde(default)]
+    #[schema(value_type = Option<String>)]
+    pub asset_id: Option<ArrayString<64>>,
     #[schema(value_type = String)]
     pub album_id: ArrayString<64>,
     /// Selected alias path for item records; must be absent (null) for albums.
@@ -86,6 +92,7 @@ pub async fn assign_album(
 
     let data = json_data.into_inner();
     let hash = data.hash;
+    let asset_id = data.asset_id;
     let album_id = data.album_id;
     let on_conflict = data.on_conflict;
     let selected_alias = data.alias;
@@ -105,7 +112,14 @@ pub async fn assign_album(
     }
 
     let outcome = tokio::task::spawn_blocking(move || {
-        move_hash_into_album(hash, album_id, &album_dir, on_conflict, selected_alias)
+        move_hash_into_album(
+            hash,
+            asset_id,
+            album_id,
+            &album_dir,
+            on_conflict,
+            selected_alias,
+        )
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
@@ -137,11 +151,17 @@ pub async fn assign_album(
 /// is always empty and the single-file path would reject it outright.
 fn move_hash_into_album(
     hash: ArrayString<64>,
+    asset_id: Option<ArrayString<64>>,
     album_id: ArrayString<64>,
     album_dir: &Path,
     on_conflict: OnConflict,
     selected_alias: Option<String>,
 ) -> Result<AssignOutcome, AppError> {
+    // When asset_id is provided, use the path-primary asset model.
+    if let Some(aid) = asset_id {
+        return move_asset_into_album(aid, album_id, album_dir, on_conflict);
+    }
+
     let is_album = {
         let txn = TREE
             .in_disk
@@ -169,6 +189,80 @@ fn move_hash_into_album(
     } else {
         move_item_into_album(hash, album_id, album_dir, on_conflict, selected_alias)
     }
+}
+
+/// Move a single asset (identified by `asset_id`) into `album_dir`.
+/// This is the path-primary move: only the one physical file at the asset's
+/// canonical path is moved, regardless of hash-matched duplicates.
+fn move_asset_into_album(
+    asset_id: ArrayString<64>,
+    album_id: ArrayString<64>,
+    album_dir: &Path,
+    on_conflict: OnConflict,
+) -> Result<AssignOutcome, AppError> {
+    use crate::storage::asset_store;
+
+    // Look up the asset record.
+    let record = asset_store::get_asset_by_id(&asset_id)
+        .or_raise(|| (ErrorKind::Database, "Failed to look up asset"))?
+        .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Asset not found"))?;
+
+    let source_path = PathBuf::from(&record.canonical_path);
+    if !source_path.exists() {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            format!("File not found at: {}", source_path.display()),
+        ));
+    }
+
+    let file_name = source_path
+        .file_name()
+        .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "File has no name"))?;
+    let base_dest = album_dir.join(file_name);
+
+    let (final_dest, outcome) = if base_dest.exists() {
+        if source_path == base_dest {
+            return Ok(AssignOutcome::Moved); // already there
+        }
+        match on_conflict {
+            OnConflict::Skip => return Ok(AssignOutcome::Skipped),
+            OnConflict::Rename => {
+                let unique = crate::process::sanitize::find_unique_path(&base_dest)
+                    .or_raise(|| (ErrorKind::IO, "Failed to find unique path"))?;
+                (unique, AssignOutcome::RenamedFrom)
+            }
+        }
+    } else {
+        (base_dest, AssignOutcome::Moved)
+    };
+
+    // Move the file on disk.
+    fs::rename(&source_path, &final_dest).or_raise(|| (ErrorKind::IO, "Failed to move file"))?;
+
+    // Move the sidecar if it exists.
+    let sidecar = source_path.with_extension("xmp");
+    if sidecar.exists() {
+        let new_sidecar = final_dest.with_extension("xmp");
+        let _ = fs::rename(&sidecar, &new_sidecar);
+    }
+
+    // Update the asset record with the new path and album.
+    let new_path = final_dest.to_string_lossy().into_owned();
+    let mut updated = record.clone();
+    updated.canonical_path.clone_from(&new_path);
+    updated.album_id = Some(album_id);
+
+    // Update ASSET_BY_ID.
+    asset_store::put_asset_by_id(&updated)
+        .or_raise(|| (ErrorKind::Database, "Failed to update asset"))?;
+
+    // Update ASSET_BY_PATH: remove old, add new.
+    asset_store::remove_asset_by_path(&record.canonical_path)
+        .or_raise(|| (ErrorKind::Database, "Failed to remove old path mapping"))?;
+    asset_store::put_asset_by_path(&new_path, asset_id)
+        .or_raise(|| (ErrorKind::Database, "Failed to add new path mapping"))?;
+
+    Ok(outcome)
 }
 
 /// Move a sub-album's whole directory into `target_dir` (another album's

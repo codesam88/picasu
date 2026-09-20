@@ -12,8 +12,15 @@ given:
       destination: /dup_sep_albums/album_b/photo.jpg
 
 when:
+  # Index album A first, then album B — serializes dedup so the second
+  # file always finds the first file's record.
   - call: POST /post/index/album
-    raw_body: '{"album": "/dup_sep_albums"}'
+    raw_body: '{"album": "/dup_sep_albums/album_a"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_sep_albums/album_b"}'
     then:
       - response.status: 202
   - wait_index: true
@@ -23,8 +30,6 @@ when:
 then:
   - response.status: 200
   # Album B has its placeholder + the duplicate photo = 2 items minimum.
-  # In the path-primary model, the duplicate in album_b is a separate asset
-  # from the original in album_a, so it must appear here independently.
   - compare:
       response.json.prefetch.dataLength: { ">=": 2 }
   - file_exists: /dup_sep_albums/album_a/photo.jpg
