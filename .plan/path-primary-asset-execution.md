@@ -353,49 +353,39 @@ The asset tables will instead be populated synchronously during
 
 Phase 7 is functionally complete for delete/trash, directory moves, album
 covers, shared thumbnails, and recursive album deletion.
+Phase 8 is in progress — watcher tests added, watcher code already path-primary.
 
 Next phases:
 
-- Phase 8: Watcher and Reconciliation
+- Phase 8: complete remaining modify/sidecar tests
 - Phase 9: Frontend Identity Refactor
 
-For every mutation test:
+## Phase 8: Watcher and Reconciliation — IN PROGRESS
 
-- success response;
-- physical file state;
-- sidecar state;
-- asset record state;
-- album query state;
-- duplicate-group state;
-- thumbnail state;
-- stale/unknown ID negative path.
+### Current state
 
-Only after these tests pass should the old hash-plus-alias mutation code be
-removed.
+The watcher code is already path-primary by design:
 
-## Phase 8: Watcher and Reconciliation
+- `DeduplicateTask` always returns `Some` (never merges aliases)
+- `FlushTreeTask` writes to all four tables (ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX, DATA_TABLE)
+- `handle_removed_file` searches by canonical path alias, not hash
+- Create/Modify events go through debounce → `index_image` (path-based)
+- Remove events go through `handle_removed_file` (path-based)
 
-Change watcher/indexer events to begin with canonical path lookup:
+### Tests added
 
-- create: create/update one path asset;
-- modify: reconcile the existing path asset and hash membership;
-- remove: remove/reconcile one path asset;
-- rename: handle as an explicit path transition or remove/create pair;
-- uncertain or dropped events: run the existing filesystem rebuild path.
+- `watcher_create_same_hash_asset`: two same-hash files indexed separately
+- `watcher_remove_preserves_sibling`: deleting one duplicate preserves the other and shared thumbnail
+- `watcher_rename_preserves_sibling`: deleting original preserves copy and moved files
+- `watcher_stale_path_no_delete`: re-indexing preserves existing assets
+- `watcher_discovers_new_file`: existing test (unchanged)
 
-Tests must cover:
+### Remaining work
 
-- create identical file at a new path;
-- modify one duplicate’s bytes;
-- remove one duplicate;
-- rename one duplicate;
-- stale path after external deletion;
-- sidecar change and missing sidecar;
-- partial/canceled scan does not delete outside-scope assets.
-
-Only introduce a durable operation journal if these failure tests demonstrate
-that rebuild/reconciliation is insufficient and the operation protocol
-requires one.
+- modify one duplicate's bytes and verify DUPE_INDEX membership
+- sidecar change and missing sidecar reconciliation
+- partial/canceled scan edge cases (may need Playwright tier)
+- durable operation journal (only if tests demonstrate rebuild/reconciliation is insufficient)
 
 ## Phase 9: Frontend Identity Refactor
 

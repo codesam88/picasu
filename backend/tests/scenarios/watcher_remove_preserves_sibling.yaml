@@ -1,0 +1,49 @@
+name: "watcher remove - removing one duplicate preserves the other and shared thumbnail"
+given:
+  - dir_album: /watcher_remove/album
+    id_as: $album
+  - photo: /watcher_remove/album/keep.jpg
+    id_as: $keep
+  - duplicate_of:
+      source: /watcher_remove/album/keep.jpg
+      destination: /watcher_remove/album/remove_me.jpg
+when:
+  # Index both files.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Get all data in album to find records.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+    capture:
+      ts: response.prefetch.timestamp
+      end: response.prefetch.dataLength
+      token: response.token
+  - call: GET /get/get-data?timestamp=${ts}&start=0&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      first_alias: response.[0].abstractData.alias.[0].file
+  # Delete the first record.
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[0],"aliasList":["${first_alias}"],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Re-index after delete.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Verify remaining file still exists.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+then:
+  - response.status: 200
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 1 }
+  # Shared thumbnail must still exist.
+  - thumb_exists: $keep

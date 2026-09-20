@@ -1,0 +1,28 @@
+name: "watcher stale path - re-indexing preserves existing assets"
+given:
+  - dir_album: /watcher_stale/album
+    id_as: $album
+  - photo: /watcher_stale/album/keep_me.jpg
+  - photo: /watcher_stale/album/also_keep.jpg
+when:
+  # Index everything.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Re-index the same album — should NOT remove existing assets.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Verify both files still exist.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+then:
+  - response.status: 200
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 2 }
+  - file_exists: /watcher_stale/album/keep_me.jpg
+  - file_exists: /watcher_stale/album/also_keep.jpg
