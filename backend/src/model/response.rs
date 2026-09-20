@@ -69,8 +69,8 @@ impl DataBaseTimestampReturn {
                 ClaimsHash::new(vid.object.id, token_timestamp, allow_original).encode()
             }
             AbstractData::Album(alb) => {
-                if let Some(cover_hash) = alb.metadata.cover {
-                    ClaimsHash::new(cover_hash, token_timestamp, allow_original).encode()
+                if let Some(cover_id) = alb.metadata.cover {
+                    ClaimsHash::new(cover_id, token_timestamp, allow_original).encode()
                 } else {
                     String::new()
                 }

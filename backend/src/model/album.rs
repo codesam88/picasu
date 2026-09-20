@@ -21,6 +21,7 @@ pub struct AlbumCombined {
 
 /// A helper struct to hold media item info for album calculations
 struct MediaItemInfo {
+    asset_id: Option<ArrayString<64>>,
     hash: ArrayString<64>,
     size: u64,
     thumbhash: Option<Vec<u8>>,
@@ -28,13 +29,15 @@ struct MediaItemInfo {
 }
 
 impl AlbumCombined {
-    pub fn set_cover(&mut self, cover_data: &AbstractData) {
-        self.metadata.cover = Some(cover_data.hash());
+    pub fn set_cover(&mut self, cover_data: &AbstractData, asset_id: Option<ArrayString<64>>) {
+        // Prefer asset_id for path-primary identity; fall back to content hash
+        // only when asset_id is unavailable (should not happen after migration).
+        self.metadata.cover = asset_id.or(Some(cover_data.hash()));
         self.object.thumbhash = cover_data.thumbhash().cloned();
     }
 
     fn set_cover_from_info(&mut self, info: &MediaItemInfo) {
-        self.metadata.cover = Some(info.hash);
+        self.metadata.cover = info.asset_id.or(Some(info.hash));
         self.object.thumbhash.clone_from(&info.thumbhash);
     }
 
@@ -61,6 +64,7 @@ impl AlbumCombined {
                     AbstractData::Image(img) => {
                         if belongs_to_album(&img.metadata.alias) {
                             Some(MediaItemInfo {
+                                asset_id: database_timestamp.asset_id,
                                 hash: img.object.id,
                                 size: img.metadata.size,
                                 thumbhash: img.object.thumbhash.clone(),
@@ -73,6 +77,7 @@ impl AlbumCombined {
                     AbstractData::Video(vid) => {
                         if belongs_to_album(&vid.metadata.alias) {
                             Some(MediaItemInfo {
+                                asset_id: database_timestamp.asset_id,
                                 hash: vid.object.id,
                                 size: vid.metadata.size,
                                 thumbhash: vid.object.thumbhash.clone(),
