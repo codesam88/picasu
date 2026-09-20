@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: chore
 priority: high
 area: full-stack
@@ -55,12 +55,56 @@ area: full-stack
 | `ViewPage.vue:116` | `route.params.hash`                          | Route uses hash param     |
 | `routes.ts:90`     | `params: { hash: route.params.hash }`        | Route uses hash param     |
 
-## Execution Plan
+## Completed Work
 
-1. Make `asset_id` required in `ClaimsHash`, `DatabaseTimestamp`, `DataBaseTimestampReturn`, `ReducedData`
-2. Make `asset_id` required in `AssignAlbumData`, remove `resolve_asset_id_from_hash`
-3. Convert `rotate_image` and `regenerate_thumbnail` to use `asset_id`
-4. Remove dead code (`index_to_hash`, `hash_to_abstract_data`, `build_from_data_table`)
-5. Remove `lookup_abstract_data_by_hash` — replace callers with asset_id lookups
-6. Clean `transitor.rs` backward-compat paths
-7. Frontend: remove `hashMapData` dual map, use `assetIdMapData` for all lookups
+### Commit 1: `39cc2987` — Make asset_id required in response types
+
+- `ClaimsHash.asset_id`: `Option` → required `ArrayString<64>`
+- `DatabaseTimestamp.asset_id`: `Option` → required `ArrayString<64>`
+- `DataBaseTimestampReturn.asset_id`: `Option` → required `String`
+- `ReducedData.asset_id`: `Option` → required `ArrayString<64>`
+- Remove `DataBaseTimestampReturn::new()` (dead code)
+- Remove `abstract_data_to_database_timestamp_return()` (dead code)
+- Remove `index_to_hash()` and `hash_to_abstract_data()` (dead code)
+- Remove `build_from_data_table()` legacy fallback path
+- `asset_id_to_abstract_data`: remove ASSET_BY_ID fallback
+- `index_to_asset_id`: return `ArrayString` directly, not `Option`
+- All mutation endpoints require asset_id for identity
+- Album cover references use asset_id exclusively
+
+### Commit 2: `2ef81723` — Convert rotate/regenerate to use asset_id
+
+- `RotateImageRequest`: `hash` → `asset_id`
+- `RegenerateThumbnailForm`: `hash` → `asset_id`
+- Rename `lookup_abstract_data_by_hash` → `lookup_abstract_data_by_asset_id`
+- Remove hash fallback in lookup function
+- Both endpoints now identify images by asset_id exclusively
+
+### Commit 3: `7ef17352` — Make AssignAlbumData.asset_id required
+
+- `AssignAlbumData`: remove `hash` field, make `asset_id` required
+- Remove `resolve_asset_id_from_hash()` and `move_hash_into_album()`
+- Remove `move_item_into_album()` legacy hash-based path
+- `move_asset_into_album`: update `DATA_TABLE` with new album and path
+- `asset_record_to_abstract_data`: use content hash for media (thumbnail
+  paths), asset_id for albums
+- Update all test scenarios to use `asset_id` for `assign_album` calls
+- Add `asset_id_as` to test scenarios that need asset_id discovery
+- `discover_photo_hash` returns content hash for backward compatibility
+  with test assertions that check `abstractData.id`
+
+## Remaining Work
+
+The following items from the original findings are NOT addressed in this
+audit and should be tracked separately:
+
+### Backend
+
+- `delete.rs:255` — "Legacy path: aliasList not provided" still exists
+- `get_test_probe.rs` — still uses hash-based DUPE_INDEX resolution
+
+### Frontend
+
+- `hashMapData` dual map still exists for URL routing
+- Routes still use `:hash` param
+- `getHashIndexDataFromRoute` uses hashMapData
