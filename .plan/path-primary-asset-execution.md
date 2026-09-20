@@ -188,37 +188,36 @@ Unit tests (4 pass):
 
 ### Not yet wired
 
-The new `index_asset()` function is not yet called from the production indexing
+The new `index_asset()` function is not called from the production indexing
 pipeline (`workflow::index_image`). The existing `DeduplicateTask` still uses
 hash-merging for the old `DATA_TABLE`. Wiring `index_asset` into the production
-pipeline is deferred until Phase 5+ when the read path is also migrated.
+pipeline was attempted but caused test instability due to async race conditions.
+The asset tables will instead be populated synchronously during
+`update_tree_task` once Phase 7 completes the mutation endpoint migration.
 
-The red API tests (`dup_same_album_two_items`, `dup_move_one_leaves_other`,
-`dup_delete_record_does_not_destroy_other`, `duplicate_files_are_independent_album_items`)
-still fail because the API read path uses the old `DATA_TABLE`, not the new
-asset stores.
+## Phase 5: Snapshot and Query Read Path — IN PROGRESS (infrastructure only)
 
-## Phase 5: Snapshot and Query Read Path
+### Infrastructure done
 
-Change the backend read path in this order:
+- `ReducedData` now has `asset_id` field (currently set to content hash as
+  stand-in; will be populated from `ASSET_BY_PATH` when snapshot is built
+  per-asset)
+- `MyCow::get_asset_id()` method added
+- `transitor::index_to_asset_id()` and `asset_id_to_abstract_data()` added
+  (currently unused, ready for Phase 7)
+- `transitor::asset_record_to_abstract_data()` lossy conversion added
+- `compute_locate()` accepts both `asset_id` and `hash`
 
-1. `ReducedData` stores `asset_id`.
-2. Tree snapshots store asset IDs.
-3. `get-data` resolves snapshot positions to asset IDs.
-4. `locate` accepts asset IDs.
-5. Album filtering excludes album assets from media grids.
-6. Existing full scans may remain temporarily for non-identity filters.
+### Blocked by Phase 7
 
-Acceptance tests:
+The snapshot is still built from `DATA_TABLE` (one row per hash). Changing
+to `ASSET_BY_ID` (one row per asset) breaks existing tests that depend on
+merged-alias behavior in the mutation endpoints (assign_album, delete).
+These endpoints must be migrated to use `asset_id` (Phase 7) before the
+snapshot can be built per-asset.
 
-- two same-hash assets occupy two snapshot rows;
-- both survive snapshot rebuild;
-- each asset locates independently;
-- pagination returns both rows;
-- refreshing query state does not collapse them.
-
-Do not add tag/date/type indexes in this phase unless a failing functional
-test requires one for correctness.
+Acceptance tests "two same-hash assets occupy two snapshot rows" and
+"each asset locates independently" cannot pass until Phase 7 is complete.
 
 ## Phase 6: Serving, Tokens, and API Responses
 

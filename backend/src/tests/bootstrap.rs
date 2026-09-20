@@ -42,6 +42,12 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
     {
         let txn = TREE.in_disk.begin_write().expect("begin write txn");
         txn.open_table(DATA_TABLE).expect("create DATA_TABLE");
+        txn.open_table(crate::storage::db::ASSET_BY_PATH)
+            .expect("create ASSET_BY_PATH");
+        txn.open_table(crate::storage::db::ASSET_BY_ID)
+            .expect("create ASSET_BY_ID");
+        txn.open_table(crate::storage::db::DUPE_INDEX)
+            .expect("create DUPE_INDEX");
         txn.commit().expect("commit");
     }
 
@@ -124,6 +130,30 @@ pub fn reset_backend_state() {
         }
     }
     txn.commit().expect("commit DATA_TABLE drain");
+
+    // Also drain the path-primary asset tables.
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .expect("begin db write for asset table cleanup");
+    for table_def in [
+        crate::storage::db::ASSET_BY_PATH,
+        crate::storage::db::ASSET_BY_ID,
+        crate::storage::db::DUPE_INDEX,
+    ] {
+        let mut table = txn
+            .open_table(table_def)
+            .expect("open asset table for cleanup");
+        let keys: Vec<String> = table
+            .iter()
+            .expect("iterate asset table")
+            .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
+            .collect();
+        for key in &keys {
+            table.remove(key.as_str()).expect("remove key");
+        }
+    }
+    txn.commit().expect("commit asset table drain");
 
     // Wipe everything under DATA_PATH except the open `db/` directory.
     // `TREE_SNAPSHOT_IN_DISK` keeps `db/index_v5.redb` open for the whole

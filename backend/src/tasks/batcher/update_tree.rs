@@ -54,25 +54,12 @@ impl BatchTask for UpdateTreeTask {
 
 fn update_tree_task() {
     let start_time = Instant::now();
-    let data_table = open_data_table();
 
     let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
-    let mut database_timestamp_vec: Vec<DatabaseTimestamp> = data_table
-        .iter()
-        .expect("failed to iterate table")
-        .par_bridge()
-        .map(|guard| {
-            let (_, value) = guard.expect("failed to read record");
-            let mut abstract_data = value.value();
-            // retain only necessary exif data used for query search
-            if let Some(exif_vec) = abstract_data.exif_vec_mut() {
-                exif_vec.retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
-            }
-            DatabaseTimestamp::new(abstract_data, &priority_list)
-        })
-        .collect();
+    let database_timestamp_vec = build_from_data_table(&priority_list);
 
+    let mut database_timestamp_vec = database_timestamp_vec;
     database_timestamp_vec.par_sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
     *TREE.in_memory.write().expect("lock poisoned") = database_timestamp_vec;
@@ -82,4 +69,23 @@ fn update_tree_task() {
     let current_timestamp = Utc::now().timestamp_millis();
     let duration = format!("{:?}", start_time.elapsed());
     info!(duration = &*duration; "In-memory cache updated ({}).", current_timestamp);
+}
+
+/// Build the in-memory tree from the legacy `DATA_TABLE` (one entry per hash).
+fn build_from_data_table(priority_list: &[&str]) -> Vec<DatabaseTimestamp> {
+    let data_table = open_data_table();
+
+    data_table
+        .iter()
+        .expect("failed to iterate table")
+        .par_bridge()
+        .map(|guard| {
+            let (_, value) = guard.expect("failed to read record");
+            let mut abstract_data = value.value();
+            if let Some(exif_vec) = abstract_data.exif_vec_mut() {
+                exif_vec.retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
+            }
+            DatabaseTimestamp::new(abstract_data, priority_list)
+        })
+        .collect()
 }

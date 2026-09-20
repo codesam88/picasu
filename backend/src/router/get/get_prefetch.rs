@@ -55,6 +55,9 @@ impl PrefetchReturn {
 impl From<&DatabaseTimestamp> for ReducedData {
     fn from(source: &DatabaseTimestamp) -> Self {
         Self {
+            // asset_id will be populated from ASSET_BY_PATH when the snapshot
+            // is built per-asset (Phase 7). For now, use the hash as a stand-in.
+            asset_id: source.abstract_data.hash(),
             hash: source.abstract_data.hash(),
             width: source.abstract_data.width(),
             height: source.abstract_data.height(),
@@ -142,11 +145,12 @@ fn compute_locate(
 ) -> Option<usize> {
     let layout_start_time = Instant::now();
 
-    // Find locate index if requested
-    let locate_to_index = locate_option.and_then(|hash| {
-        reduced_data_vector
-            .par_iter()
-            .position_first(|reduced| reduced.hash.as_str() == hash)
+    // Find locate index if requested.
+    // Accepts either an asset_id or a content hash (for backward compat).
+    let locate_to_index = locate_option.and_then(|locate_str| {
+        reduced_data_vector.par_iter().position_first(|reduced| {
+            reduced.asset_id.as_str() == locate_str || reduced.hash.as_str() == locate_str
+        })
     });
 
     let duration = format!("{:?}", layout_start_time.elapsed());

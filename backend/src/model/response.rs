@@ -65,6 +65,7 @@ use bitcode::{Decode, Encode};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Decode, Encode)]
 pub struct ReducedData {
+    pub asset_id: ArrayString<64>,
     pub hash: ArrayString<64>,
     pub width: u32,
     pub height: u32,
