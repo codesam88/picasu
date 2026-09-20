@@ -6,11 +6,12 @@ given:
     id_as: $album
   - photo: /e2e_oc/src/p.jpg
     id_as: $src
+    asset_id_as: $src_asset
 when:
   # Missing on_conflict → 400
   - call: PUT /put/assign_album
     body:
-      hash: "${src}"
+      assetId: "${src_asset}"
       albumId: "${album}"
       alias: "${data_path}/e2e_oc/src/p.jpg"
     then:
@@ -18,7 +19,7 @@ when:
   # replace is no longer a valid enum value → 400
   - call: PUT /put/assign_album
     body:
-      hash: "${src}"
+      assetId: "${src_asset}"
       albumId: "${album}"
       onConflict: "replace"
       alias: "${data_path}/e2e_oc/src/p.jpg"
@@ -27,7 +28,7 @@ when:
   # rename: move the file (no collision, so Moved)
   - call: PUT /put/assign_album
     body:
-      hash: "${src}"
+      assetId: "${src_asset}"
       albumId: "${album}"
       onConflict: "rename"
       alias: "${data_path}/e2e_oc/src/p.jpg"
@@ -37,7 +38,7 @@ when:
   # skip: same file, now already in album → Skipped
   - call: PUT /put/assign_album
     body:
-      hash: "${src}"
+      assetId: "${src_asset}"
       albumId: "${album}"
       onConflict: "skip"
       alias: "${data_path}/e2e_oc/album/p.jpg"

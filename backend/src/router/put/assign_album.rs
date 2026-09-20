@@ -16,10 +16,8 @@ use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::INDEX_COORDINATOR;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use anyhow::Result;
 use arrayvec::ArrayString;
-use log::warn;
-use redb::{ReadableDatabase, ReadableTable};
+use redb::ReadableTable;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -34,14 +32,10 @@ pub enum OnConflict {
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AssignAlbumData {
+    /// Path-primary asset ID. The handler resolves the record via
+    /// `ASSET_BY_ID`, allowing independent movement of same-hash files.
     #[schema(value_type = String)]
-    pub hash: ArrayString<64>,
-    /// Optional `asset_id` for path-primary identity. When provided, the
-    /// handler resolves the record via `ASSET_BY_ID` instead of `DATA_TABLE`,
-    /// allowing independent movement of same-hash files.
-    #[serde(default)]
-    #[schema(value_type = Option<String>)]
-    pub asset_id: Option<ArrayString<64>>,
+    pub asset_id: ArrayString<64>,
     #[schema(value_type = String)]
     pub album_id: ArrayString<64>,
     /// Selected alias path for item records; must be absent (null) for albums.
@@ -91,11 +85,10 @@ pub async fn assign_album(
     let _ = read_only_mode?;
 
     let data = json_data.into_inner();
-    let hash = data.hash;
     let asset_id = data.asset_id;
     let album_id = data.album_id;
     let on_conflict = data.on_conflict;
-    let selected_alias = data.alias;
+    let selected_alias: Option<String> = data.alias;
 
     // Resolve album's directory from the in-memory cache.
     let album_dir = get_dir_path_for_album(album_id)
@@ -112,13 +105,12 @@ pub async fn assign_album(
     }
 
     let outcome = tokio::task::spawn_blocking(move || {
-        move_hash_into_album(
-            hash,
+        move_asset_into_album(
             asset_id,
             album_id,
             &album_dir,
             on_conflict,
-            selected_alias,
+            selected_alias.as_deref(),
         )
     })
     .await
@@ -145,140 +137,16 @@ pub async fn assign_album(
     Ok(Json(AssignResult { outcome }))
 }
 
-/// Resolve a content hash + optional alias path to an `asset_id`.
-/// Tries `DUPE_INDEX` first, then scans `ASSET_BY_ID` for matching `content_hash`.
-fn resolve_asset_id_from_hash(
-    content_hash: ArrayString<64>,
-    alias: Option<&str>,
-) -> Option<ArrayString<64>> {
-    use crate::storage::asset_store;
-
-    // Try DUPE_INDEX first.
-    let ids = asset_store::get_dupe_ids(&content_hash)
-        .ok()
-        .unwrap_or_default();
-    log::info!(
-        "resolve_asset_id_from_hash: content_hash={content_hash}, alias={alias:?}, dupe_ids={ids:?}"
-    );
-
-    if !ids.is_empty() {
-        if let Some(alias_path) = alias {
-            for id in &ids {
-                if let Ok(Some(record)) = asset_store::get_asset_by_id(id.as_ref())
-                    && record.canonical_path == alias_path
-                {
-                    log::info!("resolve_asset_id_from_hash: matched by alias, id={id}");
-                    return Some(*id);
-                }
-            }
-        }
-        log::info!("resolve_asset_id_from_hash: using first dupe id={}", ids[0]);
-        return Some(ids[0]);
-    }
-
-    // DUPE_INDEX empty — scan ASSET_BY_ID for matching content_hash.
-    if let Ok(records) = asset_store::get_all_assets() {
-        log::info!(
-            "resolve_asset_id_from_hash: DUPE_INDEX empty, scanning {} assets",
-            records.len()
-        );
-        for record in &records {
-            if record.content_hash.as_ref() == Some(&content_hash) {
-                if let Some(alias_path) = alias {
-                    if record.canonical_path == alias_path {
-                        log::info!(
-                            "resolve_asset_id_from_hash: matched by scan+alias, id={}",
-                            record.asset_id
-                        );
-                        return Some(record.asset_id);
-                    }
-                } else {
-                    log::info!(
-                        "resolve_asset_id_from_hash: matched by scan, id={}",
-                        record.asset_id
-                    );
-                    return Some(record.asset_id);
-                }
-            }
-        }
-    }
-
-    log::info!("resolve_asset_id_from_hash: no match found");
-    None
-}
-
-/// Dispatch on whichever kind of item `hash` resolves to: images/videos move
-/// as a single file (`move_item_into_album`); albums (sub-albums) move as a
-/// whole directory tree (`move_album_into_album`), since an album's `.alias()`
-/// is always empty and the single-file path would reject it outright.
-fn move_hash_into_album(
-    hash: ArrayString<64>,
-    asset_id: Option<ArrayString<64>>,
-    album_id: ArrayString<64>,
-    album_dir: &Path,
-    on_conflict: OnConflict,
-    selected_alias: Option<String>,
-) -> Result<AssignOutcome, AppError> {
-    // When asset_id is provided, use the path-primary asset model.
-    if let Some(aid) = asset_id {
-        return move_asset_into_album(aid, album_id, album_dir, on_conflict);
-    }
-
-    // Resolve content hash + alias to asset_id via DUPE_INDEX.
-    let resolved_asset_id = resolve_asset_id_from_hash(hash, selected_alias.as_deref());
-    let lookup_key = resolved_asset_id.unwrap_or(hash);
-
-    let is_album = {
-        let txn = TREE
-            .in_disk
-            .begin_read()
-            .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?;
-        let data_table = txn
-            .open_table(DATA_TABLE)
-            .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
-        match data_table.get(&*lookup_key) {
-            Ok(Some(guard)) => {
-                let ad: AbstractData = guard.value();
-                log::info!(
-                    "move_hash_into_album: is_album check: key={lookup_key}, type={}",
-                    ad.ext_type()
-                );
-                matches!(ad, AbstractData::Album(_))
-            }
-            Ok(None) => {
-                log::error!(
-                    "move_hash_into_album: is_album check: key={lookup_key} NOT FOUND in DATA_TABLE"
-                );
-                false
-            }
-            Err(e) => {
-                log::error!("move_hash_into_album: is_album check error: {e}");
-                false
-            }
-        }
-    };
-
-    if is_album {
-        move_album_into_album(
-            lookup_key,
-            album_id,
-            album_dir,
-            on_conflict,
-            selected_alias.as_deref(),
-        )
-    } else {
-        move_item_into_album(lookup_key, album_id, album_dir, on_conflict, selected_alias)
-    }
-}
-
 /// Move a single asset (identified by `asset_id`) into `album_dir`.
 /// This is the path-primary move: only the one physical file at the asset's
 /// canonical path is moved, regardless of hash-matched duplicates.
+/// Albums move as directory trees via `move_album_into_album`.
 fn move_asset_into_album(
     asset_id: ArrayString<64>,
     album_id: ArrayString<64>,
     album_dir: &Path,
     on_conflict: OnConflict,
+    selected_alias: Option<&str>,
 ) -> Result<AssignOutcome, AppError> {
     use crate::storage::asset_store;
 
@@ -286,6 +154,18 @@ fn move_asset_into_album(
     let record = asset_store::get_asset_by_id(&asset_id)
         .or_raise(|| (ErrorKind::Database, "Failed to look up asset"))?
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Asset not found"))?;
+
+    // Albums move as directory trees.
+    if record.kind == crate::model::asset::AssetKind::Album {
+        #[allow(clippy::needless_option_as_deref)]
+        return move_album_into_album(
+            asset_id,
+            album_id,
+            album_dir,
+            on_conflict,
+            selected_alias.as_deref(),
+        );
+    }
 
     let source_path = PathBuf::from(&record.canonical_path);
     if !source_path.exists() {
@@ -342,6 +222,40 @@ fn move_asset_into_album(
     asset_store::put_asset_by_path(&new_path, asset_id)
         .or_raise(|| (ErrorKind::Database, "Failed to add new path mapping"))?;
 
+    // Update DATA_TABLE so build_from_asset_tables sees the new album.
+    {
+        let txn = TREE
+            .in_disk
+            .begin_write()
+            .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
+        {
+            let mut data_table = txn
+                .open_table(DATA_TABLE)
+                .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
+            // Extract data first to avoid borrow conflict.
+            let existing = data_table
+                .get(&*asset_id)
+                .ok()
+                .flatten()
+                .map(|guard| guard.value());
+            if let Some(mut abstract_data) = existing {
+                if let Some(alias) = abstract_data.alias_mut() {
+                    for a in alias.iter_mut() {
+                        if a.file == record.canonical_path {
+                            a.file.clone_from(&new_path);
+                        }
+                    }
+                }
+                abstract_data.set_album(Some(album_id));
+                data_table
+                    .insert(&*asset_id, abstract_data)
+                    .or_raise(|| (ErrorKind::Database, "Failed to update DATA_TABLE"))?;
+            }
+        }
+        txn.commit()
+            .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
+    }
+
     Ok(outcome)
 }
 
@@ -361,7 +275,7 @@ fn move_asset_into_album(
 ///   (`find_unique_path`) with the same path-rewrite, reported as
 ///   `RenamedFrom`.
 fn move_album_into_album(
-    album_hash: ArrayString<64>,
+    album_id: ArrayString<64>,
     target_album_id: ArrayString<64>,
     target_dir: &Path,
     on_conflict: OnConflict,
@@ -384,7 +298,7 @@ fn move_album_into_album(
                 .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
 
             let abstract_data: AbstractData = data_table
-                .get(&*album_hash)
+                .get(&*album_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to look up album"))?
                 .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Album not found"))?
                 .value();
@@ -551,138 +465,4 @@ fn update_asset_tables_after_dir_move(source_dir: &Path, dest_dir: &Path) -> Res
     }
 
     Ok(())
-}
-
-#[allow(clippy::too_many_lines)]
-fn move_item_into_album(
-    hash: ArrayString<64>,
-    album_id: ArrayString<64>,
-    album_dir: &Path,
-    on_conflict: OnConflict,
-    selected_alias: Option<String>,
-) -> Result<AssignOutcome, AppError> {
-    log::info!("move_item_into_album: hash={hash}, album_id={album_id}");
-    let txn = TREE
-        .in_disk
-        .begin_write()
-        .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
-    let outcome = {
-        let mut data_table = txn
-            .open_table(DATA_TABLE)
-            .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
-
-        let mut abstract_data: AbstractData = match data_table.get(&*hash) {
-            Ok(Some(guard)) => guard.value(),
-            Ok(None) => {
-                // Dump keys for debugging.
-                let keys: Vec<String> = data_table
-                    .iter()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
-                    .collect();
-                log::error!(
-                    "move_item_into_album: key '{hash}' not found. DATA_TABLE has {} keys: {:?}",
-                    keys.len(),
-                    keys
-                );
-                return Err(AppError::new(
-                    ErrorKind::InvalidInput,
-                    "Item not found in database",
-                ));
-            }
-            Err(e) => {
-                return Err(AppError::new(
-                    ErrorKind::Database,
-                    format!("Failed to look up item: {e}"),
-                ));
-            }
-        };
-
-        let alias = abstract_data.alias();
-        if alias.is_empty() {
-            return Err(AppError::new(ErrorKind::InvalidInput, "Item has no alias"));
-        }
-        let Some(selected_alias) = selected_alias else {
-            return Err(AppError::new(
-                ErrorKind::InvalidInput,
-                "alias is required for item records",
-            ));
-        };
-        let norm = crate::process::alias::normalize_alias_path(&selected_alias);
-        let idx = alias
-            .iter()
-            .position(|a| crate::process::alias::normalize_alias_path(&a.file) == norm)
-            .ok_or_else(|| {
-                AppError::new(
-                    ErrorKind::InvalidInput,
-                    "alias does not match any alias of this record",
-                )
-            })?;
-        let current_path = PathBuf::from(&alias[idx].file);
-
-        if !current_path.exists() {
-            return Err(AppError::new(
-                ErrorKind::InvalidInput,
-                format!(
-                    "File not found at recorded path: {}",
-                    current_path.display()
-                ),
-            ));
-        }
-
-        let file_name = current_path
-            .file_name()
-            .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Alias has no filename"))?;
-        let base_dest = album_dir.join(file_name);
-
-        let renamed = base_dest.exists() && base_dest != current_path;
-        let dest_path = if renamed {
-            match on_conflict {
-                OnConflict::Skip => {
-                    drop(data_table);
-                    txn.commit()
-                        .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
-                    return Ok(AssignOutcome::Skipped);
-                }
-                OnConflict::Rename => find_unique_path(&base_dest)?,
-            }
-        } else {
-            base_dest
-        };
-
-        fs::rename(&current_path, &dest_path)
-            .map_err(|e| AppError::new(ErrorKind::Internal, format!("Failed to move file: {e}")))?;
-
-        let src_sidecar = current_path.with_extension("xmp");
-        if src_sidecar.exists() {
-            let dst_sidecar = dest_path.with_extension("xmp");
-            if let Err(e) = fs::rename(&src_sidecar, &dst_sidecar) {
-                warn!("Failed to move XMP sidecar: {e}");
-            }
-        }
-
-        let old_album = abstract_data.album();
-        if let Some(alias_mut) = abstract_data.alias_mut() {
-            alias_mut[idx].file = dest_path.to_string_lossy().into_owned();
-        }
-        abstract_data.set_album(Some(album_id));
-
-        data_table
-            .insert(&*hash, abstract_data)
-            .or_raise(|| (ErrorKind::Database, "Failed to update item in database"))?;
-
-        if let Some(old_id) = old_album {
-            mark_album_for_update(old_id);
-        }
-        mark_album_for_update(album_id);
-        if renamed {
-            AssignOutcome::RenamedFrom
-        } else {
-            AssignOutcome::Moved
-        }
-    };
-    txn.commit()
-        .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
-    Ok(outcome)
 }

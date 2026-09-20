@@ -7,10 +7,11 @@ given:
     id_as: $album
   - photo: /e2e_self/a/photo.jpg
     id_as: $p
+    asset_id_as: $p_asset
 when:
   - call: PUT /put/assign_album
     body:
-      hash: "${p}"
+      assetId: "${p_asset}"
       albumId: "${album}"
       onConflict: "rename"
       alias: "${data_path}/e2e_self/a/photo.jpg"
@@ -18,7 +19,7 @@ when:
       - response.status: 200
   - call: PUT /put/assign_album
     body:
-      hash: "${p}"
+      assetId: "${p_asset}"
       albumId: "${album}"
       onConflict: "skip"
       alias: "${data_path}/e2e_self/a/photo.jpg"

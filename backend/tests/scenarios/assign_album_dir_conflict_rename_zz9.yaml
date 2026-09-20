@@ -12,7 +12,7 @@ given:
 when:
   - call: PUT /put/assign_album
     body:
-      hash: "${child_album}"
+      assetId: "${child_album}"
       albumId: "${target_album}"
       onConflict: "rename"
     then:

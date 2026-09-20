@@ -73,6 +73,8 @@ pub fn discover_photo_hash(client: &Client, relative_path: &str) -> String {
             let data_body: Value =
                 serde_json::from_slice(&data_resp.into_bytes().expect("get-data body"))
                     .expect("valid get-data JSON");
+            // Return content hash (abstractData.id) for backward compatibility
+            // with test assertions that check abstractData.id.
             found = data_body[0]["abstractData"]["id"]
                 .as_str()
                 .map(|s| s.to_owned());
@@ -91,9 +93,6 @@ pub fn discover_photo_hash(client: &Client, relative_path: &str) -> String {
 pub fn discover_asset_id(client: &Client, relative_path: &str) -> String {
     let image_home = image_home();
     let abs_path = image_home.join(relative_path);
-
-    // DEBUG: uncomment to trace asset_id discovery
-    // eprintln!("DEBUG discover_asset_id: {relative_path}");
 
     let cookie = auth_cookie(client);
     let body = serde_json::json!({"Path": abs_path.to_string_lossy()});

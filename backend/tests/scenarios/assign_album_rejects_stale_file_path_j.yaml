@@ -4,11 +4,12 @@ given:
     id_as: $album
   - photo: /e2e_j/photo.jpg
     id_as: $photo
+    asset_id_as: $asset_id
   - remove: /e2e_j/photo.jpg
 when:
   - call: PUT /put/assign_album
     body:
-      hash: "${photo}"
+      assetId: "${asset_id}"
       albumId: "${album}"
       onConflict: "rename"
       alias: "${data_path}/e2e_j/photo.jpg"

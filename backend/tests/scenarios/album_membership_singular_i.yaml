@@ -6,10 +6,11 @@ given:
     id_as: $album_b
   - photo: /gen_e2e_i_import/gen_e2e_i_photo.jpg
     id_as: $photo
+    asset_id_as: $asset_id
 when:
   - call: PUT /put/assign_album
     body:
-      hash: "${photo}"
+      assetId: "${asset_id}"
       albumId: "${album_a}"
       onConflict: "rename"
       alias: "${data_path}/gen_e2e_i_import/gen_e2e_i_photo.jpg"
@@ -17,7 +18,7 @@ when:
       - response.status: 200
   - call: PUT /put/assign_album
     body:
-      hash: "${photo}"
+      assetId: "${asset_id}"
       albumId: "${album_b}"
       onConflict: "rename"
       alias: "${data_path}/gen_e2e_i_import/gen_e2e_i_photo.jpg"
