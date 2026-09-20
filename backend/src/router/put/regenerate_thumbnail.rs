@@ -17,9 +17,9 @@ use rocket::fs::TempFile;
 
 #[derive(FromForm, Debug)]
 pub struct RegenerateThumbnailForm<'r> {
-    /// Hash of the image to regenerate thumbnail for
-    #[field(name = "hash")]
-    pub hash: String,
+    /// Asset ID of the image to regenerate thumbnail for
+    #[field(name = "asset_id")]
+    pub asset_id: String,
 
     /// Frame file to use for thumbnail generation
     #[field(name = "frame")]
@@ -56,15 +56,16 @@ pub async fn regenerate_thumbnail_with_frame(
         }
     };
 
-    // Convert hash string to ArrayString
-    let hash = ArrayString::<64>::from(&inner_form.hash)
-        .map_err(|_| AppError::new(ErrorKind::InvalidInput, "Invalid hash length or format"))?;
+    // Convert asset_id string to ArrayString
+    let asset_id = ArrayString::<64>::from(&inner_form.asset_id)
+        .map_err(|_| AppError::new(ErrorKind::InvalidInput, "Invalid asset_id length or format"))?;
 
     let root = crate::storage::files::get_data_path();
+    // Use asset_id for the compressed file path
     let file_path = root.join(format!(
         "object/compressed/{}/{}.jpg",
-        &hash[0..2],
-        hash.as_str()
+        &asset_id[0..2],
+        asset_id.as_str()
     ));
 
     inner_form
@@ -74,9 +75,9 @@ pub async fn regenerate_thumbnail_with_frame(
         .or_raise(|| (ErrorKind::IO, "Failed to copy frame file"))?;
 
     let abstract_data = tokio::task::spawn_blocking(move || -> Result<AbstractData, AppError> {
-        let abstract_data = asset_store::lookup_abstract_data_by_hash(&inner_form.hash)
+        let abstract_data = asset_store::lookup_abstract_data_by_asset_id(&inner_form.asset_id)
             .or_raise(|| (ErrorKind::Database, "Failed to fetch DB record"))?
-            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Hash not found"))?;
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Asset not found"))?;
 
         let mut abstract_data = abstract_data;
 
