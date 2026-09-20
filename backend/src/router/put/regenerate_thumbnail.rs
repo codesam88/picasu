@@ -3,7 +3,7 @@ use crate::model::abstract_data::AbstractData;
 use crate::process::misc::generate_dynamic_image;
 use crate::process::misc::{generate_phash, generate_thumbhash};
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::open_data_table;
+use crate::storage::asset_store;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
 use crate::router::auth::GuardAuth;
@@ -74,13 +74,11 @@ pub async fn regenerate_thumbnail_with_frame(
         .or_raise(|| (ErrorKind::IO, "Failed to copy frame file"))?;
 
     let abstract_data = tokio::task::spawn_blocking(move || -> Result<AbstractData, AppError> {
-        let data_table = open_data_table();
-        let access_guard = data_table
-            .get(&*hash)
+        let abstract_data = asset_store::lookup_abstract_data_by_hash(&inner_form.hash)
             .or_raise(|| (ErrorKind::Database, "Failed to fetch DB record"))?
             .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Hash not found"))?;
 
-        let mut abstract_data = access_guard.value();
+        let mut abstract_data = abstract_data;
 
         let dyn_img = generate_dynamic_image(&abstract_data)
             .or_raise(|| (ErrorKind::Internal, "Failed to decode DynamicImage"))?;

@@ -79,13 +79,27 @@ pub fn probe_record(auth: GuardResult<GuardAuth>, hash: &str) -> AppResult<Json<
     let table = txn
         .open_table(DATA_TABLE)
         .or_raise(|| (ErrorKind::Database, "Failed to open DATA_TABLE"))?;
-    let record = table
-        .get(hash.as_str())
-        .or_raise(|| (ErrorKind::Database, "Failed to read record from DATA_TABLE"))?;
-    let abstract_data = record.or_raise(|| (ErrorKind::NotFound, "Record not found"))?;
+
+    // Try by asset_id first, then fall back to hash lookup.
+    let abstract_data = if let Ok(Some(record)) = table.get(hash.as_str()) {
+        record.value()
+    } else {
+        // Hash might be a content hash — resolve via DUPE_INDEX.
+        let asset_id = crate::storage::asset_store::get_dupe_ids(hash.as_str())
+            .ok()
+            .and_then(|ids| ids.into_iter().next());
+        match asset_id {
+            Some(aid) => table
+                .get(&*aid)
+                .or_raise(|| (ErrorKind::Database, "Failed to read record from DATA_TABLE"))?
+                .or_raise(|| (ErrorKind::NotFound, "Record not found"))?
+                .value(),
+            None => return Err(AppError::new(ErrorKind::NotFound, "Record not found")),
+        }
+    };
 
     Ok(Json(TestRecordProbe {
         hash,
-        aliases: abstract_data.value().alias().to_vec(),
+        aliases: abstract_data.alias().to_vec(),
     }))
 }

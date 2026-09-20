@@ -1,45 +1,56 @@
-name: delete multi-alias first-position alias leaves sibling and record intact
-# Group 4c corner case: a dedup record has several alias paths
-# [src/photo.jpg, target/photo.jpeg]. Passing the FIRST-position alias's literal
-# path in aliasList must remove that file from disk while the sibling alias file
-# survives and the record (with its thumbnail) stays locatable.
+name: deleting one file of same-hash pair leaves the other intact
+# Path-primary contract: each file is an independent asset. Deleting one
+# file's asset does not affect the other file.
 given:
   - dir_album: /e2e_dup/target
     id_as: $album
   - photo: /e2e_dup/src/photo.jpg
     id_as: $photo
 when:
-  # Upload identical content to the target album. The dedup task detects the
-  # same blake3 hash and merges into the existing record, giving it two aliases:
-  # [src/photo.jpg, target/photo.jpeg].
+  # Upload identical content to the target album.
   - upload:
       file: /e2e_dup/src/photo.jpg
       target_album: "${album}"
       on_conflict: rename
     then:
       - response.status: 200
-  # Re-index so the tree snapshot includes the deduped, multi-alias record.
+  # Re-index.
   - call: POST /post/index/album
     raw_body: '{"album": "/e2e_dup"}'
     then:
       - response.status: 202
   - wait_index: true
-  # Locate the record to get its index in the tree snapshot.
+  # Locate the source file.
   - call: POST /get/prefetch?locate=${photo}
     capture:
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo
-  # Delete the FIRST-position alias by its relative path. normalize_alias_path
-  # resolves it against IMAGE_HOME, matching the record's stored (absolute)
-  # alias. The delete must remove that file from disk and keep the record with
-  # its other alias (target/photo.jpeg).
+      token: response.token
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      alias_file: response.[0].abstractData.alias.[0].file
+  # Delete the source file's asset.
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[${idx}],"aliasList":["e2e_dup/src/photo.jpg"],"timestamp":${ts}}'
+    raw_body: '{"deleteList":[${idx}],"aliasList":["${alias_file}"],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Re-index after delete.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_dup"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Verify the uploaded copy still exists in the target album.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
 then:
   - response.status: 200
-  # The first alias's file is removed from disk…
-  - file_absent: /e2e_dup/src/photo.jpg
-  # …the sibling alias file survives…
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 1 }
   - file_exists: /e2e_dup/target/photo.jpeg
-  # …and the record is still locatable with its thumbnail intact.
-  - serve_image_ok: $photo
+  - file_absent: /e2e_dup/src/photo.jpg

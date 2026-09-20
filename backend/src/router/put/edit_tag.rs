@@ -1,7 +1,7 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
 use crate::process::sanitize::sanitize_tag;
-use crate::process::transitor::index_to_hash;
+use crate::process::transitor::index_to_asset_id;
 use crate::process::xmp_write::write_sidecar_for;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
@@ -52,15 +52,15 @@ pub async fn edit_tag(
         let mut data_to_flush: Vec<AbstractData> = Vec::new();
 
         for &index in &json_data.index_array {
-            let hash = index_to_hash(&tree_snapshot, index).or_raise(|| {
+            let asset_id = index_to_asset_id(&tree_snapshot, index).or_raise(|| {
                 (
                     ErrorKind::Database,
-                    format!("Failed to get hash for index {index}"),
+                    format!("Failed to get asset_id for index {index}"),
                 )
             })?;
 
             if let Some(guard) = data_table
-                .get(&*hash)
+                .get(&*asset_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
             {
                 let mut abstract_data = guard.value();

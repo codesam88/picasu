@@ -1,6 +1,7 @@
 use crate::model::response::DatabaseTimestamp;
 use crate::process::dir_album::drain_pending_album_updates;
 use crate::storage::db::TREE;
+use crate::storage::db::VERSION_COUNT_TIMESTAMP;
 use crate::storage::db::open_data_table;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::actor::album::album_task;
@@ -58,16 +59,21 @@ fn update_tree_task() {
 
     let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
-    let database_timestamp_vec = build_from_data_table(&priority_list);
+    let database_timestamp_vec = build_from_asset_tables(&priority_list)
+        .unwrap_or_else(|| build_from_data_table(&priority_list));
 
     let mut database_timestamp_vec = database_timestamp_vec;
     database_timestamp_vec.par_sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
     *TREE.in_memory.write().expect("lock poisoned") = database_timestamp_vec;
 
+    // Update VERSION_COUNT_TIMESTAMP immediately so query caches are
+    // invalidated before the next prefetch call.
+    let current_timestamp = Utc::now().timestamp_millis();
+    VERSION_COUNT_TIMESTAMP.store(current_timestamp, std::sync::atomic::Ordering::SeqCst);
+
     BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
 
-    let current_timestamp = Utc::now().timestamp_millis();
     let duration = format!("{:?}", start_time.elapsed());
     info!(duration = &*duration; "In-memory cache updated ({}).", current_timestamp);
 }
@@ -93,7 +99,6 @@ fn build_from_data_table(priority_list: &[&str]) -> Vec<DatabaseTimestamp> {
 
 /// Build the in-memory tree from `ASSET_BY_ID` (one entry per file/path).
 /// Enriches with metadata from `DATA_TABLE` when available.
-#[allow(dead_code)]
 fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimestamp>> {
     use redb::{ReadableDatabase, ReadableTable};
 
@@ -114,9 +119,11 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
             Err(_) => continue,
         };
 
-        let rich_data = record
-            .content_hash
-            .and_then(|hash| data_table.get(&*hash).ok().flatten().map(|g| g.value()));
+        let rich_data = data_table
+            .get(&*record.asset_id)
+            .ok()
+            .flatten()
+            .map(|g| g.value());
 
         let abstract_data = if let Some(mut data) = rich_data {
             trim_aliases_to_path(&mut data, &record);
@@ -125,7 +132,11 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
             minimal_abstract_data(&record)
         };
 
-        entries.push(DatabaseTimestamp::new(abstract_data, priority_list));
+        entries.push(DatabaseTimestamp::with_asset_id(
+            abstract_data,
+            priority_list,
+            record.asset_id,
+        ));
     }
 
     if entries.is_empty() {
@@ -136,7 +147,6 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
 }
 
 /// Trim an `AbstractData` record's aliases to only the given asset's path.
-#[allow(dead_code)]
 fn trim_aliases_to_path(
     data: &mut crate::model::abstract_data::AbstractData,
     record: &crate::model::asset::AssetRecord,
@@ -172,7 +182,6 @@ fn trim_aliases_to_path(
 
 /// Create a minimal `AbstractData` from an `AssetRecord` when rich metadata
 /// is not available in `DATA_TABLE`.
-#[allow(dead_code)]
 fn minimal_abstract_data(
     record: &crate::model::asset::AssetRecord,
 ) -> crate::model::abstract_data::AbstractData {

@@ -23,6 +23,7 @@ fn keep_view_alias(alias: &mut Vec<FileModify>, trashed_view: bool) {
     }
 }
 
+#[allow(dead_code)]
 pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
     if index >= tree_snapshot.len() {
         return Err(anyhow::anyhow!("Index out of bounds: {index}"));
@@ -31,7 +32,6 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
     Ok(hash)
 }
 
-#[allow(dead_code)]
 pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
     if index >= tree_snapshot.len() {
         return Err(anyhow::anyhow!("Index out of bounds: {index}"));
@@ -40,6 +40,7 @@ pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<ArrayStr
     Ok(asset_id)
 }
 
+#[allow(dead_code)]
 pub fn hash_to_abstract_data(
     data_table: &ReadOnlyTable<&'static str, AbstractData>,
     hash: ArrayString<64>,
@@ -56,23 +57,25 @@ pub fn hash_to_abstract_data(
 /// First tries the new `ASSET_BY_ID` store. If the asset exists there,
 /// converts it to an `AbstractData` for backward-compatible API responses.
 /// Falls back to the old `DATA_TABLE` by hash if no asset is found.
-#[allow(dead_code)]
 pub fn asset_id_to_abstract_data(
     asset_id: ArrayString<64>,
     data_table: &ReadOnlyTable<&'static str, AbstractData>,
 ) -> Result<AbstractData> {
-    // Try new asset store first.
+    // Try DATA_TABLE by asset_id (new path-primary key).
+    if let Some(data) = data_table.get(&*asset_id)? {
+        return Ok(data.value());
+    }
+
+    // Fall back to ASSET_BY_ID → lossy conversion.
     if let Some(record) = crate::storage::asset_store::get_asset_by_id(&asset_id)? {
         return Ok(asset_record_to_abstract_data(&record));
     }
 
-    // Fall back to old DATA_TABLE (asset_id might actually be a hash).
-    hash_to_abstract_data(data_table, asset_id)
+    Err(anyhow::anyhow!("No data found for asset_id: {asset_id}"))
 }
 
 /// Convert an `AssetRecord` to an `AbstractData` for API backward compatibility.
 /// This is a lossy conversion — EXIF, tags, and other metadata are not preserved.
-#[allow(dead_code)]
 fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) -> AbstractData {
     use crate::model::album::{AlbumCombined, AlbumMetadata};
     use crate::model::asset::AssetKind;
@@ -189,6 +192,6 @@ pub fn index_to_abstract_data(
     data_table: &ReadOnlyTable<&'static str, AbstractData>,
     index: usize,
 ) -> Result<AbstractData> {
-    let hash = index_to_hash(tree_snapshot, index)?;
-    hash_to_abstract_data(data_table, hash)
+    let asset_id = index_to_asset_id(tree_snapshot, index)?;
+    asset_id_to_abstract_data(asset_id, data_table)
 }

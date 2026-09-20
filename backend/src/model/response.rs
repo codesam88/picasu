@@ -7,6 +7,10 @@ use crate::{model::abstract_data::AbstractData, router::auth::ClaimsHash};
 pub struct DatabaseTimestamp {
     pub abstract_data: AbstractData,
     pub timestamp: i64,
+    /// The path-primary asset ID for this record. Used to populate
+    /// `ReducedData.asset_id` so each physical file is independently addressable.
+    #[serde(default)]
+    pub asset_id: Option<arrayvec::ArrayString<64>>,
 }
 
 impl DatabaseTimestamp {
@@ -15,6 +19,20 @@ impl DatabaseTimestamp {
         Self {
             abstract_data,
             timestamp,
+            asset_id: None,
+        }
+    }
+
+    pub fn with_asset_id(
+        abstract_data: AbstractData,
+        priority_list: &[&str],
+        asset_id: arrayvec::ArrayString<64>,
+    ) -> Self {
+        let timestamp = abstract_data.compute_timestamp(priority_list);
+        Self {
+            abstract_data,
+            timestamp,
+            asset_id: Some(asset_id),
         }
     }
 }

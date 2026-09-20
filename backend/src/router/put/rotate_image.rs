@@ -3,7 +3,7 @@ use crate::model::abstract_data::AbstractData;
 use crate::process::misc::{generate_phash, generate_thumbhash};
 use crate::process::thumbnail::generate_thumbnail_for_image;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::open_data_table;
+use crate::storage::asset_store;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
 use crate::router::auth::GuardAuth;
@@ -42,19 +42,16 @@ pub async fn rotate_image(
     let _ = auth?;
     let _ = read_only_mode?;
 
-    // Convert hash string to ArrayString
-    let hash = ArrayString::<64>::from(&request.hash)
+    let _hash = ArrayString::<64>::from(&request.hash)
         .map_err(|_| AppError::new(ErrorKind::InvalidInput, "Invalid hash length or format"))?;
 
     let abstract_data =
         tokio::task::spawn_blocking(move || -> Result<Vec<AbstractData>, AppError> {
-            let data_table = open_data_table();
-            let access_guard = data_table
-                .get(&*hash)
+            let abstract_data = asset_store::lookup_abstract_data_by_hash(&request.hash)
                 .or_raise(|| (ErrorKind::Database, "Failed to fetch DB record"))?
                 .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Hash not found"))?;
 
-            let mut abstract_data = access_guard.value();
+            let mut abstract_data = abstract_data;
 
             // Only rotate images, not videos or albums
             if !matches!(abstract_data, AbstractData::Image(_)) {
@@ -100,8 +97,8 @@ pub async fn rotate_image(
             let mut result_vec = vec![abstract_data];
 
             for album_id in album_ids {
-                if let Ok(Some(access_guard)) = data_table.get(album_id.as_str()) {
-                    let mut album = access_guard.value();
+                if let Ok(Some(album)) = asset_store::lookup_abstract_data_by_hash(&album_id) {
+                    let mut album = album;
                     album.update_update_at();
                     result_vec.push(album);
                 }

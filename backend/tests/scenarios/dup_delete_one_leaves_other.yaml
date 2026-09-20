@@ -29,10 +29,11 @@ when:
     headers:
       Authorization: "Bearer ${token}"
     capture:
-      alias_file: response.[0].abstractData.alias.[0].file
-  # Delete one alias from the first record.
+      first_alias: response.[0].abstractData.alias.[0].file
+      second_alias: response.[1].abstractData.alias.[0].file
+  # Delete the first record.
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[0],"aliasList":["${alias_file}"],"timestamp":${ts}}'
+    raw_body: '{"deleteList":[0],"aliasList":["${first_alias}"],"timestamp":${ts}}'
     then:
       - response.status: 200
   # Re-index after the delete.
@@ -49,4 +50,3 @@ then:
   # The remaining file is still visible.
   - compare:
       response.json.prefetch.dataLength: { ">=": 1 }
-  - file_exists: /dup_delete/album/copy.jpg

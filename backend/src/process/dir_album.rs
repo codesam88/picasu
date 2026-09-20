@@ -279,7 +279,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         item_count: 0,
         item_size: 0,
         share_list: std::collections::HashMap::new(),
-        dir_path: dir_path_str,
+        dir_path: dir_path_str.clone(),
         custom_title,
         is_trashed: false,
     };
@@ -296,6 +296,24 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         table
             .insert(&*album_id, abstract_data)
             .context("Failed to insert dir album")?;
+
+        // Also write to path-primary asset tables.
+        let mut path_table = txn
+            .open_table(crate::storage::db::ASSET_BY_PATH)
+            .context("Failed to open ASSET_BY_PATH")?;
+        let mut id_table = txn
+            .open_table(crate::storage::db::ASSET_BY_ID)
+            .context("Failed to open ASSET_BY_ID")?;
+
+        let record = crate::model::asset::AssetRecord::new_album(dir_path_str.clone());
+        let record = crate::model::asset::AssetRecord {
+            asset_id: album_id,
+            ..record
+        };
+        if let Ok(json) = serde_json::to_string(&record) {
+            let _ = path_table.insert(record.canonical_path.as_str(), &*album_id);
+            let _ = id_table.insert(&*album_id, json.as_str());
+        }
     }
     txn.commit().context("Failed to commit dir album")?;
 

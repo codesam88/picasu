@@ -3,7 +3,6 @@ use crate::router::{
     AppResult, GuardResult,
     auth::{GuardHash, GuardHashOriginal, GuardShare},
 };
-use crate::storage::db::open_data_table;
 use crate::storage::files::get_data_path;
 use rocket::fs::NamedFile;
 use rocket::http::ContentType;
@@ -132,12 +131,9 @@ pub async fn imported_file(
         .to_string();
 
     let source_path = tokio::task::spawn_blocking(move || -> AppResult<PathBuf> {
-        let data_table = open_data_table();
-        let abstract_data = data_table
-            .get(hash.as_str())
+        let abstract_data = crate::storage::asset_store::lookup_abstract_data_by_hash(&hash)
             .or_raise(|| (ErrorKind::Database, "Failed to fetch DB record"))?
-            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Hash not found"))?
-            .value();
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Hash not found"))?;
         Ok(abstract_data.source_path())
     })
     .await
