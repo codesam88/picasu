@@ -19,8 +19,8 @@ use rocket::serde::{Deserialize, Serialize, json::Json};
 #[serde(crate = "rocket::serde")]
 #[derive(utoipa::ToSchema)]
 pub struct RotateImageRequest {
-    /// Hash of the image to rotate
-    pub hash: String,
+    /// Asset ID of the image to rotate
+    pub asset_id: String,
 }
 
 #[utoipa::path(
@@ -42,14 +42,14 @@ pub async fn rotate_image(
     let _ = auth?;
     let _ = read_only_mode?;
 
-    let _hash = ArrayString::<64>::from(&request.hash)
-        .map_err(|_| AppError::new(ErrorKind::InvalidInput, "Invalid hash length or format"))?;
+    let _asset_id = ArrayString::<64>::from(&request.asset_id)
+        .map_err(|_| AppError::new(ErrorKind::InvalidInput, "Invalid asset_id length or format"))?;
 
     let abstract_data =
         tokio::task::spawn_blocking(move || -> Result<Vec<AbstractData>, AppError> {
-            let abstract_data = asset_store::lookup_abstract_data_by_hash(&request.hash)
+            let abstract_data = asset_store::lookup_abstract_data_by_asset_id(&request.asset_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to fetch DB record"))?
-                .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Hash not found"))?;
+                .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Asset not found"))?;
 
             let mut abstract_data = abstract_data;
 
@@ -97,7 +97,7 @@ pub async fn rotate_image(
             let mut result_vec = vec![abstract_data];
 
             for album_id in album_ids {
-                if let Ok(Some(album)) = asset_store::lookup_abstract_data_by_hash(&album_id) {
+                if let Ok(Some(album)) = asset_store::lookup_abstract_data_by_asset_id(&album_id) {
                     let mut album = album;
                     album.update_update_at();
                     result_vec.push(album);

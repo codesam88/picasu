@@ -153,9 +153,8 @@ pub fn resolve_hash_to_asset_id(content_hash: &str) -> Result<Option<ArrayString
 }
 
 /// Look up an `AbstractData` from `DATA_TABLE` by `asset_id`.
-/// Falls back to content hash resolution via `DUPE_INDEX`.
-pub fn lookup_abstract_data_by_hash(
-    hash: &str,
+pub fn lookup_abstract_data_by_asset_id(
+    asset_id: &str,
 ) -> Result<Option<crate::model::abstract_data::AbstractData>> {
     let txn = TREE
         .in_disk
@@ -165,15 +164,7 @@ pub fn lookup_abstract_data_by_hash(
         .open_table(crate::storage::db::DATA_TABLE)
         .context("Failed to open DATA_TABLE")?;
 
-    // Try direct lookup (by asset_id).
-    if let Some(guard) = table.get(hash)? {
-        return Ok(Some(guard.value()));
-    }
-
-    // Resolve content hash → asset_id via DUPE_INDEX.
-    if let Some(asset_id) = resolve_hash_to_asset_id(hash)?
-        && let Some(guard) = table.get(&*asset_id)?
-    {
+    if let Some(guard) = table.get(asset_id)? {
         return Ok(Some(guard.value()));
     }
 
