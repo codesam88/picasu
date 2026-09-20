@@ -145,6 +145,7 @@ async function checkAndFetch(
     getArrayValue(workerStore.postToImgWorkerList, workerIndex).processSmallImage({
       index,
       hash,
+      assetId,
       width: displayWidth,
       height: displayHeight,
       devicePixelRatio: window.devicePixelRatio,

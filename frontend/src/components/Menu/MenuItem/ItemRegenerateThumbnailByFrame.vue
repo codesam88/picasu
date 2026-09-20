@@ -11,6 +11,7 @@ import { getIsolationIdByRoute } from '@utils/getter'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useEditStore } from '@/store/editStore'
+import { useDataStore } from '@/store/dataStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 const route = useRoute()
@@ -18,21 +19,27 @@ const isolationId = getIsolationIdByRoute(route)
 const currentFrameStore = useCurrentFrameStore(isolationId)
 const messageStore = useMessageStore('mainId')
 const editStore = useEditStore('mainId')
+const dataStore = useDataStore(isolationId)
 
 const regenerateThumbnailByFrame = async () => {
   const hash = route.params.hash
   if (typeof hash !== 'string') return
 
-  if (editStore.hasRegenerate(hash)) return
+  // Resolve assetId from data store; fall back to hash for backward compat
+  const index = dataStore.hashMapData.get(hash)
+  const data = index !== undefined ? dataStore.data.get(index) : undefined
+  const assetId = data?.assetId ?? hash
 
-  editStore.addRegenerate(hash)
+  if (editStore.hasRegenerate(assetId)) return
+
+  editStore.addRegenerate(assetId)
   try {
     await tryWithMessageStore(isolationId, async () => {
       const currentFrameBlob = await currentFrameStore.getCapture()
       if (currentFrameBlob) {
         const formData = new FormData()
 
-        // Append the hash first
+        // Append the hash for backend compatibility
         formData.append('hash', hash)
 
         // Append the frame file
@@ -50,7 +57,7 @@ const regenerateThumbnailByFrame = async () => {
       }
     })
   } finally {
-    editStore.removeRegenerate(hash)
+    editStore.removeRegenerate(assetId)
   }
 }
 </script>

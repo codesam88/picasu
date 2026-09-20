@@ -144,6 +144,7 @@ async function checkAndFetch(index: number): Promise<boolean> {
   postToWorker.processImage({
     index,
     hash,
+    assetId,
     devicePixelRatio: window.devicePixelRatio,
     albumId: shareStore.albumId,
     shareId: shareStore.shareId,
