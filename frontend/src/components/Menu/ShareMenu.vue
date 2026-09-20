@@ -11,7 +11,15 @@
         </template>
         <v-list>
           <ItemViewOriginalFile
-            :src="getSrcOriginal(database.id, true, database.ext, database.updateAt)"
+            :src="
+              getSrcOriginal(
+                database.id,
+                true,
+                database.ext,
+                database.updateAt,
+                (database as { assetId?: string }).assetId
+              )
+            "
             :hash="database.id"
             :isolation-id="props.isolationId"
           />

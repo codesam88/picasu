@@ -119,16 +119,31 @@ export function extractHashFromPath(path: string): string | null {
   return lastSegment?.split('.').shift() ?? null
 }
 
-export function getSrc(hash: string, original: boolean, ext: string, updatedAt: number) {
+export function getSrc(
+  hash: string,
+  original: boolean,
+  ext: string,
+  updatedAt: number,
+  assetId?: string
+) {
   const compressedOrImported = original ? 'imported' : 'compressed'
-  const basePath = `/object/${compressedOrImported}/${hash.slice(0, 2)}/${hash}.${ext}`
+  // For original files, use assetId when available (backend resolves by assetId first)
+  // For compressed files, always use content hash (backend stores by content hash)
+  const id = original && assetId !== undefined ? assetId : hash
+  const basePath = `/object/${compressedOrImported}/${id.slice(0, 2)}/${id}.${ext}`
 
   return `${basePath}?updated_at=${updatedAt}`
 }
 
-export function getSrcOriginal(hash: string, original: boolean, ext: string, updatedAt: number) {
+export function getSrcOriginal(
+  hash: string,
+  original: boolean,
+  ext: string,
+  updatedAt: number,
+  assetId?: string
+) {
   const shareStore = useShareStore('mainId')
-  const baseSrc = getSrc(hash, original, ext, updatedAt)
+  const baseSrc = getSrc(hash, original, ext, updatedAt, assetId)
 
   if (typeof shareStore.albumId === 'string' && typeof shareStore.shareId === 'string') {
     const separator = baseSrc.includes('?') ? '&' : '?'
