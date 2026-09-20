@@ -7,22 +7,11 @@ use crate::{model::abstract_data::AbstractData, router::auth::ClaimsHash};
 pub struct DatabaseTimestamp {
     pub abstract_data: AbstractData,
     pub timestamp: i64,
-    /// The path-primary asset ID for this record. Used to populate
-    /// `ReducedData.asset_id` so each physical file is independently addressable.
-    #[serde(default)]
-    pub asset_id: Option<arrayvec::ArrayString<64>>,
+    /// The path-primary asset ID for this record.
+    pub asset_id: arrayvec::ArrayString<64>,
 }
 
 impl DatabaseTimestamp {
-    pub fn new(abstract_data: AbstractData, priority_list: &[&str]) -> Self {
-        let timestamp = abstract_data.compute_timestamp(priority_list);
-        Self {
-            abstract_data,
-            timestamp,
-            asset_id: None,
-        }
-    }
-
     pub fn with_asset_id(
         abstract_data: AbstractData,
         priority_list: &[&str],
@@ -32,7 +21,7 @@ impl DatabaseTimestamp {
         Self {
             abstract_data,
             timestamp,
-            asset_id: Some(asset_id),
+            asset_id,
         }
     }
 }
@@ -45,45 +34,11 @@ pub struct DataBaseTimestampReturn {
     pub abstract_data: AbstractData,
     pub timestamp: i64,
     pub token: String,
-    /// Path-primary asset ID. Present when the record was resolved via
-    /// the asset tables. Allows the frontend to address specific assets
-    /// instead of content hashes.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub asset_id: Option<String>,
+    /// Path-primary asset ID.
+    pub asset_id: String,
 }
 
 impl DataBaseTimestampReturn {
-    #[allow(dead_code)]
-    pub fn new(
-        abstract_data: AbstractData,
-        priority_list: &[&str],
-        token_timestamp: i64,
-        allow_original: bool,
-    ) -> Self {
-        let timestamp = abstract_data.compute_timestamp(priority_list);
-        let token = match &abstract_data {
-            AbstractData::Image(img) => {
-                ClaimsHash::new(img.object.id, token_timestamp, allow_original).encode()
-            }
-            AbstractData::Video(vid) => {
-                ClaimsHash::new(vid.object.id, token_timestamp, allow_original).encode()
-            }
-            AbstractData::Album(alb) => {
-                if let Some(cover_id) = alb.metadata.cover {
-                    ClaimsHash::new(cover_id, token_timestamp, allow_original).encode()
-                } else {
-                    String::new()
-                }
-            }
-        };
-        Self {
-            abstract_data,
-            timestamp,
-            token,
-            asset_id: None,
-        }
-    }
-
     /// Create with `asset_id` included in the token for path-primary identity.
     pub fn with_asset_id(
         abstract_data: AbstractData,
@@ -95,24 +50,20 @@ impl DataBaseTimestampReturn {
         let timestamp = abstract_data.compute_timestamp(priority_list);
         let token = match &abstract_data {
             AbstractData::Image(img) => {
-                ClaimsHash::new(img.object.id, token_timestamp, allow_original)
-                    .with_asset_id(asset_id)
-                    .encode()
+                ClaimsHash::new(img.object.id, asset_id, token_timestamp, allow_original).encode()
             }
             AbstractData::Video(vid) => {
-                ClaimsHash::new(vid.object.id, token_timestamp, allow_original)
-                    .with_asset_id(asset_id)
-                    .encode()
+                ClaimsHash::new(vid.object.id, asset_id, token_timestamp, allow_original).encode()
             }
             AbstractData::Album(_) => {
-                ClaimsHash::new(asset_id, token_timestamp, allow_original).encode()
+                ClaimsHash::new(asset_id, asset_id, token_timestamp, allow_original).encode()
             }
         };
         Self {
             abstract_data,
             timestamp,
             token,
-            asset_id: Some(asset_id.to_string()),
+            asset_id: asset_id.to_string(),
         }
     }
 }
@@ -122,9 +73,8 @@ use bitcode::{Decode, Encode};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Decode, Encode)]
 pub struct ReducedData {
-    /// Path-primary asset ID. `None` for entries that predate the asset
-    /// migration or lack an explicit asset mapping.
-    pub asset_id: Option<ArrayString<64>>,
+    /// Path-primary asset ID.
+    pub asset_id: ArrayString<64>,
     pub hash: ArrayString<64>,
     pub width: u32,
     pub height: u32,

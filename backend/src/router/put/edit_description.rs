@@ -59,15 +59,6 @@ pub async fn set_user_defined_description(
                         set_user_defined_description.index
                     ),
                 )
-            })?
-            .ok_or_else(|| {
-                AppError::new(
-                    ErrorKind::NotFound,
-                    format!(
-                        "No asset_id for index {}",
-                        set_user_defined_description.index
-                    ),
-                )
             })?;
 
         if let Some(guard) = data_table

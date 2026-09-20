@@ -78,31 +78,29 @@ use arrayvec::ArrayString;
 pub struct ClaimsHash {
     pub allow_original: bool,
     pub hash: ArrayString<64>,
-    /// Path-primary asset ID. When present, tokens and serving resolve
-    /// by `asset_id` instead of content hash.
-    #[serde(default)]
-    pub asset_id: Option<ArrayString<64>>,
+    /// Path-primary asset ID. Tokens and serving resolve by `asset_id`.
+    pub asset_id: ArrayString<64>,
     pub timestamp: i64,
     pub exp: u64,
 }
 
 impl ClaimsHash {
-    pub fn new(hash: ArrayString<64>, timestamp: i64, allow_original: bool) -> Self {
+    pub fn new(
+        hash: ArrayString<64>,
+        asset_id: ArrayString<64>,
+        timestamp: i64,
+        allow_original: bool,
+    ) -> Self {
         #[allow(clippy::cast_sign_loss)]
         let exp = (Utc::now().timestamp_millis() / 1000) as u64 + 300;
 
         Self {
             allow_original,
             hash,
-            asset_id: None,
+            asset_id,
             timestamp,
             exp,
         }
-    }
-
-    pub fn with_asset_id(mut self, asset_id: ArrayString<64>) -> Self {
-        self.asset_id = Some(asset_id);
-        self
     }
 
     pub fn encode(&self) -> String {
@@ -559,18 +557,13 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
             }
         };
 
-        // Validate against the token's asset_id only.
+        // Validate against the token's asset_id.
         // Asset ID is authoritative — no hash fallback.
-        let Some(token_asset_id) = &claims.asset_id else {
-            warn!("Token does not contain asset_id for original serving.");
-            return Outcome::Error((
-                Status::Unauthorized,
-                AppError::new(ErrorKind::Auth, "Token missing asset_id"),
-            ));
-        };
-
-        if url_id != **token_asset_id {
-            warn!("Asset ID does not match. URL: {url_id}, Token: {token_asset_id}.");
+        if url_id != *claims.asset_id {
+            warn!(
+                "Asset ID does not match. URL: {url_id}, Token: {}.",
+                claims.asset_id
+            );
             return Outcome::Error((
                 Status::Unauthorized,
                 AppError::new(ErrorKind::Auth, "Asset ID does not match"),
@@ -645,7 +638,12 @@ pub async fn renew_hash_token(
         }
 
         let claims = token_data.claims;
-        let new_hash_claims = ClaimsHash::new(claims.hash, claims.timestamp, claims.allow_original);
+        let new_hash_claims = ClaimsHash::new(
+            claims.hash,
+            claims.asset_id,
+            claims.timestamp,
+            claims.allow_original,
+        );
         let new_hash_token = new_hash_claims.encode();
 
         Ok(Json(RenewHashTokenReturn {

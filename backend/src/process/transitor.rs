@@ -23,16 +23,7 @@ fn keep_view_alias(alias: &mut Vec<FileModify>, trashed_view: bool) {
     }
 }
 
-#[allow(dead_code)]
-pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
-    if index >= tree_snapshot.len() {
-        return Err(anyhow::anyhow!("Index out of bounds: {index}"));
-    }
-    let hash = tree_snapshot.get_hash(index)?;
-    Ok(hash)
-}
-
-pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<Option<ArrayString<64>>> {
+pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
     if index >= tree_snapshot.len() {
         return Err(anyhow::anyhow!("Index out of bounds: {index}"));
     }
@@ -40,41 +31,19 @@ pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<Option<A
     Ok(asset_id)
 }
 
-#[allow(dead_code)]
-pub fn hash_to_abstract_data(
-    data_table: &ReadOnlyTable<&'static str, AbstractData>,
-    hash: ArrayString<64>,
-) -> Result<AbstractData> {
-    if let Some(data) = data_table.get(&*hash)? {
-        Ok(data.value())
-    } else {
-        Err(anyhow::anyhow!("No data found for hash: {hash}"))
-    }
-}
-
-/// Resolve an `asset_id` to an `AbstractData` record.
-///
-/// First tries the new `ASSET_BY_ID` store. If the asset exists there,
-/// converts it to an `AbstractData` for backward-compatible API responses.
-/// Falls back to the old `DATA_TABLE` by hash if no asset is found.
+/// Resolve an `asset_id` to an `AbstractData` record via `DATA_TABLE`.
 pub fn asset_id_to_abstract_data(
     asset_id: ArrayString<64>,
     data_table: &ReadOnlyTable<&'static str, AbstractData>,
 ) -> Result<AbstractData> {
-    // Try DATA_TABLE by asset_id (new path-primary key).
     if let Some(data) = data_table.get(&*asset_id)? {
         return Ok(data.value());
-    }
-
-    // Fall back to ASSET_BY_ID → lossy conversion.
-    if let Some(record) = crate::storage::asset_store::get_asset_by_id(&asset_id)? {
-        return Ok(asset_record_to_abstract_data(&record));
     }
 
     Err(anyhow::anyhow!("No data found for asset_id: {asset_id}"))
 }
 
-/// Convert an `AssetRecord` to an `AbstractData` for API backward compatibility.
+/// Convert an `AssetRecord` to an `AbstractData` for API responses.
 /// This is a lossy conversion — EXIF, tags, and other metadata are not preserved.
 pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) -> AbstractData {
     use crate::model::album::{AlbumCombined, AlbumMetadata};
@@ -84,8 +53,8 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
     use crate::model::response::FileModify;
     use crate::model::video::{VideoCombined, VideoMetadata};
 
-    // Use content hash as ObjectSchema.id for backward compat with thumbnail serving.
-    let display_id = record.content_hash.unwrap_or(record.asset_id);
+    // Use asset_id as the display ID.
+    let display_id = record.asset_id;
 
     match record.kind {
         AssetKind::Image => {
@@ -166,32 +135,7 @@ pub fn clear_abstract_data_metadata(
     }
 }
 
-#[allow(dead_code)]
-pub fn abstract_data_to_database_timestamp_return(
-    mut abstract_data: AbstractData,
-    timestamp: i64,
-    show_download: bool,
-    show_metadata: bool,
-    trashed_view: bool,
-) -> DataBaseTimestampReturn {
-    let result = DataBaseTimestampReturn::new(
-        abstract_data.clone(),
-        DEFAULT_PRIORITY_LIST,
-        timestamp,
-        show_download,
-    );
-    clear_abstract_data_metadata(&mut abstract_data, show_metadata, trashed_view);
-    DataBaseTimestampReturn {
-        abstract_data,
-        timestamp: result.timestamp,
-        token: result.token,
-        asset_id: None,
-    }
-}
-
-/// Like `abstract_data_to_database_timestamp_return` but includes `asset_id`
-/// in the token for path-primary identity.
-pub fn abstract_data_to_timestamp_return_with_asset_id(
+pub fn abstract_data_to_timestamp_return(
     mut abstract_data: AbstractData,
     timestamp: i64,
     show_download: bool,
@@ -211,7 +155,7 @@ pub fn abstract_data_to_timestamp_return_with_asset_id(
         abstract_data,
         timestamp: result.timestamp,
         token: result.token,
-        asset_id: Some(asset_id.to_string()),
+        asset_id: asset_id.to_string(),
     }
 }
 
@@ -220,7 +164,6 @@ pub fn index_to_abstract_data(
     data_table: &ReadOnlyTable<&'static str, AbstractData>,
     index: usize,
 ) -> Result<AbstractData> {
-    let asset_id = index_to_asset_id(tree_snapshot, index)?
-        .ok_or_else(|| anyhow::anyhow!("No asset_id for index {index}"))?;
+    let asset_id = index_to_asset_id(tree_snapshot, index)?;
     asset_id_to_abstract_data(asset_id, data_table)
 }

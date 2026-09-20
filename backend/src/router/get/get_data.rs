@@ -54,19 +54,12 @@ pub async fn get_data(
         let database_timestamp_return_list: Result<Vec<_>, AppError> = (start..end)
             .into_par_iter()
             .map(|index| {
-                let asset_id = index_to_asset_id(&tree_snapshot, index)
-                    .or_raise(|| {
-                        (
-                            ErrorKind::Database,
-                            format!("Failed to map index {index} to asset_id"),
-                        )
-                    })?
-                    .ok_or_else(|| {
-                        AppError::new(
-                            ErrorKind::NotFound,
-                            format!("No asset_id for index {index}"),
-                        )
-                    })?;
+                let asset_id = index_to_asset_id(&tree_snapshot, index).or_raise(|| {
+                    (
+                        ErrorKind::Database,
+                        format!("Failed to map index {index} to asset_id"),
+                    )
+                })?;
 
                 let abstract_data =
                     asset_id_to_abstract_data(asset_id, &data_table).or_raise(|| {
@@ -77,7 +70,7 @@ pub async fn get_data(
                     })?;
 
                 let database_timestamp_return =
-                    crate::process::transitor::abstract_data_to_timestamp_return_with_asset_id(
+                    crate::process::transitor::abstract_data_to_timestamp_return(
                         abstract_data,
                         timestamp,
                         show_download,

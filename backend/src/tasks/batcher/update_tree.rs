@@ -10,29 +10,9 @@ use arrayvec::ArrayString;
 use chrono::Utc;
 use log::warn;
 use mini_executor::BatchTask;
-use rayon::iter::{ParallelBridge, ParallelIterator};
 use rayon::prelude::ParallelSliceMut;
 use redb::ReadableTable;
-use std::collections::HashSet;
-use std::sync::LazyLock;
 use std::time::Instant;
-
-static ALLOWED_KEYS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
-    [
-        "Make",
-        "Model",
-        "FNumber",
-        "ExposureTime",
-        "FocalLength",
-        "PhotographicSensitivity",
-        "DateTimeOriginal",
-        "duration",
-        "rotation",
-    ]
-    .iter()
-    .copied()
-    .collect()
-});
 
 pub struct UpdateTreeTask;
 
@@ -59,14 +39,11 @@ fn update_tree_task() {
 
     let priority_list = vec!["DateTimeOriginal", "filename", "modified", "scan_time"];
 
-    let database_timestamp_vec = build_from_asset_tables(&priority_list)
-        .unwrap_or_else(|| build_from_data_table(&priority_list));
+    let mut database_timestamp_vec = build_from_asset_tables(&priority_list).unwrap_or_default();
 
-    let mut database_timestamp_vec = database_timestamp_vec;
     // Sort by timestamp descending, with a deterministic secondary key
     // (first alias path) so that items with equal timestamps have a stable
-    // order. This prevents locate-by-hash from returning non-deterministic
-    // results when multiple same-hash assets exist.
+    // order.
     database_timestamp_vec.par_sort_by(|a, b| {
         b.timestamp.cmp(&a.timestamp).then_with(|| {
             let a_path = a
@@ -94,25 +71,6 @@ fn update_tree_task() {
 
     let duration = format!("{:?}", start_time.elapsed());
     info!(duration = &*duration; "In-memory cache updated ({}).", current_timestamp);
-}
-
-/// Build the in-memory tree from the legacy `DATA_TABLE` (one entry per hash).
-fn build_from_data_table(priority_list: &[&str]) -> Vec<DatabaseTimestamp> {
-    let data_table = open_data_table();
-
-    data_table
-        .iter()
-        .expect("failed to iterate table")
-        .par_bridge()
-        .map(|guard| {
-            let (_, value) = guard.expect("failed to read record");
-            let mut abstract_data = value.value();
-            if let Some(exif_vec) = abstract_data.exif_vec_mut() {
-                exif_vec.retain(|k, _| ALLOWED_KEYS.contains(&k.as_str()));
-            }
-            DatabaseTimestamp::new(abstract_data, priority_list)
-        })
-        .collect()
 }
 
 /// Build the in-memory tree from `ASSET_BY_ID` (one entry per file/path).
