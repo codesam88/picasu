@@ -219,14 +219,21 @@ The asset tables will instead be populated synchronously during
   serialize indexing via separate per-album scans (eliminates dedup race)
 - `reset_backend_state` clears asset tables between tests
 
-### Remaining red tests (will stabilize when production pipeline is migrated)
+### Remaining red/flaky tests
 
-| Test                                          | Root cause                                                       |
-| --------------------------------------------- | ---------------------------------------------------------------- |
-| `dup_same_album_two_items`                    | DeduplicateTask merges aliases → 2 records not 3                 |
-| `dup_move_one_leaves_other`                   | Moving merged record moves all aliases (flaky due to dedup race) |
-| `dup_delete_record_does_not_destroy_other`    | Deleting merged record destroys all aliases                      |
-| `duplicate_files_are_independent_album_items` | Pre-existing red test                                            |
+| Test                                          | Status | Root cause                                               |
+| --------------------------------------------- | ------ | -------------------------------------------------------- |
+| `dup_same_album_two_items`                    | RED    | DeduplicateTask merges aliases → 2 records not 3         |
+| `dup_move_one_leaves_other`                   | RED    | Moving merged record moves all aliases                   |
+| `dup_delete_record_does_not_destroy_other`    | RED    | Deleting merged record destroys all aliases              |
+| `dup_delete_one_leaves_other`                 | FLAKY  | dedup race: merge may/may not happen depending on timing |
+| `duplicate_files_are_independent_album_items` | RED    | Pre-existing red test                                    |
+
+Root cause: `DeduplicateTask` merges same-hash files into one record.
+When two files with the same hash are indexed concurrently, the second
+file's dedup may or may not see the first file's record (FlushTreeTask
+race). Fix requires removing alias merging or wiring `index_asset` into
+the production pipeline.
 
 ### Blocked by Phase 7
 
