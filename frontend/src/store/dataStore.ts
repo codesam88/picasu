@@ -5,11 +5,13 @@ export const useDataStore = (isolationId: IsolationId) =>
   defineStore('DataStore' + isolationId, {
     state: (): {
       data: Map<number, EnrichedUnifiedData> // dataIndex -> data
-      hashMapData: Map<string, number> // hash -> dataIndex
+      hashMapData: Map<string, number> // hash -> dataIndex (for URL routing by content hash)
+      assetIdMapData: Map<string, number> // assetId -> dataIndex (for asset-ID identity)
       batchFetched: Map<number, boolean> // Tracks the batches of image metadata that have been fetched
     } => ({
       data: new Map(),
       hashMapData: new Map(),
+      assetIdMapData: new Map(),
       batchFetched: new Map()
     }),
     actions: {
@@ -17,6 +19,7 @@ export const useDataStore = (isolationId: IsolationId) =>
       clearAll() {
         this.data.clear()
         this.hashMapData.clear()
+        this.assetIdMapData.clear()
         this.batchFetched.clear()
       },
       addTags(index: number, tags: string[]): boolean {

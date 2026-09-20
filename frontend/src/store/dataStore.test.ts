@@ -7,8 +7,8 @@ describe('dataStore', () => {
     setActivePinia(createPinia())
   })
 
-  describe('hashMapData with assetId', () => {
-    test('same-hash rows with different assetIds are distinguishable', () => {
+  describe('assetIdMapData', () => {
+    test('same-hash rows with different assetIds are distinguishable via assetIdMapData', () => {
       const dataStore = useDataStore('mainId')
 
       const baseData = {
@@ -39,19 +39,25 @@ describe('dataStore', () => {
       const item1Data = { ...baseData, album: 'album_a' }
       const item2Data = { ...baseData, album: 'album_b' }
 
-      // Simulate what fromDataWorker does: use assetId as map key when available
       const assetId1 = 'asset_a'
       const assetId2 = 'asset_b'
 
+      // Simulate dual-map population
       dataStore.data.set(0, item1Data)
-      dataStore.hashMapData.set(assetId1, 0)
+      dataStore.hashMapData.set(item1Data.id, 0)
+      dataStore.assetIdMapData.set(assetId1, 0)
 
       dataStore.data.set(1, item2Data)
-      dataStore.hashMapData.set(assetId2, 1)
+      dataStore.hashMapData.set(item2Data.id, 1) // overwrites hash map entry
+      dataStore.assetIdMapData.set(assetId2, 1)
 
-      // Both items should be retrievable by their distinct asset IDs
-      const index1 = dataStore.hashMapData.get(assetId1)
-      const index2 = dataStore.hashMapData.get(assetId2)
+      // hashMapData only has the last item for the same hash
+      const hashIndex = dataStore.hashMapData.get('same_hash_abc')
+      expect(hashIndex).toBe(1) // last one wins
+
+      // assetIdMapData has both items with distinct indices
+      const index1 = dataStore.assetIdMapData.get(assetId1)
+      const index2 = dataStore.assetIdMapData.get(assetId2)
 
       expect(index1).toBe(0)
       expect(index2).toBe(1)
@@ -70,7 +76,7 @@ describe('dataStore', () => {
       }
     })
 
-    test('items without assetId fall back to content hash as key', () => {
+    test('items without assetId are not stored in assetIdMapData', () => {
       const dataStore = useDataStore('mainId')
 
       const itemData = {
@@ -97,15 +103,17 @@ describe('dataStore', () => {
         timestamp: 1700000000000
       }
 
-      // No assetId provided, should fall back to data.id
-      const mapKey = itemData.id
-
+      // No assetId provided
       dataStore.data.set(0, itemData)
-      dataStore.hashMapData.set(mapKey, 0)
+      dataStore.hashMapData.set(itemData.id, 0)
+      // assetIdMapData is not populated
 
-      // Should be retrievable by content hash
+      // Should be retrievable by content hash in hashMapData
       const index = dataStore.hashMapData.get('unique_hash_xyz')
       expect(index).toBe(0)
+
+      // Should not be in assetIdMapData
+      expect(dataStore.assetIdMapData.size).toBe(0)
     })
   })
 })

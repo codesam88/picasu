@@ -44,9 +44,12 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
       const slicedDataArray: SlicedData[] = payload.slicedDataArray
       slicedDataArray.forEach(({ index, data, hashToken, assetId }) => {
         dataStore.data.set(index, data)
-        // Use assetId as the key when available to distinguish same-hash items in different albums
-        const mapKey = assetId ?? data.id
-        dataStore.hashMapData.set(mapKey, index)
+        // Always store in hashMapData for URL routing by content hash
+        dataStore.hashMapData.set(data.id, index)
+        // Store in assetIdMapData when assetId is available for asset-ID identity
+        if (assetId !== undefined) {
+          dataStore.assetIdMapData.set(assetId, index)
+        }
 
         // Business Logic: Albums rely on 'cover' for token validation,
         // whereas distinct media types (Images/Videos) use their unique ID.
