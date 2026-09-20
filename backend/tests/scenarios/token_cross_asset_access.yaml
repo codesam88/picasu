@@ -6,8 +6,10 @@ given:
     id_as: $album
   - photo: /e2e_token/album/photo_a.jpg
     id_as: $photo_a
+    asset_id_as: $asset_id_a
   - photo: /e2e_token/album/photo_b.jpg
     id_as: $photo_b
+    asset_id_as: $asset_id_b
 when:
   - call: POST /post/index/album
     raw_body: '{"album": "/e2e_token"}'
@@ -15,7 +17,7 @@ when:
       - response.status: 202
   - wait_index: true
   # Get data for photo_a and capture its token and timestamp.
-  - call: POST /get/prefetch?locate=${photo_a}
+  - call: POST /get/prefetch?locate=${asset_id_a}
     capture:
       ts_a: response.prefetch.timestamp
       idx_a: response.prefetch.locateTo
@@ -23,7 +25,7 @@ when:
     calc:
       end_a: "${idx_a}+1"
   # Get data for photo_b with its own token.
-  - call: POST /get/prefetch?locate=${photo_b}
+  - call: POST /get/prefetch?locate=${asset_id_b}
     capture:
       ts_b: response.prefetch.timestamp
       idx_b: response.prefetch.locateTo

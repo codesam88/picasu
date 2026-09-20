@@ -3,9 +3,10 @@ name: delete removes original file and xmp sidecar from disk
 given:
   - photo: /e2e_z3/photo.jpg
     id_as: $photo
+    asset_id_as: $asset_id
 when:
   # Write a sidecar first by editing a tag
-  - call: POST /get/prefetch?locate=${photo}
+  - call: POST /get/prefetch?locate=${asset_id}
     capture:
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo
@@ -15,7 +16,7 @@ when:
       - response.status: 200
       - file_exists: /e2e_z3/photo.xmp
   # Re-capture timestamp after edit (tree updated)
-  - call: POST /get/prefetch?locate=${photo}
+  - call: POST /get/prefetch?locate=${asset_id}
     capture:
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo

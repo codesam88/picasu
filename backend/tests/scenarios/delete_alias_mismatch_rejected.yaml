@@ -5,8 +5,9 @@ name: delete rejects aliasList entry that does not match the record
 given:
   - photo: /e2e_mismatch/photo.jpg
     id_as: $photo
+    asset_id_as: $asset_id
 when:
-  - call: POST /get/prefetch?locate=${photo}
+  - call: POST /get/prefetch?locate=${asset_id}
     capture:
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo

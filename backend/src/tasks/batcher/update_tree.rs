@@ -121,9 +121,11 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
     use redb::{ReadableDatabase, ReadableTable};
 
     let Ok(txn) = TREE.in_disk.begin_read() else {
+        log::info!("build_from_asset_tables: failed to begin read transaction");
         return None;
     };
     let Ok(table) = txn.open_table(crate::storage::db::ASSET_BY_ID) else {
+        log::info!("build_from_asset_tables: failed to open ASSET_BY_ID");
         return None;
     };
 
@@ -156,6 +158,11 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
             record.asset_id,
         ));
     }
+
+    log::info!(
+        "build_from_asset_tables: built {} entries from ASSET_BY_ID",
+        entries.len()
+    );
 
     if entries.is_empty() {
         None

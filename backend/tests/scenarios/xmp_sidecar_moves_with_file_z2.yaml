@@ -7,9 +7,10 @@ given:
     tags:
       - z2_tag
     id_as: $photo
+    asset_id_as: $asset_id
 when:
   # Capture index so we can call edit_tag
-  - call: POST /get/prefetch?locate=${photo}
+  - call: POST /get/prefetch?locate=${asset_id}
     capture:
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo

@@ -233,11 +233,38 @@ The asset tables will instead be populated synchronously during
 - `imported_file` resolves by `asset_id` first (via `ASSET_BY_ID`), falls back to hash
 - `GuardHashOriginal` validates `asset_id` from token when present, falls back to `hash`
 
+## Phase 6: Serving, Tokens, and API Responses — DONE
+
+### Token system — DONE
+
+- `ClaimsHash` has optional `asset_id` field (serde default, backward compatible)
+- `ClaimsHash::with_asset_id()` builder method
+- `DataBaseTimestampReturn` exposes `asset_id` in JSON response
+- `DataBaseTimestampReturn::with_asset_id()` includes `asset_id` in token
+- `get_data` endpoint passes `asset_id` through to token generation
+
+### Locate — DONE
+
+- `compute_locate` uses `asset_id` only — no hash fallback
+- `ReducedData.asset_id` is `Option<ArrayString<64>>` (None for old-model entries)
+- `discover_asset_id` test helper captures `asset_id` from `get-data` response
+- `asset_id_as` scenario field for capturing `asset_id` in `given` and `when` sections
+
+### Original serving — DONE
+
+- `imported_file` resolves by `asset_id` only — no hash fallback
+- `GuardHashOriginal` validates `asset_id` from token — no hash fallback, errors if missing
+
+### Negative tests — DONE
+
+- `negative_unknown_asset_id`: unknown asset_id returns null locateTo
+- `negative_deleted_asset_not_locatable`: deleted asset returns null locateTo
+- `negative_moved_asset_serves_new_path`: moved asset resolves to new path by asset_id
+
 ### Remaining Phase 6 items
 
-- Negative tests for cross-asset token use, moved asset serving, deleted asset serving
-- Album covers reference `asset_id`
-- Compressed thumbnail serving keeps hash-based identity (by design)
+- Album covers reference `asset_id` (deferred to Phase 7)
+- Compressed thumbnail serving keeps hash-based identity (by design, no change needed)
 
 ## Phase 7: Move, Delete, Sidecars, and Album Operations — IN PROGRESS
 
@@ -273,17 +300,22 @@ The asset tables will instead be populated synchronously during
 - `get_test_probe` resolves content hash to asset_id via DUPE_INDEX
 - `dir_album::write_album_to_db` writes to ASSET_BY_ID and ASSET_BY_PATH
 
-### Directory moves — IN PROGRESS
+### Delete/trash — IN PROGRESS
+
+- `delete_multi_alias` scenario updated for path-primary (deleting one
+  asset does not destroy same-hash sibling)
+- `process_deletes` resolves via `index_to_abstract_data` which uses asset_id
+- `FlushTreeTask::remove` cleans up ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX
+
+### Directory moves — DONE
 
 - `update_asset_tables_after_dir_move()` updates `ASSET_BY_PATH` and
   `ASSET_BY_ID` when a directory is moved via `assign_album`
-- Called from `move_album_into_album` after `rename_whole_dir` completes
-- `dir_move_updates_asset_tables` scenario verifies asset_id is preserved
-  and file is locatable after directory move
+- `dir_move_updates_asset_tables` scenario verifies asset_id preserved
 
 ### Remaining work
 
-1. Delete/trash — update remaining scenarios that test old multi-alias behavior
+1. Album cover references — migrate `set_album_cover` to use `asset_id`
 2. Shared thumbnail cleanup — consult `DUPE_INDEX` before removing thumbnails
 3. Album deletion — recursively handle child album/file assets
 

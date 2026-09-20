@@ -559,26 +559,21 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
             }
         };
 
-        // Validate against the token's asset_id (preferred) or hash (fallback).
-        // asset_id is the path-primary identity; hash fallback is for tokens
-        // generated before asset_id was available.
-        if let Some(ref token_asset_id) = claims.asset_id {
-            if url_id != **token_asset_id {
-                warn!("Asset ID does not match. URL: {url_id}, Token: {token_asset_id}.");
-                return Outcome::Error((
-                    Status::Unauthorized,
-                    AppError::new(ErrorKind::Auth, "Asset ID does not match"),
-                ));
-            }
-        } else if url_id != *claims.hash {
-            // Fallback: token has no asset_id, validate against hash.
-            warn!(
-                "Hash does not match (fallback). URL: {}, Token: {}.",
-                url_id, claims.hash
-            );
+        // Validate against the token's asset_id only.
+        // Asset ID is authoritative — no hash fallback.
+        let Some(token_asset_id) = &claims.asset_id else {
+            warn!("Token does not contain asset_id for original serving.");
             return Outcome::Error((
                 Status::Unauthorized,
-                AppError::new(ErrorKind::Auth, "Hash does not match"),
+                AppError::new(ErrorKind::Auth, "Token missing asset_id"),
+            ));
+        };
+
+        if url_id != **token_asset_id {
+            warn!("Asset ID does not match. URL: {url_id}, Token: {token_asset_id}.");
+            return Outcome::Error((
+                Status::Unauthorized,
+                AppError::new(ErrorKind::Auth, "Asset ID does not match"),
             ));
         }
         Outcome::Success(GuardHashOriginal)

@@ -7,6 +7,7 @@ given:
     id_as: $album
   - photo: /e2e_sx/src/photo.jpg
     id_as: $photo
+    asset_id_as: $asset_id
 when:
   # Upload identical content to the target album.
   - upload:
@@ -22,7 +23,7 @@ when:
       - response.status: 202
   - wait_index: true
   # Locate the source file.
-  - call: POST /get/prefetch?locate=${photo}
+  - call: POST /get/prefetch?locate=${asset_id}
     capture:
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo
@@ -41,7 +42,7 @@ when:
     then:
       - response.status: 200
   # Re-locate after edit.
-  - call: POST /get/prefetch?locate=${photo}
+  - call: POST /get/prefetch?locate=${asset_id}
     capture:
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo

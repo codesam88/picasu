@@ -32,7 +32,7 @@ pub fn index_to_hash(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<
     Ok(hash)
 }
 
-pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
+pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<Option<ArrayString<64>>> {
     if index >= tree_snapshot.len() {
         return Err(anyhow::anyhow!("Index out of bounds: {index}"));
     }
@@ -220,6 +220,7 @@ pub fn index_to_abstract_data(
     data_table: &ReadOnlyTable<&'static str, AbstractData>,
     index: usize,
 ) -> Result<AbstractData> {
-    let asset_id = index_to_asset_id(tree_snapshot, index)?;
+    let asset_id = index_to_asset_id(tree_snapshot, index)?
+        .ok_or_else(|| anyhow::anyhow!("No asset_id for index {index}"))?;
     asset_id_to_abstract_data(asset_id, data_table)
 }

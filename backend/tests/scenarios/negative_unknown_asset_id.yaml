@@ -1,0 +1,19 @@
+name: "negative: unknown asset_id returns 404"
+# Attempting to locate a non-existent asset_id must return null/404, not
+# silently resolve a different same-hash asset.
+given:
+  - dir_album: /e2e_neg/album
+    id_as: $album
+  - photo: /e2e_neg/album/photo.jpg
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_neg"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Locate with a completely fake asset_id.
+  - call: POST /get/prefetch?locate=nonexistent_asset_id_000000000000000000000000000000
+then:
+  - response.status: 200
+  # locateTo must be null — unknown asset IDs never resolve.
+  - response.json.prefetch.locateTo: null

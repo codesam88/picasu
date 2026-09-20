@@ -1,0 +1,62 @@
+name: "negative: moved asset serves from new path via asset_id"
+# After an asset is moved to a new album, locating it by asset_id must
+# resolve to the new location, not the old one.
+given:
+  - dir_album: /e2e_neg_move/source
+    id_as: $src_album
+  - dir_album: /e2e_neg_move/target
+    id_as: $tgt_album
+  - photo: /e2e_neg_move/source/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_neg_move"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Move the file to the target album.
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+      token: response.token
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      alias_file: response.[0].abstractData.alias.[0].file
+  - call: PUT /put/assign_album
+    body:
+      hash: "${photo}"
+      assetId: "${asset_id}"
+      albumId: "${tgt_album}"
+      alias: "${alias_file}"
+      onConflict: "rename"
+    then:
+      - response.status: 200
+  # Re-index after move.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_neg_move"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Locate the asset by its original asset_id.
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      ts2: response.prefetch.timestamp
+      idx2: response.prefetch.locateTo
+      token2: response.token
+    calc:
+      end2: "${idx2}+1"
+  - call: GET /get/get-data?timestamp=${ts2}&start=${idx2}&end=${end2}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token2}"
+then:
+  - response.status: 200
+  # The asset should be locatable at the new path.
+  - response.json.[0].abstractData.alias.[0].file: "${data_path}/e2e_neg_move/target/photo.jpg"
