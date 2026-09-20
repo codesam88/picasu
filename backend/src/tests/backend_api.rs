@@ -910,6 +910,18 @@ fn interpret_scenario(scenario: &Value) {
                     let hash = discover_photo_hash(client, &path);
                     vars.insert(bare.to_string(), hash);
                 }
+                if let Some(asset_id_as) = call.get("asset_id_as").and_then(|v| v.as_str()) {
+                    let bare = asset_id_as.trim_start_matches('$');
+                    let discover_path = call
+                        .get("discover_path")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_else(|| {
+                            panic!("asset_id_as {asset_id_as}: requires discover_path")
+                        });
+                    let path = interpolate(discover_path, &vars);
+                    let asset_id = discover_asset_id(client, &path);
+                    vars.insert(bare.to_string(), asset_id);
+                }
             }
         }
     } else {

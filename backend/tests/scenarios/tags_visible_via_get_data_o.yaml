@@ -5,8 +5,9 @@ given:
       - e2e_o_family
       - e2e_o_vacation
     id_as: $photo
+    asset_id_as: $asset_id
 when:
-  - call: POST /get/prefetch?locate=${photo}
+  - call: POST /get/prefetch?locate=${asset_id}
     capture:
       token: response.token
       ts: response.prefetch.timestamp

@@ -1,34 +1,29 @@
-name: delete multi-alias purges the record only when the last alias is deleted
-# Group 4c corner case: a record with several alias paths (dedup) is deleted
-# from the trash view, which only surfaces one alias. Deleting that alias must
-# remove exactly that file (+ sidecar) while the record and thumbnail stay and
-# other aliases remain. Deleting the last remaining alias must fully purge the
-# record, its thumbnail, and the final file from disk.
+name: "path-primary delete: same-hash files are independent assets"
+# Path-primary contract: each physical file has its own asset record.
+# Deleting one record affects only that file. Same-hash siblings are
+# unaffected and retain their own records, paths, and thumbnails.
 given:
   - dir_album: /e2e_dup/target
     id_as: $album
   - photo: /e2e_dup/src/photo.jpg
     id_as: $photo
+    asset_id_as: $asset_id
 when:
-  # Upload identical content to the target album. The dedup task detects the
-  # same blake3 hash and merges into the existing record, giving it two aliases:
-  # [src/photo.jpg, target/photo.jpeg]. The UI surfaces the last alias
-  # (photo.jpeg) via abstractData.alias.[0].file.
+  # Upload identical content to the target album — creates a second record.
   - upload:
       file: /e2e_dup/src/photo.jpg
       target_album: "${album}"
       on_conflict: rename
     then:
       - response.status: 200
-  # Re-index so the tree snapshot includes the deduped, multi-alias record.
+  # Re-index so the tree snapshot reflects both records.
   - call: POST /post/index/album
     raw_body: '{"album": "/e2e_dup"}'
     then:
       - response.status: 202
   - wait_index: true
-  # Locate the record and read the alias the UI surfaces (alias[0] after
-  # metadata trimming = the last alias = target/photo.jpeg).
-  - call: POST /get/prefetch?locate=${photo}
+  # Locate src/photo.jpg by its asset_id and delete it.
+  - call: POST /get/prefetch?locate=${asset_id}
     capture:
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo
@@ -41,42 +36,19 @@ when:
       Authorization: "Bearer ${token}"
     capture:
       alias_file: response.[0].abstractData.alias.[0].file
-  # Permanently delete exactly the surfaced alias (the last-position alias).
   - call: DELETE /delete/delete-data
     raw_body: '{"deleteList":[${idx}],"aliasList":["${alias_file}"],"timestamp":${ts}}'
     then:
       - response.status: 200
-  # Second phase: re-locate the record, which now has a single alias
-  # (src/photo.jpg), and capture the fresh tree timestamp and token.
-  - call: POST /get/prefetch?locate=${photo}
-    capture:
-      ts: response.prefetch.timestamp
-      idx: response.prefetch.locateTo
-      token: response.token
-    calc:
-      end: "${idx}+1"
-  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
-    auth: false
-    headers:
-      Authorization: "Bearer ${token}"
-    capture:
-      alias_file: response.[0].abstractData.alias.[0].file
-  # Delete the last remaining alias (src/photo.jpg). The record now has no
-  # aliases left, so the delete must purge the record and its thumbnail.
-  - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[${idx}],"aliasList":["${alias_file}"],"timestamp":${ts}}'
-    then:
-      - response.status: 200
-  # Verify the record is gone. This is now the last when call, so the top-level
-  # then asserts against this prefetch response.
-  - call: POST /get/prefetch?locate=${photo}
+  # Verify the album still has the uploaded copy (target/photo.jpeg).
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
 then:
   - response.status: 200
-  # Both alias files are gone from disk…
-  - file_absent: /e2e_dup/target/photo.jpeg
+  # Album has placeholder + target/photo.jpeg = at least 1 item.
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 1 }
+  # src/photo.jpg is gone from disk.
   - file_absent: /e2e_dup/src/photo.jpg
-  # …and the record is no longer locatable (locateTo null), so it was purged.
-  # The content-addressed thumbnail (object/compressed/<2-char prefix>/<hash>.jpg
-  # under DATA_PATH) must also be gone from disk, not just the DB record.
-  - response.json.prefetch.locateTo: null
-  - thumb_absent: $photo
+  # target/photo.jpeg still exists on disk.
+  - file_exists: /e2e_dup/target/photo.jpeg

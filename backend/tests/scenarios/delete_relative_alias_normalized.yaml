@@ -6,8 +6,9 @@ name: delete normalizes a relative aliasList path against the image home before 
 given:
   - photo: /e2e_rel/photo.jpg
     id_as: $photo
+    asset_id_as: $asset_id
 when:
-  - call: POST /get/prefetch?locate=${photo}
+  - call: POST /get/prefetch?locate=${asset_id}
     capture:
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo

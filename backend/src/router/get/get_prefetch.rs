@@ -55,7 +55,7 @@ impl PrefetchReturn {
 impl From<&DatabaseTimestamp> for ReducedData {
     fn from(source: &DatabaseTimestamp) -> Self {
         Self {
-            asset_id: source.asset_id.unwrap_or(source.abstract_data.hash()),
+            asset_id: source.asset_id,
             hash: source.abstract_data.hash(),
             width: source.abstract_data.width(),
             height: source.abstract_data.height(),
@@ -144,21 +144,12 @@ fn compute_locate(
     let layout_start_time = Instant::now();
 
     // Find locate index if requested.
-    // Prefers asset_id match; falls back to hash for backward compatibility.
-    // When multiple items share a hash, the deterministic sort ensures
-    // consistent selection — but asset_id is always preferred.
+    // Asset ID is authoritative for location. A missing/unknown asset ID
+    // returns None — never silently resolves another same-hash asset.
     let locate_to_index = locate_option.and_then(|locate_str| {
-        // First try asset_id match.
-        let by_asset = reduced_data_vector
-            .par_iter()
-            .position_first(|reduced| reduced.asset_id.as_str() == locate_str);
-        if by_asset.is_some() {
-            return by_asset;
-        }
-        // Fall back to hash match.
         reduced_data_vector
             .par_iter()
-            .position_first(|reduced| reduced.hash.as_str() == locate_str)
+            .position_first(|reduced| reduced.asset_id.as_deref() == Some(locate_str.as_str()))
     });
 
     let duration = format!("{:?}", layout_start_time.elapsed());

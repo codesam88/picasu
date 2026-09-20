@@ -58,12 +58,19 @@ pub async fn edit_rating(
         let mut data_to_flush = Vec::new();
 
         for &index in &json_data.index_array {
-            let asset_id = index_to_asset_id(&tree_snapshot, index).or_raise(|| {
-                (
-                    ErrorKind::Database,
-                    format!("Failed to get asset_id for index {index}"),
-                )
-            })?;
+            let asset_id = index_to_asset_id(&tree_snapshot, index)
+                .or_raise(|| {
+                    (
+                        ErrorKind::Database,
+                        format!("Failed to get asset_id for index {index}"),
+                    )
+                })?
+                .ok_or_else(|| {
+                    AppError::new(
+                        ErrorKind::NotFound,
+                        format!("No asset_id for index {index}"),
+                    )
+                })?;
 
             if let Some(guard) = data_table
                 .get(&*asset_id)

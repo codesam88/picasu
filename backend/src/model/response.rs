@@ -122,7 +122,9 @@ use bitcode::{Decode, Encode};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Decode, Encode)]
 pub struct ReducedData {
-    pub asset_id: ArrayString<64>,
+    /// Path-primary asset ID. `None` for entries that predate the asset
+    /// migration or lack an explicit asset mapping.
+    pub asset_id: Option<ArrayString<64>>,
     pub hash: ArrayString<64>,
     pub width: u32,
     pub height: u32,

@@ -7,9 +7,10 @@ given:
     id_as: $album
   - photo: /e2e_reup/pool/photo.jpg
     id_as: $p1
+    asset_id_as: $asset_id
 when:
   # Trash the first photo.
-  - call: POST /get/prefetch?locate=${p1}
+  - call: POST /get/prefetch?locate=${asset_id}
     capture:
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo

@@ -128,17 +128,15 @@ pub async fn imported_file(
         .to_string();
 
     let source_path = tokio::task::spawn_blocking(move || -> AppResult<PathBuf> {
-        // Try asset_id first.
-        if let Ok(asset_id) = id_str.parse::<arrayvec::ArrayString<64>>()
-            && let Ok(Some(record)) = crate::storage::asset_store::get_asset_by_id(&asset_id)
-        {
-            return Ok(std::path::PathBuf::from(&record.canonical_path));
-        }
-        // Fall back to hash lookup via DATA_TABLE.
-        let abstract_data = crate::storage::asset_store::lookup_abstract_data_by_hash(&id_str)
-            .or_raise(|| (ErrorKind::Database, "Failed to fetch DB record"))?
-            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "ID not found"))?;
-        Ok(abstract_data.source_path())
+        // Resolve by asset_id only. No hash fallback — asset ID is
+        // authoritative for original serving.
+        let asset_id: arrayvec::ArrayString<64> = id_str
+            .parse()
+            .map_err(|_| AppError::new(ErrorKind::InvalidInput, "Invalid asset_id format"))?;
+        let record = crate::storage::asset_store::get_asset_by_id(&asset_id)
+            .or_raise(|| (ErrorKind::Database, "Failed to fetch asset record"))?
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Asset not found"))?;
+        Ok(std::path::PathBuf::from(&record.canonical_path))
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
