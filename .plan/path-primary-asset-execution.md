@@ -333,9 +333,31 @@ The asset tables will instead be populated synchronously during
 - `dup_final_delete_removes_state` continues to verify that deleting the
   final reference removes the thumbnail.
 
+### Recursive album deletion — DONE
+
+- `cleanup_album_descendants()` in `delete.rs` handles recursive cleanup
+  for album records: finds descendant assets via `get_assets_under_path`,
+  removes files + sidecars from disk, removes from asset tables
+  (ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX), flushes from DATA_TABLE,
+  evicts child album caches, removes .albuminfo, removes directory tree.
+- Runs after `process_deletes` validation passes, before FlushTreeTask.
+- Shared thumbnails preserved via existing DUPE_INDEX check in
+  `remove_compressed_thumbnail`.
+- `album_delete_recursive` scenario: parent album with 2 child files +
+  sub-album + sidecar → all removed from disk and asset tables.
+- `album_delete_preserves_sibling` scenario: deleting one asset of a
+  same-hash pair preserves the other and shared thumbnail.
+- `negative_delete_unknown_album` scenario: out-of-bounds index returns 500.
+
 ### Remaining work
 
-1. Album deletion — recursively handle child album/file assets
+Phase 7 is functionally complete for delete/trash, directory moves, album
+covers, shared thumbnails, and recursive album deletion.
+
+Next phases:
+
+- Phase 8: Watcher and Reconciliation
+- Phase 9: Frontend Identity Refactor
 
 For every mutation test:
 

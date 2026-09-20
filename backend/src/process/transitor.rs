@@ -76,7 +76,7 @@ pub fn asset_id_to_abstract_data(
 
 /// Convert an `AssetRecord` to an `AbstractData` for API backward compatibility.
 /// This is a lossy conversion — EXIF, tags, and other metadata are not preserved.
-fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) -> AbstractData {
+pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) -> AbstractData {
     use crate::model::album::{AlbumCombined, AlbumMetadata};
     use crate::model::asset::AssetKind;
     use crate::model::image::{ImageCombined, ImageMetadata};

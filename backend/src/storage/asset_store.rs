@@ -109,6 +109,22 @@ pub fn get_all_assets() -> Result<Vec<AssetRecord>> {
     Ok(records)
 }
 
+/// Find all asset records whose `canonical_path` is a descendant of `dir_path`.
+/// The directory itself is NOT included — only children and deeper descendants.
+pub fn get_assets_under_path(dir_path: &str) -> Result<Vec<AssetRecord>> {
+    let prefix = if dir_path.ends_with('/') {
+        dir_path.to_string()
+    } else {
+        format!("{dir_path}/")
+    };
+
+    let all = get_all_assets()?;
+    Ok(all
+        .into_iter()
+        .filter(|r| r.canonical_path.starts_with(&prefix))
+        .collect())
+}
+
 /// Resolve a content hash to an `asset_id`.
 ///
 /// Tries `DUPE_INDEX` first, then scans `ASSET_BY_ID` for matching `content_hash`.

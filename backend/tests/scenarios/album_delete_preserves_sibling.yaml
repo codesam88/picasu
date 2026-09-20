@@ -1,0 +1,53 @@
+name: "album deletion preserves same-hash sibling outside album"
+given:
+  - dir_album: /e2e_sib/target
+    id_as: $target_album
+  - photo: /e2e_sib/source/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+  - duplicate_of:
+      source: /e2e_sib/source/photo.jpg
+      destination: /e2e_sib/target/copy.jpg
+when:
+  # Index both.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_sib"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Locate the source file.
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+      token: response.token
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      alias_file: response.[0].abstractData.alias.[0].file
+  # Delete the source file's asset.
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[${idx}],"aliasList":["${alias_file}"],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Re-index after delete.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_sib"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Check the target album still has the copy.
+  - call: POST /get/prefetch
+    body: { Album: "${target_album}" }
+then:
+  - response.status: 200
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 1 }
+  - file_exists: /e2e_sib/target/copy.jpg
+  - file_absent: /e2e_sib/source/photo.jpg
+  # Shared thumbnail still exists.
+  - thumb_exists: $photo

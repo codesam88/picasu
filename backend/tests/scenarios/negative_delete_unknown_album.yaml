@@ -1,0 +1,21 @@
+name: "negative: deleting unknown album index returns error"
+given:
+  - dir_album: /e2e_neg_album/album
+    id_as: $album
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_neg_album"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Attempt to delete a non-existent index.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+    capture:
+      ts: response.prefetch.timestamp
+      token: response.token
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[999],"timestamp":${ts}}'
+then:
+  # Out-of-bounds index returns 500 (Database Error).
+  - response.status: 500
