@@ -360,21 +360,23 @@ async function handleSubmit() {
       for (const idx of indices) {
         const item = dataStore.data.get(idx)
         if (!item) continue
-        await assignAlbum(item.id, selectedAlbumId.value, idx, isolationId, onConflict.value)
+        const assetId = item.assetId ?? item.id
+        await assignAlbum(assetId, selectedAlbumId.value, idx, isolationId, onConflict.value)
       }
       collectionStore.leaveEdit()
     } else {
       // Single item from route context
       const parsed = getHashIndexDataFromRoute(route)
       if (!parsed) return
-      const { hash, index } = parsed
+      const { index } = parsed
 
       // Restore if trashed, then move to target album
       const item = dataStore.data.get(index)
       if (item?.isTrashed === true) {
         await setTrashed([index], false, isolationId)
       }
-      await assignAlbum(hash, selectedAlbumId.value, index, isolationId, onConflict.value)
+      const assetId = item?.assetId ?? item?.id ?? parsed.hash
+      await assignAlbum(assetId, selectedAlbumId.value, index, isolationId, onConflict.value)
     }
     await refreshGalleryAfterMutation(isolationId, route)
   } finally {

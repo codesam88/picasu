@@ -92,14 +92,17 @@ const handler = createHandler<typeof toImgWorker>({
       const controller = new AbortController()
       controllerMap.set(event.index, controller)
 
+      // Use assetId for cache key when available, fall back to hash
+      const cacheKey = event.assetId ?? event.hash
+
       // Layer 1: In-memory cache
-      let blob = blobCache.get(event.hash)
+      let blob = blobCache.get(cacheKey)
 
       // Layer 2: Cache API (disk-persistent)
       if (blob === undefined) {
-        blob = await getFromDiskCache(event.hash)
+        blob = await getFromDiskCache(cacheKey)
         if (blob !== undefined) {
-          blobCache.set(event.hash, blob)
+          blobCache.set(cacheKey, blob)
         }
       }
 
@@ -126,8 +129,8 @@ const handler = createHandler<typeof toImgWorker>({
         )
 
         blob = response.data
-        blobCache.set(event.hash, blob)
-        void putToDiskCache(event.hash, blob)
+        blobCache.set(cacheKey, blob)
+        void putToDiskCache(cacheKey, blob)
       }
 
       controllerMap.delete(event.index)
@@ -154,21 +157,25 @@ const handler = createHandler<typeof toImgWorker>({
     } catch (error) {
       if (axios.isCancel(error)) return
       // Purge potentially corrupt blob from caches so the next attempt re-fetches
-      void purgeFromCaches(event.hash)
+      const cacheKey = event.assetId ?? event.hash
+      void purgeFromCaches(cacheKey)
       console.error(error)
     }
   },
 
   async processImage(event: ProcessImagePayload) {
     try {
+      // Use assetId for cache key when available, fall back to hash
+      const cacheKey = event.assetId ?? event.hash
+
       // Layer 1: In-memory cache
-      let blob = blobCache.get(event.hash)
+      let blob = blobCache.get(cacheKey)
 
       // Layer 2: Cache API (disk-persistent)
       if (blob === undefined) {
-        blob = await getFromDiskCache(event.hash)
+        blob = await getFromDiskCache(cacheKey)
         if (blob !== undefined) {
-          blobCache.set(event.hash, blob)
+          blobCache.set(cacheKey, blob)
         }
       }
 
@@ -193,8 +200,8 @@ const handler = createHandler<typeof toImgWorker>({
         )
 
         blob = response.data
-        blobCache.set(event.hash, blob)
-        void putToDiskCache(event.hash, blob)
+        blobCache.set(cacheKey, blob)
+        void putToDiskCache(cacheKey, blob)
       }
 
       const img = await createImageBitmap(blob)
@@ -209,7 +216,8 @@ const handler = createHandler<typeof toImgWorker>({
       postToMainImg.imageProcessed({ index: event.index, url: objectUrl })
     } catch (error) {
       // Purge potentially corrupt blob from caches so the next attempt re-fetches
-      void purgeFromCaches(event.hash)
+      const cacheKey = event.assetId ?? event.hash
+      void purgeFromCaches(cacheKey)
       console.error(error)
     }
   },

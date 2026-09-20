@@ -8,6 +8,7 @@ import { createActionCreators } from 'typesafe-agent-events'
 export interface ProcessSmallImagePayload {
   index: number
   hash: string
+  assetId?: string
   width: number
   height: number
   devicePixelRatio: number
@@ -23,6 +24,7 @@ export interface ProcessSmallImagePayload {
 export interface ProcessImagePayload {
   index: number
   hash: string
+  assetId?: string
   devicePixelRatio: number
   albumId: null | string
   shareId: null | string

@@ -11,7 +11,7 @@ interface AssignAlbumResult {
 }
 
 export async function assignAlbum(
-  hash: string,
+  assetId: string,
   albumId: string,
   index: number,
   isolationId: IsolationId,
@@ -22,8 +22,15 @@ export async function assignAlbum(
 
   const success = await tryWithMessageStore('mainId', async () => {
     const item = dataStore.data.get(index)
-    const body: { hash: string; albumId: string; onConflict: 'skip' | 'rename'; alias?: string } = {
-      hash,
+    const body: {
+      hash: string
+      assetId: string
+      albumId: string
+      onConflict: 'skip' | 'rename'
+      alias?: string
+    } = {
+      hash: item?.id ?? assetId,
+      assetId,
       albumId,
       onConflict
     }
