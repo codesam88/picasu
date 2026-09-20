@@ -48,6 +48,7 @@ pub struct DataBaseTimestampReturn {
 }
 
 impl DataBaseTimestampReturn {
+    #[allow(dead_code)]
     pub fn new(
         abstract_data: AbstractData,
         priority_list: &[&str],
@@ -68,6 +69,37 @@ impl DataBaseTimestampReturn {
                 } else {
                     String::new()
                 }
+            }
+        };
+        Self {
+            abstract_data,
+            timestamp,
+            token,
+        }
+    }
+
+    /// Create with `asset_id` included in the token for path-primary identity.
+    pub fn with_asset_id(
+        abstract_data: AbstractData,
+        priority_list: &[&str],
+        token_timestamp: i64,
+        allow_original: bool,
+        asset_id: arrayvec::ArrayString<64>,
+    ) -> Self {
+        let timestamp = abstract_data.compute_timestamp(priority_list);
+        let token = match &abstract_data {
+            AbstractData::Image(img) => {
+                ClaimsHash::new(img.object.id, token_timestamp, allow_original)
+                    .with_asset_id(asset_id)
+                    .encode()
+            }
+            AbstractData::Video(vid) => {
+                ClaimsHash::new(vid.object.id, token_timestamp, allow_original)
+                    .with_asset_id(asset_id)
+                    .encode()
+            }
+            AbstractData::Album(_) => {
+                ClaimsHash::new(asset_id, token_timestamp, allow_original).encode()
             }
         };
         Self {

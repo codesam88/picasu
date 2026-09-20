@@ -78,6 +78,10 @@ use arrayvec::ArrayString;
 pub struct ClaimsHash {
     pub allow_original: bool,
     pub hash: ArrayString<64>,
+    /// Path-primary asset ID. When present, tokens and serving resolve
+    /// by `asset_id` instead of content hash.
+    #[serde(default)]
+    pub asset_id: Option<ArrayString<64>>,
     pub timestamp: i64,
     pub exp: u64,
 }
@@ -90,9 +94,15 @@ impl ClaimsHash {
         Self {
             allow_original,
             hash,
+            asset_id: None,
             timestamp,
             exp,
         }
+    }
+
+    pub fn with_asset_id(mut self, asset_id: ArrayString<64>) -> Self {
+        self.asset_id = Some(asset_id);
+        self
     }
 
     pub fn encode(&self) -> String {

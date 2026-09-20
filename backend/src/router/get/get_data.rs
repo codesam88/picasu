@@ -3,9 +3,7 @@
 use crate::model::response::DataBaseTimestampReturn;
 use crate::model::response::{Row, ScrollBarData};
 use crate::process::resolve_show_download_and_metadata;
-use crate::process::transitor::{
-    abstract_data_to_database_timestamp_return, asset_id_to_abstract_data, index_to_asset_id,
-};
+use crate::process::transitor::{asset_id_to_abstract_data, index_to_asset_id};
 use crate::storage::cache::TREE_SNAPSHOT;
 use crate::storage::db::{open_data_table, open_tree_snapshot_table};
 
@@ -71,13 +69,15 @@ pub async fn get_data(
                         )
                     })?;
 
-                let database_timestamp_return = abstract_data_to_database_timestamp_return(
-                    abstract_data,
-                    timestamp,
-                    show_download,
-                    show_metadata,
-                    trashed_view,
-                );
+                let database_timestamp_return =
+                    crate::process::transitor::abstract_data_to_timestamp_return_with_asset_id(
+                        abstract_data,
+                        timestamp,
+                        show_download,
+                        show_metadata,
+                        trashed_view,
+                        asset_id,
+                    );
                 Ok(database_timestamp_return)
             })
             .collect();

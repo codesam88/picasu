@@ -166,6 +166,7 @@ pub fn clear_abstract_data_metadata(
     }
 }
 
+#[allow(dead_code)]
 pub fn abstract_data_to_database_timestamp_return(
     mut abstract_data: AbstractData,
     timestamp: i64,
@@ -178,6 +179,31 @@ pub fn abstract_data_to_database_timestamp_return(
         DEFAULT_PRIORITY_LIST,
         timestamp,
         show_download,
+    );
+    clear_abstract_data_metadata(&mut abstract_data, show_metadata, trashed_view);
+    DataBaseTimestampReturn {
+        abstract_data,
+        timestamp: result.timestamp,
+        token: result.token,
+    }
+}
+
+/// Like `abstract_data_to_database_timestamp_return` but includes `asset_id`
+/// in the token for path-primary identity.
+pub fn abstract_data_to_timestamp_return_with_asset_id(
+    mut abstract_data: AbstractData,
+    timestamp: i64,
+    show_download: bool,
+    show_metadata: bool,
+    trashed_view: bool,
+    asset_id: ArrayString<64>,
+) -> DataBaseTimestampReturn {
+    let result = DataBaseTimestampReturn::with_asset_id(
+        abstract_data.clone(),
+        DEFAULT_PRIORITY_LIST,
+        timestamp,
+        show_download,
+        asset_id,
     );
     clear_abstract_data_metadata(&mut abstract_data, show_metadata, trashed_view);
     DataBaseTimestampReturn {

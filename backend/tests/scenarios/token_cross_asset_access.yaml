@@ -1,0 +1,40 @@
+name: asset A token cannot serve asset B's data at different timestamp
+# Tokens are bound to a specific snapshot timestamp. Using a token from
+# one snapshot to access data from a different snapshot should fail.
+given:
+  - dir_album: /e2e_token/album
+    id_as: $album
+  - photo: /e2e_token/album/photo_a.jpg
+    id_as: $photo_a
+  - photo: /e2e_token/album/photo_b.jpg
+    id_as: $photo_b
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_token"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Get data for photo_a and capture its token and timestamp.
+  - call: POST /get/prefetch?locate=${photo_a}
+    capture:
+      ts_a: response.prefetch.timestamp
+      idx_a: response.prefetch.locateTo
+      token_a: response.token
+    calc:
+      end_a: "${idx_a}+1"
+  # Get data for photo_b with its own token.
+  - call: POST /get/prefetch?locate=${photo_b}
+    capture:
+      ts_b: response.prefetch.timestamp
+      idx_b: response.prefetch.locateTo
+      token_b: response.token
+    calc:
+      end_b: "${idx_b}+1"
+  # Try to use photo_b's token to access photo_a's data at photo_a's timestamp.
+  # This should fail because the token's timestamp doesn't match.
+  - call: GET /get/get-data?timestamp=${ts_a}&start=${idx_a}&end=${end_a}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token_b}"
+then:
+  - response.status: 401
