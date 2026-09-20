@@ -32,51 +32,41 @@ path is the authoritative filesystem index key. Give the record a stable
 opaque `asset_id` for API and frontend references where stable identity across
 moves is useful.
 
-Conceptual indexes:
+Conceptual records and indexes:
 
 ```text
-ASSETS_BY_PATH[canonical_path] -> {
-    asset_id,
-    path,
-    type,
-    blake_hash,
-    metadata,
-    trashed,
-    ...
-}
-
-ASSETS_BY_ID[asset_id] -> canonical_path
-
-HASH_INDEX[blake_hash] -> asset_id list
-```
-
-`ASSETS_BY_PATH` is the authoritative asset table. `ASSETS_BY_ID` is an
-opaque API lookup convenience, not a second source of truth. Filesystem
-events and indexing begin with a path lookup; normal API operations begin
-with an asset ID lookup. A move updates both path identity and the stable ID
-mapping in one journaled/index transaction.
-
-An alternative implementation may store the full record under `asset_id`
-and maintain `PATH_INDEX` as the authoritative unique path constraint, but it
-must preserve the same semantics: one record per physical path, path lookup,
-stable API identity, and rebuildable indexes.
-
-```text
+ASSET_BY_PATH[canonical_path] -> { asset_id }
 ASSET_BY_ID[asset_id] -> {
-    path,
-    type,
-    blake_hash,
-    metadata,
-    trashed,
-    ...
+    canonical_path,
+    kind,                 # image, video, or album
+    blake_hash?,
+    file_info,
+    asset_info,
 }
+DUPE_INDEX[blake_hash] -> { asset_id1, asset_id2, ... }
 ```
 
-Albums use canonical directory paths as their filesystem identity and retain
-their own stable IDs. Existing path-range/filter indexes remain part of the
-design: album, tag, type, date, trash, and other query indexes map categories
-or ranges to asset IDs and are maintained when an asset path or indexed
-metadata changes.
+`ASSET_BY_PATH` is the authoritative unique path constraint, not a second
+copy of the asset record. `ASSET_BY_ID` is the normal API and mutation lookup.
+The canonical path appears in both the path key and the asset record because
+the record must resolve the current file without scanning the path index; this
+is limited, intentional denormalization. Both entries must be updated and
+consistency-checked together.
+
+Albums are a kind of asset in the same path/ID namespace:
+
+- `kind = album`;
+- the canonical path must resolve to a directory;
+- albums have no content hash or duplicate-group membership;
+- `asset_info` may contain trash and presentation state;
+- `.albuminfo` remains the file-backed source for optional album title,
+  description, notes, and cover metadata;
+- child albums are derived from directory parent paths rather than a second
+  album identity database.
+
+Existing path-range/filter indexes remain optional design choices: album, tag,
+type, date, trash, and other query indexes map categories or ranges to asset
+IDs and are maintained when an asset path or indexed metadata changes.
 
 The API identifies assets by `asset_id`. Paths remain server-side data and
 filesystem lookup keys rather than arbitrary strings transported through the
@@ -107,18 +97,16 @@ presented asset record.
 
 ### Costs
 
-- Existing hash-keyed records must be split into one asset per alias.
-- Because generated state is rebuildable from the repository, prefer a
-  versioned index rebuild from the filesystem over treating the existing DB as
-  authoritative migration input. A compatibility migration may still be
-  useful for preserving user metadata and avoiding a long cold rebuild.
+- The current generated index is replaced; there is no old-DB content
+  migration or compatibility period.
+- The new database is built from the filesystem and current sidecars.
 - Asset records may duplicate metadata that was previously shared.
 - Path, asset, and query indexes must be updated atomically on move/delete.
 - Metadata ownership must be explicit: per-file metadata versus content-level
   metadata.
 - Re-indexing and filesystem reconciliation become more important because path
   entries are primary records.
-- The migration and API changes touch many lookup and response paths.
+- The refactor and API changes touch many lookup and response paths.
 
 ## Existing Indexes and Required Revision
 
@@ -137,7 +125,7 @@ Existing structures to inventory and revise, rather than replace blindly:
 - `FlushTreeTask` and all insert/remove/update callers: primary-key changes and
   multi-index updates.
 - `DeduplicateTask`: stop merging aliases into the existing asset; create or
-  update the independent path asset and update `HASH_INDEX`.
+  update the independent path asset and update `DUPE_INDEX`.
 - Album/path handling in `process/dir_album.rs`: preserve canonical directory
   identity and parent/child album relationships.
 - Expression filtering and prefetch/query caches: return asset IDs and use
@@ -169,7 +157,7 @@ Additional concrete identity consumers found during the audit:
   downloads, covers, and metadata views assume hash or `alias[0]` identity;
 - `model/album.rs` stores cover references as hashes.
 
-These are required migration sites, not optional compatibility cleanup.
+These are required refactor sites, not optional compatibility cleanup.
 
 ## Current Database and Table Requirements
 
@@ -181,21 +169,72 @@ create new tables.
 The minimum durable structures are:
 
 ```text
-ASSET_BY_ID[asset_id] -> AssetRecord { path, type, hash, metadata, ... }
-PATH_INDEX[canonical_path] -> asset_id
-HASH_INDEX[(hash, asset_id)] -> unit
-ALBUM_INDEX[(album_id, asset_id)] -> unit
-DATE_INDEX[(timestamp, asset_id)] -> unit
-TYPE_INDEX[(type, asset_id)] -> unit
-TRASH_INDEX[(trashed, asset_id)] -> unit
-TAG_INDEX[(tag, asset_id)] -> unit
-DIR_ALBUM_BY_PATH[canonical_dir_path] -> album_id
-DIR_ALBUM_BY_ID[album_id] -> canonical_dir_path
+ASSET_BY_PATH[canonical_path] -> { asset_id }
+ASSET_BY_ID[asset_id] -> {
+    kind,                 # image, video, or album
+    canonical_path,
+    blake_hash?,
+    file_info,
+    asset_info,
+}
+DUPE_INDEX[hash] -> { asset_id1, asset_id2, ... }
 ```
 
-Composite `(hash, asset_id)` membership keys are preferable to one large
-serialized list per hash, because adding or removing one duplicate should not
-rewrite a potentially large duplicate group.
+Only these are identity/storage requirements. The asset/path/duplicate indexes
+answer “which filesystem object is this?”, “where is it?”, and “which media
+assets share this content?”. An asset with `kind = album` is identified by the
+same path/ID tables and must resolve to a directory.
+
+`DUPE_INDEX` is a dynamically maintained group list. With duplicates expected
+to be uncommon, the normal value is a one- or two-entry list and a hash lookup
+is one indexed read returning the group. New assets append to the group; path
+asset deletion or hash changes remove the corresponding ID. Group membership
+updates must be atomic with the asset update.
+
+This trades per-duplicate-row storage for rewriting one group value on
+membership changes. That is appropriate while groups are normally small. If
+measurements find pathological large groups or high same-hash write
+contention, a threshold-based representation for those groups can be added;
+that is not the default design.
+
+The following are **optional query-acceleration candidates**, not required
+databases and not currently implemented:
+
+- `ALBUM_INDEX[(album_id, asset_id)]` for direct album membership;
+- `DATE_INDEX[(timestamp, asset_id)]` for timeline ordering;
+- `TAG_INDEX[(tag, asset_id)]` for tag filtering;
+- type/extension indexes;
+- trash, favorite, or archived indexes.
+
+Whether these are worthwhile depends on measured query workload and the
+selected database engine. Low-selectivity boolean fields may be better handled
+by snapshots or residual filtering rather than separate indexes. Do not add
+one durable index per response filter without a concrete query requirement.
+
+`ASSET_BY_PATH` is a narrow unique lookup/constraint, not a second copy of
+the asset record. `ASSET_BY_ID` is the normal API and mutation lookup. The
+canonical path appears in both the path key and the asset record because the
+asset record must be able to resolve the current file without scanning the
+path index; this is limited, intentional denormalization. The two values must
+be updated together and consistency-checked.
+
+Suggested ownership split:
+
+- `file_info`: facts derived from the current filesystem object, such as
+  canonical path, type, size, modified time, dimensions, and content hash;
+- `asset_info`: application state not guaranteed by the file itself, such as
+  trash state, generated flags, and other asset-level presentation state;
+- sidecar-backed metadata should have an explicit policy rather than being
+  silently treated as either category.
+
+The extra lookup for a filesystem-originated path is intentional:
+`path -> asset_id -> asset`. Normal API operations use `asset_id -> asset` in
+one lookup. A path-index value containing the full record would reduce that
+lookup but duplicate all mutable asset state and create more consistency
+failure modes.
+
+The duplicate-group representation is separate from asset identity. Asset
+records remain independently addressable even when they share one hash.
 
 The canonical path index is the unique filesystem constraint. The asset-ID
 table is the normal API lookup. Both must be updated in the same durable
@@ -219,7 +258,7 @@ shared derived objects.
 ## Watcher, Indexer, and Recovery Requirements
 
 The current watcher and album indexer are alias/hash based and have several
-performance and correctness hazards:
+correctness hazards:
 
 - watcher removal scans the in-memory tree instead of doing a path lookup;
 - watcher modify events index by hash, so a changed path can merge into an
@@ -247,9 +286,9 @@ Required path-primary behavior:
 8. Do not report success until filesystem and required index state are
    durable.
 
-There is currently no operation journal/recovery table. This is a prerequisite
-for making path/index updates safe across crashes; it should not be deferred
-until after the identity migration.
+There is currently no operation journal/recovery table. Whether this is
+required, or whether filesystem-driven rebuild/reconciliation is sufficient,
+is an explicit design decision for the replacement implementation.
 
 ## Snapshot, Query, and Cache Requirements
 
@@ -292,10 +331,10 @@ Required API changes include:
   thumbnail-regeneration requests;
 - album covers referencing an asset ID, with a separate content-hash thumbnail
   reference if thumbnails are shared;
-- explicit compatibility behavior for old hash-based URLs, since a hash no
-  longer uniquely selects an asset.
+- asset-ID-only URLs and requests; old hash-only URLs are not a required
+  compatibility surface because a hash no longer uniquely selects an asset.
 
-Frontend migration sites include the hash map in `dataStore`, worker payloads,
+Frontend refactor sites include the hash map in `dataStore`, worker payloads,
 route parameters, display/navigation, image cache keys, token IndexedDB,
 downloads, covers, and all uses of `alias[0]`.
 
@@ -312,7 +351,7 @@ the source for metadata operations. The new model must define:
 - move/delete sidecar behavior and failure recovery;
 - whether external sidecar changes trigger indexing;
 - which metadata is per-asset versus content-shared;
-- thumbnail reference counting through `HASH_INDEX` or a dedicated content
+- thumbnail reference counting through `DUPE_INDEX` or a dedicated content
   reference table.
 
 Deleting one asset must not remove a shared thumbnail while another asset uses
@@ -328,55 +367,24 @@ boundary:
 - move sidecars with their owning path asset;
 - never let indexing or duplicate grouping delete or move a file.
 
-## Migration Strategy
+## Replacement Implementation Strategy
 
 1. Define canonical relative path rules and stable `asset_id` format.
-2. Add versioned asset/path/hash tables without changing existing behavior.
-3. Build a migration that splits every existing multi-alias record into one
-   asset per live alias and populates secondary indexes.
-4. Add consistency checks for duplicate paths, missing files, stale records,
-   and hash-index references.
-5. Migrate read paths and API responses to asset IDs.
-6. Migrate write paths: index, watcher, move, delete, trash, sidecar, and
+2. Select the authoritative database engine and create a new schema
+   generation.
+3. Rebuild the new asset and album index from the filesystem and sidecars.
+4. Populate path, hash, album, and any selected query indexes from that scan.
+5. Replace read paths and API responses with asset IDs.
+6. Replace write paths: index, watcher, move, delete, trash, sidecar, and
    metadata updates.
-7. Remove alias-based identity assumptions after old records and callers are
-   retired.
+7. Rebuild disposable tree/query/expiry stores from the new authoritative
+   database.
+8. Remove the old hash/alias implementation and old generated database files.
 
-The migration must preserve the existing content hash and thumbnail data.
-Where multiple aliases shared metadata, the migration must define whether
-metadata is copied to each asset or split into content-level and asset-level
-fields.
-
-## Performance Impact
-
-For approximately 10 million assets, B-tree lookups remain `O(log N)`:
-
-- asset ID lookup: one lookup;
-- path lookup: one path-index lookup;
-- hash lookup: one hash-index lookup plus `O(K)` duplicate results;
-- asset move/delete: updates to a small number of indexes;
-- album listing: `O(log N + K)` when backed by a path-prefix range index.
-
-The main risks are database size, Redb's single-writer throughput, cache
-pressure, and full re-index duration. Thumbnail storage is expected to be
-larger than the metadata indexes and can continue using content-addressed
-hashes where safe.
-
-## Effort Estimate
-
-This is a large backend/data-model change rather than a local refactor.
-
-- Schema, canonical paths, identity, and journal design: 2–4 days
-- Index/migration/rebuild prototype and consistency checks: 4–8 days
-- Snapshot/query/index-generation migration: 4–8 days
-- Core indexing, watcher, move, delete, and sidecar recovery: 6–12 days
-- API, tokens, frontend stores/routes/workers, and cache migration: 5–10 days
-- Scenario/UI coverage, performance testing, migration tooling, and cleanup:
-  5–10 days
-
-Estimated total: **26–52 engineering days**, depending on compatibility
-requirements, metadata migration policy, and how much query indexing is
-materialized instead of derived from snapshots.
+No old `index_v5.redb` records need to be read or converted. The filesystem,
+sidecars, and explicit design policy are the inputs to the new index. Any
+metadata that cannot be recovered from those sources is intentionally outside
+the compatibility scope.
 
 ## Open Questions
 
@@ -386,12 +394,13 @@ materialized instead of derived from snapshots.
 - Which metadata is asset-specific versus content-shared?
 - Should identical assets share thumbnails automatically, or only after an
   explicit duplicate decision?
-- Are duplicate groups represented in `HASH_INDEX` only, or persisted as a
+- Are duplicate groups represented in `DUPE_INDEX` only, or persisted as a
   dedicated duplicate-management table?
 - Which existing category indexes are materialized in Redb versus derived in
   memory/query caches? The current audit indicates most filtering is a full
   in-memory tree scan rather than a durable category index.
-- What compatibility period is required for hash/path-based API requests?
+- Which filesystem/sidecar metadata is considered authoritative during the
+  clean rebuild?
 
 ## Test Strategy and Acceptance Coverage
 
@@ -406,7 +415,7 @@ Test pure logic with non-trivial branches:
 - stable asset ID generation/allocation rules;
 - path/hash index update calculations;
 - duplicate-group membership and cleanup decisions;
-- migration/rebuild conflict handling.
+- clean-rebuild conflict handling.
 
 Do not add tests for Redb's primitive read/write behavior.
 
@@ -418,7 +427,8 @@ scenarios cannot isolate well:
 - one path asset per physical file after indexing identical bytes;
 - atomic move/delete index updates;
 - stale path and watcher reconciliation;
-- crash/recovery or journal replay;
+- crash/reopen and filesystem reconciliation, if required by the selected
+  operation protocol;
 - shared thumbnail retention until the final asset reference is gone.
 
 ### API scenarios
@@ -450,13 +460,6 @@ Add Playwright coverage for the reported user-visible behavior:
 These UI scenarios are required because an API scenario alone cannot detect
 frontend deduplication, stale stores, or rendering/pagination problems.
 
-### Performance tests
-
-Keep large-scale benchmarks separate from ordinary API-E2E scenarios. Measure
-path lookup, asset lookup, hash-group lookup, album range listing, batched
-indexing, move/delete write throughput, rebuild duration, and database size
-at representative scales including 10 million assets.
-
 ## Initial Validation
 
 Before implementation, add or run focused scenarios that establish current
@@ -473,16 +476,22 @@ behavior for:
 - filesystem and DB state after moving a renamed duplicate away and back;
 - recovery state after interrupted move/delete operations.
 
-These scenarios should become migration acceptance tests, with expected
-results updated to the path-primary model only after the design decisions
-above are settled.
+Current contract tests added before the replacement implementation:
 
-## Review Status
+- `backend/tests/scenarios/duplicate_files_are_independent_album_items.yaml`
+  asserts that two identical uploads produce two visible album items and two
+  physical files. It currently fails because the hash-primary implementation
+  returns one merged media item plus the album discovery fixture.
+- `frontend/tests/playwright/scenarios/duplicate-files-visible-independently.yaml`
+  asserts that two identical uploads remain as two grid items after a fresh
+  route load. It currently fails because the frontend receives one merged
+  duplicate item.
 
-Reviewed against `docs/design.md` and `docs/test-strategy.md` on 2026-09-20.
-The design document already requires distinct filesystem items, rebuildable
-index state, sidecar pairing, non-destructive indexing, and explicit duplicate
-cleanup. The test strategy requires unit, real-Redb integration, API scenario,
-and Playwright coverage at their respective boundaries. The implementation
-audit found that path indexes, journal/recovery, asset-ID tokens, and most
-query indexes do not currently exist and must be treated as first-class scope.
+Independent duplicate move/delete scenarios are intentionally deferred until
+the asset-ID response and mutation contract is fixed. Writing those scenarios
+against the current `hash + alias` request shape would preserve the ambiguity
+the replacement implementation is intended to remove.
+
+These scenarios are acceptance tests for the replacement implementation. The
+current hash-primary failures are intentional evidence of behavior that the
+new implementation must change.
