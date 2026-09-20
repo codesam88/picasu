@@ -42,9 +42,11 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
   const handler = createHandler<typeof fromDataWorker>({
     returnData: (payload) => {
       const slicedDataArray: SlicedData[] = payload.slicedDataArray
-      slicedDataArray.forEach(({ index, data, hashToken }) => {
+      slicedDataArray.forEach(({ index, data, hashToken, assetId }) => {
         dataStore.data.set(index, data)
-        dataStore.hashMapData.set(data.id, index)
+        // Use assetId as the key when available to distinguish same-hash items in different albums
+        const mapKey = assetId ?? data.id
+        dataStore.hashMapData.set(mapKey, index)
 
         // Business Logic: Albums rely on 'cover' for token validation,
         // whereas distinct media types (Images/Videos) use their unique ID.
