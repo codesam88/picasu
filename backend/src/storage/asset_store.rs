@@ -269,6 +269,7 @@ mod tests {
 
     #[test]
     fn roundtrip_asset_by_path() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         ensure_tables();
         clear_tables();
 
@@ -290,6 +291,7 @@ mod tests {
 
     #[test]
     fn roundtrip_asset_by_id() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         ensure_tables();
         clear_tables();
 
@@ -315,6 +317,7 @@ mod tests {
 
     #[test]
     fn dupe_group_insert_and_query() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         ensure_tables();
         clear_tables();
 
@@ -335,6 +338,7 @@ mod tests {
 
     #[test]
     fn dupe_group_remove_one() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         ensure_tables();
         clear_tables();
 
@@ -356,6 +360,7 @@ mod tests {
 
     #[test]
     fn dupe_group_remove_last_deletes_group() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         ensure_tables();
         clear_tables();
 
@@ -378,6 +383,7 @@ mod tests {
 
     #[test]
     fn insert_asset_creates_all_mappings() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         ensure_tables();
         clear_tables();
 
@@ -409,6 +415,7 @@ mod tests {
 
     #[test]
     fn remove_asset_cleans_up_all_mappings() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         ensure_tables();
         clear_tables();
 
@@ -439,6 +446,7 @@ mod tests {
 
     #[test]
     fn album_asset_has_no_dupe_group_entry() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         ensure_tables();
         clear_tables();
 
@@ -460,5 +468,59 @@ mod tests {
         assert!(ids.is_empty());
 
         clear_tables();
+    }
+
+    /// Integration test: verifies the new tables initialize correctly and that
+    /// Redb transactions provide the expected isolation and durability semantics.
+    #[test]
+    fn schema_initialization_and_transaction_wrapper() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+
+        // 1. Schema initialization: opening the tables must not error.
+        let txn = TREE
+            .in_disk
+            .begin_write()
+            .expect("begin_write must succeed for schema init");
+        txn.open_table(ASSET_BY_PATH)
+            .expect("ASSET_BY_PATH table creation");
+        txn.open_table(ASSET_BY_ID)
+            .expect("ASSET_BY_ID table creation");
+        txn.open_table(DUPE_INDEX)
+            .expect("DUPE_INDEX table creation");
+        txn.commit().expect("commit must succeed after schema init");
+
+        // 2. Write transaction durability: committed data is visible to
+        //    subsequent read transactions.
+        let txn = TREE.in_disk.begin_write().expect("begin_write");
+        {
+            let mut table = txn.open_table(ASSET_BY_PATH).expect("open ASSET_BY_PATH");
+            table
+                .insert("/durability_test.jpg", "id_durability")
+                .expect("insert");
+        }
+        txn.commit().expect("commit write");
+
+        let txn = TREE.in_disk.begin_read().expect("begin_read");
+        {
+            let table = txn
+                .open_table(ASSET_BY_PATH)
+                .expect("open ASSET_BY_PATH for read");
+            let guard = table.get("/durability_test.jpg").expect("get");
+            assert!(
+                guard.is_some(),
+                "committed data must be visible to read txn"
+            );
+            let val = guard.unwrap();
+            assert_eq!(val.value(), "id_durability");
+        }
+
+        // 3. Cleanup
+        let txn = TREE.in_disk.begin_write().expect("begin_write cleanup");
+        {
+            let mut table = txn.open_table(ASSET_BY_PATH).expect("open for cleanup");
+            table.remove("/durability_test.jpg").expect("remove");
+        }
+        txn.commit().expect("commit cleanup");
     }
 }

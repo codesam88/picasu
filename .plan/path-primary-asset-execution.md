@@ -86,7 +86,7 @@ Pre-existing red test also verified: `duplicate_files_are_independent_album_item
 Frontend Playwright scenarios deferred to Phase 9 after backend identity
 refactor is complete.
 
-## Phase 2: New Data Model and Empty Database — IN PROGRESS
+## Phase 2: New Data Model and Empty Database — COMPLETED
 
 ### Type definitions — DONE
 
@@ -112,13 +112,23 @@ Three new Redb tables in the existing `index_v5.redb`:
 - `get_dupe_ids`, `add_to_dupe_group`, `remove_from_dupe_group`
 - `insert_asset` / `remove_asset` — composite operations touching all three tables
 
-### Unit tests — DONE (20 tests pass)
+### Unit tests — DONE (21 tests pass)
 
 - `model::asset`: kind validation, display roundtrip, unique IDs, album
   no-hash, media hash storage, canonical path normalization (12 tests)
 - `storage::asset_store`: path roundtrip, ID roundtrip, dupe group
-  insert/query/remove/remove-last, composite insert/remove, album no-dupe
-  (8 tests)
+  insert/query/remove/remove-last, composite insert/remove, album no-dupe,
+  schema initialization and transaction wrapper (9 tests)
+
+### Phase 1 red tests — VERIFIED (2 true red + 2 compatible + 1 pre-existing)
+
+| Scenario                                      | Status | Why                                                                 |
+| --------------------------------------------- | ------ | ------------------------------------------------------------------- |
+| `dup_same_album_two_items`                    | RED    | asserts ≥3; current model yields 2 (hash-merged)                    |
+| `dup_move_one_leaves_other`                   | RED    | source album empty after move; path-primary expects ≥2              |
+| `dup_separate_albums_two_items`               | COMPAT | asserts ≥2 on album_b; merged record satisfies via alias membership |
+| `dup_delete_record_does_not_destroy_other`    | COMPAT | assert satisfied by current placeholder behavior                    |
+| `duplicate_files_are_independent_album_items` | RED    | pre-existing red test                                               |
 
 ## Phase 3: Clean Filesystem Rebuild
 
