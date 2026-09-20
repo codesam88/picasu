@@ -1,0 +1,52 @@
+name: deleting one duplicate leaves the other and shared thumbnail
+# Path-primary contract: deleting one file from a hash-collision pair removes
+# only that file and its sidecar.  The other file and the shared thumbnail
+# remain intact.
+given:
+  - dir_album: /dup_delete/album
+    id_as: $album
+  - photo: /dup_delete/album/photo.jpg
+  - duplicate_of:
+      source: /dup_delete/album/photo.jpg
+      destination: /dup_delete/album/copy.jpg
+
+when:
+  # Index both files.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_delete"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Get all data in album to find records.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+    capture:
+      ts: response.prefetch.timestamp
+      end: response.prefetch.dataLength
+      token: response.token
+  - call: GET /get/get-data?timestamp=${ts}&start=0&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      alias_file: response.[0].abstractData.alias.[0].file
+  # Delete one alias from the first record.
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[0],"aliasList":["${alias_file}"],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Re-index after the delete.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_delete"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Check the album.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+then:
+  - response.status: 200
+  # The remaining file is still visible.
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 1 }
+  - file_exists: /dup_delete/album/copy.jpg

@@ -1,0 +1,45 @@
+name: deleting the final duplicate removes generated state
+# Path-primary contract: when the last remaining file of a hash group is
+# deleted, the generated state (thumbnail, DB record) is cleaned up.
+given:
+  - dir_album: /dup_final_delete/album
+    id_as: $album
+  - photo: /dup_final_delete/album/photo.jpg
+    id_as: $photo
+
+when:
+  # Index the file.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_final_delete"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Locate the file.
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+      token: response.token
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      alias_file: response.[0].abstractData.alias.[0].file
+  # Delete the only alias.  No aliases remain → record purged.
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[${idx}],"aliasList":["${alias_file}"],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Verify the record is gone.
+  - call: POST /get/prefetch?locate=${photo}
+then:
+  - response.status: 200
+  # The file is no longer locatable.
+  - response.json.prefetch.locateTo: null
+  # The file is gone from disk.
+  - file_absent: /dup_final_delete/album/photo.jpg
+  # The thumbnail for this hash is gone.
+  - thumb_absent: $photo
