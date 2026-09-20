@@ -1,4 +1,4 @@
-import { getHashToken, DB_NAME, DB_VERSION, SHARE_STORE_NAME } from '@/db/db'
+import { getAssetToken, DB_NAME, DB_VERSION, SHARE_STORE_NAME } from '@/db/db'
 import type { ShareInfo } from '@/db/db'
 
 // Extract albumId and shareId from referer URL (e.g., /share/albumId-shareId or /share/albumId-shareId/view/hash)
@@ -97,9 +97,9 @@ async function handleMediaRequest(request: Request): Promise<Response> {
   const url = new URL(request.url)
   const parts = url.pathname.split('/') // e.g., ['', 'media-proxy', 'imported', 'abc123.mp4']
   const filename = parts.at(-1) ?? ''
-  const hash = filename.replace(/\.[^.]+$/, '') // remove extension
+  const id = filename.replace(/\.[^.]+$/, '') // remove extension
 
-  const token = await getHashToken(hash)
+  const token = await getAssetToken(id)
 
   if (typeof token !== 'string' || token.trim() === '') {
     return new Response('Unauthorized', { status: 401 })

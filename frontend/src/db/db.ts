@@ -34,40 +34,40 @@ function openHashDB(): Promise<IDBDatabase | null> {
   })
 }
 
-export async function storeHashToken(hash: string, token: string): Promise<void> {
+export async function storeAssetToken(assetId: string, token: string): Promise<void> {
   const db = await openHashDB()
   if (!db) {
-    console.error('Failed to open database for storing hash token')
+    console.error('Failed to open database for storing asset token')
     return
   }
 
   return new Promise<void>((resolve) => {
     const transaction = db.transaction(HASH_STORE_NAME, 'readwrite')
     const store = transaction.objectStore(HASH_STORE_NAME)
-    const request = store.put(token, hash)
+    const request = store.put(token, assetId)
 
     request.onsuccess = () => {
       resolve()
     }
 
     request.onerror = () => {
-      console.error('Error storing hash token')
+      console.error('Error storing asset token')
       resolve()
     }
   })
 }
 
-export async function getHashToken(hash: string): Promise<string | null> {
+export async function getAssetToken(assetId: string): Promise<string | null> {
   const db = await openHashDB()
   if (!db) {
-    console.error('Failed to open database for retrieving hash token')
+    console.error('Failed to open database for retrieving asset token')
     return null
   }
 
   return new Promise<string | null>((resolve) => {
     const transaction = db.transaction(HASH_STORE_NAME, 'readonly')
     const store = transaction.objectStore(HASH_STORE_NAME)
-    const request = store.get(hash)
+    const request = store.get(assetId)
 
     request.onsuccess = () => {
       const rawResult: unknown = request.result
@@ -79,30 +79,30 @@ export async function getHashToken(hash: string): Promise<string | null> {
     }
 
     request.onerror = () => {
-      console.error('Error retrieving hash token')
+      console.error('Error retrieving asset token')
       resolve(null)
     }
   })
 }
 
-export async function deleteHashToken(hash: string): Promise<void> {
+export async function deleteAssetToken(assetId: string): Promise<void> {
   const db = await openHashDB()
   if (!db) {
-    console.error('Failed to open database for deleting hash token')
+    console.error('Failed to open database for deleting asset token')
     return
   }
 
   return new Promise<void>((resolve) => {
     const transaction = db.transaction(HASH_STORE_NAME, 'readwrite')
     const store = transaction.objectStore(HASH_STORE_NAME)
-    const request = store.delete(hash)
+    const request = store.delete(assetId)
 
     request.onsuccess = () => {
       resolve()
     }
 
     request.onerror = () => {
-      console.error('Error deleting hash token')
+      console.error('Error deleting asset token')
       resolve()
     }
   })

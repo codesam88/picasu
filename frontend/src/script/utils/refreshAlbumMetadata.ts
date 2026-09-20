@@ -43,18 +43,18 @@ export async function refreshAlbumMetadata(albumId: string) {
       if (coverHash === null) return
 
       await tokenStore.refreshTimestampTokenIfExpired()
-      await tokenStore.refreshHashTokenIfExpired(coverHash)
+      await tokenStore.refreshAssetTokenIfExpired(coverHash)
 
       const timestampToken = tokenStore.timestampToken
-      const hashToken = tokenStore.hashTokenMap.get(coverHash)
+      const assetToken = tokenStore.assetTokenMap.get(coverHash)
 
       if (timestampToken === null) {
         console.error('timestampToken is null after refresh')
         return
       }
 
-      if (hashToken === undefined) {
-        console.error('hashToken is undefined after refresh')
+      if (assetToken === undefined) {
+        console.error('assetToken is undefined after refresh')
         return
       }
 
@@ -66,7 +66,7 @@ export async function refreshAlbumMetadata(albumId: string) {
         shareId: shareStore.shareId,
         password: shareStore.password,
         timestampToken,
-        hashToken,
+        hashToken: assetToken,
         updatedAt: data.updateAt
       })
 
@@ -81,7 +81,7 @@ export async function refreshAlbumMetadata(albumId: string) {
         shareId: shareStore.shareId,
         password: shareStore.password,
         timestampToken,
-        hashToken,
+        hashToken: assetToken,
         updatedAt: data.updateAt
       })
 

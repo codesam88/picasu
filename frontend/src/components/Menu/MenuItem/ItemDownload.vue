@@ -78,6 +78,7 @@ const downloadAllFiles = async () => {
 
         if (abstractData.type === 'image' || abstractData.type === 'video') {
           const hash = abstractData.id
+          const assetId = abstractData.assetId ?? hash
 
           const url = getSrcOriginal(
             hash,
@@ -86,10 +87,10 @@ const downloadAllFiles = async () => {
             abstractData.updateAt,
             abstractData.assetId
           )
-          await tokenStore.tryRefreshAndStoreTokenToDb(hash)
-          const hashToken = tokenStore.hashTokenMap.get(hash)
-          if (hashToken === undefined) {
-            console.error(`hashToken is undefined for hash: ${hash}`)
+          await tokenStore.tryRefreshAndStoreTokenToDb(assetId)
+          const assetToken = tokenStore.assetTokenMap.get(assetId)
+          if (assetToken === undefined) {
+            console.error(`assetToken is undefined for assetId: ${assetId}`)
             return
           }
 
@@ -97,7 +98,7 @@ const downloadAllFiles = async () => {
             const response = await axios.get<Blob>(url, {
               responseType: 'blob',
               headers: {
-                Authorization: `Bearer ${hashToken}`
+                Authorization: `Bearer ${assetToken}`
               }
             })
 
