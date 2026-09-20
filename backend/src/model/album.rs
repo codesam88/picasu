@@ -21,23 +21,20 @@ pub struct AlbumCombined {
 
 /// A helper struct to hold media item info for album calculations
 struct MediaItemInfo {
-    asset_id: Option<ArrayString<64>>,
-    hash: ArrayString<64>,
+    asset_id: ArrayString<64>,
     size: u64,
     thumbhash: Option<Vec<u8>>,
     timestamp: i64,
 }
 
 impl AlbumCombined {
-    pub fn set_cover(&mut self, cover_data: &AbstractData, asset_id: Option<ArrayString<64>>) {
-        // Prefer asset_id for path-primary identity; fall back to content hash
-        // only when asset_id is unavailable (should not happen after migration).
-        self.metadata.cover = asset_id.or(Some(cover_data.hash()));
+    pub fn set_cover(&mut self, cover_data: &AbstractData, asset_id: ArrayString<64>) {
+        self.metadata.cover = Some(asset_id);
         self.object.thumbhash = cover_data.thumbhash().cloned();
     }
 
     fn set_cover_from_info(&mut self, info: &MediaItemInfo) {
-        self.metadata.cover = info.asset_id.or(Some(info.hash));
+        self.metadata.cover = Some(info.asset_id);
         self.object.thumbhash.clone_from(&info.thumbhash);
     }
 
@@ -65,7 +62,6 @@ impl AlbumCombined {
                         if belongs_to_album(&img.metadata.alias) {
                             Some(MediaItemInfo {
                                 asset_id: database_timestamp.asset_id,
-                                hash: img.object.id,
                                 size: img.metadata.size,
                                 thumbhash: img.object.thumbhash.clone(),
                                 timestamp: database_timestamp.timestamp,
@@ -78,7 +74,6 @@ impl AlbumCombined {
                         if belongs_to_album(&vid.metadata.alias) {
                             Some(MediaItemInfo {
                                 asset_id: database_timestamp.asset_id,
-                                hash: vid.object.id,
                                 size: vid.metadata.size,
                                 thumbhash: vid.object.thumbhash.clone(),
                                 timestamp: database_timestamp.timestamp,
@@ -116,7 +111,9 @@ impl AlbumCombined {
             }
         } else {
             let current_cover = self.metadata.cover.expect("cover not set");
-            let cover_still_in_album = data_in_album.iter().any(|info| info.hash == current_cover);
+            let cover_still_in_album = data_in_album
+                .iter()
+                .any(|info| info.asset_id == current_cover);
             if !cover_still_in_album && let Some(first_info) = data_in_album.first() {
                 self.set_cover_from_info(first_info);
             }

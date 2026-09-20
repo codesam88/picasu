@@ -149,7 +149,7 @@ fn compute_locate(
     let locate_to_index = locate_option.and_then(|locate_str| {
         reduced_data_vector
             .par_iter()
-            .position_first(|reduced| reduced.asset_id.as_deref() == Some(locate_str.as_str()))
+            .position_first(|reduced| reduced.asset_id.as_str() == locate_str.as_str())
     });
 
     let duration = format!("{:?}", layout_start_time.elapsed());

@@ -123,7 +123,7 @@ pub async fn set_album_cover(
                 .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Cover image not found"))?
                 .value();
 
-            album.set_cover(&database, Some(cover_asset_id));
+            album.set_cover(&database, cover_asset_id);
             data_table
                 .insert(&*album_id, AbstractData::Album(album))
                 .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;

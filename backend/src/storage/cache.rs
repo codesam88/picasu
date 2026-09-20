@@ -268,7 +268,7 @@ impl MyCow {
     }
 
     #[allow(dead_code)]
-    pub fn get_asset_id(&self, index: usize) -> Result<Option<ArrayString<64>>> {
+    pub fn get_asset_id(&self, index: usize) -> Result<ArrayString<64>> {
         match self {
             MyCow::DashMap(data) => {
                 let data = &data.value()[index];
