@@ -273,12 +273,19 @@ The asset tables will instead be populated synchronously during
 - `get_test_probe` resolves content hash to asset_id via DUPE_INDEX
 - `dir_album::write_album_to_db` writes to ASSET_BY_ID and ASSET_BY_PATH
 
+### Directory moves — IN PROGRESS
+
+- `update_asset_tables_after_dir_move()` updates `ASSET_BY_PATH` and
+  `ASSET_BY_ID` when a directory is moved via `assign_album`
+- Called from `move_album_into_album` after `rename_whole_dir` completes
+- `dir_move_updates_asset_tables` scenario verifies asset_id is preserved
+  and file is locatable after directory move
+
 ### Remaining work
 
 1. Delete/trash — update remaining scenarios that test old multi-alias behavior
 2. Shared thumbnail cleanup — consult `DUPE_INDEX` before removing thumbnails
-3. Directory moves — update descendant asset paths and album records
-4. Album deletion — recursively handle child album/file assets
+3. Album deletion — recursively handle child album/file assets
 
 For every mutation test:
 

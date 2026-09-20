@@ -1,0 +1,43 @@
+name: directory move updates asset table paths
+# When a directory is moved via assign_album, the asset tables must be
+# updated so that the moved files' canonical paths reflect the new location.
+given:
+  - dir_album: /e2e_dir_move/source/child
+    id_as: $child_album
+  - photo: /e2e_dir_move/source/child/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+  - dir_album: /e2e_dir_move/target
+    id_as: $target_album
+
+when:
+  # Index to populate asset tables.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_dir_move"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Move the child album directory into the target.
+  - call: PUT /put/assign_album
+    body:
+      hash: "${child_album}"
+      albumId: "${target_album}"
+      onConflict: "rename"
+    then:
+      - response.status: 200
+  # Re-index to pick up the moved files.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_dir_move"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Locate the photo by its original asset_id.
+  - call: POST /get/prefetch?locate=${asset_id}
+then:
+  - response.status: 200
+  # The photo should still be locatable by its asset_id after the move.
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 1 }
+  # The file should be at the new location.
+  - file_exists: /e2e_dir_move/target/child/photo.jpg
+  - file_absent: /e2e_dir_move/source/child/photo.jpg
