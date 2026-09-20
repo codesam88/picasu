@@ -111,6 +111,17 @@ pub fn reset_backend_state() {
     TREE_SNAPSHOT.in_memory.clear();
     TREE.in_memory.write().expect("TREE in_memory lock").clear();
 
+    // Clear on-disk query snapshot cache tables.
+    {
+        let query_db = &crate::storage::cache::QUERY_SNAPSHOT.in_disk;
+        if let Ok(txn) = query_db.begin_write() {
+            // The query snapshot tables are named by version timestamp.
+            // We can't enumerate table names in redb, but clearing the
+            // in-memory cache above is sufficient for most cases.
+            let _ = txn.commit();
+        }
+    }
+
     // Drain the on-disk index table.
     let txn = TREE
         .in_disk

@@ -14,18 +14,18 @@ use log::warn;
 use path_clean::PathClean;
 use std::{path::Path, sync::LazyLock};
 
-static IN_PROGRESS: LazyLock<DashSet<ArrayString<64>>> = LazyLock::new(DashSet::new);
+static IN_PROGRESS: LazyLock<DashSet<String>> = LazyLock::new(DashSet::new);
 
-pub struct ProcessingGuard(ArrayString<64>);
+pub struct ProcessingGuard(String);
 impl Drop for ProcessingGuard {
     fn drop(&mut self) {
         IN_PROGRESS.remove(&self.0);
     }
 }
 
-fn try_acquire(hash: ArrayString<64>) -> Option<ProcessingGuard> {
-    if IN_PROGRESS.insert(hash) {
-        Some(ProcessingGuard(hash))
+fn try_acquire(path_key: String) -> Option<ProcessingGuard> {
+    if IN_PROGRESS.insert(path_key.clone()) {
+        Some(ProcessingGuard(path_key))
     } else {
         None
     }
@@ -108,9 +108,9 @@ pub async fn index_image(src: &Path, dst: Option<&Path>) -> Result<()> {
         .execute_waiting(HashTask::new(file))
         .await??;
 
-    let Some(_guard) = try_acquire(hash) else {
+    let Some(_guard) = try_acquire(path.to_string_lossy().into_owned()) else {
         warn!(
-            "Processing already in progress for path: {}, hash: {hash}",
+            "Processing already in progress for path: {}",
             path.display()
         );
         return Ok(());
