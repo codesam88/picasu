@@ -28,22 +28,22 @@ The following must be verified rather than assumed:
 - what transaction/recovery guarantees are needed around filesystem moves;
 - whether a journal is required, or whether rebuildable state plus pending
   operation records is sufficient;
-- whether Redb's read/write behavior is adequate at the expected scale.
+- whether the selected engine provides the needed table, transaction, schema,
+  and rebuild interfaces.
 
 ## Candidates
 
 ### Redb
 
 Prototype ordered tables for canonical paths, asset IDs, composite hash
-membership, and path-prefix scans. Measure multiple-table transactions,
-reader behavior during writes, database growth, reopen time, and large
-duplicate groups. Verify the documented schema/table-generation and recovery
-behavior instead of assuming the application must implement all of it.
+membership, and path-prefix scans. Verify the documented schema/table-
+generation and recovery behavior instead of assuming the application must
+implement all of it.
 
 ### SQLite
 
 Prototype unique path constraints, composite hash membership, album/date/tag
-indexes, combined filters, WAL behavior, migrations, and rebuild tooling.
+indexes, combined filters, schema handling, and rebuild tooling.
 
 ### Other Engines
 
@@ -56,12 +56,15 @@ need.
 Both candidates should implement the same minimum model:
 
 ```text
-assets(asset_id, canonical_path, type, blake_hash, metadata, state)
-albums(album_id, canonical_path, metadata)
-asset_hash(asset_id, blake_hash)
+asset_by_path(canonical_path, asset_id)
+asset_by_id(asset_id, canonical_path, kind, blake_hash, file_info, asset_info)
+dupe_index(blake_hash, asset_id_list)
 ```
 
-Operations to benchmark:
+Albums are `kind = album` asset records; their canonical path must resolve to
+a directory and their optional presentation metadata comes from `.albuminfo`.
+
+Operations to validate:
 
 - index/update one path;
 - list assets under an album directory;
@@ -85,25 +88,8 @@ Verify behavior for process termination during:
 Then decide whether the selected design needs a durable journal, a pending
 operation record, startup reconciliation, or only filesystem-driven rebuild.
 
-## Benchmark Plan
-
-Use synthetic and sampled metadata at 1M and 10M assets. Measure:
-
-- point lookup by asset ID and path;
-- album path-prefix listing;
-- combined filters;
-- duplicate-group lookup;
-- batched indexing, move, and delete throughput;
-- reader latency during writes;
-- rebuild duration;
-- database size and reopen time;
-- crash/reopen/reconciliation behavior.
-
-Report p50/p95 latency, throughput, peak memory, write amplification, storage
-size, and recovery time. Do not infer production limits from Big-O alone.
-
 ## Decision Output
 
 Record the selected engine/version, authoritative tables, cache/snapshot
-responsibilities, schema-generation procedure, filesystem recovery behavior,
-and measured scale limits.
+responsibilities, schema-generation procedure, and filesystem recovery
+behavior.

@@ -1,0 +1,51 @@
+name: identical files uploaded into one album are returned as separate items
+# Contract for the path-primary asset model. The album fixture contributes one
+# hidden discovery fixture; the two uploaded files must add two independently
+# visible image records rather than one hash-merged record.
+given:
+  - dir_album: /e2e_duplicate_items/album
+    id_as: $album
+  - photo: /e2e_duplicate_items/source/photo.jpg
+    id_as: $source
+
+when:
+  - upload:
+      file: /e2e_duplicate_items/source/photo.jpg
+      filename: duplicate-a.jpg
+      target_album: "${album}"
+      on_conflict: rename
+    then:
+      - response.status: 200
+  - upload:
+      file: /e2e_duplicate_items/source/photo.jpg
+      filename: duplicate-b.jpg
+      target_album: "${album}"
+      on_conflict: rename
+    then:
+      - response.status: 200
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_duplicate_items"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+      end: response.prefetch.dataLength
+  - call: GET /get/get-data?timestamp=${ts}&start=0&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+then:
+  - response.status: 200
+  # One discovery fixture plus two uploaded files. The current hash-primary
+  # implementation returns only two; this is intentionally a migration test.
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 3 }
+  # Both physical files must exist even when the API identity changes.
+  - file_exists: /e2e_duplicate_items/album/duplicate-a.jpeg
+  - file_exists: /e2e_duplicate_items/album/duplicate-b.jpeg
