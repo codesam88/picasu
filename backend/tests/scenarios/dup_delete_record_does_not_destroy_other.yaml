@@ -1,0 +1,55 @@
+name: deleting one duplicate without aliasList should not destroy the other
+# Path-primary contract: deleting a record for one file should not affect
+# another file with the same content hash.  Each physical path is an
+# independent asset.
+given:
+  - dir_album: /dup_delete2/album
+    id_as: $album
+  - photo: /dup_delete2/album/photo.jpg
+  - duplicate_of:
+      source: /dup_delete2/album/photo.jpg
+      destination: /dup_delete2/album/copy.jpg
+
+when:
+  # Index both files.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_delete2"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Get data from album to find the merged record.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+    capture:
+      ts: response.prefetch.timestamp
+      end: response.prefetch.dataLength
+      token: response.token
+  - call: GET /get/get-data?timestamp=${ts}&start=0&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      idx: response.json.length
+  # Delete the first record without aliasList — this deletes ALL aliases
+  # of the record, including both photo.jpg and copy.jpg.
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[0],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Re-index after the delete.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_delete2"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Check the album.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+then:
+  - response.status: 200
+  # In the path-primary model, deleting one record should leave the other
+  # file intact (placeholder + remaining copy = 2). In the current model,
+  # both aliases are on one record so both are destroyed (only placeholder = 1).
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 2 }
+  - file_exists: /dup_delete2/album/copy.jpg

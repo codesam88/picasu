@@ -123,6 +123,27 @@ use redb::TableDefinition;
 use crate::model::abstract_data::AbstractData;
 
 pub const DATA_TABLE: TableDefinition<&str, AbstractData> = TableDefinition::new("database");
+
+// ── Path-primary asset stores ────────────────────────────────────────────────
+//
+// These tables implement the path-primary asset model where each physical
+// file or directory has exactly one independently addressable asset record.
+// See `.plan/asset-path-primary-index.md` for the design contract.
+
+/// Maps canonical filesystem path → `asset_id`.
+/// One row per physical file or directory. Ensures path uniqueness.
+pub const ASSET_BY_PATH: TableDefinition<&str, &str> = TableDefinition::new("asset_by_path");
+
+/// Maps `asset_id` → JSON-serialized `AssetRecord`.
+/// One row per asset. Contains kind, path, hash, and metadata.
+pub const ASSET_BY_ID: TableDefinition<&str, &str> = TableDefinition::new("asset_by_id");
+
+/// Maps `content_hash` → JSON-serialized `Vec` of `asset_id`.
+/// One row per unique content hash. Albums do not appear here.
+/// Multiple asset IDs in a row means those assets share identical content
+/// but remain independently addressable.
+pub const DUPE_INDEX: TableDefinition<&str, &str> = TableDefinition::new("dupe_index");
+
 use anyhow::Result;
 
 pub fn open_data_table() -> ReadOnlyTable<&'static str, AbstractData> {

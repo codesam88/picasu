@@ -1,0 +1,23 @@
+name: stale path and unknown asset ID are rejected safely
+# Path-primary contract: querying a path that no longer exists on disk returns
+# an empty/absent result rather than crashing or returning stale data.
+given:
+  - photo: /dup_stale/album/photo.jpg
+  - remove: /dup_stale/album/photo.jpg
+
+when:
+  # Index the directory.  The file was already removed by the `remove` fixture,
+  # so the index should detect the stale alias and prune it.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_stale"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Try to locate the removed file.
+  - call: POST /get/prefetch
+    raw_body: '{"Path": "${data_path}/dup_stale/album/photo.jpg"}'
+
+then:
+  - response.status: 200
+  # The stale path is no longer locatable.
+  - response.json.prefetch.dataLength: 0

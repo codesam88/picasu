@@ -1,0 +1,31 @@
+name: identical files in separate albums are independently addressable assets
+# Path-primary contract: two byte-identical files in different directories are
+# two distinct assets.  Each appears in its own album, not merged across albums.
+given:
+  - dir_album: /dup_sep_albums/album_a
+    id_as: $album_a
+  - dir_album: /dup_sep_albums/album_b
+    id_as: $album_b
+  - photo: /dup_sep_albums/album_a/photo.jpg
+  - duplicate_of:
+      source: /dup_sep_albums/album_a/photo.jpg
+      destination: /dup_sep_albums/album_b/photo.jpg
+
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_sep_albums"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Query album B — should have the placeholder + at least one photo.
+  - call: POST /get/prefetch
+    body: { Album: "${album_b}" }
+then:
+  - response.status: 200
+  # Album B has its placeholder + the duplicate photo = 2 items minimum.
+  # In the path-primary model, the duplicate in album_b is a separate asset
+  # from the original in album_a, so it must appear here independently.
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 2 }
+  - file_exists: /dup_sep_albums/album_a/photo.jpg
+  - file_exists: /dup_sep_albums/album_b/photo.jpg

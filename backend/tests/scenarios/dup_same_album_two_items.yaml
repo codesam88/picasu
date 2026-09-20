@@ -1,0 +1,30 @@
+name: identical files in one album are independently addressable assets
+# Path-primary contract: two byte-identical files in the same directory are
+# two distinct assets with separate asset IDs.  They appear as two items in
+# the album listing, not one merged alias record.
+given:
+  - dir_album: /dup_same_album/album
+    id_as: $album
+  - photo: /dup_same_album/album/source.jpg
+  - duplicate_of:
+      source: /dup_same_album/album/source.jpg
+      destination: /dup_same_album/album/copy.jpg
+
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_same_album"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+then:
+  - response.status: 200
+  # One album placeholder + two distinct image files = 3 items.
+  # The current hash-merging implementation collapses source.jpg and copy.jpg
+  # into one record, yielding only 2 items. This assertion enforces that
+  # byte-identical files remain independently addressable assets.
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 3 }
+  - file_exists: /dup_same_album/album/source.jpg
+  - file_exists: /dup_same_album/album/copy.jpg

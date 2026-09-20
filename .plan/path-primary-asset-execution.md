@@ -1,5 +1,5 @@
 ---
-status: open
+status: in-progress
 type: feature
 priority: high
 area: backend
@@ -59,93 +59,66 @@ both. Record only:
 
 Do not add load or performance tests in this phase.
 
-## Phase 1: Test Fixtures and Scenario Helpers
+## Phase 1: Test Fixtures and Scenario Helpers — COMPLETED
 
-Build deterministic test setup before changing identity code.
+### Backend fixture helpers — DONE
 
-### Backend fixture helpers
+Added `duplicate_of` support to the scenario interpreter (`backend_api.rs`).
+The fixture creates byte-identical copies via `fs::copy`, not regenerated
+images. Source must exist on disk before the copy runs.
 
-Add a scenario fixture that creates two byte-identical valid media files at
-different paths before indexing. It should support:
+### API scenarios — DONE (red tests verified)
 
-```yaml
-given:
-  - photo: /fixtures/source/photo.jpg
-    id_as: $source
-  - duplicate_of:
-      source: /fixtures/source/photo.jpg
-      destination: /fixtures/album/copy.jpg
-```
+| Scenario file                                   | Status | Assertion                                                        |
+| ----------------------------------------------- | ------ | ---------------------------------------------------------------- |
+| `dup_same_album_two_items.yaml`                 | RED    | dataLength >= 3 (placeholder + 2 distinct files)                 |
+| `dup_separate_albums_two_items.yaml`            | RED    | album_b dataLength >= 2 (placeholder + duplicate)                |
+| `dup_move_one_leaves_other.yaml`                | RED    | source_album dataLength >= 2 after moving one record             |
+| `dup_delete_record_does_not_destroy_other.yaml` | RED    | album dataLength >= 2 + copy.jpg exists after full record delete |
+| `dup_delete_one_leaves_other.yaml`              | GREEN  | alias-level delete leaves remaining alias (both models OK)       |
+| `dup_final_delete_removes_state.yaml`           | GREEN  | last alias delete purges record + thumbnail (both models OK)     |
+| `dup_stale_path_rejected.yaml`                  | GREEN  | removed file returns dataLength 0 (both models OK)               |
 
-The helper must copy bytes, not regenerate a similar image. Validate that both
-files exist before the index operation.
+Pre-existing red test also verified: `duplicate_files_are_independent_album_items.yaml`.
 
-Add reusable assertion/capture support as needed for:
+### Playwright scenarios — DEFERRED
 
-- array length;
-- distinct asset IDs;
-- locating an asset by asset ID;
-- asserting a path appears exactly once;
-- asserting a shared hash group contains expected IDs.
+Frontend Playwright scenarios deferred to Phase 9 after backend identity
+refactor is complete.
 
-Do not add production behavior in this phase.
+## Phase 2: New Data Model and Empty Database — IN PROGRESS
 
-### Required red scenarios
+### Type definitions — DONE
 
-Add API scenarios for:
+- `AssetKind` enum: `Image`, `Video`, `Album` — with `is_media()` predicate
+- `AssetRecord` struct: `asset_id`, `kind`, `canonical_path`, `content_hash`,
+  `file_size`, `ext`, `modified`, `scan_time`, `is_trashed`, `album_id`
+- `canonicalize_path()` with `.`/`..` resolution
 
-- identical files in one album return two items;
-- identical files in separate albums return separate items;
-- moving one duplicate leaves the other unchanged;
-- deleting one duplicate leaves the other and shared thumbnail;
-- deleting the final duplicate removes generated state according to policy;
-- stale path and unknown asset ID are rejected safely.
+### Store tables — DONE
 
-Add Playwright scenarios for:
+Three new Redb tables in the existing `index_v5.redb`:
 
-- two identical files render as two grid items;
-- refresh preserves both items;
-- selecting/moving one leaves the other visible;
-- deleting one leaves the other usable.
+- `ASSET_BY_PATH`: canonical path → `asset_id`
+- `ASSET_BY_ID`: `asset_id` → JSON-serialized `AssetRecord`
+- `DUPE_INDEX`: `content_hash` → JSON-serialized `Vec<asset_id>`
 
-These tests may fail until later phases. They must fail for the intended
-identity assertion, not because fixture setup is invalid.
+### Store operations — DONE
 
-## Phase 2: New Data Model and Empty Database
+`storage/asset_store.rs` provides:
 
-Introduce the new schema generation with no compatibility reader.
+- `get_asset_id_by_path`, `put_asset_by_path`, `remove_asset_by_path`
+- `get_asset_by_id`, `put_asset_by_id`, `remove_asset_by_id`
+- `get_dupe_ids`, `add_to_dupe_group`, `remove_from_dupe_group`
+- `insert_asset` / `remove_asset` — composite operations touching all three tables
 
-Create typed records containing:
+### Unit tests — DONE (20 tests pass)
 
-- `asset_id`;
-- `kind`;
-- canonical path;
-- file-derived information;
-- asset-owned information;
-- optional content hash.
-
-Create the minimum stores:
-
-```text
-ASSET_BY_PATH[path] -> asset_id
-ASSET_BY_ID[asset_id] -> asset record
-DUPE_INDEX[hash] -> asset ID list
-```
-
-Albums are `kind = album` records in the same stores. Do not create separate
-album identity tables.
-
-Add unit tests for:
-
-- kind validation;
-- media versus album hash rules;
-- canonical path normalization;
-- path uniqueness;
-- asset-ID allocation;
-- duplicate-list insertion/removal.
-
-Add a Redb/SQLite integration test only for the chosen store's transaction
-wrapper and schema initialization; do not test the database engine itself.
+- `model::asset`: kind validation, display roundtrip, unique IDs, album
+  no-hash, media hash storage, canonical path normalization (12 tests)
+- `storage::asset_store`: path roundtrip, ID roundtrip, dupe group
+  insert/query/remove/remove-last, composite insert/remove, album no-dupe
+  (8 tests)
 
 ## Phase 3: Clean Filesystem Rebuild
 

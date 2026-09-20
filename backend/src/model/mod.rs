@@ -1,5 +1,6 @@
 pub mod abstract_data;
 pub mod album;
+pub mod asset;
 pub mod config;
 pub mod expression;
 pub mod image;

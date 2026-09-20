@@ -682,6 +682,10 @@ fn interpret_scenario(scenario: &Value) {
             let mut has_id_as = false;
 
             let mut photo_specs: Vec<PhotoSpec> = Vec::new();
+            // Pairs of (source_relative, destination_relative) for byte-identical
+            // duplicate fixture files.  Processed after photo generation so the
+            // source file exists on disk.
+            let mut duplicate_of_pairs: Vec<(String, String)> = Vec::new();
 
             for item in items {
                 if let Some(dir) = item["dir_album"].as_str() {
@@ -774,11 +778,41 @@ fn interpret_scenario(scenario: &Value) {
                     {
                         write_config(&serde_json::json!({"use_client_timestamp_info": enabled}));
                     }
+                } else if let Some(dup) = item.get("duplicate_of") {
+                    let src = dup["source"]
+                        .as_str()
+                        .expect("duplicate_of.source is required")
+                        .trim_start_matches('/')
+                        .to_string();
+                    let dst = dup["destination"]
+                        .as_str()
+                        .expect("duplicate_of.destination is required")
+                        .trim_start_matches('/')
+                        .to_string();
+                    duplicate_of_pairs.push((src, dst));
                 }
             }
 
             if !photo_specs.is_empty() {
                 generate_batch(&photo_specs).expect("generate photos");
+            }
+
+            // Copy source files to their duplicate destinations.  Source must
+            // exist on disk (created by the photo fixtures above).  The copy
+            // is a byte-identical duplicate — not a regenerated similar image.
+            for (src_rel, dst_rel) in &duplicate_of_pairs {
+                let src_path = data.join(src_rel);
+                let dst_path = data.join(dst_rel);
+                assert!(
+                    src_path.exists(),
+                    "duplicate_of source does not exist: {src_rel}"
+                );
+                if let Some(parent) = dst_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .unwrap_or_else(|e| panic!("create dir for duplicate_of {dst_rel}: {e}"));
+                }
+                std::fs::copy(&src_path, &dst_path)
+                    .unwrap_or_else(|e| panic!("duplicate_of copy {src_rel} -> {dst_rel}: {e}"));
             }
 
             if has_scan_items {

@@ -1,0 +1,56 @@
+name: moving one duplicate leaves the other unchanged
+# Path-primary contract: moving one file of a hash-collision pair changes only
+# that file's path and album membership.  The other file stays in its original
+# album at its original path.
+given:
+  - dir_album: /dup_move/source_album
+    id_as: $source_album
+  - dir_album: /dup_move/target_album
+    id_as: $target_album
+  - photo: /dup_move/source_album/photo.jpg
+  - duplicate_of:
+      source: /dup_move/source_album/photo.jpg
+      destination: /dup_move/source_album/copy.jpg
+
+when:
+  # Index both files.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_move"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Get all data in source album.
+  - call: POST /get/prefetch
+    body: { Album: "${source_album}" }
+    capture:
+      ts: response.prefetch.timestamp
+      end: response.prefetch.dataLength
+      token: response.token
+  - call: GET /get/get-data?timestamp=${ts}&start=0&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      hash_val: response.[0].abstractData.id
+      alias_file: response.[0].abstractData.alias.[0].file
+  # Move the record to the target album.
+  - call: PUT /put/assign_album
+    body: { hash: "${hash_val}", albumId: "${target_album}", alias: "${alias_file}", onConflict: "rename" }
+    then:
+      - response.status: 200
+  # Re-index after the move.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_move"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Check the source album — should still have items.
+  - call: POST /get/prefetch
+    body: { Album: "${source_album}" }
+then:
+  - response.status: 200
+  # Source album should still have placeholder + remaining copy = 2 items.
+  # In the current hash-merging model, both files move together and the
+  # source album becomes empty (only placeholder remains = 1).
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 2 }
