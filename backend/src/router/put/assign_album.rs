@@ -145,6 +145,68 @@ pub async fn assign_album(
     Ok(Json(AssignResult { outcome }))
 }
 
+/// Resolve a content hash + optional alias path to an `asset_id`.
+/// Tries `DUPE_INDEX` first, then scans `ASSET_BY_ID` for matching `content_hash`.
+fn resolve_asset_id_from_hash(
+    content_hash: ArrayString<64>,
+    alias: Option<&str>,
+) -> Option<ArrayString<64>> {
+    use crate::storage::asset_store;
+
+    // Try DUPE_INDEX first.
+    let ids = asset_store::get_dupe_ids(&content_hash)
+        .ok()
+        .unwrap_or_default();
+    log::info!(
+        "resolve_asset_id_from_hash: content_hash={content_hash}, alias={alias:?}, dupe_ids={ids:?}"
+    );
+
+    if !ids.is_empty() {
+        if let Some(alias_path) = alias {
+            for id in &ids {
+                if let Ok(Some(record)) = asset_store::get_asset_by_id(id.as_ref())
+                    && record.canonical_path == alias_path
+                {
+                    log::info!("resolve_asset_id_from_hash: matched by alias, id={id}");
+                    return Some(*id);
+                }
+            }
+        }
+        log::info!("resolve_asset_id_from_hash: using first dupe id={}", ids[0]);
+        return Some(ids[0]);
+    }
+
+    // DUPE_INDEX empty — scan ASSET_BY_ID for matching content_hash.
+    if let Ok(records) = asset_store::get_all_assets() {
+        log::info!(
+            "resolve_asset_id_from_hash: DUPE_INDEX empty, scanning {} assets",
+            records.len()
+        );
+        for record in &records {
+            if record.content_hash.as_ref() == Some(&content_hash) {
+                if let Some(alias_path) = alias {
+                    if record.canonical_path == alias_path {
+                        log::info!(
+                            "resolve_asset_id_from_hash: matched by scan+alias, id={}",
+                            record.asset_id
+                        );
+                        return Some(record.asset_id);
+                    }
+                } else {
+                    log::info!(
+                        "resolve_asset_id_from_hash: matched by scan, id={}",
+                        record.asset_id
+                    );
+                    return Some(record.asset_id);
+                }
+            }
+        }
+    }
+
+    log::info!("resolve_asset_id_from_hash: no match found");
+    None
+}
+
 /// Dispatch on whichever kind of item `hash` resolves to: images/videos move
 /// as a single file (`move_item_into_album`); albums (sub-albums) move as a
 /// whole directory tree (`move_album_into_album`), since an album's `.alias()`
@@ -162,6 +224,10 @@ fn move_hash_into_album(
         return move_asset_into_album(aid, album_id, album_dir, on_conflict);
     }
 
+    // Resolve content hash + alias to asset_id via DUPE_INDEX.
+    let resolved_asset_id = resolve_asset_id_from_hash(hash, selected_alias.as_deref());
+    let lookup_key = resolved_asset_id.unwrap_or(hash);
+
     let is_album = {
         let txn = TREE
             .in_disk
@@ -170,24 +236,38 @@ fn move_hash_into_album(
         let data_table = txn
             .open_table(DATA_TABLE)
             .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
-        let abstract_data: AbstractData = data_table
-            .get(&*hash)
-            .or_raise(|| (ErrorKind::Database, "Failed to look up item"))?
-            .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Item not found in database"))?
-            .value();
-        matches!(abstract_data, AbstractData::Album(_))
+        match data_table.get(&*lookup_key) {
+            Ok(Some(guard)) => {
+                let ad: AbstractData = guard.value();
+                log::info!(
+                    "move_hash_into_album: is_album check: key={lookup_key}, type={}",
+                    ad.ext_type()
+                );
+                matches!(ad, AbstractData::Album(_))
+            }
+            Ok(None) => {
+                log::error!(
+                    "move_hash_into_album: is_album check: key={lookup_key} NOT FOUND in DATA_TABLE"
+                );
+                false
+            }
+            Err(e) => {
+                log::error!("move_hash_into_album: is_album check error: {e}");
+                false
+            }
+        }
     };
 
     if is_album {
         move_album_into_album(
-            hash,
+            lookup_key,
             album_id,
             album_dir,
             on_conflict,
             selected_alias.as_deref(),
         )
     } else {
-        move_item_into_album(hash, album_id, album_dir, on_conflict, selected_alias)
+        move_item_into_album(lookup_key, album_id, album_dir, on_conflict, selected_alias)
     }
 }
 
@@ -450,6 +530,7 @@ fn move_item_into_album(
     on_conflict: OnConflict,
     selected_alias: Option<String>,
 ) -> Result<AssignOutcome, AppError> {
+    log::info!("move_item_into_album: hash={hash}, album_id={album_id}");
     let txn = TREE
         .in_disk
         .begin_write()
@@ -459,11 +540,33 @@ fn move_item_into_album(
             .open_table(DATA_TABLE)
             .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
 
-        let mut abstract_data: AbstractData = data_table
-            .get(&*hash)
-            .or_raise(|| (ErrorKind::Database, "Failed to look up item"))?
-            .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Item not found in database"))?
-            .value();
+        let mut abstract_data: AbstractData = match data_table.get(&*hash) {
+            Ok(Some(guard)) => guard.value(),
+            Ok(None) => {
+                // Dump keys for debugging.
+                let keys: Vec<String> = data_table
+                    .iter()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
+                    .collect();
+                log::error!(
+                    "move_item_into_album: key '{hash}' not found. DATA_TABLE has {} keys: {:?}",
+                    keys.len(),
+                    keys
+                );
+                return Err(AppError::new(
+                    ErrorKind::InvalidInput,
+                    "Item not found in database",
+                ));
+            }
+            Err(e) => {
+                return Err(AppError::new(
+                    ErrorKind::Database,
+                    format!("Failed to look up item: {e}"),
+                ));
+            }
+        };
 
         let alias = abstract_data.alias();
         if alias.is_empty() {

@@ -88,6 +88,82 @@ pub fn get_asset_by_id(asset_id: &str) -> Result<Option<AssetRecord>> {
     }
 }
 
+/// Get all asset records from `ASSET_BY_ID`.
+pub fn get_all_assets() -> Result<Vec<AssetRecord>> {
+    use redb::ReadableTable;
+    let txn = TREE
+        .in_disk
+        .begin_read()
+        .context("Failed to begin read transaction for ASSET_BY_ID")?;
+    let table = txn
+        .open_table(ASSET_BY_ID)
+        .context("Failed to open ASSET_BY_ID")?;
+
+    let mut records = Vec::new();
+    for row in table.iter().context("Failed to iterate ASSET_BY_ID")? {
+        let (_, value) = row.context("Failed to read row from ASSET_BY_ID")?;
+        if let Ok(record) = serde_json::from_str::<AssetRecord>(value.value()) {
+            records.push(record);
+        }
+    }
+    Ok(records)
+}
+
+/// Resolve a content hash to an `asset_id`.
+///
+/// Tries `DUPE_INDEX` first, then scans `ASSET_BY_ID` for matching `content_hash`.
+/// Returns `None` if no asset has the given content hash.
+pub fn resolve_hash_to_asset_id(content_hash: &str) -> Result<Option<ArrayString<64>>> {
+    // Try DUPE_INDEX first.
+    let ids = get_dupe_ids(content_hash).ok().unwrap_or_default();
+    if !ids.is_empty() {
+        return Ok(Some(ids[0]));
+    }
+
+    // DUPE_INDEX empty — scan ASSET_BY_ID.
+    let records = get_all_assets()?;
+    for record in &records {
+        if record
+            .content_hash
+            .as_ref()
+            .map(arrayvec::ArrayString::as_str)
+            == Some(content_hash)
+        {
+            return Ok(Some(record.asset_id));
+        }
+    }
+
+    Ok(None)
+}
+
+/// Look up an `AbstractData` from `DATA_TABLE` by `asset_id`.
+/// Falls back to content hash resolution via `DUPE_INDEX`.
+pub fn lookup_abstract_data_by_hash(
+    hash: &str,
+) -> Result<Option<crate::model::abstract_data::AbstractData>> {
+    let txn = TREE
+        .in_disk
+        .begin_read()
+        .context("Failed to begin read transaction")?;
+    let table = txn
+        .open_table(crate::storage::db::DATA_TABLE)
+        .context("Failed to open DATA_TABLE")?;
+
+    // Try direct lookup (by asset_id).
+    if let Some(guard) = table.get(hash)? {
+        return Ok(Some(guard.value()));
+    }
+
+    // Resolve content hash → asset_id via DUPE_INDEX.
+    if let Some(asset_id) = resolve_hash_to_asset_id(hash)?
+        && let Some(guard) = table.get(&*asset_id)?
+    {
+        return Ok(Some(guard.value()));
+    }
+
+    Ok(None)
+}
+
 /// Insert or update an asset record.
 pub fn put_asset_by_id(record: &AssetRecord) -> Result<()> {
     let json = serde_json::to_string(record).context("Failed to serialize AssetRecord")?;

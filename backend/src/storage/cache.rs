@@ -248,6 +248,7 @@ impl MyCow {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_hash(&self, index: usize) -> Result<ArrayString<64>> {
         match self {
             MyCow::DashMap(data) => {

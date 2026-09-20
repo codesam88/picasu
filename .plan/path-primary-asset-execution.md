@@ -195,51 +195,21 @@ pipeline was attempted but caused test instability due to async race conditions.
 The asset tables will instead be populated synchronously during
 `update_tree_task` once Phase 7 completes the mutation endpoint migration.
 
-## Phase 5: Snapshot and Query Read Path — IN PROGRESS (infrastructure only)
+## Phase 5: Snapshot and Query Read Path — COMPLETED
 
 ### Infrastructure done
 
-- `ReducedData` now has `asset_id` field (currently set to content hash as
-  stand-in; will be populated from `ASSET_BY_PATH` when snapshot is built
-  per-asset)
-- `MyCow::get_asset_id()` method added
-- `transitor::index_to_asset_id()` and `asset_id_to_abstract_data()` added
-  (currently unused, ready for Phase 7)
-- `transitor::asset_record_to_abstract_data()` lossy conversion added
+- `ReducedData` has `asset_id` field populated from `DatabaseTimestamp`
+- `MyCow::get_asset_id()` method for snapshot access
+- `transitor::index_to_asset_id()` and `asset_id_to_abstract_data()` active
 - `compute_locate()` accepts both `asset_id` and `hash`
-- `build_from_asset_tables()` function ready (builds snapshot from ASSET_BY_ID)
-- `sync_asset_tables_from_data_table()` syncs asset tables from DATA_TABLE
-- `Album` filter now normalizes relative/absolute paths via `normalize_parent()`
-
-### Stability improvements
-
-- `workflow::index_image` guard changed from hash-based to path-based
-  (eliminates silent drop of same-hash files at different paths)
-- Test scenarios `dup_separate_albums_two_items` and `dup_delete_one_leaves_other`
-  serialize indexing via separate per-album scans (eliminates dedup race)
-- `reset_backend_state` clears asset tables between tests
-
-### Remaining red/flaky tests
-
-| Test                                          | Status | Root cause                                               |
-| --------------------------------------------- | ------ | -------------------------------------------------------- |
-| `dup_same_album_two_items`                    | RED    | DeduplicateTask merges aliases → 2 records not 3         |
-| `dup_move_one_leaves_other`                   | RED    | Moving merged record moves all aliases                   |
-| `dup_delete_record_does_not_destroy_other`    | RED    | Deleting merged record destroys all aliases              |
-| `dup_delete_one_leaves_other`                 | FLAKY  | dedup race: merge may/may not happen depending on timing |
-| `duplicate_files_are_independent_album_items` | RED    | Pre-existing red test                                    |
-
-Root cause: `DeduplicateTask` merges same-hash files into one record.
-When two files with the same hash are indexed concurrently, the second
-file's dedup may or may not see the first file's record (FlushTreeTask
-race). Fix requires removing alias merging or wiring `index_asset` into
-the production pipeline.
-
-### Blocked by Phase 7
-
-Snapshot-per-asset requires production indexing to NOT merge aliases.
-This needs Phase 7's mutation endpoint migration so assign_album/delete
-work with per-file records instead of per-hash records.
+- `build_from_asset_tables()` reads from `ASSET_BY_ID`, enriches from `DATA_TABLE`
+  by asset_id (not content hash)
+- `update_tree_task()` uses `build_from_asset_tables` as primary, falls back to
+  `build_from_data_table`
+- `get_data` resolves via `asset_id_to_abstract_data`
+- `Album` filter normalizes relative/absolute paths via `normalize_parent()`
+- `VERSION_COUNT_TIMESTAMP` updated immediately in `update_tree_task` for cache invalidation
 
 ## Phase 6: Serving, Tokens, and API Responses
 
@@ -264,24 +234,44 @@ request/response shapes.
 
 ## Phase 7: Move, Delete, Sidecars, and Album Operations — IN PROGRESS
 
-### assign_album — infrastructure done
+### assign_album — DONE
 
 - `AssignAlbumData` has optional `asset_id` field (serde default, backward
   compatible)
 - `move_asset_into_album()` function moves exactly one physical file by
   `asset_id` via `ASSET_BY_ID`/`ASSET_BY_PATH` lookup
-- When `asset_id` is absent, falls back to existing `hash`-based logic
-- No existing test sends `asset_id` yet — all tests still use `hash`
+- `resolve_asset_id_from_hash()` resolves content hash + alias to asset_id
+  via DUPE_INDEX (with ASSET_BY_ID scan fallback)
+- When `asset_id` is absent, falls back to resolved asset_id from hash
+- `move_item_into_album` uses asset_id as DATA_TABLE key
+
+### FlushTreeTask — DONE
+
+- Writes to ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX, and DATA_TABLE
+  (keyed by asset_id, not content hash)
+- Remove path: cleans up all tables, with stale-path fallback for
+  pruned aliases
+
+### DeduplicateTask — DONE
+
+- Never merges aliases — always returns `Some(abstract_data)`
+- Each file goes through the full IndexTask pipeline independently
+
+### Read path — DONE
+
+- `edit_tag`, `edit_rating`, `edit_description`, `edit_flags` all use
+  `index_to_asset_id` for DATA_TABLE lookup
+- `rotate_image`, `regenerate_thumbnail`, `get_img` use
+  `lookup_abstract_data_by_hash` (resolves via DUPE_INDEX)
+- `get_test_probe` resolves content hash to asset_id via DUPE_INDEX
+- `dir_album::write_album_to_db` writes to ASSET_BY_ID and ASSET_BY_PATH
 
 ### Remaining work
 
-1. Wire `index_asset` into production pipeline OR change `DeduplicateTask`
-   to NOT merge aliases (this is the prerequisite for all red tests to pass)
-2. Delete/trash accepts `asset_id` and affects exactly one asset
-3. Sidecar move/delete follows the selected asset
-4. Shared thumbnail cleanup consults `DUPE_INDEX`
-5. Directory moves update descendant asset paths and album records
-6. Album deletion recursively handles child album/file assets
+1. Delete/trash — update remaining scenarios that test old multi-alias behavior
+2. Shared thumbnail cleanup — consult `DUPE_INDEX` before removing thumbnails
+3. Directory moves — update descendant asset paths and album records
+4. Album deletion — recursively handle child album/file assets
 
 For every mutation test:
 

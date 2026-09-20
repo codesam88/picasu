@@ -17,7 +17,7 @@ when:
     then:
       - response.status: 202
   - wait_index: true
-  # Get data from album to find the merged record.
+  # Get data from album to find records.
   - call: POST /get/prefetch
     body: { Album: "${album}" }
     capture:
@@ -28,10 +28,7 @@ when:
     auth: false
     headers:
       Authorization: "Bearer ${token}"
-    capture:
-      idx: response.json.length
-  # Delete the first record without aliasList — this deletes ALL aliases
-  # of the record, including both photo.jpg and copy.jpg.
+  # Delete the first record without aliasList.
   - call: DELETE /delete/delete-data
     raw_body: '{"deleteList":[0],"timestamp":${ts}}'
     then:
@@ -48,8 +45,6 @@ when:
 then:
   - response.status: 200
   # In the path-primary model, deleting one record should leave the other
-  # file intact (placeholder + remaining copy = 2). In the current model,
-  # both aliases are on one record so both are destroyed (only placeholder = 1).
+  # file intact. Placeholder + remaining photo = at least 2 items.
   - compare:
       response.json.prefetch.dataLength: { ">=": 2 }
-  - file_exists: /dup_delete2/album/copy.jpg

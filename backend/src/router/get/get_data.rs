@@ -4,7 +4,7 @@ use crate::model::response::DataBaseTimestampReturn;
 use crate::model::response::{Row, ScrollBarData};
 use crate::process::resolve_show_download_and_metadata;
 use crate::process::transitor::{
-    abstract_data_to_database_timestamp_return, hash_to_abstract_data, index_to_hash,
+    abstract_data_to_database_timestamp_return, asset_id_to_abstract_data, index_to_asset_id,
 };
 use crate::storage::cache::TREE_SNAPSHOT;
 use crate::storage::db::{open_data_table, open_tree_snapshot_table};
@@ -56,19 +56,20 @@ pub async fn get_data(
         let database_timestamp_return_list: Result<Vec<_>, AppError> = (start..end)
             .into_par_iter()
             .map(|index| {
-                let hash = index_to_hash(&tree_snapshot, index).or_raise(|| {
+                let asset_id = index_to_asset_id(&tree_snapshot, index).or_raise(|| {
                     (
                         ErrorKind::Database,
-                        format!("Failed to map index {index} to hash"),
+                        format!("Failed to map index {index} to asset_id"),
                     )
                 })?;
 
-                let abstract_data = hash_to_abstract_data(&data_table, hash).or_raise(|| {
-                    (
-                        ErrorKind::Database,
-                        format!("Failed to retrieve data for hash {hash}"),
-                    )
-                })?;
+                let abstract_data =
+                    asset_id_to_abstract_data(asset_id, &data_table).or_raise(|| {
+                        (
+                            ErrorKind::Database,
+                            format!("Failed to retrieve data for asset_id {asset_id}"),
+                        )
+                    })?;
 
                 let database_timestamp_return = abstract_data_to_database_timestamp_return(
                     abstract_data,

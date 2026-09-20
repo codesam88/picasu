@@ -1,10 +1,8 @@
-use crate::storage::db::open_data_table;
-use crate::tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask};
 use crate::{error::handle_error, model::abstract_data::AbstractData};
 use anyhow::Result;
 use arrayvec::ArrayString;
 use mini_executor::Task;
-use std::{mem, path::Path, path::PathBuf};
+use std::path::PathBuf;
 use tokio::task::spawn_blocking;
 
 pub struct DeduplicateTask {
@@ -41,47 +39,12 @@ impl Task for DeduplicateTask {
 fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
     let mut abstract_data = AbstractData::new(&task.path, task.hash)?;
 
-    let data_table = open_data_table();
-
-    if let Some(guard) = data_table.get(&*task.hash).expect("failed to get record") {
-        let mut data_exist = guard.value();
-        if let Some(alias_mut) = abstract_data.alias_mut() {
-            let file_modify = mem::take(&mut alias_mut[0]);
-            if let Some(exist_alias) = data_exist.alias_mut() {
-                let (still_present, missing): (Vec<_>, Vec<_>) = mem::take(exist_alias)
-                    .into_iter()
-                    .partition(|a| Path::new(&a.file).exists());
-                if !missing.is_empty() {
-                    warn!(
-                        "Pruning {} missing alias path(s) for hash {}, no longer on disk: {:?}",
-                        missing.len(),
-                        task.hash,
-                        missing.iter().map(|a| &a.file).collect::<Vec<_>>()
-                    );
-                }
-                *exist_alias = still_present;
-
-                if !exist_alias.iter().any(|a| a.file == file_modify.file) {
-                    warn!(
-                        "Duplicate content detected: {} has the same hash ({}) as already-indexed {:?}",
-                        file_modify.file,
-                        task.hash,
-                        exist_alias.iter().map(|a| &a.file).collect::<Vec<_>>()
-                    );
-                    exist_alias.push(file_modify);
-                }
-            }
-        }
-        if let Some(album_id) = task.presigned_album_id {
-            data_exist.set_album(Some(album_id));
-        }
-
-        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![data_exist]));
-        Ok(None)
-    } else {
-        if let Some(album_id) = task.presigned_album_id {
-            abstract_data.set_album(Some(album_id));
-        }
-        Ok(Some(abstract_data))
+    if let Some(album_id) = task.presigned_album_id {
+        abstract_data.set_album(Some(album_id));
     }
+
+    // Path-primary model: each physical file gets its own record.
+    // Same-hash files are tracked via DUPE_INDEX, never merged into one record.
+    // Always return Some so IndexTask processes this file independently.
+    Ok(Some(abstract_data))
 }

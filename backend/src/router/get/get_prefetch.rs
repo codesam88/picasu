@@ -55,9 +55,7 @@ impl PrefetchReturn {
 impl From<&DatabaseTimestamp> for ReducedData {
     fn from(source: &DatabaseTimestamp) -> Self {
         Self {
-            // asset_id will be populated from ASSET_BY_PATH when the snapshot
-            // is built per-asset (Phase 7). For now, use the hash as a stand-in.
-            asset_id: source.abstract_data.hash(),
+            asset_id: source.asset_id.unwrap_or(source.abstract_data.hash()),
             hash: source.abstract_data.hash(),
             width: source.abstract_data.width(),
             height: source.abstract_data.height(),

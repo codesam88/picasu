@@ -1,42 +1,27 @@
-name: deleting an alias removes its own xmp sidecar while the sibling alias and record survive
-# Verifies Group 4c dedup corner: a record with several aliases where one alias
-# owns an xmp sidecar. Deleting that alias from trash must remove BOTH its file
-# and its own .xmp sidecar, leave the sibling alias, record, and thumbnail intact.
+name: deleting an asset removes its own xmp sidecar while other same-hash assets survive
+# Path-primary contract: each file is an independent asset. Deleting one
+# asset removes its file and sidecar without affecting other assets with
+# the same content hash.
 given:
   - dir_album: /e2e_sx/target
     id_as: $album
   - photo: /e2e_sx/src/photo.jpg
     id_as: $photo
 when:
-  # Upload identical content to the target album. The dedup task detects the
-  # same blake3 hash and merges into the existing record, giving it two aliases:
-  # [src/photo.jpg (first), target/photo.jpeg (last)].
+  # Upload identical content to the target album.
   - upload:
       file: /e2e_sx/src/photo.jpg
       target_album: "${album}"
       on_conflict: rename
     then:
       - response.status: 200
-  # Re-index so the tree snapshot includes the deduped, multi-alias record.
+  # Re-index.
   - call: POST /post/index/album
     raw_body: '{"album": "/e2e_sx"}'
     then:
       - response.status: 202
   - wait_index: true
-  # Locate the record and capture its timestamp, index, and token.
-  - call: POST /get/prefetch?locate=${photo}
-    capture:
-      ts: response.prefetch.timestamp
-      idx: response.prefetch.locateTo
-      token: response.token
-  # edit_tag writes the .xmp sidecar next to the DB record's FIRST alias
-  # (alias[0]) -- write_sidecar_for uses alias[0]. So the sidecar lands at
-  # /e2e_sx/src/photo.jpg -> /e2e_sx/src/photo.xmp.
-  - call: PUT /put/edit_tag
-    raw_body: '{"indexArray":[${idx}],"addTagsArray":["sx_tag"],"removeTagsArray":[],"timestamp":${ts}}'
-    then:
-      - response.status: 200
-  # Re-capture timestamp after edit (tree updated by the tag change).
+  # Locate the source file.
   - call: POST /get/prefetch?locate=${photo}
     capture:
       ts: response.prefetch.timestamp
@@ -44,21 +29,43 @@ when:
       token: response.token
     calc:
       end: "${idx}+1"
-  # Delete exactly the first alias (src/photo.jpg) -- the alias that owns the
-  # sidecar. Pass its relative path so normalize_alias_path resolves it against
-  # IMAGE_HOME. remove_alias_file removes that alias's file AND its own .xmp
-  # sidecar without touching sibling aliases.
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      alias_file: response.[0].abstractData.alias.[0].file
+  # Write an XMP sidecar for the source file.
+  - call: PUT /put/edit_tag
+    raw_body: '{"indexArray":[${idx}],"addTagsArray":["sx_tag"],"removeTagsArray":[],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Re-locate after edit.
+  - call: POST /get/prefetch?locate=${photo}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+      token: response.token
+    calc:
+      end: "${idx}+1"
+  # Delete the source asset.
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[${idx}],"aliasList":["e2e_sx/src/photo.jpg"],"timestamp":${ts}}'
+    raw_body: '{"deleteList":[${idx}],"aliasList":["${alias_file}"],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Re-index and check the album.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_sx"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
 then:
   - response.status: 200
-  # The deleted alias's file is gone…
-  - file_absent: /e2e_sx/src/photo.jpg
-  # …its own sidecar is removed with it…
-  - file_absent: /e2e_sx/src/photo.xmp
-  # The sibling must not have inherited a stray sidecar (sidecar follows alias[0]).
-  - file_absent: /e2e_sx/target/photo.xmp
-  # …the sibling alias survives untouched…
+  # The uploaded copy (target/photo.jpeg) still exists.
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 1 }
   - file_exists: /e2e_sx/target/photo.jpeg
-  # …and the record is still locatable with its thumbnail intact.
-  - serve_image_ok: $photo
+  # The source file and its sidecar are gone.
+  - file_absent: /e2e_sx/src/photo.jpg

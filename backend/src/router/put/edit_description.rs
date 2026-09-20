@@ -1,5 +1,5 @@
 use crate::process::sanitize::sanitize_text;
-use crate::process::transitor::index_to_hash;
+use crate::process::transitor::index_to_asset_id;
 use crate::process::xmp_write::write_sidecar_for;
 use crate::storage::db::{open_data_table, open_tree_snapshot_table};
 
@@ -50,19 +50,19 @@ pub async fn set_user_defined_description(
         let tree_snapshot = open_tree_snapshot_table(set_user_defined_description.timestamp)
             .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
 
-        let hash =
-            index_to_hash(&tree_snapshot, set_user_defined_description.index).or_raise(|| {
+        let asset_id = index_to_asset_id(&tree_snapshot, set_user_defined_description.index)
+            .or_raise(|| {
                 (
                     ErrorKind::Database,
                     format!(
-                        "Failed to get hash for index {}",
+                        "Failed to get asset_id for index {}",
                         set_user_defined_description.index
                     ),
                 )
             })?;
 
         if let Some(guard) = data_table
-            .get(&*hash)
+            .get(&*asset_id)
             .or_raise(|| (ErrorKind::Database, "Failed to get data from table"))?
         {
             let mut abstract_data = guard.value();
