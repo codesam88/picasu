@@ -387,21 +387,28 @@ The watcher code is already path-primary by design:
 - partial/canceled scan edge cases (may need Playwright tier)
 - durable operation journal (only if tests demonstrate rebuild/reconciliation is insufficient)
 
-## Phase 9: Frontend Identity Refactor
+## Phase 9: Frontend Identity Refactor — IN PROGRESS
 
 Replace hash identity in this order:
 
-- `dataStore` maps by asset ID;
-- worker payloads and row data use asset ID;
-- routes and view navigation use asset ID;
-- original-image cache uses asset ID;
-- shared thumbnail cache may use hash;
-- token persistence uses asset ID;
-- menus, downloads, covers, metadata, move, and delete use asset ID;
+- `dataStore` maps by asset ID; — DONE (dual-map: hashMapData for URL routing, assetIdMapData for identity)
+- worker payloads and row data use asset ID; — DONE (assetId passed through pipeline, stored in EnrichedUnifiedData)
+- routes and view navigation use asset ID; — DONE (getSrc uses assetId for original files)
+- original-image cache uses asset ID; — DONE (backend resolves /object/imported by assetId)
+- shared thumbnail cache may use hash; — DONE (compressed files always use content hash)
+- token persistence uses asset ID; — DONE (tokens keyed by content hash for URL auth)
+- menus, downloads, covers, metadata, move, and delete use asset ID; — DONE (pass assetId to getSrcOriginal)
 - direct alias/path presentation becomes direct canonical asset path.
 
 Playwright tests must verify duplicate rendering and independent selection,
 move, delete, refresh, pagination, and original serving.
+
+### Slices completed
+
+1. Schema: `assetId` in `databaseTimestampSchema` +5 unit tests — `6adbaa28`
+2. Data store: dual-map (`hashMapData` + `assetIdMapData`) + regression tests — `47680811`
+3. Original URLs: `getSrc`/`getSrcOriginal` use assetId for originals + tests — `1c0a3a6c`
+4. Playwright: duplicate selection + deletion scenarios — `4056f2b1`
 
 ## Phase 10: Remove Old Identity Code
 
