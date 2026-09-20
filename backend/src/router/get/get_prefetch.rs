@@ -144,11 +144,21 @@ fn compute_locate(
     let layout_start_time = Instant::now();
 
     // Find locate index if requested.
-    // Accepts either an asset_id or a content hash (for backward compat).
+    // Prefers asset_id match; falls back to hash for backward compatibility.
+    // When multiple items share a hash, the deterministic sort ensures
+    // consistent selection — but asset_id is always preferred.
     let locate_to_index = locate_option.and_then(|locate_str| {
-        reduced_data_vector.par_iter().position_first(|reduced| {
-            reduced.asset_id.as_str() == locate_str || reduced.hash.as_str() == locate_str
-        })
+        // First try asset_id match.
+        let by_asset = reduced_data_vector
+            .par_iter()
+            .position_first(|reduced| reduced.asset_id.as_str() == locate_str);
+        if by_asset.is_some() {
+            return by_asset;
+        }
+        // Fall back to hash match.
+        reduced_data_vector
+            .par_iter()
+            .position_first(|reduced| reduced.hash.as_str() == locate_str)
     });
 
     let duration = format!("{:?}", layout_start_time.elapsed());

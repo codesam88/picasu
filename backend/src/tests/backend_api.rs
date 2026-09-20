@@ -849,6 +849,14 @@ fn interpret_scenario(scenario: &Value) {
                                 let hash = discover_photo_hash(&client, trimmed);
                                 vars.insert(bare.to_string(), hash);
                             }
+                            // Also discover asset_id if asset_id_as is specified.
+                            if item.get("asset_id_as").is_some() {
+                                let id_name = item["asset_id_as"].as_str().unwrap();
+                                let bare = id_name.trim_start_matches('$');
+                                let trimmed = photo.trim_start_matches('/');
+                                let asset_id = discover_asset_id(&client, trimmed);
+                                vars.insert(bare.to_string(), asset_id);
+                            }
                         }
                     }
                 }

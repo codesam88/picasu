@@ -185,6 +185,7 @@ pub fn abstract_data_to_database_timestamp_return(
         abstract_data,
         timestamp: result.timestamp,
         token: result.token,
+        asset_id: None,
     }
 }
 
@@ -210,6 +211,7 @@ pub fn abstract_data_to_timestamp_return_with_asset_id(
         abstract_data,
         timestamp: result.timestamp,
         token: result.token,
+        asset_id: Some(asset_id.to_string()),
     }
 }
 

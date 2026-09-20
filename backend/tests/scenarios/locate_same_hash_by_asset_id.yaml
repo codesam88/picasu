@@ -1,0 +1,77 @@
+name: same-hash files each locate by their own asset_id
+# Path-primary contract: two byte-identical files have distinct asset IDs.
+# Each asset ID must locate its own path, not the other.
+given:
+  - dir_album: /e2e_locate/album_a
+    id_as: $album_a
+  - dir_album: /e2e_locate/album_b
+    id_as: $album_b
+  - photo: /e2e_locate/album_a/photo.jpg
+    id_as: $hash_a
+    asset_id_as: $asset_a
+  - duplicate_of:
+      source: /e2e_locate/album_a/photo.jpg
+      destination: /e2e_locate/album_b/photo.jpg
+
+when:
+  # Index album A first so photo.jpg gets its asset_id before copy exists.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_locate/album_a"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Now index album B — copy.jpg gets its own asset_id.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_locate/album_b"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Locate album A's photo by its asset_id.
+  - call: POST /get/prefetch?locate=${asset_a}
+    capture:
+      ts_a: response.prefetch.timestamp
+      idx_a: response.prefetch.locateTo
+      token_a: response.token
+    calc:
+      end_a: "${idx_a}+1"
+    then:
+      - response.status: 200
+  # Verify locate found it.
+  - call: GET /get/get-data?timestamp=${ts_a}&start=${idx_a}&end=${end_a}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token_a}"
+  # Discover album B's copy asset_id via Path filter.
+  - call: POST /get/prefetch
+    body: { Path: "e2e_locate/album_b/photo.jpg" }
+    capture:
+      ts_b: response.prefetch.timestamp
+      token_b: response.token
+  - call: GET /get/get-data?timestamp=${ts_b}&start=0&end=1
+    auth: false
+    headers:
+      Authorization: "Bearer ${token_b}"
+    capture:
+      asset_b: response.[0].assetId
+  # Locate album B's copy by its asset_id.
+  - call: POST /get/prefetch?locate=${asset_b}
+    capture:
+      ts_b2: response.prefetch.timestamp
+      idx_b: response.prefetch.locateTo
+      token_b2: response.token
+    calc:
+      end_b: "${idx_b}+1"
+    then:
+      - response.status: 200
+  # Verify the located item is in album_b (not album_a).
+  - call: GET /get/get-data?timestamp=${ts_b2}&start=${idx_b}&end=${end_b}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token_b2}"
+then:
+  - response.status: 200
+  # The located item must have album_b's photo path.
+  - response.json.[0].abstractData.alias.[0].file: "${data_path}/e2e_locate/album_b/photo.jpg"
+  # Both files exist on disk.
+  - file_exists: /e2e_locate/album_a/photo.jpg
+  - file_exists: /e2e_locate/album_b/photo.jpg

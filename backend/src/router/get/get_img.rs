@@ -100,12 +100,9 @@ pub async fn compressed_file(
 
 /// Serve the original file directly from its current location under
 /// `imagePath` — there is no copy of it under `DATA_HOME`; `IMAGE_HOME` is
-/// the single, authoritative copy (see `docs/design.md` "Albums" and
-/// `TODO.md`'s "Storage architecture fix"). The route's `<file_path..>`
-/// segment is still `<hash-prefix>/<hash>.<ext>` for URL compatibility with
-/// the frontend and `GuardHashOriginal`'s validation, but only the hash
-/// (the file stem) is actually used, to look up the record's current
-/// `source_path()`.
+/// the single, authoritative copy. The route's `<file_path..>` segment is
+/// `<prefix>/<id>.<ext>` where `id` is the `asset_id` (preferred) or content
+/// hash (fallback). Resolves via `ASSET_BY_ID` first, then `DATA_TABLE`.
 #[utoipa::path(
         get,
         path = "/object/imported/{file_path}",
@@ -124,16 +121,23 @@ pub async fn imported_file(
     let _ = auth?;
     let _ = hash_guard?;
 
-    let hash = file_path
+    let id_str = file_path
         .file_stem()
         .and_then(std::ffi::OsStr::to_str)
-        .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Invalid file path: missing hash"))?
+        .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Invalid file path: missing id"))?
         .to_string();
 
     let source_path = tokio::task::spawn_blocking(move || -> AppResult<PathBuf> {
-        let abstract_data = crate::storage::asset_store::lookup_abstract_data_by_hash(&hash)
+        // Try asset_id first.
+        if let Ok(asset_id) = id_str.parse::<arrayvec::ArrayString<64>>()
+            && let Ok(Some(record)) = crate::storage::asset_store::get_asset_by_id(&asset_id)
+        {
+            return Ok(std::path::PathBuf::from(&record.canonical_path));
+        }
+        // Fall back to hash lookup via DATA_TABLE.
+        let abstract_data = crate::storage::asset_store::lookup_abstract_data_by_hash(&id_str)
             .or_raise(|| (ErrorKind::Database, "Failed to fetch DB record"))?
-            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Hash not found"))?;
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "ID not found"))?;
         Ok(abstract_data.source_path())
     })
     .await
