@@ -63,7 +63,25 @@ fn update_tree_task() {
         .unwrap_or_else(|| build_from_data_table(&priority_list));
 
     let mut database_timestamp_vec = database_timestamp_vec;
-    database_timestamp_vec.par_sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    // Sort by timestamp descending, with a deterministic secondary key
+    // (first alias path) so that items with equal timestamps have a stable
+    // order. This prevents locate-by-hash from returning non-deterministic
+    // results when multiple same-hash assets exist.
+    database_timestamp_vec.par_sort_by(|a, b| {
+        b.timestamp.cmp(&a.timestamp).then_with(|| {
+            let a_path = a
+                .abstract_data
+                .alias()
+                .first()
+                .map_or("", |a| a.file.as_str());
+            let b_path = b
+                .abstract_data
+                .alias()
+                .first()
+                .map_or("", |a| a.file.as_str());
+            a_path.cmp(b_path)
+        })
+    });
 
     *TREE.in_memory.write().expect("lock poisoned") = database_timestamp_vec;
 
