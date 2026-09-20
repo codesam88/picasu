@@ -313,11 +313,18 @@ The asset tables will instead be populated synchronously during
   `ASSET_BY_ID` when a directory is moved via `assign_album`
 - `dir_move_updates_asset_tables` scenario verifies asset_id preserved
 
+### Album cover references — DONE
+
+- `SetAlbumCover` uses `cover_asset_id` instead of `cover_hash`
+- `set_album_cover` handler looks up cover by `asset_id`
+- `AlbumCombined::set_cover()` stores `asset_id` in `metadata.cover`
+- `self_update()` populates `MediaItemInfo.asset_id` from `DatabaseTimestamp`
+- `set_cover_from_info()` stores `asset_id` when available
+
 ### Remaining work
 
-1. Album cover references — migrate `set_album_cover` to use `asset_id`
-2. Shared thumbnail cleanup — consult `DUPE_INDEX` before removing thumbnails
-3. Album deletion — recursively handle child album/file assets
+1. Shared thumbnail cleanup — consult `DUPE_INDEX` before removing thumbnails
+2. Album deletion — recursively handle child album/file assets
 
 For every mutation test:
 

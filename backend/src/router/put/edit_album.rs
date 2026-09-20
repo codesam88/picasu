@@ -67,9 +67,9 @@ fn update_album(
 pub struct SetAlbumCover {
     #[schema(value_type = String)]
     pub album_id: ArrayString<64>,
-    /// The hash of the image to set as cover.
+    /// The `asset_id` of the image to set as cover.
     #[schema(value_type = String)]
-    pub cover_hash: ArrayString<64>,
+    pub cover_asset_id: ArrayString<64>,
 }
 
 /// Updates the cover image of a specific album.
@@ -95,7 +95,7 @@ pub async fn set_album_cover(
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let set_album_cover_inner = set_album_cover.into_inner();
         let album_id = set_album_cover_inner.album_id;
-        let cover_hash = set_album_cover_inner.cover_hash;
+        let cover_asset_id = set_album_cover_inner.cover_asset_id;
 
         let txn = TREE
             .in_disk
@@ -118,12 +118,12 @@ pub async fn set_album_cover(
                 ));
             };
             let database = data_table
-                .get(&*cover_hash)
+                .get(&*cover_asset_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to get cover image"))?
                 .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Cover image not found"))?
                 .value();
 
-            album.set_cover(&database);
+            album.set_cover(&database, Some(cover_asset_id));
             data_table
                 .insert(&*album_id, AbstractData::Album(album))
                 .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
