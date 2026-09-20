@@ -1,0 +1,55 @@
+name: "watcher rename - moving one duplicate updates path indexes without affecting sibling"
+given:
+  - dir_album: /watcher_rename/album
+    id_as: $album
+  - photo: /watcher_rename/album/original.jpg
+    id_as: $original
+    asset_id_as: $original_id
+  - duplicate_of:
+      source: /watcher_rename/album/original.jpg
+      destination: /watcher_rename/album/copy.jpg
+  - duplicate_of:
+      source: /watcher_rename/album/original.jpg
+      destination: /watcher_rename/album/moved.jpg
+when:
+  # Index all files.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Locate original.jpg by its asset_id.
+  - call: POST /get/prefetch?locate=${original_id}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+      token: response.token
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      orig_alias: response.[0].abstractData.alias.[0].file
+  # Delete original.jpg.
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[${idx}],"aliasList":["${orig_alias}"],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Re-index.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Verify copy.jpg and moved.jpg still exist.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+then:
+  - response.status: 200
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 2 }
+  - file_exists: /watcher_rename/album/copy.jpg
+  - file_exists: /watcher_rename/album/moved.jpg
+  - file_absent: /watcher_rename/album/original.jpg

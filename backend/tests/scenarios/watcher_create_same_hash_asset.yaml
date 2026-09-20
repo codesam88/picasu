@@ -1,0 +1,19 @@
+name: "watcher create - new same-hash path creates separate asset"
+given:
+  - photo: /watcher_create/original.jpg
+    id_as: $original
+  - dir_album: /watcher_create/album
+  - duplicate_of:
+      source: /watcher_create/original.jpg
+      destination: /watcher_create/album/copy.jpg
+when:
+  # Index both files.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+then:
+  - response.status: 200
+  - file_exists: /watcher_create/original.jpg
+  - file_exists: /watcher_create/album/copy.jpg
