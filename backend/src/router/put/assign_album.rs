@@ -443,6 +443,8 @@ fn move_album_into_album(
 
     if let Some(new_dir) = new_dir_opt {
         rewrite_dir_album_cache_prefix(&old_dir, &new_dir);
+        // Update asset tables for all moved files.
+        let _ = update_asset_tables_after_dir_move(&old_dir, &new_dir);
     }
 
     if let Some(old_parent_id) = get_parent_album_id(&old_dir) {
@@ -520,6 +522,35 @@ fn rewrite_paths_under(data: &mut AbstractData, old_prefix: &Path, new_prefix: &
             changed
         }
     }
+}
+
+/// Update asset tables after a directory move.
+/// For each asset whose canonical path starts with `source_dir`, update it
+/// to the corresponding path under `dest_dir`.
+fn update_asset_tables_after_dir_move(source_dir: &Path, dest_dir: &Path) -> Result<(), AppError> {
+    use crate::storage::asset_store;
+
+    let records = asset_store::get_all_assets()
+        .or_raise(|| (ErrorKind::Database, "Failed to read asset records"))?;
+
+    for record in records {
+        let old_path = PathBuf::from(&record.canonical_path);
+        if let Ok(rel) = old_path.strip_prefix(source_dir) {
+            let new_path = dest_dir.join(rel);
+            let new_path_str = new_path.to_string_lossy().into_owned();
+
+            // Update ASSET_BY_PATH: remove old, add new.
+            let _ = asset_store::remove_asset_by_path(&record.canonical_path);
+            let _ = asset_store::put_asset_by_path(&new_path_str, record.asset_id);
+
+            // Update canonical_path in ASSET_BY_ID.
+            let mut updated = record.clone();
+            updated.canonical_path = new_path_str;
+            let _ = asset_store::put_asset_by_id(&updated);
+        }
+    }
+
+    Ok(())
 }
 
 #[allow(clippy::too_many_lines)]
