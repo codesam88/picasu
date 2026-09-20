@@ -1,0 +1,61 @@
+name: "recursive album deletion removes children and sidecars"
+given:
+  - dir_album: /e2e_rec/parent
+    id_as: $parent_album
+  - dir_album: /e2e_rec/parent/child
+    id_as: $child_album
+  - photo: /e2e_rec/parent/photo_a.jpg
+    id_as: $photo_a
+    asset_id_as: $asset_a
+  - photo: /e2e_rec/parent/child/photo_b.jpg
+    id_as: $photo_b
+    asset_id_as: $asset_b
+when:
+  # Write a sidecar for photo_b by editing a tag.
+  - call: POST /get/prefetch?locate=${asset_b}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+    calc:
+      end: "${idx}+1"
+  - call: PUT /put/edit_tag
+    raw_body: '{"indexArray":[${idx}],"addTagsArray":["rec_tag"],"removeTagsArray":[],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+      - file_exists: /e2e_rec/parent/child/photo_b.xmp
+  # Re-index so tree reflects sidecar.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_rec"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Capture parent album index for deletion.
+  - call: POST /get/prefetch?locate=${parent_album}
+    capture:
+      ts2: response.prefetch.timestamp
+      idx2: response.prefetch.locateTo
+      token2: response.token
+    calc:
+      end2: "${idx2}+1"
+  # Delete the parent album (null alias = full record removal).
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[${idx2}],"aliasList":[null],"timestamp":${ts2}}'
+    then:
+      - response.status: 200
+  # Re-index after delete.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_rec"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+then:
+  - response.status: 200
+  # Child files removed from disk.
+  - file_absent: /e2e_rec/parent/photo_a.jpg
+  - file_absent: /e2e_rec/parent/child/photo_b.jpg
+  # Sidecar removed.
+  - file_absent: /e2e_rec/parent/child/photo_b.xmp
+  # Child album directory removed.
+  - file_absent: /e2e_rec/parent/child
+  # Parent album directory removed.
+  - file_absent: /e2e_rec/parent

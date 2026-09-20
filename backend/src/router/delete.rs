@@ -76,6 +76,16 @@ pub async fn delete_data(
         .await
         .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
 
+    // Recursive album cleanup: for each album being removed, clean up
+    // descendant files, sidecars, asset tables, and directories.
+    // This runs after process_deletes validates all entries.
+    tokio::task::spawn_blocking({
+        let to_remove = abstract_data_to_remove.clone();
+        move || cleanup_album_descendants(&to_remove)
+    })
+    .await
+    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?;
+
     if !abstract_data_to_remove.is_empty() {
         BATCH_COORDINATOR
             .execute_batch_waiting(FlushTreeTask::remove(abstract_data_to_remove))
@@ -107,6 +117,67 @@ pub async fn delete_data(
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to update affected albums"))?;
     Ok(())
+}
+
+/// Recursively clean up descendant assets for any albums in the removal list.
+/// Removes files, sidecars, asset table entries, and directories from disk.
+fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
+    for abstract_data in abstract_data_to_remove {
+        if let AbstractData::Album(alb) = abstract_data {
+            if alb.metadata.dir_path.is_empty() {
+                continue;
+            }
+            let dir_path = Path::new(&alb.metadata.dir_path);
+
+            // Find and remove all descendant assets.
+            if let Ok(descendants) =
+                crate::storage::asset_store::get_assets_under_path(&alb.metadata.dir_path)
+            {
+                for desc in &descendants {
+                    // Delete file + sidecar from disk.
+                    let file_path = Path::new(&desc.canonical_path);
+                    if let Err(e) = std::fs::remove_file(file_path)
+                        && e.kind() != std::io::ErrorKind::NotFound
+                    {
+                        warn!("Failed to delete descendant {}: {e}", file_path.display());
+                    }
+                    let sidecar = file_path.with_extension("xmp");
+                    if sidecar.exists()
+                        && let Err(e) = std::fs::remove_file(&sidecar)
+                    {
+                        warn!(
+                            "Failed to delete descendant sidecar {}: {e}",
+                            sidecar.display()
+                        );
+                    }
+
+                    // Clean up asset tables.
+                    let _ = crate::storage::asset_store::remove_asset(desc);
+
+                    // Evict child album caches.
+                    if desc.kind == crate::model::asset::AssetKind::Album {
+                        evict_dir_album(Path::new(&desc.canonical_path));
+                    }
+                }
+
+                // Flush descendant records from DATA_TABLE.
+                let desc_abstract: Vec<AbstractData> = descendants
+                    .iter()
+                    .map(crate::process::transitor::asset_record_to_abstract_data)
+                    .collect();
+                if !desc_abstract.is_empty() {
+                    // Use blocking wait to ensure DATA_TABLE is updated before we proceed.
+                    let _ = futures::executor::block_on(
+                        BATCH_COORDINATOR
+                            .execute_batch_waiting(FlushTreeTask::remove(desc_abstract)),
+                    );
+                }
+            }
+
+            // Remove the directory tree itself.
+            let _ = std::fs::remove_dir_all(dir_path);
+        }
+    }
 }
 
 fn process_deletes(
