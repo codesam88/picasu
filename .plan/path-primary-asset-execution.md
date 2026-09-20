@@ -211,26 +211,33 @@ The asset tables will instead be populated synchronously during
 - `Album` filter normalizes relative/absolute paths via `normalize_parent()`
 - `VERSION_COUNT_TIMESTAMP` updated immediately in `update_tree_task` for cache invalidation
 
-## Phase 6: Serving, Tokens, and API Responses
+## Phase 6: Serving, Tokens, and API Responses — IN PROGRESS
 
-Change identity-dependent API behavior:
+### Token system — DONE
 
-- response asset identity becomes `asset_id`;
-- original-file serving resolves `asset_id` to the current path;
-- thumbnail serving may continue using the shared content hash;
-- tokens bind to asset ID for originals and mutations;
-- album covers reference an asset ID.
+- `ClaimsHash` has optional `asset_id` field (serde default, backward compatible)
+- `ClaimsHash::with_asset_id()` builder method
+- `DataBaseTimestampReturn` exposes `asset_id` in JSON response
+- `DataBaseTimestampReturn::with_asset_id()` includes `asset_id` in token
+- `get_data` endpoint passes `asset_id` through to token generation
 
-Negative tests:
+### Locate — DONE
 
-- asset A’s token cannot serve asset B;
-- unknown asset ID returns the correct error;
-- moved asset serves from its new path;
-- deleted asset cannot be served;
-- shared thumbnail remains usable for a surviving duplicate.
+- `compute_locate` prefers `asset_id` match, falls back to `hash` for backward compat
+- `locate_same_hash_by_asset_id` scenario verifies each asset locates by its own ID
+- `discover_asset_id` test helper captures `asset_id` from `get-data` response
+- `asset_id_as` scenario field for capturing `asset_id` in `given` section
 
-Update OpenAPI annotations and generated API documentation with the new
-request/response shapes.
+### Original serving — DONE
+
+- `imported_file` resolves by `asset_id` first (via `ASSET_BY_ID`), falls back to hash
+- `GuardHashOriginal` validates `asset_id` from token when present, falls back to `hash`
+
+### Remaining Phase 6 items
+
+- Negative tests for cross-asset token use, moved asset serving, deleted asset serving
+- Album covers reference `asset_id`
+- Compressed thumbnail serving keeps hash-based identity (by design)
 
 ## Phase 7: Move, Delete, Sidecars, and Album Operations — IN PROGRESS
 

@@ -45,6 +45,11 @@ pub struct DataBaseTimestampReturn {
     pub abstract_data: AbstractData,
     pub timestamp: i64,
     pub token: String,
+    /// Path-primary asset ID. Present when the record was resolved via
+    /// the asset tables. Allows the frontend to address specific assets
+    /// instead of content hashes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_id: Option<String>,
 }
 
 impl DataBaseTimestampReturn {
@@ -75,6 +80,7 @@ impl DataBaseTimestampReturn {
             abstract_data,
             timestamp,
             token,
+            asset_id: None,
         }
     }
 
@@ -106,6 +112,7 @@ impl DataBaseTimestampReturn {
             abstract_data,
             timestamp,
             token,
+            asset_id: Some(asset_id.to_string()),
         }
     }
 }

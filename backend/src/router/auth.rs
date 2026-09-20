@@ -547,21 +547,34 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
             return Outcome::Forward(Status::Unauthorized);
         }
 
-        let data_hash = match extract_hash_from_path(req) {
-            Ok(hash) => hash,
+        // Extract the asset_id from the URL path.
+        let url_id = match extract_hash_from_path(req) {
+            Ok(id) => id,
             Err(err) => {
                 return Outcome::Error((
                     Status::Unauthorized,
-                    AppError::from_err(ErrorKind::Auth, err).context("Hash extraction failed"),
+                    AppError::from_err(ErrorKind::Auth, err)
+                        .context("Asset ID extraction from URL failed"),
                 ));
             }
         };
 
-        // Compare hash in the token with the hash in the request path
-        if data_hash != *claims.hash {
+        // Validate against the token's asset_id (preferred) or hash (fallback).
+        // asset_id is the path-primary identity; hash fallback is for tokens
+        // generated before asset_id was available.
+        if let Some(ref token_asset_id) = claims.asset_id {
+            if url_id != **token_asset_id {
+                warn!("Asset ID does not match. URL: {url_id}, Token: {token_asset_id}.");
+                return Outcome::Error((
+                    Status::Unauthorized,
+                    AppError::new(ErrorKind::Auth, "Asset ID does not match"),
+                ));
+            }
+        } else if url_id != *claims.hash {
+            // Fallback: token has no asset_id, validate against hash.
             warn!(
-                "Hash does not match. Received: {}, Expected: {}.",
-                data_hash, claims.hash
+                "Hash does not match (fallback). URL: {}, Token: {}.",
+                url_id, claims.hash
             );
             return Outcome::Error((
                 Status::Unauthorized,
