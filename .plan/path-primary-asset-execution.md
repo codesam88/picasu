@@ -387,7 +387,7 @@ The watcher code is already path-primary by design:
 - partial/canceled scan edge cases (may need Playwright tier)
 - durable operation journal (only if tests demonstrate rebuild/reconciliation is insufficient)
 
-## Phase 9: Frontend Identity Refactor — IN PROGRESS
+## Phase 9: Frontend Identity Refactor — DONE
 
 Replace hash identity in this order:
 
@@ -396,11 +396,11 @@ Replace hash identity in this order:
 - routes and view navigation use asset ID; — DONE (getSrc uses assetId for original files)
 - original-image cache uses asset ID; — DONE (backend resolves /object/imported by assetId)
 - shared thumbnail cache may use hash; — DONE (compressed files always use content hash)
-- token persistence uses asset ID; — DONE (tokens keyed by content hash for URL auth)
-- menus, downloads, covers, metadata, move, and delete use asset ID; — DONE (pass assetId to getSrcOriginal)
+- token persistence uses asset ID; — DONE (tokens keyed by assetId, not content hash)
+- menus, downloads, covers, metadata, move, and delete use asset ID; — DONE (require assetId, no hash fallback)
 - direct alias/path presentation becomes direct canonical asset path.
 
-Playwright tests must verify duplicate rendering and independent selection,
+Playwright tests verify duplicate rendering and independent selection,
 move, delete, refresh, pagination, and original serving.
 
 ### Slices completed
@@ -409,6 +409,10 @@ move, delete, refresh, pagination, and original serving.
 2. Data store: dual-map (`hashMapData` + `assetIdMapData`) + regression tests — `47680811`
 3. Original URLs: `getSrc`/`getSrcOriginal` use assetId for originals + tests — `1c0a3a6c`
 4. Playwright: duplicate selection + deletion scenarios — `4056f2b1`
+5. Token storage: `assetTokenMap` keyed by assetId, service worker by assetId — `da81f11d`
+6. Mutation APIs: `assignAlbum` sends assetId, worker payloads include assetId — `43e9fa3f`
+7. Remove hash fallback: require assetId for media items — `59e82a5c`
+8. Playwright: duplicate move, refresh, pagination, original serving — `d89d9fe7`
 
 ## Phase 10: Remove Old Identity Code
 
