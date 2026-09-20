@@ -209,7 +209,8 @@ export const albumInfoSchema = z
 export const databaseTimestampSchema = z.object({
   abstractData: BackendDataParser,
   timestamp: z.number(),
-  token: z.string()
+  token: z.string(),
+  assetId: z.string().optional()
 })
 
 export const SubRowSchema = z.object({
