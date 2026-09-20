@@ -78,15 +78,13 @@ const downloadAllFiles = async () => {
 
         if (abstractData.type === 'image' || abstractData.type === 'video') {
           const hash = abstractData.id
-          const assetId = abstractData.assetId ?? hash
+          const assetId = abstractData.assetId
+          if (assetId === undefined) {
+            console.error(`Media item ${hash} has no assetId; cannot download`)
+            return
+          }
 
-          const url = getSrcOriginal(
-            hash,
-            true,
-            abstractData.ext,
-            abstractData.updateAt,
-            abstractData.assetId
-          )
+          const url = getSrcOriginal(hash, true, abstractData.ext, abstractData.updateAt, assetId)
           await tokenStore.tryRefreshAndStoreTokenToDb(assetId)
           const assetToken = tokenStore.assetTokenMap.get(assetId)
           if (assetToken === undefined) {

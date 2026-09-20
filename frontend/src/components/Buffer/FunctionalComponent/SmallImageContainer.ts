@@ -135,7 +135,11 @@ async function checkAndFetch(
 
   if (abstractData.type === 'image' || abstractData.type === 'video') {
     const hash = abstractData.id
-    const assetId = abstractData.assetId ?? hash
+    const assetId = abstractData.assetId
+    if (assetId === undefined) {
+      console.error(`Media item ${hash} has no assetId; cannot fetch`)
+      return
+    }
     await tokenStore.refreshAssetTokenIfExpired(assetId)
     const assetToken = tokenStore.assetTokenMap.get(assetId)
     if (assetToken === undefined) {

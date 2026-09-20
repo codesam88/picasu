@@ -360,7 +360,11 @@ async function handleSubmit() {
       for (const idx of indices) {
         const item = dataStore.data.get(idx)
         if (!item) continue
-        const assetId = item.assetId ?? item.id
+        const assetId = item.assetId
+        if (assetId === undefined) {
+          messageStore.error(`Item has no assetId; cannot move`)
+          continue
+        }
         await assignAlbum(assetId, selectedAlbumId.value, idx, isolationId, onConflict.value)
       }
       collectionStore.leaveEdit()
@@ -375,7 +379,11 @@ async function handleSubmit() {
       if (item?.isTrashed === true) {
         await setTrashed([index], false, isolationId)
       }
-      const assetId = item?.assetId ?? item?.id ?? parsed.hash
+      const assetId = item?.assetId
+      if (assetId === undefined) {
+        messageStore.error('Item has no assetId; cannot move')
+        return
+      }
       await assignAlbum(assetId, selectedAlbumId.value, index, isolationId, onConflict.value)
     }
     await refreshGalleryAfterMutation(isolationId, route)
