@@ -45,6 +45,7 @@ export interface SlicedData {
   index: number
   data: EnrichedUnifiedData
   hashToken: string
+  assetId?: string
 }
 
 export type Sorting = 'ascending' | 'descending' | 'random' | 'similar'

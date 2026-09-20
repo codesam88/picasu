@@ -57,7 +57,8 @@ self.addEventListener('message', (e) => {
             slicedDataArray.push({
               index,
               data: getData.abstractData,
-              hashToken: getData.hashToken
+              hashToken: getData.hashToken,
+              assetId: getData.assetId
             })
           }
         }
@@ -110,6 +111,7 @@ async function fetchData(
     {
       abstractData: UnifiedData & { thumbhashUrl: string | null; timestamp: number }
       hashToken: string
+      assetId?: string
     }
   >
   startIndex: number
@@ -147,6 +149,7 @@ async function fetchData(
     {
       abstractData: UnifiedData & { thumbhashUrl: string | null; timestamp: number }
       hashToken: string
+      assetId?: string
     }
   >()
 
@@ -175,7 +178,7 @@ async function fetchData(
       timestamp: item.timestamp
     }
     const enrichedData = enrichWithThumbhash(dataWithCorrectTimestamp)
-    data.set(key, { abstractData: enrichedData, hashToken: item.token })
+    data.set(key, { abstractData: enrichedData, hashToken: item.token, assetId: item.assetId })
 
     if (i % 100 === 0) {
       // Yield after every 100 items
