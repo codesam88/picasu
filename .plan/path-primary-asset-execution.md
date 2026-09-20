@@ -130,29 +130,36 @@ Three new Redb tables in the existing `index_v5.redb`:
 | `dup_delete_record_does_not_destroy_other`    | COMPAT | assert satisfied by current placeholder behavior                    |
 | `duplicate_files_are_independent_album_items` | RED    | pre-existing red test                                               |
 
-## Phase 3: Clean Filesystem Rebuild
+## Phase 3: Clean Filesystem Rebuild — IN PROGRESS
 
-Implement a rebuild that starts from an empty new database:
+### Core rebuild — DONE
 
-1. Walk the image root.
-2. Create one album asset per directory.
-3. Create one media asset per valid file.
-4. Read/match sidecars without transferring metadata between paths.
-5. Read `.albuminfo` for album assets.
-6. Compute hashes for media assets.
-7. Populate `DUPE_INDEX` without merging records.
-8. Validate path uniqueness and asset/index consistency.
+`process/rebuild.rs` provides `rebuild_from_filesystem(image_root)` which:
 
-Negative tests:
+1. Walks the image root recursively.
+2. Creates one album asset per directory (including root).
+3. Creates one media asset per valid media file.
+4. Computes blake3 content hashes for media assets.
+5. Populates `DUPE_INDEX` without merging records.
+6. Derives album membership from parent directory.
 
-- unsupported file is ignored or reported according to existing policy;
-- missing sidecar does not delete the media asset;
-- malformed `.albuminfo` does not delete the album or its children;
-- file/directory path collision is rejected;
-- path outside the image root is rejected;
-- duplicate index references a missing asset are detected.
+Unit tests (4 pass):
 
-Verify the rebuild creates exactly one asset per physical file and directory.
+- `rebuild_creates_one_asset_per_file_and_directory` — verifies exact counts
+  and unique asset IDs per file
+- `rebuild_duplicate_files_get_separate_assets` — two byte-identical files get
+  separate asset IDs and share a DUPE_INDEX group
+- `rebuild_unsupported_files_are_skipped` — non-media files counted and skipped
+- `rebuild_empty_directory_becomes_album` — empty dirs become album assets with
+  no content hash
+
+### Deferred to Phase 4
+
+- Sidecar matching (`.xmp` discovery per media asset)
+- `.albuminfo` reading for album metadata enrichment
+- Negative tests: path collision, path outside root, stale dupe index entries
+- These require extending `AssetRecord` with metadata fields (description,
+  tags, rating) which is part of the Phase 4 indexing pipeline work.
 
 ## Phase 4: Indexing and Duplicate Handling
 
