@@ -265,6 +265,25 @@ impl MyCow {
             }
         }
     }
+
+    #[allow(dead_code)]
+    pub fn get_asset_id(&self, index: usize) -> Result<ArrayString<64>> {
+        match self {
+            MyCow::DashMap(data) => {
+                let data = &data.value()[index];
+                Ok(data.asset_id)
+            }
+            MyCow::Redb(table) => {
+                let data = table
+                    .get(index as u64)?
+                    .context(format!(
+                        "Fail to find asset_id in tree snapshots for index {index}"
+                    ))?
+                    .value();
+                Ok(data.asset_id)
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
