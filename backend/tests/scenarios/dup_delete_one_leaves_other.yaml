@@ -6,6 +6,7 @@ given:
   - dir_album: /dup_delete/album
     id_as: $album
   - photo: /dup_delete/album/photo.jpg
+    id_as: $photo
   - duplicate_of:
       source: /dup_delete/album/photo.jpg
       destination: /dup_delete/album/copy.jpg
@@ -50,3 +51,5 @@ then:
   # The remaining file is still visible.
   - compare:
       response.json.prefetch.dataLength: { ">=": 1 }
+  # The shared thumbnail must still exist.
+  - thumb_exists: $photo

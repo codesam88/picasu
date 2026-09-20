@@ -197,11 +197,19 @@ fn process_deletes(
                     warn!("Failed to delete sidecar {}: {e}", sidecar.display());
                 }
             }
-            let thumb = abstract_data.compressed_path();
-            if thumb.exists()
-                && let Err(e) = std::fs::remove_file(&thumb)
-            {
-                warn!("Failed to delete thumbnail {}: {e}", thumb.display());
+            // Only remove thumbnail if no other assets share this content hash.
+            let content_hash = abstract_data.hash();
+            let other_refs = match crate::storage::asset_store::get_dupe_ids(&content_hash) {
+                Ok(ids) => ids.len(),
+                Err(_) => 0,
+            };
+            if other_refs <= 1 {
+                let thumb = abstract_data.compressed_path();
+                if thumb.exists()
+                    && let Err(e) = std::fs::remove_file(&thumb)
+                {
+                    warn!("Failed to delete thumbnail {}: {e}", thumb.display());
+                }
             }
             all_affected_album_ids.extend(affected_albums);
             abstract_data_to_remove.push(abstract_data);
