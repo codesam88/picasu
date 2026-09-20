@@ -321,10 +321,21 @@ The asset tables will instead be populated synchronously during
 - `self_update()` populates `MediaItemInfo.asset_id` from `DatabaseTimestamp`
 - `set_cover_from_info()` stores `asset_id` when available
 
+### Shared thumbnail cleanup — DONE
+
+- `remove_compressed_thumbnail()` in `alias.rs` checks `DUPE_INDEX` before
+  removing. If `get_dupe_ids(hash).len() > 1`, other assets still reference
+  the content hash and the thumbnail is preserved.
+- Legacy delete path in `delete.rs` applies the same check.
+- `dup_delete_preserves_shared_thumbnail` scenario: delete one of two
+  same-hash files → thumbnail preserved; the `dup_delete_one_leaves_other`
+  scenario also asserts `thumb_exists`.
+- `dup_final_delete_removes_state` continues to verify that deleting the
+  final reference removes the thumbnail.
+
 ### Remaining work
 
-1. Shared thumbnail cleanup — consult `DUPE_INDEX` before removing thumbnails
-2. Album deletion — recursively handle child album/file assets
+1. Album deletion — recursively handle child album/file assets
 
 For every mutation test:
 

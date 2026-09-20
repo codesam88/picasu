@@ -1,0 +1,58 @@
+name: "shared thumbnail preserved when one of two same-hash assets is deleted"
+# Path-primary contract: deleting one file from a hash-collision pair removes
+# only that file and its sidecar.  The shared content-addressed thumbnail
+# must remain while another asset still references the same content hash.
+given:
+  - dir_album: /dup_thumb/album
+    id_as: $album
+  - photo: /dup_thumb/album/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+  - duplicate_of:
+      source: /dup_thumb/album/photo.jpg
+      destination: /dup_thumb/album/copy.jpg
+
+when:
+  # Index both files.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_thumb"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Locate the source file.
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+      token: response.token
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      alias_file: response.[0].abstractData.alias.[0].file
+  # Delete the source file's asset.
+  - call: DELETE /delete/delete-data
+    raw_body: '{"deleteList":[${idx}],"aliasList":["${alias_file}"],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Re-index after the delete.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/dup_thumb"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Verify the uploaded copy still exists.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+then:
+  - response.status: 200
+  # The remaining file is still visible.
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 1 }
+  # The shared thumbnail must still exist on disk.
+  - thumb_exists: $photo
+  - file_absent: /dup_thumb/album/photo.jpg
+  - file_exists: /dup_thumb/album/copy.jpg

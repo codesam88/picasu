@@ -1,5 +1,6 @@
 use crate::model::abstract_data::AbstractData;
-use log::warn;
+use crate::storage::asset_store;
+use log::{info, warn};
 use std::path::{Path, PathBuf};
 
 /// Remove the original file and its `.xmp` sidecar from disk.
@@ -74,6 +75,22 @@ pub fn prune_stale_aliases(data: &mut AbstractData) -> bool {
 }
 
 fn remove_compressed_thumbnail(data: &AbstractData) {
+    let content_hash = data.hash();
+
+    // Check if other assets still share this content hash.
+    // DUPE_INDEX still contains the current asset (removed later by
+    // FlushTreeTask), so len > 1 means another asset references the hash.
+    let other_refs = match asset_store::get_dupe_ids(&content_hash) {
+        Ok(ids) => ids.len(),
+        Err(_) => 0,
+    };
+    if other_refs > 1 {
+        info!(
+            "Preserving thumbnail for hash {content_hash}: {other_refs} assets still reference it"
+        );
+        return;
+    }
+
     let thumb = data.compressed_path();
     if thumb.exists()
         && let Err(e) = std::fs::remove_file(&thumb)
