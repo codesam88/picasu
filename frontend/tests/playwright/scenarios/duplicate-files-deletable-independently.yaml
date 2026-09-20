@@ -1,0 +1,75 @@
+name: duplicate files can be deleted independently
+covers:
+  api:
+    - POST /upload
+    - DELETE /delete/delete-data
+  ui:
+    - upload.files
+    - independent duplicate grid items
+    - independent deletion of duplicates
+
+given:
+  - photo: duplicate-delete/seed.jpg
+  - source_file: 'duplicate-delete.jpg'
+    format: jpeg
+    width: 64
+    height: 64
+    id_as: $duplicate
+
+steps:
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  # Upload the same file twice to create duplicates
+  - when:
+      - upload.files:
+          trigger: icon/mdi-upload
+          files: ['${duplicate}', '${duplicate}']
+    assert:
+      - ui.modal: open
+
+  - when:
+      - click: button/Upload
+    assert:
+      - ui.toast:
+          type: success
+          contains: Files uploaded successfully
+      - ui.modal: closed
+
+  # Re-enter the route to force a fresh frontend data load
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 3
+
+  # Click on the first duplicate image to open it
+  - when:
+      - click.first: true
+    assert:
+      - ui.route: /view/
+
+  # Open the three-dot menu
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+
+  # Delete the image via the menu
+  - when:
+      - click: option/Delete
+    assert:
+      - ui.toast:
+          type: success
+          contains: Successfully updated
+
+  # Verify we're back at the timeline
+  - when:
+      - navigate: /timeline
+    assert:
+      # Should have 2 images left (1 original + 1 duplicate)
+      - ui.count: .desktop-small-image
+        equals: 2
