@@ -101,8 +101,8 @@ pub async fn compressed_file(
 /// Serve the original file directly from its current location under
 /// `imagePath` — there is no copy of it under `DATA_HOME`; `IMAGE_HOME` is
 /// the single, authoritative copy. The route's `<file_path..>` segment is
-/// `<prefix>/<id>.<ext>` where `id` is the `asset_id` (preferred) or content
-/// hash (fallback). Resolves via `ASSET_BY_ID` first, then `DATA_TABLE`.
+/// `<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via
+/// `ASSET_BY_ID`.
 #[utoipa::path(
         get,
         path = "/object/imported/{file_path}",
