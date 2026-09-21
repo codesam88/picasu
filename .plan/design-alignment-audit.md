@@ -100,7 +100,6 @@ audit and should be tracked separately:
 
 ### Backend
 
-- `delete.rs:255` — "Legacy path: aliasList not provided" still exists
 - `get_test_probe.rs` — still uses hash-based DUPE_INDEX resolution
 
 ### Frontend
@@ -108,3 +107,15 @@ audit and should be tracked separately:
 - `hashMapData` dual map still exists for URL routing
 - Routes still use `:hash` param
 - `getHashIndexDataFromRoute` uses hashMapData
+
+### Completed in this audit
+
+#### Commit: Backend delete — replace aliasList/index deletion with asset-ID deletion
+
+- `DeleteList`: `delete_list` + `alias_list` → `asset_ids`
+- `process_deletes`: look up by `asset_id` in `DATA_TABLE`, delete file +
+  sidecar, preserve shared thumbnails via `DUPE_INDEX`
+- Remove `index_to_abstract_data` from `transitor.rs` (dead code)
+- Remove 7 obsolete alias-level deletion scenarios
+- Update 13 scenarios to use `asset_ids` instead of indices/aliasList
+- Add `delete_by_asset_id` scenario for new API coverage

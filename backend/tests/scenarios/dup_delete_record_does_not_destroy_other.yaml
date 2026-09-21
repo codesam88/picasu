@@ -1,4 +1,4 @@
-name: deleting one duplicate without aliasList should not destroy the other
+name: deleting one duplicate should not destroy the other
 # Path-primary contract: deleting a record for one file should not affect
 # another file with the same content hash.  Each physical path is an
 # independent asset.
@@ -28,9 +28,11 @@ when:
     auth: false
     headers:
       Authorization: "Bearer ${token}"
-  # Delete the first record without aliasList.
+    capture:
+      first_asset_id: response.[0].assetId
+  # Delete the first record by asset_id.
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[0],"timestamp":${ts}}'
+    raw_body: '{"assetIds":["${first_asset_id}"],"timestamp":${ts}}'
     then:
       - response.status: 200
   # Re-index after the delete.

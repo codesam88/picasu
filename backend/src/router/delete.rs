@@ -8,13 +8,11 @@ pub fn generate_delete_routes() -> Vec<Route> {
 // src/router/delete/delete_data.rs
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
-use crate::process::alias::{normalize_alias_path, prune_alias_paths};
 use crate::process::dir_album::evict_dir_album;
-use crate::process::transitor::index_to_abstract_data;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::{open_data_table, open_tree_snapshot_table};
+use crate::storage::db::{DATA_TABLE, TREE};
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -23,6 +21,7 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 use futures::future::try_join_all;
 use log::warn;
+use redb::ReadableDatabase;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 use std::path::Path;
 
@@ -30,14 +29,13 @@ use std::path::Path;
 #[serde(rename_all = "camelCase")]
 #[derive(utoipa::ToSchema)]
 pub struct DeleteList {
-    #[allow(clippy::struct_field_names)]
-    delete_list: Vec<usize>,
-    #[serde(default)]
-    alias_list: Vec<Option<String>>,
+    /// Asset IDs to delete. Each asset is resolved via `DATA_TABLE` by its
+    /// `asset_id` key. The canonical file and sidecar are removed from disk.
+    asset_ids: Vec<String>,
     timestamp: i64,
 }
 
-type DeleteResult = (Vec<AbstractData>, Vec<AbstractData>, Vec<ArrayString<64>>);
+type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
 
 #[utoipa::path(
         delete,
@@ -58,23 +56,20 @@ pub async fn delete_data(
     let _ = auth?;
     let _ = read_only_mode?;
 
-    if !json_data.alias_list.is_empty() && json_data.alias_list.len() != json_data.delete_list.len()
-    {
+    if json_data.asset_ids.is_empty() {
         return Err(AppError::new(
             ErrorKind::InvalidInput,
-            "aliasList length must equal deleteList length",
+            "assetIds must not be empty",
         ));
     }
 
-    let (abstract_data_to_remove, abstract_data_to_update, all_affected_album_ids) =
-        tokio::task::spawn_blocking({
-            let delete_list = json_data.delete_list.clone();
-            let alias_list = json_data.alias_list.clone();
-            let timestamp = json_data.timestamp;
-            move || process_deletes(&delete_list, &alias_list, timestamp)
-        })
-        .await
-        .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
+    let (abstract_data_to_remove, all_affected_album_ids) = tokio::task::spawn_blocking({
+        let asset_ids = json_data.asset_ids.clone();
+        let timestamp = json_data.timestamp;
+        move || process_deletes(&asset_ids, timestamp)
+    })
+    .await
+    .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
 
     // Recursive album cleanup: for each album being removed, clean up
     // descendant files, sidecars, asset tables, and directories.
@@ -91,13 +86,6 @@ pub async fn delete_data(
             .execute_batch_waiting(FlushTreeTask::remove(abstract_data_to_remove))
             .await
             .or_raise(|| (ErrorKind::Internal, "Failed to execute flush tree task"))?;
-    }
-
-    if !abstract_data_to_update.is_empty() {
-        BATCH_COORDINATOR
-            .execute_batch_waiting(FlushTreeTask::insert(abstract_data_to_update))
-            .await
-            .or_raise(|| (ErrorKind::Internal, "Failed to execute insert tree task"))?;
     }
 
     BATCH_COORDINATOR
@@ -180,30 +168,49 @@ fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
     }
 }
 
-fn process_deletes(
-    delete_list: &[usize],
-    alias_list: &[Option<String>],
-    timestamp: i64,
-) -> Result<DeleteResult, AppError> {
-    let data_table = open_data_table();
-    let tree_snapshot = open_tree_snapshot_table(timestamp)
-        .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
+/// Process deletions by asset ID.
+///
+/// For each `asset_id`:
+/// 1. Look up the `AbstractData` in `DATA_TABLE` by `asset_id` key.
+/// 2. Delete the canonical file + sidecar from disk.
+/// 3. Remove the compressed thumbnail only if no other assets share the
+///    same content hash (checked via `DUPE_INDEX`).
+/// 4. Collect affected album IDs for later self-update.
+fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult, AppError> {
+    let txn = TREE
+        .in_disk
+        .begin_read()
+        .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?;
+    let data_table = txn
+        .open_table(DATA_TABLE)
+        .or_raise(|| (ErrorKind::Database, "Failed to open DATA_TABLE"))?;
 
-    let use_alias_list = !alias_list.is_empty();
     let mut all_affected_album_ids = Vec::new();
     let mut abstract_data_to_remove = Vec::new();
-    let mut abstract_data_to_update = Vec::new();
 
-    for (i, index) in delete_list.iter().enumerate() {
-        let mut abstract_data = index_to_abstract_data(&tree_snapshot, &data_table, *index)
+    for asset_id_str in asset_ids {
+        let asset_id: ArrayString<64> = ArrayString::from(asset_id_str.as_str()).map_err(|_| {
+            AppError::new(
+                ErrorKind::InvalidInput,
+                format!("Invalid asset_id format: {asset_id_str}"),
+            )
+        })?;
+
+        let abstract_data: AbstractData = data_table
+            .get(&*asset_id)
             .or_raise(|| {
                 (
                     ErrorKind::Database,
-                    format!("Failed to retrieve data at index {index}"),
+                    format!("Failed to look up asset {asset_id}"),
                 )
-            })?;
+            })?
+            .ok_or_else(|| {
+                AppError::new(ErrorKind::NotFound, format!("Asset not found: {asset_id}"))
+            })?
+            .value();
 
-        let affected_albums = match &abstract_data {
+        // Collect affected albums.
+        let affected_albums: Vec<ArrayString<64>> = match &abstract_data {
             AbstractData::Image(img) => img.metadata.album.iter().copied().collect(),
             AbstractData::Video(vid) => vid.metadata.album.iter().copied().collect(),
             AbstractData::Album(alb) => {
@@ -214,82 +221,40 @@ fn process_deletes(
             }
         };
 
-        if use_alias_list {
-            if let Some(target_alias) = &alias_list[i] {
-                if matches!(abstract_data, AbstractData::Album(_)) {
-                    return Err(AppError::new(
-                        ErrorKind::InvalidInput,
-                        "aliasList entry must be null for album records",
-                    ));
-                }
-
-                let target_path = normalize_alias_path(target_alias);
-
-                let has_alias = abstract_data
-                    .alias()
-                    .iter()
-                    .any(|a| normalize_alias_path(&a.file) == target_path);
-                if !has_alias {
-                    return Err(AppError::new(
-                        ErrorKind::InvalidInput,
-                        format!(
-                            "aliasList entry does not match any alias of the record at index {index}"
-                        ),
-                    ));
-                }
-
-                let remaining = prune_alias_paths(&mut abstract_data, &target_path);
-
-                all_affected_album_ids.extend(affected_albums);
-                if remaining {
-                    abstract_data_to_update.push(abstract_data);
-                } else {
-                    abstract_data_to_remove.push(abstract_data);
-                }
-            } else {
-                // null entry: full record removal (album or explicit null).
-                all_affected_album_ids.extend(affected_albums);
-                abstract_data_to_remove.push(abstract_data);
+        // Delete canonical file + sidecar from disk.
+        for alias in abstract_data.alias() {
+            let original = Path::new(&alias.file);
+            if let Err(e) = std::fs::remove_file(original)
+                && e.kind() != std::io::ErrorKind::NotFound
+            {
+                warn!("Failed to delete file {}: {e}", original.display());
             }
-        } else {
-            // Legacy path: aliasList not provided — remove entire record
-            // including all alias files and sidecars from disk.
-            for alias in abstract_data.alias() {
-                let original = Path::new(&alias.file);
-                if let Err(e) = std::fs::remove_file(original)
-                    && e.kind() != std::io::ErrorKind::NotFound
-                {
-                    warn!("Failed to delete file {}: {e}", original.display());
-                }
-                let sidecar = original.with_extension("xmp");
-                if sidecar.exists()
-                    && let Err(e) = std::fs::remove_file(&sidecar)
-                {
-                    warn!("Failed to delete sidecar {}: {e}", sidecar.display());
-                }
+            let sidecar = original.with_extension("xmp");
+            if sidecar.exists()
+                && let Err(e) = std::fs::remove_file(&sidecar)
+            {
+                warn!("Failed to delete sidecar {}: {e}", sidecar.display());
             }
-            // Only remove thumbnail if no other assets share this content hash.
-            let content_hash = abstract_data.hash();
-            let other_refs = match crate::storage::asset_store::get_dupe_ids(&content_hash) {
-                Ok(ids) => ids.len(),
-                Err(_) => 0,
-            };
-            if other_refs <= 1 {
-                let thumb = abstract_data.compressed_path();
-                if thumb.exists()
-                    && let Err(e) = std::fs::remove_file(&thumb)
-                {
-                    warn!("Failed to delete thumbnail {}: {e}", thumb.display());
-                }
-            }
-            all_affected_album_ids.extend(affected_albums);
-            abstract_data_to_remove.push(abstract_data);
         }
+
+        // Only remove thumbnail if no other assets share this content hash.
+        let content_hash = abstract_data.hash();
+        let other_refs = match crate::storage::asset_store::get_dupe_ids(&content_hash) {
+            Ok(ids) => ids.len(),
+            Err(_) => 0,
+        };
+        if other_refs <= 1 {
+            let thumb = abstract_data.compressed_path();
+            if thumb.exists()
+                && let Err(e) = std::fs::remove_file(&thumb)
+            {
+                warn!("Failed to delete thumbnail {}: {e}", thumb.display());
+            }
+        }
+
+        all_affected_album_ids.extend(affected_albums);
+        abstract_data_to_remove.push(abstract_data);
     }
 
-    Ok((
-        abstract_data_to_remove,
-        abstract_data_to_update,
-        all_affected_album_ids,
-    ))
+    Ok((abstract_data_to_remove, all_affected_album_ids))
 }

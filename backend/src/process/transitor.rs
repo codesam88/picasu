@@ -163,12 +163,3 @@ pub fn abstract_data_to_timestamp_return(
         asset_id: asset_id.to_string(),
     }
 }
-
-pub fn index_to_abstract_data(
-    tree_snapshot: &MyCow,
-    data_table: &ReadOnlyTable<&'static str, AbstractData>,
-    index: usize,
-) -> Result<AbstractData> {
-    let asset_id = index_to_asset_id(tree_snapshot, index)?;
-    asset_id_to_abstract_data(asset_id, data_table)
-}
