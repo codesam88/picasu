@@ -413,3 +413,16 @@ move, delete, refresh, pagination, and original serving.
 - `alias.rs` alias-based operations — used by delete/trash, not for identity
 
 Run the complete project checks and API/UI scenario suites.
+
+- 0 Playwright failures remain (33/33 pass)
+
+### Playwright lifecycle fix — `ad0a30e4`
+
+Root causes resolved:
+
+1. `resolveLocator` used `getByRole('testid', ...)` instead of `getByTestId(...)` for `testid/` prefix. Vuetify's
+   `v-testid` sets `data-testid`, not an ARIA role.
+2. `click.text` handler clicked `.parent` center which landed on the hover icon (entering edit mode) or thumbhash
+   placeholder (intercepting pointer events). Fixed by dispatching synthetic click on `#click-handler` div.
+3. `duplicate-move-independently` scenario: wrong option name casing, `click.text` used in modal instead of `click:
+option/`, expected counts didn't account for `dir_album` placeholder photo.
