@@ -32,26 +32,24 @@ describe('dataStore', () => {
         rating: null,
         updateAt: 0,
         thumbhashUrl: null,
-        timestamp: 1700000000000
+        timestamp: 1700000000000,
+        assetId: 'placeholder'
       }
 
       // Two items with same content hash but different asset IDs
-      const item1Data = { ...baseData, album: 'album_a' }
-      const item2Data = { ...baseData, album: 'album_b' }
-
-      const assetId1 = 'asset_a'
-      const assetId2 = 'asset_b'
+      const item1Data = { ...baseData, album: 'album_a', assetId: 'asset_a' }
+      const item2Data = { ...baseData, album: 'album_b', assetId: 'asset_b' }
 
       // Populate via assetIdMapData only (no hashMapData)
       dataStore.data.set(0, item1Data)
-      dataStore.assetIdMapData.set(assetId1, 0)
+      dataStore.assetIdMapData.set('asset_a', 0)
 
       dataStore.data.set(1, item2Data)
-      dataStore.assetIdMapData.set(assetId2, 1)
+      dataStore.assetIdMapData.set('asset_b', 1)
 
       // assetIdMapData has both items with distinct indices
-      const index1 = dataStore.assetIdMapData.get(assetId1)
-      const index2 = dataStore.assetIdMapData.get(assetId2)
+      const index1 = dataStore.assetIdMapData.get('asset_a')
+      const index2 = dataStore.assetIdMapData.get('asset_b')
 
       expect(index1).toBe(0)
       expect(index2).toBe(1)
@@ -64,9 +62,11 @@ describe('dataStore', () => {
       expect(retrieved2?.type).toBe('image')
       if (retrieved1?.type === 'image') {
         expect(retrieved1.album).toBe('album_a')
+        expect(retrieved1.assetId).toBe('asset_a')
       }
       if (retrieved2?.type === 'image') {
         expect(retrieved2.album).toBe('album_b')
+        expect(retrieved2.assetId).toBe('asset_b')
       }
     })
 
@@ -94,17 +94,16 @@ describe('dataStore', () => {
         rating: null,
         updateAt: 0,
         thumbhashUrl: null,
-        timestamp: 1700000000000
+        timestamp: 1700000000000,
+        assetId: 'asset_xyz'
       }
-
-      const assetId = 'asset_xyz'
 
       // Store by assetId
       dataStore.data.set(0, itemData)
-      dataStore.assetIdMapData.set(assetId, 0)
+      dataStore.assetIdMapData.set('asset_xyz', 0)
 
       // Should be retrievable by assetId
-      const index = dataStore.assetIdMapData.get(assetId)
+      const index = dataStore.assetIdMapData.get('asset_xyz')
       expect(index).toBe(0)
 
       // Should be retrievable by assetId
@@ -135,7 +134,8 @@ describe('dataStore', () => {
         rating: null,
         updateAt: 0,
         thumbhashUrl: null,
-        timestamp: 1700000000000
+        timestamp: 1700000000000,
+        assetId: 'asset1'
       })
       dataStore.assetIdMapData.set('asset1', 0)
       dataStore.batchFetched.set(0, true)

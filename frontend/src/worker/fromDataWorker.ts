@@ -44,22 +44,16 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
       const slicedDataArray: SlicedData[] = payload.slicedDataArray
       slicedDataArray.forEach(({ index, data, hashToken, assetId }) => {
         dataStore.data.set(index, data)
-        // Store in assetIdMapData when assetId is available for asset-ID identity
-        if (assetId !== undefined) {
-          dataStore.assetIdMapData.set(assetId, index)
-        }
+        // Store in assetIdMapData for asset-ID identity
+        dataStore.assetIdMapData.set(assetId, index)
 
         // Token storage: key by assetId for media items, by content hash for album covers
         if (data.type === 'album') {
           if (data.cover !== null) {
             tokenStore.assetTokenMap.set(data.cover, hashToken)
           }
-        } else if (assetId !== undefined) {
-          tokenStore.assetTokenMap.set(assetId, hashToken)
         } else {
-          // No assetId available — token cannot be stored by asset identity.
-          // This item will not be servable until re-indexed with assetId.
-          console.warn(`Media item ${data.id} has no assetId; token not stored`)
+          tokenStore.assetTokenMap.set(assetId, hashToken)
         }
       })
       dataStore.batchFetched.set(payload.batch, true)

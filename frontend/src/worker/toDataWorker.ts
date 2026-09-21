@@ -1,12 +1,12 @@
 import { rowSchema, rowWithOffsetSchema, databaseTimestampSchema } from '@type/schemas'
 import {
   DisplayElement,
+  EnrichedUnifiedData,
   FetchDataMethod,
   Row,
   RowWithOffset,
   SlicedData,
-  SubRow,
-  UnifiedData
+  SubRow
 } from '@type/types'
 import { batchNumber, fixedBigRowHeight, paddingPixel } from '@/type/constants'
 import { getArrayValue } from '@utils/getter'
@@ -109,9 +109,9 @@ async function fetchData(
   result: Map<
     number,
     {
-      abstractData: UnifiedData & { thumbhashUrl: string | null; timestamp: number }
+      abstractData: EnrichedUnifiedData
       hashToken: string
-      assetId?: string
+      assetId: string
     }
   >
   startIndex: number
@@ -147,9 +147,9 @@ async function fetchData(
   const data = new Map<
     number,
     {
-      abstractData: UnifiedData & { thumbhashUrl: string | null; timestamp: number }
+      abstractData: EnrichedUnifiedData
       hashToken: string
-      assetId?: string
+      assetId: string
     }
   >()
 
