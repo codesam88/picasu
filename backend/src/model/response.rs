@@ -36,16 +36,26 @@ pub struct DataBaseTimestampReturn {
     pub token: String,
     /// Path-primary asset ID.
     pub asset_id: String,
+    /// For albums: the cover image's content hash (used for compressed
+    /// thumbnail URL construction and token validation). `None` for media
+    /// items or albums without a cover.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover_hash: Option<String>,
 }
 
 impl DataBaseTimestampReturn {
     /// Create with `asset_id` included in the token for path-primary identity.
+    /// For albums, `cover_content_hash` is the cover image's `object.id`
+    /// (content hash) looked up from the data table.  It is used for the
+    /// token's `hash` claim (`GuardHash` validation) and exposed to the
+    /// frontend for compressed thumbnail URL construction.
     pub fn with_asset_id(
         abstract_data: AbstractData,
         priority_list: &[&str],
         token_timestamp: i64,
         allow_original: bool,
         asset_id: arrayvec::ArrayString<64>,
+        cover_content_hash: Option<arrayvec::ArrayString<64>>,
     ) -> Self {
         let timestamp = abstract_data.compute_timestamp(priority_list);
         let token = match &abstract_data {
@@ -61,15 +71,18 @@ impl DataBaseTimestampReturn {
                 // Set allow_original = false: album covers have no independent
                 // original — the asset_id in the token is the album's, not a
                 // media asset, so original access would resolve to nothing.
-                let cover_hash = album.metadata.cover.unwrap_or(asset_id);
-                ClaimsHash::new(cover_hash, asset_id, token_timestamp, false).encode()
+                let token_hash =
+                    cover_content_hash.unwrap_or(album.metadata.cover.unwrap_or(asset_id));
+                ClaimsHash::new(token_hash, asset_id, token_timestamp, false).encode()
             }
         };
+        let cover_hash = cover_content_hash.map(|h| h.to_string());
         Self {
             abstract_data,
             timestamp,
             token,
             asset_id: asset_id.to_string(),
+            cover_hash,
         }
     }
 }

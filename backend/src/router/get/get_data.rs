@@ -69,6 +69,11 @@ pub async fn get_data(
                         )
                     })?;
 
+                let cover_content_hash = crate::process::transitor::cover_content_hash_from_data(
+                    &abstract_data,
+                    &data_table,
+                );
+
                 let database_timestamp_return =
                     crate::process::transitor::abstract_data_to_timestamp_return(
                         abstract_data,
@@ -77,6 +82,7 @@ pub async fn get_data(
                         show_metadata,
                         trashed_view,
                         asset_id,
+                        cover_content_hash,
                     );
                 Ok(database_timestamp_return)
             })

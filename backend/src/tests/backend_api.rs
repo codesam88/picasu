@@ -268,6 +268,10 @@ fn check_body_assertions(body_bytes: &[u8], then_items: &[Value], vars: &HashMap
                         == Some(true)
                     {
                         assert_all_absolute(&parsed, key);
+                    } else if val.as_str() == Some("not_null") {
+                        let field_path = key.strip_prefix("response.json.").unwrap_or(key);
+                        let actual = navigate_json(&parsed, field_path);
+                        assert!(!actual.is_null(), "{key}: expected not null, got null");
                     } else {
                         assert_json_field(&parsed, key, val, vars);
                     }
