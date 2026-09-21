@@ -20,7 +20,7 @@ const messageStore = useMessageStore('mainId')
 
 const scanPath = computed<string>(() => {
   if (route.meta.baseName === 'albums' && route.meta.level >= 2) {
-    const albumId = route.params.hash
+    const albumId = route.params.assetId
     if (typeof albumId === 'string') {
       const dirPath = albumStore.albums.get(albumId)?.dirPath
       if (dirPath !== null && dirPath !== undefined && dirPath !== '') return dirPath

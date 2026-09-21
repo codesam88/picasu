@@ -34,7 +34,7 @@ const setAsCover = async () => {
     return
   }
 
-  const albumId = route.params.hash
+  const albumId = route.params.assetId
 
   if (typeof albumId !== 'string') {
     return

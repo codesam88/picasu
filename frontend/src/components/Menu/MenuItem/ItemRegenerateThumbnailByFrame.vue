@@ -20,7 +20,7 @@ const messageStore = useMessageStore('mainId')
 const editStore = useEditStore('mainId')
 
 const regenerateThumbnailByFrame = async () => {
-  const assetId = route.params.hash
+  const assetId = route.params.assetId
   if (typeof assetId !== 'string') return
 
   if (editStore.hasRegenerate(assetId)) return

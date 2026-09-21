@@ -34,8 +34,8 @@ export function usePrefetch(
         let locate: string | null = null
 
         // add locate to query string if user enter view page directly
-        if (isolationId === 'mainId' && typeof route.params.hash === 'string') {
-          locate = route.params.hash
+        if (isolationId === 'mainId' && typeof route.params.assetId === 'string') {
+          locate = route.params.assetId
         } else if (typeof route.query.locate === 'string') {
           locate = route.query.locate
         }

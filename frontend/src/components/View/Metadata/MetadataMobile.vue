@@ -13,13 +13,13 @@
       @swiper="onSwiper"
       class="h-100"
     >
-      <swiper-slide v-if="previousHash !== undefined">
+      <swiper-slide v-if="previousAssetId !== undefined">
         <div class="slide-content">
           <MetadataContent
             v-if="previousAbstractData"
             :abstract-data="previousAbstractData"
             :index="index - 1"
-            :hash="previousHash"
+            :hash="previousAssetId"
             :isolation-id="isolationId"
             compact
           />
@@ -39,13 +39,13 @@
         </div>
       </swiper-slide>
 
-      <swiper-slide v-if="nextHash !== undefined">
+      <swiper-slide v-if="nextAssetId !== undefined">
         <div class="slide-content">
           <MetadataContent
             v-if="nextAbstractData"
             :abstract-data="nextAbstractData"
             :index="index + 1"
-            :hash="nextHash"
+            :hash="nextAssetId"
             :isolation-id="isolationId"
             compact
           />
@@ -84,21 +84,21 @@ const swiperInstance = ref<SwiperType | null>(null)
 const nextAbstractData = computed(() => dataStore.data.get(props.index + 1))
 const previousAbstractData = computed(() => dataStore.data.get(props.index - 1))
 
-const nextHash = computed(() => {
+const nextAssetId = computed(() => {
   const nextData = nextAbstractData.value
-  if (nextData?.type === 'image' || nextData?.type === 'video') return nextData.id
+  if (nextData?.type === 'image' || nextData?.type === 'video') return nextData.assetId
   if (nextData?.type === 'album') return nextData.id
   return undefined
 })
 
-const previousHash = computed(() => {
+const previousAssetId = computed(() => {
   const prevData = previousAbstractData.value
-  if (prevData?.type === 'image' || prevData?.type === 'video') return prevData.id
+  if (prevData?.type === 'image' || prevData?.type === 'video') return prevData.assetId
   if (prevData?.type === 'album') return prevData.id
   return undefined
 })
 
-const currentSlideIndex = computed(() => (previousHash.value !== undefined ? 1 : 0))
+const currentSlideIndex = computed(() => (previousAssetId.value !== undefined ? 1 : 0))
 
 function onSwiper(swiper: SwiperType) {
   swiperInstance.value = swiper
@@ -106,23 +106,23 @@ function onSwiper(swiper: SwiperType) {
 
 function onSlideChange(swiper: SwiperType) {
   const currentIndex = swiper.activeIndex
-  const hasPrevious = previousHash.value !== undefined
-  const hasNext = nextHash.value !== undefined
+  const hasPrevious = previousAssetId.value !== undefined
+  const hasNext = nextAssetId.value !== undefined
 
   if (hasPrevious) {
-    if (currentIndex === 0 && previousHash.value) {
-      navigateToHash(previousHash.value)
-    } else if (currentIndex === 2 && hasNext && nextHash.value) {
-      navigateToHash(nextHash.value)
+    if (currentIndex === 0 && previousAssetId.value) {
+      navigateToAsset(previousAssetId.value)
+    } else if (currentIndex === 2 && hasNext && nextAssetId.value) {
+      navigateToAsset(nextAssetId.value)
     }
-  } else if (currentIndex === 1 && hasNext && nextHash.value) {
-    navigateToHash(nextHash.value)
+  } else if (currentIndex === 1 && hasNext && nextAssetId.value) {
+    navigateToAsset(nextAssetId.value)
   }
 }
 
-function navigateToHash(targetHash: string) {
+function navigateToAsset(targetAssetId: string) {
   if (route.meta.level === 2) {
-    const updatedParams = { ...route.params, hash: targetHash }
+    const updatedParams = { ...route.params, assetId: targetAssetId }
     void router.replace({
       name: route.name ?? undefined,
       params: updatedParams,

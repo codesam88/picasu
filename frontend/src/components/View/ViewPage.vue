@@ -113,7 +113,7 @@ const router = useRouter()
 const showMetadataPanel = ref(false)
 
 const assetId = computed(() => {
-  return route.params.hash as string
+  return route.params.assetId as string
 })
 
 const index = computed(() => {

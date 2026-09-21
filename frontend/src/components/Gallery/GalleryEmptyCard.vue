@@ -75,7 +75,7 @@
       <!-- Other pages: existing layout -->
       <template v-else>
         <v-col
-          v-if="ui.showUploadCard && typeof route.params.hash === 'string'"
+          v-if="ui.showUploadCard && typeof route.params.assetId === 'string'"
           class="w-100"
           cols="12"
           md="6"
@@ -94,7 +94,7 @@
               rounded="lg"
               width="100%"
               v-bind="hoverProps"
-              @click="uploadStore.triggerFileInput(route.params.hash)"
+              @click="uploadStore.triggerFileInput(route.params.assetId)"
             >
               <v-icon class="mb-5" color="grey" size="100">mdi-cloud-upload</v-icon>
               <v-card-item>
