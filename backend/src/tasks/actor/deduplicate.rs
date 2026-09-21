@@ -41,6 +41,14 @@ fn deduplicate_task(task: &DeduplicateTask) -> Result<Option<AbstractData>> {
 
     if let Some(album_id) = task.presigned_album_id {
         abstract_data.set_album(Some(album_id));
+    } else if let Some(parent) = task.path.parent() {
+        // For filesystem-indexed photos, set the album to the parent
+        // directory's dir-album so album-contents page filters match.
+        if let Ok(album_id) =
+            crate::process::dir_album::get_or_create_dir_album(parent.to_path_buf())
+        {
+            abstract_data.set_album(Some(album_id));
+        }
     }
 
     // Path-primary model: each physical file gets its own record.
