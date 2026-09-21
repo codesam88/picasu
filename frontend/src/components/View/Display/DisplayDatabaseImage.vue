@@ -10,7 +10,7 @@
       height: 'auto',
       objectFit: 'contain',
       border: '1px solid rgba(var(--v-theme-on-surface), 0.12)',
-      transform: `rotate(${-(editStore.rotationCounts.get(abstractData?.id ?? '') ?? 0) * 90}deg)`,
+      transform: `rotate(${-(editStore.rotationCounts.get(abstractData?.assetId ?? abstractData?.id ?? '') ?? 0) * 90}deg)`,
       transition: 'transform 0.3s ease'
     }"
   />

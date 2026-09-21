@@ -19,7 +19,7 @@
             v-if="previousAbstractData"
             :abstract-data="previousAbstractData"
             :index="index - 1"
-            :hash="previousAssetId"
+            :asset-id="previousAssetId"
             :isolation-id="isolationId"
             compact
           />
@@ -32,7 +32,7 @@
             v-if="abstractData"
             :abstract-data="abstractData"
             :index="index"
-            :hash="hash"
+            :asset-id="hash"
             :isolation-id="isolationId"
             compact
           />
@@ -45,7 +45,7 @@
             v-if="nextAbstractData"
             :abstract-data="nextAbstractData"
             :index="index + 1"
-            :hash="nextAssetId"
+            :asset-id="nextAssetId"
             :isolation-id="isolationId"
             compact
           />

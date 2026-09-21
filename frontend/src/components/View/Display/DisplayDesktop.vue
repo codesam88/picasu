@@ -7,7 +7,7 @@
         !configStore.disableImg
       "
       :index="index"
-      :hash="hash"
+      :hash="abstractData.id"
       :abstract-data="abstractData"
       :isolation-id="isolationId"
       :enable-watch="true"
@@ -22,7 +22,7 @@ import type { EnrichedUnifiedData, IsolationId } from '@type/types'
 
 const props = defineProps<{
   isolationId: IsolationId
-  hash: string
+  assetId: string
   index: number
   abstractData: EnrichedUnifiedData | undefined
 }>()

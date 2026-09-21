@@ -9,14 +9,14 @@
       v-if="configStore.isMobile"
       :abstract-data="abstractData"
       :index="index"
-      :hash="hash"
+      :hash="assetId"
       :isolation-id="isolationId"
     />
     <MetadataContent
       v-else
       :abstract-data="abstractData"
       :index="index"
-      :hash="hash"
+      :asset-id="assetId"
       :isolation-id="isolationId"
     />
   </div>
@@ -30,7 +30,7 @@ import MetadataMobile from './MetadataMobile.vue'
 
 const props = defineProps<{
   isolationId: IsolationId
-  hash: string
+  assetId: string
   index: number
   abstractData: EnrichedUnifiedData
 }>()

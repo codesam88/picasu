@@ -4,7 +4,7 @@
       class="flex-grow-1 position-relative view-content"
       v-if="configStore.isMobile"
       :isolation-id="isolationId"
-      :hash="hash"
+      :asset-id="assetId"
       :index="index"
       :abstract-data="abstractData"
       :previous-hash="previousAssetId"
@@ -17,7 +17,7 @@
       class="flex-grow-1 position-relative view-content"
       v-if="!configStore.isMobile"
       :isolation-id="isolationId"
-      :hash="hash"
+      :asset-id="assetId"
       :index="index"
       :abstract-data="abstractData"
     />
@@ -50,7 +50,7 @@ import { useShareStore } from '@/store/shareStore'
 
 const props = defineProps<{
   isolationId: IsolationId
-  hash: string
+  assetId: string
   index: number
   abstractData: EnrichedUnifiedData | undefined
 }>()
@@ -198,9 +198,9 @@ watch(
 )
 
 const rotateImageHandler = async () => {
-  const hash = props.hash
-  if (hash && props.abstractData?.type === 'image') {
-    await handleRotateImage(hash, props.isolationId)
+  const assetId = props.assetId
+  if (assetId && props.abstractData?.type === 'image') {
+    await handleRotateImage(assetId, props.isolationId)
   }
 }
 

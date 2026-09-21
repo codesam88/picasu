@@ -12,14 +12,14 @@
           "
           :database="abstractData"
           :index="index"
-          :hash="hash"
+          :asset-id="assetId"
           :isolation-id="isolationId"
         />
         <AlbumMenu
           v-if="abstractData.type === 'album'"
           :album="abstractData"
           :index="index"
-          :hash="hash"
+          :asset-id="assetId"
           :isolation-id="isolationId"
         />
       </v-toolbar>
@@ -126,7 +126,7 @@ const userDefinedDescriptionModel = ref('')
 
 const props = defineProps<{
   isolationId: IsolationId
-  hash: string
+  assetId: string
   index: number
   abstractData: EnrichedUnifiedData
   compact?: boolean
@@ -149,7 +149,7 @@ function getUserDefinedDescription(abstractData: EnrichedUnifiedData): string {
 }
 
 watch(
-  () => props.hash,
+  () => props.assetId,
   () => {
     userDefinedDescriptionModel.value = getUserDefinedDescription(props.abstractData)
   },
