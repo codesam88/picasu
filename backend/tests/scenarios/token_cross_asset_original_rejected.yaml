@@ -1,0 +1,57 @@
+name: "negative: cross-asset original rejected"
+# Asset A's token (with asset_id=A) must NOT serve asset B's original.
+given:
+  - dir_album: /e2e_cross/album
+    id_as: $album
+  - photo: /e2e_cross/album/photo_a.jpg
+    id_as: $photo_a
+    asset_id_as: $asset_a
+  - photo: /e2e_cross/album/photo_b.jpg
+    id_as: $photo_b
+    asset_id_as: $asset_b
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_cross"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Get token for asset A.
+  - call: POST /get/prefetch?locate=${asset_a}
+    capture:
+      ts_a: response.prefetch.timestamp
+      idx_a: response.prefetch.locateTo
+      token_a: response.token
+    calc:
+      end_a: "${idx_a}+1"
+  - call: GET /get/get-data?timestamp=${ts_a}&start=${idx_a}&end=${end_a}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token_a}"
+    capture:
+      hash_token_a: response.[0].token
+    then:
+      - response.status: 200
+  # Get asset B's ext.
+  - call: POST /get/prefetch?locate=${asset_b}
+    capture:
+      ts_b: response.prefetch.timestamp
+      idx_b: response.prefetch.locateTo
+      token_b: response.token
+    calc:
+      end_b: "${idx_b}+1"
+  - call: GET /get/get-data?timestamp=${ts_b}&start=${idx_b}&end=${end_b}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token_b}"
+    capture:
+      ext_b: response.[0].abstractData.ext
+    then:
+      - response.status: 200
+  # Try to use asset A's token to access asset B's original.
+  # GuardHashOriginal should reject because asset_id in URL != claims.asset_id.
+  - call: "GET /object/imported/${asset_b:0:2}/${asset_b}.${ext_b}"
+    auth: false
+    headers:
+      Authorization: "Bearer ${hash_token_a}"
+then:
+  - response.status: 401

@@ -1,0 +1,68 @@
+name: same-hash assets each serve their own original independently
+# Two byte-identical files get distinct asset IDs. Each token's asset_id
+# must only serve its own original, not the other duplicate's.
+given:
+  - dir_album: /e2e_dup_orig/album_a
+    id_as: $album_a
+  - dir_album: /e2e_dup_orig/album_b
+    id_as: $album_b
+  - photo: /e2e_dup_orig/album_a/photo.jpg
+    id_as: $photo_a
+    asset_id_as: $asset_a
+  - duplicate_of:
+      source: /e2e_dup_orig/album_a/photo.jpg
+      destination: /e2e_dup_orig/album_b/photo.jpg
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_dup_orig"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Get token for asset A.
+  - call: POST /get/prefetch?locate=${asset_a}
+    capture:
+      ts_a: response.prefetch.timestamp
+      idx_a: response.prefetch.locateTo
+      token_a: response.token
+    calc:
+      end_a: "${idx_a}+1"
+  - call: GET /get/get-data?timestamp=${ts_a}&start=${idx_a}&end=${end_a}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token_a}"
+    capture:
+      hash_token_a: response.[0].token
+      ext_a: response.[0].abstractData.ext
+    then:
+      - response.status: 200
+  # Discover asset B's ID via path filter.
+  - call: POST /get/prefetch
+    body: { Path: "e2e_dup_orig/album_b/photo.jpg" }
+    capture:
+      ts_b: response.prefetch.timestamp
+      token_b: response.token
+  - call: GET /get/get-data?timestamp=${ts_b}&start=0&end=1
+    auth: false
+    headers:
+      Authorization: "Bearer ${token_b}"
+    capture:
+      asset_b: response.[0].assetId
+      hash_token_b: response.[0].token
+    then:
+      - response.status: 200
+  # Asset A's original serves from album_a path.
+  - call: "GET /object/imported/${asset_a:0:2}/${asset_a}.${ext_a}"
+    auth: false
+    headers:
+      Authorization: "Bearer ${hash_token_a}"
+    then:
+      - response.status: 200
+  # Asset B's original serves from album_b path.
+  - call: "GET /object/imported/${asset_b:0:2}/${asset_b}.${ext_a}"
+    auth: false
+    headers:
+      Authorization: "Bearer ${hash_token_b}"
+    then:
+      - response.status: 200
+then:
+  - response.status: 200
