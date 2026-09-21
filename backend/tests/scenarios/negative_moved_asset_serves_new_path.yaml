@@ -32,7 +32,6 @@ when:
   - call: PUT /put/assign_album
     body:
       assetId: "${asset_id}"
-      assetId: "${asset_id}"
       albumId: "${tgt_album}"
       alias: "${alias_file}"
       onConflict: "rename"
