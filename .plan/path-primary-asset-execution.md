@@ -130,7 +130,7 @@ Three new Redb tables in the existing `index_v5.redb`:
 | `dup_delete_record_does_not_destroy_other`    | COMPAT | assert satisfied by current placeholder behavior                    |
 | `duplicate_files_are_independent_album_items` | RED    | pre-existing red test                                               |
 
-## Phase 3: Clean Filesystem Rebuild — IN PROGRESS
+## Phase 3: Clean Filesystem Rebuild — DONE
 
 ### Core rebuild — DONE
 
@@ -143,7 +143,7 @@ Three new Redb tables in the existing `index_v5.redb`:
 5. Populates `DUPE_INDEX` without merging records.
 6. Derives album membership from parent directory.
 
-Unit tests (4 pass):
+Unit tests (8 pass):
 
 - `rebuild_creates_one_asset_per_file_and_directory` — verifies exact counts
   and unique asset IDs per file
@@ -152,6 +152,10 @@ Unit tests (4 pass):
 - `rebuild_unsupported_files_are_skipped` — non-media files counted and skipped
 - `rebuild_empty_directory_becomes_album` — empty dirs become album assets with
   no content hash
+- `rebuild_stale_dupe_index_cleaned_on_rebuild` — stale DUPE_INDEX entries removed
+- `rebuild_preserves_sidecar_files` — `.xmp` sidecars survive rebuild
+- `rebuild_nested_directories_become_album_assets` — nested dirs become albums
+- `rebuild_non_media_files_preserved` — non-media files not deleted by rebuild
 
 ### Deferred to Phase 4
 
@@ -211,28 +215,6 @@ The asset tables will instead be populated synchronously during
 - `Album` filter normalizes relative/absolute paths via `normalize_parent()`
 - `VERSION_COUNT_TIMESTAMP` updated immediately in `update_tree_task` for cache invalidation
 
-## Phase 6: Serving, Tokens, and API Responses — IN PROGRESS
-
-### Token system — DONE
-
-- `ClaimsHash` has optional `asset_id` field (serde default, backward compatible)
-- `ClaimsHash::with_asset_id()` builder method
-- `DataBaseTimestampReturn` exposes `asset_id` in JSON response
-- `DataBaseTimestampReturn::with_asset_id()` includes `asset_id` in token
-- `get_data` endpoint passes `asset_id` through to token generation
-
-### Locate — DONE
-
-- `compute_locate` prefers `asset_id` match, falls back to `hash` for backward compat
-- `locate_same_hash_by_asset_id` scenario verifies each asset locates by its own ID
-- `discover_asset_id` test helper captures `asset_id` from `get-data` response
-- `asset_id_as` scenario field for capturing `asset_id` in `given` section
-
-### Original serving — DONE
-
-- `imported_file` resolves by `asset_id` first (via `ASSET_BY_ID`), falls back to hash
-- `GuardHashOriginal` validates `asset_id` from token when present, falls back to `hash`
-
 ## Phase 6: Serving, Tokens, and API Responses — DONE
 
 ### Token system — DONE
@@ -266,7 +248,7 @@ The asset tables will instead be populated synchronously during
 - Album covers reference `asset_id` (deferred to Phase 7)
 - Compressed thumbnail serving keeps hash-based identity (by design, no change needed)
 
-## Phase 7: Move, Delete, Sidecars, and Album Operations — IN PROGRESS
+## Phase 7: Move, Delete, Sidecars, and Album Operations — DONE
 
 ### assign_album — DONE
 
@@ -300,12 +282,14 @@ The asset tables will instead be populated synchronously during
 - `get_test_probe` resolves content hash to asset_id via DUPE_INDEX
 - `dir_album::write_album_to_db` writes to ASSET_BY_ID and ASSET_BY_PATH
 
-### Delete/trash — IN PROGRESS
+### Delete/trash — DONE
 
 - `delete_multi_alias` scenario updated for path-primary (deleting one
   asset does not destroy same-hash sibling)
 - `process_deletes` resolves via `index_to_abstract_data` which uses asset_id
 - `FlushTreeTask::remove` cleans up ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX
+- `delete_by_asset_id` scenario: delete by asset_id works correctly
+- `delete_removes_file_and_sidecar`: file and sidecar removed from disk
 
 ### Directory moves — DONE
 
@@ -353,14 +337,8 @@ The asset tables will instead be populated synchronously during
 
 Phase 7 is functionally complete for delete/trash, directory moves, album
 covers, shared thumbnails, and recursive album deletion.
-Phase 8 is in progress — watcher tests added, watcher code already path-primary.
 
-Next phases:
-
-- Phase 8: complete remaining modify/sidecar tests
-- Phase 9: Frontend Identity Refactor
-
-## Phase 8: Watcher and Reconciliation — IN PROGRESS
+## Phase 8: Watcher and Reconciliation — DONE
 
 ### Current state
 
@@ -379,11 +357,13 @@ The watcher code is already path-primary by design:
 - `watcher_rename_preserves_sibling`: deleting original preserves copy and moved files
 - `watcher_stale_path_no_delete`: re-indexing preserves existing assets
 - `watcher_discovers_new_file`: existing test (unchanged)
+- `watcher_modify_updates_hash_group`: changing bytes of one duplicate updates only that asset (uses `write_file` action)
+- `watcher_sidecar_change_triggers_reindex`: modifying XMP sidecar triggers re-index of associated media
+- `watcher_sidecar_missing_does_not_break_asset`: deleting sidecar does not break asset
+- `watcher_rebuild_reconciliation_stale_dupe`: rebuild cleans stale DUPE_INDEX entries after file removal
 
 ### Remaining work
 
-- modify one duplicate's bytes and verify DUPE_INDEX membership (requires file-overwrite fixture)
-- sidecar change and missing sidecar reconciliation
 - partial/canceled scan edge cases (may need Playwright tier)
 - durable operation journal (only if tests demonstrate rebuild/reconciliation is insufficient)
 
