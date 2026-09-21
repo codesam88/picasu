@@ -55,8 +55,14 @@ impl DataBaseTimestampReturn {
             AbstractData::Video(vid) => {
                 ClaimsHash::new(vid.object.id, asset_id, token_timestamp, allow_original).encode()
             }
-            AbstractData::Album(_) => {
-                ClaimsHash::new(asset_id, asset_id, token_timestamp, allow_original).encode()
+            AbstractData::Album(album) => {
+                // Album cover compressed path uses the cover's content hash.
+                // The token must carry that hash so GuardHash can validate it.
+                // Set allow_original = false: album covers have no independent
+                // original — the asset_id in the token is the album's, not a
+                // media asset, so original access would resolve to nothing.
+                let cover_hash = album.metadata.cover.unwrap_or(asset_id);
+                ClaimsHash::new(cover_hash, asset_id, token_timestamp, false).encode()
             }
         };
         Self {
