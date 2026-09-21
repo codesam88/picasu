@@ -73,7 +73,7 @@ test.describe('Album tree refresh after move', () => {
 
     // Move the child album under target via API
     const moveRes = await request.put(`${backendPaths.BACKEND_URL}/put/assign_album`, {
-      data: JSON.stringify({ hash: child_album, albumId: target_album, onConflict: 'rename' }),
+      data: JSON.stringify({ assetId: child_album, albumId: target_album, onConflict: 'rename' }),
       headers
     })
     expect(moveRes.status()).toBe(200)

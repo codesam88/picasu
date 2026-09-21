@@ -23,13 +23,11 @@ export async function assignAlbum(
   const success = await tryWithMessageStore('mainId', async () => {
     const item = dataStore.data.get(index)
     const body: {
-      hash: string
       assetId: string
       albumId: string
       onConflict: 'skip' | 'rename'
       alias?: string
     } = {
-      hash: item?.id ?? assetId,
       assetId,
       albumId,
       onConflict
