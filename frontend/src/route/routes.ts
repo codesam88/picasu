@@ -61,18 +61,18 @@ const albumContentRoute: RouteRecordRaw = {
     baseName: 'album',
     getParentPage: (route) => ({
       name: 'timeline',
-      params: { hash: undefined, subhash: undefined },
+      params: { assetId: undefined, subhash: undefined },
       query: route.query
     }),
-    getChildPage: (route, hash) => ({
+    getChildPage: (route, assetId) => ({
       name: 'albumViewPage',
-      params: { albumHash: route.params.albumHash, hash: hash, subhash: undefined },
+      params: { albumHash: route.params.albumHash, assetId: assetId, subhash: undefined },
       query: route.query
     })
   },
   children: [
     {
-      path: 'view/:hash',
+      path: 'view/:assetId',
       component: ViewPage,
       name: 'albumViewPage',
       meta: {
@@ -80,14 +80,14 @@ const albumContentRoute: RouteRecordRaw = {
         baseName: 'album',
         getParentPage: (route) => ({
           name: 'album',
-          params: { albumHash: route.params.albumHash, hash: undefined, subhash: undefined },
+          params: { albumHash: route.params.albumHash, assetId: undefined, subhash: undefined },
           query: route.query
         }),
         // No child page below level 2 (level 3/4 were eliminated). Identity fallback
         // since RouteMeta.getChildPage is required by the type but has no real caller here.
         getChildPage: (route) => ({
           name: 'albumViewPage',
-          params: { hash: route.params.hash, subhash: undefined },
+          params: { assetId: route.params.assetId, subhash: undefined },
           query: route.query
         })
       }

@@ -16,7 +16,7 @@ const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 
 const rotateImage = async () => {
-  const assetId = route.params.hash
+  const assetId = route.params.assetId
   if (typeof assetId !== 'string') return
 
   await handleRotateImage(assetId, isolationId)

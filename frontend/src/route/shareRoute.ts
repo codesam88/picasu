@@ -19,21 +19,21 @@ export const shareRoute: RouteRecordRaw = {
     getParentPage: (route) => {
       return {
         name: 'share',
-        params: { hash: undefined, subhash: undefined },
+        params: { assetId: undefined, subhash: undefined },
         query: route.query
       }
     },
-    getChildPage: (route, hash) => {
+    getChildPage: (route, assetId) => {
       return {
         name: `shareViewPage`,
-        params: { hash: hash, subhash: undefined },
+        params: { assetId: assetId, subhash: undefined },
         query: route.query
       }
     }
   },
   children: [
     {
-      path: 'view/:hash',
+      path: 'view/:assetId',
       component: ViewPage,
       name: `shareViewPage`,
       meta: {

@@ -7,8 +7,8 @@
       :hash="hash"
       :index="index"
       :abstract-data="abstractData"
-      :previous-hash="previousHash"
-      :next-hash="nextHash"
+      :previous-hash="previousAssetId"
+      :next-hash="nextAssetId"
       :previous-page="previousPage"
       :next-page="nextPage"
     />
@@ -69,31 +69,31 @@ const dataStore = useDataStore(props.isolationId)
 const route = useRoute()
 const router = useRouter()
 
-const nextHash = computed(() => {
+const nextAssetId = computed(() => {
   const nextData = dataStore.data.get(props.index + 1)
-  if (nextData?.type === 'image' || nextData?.type === 'video') return nextData.id
+  if (nextData?.type === 'image' || nextData?.type === 'video') return nextData.assetId
   return undefined
 })
 
-const previousHash = computed(() => {
+const previousAssetId = computed(() => {
   const previousData = dataStore.data.get(props.index - 1)
-  if (previousData?.type === 'image' || previousData?.type === 'video') return previousData.id
+  if (previousData?.type === 'image' || previousData?.type === 'video') return previousData.assetId
   return undefined
 })
 
 const nextPage = computed(() => {
-  if (nextHash.value === undefined) return undefined
+  if (nextAssetId.value === undefined) return undefined
   if (route.meta.level === 2) {
-    const updatedParams = { ...route.params, hash: nextHash.value }
+    const updatedParams = { ...route.params, assetId: nextAssetId.value }
     return { ...route, params: updatedParams }
   }
   return undefined
 })
 
 const previousPage = computed(() => {
-  if (previousHash.value === undefined) return undefined
+  if (previousAssetId.value === undefined) return undefined
   if (route.meta.level === 2) {
-    const updatedParams = { ...route.params, hash: previousHash.value }
+    const updatedParams = { ...route.params, assetId: previousAssetId.value }
     return { ...route, params: updatedParams }
   }
   return undefined
