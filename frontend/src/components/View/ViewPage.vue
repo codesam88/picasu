@@ -10,8 +10,8 @@
           <div class="view-modal">
             <NavigationOverlays
               v-if="!configStore.isMobile"
-              :previous-hash="previousHash"
-              :next-hash="nextHash"
+              :previous-hash="previousAssetId"
+              :next-hash="nextAssetId"
               :previous-page="previousPage"
               :next-page="nextPage"
               :show="!configStore.isMobile"
@@ -20,7 +20,7 @@
               <ViewPageDisplay
                 :abstract-data="abstractData"
                 :index="index"
-                :hash="hash"
+                :hash="assetId"
                 isolation-id="mainId"
               />
             </div>
@@ -30,7 +30,7 @@
             class="view-modal-sidepane bg-surface elevation-4 elevation-overlay"
             :abstract-data="abstractData"
             :index="index"
-            :hash="hash"
+            :hash="assetId"
             isolation-id="mainId"
           />
           <div class="view-modal-controls">
@@ -60,7 +60,7 @@
               "
               :database="abstractData"
               :index="index"
-              :hash="hash"
+              :hash="assetId"
               isolation-id="mainId"
             />
             <v-tooltip location="top" text="Close">
@@ -112,12 +112,12 @@ const router = useRouter()
 // when the view is re-entered, rather than persisting like a global setting.
 const showMetadataPanel = ref(false)
 
-const hash = computed(() => {
+const assetId = computed(() => {
   return route.params.hash as string
 })
 
 const index = computed(() => {
-  return dataStore.hashMapData.get(hash.value)
+  return dataStore.assetIdMapData.get(assetId.value)
 })
 
 const abstractData = computed(() => {
@@ -130,35 +130,35 @@ const abstractData = computed(() => {
 
 const share = computed(() => shareStore.resolvedShare?.share ?? null)
 
-const nextHash = computed(() => {
+const nextAssetId = computed(() => {
   const nextIndex = index.value
   if (nextIndex === undefined) return undefined
   const nextData = dataStore.data.get(nextIndex + 1)
-  if (nextData?.type === 'image' || nextData?.type === 'video') return nextData.id
+  if (nextData?.type === 'image' || nextData?.type === 'video') return nextData.assetId
   return undefined
 })
 
-const previousHash = computed(() => {
+const previousAssetId = computed(() => {
   const prevIndex = index.value
   if (prevIndex === undefined) return undefined
   const previousData = dataStore.data.get(prevIndex - 1)
-  if (previousData?.type === 'image' || previousData?.type === 'video') return previousData.id
+  if (previousData?.type === 'image' || previousData?.type === 'video') return previousData.assetId
   return undefined
 })
 
 const nextPage = computed(() => {
-  if (nextHash.value === undefined) return undefined
+  if (nextAssetId.value === undefined) return undefined
   if (route.meta.level === 2) {
-    const updatedParams = { ...route.params, hash: nextHash.value }
+    const updatedParams = { ...route.params, hash: nextAssetId.value }
     return { ...route, params: updatedParams }
   }
   return undefined
 })
 
 const previousPage = computed(() => {
-  if (previousHash.value === undefined) return undefined
+  if (previousAssetId.value === undefined) return undefined
   if (route.meta.level === 2) {
-    const updatedParams = { ...route.params, hash: previousHash.value }
+    const updatedParams = { ...route.params, hash: previousAssetId.value }
     return { ...route, params: updatedParams }
   }
   return undefined

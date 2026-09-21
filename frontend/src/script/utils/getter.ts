@@ -9,19 +9,19 @@ export function getIsolationIdByRoute(_route: RouteLocationNormalizedLoaded): Is
   return 'mainId'
 }
 
-export function getHashIndexDataFromRoute(route: RouteLocationNormalizedLoaded) {
+export function getAssetIndexDataFromRoute(route: RouteLocationNormalizedLoaded) {
   const isolationId = getIsolationIdByRoute(route)
   const storeData = useDataStore(isolationId)
 
-  let hash: string
+  let assetId: string
 
-  if (typeof route.params.hash === 'string') {
-    hash = route.params.hash
+  if (typeof route.params.assetId === 'string') {
+    assetId = route.params.assetId
   } else {
     return undefined
   }
 
-  const index = storeData.hashMapData.get(hash)
+  const index = storeData.assetIdMapData.get(assetId)
 
   if (index === undefined) {
     return undefined
@@ -33,7 +33,7 @@ export function getHashIndexDataFromRoute(route: RouteLocationNormalizedLoaded) 
     return undefined
   }
 
-  return { hash: hash, index: index, data: data }
+  return { assetId: assetId, index: index, data: data }
 }
 
 export function getArrayValue<T>(array: T[], index: number): T {

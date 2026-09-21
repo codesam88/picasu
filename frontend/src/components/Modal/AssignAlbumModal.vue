@@ -158,7 +158,7 @@ import { useMessageStore } from '@/store/messageStore'
 import { assignAlbum } from '@/api/assignAlbum'
 import { setTrashed } from '@/api/editFlags'
 import { createDirAlbum } from '@/api/createDirAlbum'
-import { getHashIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
+import { getAssetIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
 import { refreshGalleryAfterMutation } from '@/script/hook/usePrefetch'
 import type { AlbumInfo } from '@type/types'
 
@@ -181,7 +181,7 @@ const creating = ref(false)
 // The album the item(s) currently belong to (for single-item mode, from route context)
 const currentAlbumId = computed<string | null>(() => {
   if (modalStore.assignAlbumBatch) return null
-  const parsed = getHashIndexDataFromRoute(route)
+  const parsed = getAssetIndexDataFromRoute(route)
   if (!parsed) return null
   const { data } = parsed
   if (data.type !== 'image' && data.type !== 'video') return null
@@ -370,7 +370,7 @@ async function handleSubmit() {
       collectionStore.leaveEdit()
     } else {
       // Single item from route context
-      const parsed = getHashIndexDataFromRoute(route)
+      const parsed = getAssetIndexDataFromRoute(route)
       if (!parsed) return
       const { index } = parsed
 

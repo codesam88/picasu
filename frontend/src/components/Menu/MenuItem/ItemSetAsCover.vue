@@ -29,8 +29,8 @@ const setAsCover = async () => {
   }
 
   const data = dataStore.data.get(coverIndex)
-  const coverHash = data?.type === 'image' || data?.type === 'video' ? data.id : undefined
-  if (coverHash === undefined) {
+  const coverAssetId = data?.type === 'image' || data?.type === 'video' ? data.assetId : undefined
+  if (coverAssetId === undefined) {
     return
   }
 
@@ -44,7 +44,7 @@ const setAsCover = async () => {
     '/put/set_album_cover',
     {
       albumId: albumId,
-      coverHash: coverHash
+      coverAssetId: coverAssetId
     },
     {
       headers: {

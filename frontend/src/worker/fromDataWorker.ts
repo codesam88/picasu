@@ -44,8 +44,6 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
       const slicedDataArray: SlicedData[] = payload.slicedDataArray
       slicedDataArray.forEach(({ index, data, hashToken, assetId }) => {
         dataStore.data.set(index, data)
-        // Always store in hashMapData for URL routing by content hash
-        dataStore.hashMapData.set(data.id, index)
         // Store in assetIdMapData when assetId is available for asset-ID identity
         if (assetId !== undefined) {
           dataStore.assetIdMapData.set(assetId, index)
