@@ -7,7 +7,7 @@ use serde::Serialize;
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::error::{AppError, ErrorKind, OptionExt, ResultExt};
+use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::response::FileModify;
 use crate::router::auth::GuardAuth;
 use crate::router::{AppResult, GuardResult};
@@ -49,26 +49,29 @@ fn probe_enabled() -> bool {
 
 #[utoipa::path(
         get,
-        path = "/get/test/record/{hash}",
+        path = "/get/test/record/{asset_id}",
         responses(
             (status = 200, description = "Test-only record probe with the full alias list", body = TestRecordProbe),
-            (status = 400, description = "Invalid hash"),
+            (status = 400, description = "Invalid asset_id"),
             (status = 404, description = "Probe disabled or record not found"),
         )
     )
 ]
-#[get("/get/test/record/<hash>")]
-pub fn probe_record(auth: GuardResult<GuardAuth>, hash: &str) -> AppResult<Json<TestRecordProbe>> {
+#[get("/get/test/record/<asset_id>")]
+pub fn probe_record(
+    auth: GuardResult<GuardAuth>,
+    asset_id: &str,
+) -> AppResult<Json<TestRecordProbe>> {
     let _ = auth?;
 
     if !probe_enabled() {
         return Err(AppError::new(ErrorKind::NotFound, "Not Found"));
     }
 
-    let hash = ArrayString::<64>::from(hash).map_err(|_| {
+    let asset_id = ArrayString::<64>::from(asset_id).map_err(|_| {
         AppError::new(
             ErrorKind::InvalidInput,
-            format!("Invalid record hash: {hash}"),
+            format!("Invalid asset_id: {asset_id}"),
         )
     })?;
 
@@ -80,26 +83,15 @@ pub fn probe_record(auth: GuardResult<GuardAuth>, hash: &str) -> AppResult<Json<
         .open_table(DATA_TABLE)
         .or_raise(|| (ErrorKind::Database, "Failed to open DATA_TABLE"))?;
 
-    // Try by asset_id first, then fall back to hash lookup.
-    let abstract_data = if let Ok(Some(record)) = table.get(hash.as_str()) {
-        record.value()
-    } else {
-        // Hash might be a content hash — resolve via DUPE_INDEX.
-        let asset_id = crate::storage::asset_store::get_dupe_ids(hash.as_str())
-            .ok()
-            .and_then(|ids| ids.into_iter().next());
-        match asset_id {
-            Some(aid) => table
-                .get(&*aid)
-                .or_raise(|| (ErrorKind::Database, "Failed to read record from DATA_TABLE"))?
-                .or_raise(|| (ErrorKind::NotFound, "Record not found"))?
-                .value(),
-            None => return Err(AppError::new(ErrorKind::NotFound, "Record not found")),
-        }
-    };
+    // Look up by asset_id only — no hash fallback.
+    let abstract_data = table
+        .get(&*asset_id)
+        .or_raise(|| (ErrorKind::Database, "Failed to read record from DATA_TABLE"))?
+        .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Record not found"))?
+        .value();
 
     Ok(Json(TestRecordProbe {
-        hash,
+        hash: asset_id,
         aliases: abstract_data.alias().to_vec(),
     }))
 }

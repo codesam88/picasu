@@ -25,7 +25,7 @@ when:
       alias: "${data_path}/e2e_self/a/photo.jpg"
     then:
       - response.status: 200
-  - call: GET /get/test/record/${p}
+  - call: GET /get/test/record/${p_asset}
 then:
   - response.status: 200
   - response.json.aliases.[0].file: "${data_path}/e2e_self/a/photo.jpg"
