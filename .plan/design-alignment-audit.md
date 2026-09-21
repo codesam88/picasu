@@ -102,12 +102,6 @@ audit and should be tracked separately:
 
 - `get_test_probe.rs` — still uses hash-based DUPE_INDEX resolution
 
-### Frontend
-
-- `hashMapData` dual map still exists for URL routing
-- Routes still use `:hash` param
-- `getHashIndexDataFromRoute` uses hashMapData
-
 ### Completed in this audit
 
 #### Commit: Backend delete — replace aliasList/index deletion with asset-ID deletion
@@ -119,3 +113,37 @@ audit and should be tracked separately:
 - Remove 7 obsolete alias-level deletion scenarios
 - Update 13 scenarios to use `asset_ids` instead of indices/aliasList
 - Add `delete_by_asset_id` scenario for new API coverage
+
+#### Commit: Frontend Slice 1 — replace hashMapData with assetIdMapData
+
+- Remove `hashMapData` from `dataStore.ts`, use `assetIdMapData` exclusively
+- `fromDataWorker`: store by `assetId` only, not content hash
+- `getHashIndexDataFromRoute` → `getAssetIndexDataFromRoute`, use `assetIdMapData`
+- `ViewPage`: use `assetIdMapData` for index lookup, `assetId` for navigation
+- `refreshAlbumMetadata`, `createAlbums`: use `assetIdMapData`
+- `ItemRegenerateThumbnailByFrame`: use `assetId` directly from route
+- `rotate.ts`: send `assetId` to backend `rotate-image` endpoint
+- `ItemSetAsCover`: send `coverAssetId` to backend `set_album_cover` endpoint
+
+#### Commit: Frontend Slice 2 — rename route param :hash to :assetId
+
+- `createRoute`, `routes`, `shareRoute`: change `:hash` to `:assetId` in paths
+- All View/Display/Metadata components use `route.params.assetId`
+- `usePrefetch`: use `route.params.assetId` for locate
+
+#### Commit: Frontend Slice 3 — rename hash props to assetId
+
+- `SingleMenu`, `ShareMenu`, `AlbumMenu`: rename `hash` prop to `assetId`
+- `ItemFindInTimeline`, `ItemViewOriginalFile`: rename `hash` prop to `assetId`
+- `Display`, `DisplayDesktop`, `DisplayMobile`: rename `hash` prop to `assetId`
+- `MetadataContent`, `ViewPageMetadata`: rename `hash` prop to `assetId`
+- Compressed thumbnail URLs still use content hash (`abstractData.id`)
+
+## Remaining Legitimate Hash Uses
+
+Content hash is used only for:
+
+1. Compressed thumbnail URLs (`/object/compressed/{hash[0:2]}/{hash}.jpg`)
+2. `DisplayDatabaseVideo` video URL construction
+3. `DUPE_INDEX` grouping (backend)
+4. Album cover content hash for thumbnail path resolution
