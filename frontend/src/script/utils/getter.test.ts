@@ -22,4 +22,12 @@ describe('getSrc', () => {
     const result = getSrc('abc123', false, 'jpg', 1700000000000, 'asset_xyz')
     expect(result).toBe('/object/compressed/ab/abc123.jpg?updated_at=1700000000000')
   })
+
+  test('album cover thumbnail URL uses content hash, not asset_id', () => {
+    const coverAssetId = 'album_cover_asset_id_abc'
+    const coverContentHash = 'real_content_hash_xyz'
+    const result = getSrc(coverContentHash, false, 'jpg', 1700000000000)
+    expect(result).toBe('/object/compressed/re/real_content_hash_xyz.jpg?updated_at=1700000000000')
+    expect(result).not.toContain(coverAssetId)
+  })
 })

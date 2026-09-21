@@ -159,4 +159,61 @@ describe('databaseTimestampSchema', () => {
     expect(result.assetId).toBe('asset_album')
     expect(result.abstractData.type).toBe('album')
   })
+
+  test('album coverHash is preserved when present', () => {
+    const input = {
+      abstractData: {
+        type: 'album' as const,
+        id: 'album_hash',
+        pending: false,
+        title: 'Test Album',
+        startTime: 1700000000000,
+        endTime: 1700000001000,
+        lastModifiedTime: 1700000001000,
+        cover: 'cover_asset_id',
+        coverHash: 'cover_content_hash',
+        itemCount: 5,
+        itemSize: 1024000,
+        tags: [],
+        shareList: {}
+      },
+      timestamp: 1700000000000,
+      token: 'tok_album',
+      assetId: 'asset_album'
+    }
+
+    const result = databaseTimestampSchema.parse(input)
+    expect(result.abstractData.type).toBe('album')
+    if (result.abstractData.type === 'album') {
+      expect(result.abstractData.cover).toBe('cover_asset_id')
+      expect(result.abstractData.coverHash).toBe('cover_content_hash')
+    }
+  })
+
+  test('album coverHash defaults to null when absent', () => {
+    const input = {
+      abstractData: {
+        type: 'album' as const,
+        id: 'album_hash',
+        pending: false,
+        title: 'Test Album',
+        startTime: 1700000000000,
+        endTime: 1700000001000,
+        lastModifiedTime: 1700000001000,
+        cover: 'cover_asset_id',
+        itemCount: 5,
+        itemSize: 1024000,
+        tags: [],
+        shareList: {}
+      },
+      timestamp: 1700000000000,
+      token: 'tok_album',
+      assetId: 'asset_album'
+    }
+
+    const result = databaseTimestampSchema.parse(input)
+    if (result.abstractData.type === 'album') {
+      expect(result.abstractData.coverHash).toBeNull()
+    }
+  })
 })
