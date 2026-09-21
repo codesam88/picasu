@@ -14,13 +14,13 @@ import { IsolationId } from '@/type/types'
 
 const props = defineProps<{
   src: string
-  hash: string
+  assetId: string
   isolationId: IsolationId
 }>()
 const tokenStore = useTokenStore(props.isolationId)
 
 async function handleClick() {
-  await tokenStore.tryRefreshAndStoreTokenToDb(props.hash)
+  await tokenStore.tryRefreshAndStoreTokenToDb(props.assetId)
   window.open(props.src, '_blank')
 }
 </script>

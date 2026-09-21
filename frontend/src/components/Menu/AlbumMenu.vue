@@ -15,7 +15,7 @@
             <EditAlbums label="Restore to Album..." />
           </template>
           <template v-else>
-            <FindInTimeline :hash="props.hash" />
+            <FindInTimeline :asset-id="props.assetId" />
             <v-divider></v-divider>
             <EditTags />
             <Delete :index-list="[props.index]" />
@@ -37,7 +37,7 @@ import Restore from '@Menu/MenuItem/ItemRestore.vue'
 
 const props = defineProps<{
   isolationId: IsolationId
-  hash: string
+  assetId: string
   index: number
   album: GalleryAlbum
 }>()

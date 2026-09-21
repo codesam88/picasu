@@ -20,7 +20,7 @@
               <ViewPageDisplay
                 :abstract-data="abstractData"
                 :index="index"
-                :hash="assetId"
+                :asset-id="assetId"
                 isolation-id="mainId"
               />
             </div>
@@ -30,7 +30,7 @@
             class="view-modal-sidepane bg-surface elevation-4 elevation-overlay"
             :abstract-data="abstractData"
             :index="index"
-            :hash="assetId"
+            :asset-id="assetId"
             isolation-id="mainId"
           />
           <div class="view-modal-controls">
@@ -60,7 +60,7 @@
               "
               :database="abstractData"
               :index="index"
-              :hash="assetId"
+              :asset-id="assetId"
               isolation-id="mainId"
             />
             <v-tooltip location="top" text="Close">

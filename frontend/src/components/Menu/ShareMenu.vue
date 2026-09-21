@@ -11,16 +11,8 @@
         </template>
         <v-list>
           <ItemViewOriginalFile
-            :src="
-              getSrcOriginal(
-                database.id,
-                true,
-                database.ext,
-                database.updateAt,
-                (database as { assetId?: string }).assetId
-              )
-            "
-            :hash="database.id"
+            :src="getSrcOriginal(database.id, true, database.ext, database.updateAt, props.assetId)"
+            :asset-id="props.assetId"
             :isolation-id="props.isolationId"
           />
           <ItemDownload :index-list="[props.index]" />
@@ -37,7 +29,7 @@ import ItemViewOriginalFile from '@Menu/MenuItem/ItemViewOriginalFile.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
 const props = defineProps<{
   isolationId: IsolationId
-  hash: string
+  assetId: string
   index: number
   database: GalleryImage | GalleryVideo
 }>()

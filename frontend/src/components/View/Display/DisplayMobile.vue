@@ -48,7 +48,7 @@
                 !configStore.disableImg
               "
               :index="index"
-              :hash="hash"
+              :hash="abstractData.id"
               :abstract-data="abstractData"
               :isolation-id="isolationId"
               :enable-watch="false"
@@ -116,7 +116,7 @@
               !configStore.disableImg
             "
             :index="index"
-            :hash="hash"
+            :hash="abstractData.id"
             :abstract-data="abstractData"
             :isolation-id="isolationId"
             :enable-watch="true"
@@ -161,7 +161,7 @@ import { Swiper, SwiperSlide } from 'swiper/vue'
 
 const props = defineProps<{
   isolationId: IsolationId
-  hash: string
+  assetId: string
   index: number
   abstractData: EnrichedUnifiedData | undefined
   previousHash: string | undefined

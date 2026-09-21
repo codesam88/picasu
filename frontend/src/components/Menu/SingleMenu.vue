@@ -20,12 +20,14 @@
           </template>
           <template v-else>
             <ItemViewOriginalFile
-              :src="getSrc(database.id, true, database.ext, database.updateAt)"
+              :src="
+                getSrcOriginal(database.id, true, database.ext, database.updateAt, props.assetId)
+              "
               :isolation-id="props.isolationId"
-              :hash="database.id"
+              :asset-id="props.assetId"
             />
             <ItemDownload :index-list="[props.index]" />
-            <ItemFindInTimeline :hash="props.hash" />
+            <ItemFindInTimeline :asset-id="props.assetId" />
             <v-divider></v-divider>
             <ItemEditTags />
             <ItemEditAlbums />
@@ -43,7 +45,7 @@
 <script setup lang="ts">
 import { mergeProps } from 'vue'
 import { GalleryImage, GalleryVideo, IsolationId } from '@type/types'
-import { getSrc } from '@utils/getter'
+import { getSrcOriginal } from '@utils/getter'
 import ItemViewOriginalFile from '@Menu/MenuItem/ItemViewOriginalFile.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'
 import ItemFindInTimeline from '@Menu/MenuItem/ItemFindInTimeline.vue'
@@ -58,7 +60,7 @@ import ItemRotateImage from '@Menu/MenuItem/ItemRotateImage.vue'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 const props = defineProps<{
   isolationId: IsolationId
-  hash: string
+  assetId: string
   index: number
   database: GalleryImage | GalleryVideo
 }>()
