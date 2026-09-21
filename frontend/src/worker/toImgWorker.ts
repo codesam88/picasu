@@ -92,8 +92,7 @@ const handler = createHandler<typeof toImgWorker>({
       const controller = new AbortController()
       controllerMap.set(event.index, controller)
 
-      // Use assetId for cache key when available, fall back to hash
-      const cacheKey = event.assetId ?? event.hash
+      const cacheKey = event.assetId
 
       // Layer 1: In-memory cache
       let blob = blobCache.get(cacheKey)
@@ -157,16 +156,14 @@ const handler = createHandler<typeof toImgWorker>({
     } catch (error) {
       if (axios.isCancel(error)) return
       // Purge potentially corrupt blob from caches so the next attempt re-fetches
-      const cacheKey = event.assetId ?? event.hash
-      void purgeFromCaches(cacheKey)
+      void purgeFromCaches(event.assetId)
       console.error(error)
     }
   },
 
   async processImage(event: ProcessImagePayload) {
     try {
-      // Use assetId for cache key when available, fall back to hash
-      const cacheKey = event.assetId ?? event.hash
+      const cacheKey = event.assetId
 
       // Layer 1: In-memory cache
       let blob = blobCache.get(cacheKey)
@@ -216,8 +213,7 @@ const handler = createHandler<typeof toImgWorker>({
       postToMainImg.imageProcessed({ index: event.index, url: objectUrl })
     } catch (error) {
       // Purge potentially corrupt blob from caches so the next attempt re-fetches
-      const cacheKey = event.assetId ?? event.hash
-      void purgeFromCaches(cacheKey)
+      void purgeFromCaches(event.assetId)
       console.error(error)
     }
   },

@@ -145,6 +145,19 @@ audit and should be tracked separately:
 - `ItemPermanentlyDelete`: send `assetIds` instead of `deleteList`/`aliasList`
 - Fix `dup_delete_one_leaves_other` scenario: restore `duplicate_of` directive
 
+#### Commit: Remove frontend backward-compatibility fallback
+
+- `schemas.ts`: `assetId` required in `databaseTimestampSchema` (was optional)
+- `types.ts`: `assetId` required in `EnrichedUnifiedData` and `SlicedData`
+- `getter.ts`: `getSrc` throws when `assetId` missing for original URLs
+- `workerApi.ts`: `assetId` required in `ProcessSmallImagePayload`/`ProcessImagePayload`
+- `toImgWorker.ts`: remove `assetId ?? hash` fallback, use `assetId` directly
+- `fromDataWorker.ts`: remove `if (assetId !== undefined)` guards
+- `toDataWorker.ts`: use `EnrichedUnifiedData` type, import it
+- `createData.ts`: `enrichWithThumbhash` requires `assetId` in input
+- Remove dead `assetId === undefined` guards in components
+- Update tests: assert required-ID error, remove fallback expectations
+
 ## Remaining Legitimate Hash Uses
 
 Content hash is used only for:

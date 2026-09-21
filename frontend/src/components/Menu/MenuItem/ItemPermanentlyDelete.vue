@@ -26,20 +26,13 @@ const deleteData = async () => {
   if (timestamp === null) return
 
   await tryWithMessageStore('mainId', async () => {
-    const assetIds: string[] = []
-    for (const index of props.indexList) {
+    const assetIds: string[] = props.indexList.map((index) => {
       const item = dataStore.data.get(index)
-      if (item?.assetId !== undefined) {
-        assetIds.push(item.assetId)
-      } else {
-        console.warn(`Item at index ${index} has no assetId; skipping`)
+      if (!item) {
+        throw new Error(`Item at index ${index} not found in data store`)
       }
-    }
-
-    if (assetIds.length === 0) {
-      messageStore.error('No items with asset IDs to delete')
-      return
-    }
+      return item.assetId
+    })
 
     await axios.delete('/delete/delete-data', {
       data: { assetIds, timestamp }

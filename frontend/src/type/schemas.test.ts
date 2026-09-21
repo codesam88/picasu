@@ -32,7 +32,7 @@ describe('databaseTimestampSchema', () => {
     expect(result.abstractData.id).toBe('abc123')
   })
 
-  test('assetId is optional and defaults to undefined', () => {
+  test('rejects when assetId is missing', () => {
     const input = {
       abstractData: {
         type: 'image' as const,
@@ -54,8 +54,7 @@ describe('databaseTimestampSchema', () => {
       token: 'tok_123'
     }
 
-    const result = databaseTimestampSchema.parse(input)
-    expect(result.assetId).toBeUndefined()
+    expect(() => databaseTimestampSchema.parse(input)).toThrow()
   })
 
   test('two same-hash items with different assetId are distinguishable', () => {
@@ -115,8 +114,8 @@ describe('databaseTimestampSchema', () => {
         width: 1920,
         height: 1080,
         ext: 'mp4',
-        size: 50000,
-        duration: 30,
+        size: 1024000,
+        duration: 120,
         tags: [],
         exifVec: {},
         isFavorite: false,
@@ -141,19 +140,14 @@ describe('databaseTimestampSchema', () => {
         type: 'album' as const,
         id: 'album_hash',
         pending: false,
-        title: 'Vacation',
-        startTime: null,
-        endTime: null,
-        lastModifiedTime: 1700000000000,
-        cover: null,
+        title: 'Test Album',
+        startTime: 1700000000000,
+        endTime: 1700000001000,
+        lastModifiedTime: 1700000001000,
+        cover: 'cover_hash',
         itemCount: 5,
-        itemSize: 10240,
+        itemSize: 1024000,
         tags: [],
-        exifVec: {},
-        isFavorite: false,
-        isArchived: false,
-        rating: null,
-        updateAt: 0,
         shareList: {}
       },
       timestamp: 1700000000000,

@@ -61,6 +61,7 @@ export async function refreshAlbumMetadata(albumId: string) {
       postToWorker.processImage({
         index: albumIndex,
         hash: coverHash,
+        assetId: coverHash, // Album covers use content hash as identity
         devicePixelRatio: window.devicePixelRatio,
         albumId: shareStore.albumId,
         shareId: shareStore.shareId,
@@ -73,6 +74,7 @@ export async function refreshAlbumMetadata(albumId: string) {
       postToWorker.processSmallImage({
         index: albumIndex,
         hash: coverHash,
+        assetId: coverHash, // Album covers use content hash as identity
         width: 300,
         height: 300,
         devicePixelRatio: window.devicePixelRatio,

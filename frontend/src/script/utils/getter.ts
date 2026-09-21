@@ -127,11 +127,16 @@ export function getSrc(
   assetId?: string
 ) {
   const compressedOrImported = original ? 'imported' : 'compressed'
-  // For original files, use assetId when available (backend resolves by assetId first)
+  // For original files, assetId is required (backend resolves by assetId)
   // For compressed files, always use content hash (backend stores by content hash)
-  const id = original && assetId !== undefined ? assetId : hash
-  const basePath = `/object/${compressedOrImported}/${id.slice(0, 2)}/${id}.${ext}`
-
+  if (original) {
+    if (assetId === undefined) {
+      throw new Error('assetId is required for original file URLs')
+    }
+    const basePath = `/object/${compressedOrImported}/${assetId.slice(0, 2)}/${assetId}.${ext}`
+    return `${basePath}?updated_at=${updatedAt}`
+  }
+  const basePath = `/object/${compressedOrImported}/${hash.slice(0, 2)}/${hash}.${ext}`
   return `${basePath}?updated_at=${updatedAt}`
 }
 
