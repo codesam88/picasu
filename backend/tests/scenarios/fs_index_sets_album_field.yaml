@@ -1,0 +1,31 @@
+name: filesystem-indexed photo gets album field from parent dir
+# Photos indexed from the filesystem (not uploaded) must have their album
+# field set to the parent directory's dir-album, so album-contents page
+# filters can find them.
+given:
+  - dir_album: /e2e_fs_album/parent
+    id_as: $album
+  - photo: /e2e_fs_album/parent/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_fs_album"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Verify the photo's album field is set to the parent album.
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+      token: response.token
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.[0].abstractData.album: "${album}"
