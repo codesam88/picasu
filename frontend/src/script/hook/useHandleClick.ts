@@ -47,13 +47,17 @@ export function useHandleClick(
       const dataStore = useDataStore(isolationId)
       const abstractData = dataStore.data.get(currentIndex)
       if (abstractData) {
-        const hashOrId = abstractData.id
+        // Use assetId for view page navigation — assetIdMapData is keyed by
+        // assetId, not content hash.  abstractData.id is the content hash for
+        // media items (required for compressed thumbnail path resolution) but
+        // the view route and identity map both expect the asset ID.
+        const identity = abstractData.type === 'album' ? abstractData.id : abstractData.assetId
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (hashOrId !== undefined) {
+        if (identity !== undefined) {
           const page =
             abstractData.type === 'album'
-              ? { name: 'album', params: { albumHash: hashOrId }, query: route.query }
-              : route.meta.getChildPage(route, hashOrId)
+              ? { name: 'album', params: { albumHash: identity }, query: route.query }
+              : route.meta.getChildPage(route, identity)
           router
             .push(page)
 
@@ -63,7 +67,7 @@ export function useHandleClick(
             })
         } else {
           console.error('Abstract Data Details:', abstractData)
-          throw new Error('Navigation failed: "abstractData.id" is undefined.')
+          throw new Error('Navigation failed: identity is undefined.')
         }
       } else {
         console.warn(`abstractData with index ${currentIndex} is not fetched.`)
