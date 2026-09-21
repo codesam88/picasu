@@ -33,13 +33,9 @@ when:
   - call: POST /get/prefetch?locate=${parent_album}
     capture:
       ts2: response.prefetch.timestamp
-      idx2: response.prefetch.locateTo
-      token2: response.token
-    calc:
-      end2: "${idx2}+1"
-  # Delete the parent album (null alias = full record removal).
+  # Delete the parent album by asset_id.
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[${idx2}],"aliasList":[null],"timestamp":${ts2}}'
+    raw_body: '{"assetIds":["${parent_album}"],"timestamp":${ts2}}'
     then:
       - response.status: 200
   # Re-index after delete.

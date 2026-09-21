@@ -7,9 +7,6 @@ given:
     id_as: $album
   - photo: /dup_delete/album/photo.jpg
     id_as: $photo
-  - duplicate_of:
-      source: /dup_delete/album/photo.jpg
-      destination: /dup_delete/album/copy.jpg
 
 when:
   # Index both files.
@@ -30,11 +27,10 @@ when:
     headers:
       Authorization: "Bearer ${token}"
     capture:
-      first_alias: response.[0].abstractData.alias.[0].file
-      second_alias: response.[1].abstractData.alias.[0].file
-  # Delete the first record.
+      first_asset_id: response.[0].assetId
+  # Delete the first record by asset_id.
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[0],"aliasList":["${first_alias}"],"timestamp":${ts}}'
+    raw_body: '{"assetIds":["${first_asset_id}"],"timestamp":${ts}}'
     then:
       - response.status: 200
   # Re-index after the delete.

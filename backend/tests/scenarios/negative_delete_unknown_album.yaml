@@ -1,4 +1,4 @@
-name: "negative: deleting unknown album index returns error"
+name: "negative: deleting unknown asset_id returns error"
 given:
   - dir_album: /e2e_neg_album/album
     id_as: $album
@@ -8,14 +8,13 @@ when:
     then:
       - response.status: 202
   - wait_index: true
-  # Attempt to delete a non-existent index.
+  # Attempt to delete a non-existent asset_id.
   - call: POST /get/prefetch
     body: { Album: "${album}" }
     capture:
       ts: response.prefetch.timestamp
-      token: response.token
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[999],"timestamp":${ts}}'
+    raw_body: '{"assetIds":["nonexistent_asset_id_12345"],"timestamp":${ts}}'
 then:
-  # Out-of-bounds index returns 500 (Database Error).
-  - response.status: 500
+  # Unknown asset_id returns 404.
+  - response.status: 404

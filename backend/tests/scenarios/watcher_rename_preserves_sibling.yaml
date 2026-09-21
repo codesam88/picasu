@@ -22,19 +22,9 @@ when:
   - call: POST /get/prefetch?locate=${original_id}
     capture:
       ts: response.prefetch.timestamp
-      idx: response.prefetch.locateTo
-      token: response.token
-    calc:
-      end: "${idx}+1"
-  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
-    auth: false
-    headers:
-      Authorization: "Bearer ${token}"
-    capture:
-      orig_alias: response.[0].abstractData.alias.[0].file
-  # Delete original.jpg.
+  # Delete original.jpg by asset_id.
   - call: DELETE /delete/delete-data
-    raw_body: '{"deleteList":[${idx}],"aliasList":["${orig_alias}"],"timestamp":${ts}}'
+    raw_body: '{"assetIds":["${original_id}"],"timestamp":${ts}}'
     then:
       - response.status: 200
   # Re-index.
