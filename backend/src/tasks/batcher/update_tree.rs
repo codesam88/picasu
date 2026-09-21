@@ -6,12 +6,10 @@ use crate::storage::db::open_data_table;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::actor::album::album_task;
 use crate::tasks::batcher::update_expire::UpdateExpireTask;
-use arrayvec::ArrayString;
 use chrono::Utc;
 use log::warn;
 use mini_executor::BatchTask;
 use rayon::prelude::ParallelSliceMut;
-use redb::ReadableTable;
 use std::time::Instant;
 
 pub struct UpdateTreeTask;
@@ -217,135 +215,4 @@ fn minimal_abstract_data(
             AbstractData::Album(crate::model::album::AlbumCombined { object, metadata })
         }
     }
-}
-
-/// Sync the path-primary asset tables (`ASSET_BY_PATH`, `ASSET_BY_ID`, `DUPE_INDEX`)
-/// from the legacy `DATA_TABLE`. Each alias path gets its own asset record.
-/// Uses deterministic asset IDs derived from the canonical path to avoid
-/// flakiness across runs.
-#[allow(dead_code)]
-fn sync_asset_tables_from_data_table() {
-    use crate::model::abstract_data::AbstractData;
-    use crate::model::asset::{AssetKind, AssetRecord};
-    use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX};
-
-    let data_table = open_data_table();
-
-    // Clear existing asset tables.
-    for table_def in [ASSET_BY_PATH, ASSET_BY_ID, DUPE_INDEX] {
-        if let Ok(txn) = TREE.in_disk.begin_write() {
-            if let Ok(table) = txn.open_table(table_def) {
-                let keys: Vec<String> = table
-                    .iter()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
-                    .collect();
-                drop(table);
-                if let Ok(mut table) = txn.open_table(table_def) {
-                    for key in &keys {
-                        let _ = table.remove(key.as_str());
-                    }
-                }
-            }
-            let _ = txn.commit();
-        }
-    }
-
-    // Populate from DATA_TABLE.
-    let Ok(txn) = TREE.in_disk.begin_write() else {
-        return;
-    };
-    let Ok(mut path_table) = txn.open_table(ASSET_BY_PATH) else {
-        return;
-    };
-    let Ok(mut id_table) = txn.open_table(ASSET_BY_ID) else {
-        return;
-    };
-    let Ok(mut dupe_table) = txn.open_table(DUPE_INDEX) else {
-        return;
-    };
-
-    let Ok(iter) = data_table.iter() else {
-        return;
-    };
-
-    for entry in iter.flatten() {
-        let abstract_data = entry.1.value();
-        let content_hash = abstract_data.hash();
-
-        let (kind, aliases) = match &abstract_data {
-            AbstractData::Image(img) => (AssetKind::Image, &img.metadata.alias),
-            AbstractData::Video(vid) => (AssetKind::Video, &vid.metadata.alias),
-            AbstractData::Album(_) => (AssetKind::Album, &Vec::new()),
-        };
-
-        for alias in aliases {
-            // Derive deterministic asset_id from the canonical path.
-            let asset_id = deterministic_id(&alias.file);
-
-            let record = AssetRecord {
-                asset_id,
-                kind,
-                canonical_path: alias.file.clone(),
-                content_hash: Some(content_hash),
-                file_size: 0,
-                ext: String::new(),
-                modified: alias.modified,
-                scan_time: alias.scan_time,
-                is_trashed: alias.is_trashed,
-                album_id: None,
-            };
-
-            if let Ok(json) = serde_json::to_string(&record) {
-                let _ = path_table.insert(alias.file.as_str(), &*asset_id);
-                let _ = id_table.insert(&*asset_id, json.as_str());
-            }
-
-            // Add to DUPE_INDEX.
-            let dupe_key = content_hash.as_str();
-            let existing: Vec<String> = dupe_table
-                .get(dupe_key)
-                .ok()
-                .flatten()
-                .map(|g| serde_json::from_str(g.value()).unwrap_or_default())
-                .unwrap_or_default();
-            let mut ids = existing;
-            if !ids.iter().any(|id| id == &*asset_id) {
-                ids.push(asset_id.to_string());
-                if let Ok(json) = serde_json::to_string(&ids) {
-                    let _ = dupe_table.insert(dupe_key, json.as_str());
-                }
-            }
-        }
-
-        // Create album asset for directory albums.
-        if let AbstractData::Album(album) = &abstract_data
-            && !album.metadata.dir_path.is_empty()
-        {
-            let asset_id = deterministic_id(&album.metadata.dir_path);
-            let record = AssetRecord::new_album(album.metadata.dir_path.clone());
-            let record = AssetRecord { asset_id, ..record };
-            if let Ok(json) = serde_json::to_string(&record) {
-                let _ = path_table.insert(album.metadata.dir_path.as_str(), &*asset_id);
-                let _ = id_table.insert(&*asset_id, json.as_str());
-            }
-        }
-    }
-
-    drop((path_table, id_table, dupe_table));
-    let _ = txn.commit();
-}
-
-/// Generate a deterministic asset ID from a path string.
-/// Uses blake3 hash of the path, truncated to 64 chars.
-#[allow(dead_code)]
-fn deterministic_id(path: &str) -> ArrayString<64> {
-    use blake3::Hasher;
-    let mut hasher = Hasher::new();
-    hasher.update(path.as_bytes());
-    let hash = hasher.finalize();
-    let hex = hash.to_hex();
-    ArrayString::from(&hex.as_str()[..64.min(hex.len())])
-        .unwrap_or_else(|_| ArrayString::from("fallback").unwrap())
 }
