@@ -382,7 +382,7 @@ The watcher code is already path-primary by design:
 
 ### Remaining work
 
-- modify one duplicate's bytes and verify DUPE_INDEX membership
+- modify one duplicate's bytes and verify DUPE_INDEX membership (requires file-overwrite fixture)
 - sidecar change and missing sidecar reconciliation
 - partial/canceled scan edge cases (may need Playwright tier)
 - durable operation journal (only if tests demonstrate rebuild/reconciliation is insufficient)
@@ -414,15 +414,22 @@ move, delete, refresh, pagination, and original serving.
 7. Remove hash fallback: require assetId for media items — `59e82a5c`
 8. Playwright: duplicate move, refresh, pagination, original serving — `d89d9fe7`
 
-## Phase 10: Remove Old Identity Code
+## Phase 10: Remove Old Identity Code — IN PROGRESS
 
-After all functional tests pass:
+### Completed
 
-- remove `AbstractData` alias-list identity behavior;
-- remove hash-primary lookup helpers;
-- remove hash-based mutation request fields;
-- remove old hash-token frontend paths;
-- remove old database files and initialization paths;
-- keep only the new clean rebuild and new schema generation.
+- `get_test_probe.rs`: removed hash fallback, now uses asset_id only — `6746adc3`
+- `update_tree.rs`: removed dead `sync_asset_tables_from_data_table` and `deterministic_id` — `b8ae48db`
+- `transitor.rs`: removed dead `index_to_hash` and `hash_to_abstract_data` functions
+- `get_img.rs`: updated doc comment to reflect asset_id-only resolution — `d84e6d4a`
+- Frontend: renamed `RefreshHashTokenPayload.hash` to `assetId` — `49bc0bfb`
+- Rebuild tests: added stale dupe index, sidecar preservation, nested directory tests — `34ac853d`
+
+### Remaining
+
+- `DATA_TABLE` still exists as a rich metadata store (tags, exif, etc.) — this is legitimate
+- `asset_record_to_abstract_data` uses content hash for display_id — legitimate for compressed thumbnail paths
+- `ser_de.rs` legacy schema deserialization — needed for reading existing data
+- `alias.rs` alias-based operations — used by delete/trash, not for identity
 
 Run the complete project checks and API/UI scenario suites.
