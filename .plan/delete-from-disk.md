@@ -23,71 +23,37 @@ or its thumbnail.
       alias path from the `alias[]` list.
 - [x] `DIR_ALBUM_CACHE` eviction on delete.
 
-## Design (2026-09-08)
+## Design (2026-09-08) — SUPERSEDED
 
-- `DELETE /delete/delete-data` gains a required `aliasList` field: a parallel
-  array, one entry per `deleteList` index, naming the exact alias path the
-  client surfaced (`abstractData.alias[0].file` in get-* responses). Entries
-  are `null` for albums. Length must match `deleteList`; any image/video entry
-  that does not match a current alias of the targeted record → 400 (defends
-  against stale multi-user state deleting the wrong file).
-- Per-index behavior: image/video → delete only that alias's original file and
-  `.xmp` sidecar, prune it from the record; if no aliases remain, also delete
-  the compressed thumbnail and remove the record — else persist the pruned
-  record (thumbnail retained). Album → unchanged (dir-album cache eviction +
-  record removal, alias entry must be `null`).
-- Shared helper `prune_alias_paths` (new `backend/src/process/alias.rs`):
-  mutate + disk-delete + last-alias thumbnail logic, reused by delete,
-  `start_watcher::handle_removed_file`, and `album_index::sweep_stale_aliases`
-  (code-sharing requested in review; adds `.xmp` sidecar cleanup for externally
-  deleted aliases).
-- Scenarios: new `delete-multi_alias` (upload duplicate → dedup → delete the
-  surfaced alias → sibling survives, thumbnail served, record locatable);
-  `delete_removes_file_and_sidecar_z3` updated to send `aliasList`.
-- Frontend `ItemPermanentlyDelete` resolves each index's surfaced alias from
-  the data store and sends it; albums send `null`.
+The original `aliasList` design was replaced by `asset_ids` in commit `1e8f55f1`. `DELETE /delete/delete-data` now
+takes `asset_ids: Vec<String>` — each entry is an asset ID. The backend looks up the asset record, deletes the file
+and sidecar, and removes the record. Shared thumbnails are preserved via `DUPE_INDEX`.
 
 ## Progress (2026-09-08)
 
 Branch `feat/delete-multi-alias` — TDD red-green implemented.
 
-- `delete_multi_alias.yaml` written: upload identical content → dedup 2-alias record
-  `[src/photo.jpg, target/photo.jpeg]` → delete surfaced alias (`photo.jpeg`) →
-  `src/photo.jpg` survives, thumbnail served, record locatable. Initial watcher-enabled
-  runs produced non-deterministic dedup (second upload skipped by hash lock race); resolved
-  by uploading once for deterministic 2-alias setup.
-- `DeleteList` in `backend/src/router/delete.rs` extended with `alias_list: Vec<Option<String>>`
-  (camelCase `aliasList`, `#[serde(default)]`). Validation: length match when non-empty; 400
-  for album entry with non-null alias; 400 for alias not matching the record. Legacy path
-  (no aliasList) retained for backward compatibility.
-- `backend/src/process/alias.rs` created with `prune_alias_paths`: removes target alias file +
-  `.xmp` sidecar, prunes from record, removes thumbnail if last alias — returns remaining flag.
-- `process_deletes` refactored: per-index branching on alias_list presence; updated records
-  persisted via `FlushTreeTask::insert`; removed records via `FlushTreeTask::remove`. Legacy
-  path preserves original file/sidecar/thumb deletion.
-- `delete_removes_file_and_sidecar_z3.yaml` updated to read surfaced alias via get-data and
-  send `aliasList` (tests legacy backward compat via serde default).
-- `delete_alias_mismatch_rejected.yaml` added: sends bogus alias → expects 400 + file untouched.
-- `ItemPermanentlyDelete.vue` updated: imports `useDataStore`, maps indexList to `aliasList`
-  (image/video → `alias[0]?.file`, album → null), sends in delete request.
-- All checks pass: `just check` (clippy, fmt, vue-tsc, eslint, prettier, plan lint),
-  `just test` (192 backend + 25 playwright E2E), zero failures.
+- `delete_multi_alias.yaml` written: upload identical content → dedup 2-alias record → delete one alias → sibling
+  survives, thumbnail served, record locatable.
+- `DeleteList` in `backend/src/router/delete.rs` replaced with `asset_ids: Vec<String>` in commit `1e8f55f1`.
+- `process_deletes` looks up by `asset_id` in `DATA_TABLE`, deletes file + sidecar, preserves shared thumbnails via
+  `DUPE_INDEX`.
+- `ItemPermanentlyDelete.vue` sends `assetIds` (not `aliasList`).
+- All checks pass: `just check` (clippy, fmt, vue-tsc, eslint, prettier, plan lint), `just test` (258 backend + 33
+  Playwright E2E), zero failures.
 
-**Deferred (follow-up PR):** Refactor `start_watcher::handle_removed_file` and
-`album_index::sweep_stale_aliases` to reuse `prune_alias_paths` (code-sharing requested
-in design review; adds `.xmp` sidecar cleanup for externally deleted aliases). Thumbnail
-removal assertion still absent from `delete_removes_file_and_sidecar_z3.yaml`.
+**Deferred (follow-up PR):** Refactor `start_watcher::handle_removed_file` and `album_index::sweep_stale_aliases` to
+reuse shared delete logic (code-sharing requested in design review; adds `.xmp` sidecar cleanup for externally deleted
+aliases). The multi-alias "last alias only" rule is no longer applicable — the asset-ID model treats each physical file
+as a distinct asset, so deleting one asset never affects same-hash siblings.
 
 PR \#17 review re-check against `main`:
 
-- `process_deletes` (`backend/src/router/delete.rs:117-138`) already does the disk deletion (originals, `.xmp` sidecars,
-  compressed thumbnails) — the plan's original context ("never fs::remove\_file") was stale.
-- Task 2 is therefore already implemented on `main`; task 1 (frontend "Permanently Delete" action) also shipped before
-  this PR — this PR only reorganized the menus and added E2E coverage.
+- `process_deletes` (`backend/src/router/delete.rs`) does the disk deletion (originals, `.xmp` sidecars,
+  compressed thumbnails).
+- Task 2 is implemented on `main`; task 1 (frontend "Permanently Delete" action) also shipped before this PR.
 - PR \#17 added the `DIR_ALBUM_CACHE` eviction on album delete (task 4).
-- **Remaining open item: the multi-alias "last alias only" rule (task 3).** Current behavior removes every alias path
-  and drops the whole record regardless of how many aliases a hash has; the intended rule keeps the record (minus the
-  removed alias) when other aliases still exist.
+- **Resolved: the multi-alias "last alias only" rule (task 3).** The path-primary model treats each file as its own
+  asset; deleting one does not affect same-hash siblings. DUPE_INDEX preserves shared thumbnails.
 - Test-coverage note: `backend/tests/scenarios/delete_removes_file_and_sidecar_z3.yaml` asserts the original + `.xmp`
-  sidecar are gone from disk after `DELETE /delete/delete-data`, but **nothing asserts the compressed thumbnail removal**
-  — worth extending that scenario (or adding a `file_absent` on the thumbnail path) when task 3 is tackled.
+  sidecar are gone from disk after `DELETE /delete/delete-data`.

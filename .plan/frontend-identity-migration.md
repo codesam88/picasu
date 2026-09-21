@@ -7,19 +7,17 @@ area: frontend
 
 # Frontend Identity Migration — Correct Hash-Primary to AssetId-Primary
 
-## Problem
+## Problem — RESOLVED
 
-The frontend identity migration (Phase 9) is incomplete. While `assetId` has been
-added to the data pipeline (schema, worker, dataStore, getSrc), many parts of the
-frontend still use content hash as the primary identity:
+The frontend identity migration (Phase 9) was incomplete. All items below have been resolved:
 
-- `tokenStore.hashTokenMap` is keyed by `data.id` (content hash), not assetId
-- `serviceWorker` extracts hash from URL filename for token lookup — fails for
-  original URLs that now contain assetId
-- `assignAlbum()` sends `hash` to backend, not `asset_id`
-- `editStore` tracks rotation/regeneration by hash
-- `toImgWorker` blob cache keys and `getSrc` calls use hash
-- `ItemRegenerateThumbnailByFrame` uses route hash param
+- `tokenStore.assetTokenMap` is now keyed by `assetId` (was `hashTokenMap` by content hash)
+- Service worker extracts assetId from original URL filenames for token lookup
+- `assignAlbum()` sends `assetId` to backend (not `hash`)
+- `editStore` tracks rotation/regeneration by assetId
+- `toImgWorker` blob cache keys use assetId; `getSrc` uses content hash for compressed URLs
+- `ItemRegenerateThumbnailByFrame` uses assetId from data store
+- `useHandleClick` uses `abstractData.assetId` for view page navigation (not content hash)
 
 ## Constraints
 
