@@ -139,6 +139,12 @@ audit and should be tracked separately:
 - `MetadataContent`, `ViewPageMetadata`: rename `hash` prop to `assetId`
 - Compressed thumbnail URLs still use content hash (`abstractData.id`)
 
+#### Commit: Fix remaining hash-based route guard and delete request
+
+- `routes.ts`: change `to.params.hash` to `to.params.assetId` in title guard
+- `ItemPermanentlyDelete`: send `assetIds` instead of `deleteList`/`aliasList`
+- Fix `dup_delete_one_leaves_other` scenario: restore `duplicate_of` directive
+
 ## Remaining Legitimate Hash Uses
 
 Content hash is used only for:
