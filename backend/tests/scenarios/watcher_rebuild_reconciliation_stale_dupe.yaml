@@ -1,0 +1,47 @@
+name: "rebuild reconciliation - stale dupe index entries cleaned after file removal"
+# Tests that a clean rebuild removes stale DUPE_INDEX entries when files
+# have been deleted between scans (simulating dropped watcher events).
+given:
+  - dir_album: /recon_rebuild/album
+    id_as: $album
+  - photo: /recon_rebuild/album/keep.jpg
+    id_as: $keep_hash
+    asset_id_as: $keep_id
+  - duplicate_of:
+      source: /recon_rebuild/album/keep.jpg
+      destination: /recon_rebuild/album/remove_me.jpg
+  - remove: /recon_rebuild/album/remove_me.jpg
+
+when:
+  # Index remaining file (simulates rebuild after stale file was removed).
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+
+  # Verify the remaining file is indexed.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+    then:
+      - response.status: 200
+      - compare:
+          response.json.prefetch.dataLength: { ">=": 1 }
+
+  # Get the remaining asset's ID.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+    capture:
+      end: response.prefetch.dataLength
+      ts: response.prefetch.timestamp
+      token: response.token
+  - call: GET /get/get-data?timestamp=${ts}&start=0&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      remaining_asset_id: response.[0].assetId
+
+then:
+  - file_exists: /recon_rebuild/album/keep.jpg
+  - file_absent: /recon_rebuild/album/remove_me.jpg

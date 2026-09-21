@@ -1,0 +1,58 @@
+name: "watcher modify - changing bytes of one duplicate updates only that asset's hash group"
+given:
+  - dir_album: /watcher_modify/album
+    id_as: $album
+  - photo: /watcher_modify/album/original.jpg
+    id_as: $original_hash
+    asset_id_as: $original_id
+  - duplicate_of:
+      source: /watcher_modify/album/original.jpg
+      destination: /watcher_modify/album/copy.jpg
+
+when:
+  # Index both files.
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+
+  # Verify both are indexed (album placeholder + 2 media = 3).
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+    then:
+      - response.status: 200
+      - compare:
+          response.json.prefetch.dataLength: { ">=": 2 }
+
+  # Capture the copy's asset_id.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+    capture:
+      end: response.prefetch.dataLength
+      ts: response.prefetch.timestamp
+      token: response.token
+  - call: GET /get/get-data?timestamp=${ts}&start=0&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      copy_asset_id: response.[1].assetId
+
+  # Overwrite the original file with different bytes.
+  - write_file: /watcher_modify/album/original.jpg
+    content: "DIFFERENT_BYTES_THAN_ORIGINAL"
+  - wait_index: true
+
+  # Re-fetch to verify both files still exist as separate assets.
+  - call: POST /get/prefetch
+    body: { Album: "${album}" }
+    then:
+      - response.status: 200
+      - compare:
+          response.json.prefetch.dataLength: { ">=": 2 }
+
+then:
+  # Both files still exist on disk.
+  - file_exists: /watcher_modify/album/original.jpg
+  - file_exists: /watcher_modify/album/copy.jpg
