@@ -409,4 +409,146 @@ mod tests {
         clear_asset_tables().unwrap();
         fs::remove_dir_all(&empty_dir).unwrap();
     }
+
+    #[test]
+    fn rebuild_stale_dupe_index_cleaned_on_rebuild() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        ensure_asset_tables();
+
+        let image_home = test_image_home();
+        let album_dir = image_home.join("stale_dupe");
+        fs::create_dir_all(&album_dir).unwrap();
+
+        // Create a photo.
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(album_dir.join("photo.jpg").to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .unwrap();
+
+        // First rebuild.
+        let stats1 = rebuild_from_filesystem(&image_home).unwrap();
+        assert_eq!(stats1.media_created, 1);
+
+        let photo_id =
+            asset_store::get_asset_id_by_path(&album_dir.join("photo.jpg").to_string_lossy())
+                .unwrap()
+                .unwrap();
+        let record = asset_store::get_asset_by_id(&photo_id.to_string())
+            .unwrap()
+            .unwrap();
+        let hash = record.content_hash.unwrap();
+        let dupe_ids = asset_store::get_dupe_ids(&hash).unwrap();
+        assert_eq!(dupe_ids.len(), 1, "dupe group should have 1 entry");
+
+        // Delete the file.
+        fs::remove_file(album_dir.join("photo.jpg")).unwrap();
+
+        // Second rebuild — stale dupe entry should be cleaned.
+        let stats2 = rebuild_from_filesystem(&image_home).unwrap();
+        assert_eq!(stats2.media_created, 0, "no media after file deleted");
+
+        // DUPE_INDEX should be empty for this hash.
+        let dupe_ids_after = asset_store::get_dupe_ids(&hash).unwrap();
+        assert!(
+            dupe_ids_after.is_empty(),
+            "stale dupe entry should be removed after rebuild"
+        );
+
+        // Cleanup.
+        clear_asset_tables().unwrap();
+        fs::remove_dir_all(&album_dir).unwrap();
+    }
+
+    #[test]
+    fn rebuild_preserves_sidecar_files() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        ensure_asset_tables();
+
+        let image_home = test_image_home();
+        let album_dir = image_home.join("sidecar_test");
+        fs::create_dir_all(&album_dir).unwrap();
+
+        // Create a photo.
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(album_dir.join("photo.jpg").to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .unwrap();
+
+        // Create a sidecar file.
+        let sidecar_path = album_dir.join("photo.jpg.xmp");
+        fs::write(&sidecar_path, "<x:xmpmeta></x:xmpmeta>").unwrap();
+
+        let stats = rebuild_from_filesystem(&image_home).unwrap();
+        assert_eq!(stats.media_created, 1);
+
+        // Sidecar should still exist on disk after rebuild.
+        assert!(
+            sidecar_path.exists(),
+            "sidecar must not be deleted by rebuild"
+        );
+
+        // Cleanup.
+        clear_asset_tables().unwrap();
+        fs::remove_dir_all(&album_dir).unwrap();
+    }
+
+    #[test]
+    fn rebuild_nested_directories_become_album_assets() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        ensure_asset_tables();
+
+        let image_home = test_image_home();
+        let nested = image_home.join("a/b/c");
+        fs::create_dir_all(&nested).unwrap();
+
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(nested.join("deep.jpg").to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .unwrap();
+
+        let stats = rebuild_from_filesystem(&image_home).unwrap();
+
+        // image_root + a + a/b + a/b/c = 4 albums
+        assert!(stats.albums_created >= 4, "nested dirs must become albums");
+        assert_eq!(stats.media_created, 1);
+
+        // Each nested directory has an album asset.
+        for dir in ["a", "a/b", "a/b/c"] {
+            let album_id =
+                asset_store::get_asset_id_by_path(&image_home.join(dir).to_string_lossy()).unwrap();
+            assert!(
+                album_id.is_some(),
+                "directory {dir} must have an album asset"
+            );
+            let record = asset_store::get_asset_by_id(&album_id.unwrap().to_string())
+                .unwrap()
+                .unwrap();
+            assert_eq!(record.kind, AssetKind::Album);
+        }
+
+        // Cleanup.
+        clear_asset_tables().unwrap();
+        fs::remove_dir_all(&image_home.join("a")).unwrap();
+    }
 }
