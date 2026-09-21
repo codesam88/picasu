@@ -1,0 +1,31 @@
+name: album cover exposes asset_id and content hash
+given:
+  - dir_album: /e2e_cover_hash
+    id_as: $album
+  - photo: /e2e_cover_hash/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: PUT /put/assign_album
+    body:
+      assetId: "${asset_id}"
+      albumId: "${album}"
+      onConflict: "rename"
+      alias: "${data_path}/e2e_cover_hash/photo.jpg"
+    then:
+      - response.status: 200
+  - call: POST /get/prefetch?locate=${album}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.[0].abstractData.cover: "not_null"
+  - response.json.[0].coverHash: "not_null"

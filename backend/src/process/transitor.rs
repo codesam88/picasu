@@ -140,6 +140,22 @@ pub fn clear_abstract_data_metadata(
     }
 }
 
+/// Extract the cover image's content hash from an album's `AbstractData`.
+/// Returns `None` for media items or albums without a cover.
+/// Looks up the cover image by its `cover` `asset_id` in the data table
+/// and returns the image's `object.id` (content hash).
+pub fn cover_content_hash_from_data(
+    abstract_data: &AbstractData,
+    data_table: &ReadOnlyTable<&'static str, AbstractData>,
+) -> Option<ArrayString<64>> {
+    let cover_asset_id = match abstract_data {
+        AbstractData::Album(album) => album.metadata.cover?,
+        _ => return None,
+    };
+    let cover_data = asset_id_to_abstract_data(cover_asset_id, data_table).ok()?;
+    Some(cover_data.hash())
+}
+
 pub fn abstract_data_to_timestamp_return(
     mut abstract_data: AbstractData,
     timestamp: i64,
@@ -147,6 +163,7 @@ pub fn abstract_data_to_timestamp_return(
     show_metadata: bool,
     trashed_view: bool,
     asset_id: ArrayString<64>,
+    cover_content_hash: Option<ArrayString<64>>,
 ) -> DataBaseTimestampReturn {
     let result = DataBaseTimestampReturn::with_asset_id(
         abstract_data.clone(),
@@ -154,6 +171,7 @@ pub fn abstract_data_to_timestamp_return(
         timestamp,
         show_download,
         asset_id,
+        cover_content_hash,
     );
     clear_abstract_data_metadata(&mut abstract_data, show_metadata, trashed_view);
     DataBaseTimestampReturn {
@@ -161,5 +179,6 @@ pub fn abstract_data_to_timestamp_return(
         timestamp: result.timestamp,
         token: result.token,
         asset_id: asset_id.to_string(),
+        cover_hash: result.cover_hash,
     }
 }
