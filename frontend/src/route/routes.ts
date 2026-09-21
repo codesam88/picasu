@@ -153,12 +153,12 @@ router.afterEach((to) => {
   }
   const isView = typeof to.meta.isViewPage === 'boolean' ? to.meta.isViewPage : false
 
-  // When on a View page, append the hash to the title
+  // When on a View page, append the assetId to the title
   let suffix = ''
   if (isView) {
-    const maybeHash = typeof to.params.hash === 'string' ? to.params.hash : undefined
-    if (maybeHash != null && maybeHash !== '') {
-      suffix = `View ${maybeHash}`
+    const maybeAssetId = typeof to.params.assetId === 'string' ? to.params.assetId : undefined
+    if (maybeAssetId != null && maybeAssetId !== '') {
+      suffix = `View ${maybeAssetId}`
     } else {
       suffix = 'View'
     }

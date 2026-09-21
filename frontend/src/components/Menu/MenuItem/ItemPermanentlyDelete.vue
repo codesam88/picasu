@@ -26,16 +26,23 @@ const deleteData = async () => {
   if (timestamp === null) return
 
   await tryWithMessageStore('mainId', async () => {
-    const aliasList = props.indexList.map((index) => {
+    const assetIds: string[] = []
+    for (const index of props.indexList) {
       const item = dataStore.data.get(index)
-      if (item && (item.type === 'image' || item.type === 'video')) {
-        return item.alias[0]?.file ?? null
+      if (item?.assetId !== undefined) {
+        assetIds.push(item.assetId)
+      } else {
+        console.warn(`Item at index ${index} has no assetId; skipping`)
       }
-      return null
-    })
+    }
+
+    if (assetIds.length === 0) {
+      messageStore.error('No items with asset IDs to delete')
+      return
+    }
 
     await axios.delete('/delete/delete-data', {
-      data: { deleteList: props.indexList, aliasList, timestamp }
+      data: { assetIds, timestamp }
     })
     messageStore.success('Successfully deleted data.')
   })

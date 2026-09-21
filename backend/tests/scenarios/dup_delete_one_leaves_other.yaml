@@ -7,6 +7,9 @@ given:
     id_as: $album
   - photo: /dup_delete/album/photo.jpg
     id_as: $photo
+  - duplicate_of:
+      source: /dup_delete/album/photo.jpg
+      destination: /dup_delete/album/copy.jpg
 
 when:
   # Index both files.
