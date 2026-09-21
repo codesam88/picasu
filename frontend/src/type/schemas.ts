@@ -117,6 +117,7 @@ const AlbumSchemaRaw = BaseObjectRaw.extend({
   endTime: z.number().nullable(),
   lastModifiedTime: z.number(),
   cover: z.string().nullable(),
+  coverHash: z.string().nullable().optional(),
   itemCount: z.number(),
   itemSize: z.number(),
   shareList: z.record(z.string(), z.any()).default({})
@@ -128,6 +129,7 @@ const AlbumSchemaRaw = BaseObjectRaw.extend({
   endTime: data.endTime,
   lastModifiedTime: data.lastModifiedTime,
   cover: data.cover,
+  coverHash: data.coverHash ?? null,
   thumbhash: data.thumbhash,
   tags: data.tags,
   itemCount: data.itemCount,
