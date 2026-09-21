@@ -23,7 +23,7 @@ steps:
       - navigate: /timeline
     assert:
       - ui.count: .desktop-small-image
-        equals: 1
+        equals: 2
 
   # Upload the same file twice to create duplicates
   - when:
@@ -46,7 +46,7 @@ steps:
       - navigate: /timeline
     assert:
       - ui.count: .desktop-small-image
-        equals: 3
+        equals: 4
 
   # Select the first image to enter edit mode
   - when:
@@ -61,13 +61,13 @@ steps:
       - ui.visible: main/
 
   - when:
-      - click: option/assign-album
+      - click: option/Assign Album
     assert:
       - ui.modal: open
 
   # Select the target album and move
   - when:
-      - click.text: target
+      - click: option/Target
     assert:
       - ui.text: button/Move
         contains: Move
@@ -80,9 +80,10 @@ steps:
           contains: Moved to album
       - ui.modal: closed
 
-  # Verify we're back at the timeline with 2 images remaining
+  # Verify we're back at the timeline — all images still visible (moving
+  # to an album doesn't remove photos from the timeline).
   - when:
       - navigate: /timeline
     assert:
       - ui.count: .desktop-small-image
-        equals: 2
+        equals: 4

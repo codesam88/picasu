@@ -34,8 +34,13 @@ async function assertBackendAlive(backendUrl: string): Promise<void> {
 function resolveLocator(page: Page, roleLabel: string, vars: Record<string, string>): Locator {
   const resolved = interpolate(roleLabel, vars)
   const slashIdx = resolved.indexOf('/')
-  const role = resolved.slice(0, slashIdx) as any
+  const prefix = resolved.slice(0, slashIdx)
   const name = slashIdx === -1 ? undefined : resolved.slice(slashIdx + 1) || undefined
+  // testid/ is not an ARIA role — route to getByTestId instead.
+  if (prefix === 'testid' && name) {
+    return page.getByTestId(name)
+  }
+  const role = prefix as any
   return name ? page.getByRole(role, { name }) : page.getByRole(role)
 }
 
@@ -68,7 +73,22 @@ export async function executeWhen(
       await page.goBack()
     } else if ('click.text' in step) {
       const text = interpolate(step['click.text'], ctx.vars)
-      await page.locator('.parent').filter({ hasText: text }).first().click()
+      // Wait for the .parent tile containing the text to appear, then
+      // dispatch a synthetic click on its #click-handler child.
+      // The handler div has pointer-events:none so Playwright cannot
+      // click it directly.  Dispatching avoids pointer-event interception
+      // from thumbhash placeholders and the hover icon (which enters
+      // edit mode instead of navigating).
+      const tile = page.locator('.parent').filter({ hasText: text }).first()
+      await tile.waitFor({ timeout: 10000 })
+      const oldUrl = page.url()
+      await tile.locator('#click-handler').dispatchEvent('click')
+      // Wait for Vue Router navigation to complete.
+      try {
+        await page.waitForURL((url) => url.href !== oldUrl, { timeout: 5000 })
+      } catch {
+        // Navigation may not change the URL (e.g. same-page click). Continue.
+      }
     } else if ('click.icon' in step) {
       const iconClass = step['click.icon']
       for (let i = 0; i < 5; i++) {
