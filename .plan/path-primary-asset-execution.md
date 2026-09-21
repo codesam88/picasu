@@ -219,8 +219,7 @@ The asset tables will instead be populated synchronously during
 
 ### Token system — DONE
 
-- `ClaimsHash` has optional `asset_id` field (serde default, backward compatible)
-- `ClaimsHash::with_asset_id()` builder method
+- `ClaimsHash` has required `asset_id` field
 - `DataBaseTimestampReturn` exposes `asset_id` in JSON response
 - `DataBaseTimestampReturn::with_asset_id()` includes `asset_id` in token
 - `get_data` endpoint passes `asset_id` through to token generation
@@ -228,7 +227,7 @@ The asset tables will instead be populated synchronously during
 ### Locate — DONE
 
 - `compute_locate` uses `asset_id` only — no hash fallback
-- `ReducedData.asset_id` is `Option<ArrayString<64>>` (None for old-model entries)
+- `ReducedData.asset_id` is required `ArrayString<64>`
 - `discover_asset_id` test helper captures `asset_id` from `get-data` response
 - `asset_id_as` scenario field for capturing `asset_id` in `given` and `when` sections
 
@@ -252,13 +251,9 @@ The asset tables will instead be populated synchronously during
 
 ### assign_album — DONE
 
-- `AssignAlbumData` has optional `asset_id` field (serde default, backward
-  compatible)
-- `move_asset_into_album()` function moves exactly one physical file by
-  `asset_id` via `ASSET_BY_ID`/`ASSET_BY_PATH` lookup
-- `resolve_asset_id_from_hash()` resolves content hash + alias to asset_id
-  via DUPE_INDEX (with ASSET_BY_ID scan fallback)
-- When `asset_id` is absent, falls back to resolved asset_id from hash
+- `AssignAlbumData` has required `asset_id` field
+- `move_asset_into_album()` function moves exactly one physical file by `asset_id` via `ASSET_BY_ID`/`ASSET_BY_PATH`
+  lookup
 - `move_item_into_album` uses asset_id as DATA_TABLE key
 
 ### FlushTreeTask — DONE
@@ -394,7 +389,7 @@ move, delete, refresh, pagination, and original serving.
 7. Remove hash fallback: require assetId for media items — `59e82a5c`
 8. Playwright: duplicate move, refresh, pagination, original serving — `d89d9fe7`
 
-## Phase 10: Remove Old Identity Code — IN PROGRESS
+## Phase 10: Remove Old Identity Code — DONE
 
 ### Completed
 
