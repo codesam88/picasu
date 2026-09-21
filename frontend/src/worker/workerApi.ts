@@ -60,7 +60,7 @@ export interface RefreshTimestampTokenPayload {
 }
 
 export interface RefreshHashTokenPayload {
-  hash: string
+  assetId: string
   hashToken: string
 }
 

@@ -140,7 +140,7 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
     },
 
     refreshHashToken: (payload) => {
-      tokenStore.assetTokenMap.set(payload.hash, payload.hashToken)
+      tokenStore.assetTokenMap.set(payload.assetId, payload.hashToken)
     }
   })
 
