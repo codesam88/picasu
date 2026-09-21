@@ -78,7 +78,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { useTagStore } from '@/store/tagStore'
-import { getHashIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
+import { getAssetIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
 import { editTags } from '@/api/editTags'
 import { editFlags } from '@/api/editFlags'
 
@@ -138,10 +138,10 @@ const allItems = computed<ComboboxItem[]>(() => {
 
 onMounted(() => {
   const useSubmit = (): undefined | (() => Promise<void>) => {
-    const initializeResult = getHashIndexDataFromRoute(route)
+    const initializeResult = getAssetIndexDataFromRoute(route)
     if (initializeResult === undefined) {
       console.error(
-        "useSubmit Error: Failed to initialize result. 'getHashIndexDataFromRoute(route)' returned undefined."
+        "useSubmit Error: Failed to initialize result. 'getAssetIndexDataFromRoute(route)' returned undefined."
       )
       return undefined
     }

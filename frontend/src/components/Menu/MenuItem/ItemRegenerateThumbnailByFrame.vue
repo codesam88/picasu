@@ -11,7 +11,6 @@ import { getIsolationIdByRoute } from '@utils/getter'
 import { useCurrentFrameStore } from '@/store/currentFrameStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useEditStore } from '@/store/editStore'
-import { useDataStore } from '@/store/dataStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 const route = useRoute()
@@ -19,20 +18,10 @@ const isolationId = getIsolationIdByRoute(route)
 const currentFrameStore = useCurrentFrameStore(isolationId)
 const messageStore = useMessageStore('mainId')
 const editStore = useEditStore('mainId')
-const dataStore = useDataStore(isolationId)
 
 const regenerateThumbnailByFrame = async () => {
-  const hash = route.params.hash
-  if (typeof hash !== 'string') return
-
-  // Resolve assetId from data store
-  const index = dataStore.hashMapData.get(hash)
-  const data = index !== undefined ? dataStore.data.get(index) : undefined
-  const assetId = data?.assetId
-  if (assetId === undefined) {
-    messageStore.error('Item has no assetId; cannot regenerate')
-    return
-  }
+  const assetId = route.params.hash
+  if (typeof assetId !== 'string') return
 
   if (editStore.hasRegenerate(assetId)) return
 
@@ -43,8 +32,8 @@ const regenerateThumbnailByFrame = async () => {
       if (currentFrameBlob) {
         const formData = new FormData()
 
-        // Append the hash for backend compatibility
-        formData.append('hash', hash)
+        // Append the asset_id for backend
+        formData.append('asset_id', assetId)
 
         // Append the frame file
         formData.append('frame', currentFrameBlob)

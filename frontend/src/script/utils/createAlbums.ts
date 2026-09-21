@@ -19,7 +19,7 @@ export async function editTitle(album: GalleryAlbum, titleModelValue: string) {
       })
       const albumInfo = albumStore.albums.get(id)
 
-      const index = dataStore.hashMapData.get(album.id)
+      const index = dataStore.assetIdMapData.get(album.id)
       if (index !== undefined) {
         const data = dataStore.data.get(index)
 

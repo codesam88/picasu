@@ -14,7 +14,7 @@ export async function refreshAlbumMetadata(albumId: string) {
   const shareStore = useShareStore('mainId')
   const tokenStore = useTokenStore('mainId')
 
-  const albumIndex = dataStore.hashMapData.get(albumId)
+  const albumIndex = dataStore.assetIdMapData.get(albumId)
   if (albumIndex === undefined) {
     console.error(`cannot find albumIndex with albumId = ${albumId}`)
     return

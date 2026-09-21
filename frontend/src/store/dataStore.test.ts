@@ -42,18 +42,12 @@ describe('dataStore', () => {
       const assetId1 = 'asset_a'
       const assetId2 = 'asset_b'
 
-      // Simulate dual-map population
+      // Populate via assetIdMapData only (no hashMapData)
       dataStore.data.set(0, item1Data)
-      dataStore.hashMapData.set(item1Data.id, 0)
       dataStore.assetIdMapData.set(assetId1, 0)
 
       dataStore.data.set(1, item2Data)
-      dataStore.hashMapData.set(item2Data.id, 1) // overwrites hash map entry
       dataStore.assetIdMapData.set(assetId2, 1)
-
-      // hashMapData only has the last item for the same hash
-      const hashIndex = dataStore.hashMapData.get('same_hash_abc')
-      expect(hashIndex).toBe(1) // last one wins
 
       // assetIdMapData has both items with distinct indices
       const index1 = dataStore.assetIdMapData.get(assetId1)
@@ -76,12 +70,12 @@ describe('dataStore', () => {
       }
     })
 
-    test('items without assetId are not stored in assetIdMapData', () => {
+    test('assetIdMapData is the only identity map', () => {
       const dataStore = useDataStore('mainId')
 
       const itemData = {
         type: 'image' as const,
-        id: 'unique_hash_xyz',
+        id: 'content_hash_xyz',
         width: 100,
         height: 100,
         ext: 'jpg',
@@ -103,17 +97,58 @@ describe('dataStore', () => {
         timestamp: 1700000000000
       }
 
-      // No assetId provided
-      dataStore.data.set(0, itemData)
-      dataStore.hashMapData.set(itemData.id, 0)
-      // assetIdMapData is not populated
+      const assetId = 'asset_xyz'
 
-      // Should be retrievable by content hash in hashMapData
-      const index = dataStore.hashMapData.get('unique_hash_xyz')
+      // Store by assetId
+      dataStore.data.set(0, itemData)
+      dataStore.assetIdMapData.set(assetId, 0)
+
+      // Should be retrievable by assetId
+      const index = dataStore.assetIdMapData.get(assetId)
       expect(index).toBe(0)
 
-      // Should not be in assetIdMapData
+      // Should be retrievable by assetId
+      expect(dataStore.assetIdMapData.size).toBe(1)
+    })
+
+    test('clearAll clears all maps', () => {
+      const dataStore = useDataStore('mainId')
+
+      dataStore.data.set(0, {
+        type: 'image',
+        id: 'hash1',
+        width: 100,
+        height: 100,
+        ext: 'jpg',
+        size: 1024,
+        tags: [],
+        exif: {},
+        phash: [],
+        thumbhash: null,
+        pending: false,
+        album: null,
+        alias: [],
+        description: null,
+        isFavorite: false,
+        isArchived: false,
+        isTrashed: false,
+        rating: null,
+        updateAt: 0,
+        thumbhashUrl: null,
+        timestamp: 1700000000000
+      })
+      dataStore.assetIdMapData.set('asset1', 0)
+      dataStore.batchFetched.set(0, true)
+
+      expect(dataStore.data.size).toBe(1)
+      expect(dataStore.assetIdMapData.size).toBe(1)
+      expect(dataStore.batchFetched.size).toBe(1)
+
+      dataStore.clearAll()
+
+      expect(dataStore.data.size).toBe(0)
       expect(dataStore.assetIdMapData.size).toBe(0)
+      expect(dataStore.batchFetched.size).toBe(0)
     })
   })
 })
