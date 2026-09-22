@@ -419,5 +419,260 @@ Root causes resolved:
    `v-testid` sets `data-testid`, not an ARIA role.
 2. `click.text` handler clicked `.parent` center which landed on the hover icon (entering edit mode) or thumbhash
    placeholder (intercepting pointer events). Fixed by dispatching synthetic click on `#click-handler` div.
-3. `duplicate-move-independently` scenario: wrong option name casing, `click.text` used in modal instead of `click:
-option/`, expected counts didn't account for `dir_album` placeholder photo.
+3. `duplicate-move-independently` scenario: wrong option name casing, `click.text` used in modal instead of
+   `click: option/`, expected counts didn't account for `dir_album` placeholder photo.
+
+---
+
+## Audit Review — 2026-09-22
+
+### Feature completeness
+
+| Phase                       | Status     | Notes                                                                     |
+| --------------------------- | ---------- | ------------------------------------------------------------------------- |
+| Phase 0: Store              | ✅ Done    | Redb chosen, tables defined                                               |
+| Phase 1: Fixtures/scenarios | ✅ Done    | Backend helpers + 8 API scenarios                                         |
+| Phase 2: Data model         | ✅ Done    | `AssetKind`, `AssetRecord`, `DUPE_INDEX` — 21 unit tests                  |
+| Phase 3: Rebuild            | ✅ Done    | `rebuild_from_filesystem` — 8 unit tests                                  |
+| Phase 4: Indexing           | ⚠️ Partial | `index_asset` exists with 4 unit tests, but **no production callers**     |
+| Phase 5: Read path          | ✅ Done    | `build_from_asset_tables` reads `ASSET_BY_ID`, enriches from `DATA_TABLE` |
+| Phase 6: Serving/tokens     | ✅ Done    | Asset ID in tokens, routes, locate                                        |
+| Phase 7: Mutations          | ✅ Done    | Assign, delete, covers, thumbnails, recursive delete                      |
+| Phase 8: Watcher            | ✅ Done    | Path-based events, 9 watcher scenarios                                    |
+| Phase 9: Frontend           | ✅ Done    | `assetIdMapData` sole identity, 8 Playwright scenarios                    |
+| Phase 10: Cleanup           | ✅ Done    | Legacy functions removed                                                  |
+
+### Key gaps
+
+1. **`index_asset` is dead code** — defined in `process/index_asset.rs` with 4 unit tests, but never called from
+   production. The `#[allow(dead_code)]` annotation masks the warning. The production indexing pipeline
+   (`workflow::index_image` → `DeduplicateTask` → `IndexTask`) still constructs `AbstractData` from the old
+   hash-based `AbstractData::new(&path, hash)` shape.
+
+2. **`rebuild_from_filesystem` is dead code** — defined in `process/rebuild.rs` with 8 unit tests, but never called
+   from production. No CLI command or startup hook invokes it. The `#[allow(dead_code)]` annotation masks the warning.
+
+3. **`DeduplicateTask` uses old model** — constructs `AbstractData::new(&path, hash)` which bypasses `AssetRecord`
+   entirely. The deduplication path does not populate `ASSET_BY_PATH`, `ASSET_BY_ID`, or `DUPE_INDEX`.
+
+4. **`DATA_TABLE` is still the primary read source** — `build_from_asset_tables` reads `ASSET_BY_ID` then enriches
+   from `DATA_TABLE` for metadata. The new tables are written to but not the authoritative read path for most endpoints.
+   This is by design (DATA_TABLE holds tags, exif, etc.) but means the new tables are supplementary, not primary.
+
+5. **`asset_record_to_abstract_data` is only called from `delete.rs`** — not from `get_data.rs` or the tree build
+   path. The function exists but is not on the main read path.
+
+### What's NOT a gap (by design)
+
+- `DATA_TABLE` remaining as metadata store — legitimate, holds tags/exif/descriptions
+- `content_hash` used as `object.id` for media items — legitimate, required for compressed thumbnail path resolution
+- `ser_de.rs` legacy migrations — needed for schema versioning
+- `alias.rs` operations — used by delete/trash, not for identity
+
+### Test counts
+
+| Module                   | Unit tests | API scenarios | Playwright |
+| ------------------------ | ---------- | ------------- | ---------- |
+| `model/asset.rs`         | 4          | —             | —          |
+| `storage/asset_store.rs` | 9          | —             | —          |
+| `process/rebuild.rs`     | 8          | —             | —          |
+| `process/index_asset.rs` | 4          | —             | —          |
+| `process/alias.rs`       | 3          | 3             | —          |
+| `process/dir_album.rs`   | —          | 11            | —          |
+| Duplicate handling       | —          | 7             | 5          |
+| `assign_album`           | —          | 16            | 2          |
+| Frontend identity        | —          | —             | 8          |
+| **Total**                | **28**     | **37**        | **15**     |
+
+All 34 Playwright + 62 frontend unit tests pass.
+
+---
+
+## Phase 11: Fix DUPE_INDEX old-group removal on hash change — TODO
+
+**Background (verified 2026-09-22):** `flush_tree_task` (tasks/batcher/flush_tree.rs:139) adds the asset id to the
+_new_ hash group on insert but **never removes it from the old group** when a file's bytes change.
+`process/index_asset.rs:78` explicitly does "remove from old group, add to new" — but `index_asset` has no production
+callers. The live path is the one with the stale-group gap. Whether this leaves observable stale state depends on
+rebuild/reconcilation cleanup, so treat it as a divergence to close, not a confirmed user-facing bug.
+
+### Step 1: Add failing test
+
+Extend `watcher_modify_updates_hash_group.yaml` to assert the **old** `DUPE_INDEX` group no longer contains the
+asset_id after a byte change (currently only the new group is asserted). This should go RED: `flush_tree` adds to the
+new group without cleaning the old one.
+
+### Step 2: Implement
+
+Make the dupe-group bookkeeping correct in the live write path. Preferred: have `flush_tree_task` delegate group
+membership to the same store ops `index_asset` uses (`remove_from_dupe_group` for the old hash before
+`add_to_dupe_group` for the new), so there is one implementation of group semantics.
+
+### Step 3: Verify
+
+New assertion GREEN. Run `just check; just test`.
+
+## Phase 11b: Consolidate `index_asset` and `flush_tree` — TODO
+
+**Background (verified 2026-09-22):** the earlier draft assumed the production pipeline did not populate the asset
+tables. That is wrong — `flush_tree_task` (flush_tree.rs:100-155) already writes `ASSET_BY_ID`, `ASSET_BY_PATH`,
+`DUPE_INDEX`, and `DATA_TABLE` for every inserted `AbstractData`. There are now **two** implementations of "create an
+asset record for a file": the dead `process/index_asset.rs` (tested) and the live inline record construction in
+`flush_tree.rs` (untested at the unit level). The prior plan proposed wiring `index_asset` into `DeduplicateTask`; that
+would add a third implementation. Instead, consolidate to one.
+
+Note: `DeduplicateTask`'s `hash` field is not dead — `index_image` computes the hash via `HashTask` and passes it in
+(workflow/mod.rs:76-84). Do not remove it.
+
+### Step 1: Decide the single owner
+
+Two options, pick with a test-first phase:
+
+- **A:** `index_asset` becomes the sole constructor of an `AssetRecord` from a path + hash; `flush_tree_task` calls it
+  instead of building the record inline. Pros: tested logic is the live logic; DUPE fix from Phase 11 lands in one
+  place. Cons: `index_asset` re-reads/opens tables the caller already has open.
+- **B:** Keep record construction in `flush_tree_task`, backfill its asset-record/dupe logic with unit tests, then
+  delete `index_asset` and its tests. Pros: smallest change; no dead code remains. Cons: throws away tested code.
+
+### Step 2: Follow the decision
+
+If A: add a unit test asserting `flush_tree` record construction equals `index_asset` output (asset_id, kind, path,
+hash, size) for the same inputs, then switch the call site. If B: port the old-group-removal behavior (Phase 11) into
+`flush_tree`, add the `index_asset` unit tests at the `flush_tree`/`asset_store` level, then remove `index_asset.rs`.
+
+### Step 3: Verify
+
+`just check; just test` after whichever path is chosen.
+
+---
+
+## Phase 12: Wire `rebuild_from_filesystem` into Production — TODO
+
+**Goal:** Add a CLI command or startup hook that invokes `rebuild_from_filesystem` so the asset tables can be populated
+from a clean state.
+
+### Step 1: Add failing test
+
+Add a new API scenario `rebuild_populates_asset_tables.yaml`:
+
+- Given: an empty database
+- When: `rebuild_from_filesystem` is invoked
+- Then: `ASSET_BY_PATH`, `ASSET_BY_ID`, `DUPE_INDEX` are populated correctly
+- Then: the in-memory tree is populated and `get-data` returns the expected items
+
+This test should **fail** because no production code invokes `rebuild_from_filesystem`.
+
+### Step 2: Add CLI command or startup hook
+
+Option A: Add a `--rebuild` CLI flag to `main.rs` that runs `rebuild_from_filesystem` before starting the server.
+
+Option B: Add a `POST /admin/rebuild` endpoint that triggers a rebuild.
+
+Option C: Call `rebuild_from_filesystem` on startup when the asset tables are empty.
+
+Choose the option that fits the project's deployment model. The plan recommends Option A (CLI flag) for explicitness.
+
+### Step 3: Verify
+
+Run the new scenario (should now pass). Run full test suite. Remove `#[allow(dead_code)]` from `process/rebuild.rs`.
+
+### Step 4: Remove dead code annotation
+
+Remove `#![allow(dead_code)]` from `backend/src/process/rebuild.rs`.
+
+---
+
+## Phase 13: Remove `#[allow(dead_code)]` from Asset Module — TODO
+
+**Goal:** Clean up all `#![allow(dead_code)]` annotations that were masking unused-code warnings during the incremental
+migration.
+
+### Step 1: Add failing test
+
+This is a compilation-level test: remove `#![allow(dead_code)]` from `backend/src/model/asset.rs` and
+`backend/src/storage/asset_store.rs`. If any items are truly dead, the compiler will warn (treated as error via `just
+check`).
+
+### Step 2: Remove annotations
+
+Remove `#![allow(dead_code)]` from:
+
+- `backend/src/model/asset.rs`
+- `backend/src/storage/asset_store.rs`
+
+### Step 3: Fix any warnings
+
+If the compiler reports dead items, either:
+
+- Wire them into production (Phase 11b/12), or
+- Remove them if they're genuinely unused.
+
+### Step 4: Verify
+
+Run `just check` — zero warnings expected.
+
+---
+
+## Phase 14: Metadata Consolidation — lean identity index + dedicated metadata table
+
+**Decision (2026-09-22):** Consolidate toward two stores with clean separation, rather than collapsing metadata into
+`ASSET_BY_ID`. Rationale: serializing the full `AbstractData` (EXIF vec, tags, description) into the hot identity index
+would bloat every tree reboot and rename. The target separates "what's needed to walk/sort/dupe-check" from "what's
+needed to render a single item's detail".
+
+### Target table layout
+
+| Table                                                       | Key               | Content                                                             | Read on                                         |
+| ----------------------------------------------------------- | ----------------- | ------------------------------------------------------------------- | ----------------------------------------------- |
+| `ASSET_BY_ID`                                               | `asset_id`        | lean `AssetRecord` (identity, kind, path, hash, size, times, album) | every walk, sort, rename, dupe check            |
+| `ASSET_BY_PATH`                                             | canonical path    | → `asset_id`                                                        | path resolution in rename/move                  |
+| `DUPE_INDEX`                                                | content hash      | → `Vec<asset_id>`                                                   | dedup / shared-thumbnail decisions              |
+| **`METADATA_TABLE`** (new, replaces fat `DATA_TABLE` value) | `asset_id`        | tags, description, rating, EXIF vec, cover ref                      | **only** detail view / sidebar / metadata edits |
+| `TREE` (in-memory)                                          | sorted vec        | `DatabaseTimestamp` carrying lean `AssetRecord`-derived fields      | timeline sort + paging                          |
+| query snapshots                                             | timestamp / count | `Prefetch`, `ReducedData`                                           | get-data pages (unchanged)                      |
+
+### Step 1: Add failing test
+
+New API scenario `metadata_only_loaded_on_detail.yaml`:
+
+- Given: an album with several images (one with tags/EXIF set)
+- When: a timeline `get-data` page for that album is fetched
+- Then: the response rows carry identity/timestamp/hash/cover but **do not** carry the full EXIF/tags/description on the
+  list payload (assert the tag/description fields are empty or absent on a row that is not the detail target); a
+  detail/sidebar fetch for one item returns the full metadata.
+
+### Step 2: Introduce `METADATA_TABLE`
+
+- Add table: `METADATA_TABLE: TableDefinition<&str, AbstractData>` (or a slimmer metadata struct) keyed by `asset_id`.
+- `flush_tree_task` writes identity to `ASSET_BY_ID`/`ASSET_BY_PATH`/`DUPE_INDEX` and the metadata payload into
+  `METADATA_TABLE` instead of the full-value `DATA_TABLE`.
+- Remove path: also flush metadata record.
+
+### Step 3: Make detail/sidebar reads go through `METADATA_TABLE`
+
+- `get_data`, `get_prefetch`, `build_from_asset_tables` stop requiring the full `AbstractData`; they build a lean
+  `DatabaseTimestamp` from `AssetRecord` + minimal fields.
+- Detail/sidebar/metadata-edit endpoints (`edit_tag`, `edit_rating`, `edit_description`, per-item metadata return)
+  resolve `asset_id` → `METADATA_TABLE` explicitly.
+- `cover_content_hash_from_data` now reads the cover `asset_id` from the metadata record.
+
+### Step 4: Preserve parity
+
+Enumerate every consumer of the fat in-memory tree before landing the lean change:
+
+- filter expression evaluation (tags, ratings) — must not regress; if filters scan the in-memory tree, the lean tree
+  needs to fetch metadata per filtered candidate, or filters move to a tag-index secondary table (deferred, see below)
+- `compute_timestamp` only needs priority fields — confirm it works from lean data
+- album `self_update`, share metadata resolution, `set_cover` — confirm paths resolve cover via metadata table
+
+Existing green scenarios that exercise tags, EXIF display, sidebar metadata, ratings, and album covers are the parity
+gate; all must remain green.
+
+### Deferred (separate phase if warranted)
+
+- Tag-based inverted index secondary table (tag → asset_ids) so tag filters don't need metadata per row. NOT required
+  for this phase; only if filter benchmarks justify it.
+
+### Verify
+
+`just check; just test` after each step. Do not land Step 3 until the parity audit in Step 4 is written down.
