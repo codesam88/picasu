@@ -47,11 +47,7 @@ export function useHandleClick(
       const dataStore = useDataStore(isolationId)
       const abstractData = dataStore.data.get(currentIndex)
       if (abstractData) {
-        // Use assetId for view page navigation — assetIdMapData is keyed by
-        // assetId, not content hash.  abstractData.id is the content hash for
-        // media items (required for compressed thumbnail path resolution) but
-        // the view route and identity map both expect the asset ID.
-        const identity = abstractData.type === 'album' ? abstractData.id : abstractData.assetId
+        const identity = abstractData.assetId
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (identity !== undefined) {
           const page =

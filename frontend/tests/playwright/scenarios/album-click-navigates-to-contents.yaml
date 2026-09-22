@@ -1,0 +1,20 @@
+name: Clicking album tile navigates to album contents with child media
+covers:
+  ui:
+    - album click navigates to /album/<assetId>
+    - album contents page shows child media
+given:
+  - dir_album: navtestalbum
+  - photo: navtestalbum/child.jpg
+steps:
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: Navtestalbum
+    assert:
+      - ui.route: /album/[a-z0-9]+$
+      - ui.count: .parent
+        equals: 1
