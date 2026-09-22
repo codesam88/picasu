@@ -160,7 +160,7 @@ describe('databaseTimestampSchema', () => {
     expect(result.abstractData.type).toBe('album')
   })
 
-  test('album coverHash is preserved when present', () => {
+  test('album top-level coverHash is preserved when present', () => {
     const input = {
       abstractData: {
         type: 'album' as const,
@@ -171,7 +171,6 @@ describe('databaseTimestampSchema', () => {
         endTime: 1700000001000,
         lastModifiedTime: 1700000001000,
         cover: 'cover_asset_id',
-        coverHash: 'cover_content_hash',
         itemCount: 5,
         itemSize: 1024000,
         tags: [],
@@ -179,18 +178,19 @@ describe('databaseTimestampSchema', () => {
       },
       timestamp: 1700000000000,
       token: 'tok_album',
-      assetId: 'asset_album'
+      assetId: 'asset_album',
+      coverHash: 'cover_content_hash'
     }
 
     const result = databaseTimestampSchema.parse(input)
+    expect(result.coverHash).toBe('cover_content_hash')
     expect(result.abstractData.type).toBe('album')
     if (result.abstractData.type === 'album') {
       expect(result.abstractData.cover).toBe('cover_asset_id')
-      expect(result.abstractData.coverHash).toBe('cover_content_hash')
     }
   })
 
-  test('album coverHash defaults to null when absent', () => {
+  test('album top-level coverHash defaults to undefined when absent', () => {
     const input = {
       abstractData: {
         type: 'album' as const,
@@ -212,8 +212,29 @@ describe('databaseTimestampSchema', () => {
     }
 
     const result = databaseTimestampSchema.parse(input)
-    if (result.abstractData.type === 'album') {
-      expect(result.abstractData.coverHash).toBeNull()
+    expect(result.coverHash).toBeUndefined()
+  })
+
+  test('media types pass through top-level coverHash', () => {
+    const input = {
+      abstractData: {
+        type: 'image' as const,
+        id: 'img_hash',
+        pending: false,
+        width: 1920,
+        height: 1080,
+        ext: 'jpg',
+        size: 1024000,
+        alias: []
+      },
+      timestamp: 1700000000000,
+      token: 'tok_img',
+      assetId: 'asset_img',
+      coverHash: 'should_be_ignored'
     }
+
+    const result = databaseTimestampSchema.parse(input)
+    expect(result.abstractData.type).toBe('image')
+    expect(result.coverHash).toBe('should_be_ignored')
   })
 })

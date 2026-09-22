@@ -212,7 +212,8 @@ export const databaseTimestampSchema = z.object({
   abstractData: BackendDataParser,
   timestamp: z.number(),
   token: z.string(),
-  assetId: z.string()
+  assetId: z.string(),
+  coverHash: z.string().nullable().optional()
 })
 
 export const SubRowSchema = z.object({
