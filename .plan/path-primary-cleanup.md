@@ -352,3 +352,13 @@ URL is built from an asset_id where a content hash is expected.
   `canonicalize_path` and `std::fs::canonicalize` kept (correct verb for
   normalization). Also removed the last old-model reference in active code
   (`expression.rs` empty-vec comment).
+- 2026-09-23: OpenAPI rework-adjacent sweep (audit findings tied to this
+  branch): test-only probes stripped from the public spec — `--dump-openapi`
+  now serves `openapi_public::public_json()` which removes `/get/test/*` and
+  the probe schemas, while probe contract tests keep the full generated spec;
+  `PUT /put/assign_album` given tag `albums`, single-line summary, and explicit
+  description (fixes its multi-line anchors in the reference); `OnConflict`
+  enum and `AssignAlbumData.albumId` documented. Reference regenerated;
+  remaining generic findings stay in `openapi-contract-hardening.md`.
+  Verification: `just check` + full `just test` green (backend 268 incl. the
+  new spec-contract tests, utils 24, vitest 67, Playwright 34/34).

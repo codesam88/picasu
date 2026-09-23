@@ -13,6 +13,7 @@ mod model;
 // Auto-generated file may not exist on fresh clone, do not try to format it
 #[rustfmt::skip]
 pub mod openapi;
+pub mod openapi_public;
 mod process;
 mod router;
 mod storage;

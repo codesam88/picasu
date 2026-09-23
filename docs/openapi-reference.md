@@ -2243,353 +2243,6 @@ null
 This operation does not require authentication
 </aside>
 
-## Test-only probe: list the `asset_id` members of a `DUPE_INDEX`
-
-content-hash group. Returns an empty list when no group exists for `hash`,
-so scenarios can assert both presence and absence of members. Disabled
-(404) unless the test bootstrap opted in via `enable_test_probe`.
-
-<a id="opIdprobe_dupe_group"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /get/test/dupe-group/{hash} \
-  -H 'Accept: application/json'
-
-```
-
-```http
-GET /get/test/dupe-group/{hash} HTTP/1.1
-
-Accept: application/json
-
-```
-
-```javascript
-const headers = {
-  Accept: "application/json",
-};
-
-fetch("/get/test/dupe-group/{hash}", {
-  method: "GET",
-
-  headers: headers,
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Accept' => 'application/json'
-}
-
-result = RestClient.get '/get/test/dupe-group/{hash}',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Accept': 'application/json'
-}
-
-r = requests.get('/get/test/dupe-group/{hash}', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/get/test/dupe-group/{hash}', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/get/test/dupe-group/{hash}");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/get/test/dupe-group/{hash}", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /get/test/dupe-group/{hash}`
-
-> Example responses
-
-> 200 Response
-
-```json
-[
-  {
-    "assetId": "string"
-  }
-]
-```
-
-<h3 id="test-only-probe:-list-the-`asset_id`-members-of-a-`dupe_index`
-content-hash-group.-returns-an-empty-list-when-no-group-exists-for-`hash`,
-so-scenarios-can-assert-both-presence-and-absence-of-members.-disabled
-(404)-unless-the-test-bootstrap-opted-in-via-`enable_test_probe`.-responses">Responses</h3>
-
-| Status | Meaning                                                        | Description                                                 | Schema |
-| ------ | -------------------------------------------------------------- | ----------------------------------------------------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)        | Test-only probe: members of a DUPE_INDEX content-hash group | Inline |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4) | Probe disabled                                              | None   |
-
-<h3 id="test-only-probe:-list-the-`asset_id`-members-of-a-`dupe_index`
-content-hash-group.-returns-an-empty-list-when-no-group-exists-for-`hash`,
-so-scenarios-can-assert-both-presence-and-absence-of-members.-disabled
-(404)-unless-the-test-bootstrap-opted-in-via-`enable_test_probe`.-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-| Name        | Type                                        | Required | Restrictions | Description                                                                                                                                                                                  |
-| ----------- | ------------------------------------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _anonymous_ | [[DupeGroupMember](#schemadupegroupmember)] | false    | none         | [One member of a `DUPE_INDEX` content-hash group. API scenario tests use<br>[`probe_dupe_group`] to observe hash-group membership, which is otherwise<br>invisible behind the HTTP surface.] |
-| » assetId   | string                                      | true     | none         | none                                                                                                                                                                                         |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## probe_record
-
-<a id="opIdprobe_record"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /get/test/record/{asset_id} \
-  -H 'Accept: application/json'
-
-```
-
-```http
-GET /get/test/record/{asset_id} HTTP/1.1
-
-Accept: application/json
-
-```
-
-```javascript
-const headers = {
-  Accept: "application/json",
-};
-
-fetch("/get/test/record/{asset_id}", {
-  method: "GET",
-
-  headers: headers,
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Accept' => 'application/json'
-}
-
-result = RestClient.get '/get/test/record/{asset_id}',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Accept': 'application/json'
-}
-
-r = requests.get('/get/test/record/{asset_id}', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/get/test/record/{asset_id}', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/get/test/record/{asset_id}");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/get/test/record/{asset_id}", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /get/test/record/{asset_id}`
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "assetId": "string",
-  "path": {}
-}
-```
-
-<h3 id="probe_record-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                  | Schema                                    |
-| ------ | ---------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Test-only record probe with the asset's path | [TestRecordProbe](#schematestrecordprobe) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid asset_id                             | None                                      |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | Probe disabled or record not found           | None                                      |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## compressed_file
 
 <a id="opIdcompressed_file"></a>
@@ -4268,207 +3921,6 @@ the response does not race subsequent `prefetch`/`get-data` calls.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                 | Rebuild complete | [RebuildStats](#schemarebuildstats) |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)        | Invalid input    | None                                |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5) | Read-only mode   | None                                |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Move the asset identified by `asset_id` into the album's directory on disk
-
-(resolved from its physical path), update the stored path and
-album membership, and report the conflict outcome. Returns 400 if the file
-is missing at the asset's path (stale record — re-index first).
-
-<a id="opIdassign_album"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X PUT /put/assign_album \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json'
-
-```
-
-```http
-PUT /put/assign_album HTTP/1.1
-
-Content-Type: application/json
-Accept: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "albumId": "string",
-  "assetId": "string",
-  "onConflict": "skip"
-}';
-const headers = {
-  'Content-Type':'application/json',
-  'Accept':'application/json'
-};
-
-fetch('/put/assign_album',
-{
-  method: 'PUT',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json',
-  'Accept' => 'application/json'
-}
-
-result = RestClient.put '/put/assign_album',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json',
-  'Accept': 'application/json'
-}
-
-r = requests.put('/put/assign_album', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('PUT','/put/assign_album', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/put/assign_album");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("PUT");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("PUT", "/put/assign_album", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`PUT /put/assign_album`
-
-> Body parameter
-
-```json
-{
-  "albumId": "string",
-  "assetId": "string",
-  "onConflict": "skip"
-}
-```
-
-<h3 id="move-the-asset-identified-by-`asset_id`-into-the-album's-directory-on-disk
-(resolved-from-its-physical-path),-update-the-stored-path-and
-album-membership,-and-report-the-conflict-outcome.-returns-400-if-the-file
-is-missing-at-the-asset's-path-(stale-record-—-re-index-first).-parameters">Parameters</h3>
-
-| Name | In   | Type                                      | Required | Description |
-| ---- | ---- | ----------------------------------------- | -------- | ----------- |
-| body | body | [AssignAlbumData](#schemaassignalbumdata) | true     | none        |
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "outcome": "moved"
-}
-```
-
-<h3 id="move-the-asset-identified-by-`asset_id`-into-the-album's-directory-on-disk
-(resolved-from-its-physical-path),-update-the-stored-path-and
-album-membership,-and-report-the-conflict-outcome.-returns-400-if-the-file
-is-missing-at-the-asset's-path-(stale-record-—-re-index-first).-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                     | Schema                              |
-| ------ | ---------------------------------------------------------------- | ------------------------------- | ----------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Item assigned to album          | [AssignResult](#schemaassignresult) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input or item not found | None                                |
 
 <aside class="success">
 This operation does not require authentication
@@ -10100,6 +9552,201 @@ routes-(assets-at-rank-10,-api,-pages)-take-priority.-responses">Responses</h3>
 This operation does not require authentication
 </aside>
 
+<h1 id="picasu-albums">albums</h1>
+
+## Move an asset into an album
+
+<a id="opIdassign_album"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X PUT /put/assign_album \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
+
+```
+
+```http
+PUT /put/assign_album HTTP/1.1
+
+Content-Type: application/json
+Accept: application/json
+
+```
+
+```javascript
+const inputBody = '{
+  "albumId": "string",
+  "assetId": "string",
+  "onConflict": "skip"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('/put/assign_album',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
+}
+
+result = RestClient.put '/put/assign_album',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
+}
+
+r = requests.put('/put/assign_album', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('PUT','/put/assign_album', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/put/assign_album");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("PUT");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("PUT", "/put/assign_album", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`PUT /put/assign_album`
+
+Moves the file identified by asset_id into the album directory on disk, updates stored path and album membership, and reports the conflict outcome. Returns 400 when the file is missing at the asset's path (stale record) or the destination is a manual album.
+
+> Body parameter
+
+```json
+{
+  "albumId": "string",
+  "assetId": "string",
+  "onConflict": "skip"
+}
+```
+
+<h3 id="move-an-asset-into-an-album-parameters">Parameters</h3>
+
+| Name | In   | Type                                      | Required | Description |
+| ---- | ---- | ----------------------------------------- | -------- | ----------- |
+| body | body | [AssignAlbumData](#schemaassignalbumdata) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "outcome": "moved"
+}
+```
+
+<h3 id="move-an-asset-into-an-album-responses">Responses</h3>
+
+| Status | Meaning                                                          | Description                     | Schema                              |
+| ------ | ---------------------------------------------------------------- | ------------------------------- | ----------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Item assigned to album          | [AssignResult](#schemaassignresult) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input or item not found | None                                |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 # Schemas
 
 <h2 id="tocS_AlbumIndexState">AlbumIndexState</h2>
@@ -10276,11 +9923,11 @@ the legacy multi-alias `alias` path) are rejected rather than ignored.
 
 ### Properties
 
-| Name       | Type                            | Required | Restrictions | Description                                                                                                                                             |
-| ---------- | ------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| albumId    | string                          | true     | none         | none                                                                                                                                                    |
-| assetId    | string                          | true     | none         | Path-primary asset ID. The handler resolves the record and its<br>physical path via `ASSET_BY_ID`, allowing independent<br>movement of same-hash files. |
-| onConflict | [OnConflict](#schemaonconflict) | true     | none         | none                                                                                                                                                    |
+| Name       | Type                            | Required | Restrictions | Description                                                                                                                                                                                                                                                                                              |
+| ---------- | ------------------------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| albumId    | string                          | true     | none         | Destination album ID; must be a filesystem-backed directory album<br>(manual albums are rejected with 400).                                                                                                                                                                                              |
+| assetId    | string                          | true     | none         | Path-primary asset ID. The handler resolves the record and its<br>physical path via `ASSET_BY_ID`, allowing independent<br>movement of same-hash files.                                                                                                                                                  |
+| onConflict | [OnConflict](#schemaonconflict) | true     | none         | Filename-collision strategy for moves and uploads: `skip` leaves an<br>existing destination untouched (the source stays put, outcome `skipped`);<br>`rename` lands the file under a unique suffixed name (outcome<br>`renamedFrom`). Required on assign with no default; upload defaults to<br>`rename`. |
 
 <h2 id="tocS_AssignOutcome">AssignOutcome</h2>
 <!-- backwards compatibility -->
@@ -10518,29 +10165,6 @@ silent about what happened to the selected item.
 | displayHeight | integer(int32) | true     | none         | none        |
 | displayWidth  | integer(int32) | true     | none         | none        |
 
-<h2 id="tocS_DupeGroupMember">DupeGroupMember</h2>
-<!-- backwards compatibility -->
-<a id="schemadupegroupmember"></a>
-<a id="schema_DupeGroupMember"></a>
-<a id="tocSdupegroupmember"></a>
-<a id="tocsdupegroupmember"></a>
-
-```json
-{
-  "assetId": "string"
-}
-```
-
-One member of a `DUPE_INDEX` content-hash group. API scenario tests use
-[`probe_dupe_group`] to observe hash-group membership, which is otherwise
-invisible behind the HTTP surface.
-
-### Properties
-
-| Name    | Type   | Required | Restrictions | Description |
-| ------- | ------ | -------- | ------------ | ----------- |
-| assetId | string | true     | none         | none        |
-
 <h2 id="tocS_EditFlagsData">EditFlagsData</h2>
 <!-- backwards compatibility -->
 <a id="schemaeditflagsdata"></a>
@@ -10749,11 +10373,17 @@ type for the wire — never stored (the metadata payload holds no path;
 "skip"
 ```
 
+Filename-collision strategy for moves and uploads: `skip` leaves an
+existing destination untouched (the source stays put, outcome `skipped`);
+`rename` lands the file under a unique suffixed name (outcome
+`renamedFrom`). Required on assign with no default; upload defaults to
+`rename`.
+
 ### Properties
 
-| Name        | Type   | Required | Restrictions | Description |
-| ----------- | ------ | -------- | ------------ | ----------- |
-| _anonymous_ | string | false    | none         | none        |
+| Name        | Type   | Required | Restrictions | Description                                                                                                                                                                                                                                                                                              |
+| ----------- | ------ | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _anonymous_ | string | false    | none         | Filename-collision strategy for moves and uploads: `skip` leaves an<br>existing destination untouched (the source stays put, outcome `skipped`);<br>`rename` lands the file under a unique suffixed name (outcome<br>`renamedFrom`). Required on assign with no default; upload defaults to<br>`rename`. |
 
 #### Enumerated Values
 
@@ -11118,45 +10748,6 @@ Payload for renaming an album.
 | ------ | ------- | -------- | ------------ | ----------- |
 | number | integer | true     | none         | none        |
 | tag    | string  | true     | none         | none        |
-
-<h2 id="tocS_TestRecordProbe">TestRecordProbe</h2>
-<!-- backwards compatibility -->
-<a id="schematestrecordprobe"></a>
-<a id="schema_TestRecordProbe"></a>
-<a id="tocStestrecordprobe"></a>
-<a id="tocstestrecordprobe"></a>
-
-```json
-{
-  "assetId": "string",
-  "path": {}
-}
-```
-
-Test-only record probe: the asset's identity (`assetId`) and its file
-entry as composed from the `AssetRecord`, matching
-`AbstractData::path() -> Option<FileEntry>`. `path` is `None` for
-albums. Only reachable in test builds when the bootstrap opts in; API
-E2E scenarios use this endpoint to observe the asset's path instead.
-
-### Properties
-
-| Name    | Type   | Required | Restrictions | Description |
-| ------- | ------ | -------- | ------------ | ----------- |
-| assetId | string | true     | none         | none        |
-| path    | any    | false    | none         | none        |
-
-oneOf
-
-| Name          | Type | Required | Restrictions | Description |
-| ------------- | ---- | -------- | ------------ | ----------- |
-| » _anonymous_ | null | false    | none         | none        |
-
-xor
-
-| Name          | Type                          | Required | Restrictions | Description                                                                                                                                                                                                                                                                         |
-| ------------- | ----------------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| » _anonymous_ | [FileEntry](#schemafileentry) | false    | none         | The asset's file entry: the single source path and its timestamps,<br>assembled from the identity `AssetRecord` at composition time. A view<br>type for the wire — never stored (the metadata payload holds no path;<br>`AssetRecord` owns the identity, including the trash flag). |
 
 <h2 id="tocS_UpdatePasswordRequest">UpdatePasswordRequest</h2>
 <!-- backwards compatibility -->

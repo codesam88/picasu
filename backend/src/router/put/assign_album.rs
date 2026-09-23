@@ -18,6 +18,11 @@ use rocket::serde::{Deserialize, Serialize, json::Json};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Filename-collision strategy for moves and uploads: `skip` leaves an
+/// existing destination untouched (the source stays put, outcome `skipped`);
+/// `rename` lands the file under a unique suffixed name (outcome
+/// `renamedFrom`). Required on assign with no default; upload defaults to
+/// `rename`.
 #[derive(Debug, Deserialize, utoipa::ToSchema, PartialEq, Eq, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 pub enum OnConflict {
@@ -35,6 +40,8 @@ pub struct AssignAlbumData {
     /// movement of same-hash files.
     #[schema(value_type = String)]
     pub asset_id: ArrayString<64>,
+    /// Destination album ID; must be a filesystem-backed directory album
+    /// (manual albums are rejected with 400).
     #[schema(value_type = String)]
     pub album_id: ArrayString<64>,
     pub on_conflict: OnConflict,
@@ -66,6 +73,9 @@ pub enum AssignOutcome {
 #[utoipa::path(
         put,
         path = "/put/assign_album",
+        tag = "albums",
+        summary = "Move an asset into an album",
+        description = "Moves the file identified by asset_id into the album directory on disk, updates stored path and album membership, and reports the conflict outcome. Returns 400 when the file is missing at the asset's path (stale record) or the destination is a manual album.",
         request_body = AssignAlbumData,
         responses(
             (status = 200, description = "Item assigned to album", body = AssignResult),
@@ -388,6 +398,44 @@ mod tests {
         assert!(
             err.to_string().contains("alias"),
             "rejection must name the unknown field: {err}"
+        );
+    }
+
+    /// Public-contract polish: a single-line summary (multi-line summaries
+    /// become invalid HTML anchors in the generated reference), a real tag,
+    /// and docs on the conflict enum and the destination field.
+    #[test]
+    fn assign_album_openapi_summary_tag_and_field_docs() {
+        let spec: serde_json::Value = serde_json::from_str(&crate::openapi::generate_json())
+            .expect("generated OpenAPI must be valid JSON");
+
+        let op = &spec["paths"]["/put/assign_album"]["put"];
+        let tags = op["tags"].as_array().expect("assign must declare tags");
+        assert!(
+            tags.iter().any(|t| t == "albums"),
+            "assign_album must be tagged `albums`: {tags:?}"
+        );
+        let summary = op["summary"].as_str().expect("assign must have a summary");
+        assert!(
+            !summary.contains('\n'),
+            "summary must be a single line (raw newlines break reference anchors): {summary:?}"
+        );
+
+        let on_conflict_desc = spec["components"]["schemas"]["OnConflict"]["description"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(
+            !on_conflict_desc.is_empty(),
+            "OnConflict must describe the skip/rename semantics"
+        );
+
+        let album_id_desc = spec["components"]["schemas"]["AssignAlbumData"]["properties"]
+            ["albumId"]["description"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(
+            !album_id_desc.is_empty(),
+            "AssignAlbumData.albumId must be documented"
         );
     }
 }
