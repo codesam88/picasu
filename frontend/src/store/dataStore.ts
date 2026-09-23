@@ -1,5 +1,6 @@
-import type { EnrichedUnifiedData, IsolationId } from '@type/types'
+import type { EnrichedUnifiedData, IsolationId, UnifiedData } from '@type/types'
 import { defineStore } from 'pinia'
+import { thumbHashToDataURL } from 'thumbhash'
 
 export const useDataStore = (isolationId: IsolationId) =>
   defineStore('DataStore' + isolationId, {
@@ -18,6 +19,46 @@ export const useDataStore = (isolationId: IsolationId) =>
         this.data.clear()
         this.assetIdMapData.clear()
         this.batchFetched.clear()
+      },
+      /**
+       * Merge a detail-endpoint payload (GET /get/metadata/{assetId}) into the
+       * list row at `index`.
+       *
+       * List rows are lean: tags, EXIF, description, rating, and the
+       * favorite/archived flags are absent until fetched. Only those
+       * metadata fields are overwritten — identity fields (id, dimensions,
+       * alias, album, assetId, timestamp, thumbhashUrl) stay as the list
+       * provided them. Returns false when the row is missing or the detail
+       * payload type does not match the row type.
+       */
+      mergeMetadata(index: number, detail: UnifiedData): boolean {
+        const data = this.data.get(index)
+        if (data === undefined) {
+          return false
+        }
+        if (data.type !== detail.type) {
+          return false
+        }
+        if (detail.type === 'album' || data.type === 'album') {
+          // Album rows are already served with full metadata; nothing to merge.
+          return false
+        }
+        data.tags = detail.tags
+        data.exif = detail.exif
+        data.description = detail.description
+        data.rating = detail.rating
+        data.isFavorite = detail.isFavorite
+        data.isArchived = detail.isArchived
+        data.updateAt = detail.updateAt
+        data.pending = detail.pending
+        if (data.type === 'image' && detail.type === 'image') {
+          data.phash = detail.phash
+        }
+        if (detail.thumbhash !== null) {
+          data.thumbhash = detail.thumbhash
+          data.thumbhashUrl = thumbHashToDataURL(detail.thumbhash)
+        }
+        return true
       },
       addTags(index: number, tags: string[]): boolean {
         const data = this.data.get(index)

@@ -1,0 +1,42 @@
+name: metadata only loaded on detail (lean list rows)
+# Phase 14 list-row strip: a tagged photo with EXIF and a seeded description
+# must NOT carry tags / EXIF / description on the get-data list payload.
+# Those fields are served only by GET /get/metadata/{assetId} (detail/sidebar).
+given:
+  - photo: /e2e_meta/photo.jpg
+    tags:
+      - e2e_meta_tag
+    exif_date: "2025:03:01 12:00:00"
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  # Seed a description (the photo fixture cannot set one) so the strip is
+  # observable for all three fields. Status-only inline then.
+  - call: PUT /put/set_user_defined_description
+    raw_body: '{"index":${idx},"description":"seeded description","timestamp":${ts}}'
+    then:
+      - response.status: 200
+  # Re-prefetch after the edit (mirrors tags_modifiable_via_edit_tag_api_p:
+  # the edit refreshes the tree, so the previous snapshot must not be reused).
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+    calc:
+      end: "${idx}+1"
+  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.[0].abstractData.tags: []
+  - response.json.[0].abstractData.exifVec: {}
+  - response.json.[0].abstractData.description: null
+  - file_exists: e2e_meta/photo.jpg

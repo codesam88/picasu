@@ -9,7 +9,7 @@ use crate::process::sanitize::find_unique_path;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::DATA_TABLE;
+use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
 use crate::tasks::BATCH_COORDINATOR;
@@ -222,18 +222,18 @@ fn move_asset_into_album(
     asset_store::put_asset_by_path(&new_path, asset_id)
         .or_raise(|| (ErrorKind::Database, "Failed to add new path mapping"))?;
 
-    // Update DATA_TABLE so build_from_asset_tables sees the new album.
+    // Update METADATA_TABLE so build_from_asset_tables sees the new album.
     {
         let txn = TREE
             .in_disk
             .begin_write()
             .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
         {
-            let mut data_table = txn
-                .open_table(DATA_TABLE)
+            let mut metadata_table = txn
+                .open_table(METADATA_TABLE)
                 .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
             // Extract data first to avoid borrow conflict.
-            let existing = data_table
+            let existing = metadata_table
                 .get(&*asset_id)
                 .ok()
                 .flatten()
@@ -247,9 +247,9 @@ fn move_asset_into_album(
                     }
                 }
                 abstract_data.set_album(Some(album_id));
-                data_table
+                metadata_table
                     .insert(&*asset_id, abstract_data)
-                    .or_raise(|| (ErrorKind::Database, "Failed to update DATA_TABLE"))?;
+                    .or_raise(|| (ErrorKind::Database, "Failed to update METADATA_TABLE"))?;
             }
         }
         txn.commit()
@@ -293,11 +293,11 @@ fn move_album_into_album(
             .begin_write()
             .or_raise(|| (ErrorKind::Database, "Failed to begin write transaction"))?;
         let result = {
-            let mut data_table = txn
-                .open_table(DATA_TABLE)
+            let mut metadata_table = txn
+                .open_table(METADATA_TABLE)
                 .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
 
-            let abstract_data: AbstractData = data_table
+            let abstract_data: AbstractData = metadata_table
                 .get(&*album_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to look up album"))?
                 .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Album not found"))?
@@ -332,21 +332,21 @@ fn move_album_into_album(
             if base_dest.exists() {
                 match on_conflict {
                     OnConflict::Skip => {
-                        drop(data_table);
+                        drop(metadata_table);
                         txn.commit()
                             .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
                         return Ok(AssignOutcome::Skipped);
                     }
                     OnConflict::Rename => {
                         let dest_dir = find_unique_path(&base_dest)?;
-                        rename_whole_dir(&mut data_table, &source_dir, &dest_dir)?;
+                        rename_whole_dir(&mut metadata_table, &source_dir, &dest_dir)?;
                         (source_dir, Some(dest_dir), AssignOutcome::RenamedFrom)
                     }
                 }
             } else {
                 // No collision: land the whole tree in place (Moved).
                 let dest_dir = base_dest;
-                rename_whole_dir(&mut data_table, &source_dir, &dest_dir)?;
+                rename_whole_dir(&mut metadata_table, &source_dir, &dest_dir)?;
                 (source_dir, Some(dest_dir), AssignOutcome::Moved)
             }
         };
@@ -374,7 +374,7 @@ fn move_album_into_album(
 /// album's own `dir_path`, any further-nested sub-albums' `dir_path`, and every
 /// image/video alias — to `dest_dir`.
 fn rename_whole_dir(
-    data_table: &mut redb::Table<'_, &str, AbstractData>,
+    metadata_table: &mut redb::Table<'_, &str, AbstractData>,
     source_dir: &Path,
     dest_dir: &Path,
 ) -> Result<(), AppError> {
@@ -388,7 +388,7 @@ fn rename_whole_dir(
     // Collect matches first (immutable iteration) before inserting, since redb
     // doesn't allow mutating a table while iterating it.
     let mut updates: Vec<(ArrayString<64>, AbstractData)> = Vec::new();
-    for entry in data_table
+    for entry in metadata_table
         .iter()
         .or_raise(|| (ErrorKind::Database, "Failed to iterate data table"))?
     {
@@ -402,7 +402,7 @@ fn rename_whole_dir(
         }
     }
     for (key, data) in updates {
-        data_table
+        metadata_table
             .insert(&*key, data)
             .or_raise(|| (ErrorKind::Database, "Failed to update moved record"))?;
     }

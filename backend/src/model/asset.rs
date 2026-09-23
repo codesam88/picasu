@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
@@ -129,11 +127,13 @@ impl AssetRecord {
     }
 
     /// Returns `true` if this is a media asset (image or video).
+    #[allow(dead_code)] // exercised by unit tests; no production caller yet
     pub fn is_media(&self) -> bool {
         self.kind.is_media()
     }
 
     /// Returns `true` if this is an album asset.
+    #[allow(dead_code)] // exercised by unit tests; no production caller yet
     pub fn is_album(&self) -> bool {
         self.kind == AssetKind::Album
     }

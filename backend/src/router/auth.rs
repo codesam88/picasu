@@ -199,7 +199,7 @@ mod tests {
 // src/router/fairing/auth_utils.rs
 use crate::error::{AppError, ErrorKind};
 use crate::model::abstract_data::AbstractData;
-use crate::storage::db::DATA_TABLE;
+use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
 
 use anyhow::{Error, Result, anyhow};
@@ -334,7 +334,7 @@ fn resolve_share_internal(
             .context("Failed to begin read transaction")
     })?;
 
-    let table = read_txn.open_table(DATA_TABLE).map_err(|e| {
+    let table = read_txn.open_table(METADATA_TABLE).map_err(|e| {
         AppError::from_err(ErrorKind::Database, e.into()).context("Failed to open data table")
     })?;
 
@@ -418,7 +418,7 @@ pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
     if let Some(album_id) = req.headers().get_one("x-album-id")
         && let Some(share_id) = req.headers().get_one("x-share-id")
         && let Ok(read_txn) = TREE.in_disk.begin_read()
-        && let Ok(table) = read_txn.open_table(DATA_TABLE)
+        && let Ok(table) = read_txn.open_table(METADATA_TABLE)
         && let Ok(Some(data_guard)) = table.get(album_id)
         && let AbstractData::Album(mut album) = data_guard.value()
         && let Some(share) = album.metadata.share_list.remove(share_id)

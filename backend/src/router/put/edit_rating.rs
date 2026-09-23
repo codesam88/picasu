@@ -4,7 +4,7 @@ use crate::process::xmp_write::write_sidecar_for;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::{open_data_table, open_tree_snapshot_table};
+use crate::storage::db::{open_metadata_table, open_tree_snapshot_table};
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -51,7 +51,7 @@ pub async fn edit_rating(
     }
 
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
-        let data_table = open_data_table();
+        let metadata_table = open_metadata_table();
         let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
             .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
 
@@ -65,7 +65,7 @@ pub async fn edit_rating(
                 )
             })?;
 
-            if let Some(guard) = data_table
+            if let Some(guard) = metadata_table
                 .get(&*asset_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
             {

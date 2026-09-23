@@ -148,8 +148,11 @@ function getUserDefinedDescription(abstractData: EnrichedUnifiedData): string {
   return abstractData.description ?? ''
 }
 
+// Re-seed the local description model when the asset changes or when the
+// detail fetch merges the stored description into the lean list row (the
+// textarea keeps a local ref, so it would not follow the row otherwise).
 watch(
-  () => props.assetId,
+  [() => props.assetId, () => props.abstractData.description],
   () => {
     userDefinedDescriptionModel.value = getUserDefinedDescription(props.abstractData)
   },

@@ -90,7 +90,7 @@ impl DataBaseTimestampReturn {
 use arrayvec::ArrayString;
 use bitcode::{Decode, Encode};
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Decode, Encode)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Decode, Encode)]
 pub struct ReducedData {
     /// Path-primary asset ID.
     pub asset_id: ArrayString<64>,
@@ -98,6 +98,13 @@ pub struct ReducedData {
     pub width: u32,
     pub height: u32,
     pub date: i64,
+    /// Stored `object.update_at` — the `updated_at` cache-bust key for image
+    /// URLs. Carried in the snapshot so lean list rows preserve it without a
+    /// `METADATA_TABLE` read (rotate / regenerate-thumbnail rely on it).
+    pub update_at: i64,
+    /// Stored `object.pending` — true while a thumbnail/video frame is still
+    /// being generated (rendered as the tile "processing" chip).
+    pub pending: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Decode, Encode)]

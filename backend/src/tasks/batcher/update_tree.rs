@@ -2,7 +2,7 @@ use crate::model::response::DatabaseTimestamp;
 use crate::process::dir_album::drain_pending_album_updates;
 use crate::storage::db::TREE;
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
-use crate::storage::db::open_data_table;
+use crate::storage::db::open_metadata_table;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::actor::album::album_task;
 use crate::tasks::batcher::update_expire::UpdateExpireTask;
@@ -72,7 +72,7 @@ fn update_tree_task() {
 }
 
 /// Build the in-memory tree from `ASSET_BY_ID` (one entry per file/path).
-/// Enriches with metadata from `DATA_TABLE` when available.
+/// Enriches with metadata from `METADATA_TABLE` when available.
 fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimestamp>> {
     use redb::{ReadableDatabase, ReadableTable};
 
@@ -85,7 +85,7 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
         return None;
     };
 
-    let data_table = open_data_table();
+    let metadata_table = open_metadata_table();
 
     let mut entries = Vec::new();
     for row in table.iter().into_iter().flatten() {
@@ -95,7 +95,7 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
             Err(_) => continue,
         };
 
-        let rich_data = data_table
+        let rich_data = metadata_table
             .get(&*record.asset_id)
             .ok()
             .flatten()
@@ -162,7 +162,7 @@ fn trim_aliases_to_path(
 }
 
 /// Create a minimal `AbstractData` from an `AssetRecord` when rich metadata
-/// is not available in `DATA_TABLE`.
+/// is not available in `METADATA_TABLE`.
 fn minimal_abstract_data(
     record: &crate::model::asset::AssetRecord,
 ) -> crate::model::abstract_data::AbstractData {

@@ -60,6 +60,8 @@ impl From<&DatabaseTimestamp> for ReducedData {
             width: source.abstract_data.width(),
             height: source.abstract_data.height(),
             date: source.timestamp,
+            update_at: source.abstract_data.update_at(),
+            pending: source.abstract_data.pending(),
         }
     }
 }

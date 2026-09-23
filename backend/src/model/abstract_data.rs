@@ -120,6 +120,24 @@ impl AbstractData {
         }
     }
 
+    /// Stored `update_at` value (image-URL cache-bust key).
+    pub fn update_at(&self) -> i64 {
+        match self {
+            AbstractData::Image(img) => img.object.update_at,
+            AbstractData::Video(vid) => vid.object.update_at,
+            AbstractData::Album(alb) => alb.object.update_at,
+        }
+    }
+
+    /// Processing flag — true while a thumbnail/video frame is being generated.
+    pub fn pending(&self) -> bool {
+        match self {
+            AbstractData::Image(img) => img.object.pending,
+            AbstractData::Video(vid) => vid.object.pending,
+            AbstractData::Album(alb) => alb.object.pending,
+        }
+    }
+
     /// Compute timestamp for sorting based on priority list
     /// Checks fields in order: `DateTimeOriginal`, filename, `scan_time`, modified, random
     pub fn compute_timestamp(&self, priority_list: &[&str]) -> i64 {

@@ -152,19 +152,19 @@ impl TreeSnapshot {
     }
 }
 
-use crate::storage::db::{TagInfo, open_data_table};
+use crate::storage::db::{TagInfo, open_metadata_table};
 impl TreeSnapshot {
     pub fn read_tags() -> Result<Vec<TagInfo>> {
         // Concurrent counter for each tag
         let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
 
-        // Begin read‑only transaction and open the DATA_TABLE
-        let data_table = open_data_table();
+        // Begin read‑only transaction and open the METADATA_TABLE
+        let metadata_table = open_metadata_table();
 
         // Walk the table in parallel; stop on first error
-        data_table
+        metadata_table
             .iter()
-            .context("Create iterator over DATA_TABLE failed")?
+            .context("Create iterator over METADATA_TABLE failed")?
             .par_bridge()
             .try_for_each(|entry| -> Result<()> {
                 let (_, data) = entry.context("Read table row failed")?;
@@ -282,6 +282,25 @@ impl MyCow {
                     ))?
                     .value();
                 Ok(data.asset_id)
+            }
+        }
+    }
+
+    /// Full snapshot entry at `index`: identity, dimensions, tree date, and
+    /// the display fields (`update_at`, `pending`) lean list rows need without
+    /// a per-row `METADATA_TABLE` read.
+    pub fn get_reduced(&self, index: usize) -> Result<ReducedData> {
+        match self {
+            MyCow::DashMap(data) => {
+                let data = &data.value()[index];
+                Ok(*data)
+            }
+            MyCow::Redb(table) => {
+                let data = table
+                    .get(index as u64)?
+                    .context(format!("Fail to find snapshot entry for index {index}"))?
+                    .value();
+                Ok(data)
             }
         }
     }

@@ -1,4 +1,6 @@
 name: tags modifiable via edit tag api
+# After edit_tag, the stored tag must be readable back — via the metadata
+# detail endpoint (list rows no longer carry tags; Phase 14).
 given:
   - photo: /e2e_p/photo.jpg
     id_as: $photo
@@ -18,13 +20,11 @@ when:
       token: response.token
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo
-    calc:
-      end: "${idx}+1"
-  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
     auth: false
     headers:
       Authorization: "Bearer ${token}"
 then:
   - response.status: 200
-  - response.json.[0].abstractData.tags:
+  - response.json.tags:
       contains: e2e_p_added

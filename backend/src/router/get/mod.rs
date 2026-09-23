@@ -8,6 +8,7 @@ pub mod get_export;
 pub mod get_fs_completion;
 pub mod get_img;
 pub mod get_list;
+pub mod get_metadata;
 pub mod get_page;
 pub mod get_prefetch;
 pub mod get_test_probe;
@@ -19,6 +20,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_data::get_data,
         get_data::get_rows,
         get_data::get_scroll_bar,
+        get_metadata::get_metadata,
         get_img::compressed_file,
         get_img::imported_file,
         get_page::redirect_to_photo,
@@ -54,5 +56,6 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_fs_completion::get_fs_completion,
         get_album_index::get_album_index_status,
         get_test_probe::probe_record,
+        get_test_probe::probe_dupe_group,
     ]
 }

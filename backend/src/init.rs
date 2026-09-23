@@ -125,21 +125,22 @@ pub fn initialize_folder() {
     }
 }
 
-use crate::storage::db::DATA_TABLE;
+use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
 use std::fs;
 
 pub fn initialize_file() {
     let root = get_data_path();
 
-    // Ensure DATA_TABLE exists so that read-only callers (e.g. init_dir_album_cache)
+    // Ensure METADATA_TABLE exists so that read-only callers (e.g. init_dir_album_cache)
     // never see TableDoesNotExist on a fresh or reset database.
     {
         let txn = TREE
             .in_disk
             .begin_write()
             .expect("failed to begin write transaction");
-        txn.open_table(DATA_TABLE).expect("failed to open table");
+        txn.open_table(METADATA_TABLE)
+            .expect("failed to open table");
         txn.commit().expect("failed to commit transaction");
     }
 

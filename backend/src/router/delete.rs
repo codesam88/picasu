@@ -12,7 +12,7 @@ use crate::process::dir_album::evict_dir_album;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::{DATA_TABLE, TREE};
+use crate::storage::db::{METADATA_TABLE, TREE};
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -29,7 +29,7 @@ use std::path::Path;
 #[serde(rename_all = "camelCase")]
 #[derive(utoipa::ToSchema)]
 pub struct DeleteList {
-    /// Asset IDs to delete. Each asset is resolved via `DATA_TABLE` by its
+    /// Asset IDs to delete. Each asset is resolved via `METADATA_TABLE` by its
     /// `asset_id` key. The canonical file and sidecar are removed from disk.
     asset_ids: Vec<String>,
     timestamp: i64,
@@ -148,13 +148,13 @@ fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
                     }
                 }
 
-                // Flush descendant records from DATA_TABLE.
+                // Flush descendant records from METADATA_TABLE.
                 let desc_abstract: Vec<AbstractData> = descendants
                     .iter()
                     .map(crate::process::transitor::asset_record_to_abstract_data)
                     .collect();
                 if !desc_abstract.is_empty() {
-                    // Use blocking wait to ensure DATA_TABLE is updated before we proceed.
+                    // Use blocking wait to ensure METADATA_TABLE is updated before we proceed.
                     let _ = futures::executor::block_on(
                         BATCH_COORDINATOR
                             .execute_batch_waiting(FlushTreeTask::remove(desc_abstract)),
@@ -171,7 +171,7 @@ fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
 /// Process deletions by asset ID.
 ///
 /// For each `asset_id`:
-/// 1. Look up the `AbstractData` in `DATA_TABLE` by `asset_id` key.
+/// 1. Look up the `AbstractData` in `METADATA_TABLE` by `asset_id` key.
 /// 2. Delete the canonical file + sidecar from disk.
 /// 3. Remove the compressed thumbnail only if no other assets share the
 ///    same content hash (checked via `DUPE_INDEX`).
@@ -181,9 +181,9 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
         .in_disk
         .begin_read()
         .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?;
-    let data_table = txn
-        .open_table(DATA_TABLE)
-        .or_raise(|| (ErrorKind::Database, "Failed to open DATA_TABLE"))?;
+    let metadata_table = txn
+        .open_table(METADATA_TABLE)
+        .or_raise(|| (ErrorKind::Database, "Failed to open METADATA_TABLE"))?;
 
     let mut all_affected_album_ids = Vec::new();
     let mut abstract_data_to_remove = Vec::new();
@@ -196,7 +196,7 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
             )
         })?;
 
-        let abstract_data: AbstractData = data_table
+        let abstract_data: AbstractData = metadata_table
             .get(&*asset_id)
             .or_raise(|| {
                 (

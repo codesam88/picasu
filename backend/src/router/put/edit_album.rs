@@ -6,7 +6,7 @@ use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardShare;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::DATA_TABLE;
+use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
@@ -29,11 +29,11 @@ fn update_album(
         .begin_write()
         .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
     {
-        let mut data_table = txn
-            .open_table(DATA_TABLE)
+        let mut metadata_table = txn
+            .open_table(METADATA_TABLE)
             .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
 
-        let album = data_table
+        let album = metadata_table
             .get(&*album_id)
             .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
             .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?
@@ -51,7 +51,7 @@ fn update_album(
         if let Err(e) = write_sidecar_for(&abstract_data) {
             warn!("Failed to write XMP sidecar: {e}");
         }
-        data_table
+        metadata_table
             .insert(&*album_id, abstract_data)
             .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
     }
@@ -102,11 +102,11 @@ pub async fn set_album_cover(
             .begin_write()
             .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
         {
-            let mut data_table = txn
-                .open_table(DATA_TABLE)
+            let mut metadata_table = txn
+                .open_table(METADATA_TABLE)
                 .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
 
-            let album = data_table
+            let album = metadata_table
                 .get(&*album_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
                 .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?
@@ -117,14 +117,14 @@ pub async fn set_album_cover(
                     "Expected Album but got different type",
                 ));
             };
-            let database = data_table
+            let database = metadata_table
                 .get(&*cover_asset_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to get cover image"))?
                 .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Cover image not found"))?
                 .value();
 
             album.set_cover(&database, cover_asset_id);
-            data_table
+            metadata_table
                 .insert(&*album_id, AbstractData::Album(album))
                 .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
         }

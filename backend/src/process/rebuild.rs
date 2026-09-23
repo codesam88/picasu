@@ -1,7 +1,6 @@
-#![allow(dead_code)]
-
 use anyhow::{Context, Result};
 use log::{info, warn};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
@@ -11,7 +10,8 @@ use crate::process::hash::blake3_hasher;
 use crate::storage::asset_store;
 
 /// Statistics from a clean filesystem rebuild.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct RebuildStats {
     pub albums_created: usize,
     pub media_created: usize,

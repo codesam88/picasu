@@ -12,9 +12,9 @@ use crate::model::album::AlbumCombined;
 use crate::model::album::AlbumMetadata;
 use crate::model::object::{ObjectSchema, ObjectType};
 use crate::process::hash::generate_random_hash;
-use crate::storage::db::DATA_TABLE;
+use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
-use crate::storage::db::open_data_table;
+use crate::storage::db::open_metadata_table;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use redb::ReadableTable;
@@ -35,11 +35,11 @@ pub static PENDING_ALBUM_UPDATES: LazyLock<Mutex<HashSet<ArrayString<64>>>> =
 /// If filesystem albums are enabled, all cached albums are also queued for a
 /// stats self-update so their counts are correct from first request.
 pub fn init_dir_album_cache() {
-    let data_table = open_data_table();
+    let metadata_table = open_metadata_table();
     let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
 
     let mut stale_count = 0usize;
-    for entry in data_table
+    for entry in metadata_table
         .iter()
         .expect("failed to iterate table")
         .flatten()
@@ -291,7 +291,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         .context("Failed to begin write transaction for dir album")?;
     {
         let mut table = txn
-            .open_table(DATA_TABLE)
+            .open_table(METADATA_TABLE)
             .context("Failed to open data table")?;
         table
             .insert(&*album_id, abstract_data)

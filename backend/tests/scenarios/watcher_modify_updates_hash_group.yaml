@@ -5,43 +5,45 @@ given:
   - photo: /watcher_modify/album/original.jpg
     id_as: $original_hash
     asset_id_as: $original_id
+  # Different dimensions than original.jpg ⇒ different bytes ⇒ different
+  # content hash; used as the overwrite payload below.
+  - photo: /watcher_modify/album/replacement.jpg
+    width: 8
+    height: 8
   - duplicate_of:
       source: /watcher_modify/album/original.jpg
       destination: /watcher_modify/album/copy.jpg
 
 when:
-  # Index both files.
+  # Index all files.
   - call: POST /post/index/album
     raw_body: '{"album": "/"}'
     then:
       - response.status: 202
   - wait_index: true
 
-  # Verify both are indexed (album placeholder + 2 media = 3).
+  # Verify indexing (media >= 2) and capture the copy's asset id by path —
+  # get-data row order is not stable across photos.
   - call: POST /get/prefetch
     body: { Album: "${album}" }
     then:
       - response.status: 200
       - compare:
           response.json.prefetch.dataLength: { ">=": 2 }
+    asset_id_as: $copy_asset_id
+    discover_path: /watcher_modify/album/copy.jpg
 
-  # Capture the copy's asset_id.
-  - call: POST /get/prefetch
-    body: { Album: "${album}" }
-    capture:
-      end: response.prefetch.dataLength
-      ts: response.prefetch.timestamp
-      token: response.token
-  - call: GET /get/get-data?timestamp=${ts}&start=0&end=${end}
-    auth: false
-    headers:
-      Authorization: "Bearer ${token}"
-    capture:
-      copy_asset_id: response.[1].assetId
-
-  # Overwrite the original file with different bytes.
-  - write_file: /watcher_modify/album/original.jpg
-    content: "DIFFERENT_BYTES_THAN_ORIGINAL"
+  # Overwrite original.jpg with replacement.jpg's bytes (different hash),
+  # then re-index. The explicit index is required: the fs watcher debounces
+  # for 1s and wait_index would otherwise observe the previous job's stale
+  # "completed" state.
+  - duplicate_of:
+      source: /watcher_modify/album/replacement.jpg
+      destination: /watcher_modify/album/original.jpg
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
   - wait_index: true
 
   # Re-fetch to verify both files still exist as separate assets.
@@ -52,7 +54,22 @@ when:
       - compare:
           response.json.prefetch.dataLength: { ">=": 2 }
 
+  # Probe the OLD hash group (original's pre-modification content hash).
+  - call: GET /get/test/dupe-group/${original_hash}
+
 then:
+  - response.status: 200
+  # The re-indexed asset must leave its old hash group — stale membership
+  # here is the bug this scenario pins.
+  - array_where:
+      where:
+        assetId: "${original_id}"
+      expect: absent
+  # The untouched copy still legitimately shares the old hash.
+  - array_where:
+      where:
+        assetId: "${copy_asset_id}"
+      expect: present
   # Both files still exist on disk.
   - file_exists: /watcher_modify/album/original.jpg
   - file_exists: /watcher_modify/album/copy.jpg

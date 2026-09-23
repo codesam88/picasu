@@ -5,7 +5,7 @@ use crate::router::AppResult;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::storage::db::TREE;
-use crate::{router::GuardResult, storage::db::DATA_TABLE};
+use crate::{router::GuardResult, storage::db::METADATA_TABLE};
 
 use arrayvec::ArrayString;
 use rand::RngExt;
@@ -67,11 +67,11 @@ pub async fn create_share(
 }
 
 fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) -> AppResult<String> {
-    let mut data_table = txn
-        .open_table(DATA_TABLE)
+    let mut metadata_table = txn
+        .open_table(METADATA_TABLE)
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
 
-    let album_opt = data_table
+    let album_opt = metadata_table
         .get(&*create_share.album_id)
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
         .and_then(|guard| {
@@ -102,7 +102,7 @@ fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) ->
                 exp: create_share.exp,
             };
             album.metadata.share_list.insert(share_id, share);
-            data_table
+            metadata_table
                 .insert(&*create_share.album_id, AbstractData::Album(album))
                 .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
             Ok(link)
