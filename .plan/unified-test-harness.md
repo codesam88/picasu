@@ -119,7 +119,7 @@ Build the Rust harness (Solution A) for backend-only scenarios. Playwright keeps
 
 5. **Background task assertions**:
    - `wait_task` `when` item: polls `/get/index/status` or specific task completion
-   - New scenarios for dedup (upload identical content → verify single record)
+   - New scenarios for dedup (upload identical content → independent assets grouped in DUPE_INDEX)
 
 ### Phase 3: Performance Testing
 

@@ -356,8 +356,8 @@ export async function executeGiven(
           const albumId = await findAlbum(request, allHeaders, backendUrl, entry.qualifiedPath)
           if (albumId) result.vars[entry.id_as] = albumId
         } else if (entry.type === 'photo') {
-          const hash = findPhotoHash(entry.qualifiedPath, data)
-          if (hash) result.vars[entry.id_as] = hash
+          const assetId = findPhotoAssetId(entry.qualifiedPath, data)
+          if (assetId) result.vars[entry.id_as] = assetId
         }
       }
     }
@@ -422,12 +422,20 @@ async function findAlbum(
   return match ? String(match.albumId) : null
 }
 
-function findPhotoHash(qualifiedPath: string, data: any[]): string | null {
+/**
+ * Locate a photo in a get-data page by its path and return the row's
+ * path-primary `assetId` (the API identity).
+ *
+ * Rows carry the on-disk path at `abstractData.alias.file` (singular, see
+ * AliasSchema) — not the alias-era `currentAlias.filePath`, and the identity
+ * at row-level `assetId`, not a content `hash`.
+ */
+export function findPhotoAssetId(qualifiedPath: string, data: any[]): string | null {
   const match = data.find((d: any) => {
-    const alias = d.abstractData?.currentAlias?.filePath
-    return alias && alias.endsWith(qualifiedPath)
+    const file = d.abstractData?.alias?.file
+    return file && file.endsWith(qualifiedPath)
   })
-  return match ? String(match.hash) : null
+  return match ? String(match.assetId) : null
 }
 
 function base64urlEncode(data: Buffer): string {

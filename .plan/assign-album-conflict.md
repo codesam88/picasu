@@ -171,8 +171,9 @@ renamedFrom | skipped }`. Update the utoipa schema.
 ### Phase 5 — Cleanup
 
 - **C5 — probe + dead code.** Keep only path-primary duplicate-group and
-  asset-record probes needed by tests. Remove obsolete identity-merge references
-  from plans and generated references.
+  asset-record probes needed by tests. ~~Remove obsolete identity-merge references
+  from plans and generated references.~~ Done — the 2026-09-23 merge/duplicate
+  audit rewrote the remaining identity-merge wording in the plans.
 
 ## Progress
 

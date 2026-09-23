@@ -61,7 +61,11 @@ export async function refreshAlbumMetadata(albumId: string) {
       postToWorker.processImage({
         index: albumIndex,
         hash: coverHash,
-        assetId: coverHash, // Album covers use content hash as identity
+        // `data.cover` is the cover image's asset_id (album metadata.cover),
+        // not a content hash — here it is only the worker's blob cache key.
+        // Album record identity stays the album asset_id; the cover's content
+        // hash for the compressed URL / GuardHash claim is `data.coverHash`.
+        assetId: coverHash,
         devicePixelRatio: window.devicePixelRatio,
         albumId: shareStore.albumId,
         shareId: shareStore.shareId,
@@ -74,7 +78,11 @@ export async function refreshAlbumMetadata(albumId: string) {
       postToWorker.processSmallImage({
         index: albumIndex,
         hash: coverHash,
-        assetId: coverHash, // Album covers use content hash as identity
+        // `data.cover` is the cover image's asset_id (album metadata.cover),
+        // not a content hash — here it is only the worker's blob cache key.
+        // Album record identity stays the album asset_id; the cover's content
+        // hash for the compressed URL / GuardHash claim is `data.coverHash`.
+        assetId: coverHash,
         width: 300,
         height: 300,
         devicePixelRatio: window.devicePixelRatio,

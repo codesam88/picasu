@@ -1,3 +1,6 @@
+// The DB and store names keep the legacy "hashToken" spelling for persistence
+// compatibility: renaming them would orphan tokens already written to users'
+// existing IndexedDB databases. Keys and function names use `assetId`.
 const DB_NAME = 'hashToken'
 const DB_VERSION = 2
 const HASH_STORE_NAME = 'hashToken'

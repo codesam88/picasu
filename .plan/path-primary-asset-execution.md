@@ -442,25 +442,34 @@ Root causes resolved:
 | Phase 9: Frontend           | ✅ Done    | `assetIdMapData` sole identity, 8 Playwright scenarios                    |
 | Phase 10: Cleanup           | ✅ Done    | Legacy functions removed                                                  |
 
-### Key gaps
+### Key gaps (all five below verified resolved 2026-09-23)
 
-1. **`index_asset` is dead code** — defined in `process/index_asset.rs` with 4 unit tests, but never called from
+1. **`index_asset` is dead code** (RESOLVED — `process/index_asset.rs` was deleted in Phase 11b; live record
+   construction is `flush_tables` in `flush_tree.rs`) — defined in `process/index_asset.rs` with 4 unit tests, but never called from
    production. The `#[allow(dead_code)]` annotation masks the warning. The production indexing pipeline
    (`workflow::index_image` → `DeduplicateTask` → `IndexTask`) still constructs `AbstractData` from the old
    hash-based `AbstractData::new(&path, hash)` shape.
 
-2. **`rebuild_from_filesystem` is dead code** — defined in `process/rebuild.rs` with 8 unit tests, but never called
+2. **`rebuild_from_filesystem` is dead code** (RESOLVED — wired as `POST /post/rebuild` in Phase 12;
+   `#[allow(dead_code)]` removed) — defined in `process/rebuild.rs` with 8 unit tests, but never called
    from production. No CLI command or startup hook invokes it. The `#[allow(dead_code)]` annotation masks the warning.
 
-3. **`DeduplicateTask` uses old model** — constructs `AbstractData::new(&path, hash)` which bypasses `AssetRecord`
+3. **`DeduplicateTask` uses old model** (RESOLVED — `deduplicate.rs` now always returns `Some(abstract_data)` without
+   merging, and `flush_tables` populates `ASSET_BY_PATH`, `ASSET_BY_ID`, and `DUPE_INDEX` for every insert, including
+   old-group removal on hash change; verified against `deduplicate.rs` and `flush_tree.rs`) — constructs `AbstractData::new(&path, hash)` which bypasses `AssetRecord`
    entirely. The deduplication path does not populate `ASSET_BY_PATH`, `ASSET_BY_ID`, or `DUPE_INDEX`.
 
-4. **`DATA_TABLE` is still the primary read source** — `build_from_asset_tables` reads `ASSET_BY_ID` then enriches
-   from `DATA_TABLE` for metadata. The new tables are written to but not the authoritative read path for most endpoints.
-   This is by design (DATA_TABLE holds tags, exif, etc.) but means the new tables are supplementary, not primary.
+4. **`DATA_TABLE` is still the primary read source** (RESOLVED — Phase 14 renamed
+   `DATA_TABLE` to `METADATA_TABLE` and split the read path: lean `get-data` rows
+   are built from `ASSET_BY_ID` plus the snapshot, while tags/EXIF/description are
+   read from `METADATA_TABLE` only via `GET /get/metadata/{assetId}`; verified in
+   `update_tree.rs`, `get_data.rs`, and `transitor.rs`) — `build_from_asset_tables`
+   reads `ASSET_BY_ID` then enriches from `METADATA_TABLE` for metadata.
 
-5. **`asset_record_to_abstract_data` is only called from `delete.rs`** — not from `get_data.rs` or the tree build
-   path. The function exists but is not on the main read path.
+5. **`asset_record_to_abstract_data` is only called from `delete.rs`** (RESOLVED —
+   now also called from `rebuild.rs` and via `lean_media_abstract_data` in
+   `transitor.rs` for the Phase 14 lean read path) — not from `get_data.rs` or the
+   tree build path directly.
 
 ### What's NOT a gap (by design)
 

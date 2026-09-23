@@ -1,7 +1,7 @@
 name: album_index_removes_stale_aliases_when_file_deleted
 # Verifies that manual album indexing (POST /post/index/album) prunes
-# DB records whose alias files no longer exist on disk after external
-# deletion.  Without the fix, the stale alias persists until server
+# DB records whose canonical path no longer exists on disk after external
+# deletion.  Without the fix, the stale path record persists until server
 # restart or watcher event.
 given:
   - photo: /test_stale/photo_a.jpg
@@ -18,10 +18,10 @@ when:
   # Wait for the re-index to complete
   - wait_index: true
   # Check if the removed photo is still locatable via prefetch.
-  # If the stale alias was pruned, prefetch returns dataLength: 0.
+  # If the stale path was pruned, prefetch returns dataLength: 0.
   - call: POST /get/prefetch
     raw_body: '{"Path": "${data_path}/test_stale/photo_b.jpg"}'
 then:
   - response.status: 200
-  # The removed photo should no longer be locatable (stale alias pruned)
+  # The removed photo should no longer be locatable (stale path pruned)
   - response.json.prefetch.dataLength: 0

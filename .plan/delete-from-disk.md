@@ -16,11 +16,13 @@ or its thumbnail.
 
 - [x] Two-step delete UX: "trash" (soft, existing) → "confirm delete from disk" (hard). TrashedPage exists;
       "Permanently Delete" is wired into the single and batch trashed menus (`SingleMenu.vue`, `BatchMenu.vue`).
-- [x] `DELETE /delete/delete-data` (or new endpoint) must: 1. For each alias path, `fs::remove_file` the original 2.
-      `fs::remove_file` the `.xmp` sidecar (done) 3. `fs::remove_file` the compressed thumbnail at
+- [x] `DELETE /delete/delete-data` (or new endpoint) must: 1. Remove the asset's single canonical file path with
+      `fs::remove_file` 2. `fs::remove_file` the `.xmp` sidecar (done) 3. `fs::remove_file` the compressed thumbnail at
       `compressed_path(hash)` 4. Remove from DB (done)
-- [x] Handle multi-alias case: only remove from disk when removing the last alias; for earlier aliases only remove that
-      alias path from the `alias[]` list.
+- [x] Multi-alias handling (superseded by path-primary — see the SUPERSEDED design note below): the original requirement
+      was "only remove from disk when removing the last alias; for earlier aliases only remove that alias path from the
+      `alias[]` list". No longer applicable: each asset has one canonical path and deleting it never affects same-hash
+      siblings.
 - [x] `DIR_ALBUM_CACHE` eviction on delete.
 
 ## Design (2026-09-08) — SUPERSEDED

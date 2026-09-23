@@ -20,9 +20,15 @@ report mismatches, and — after user review — optionally repair them.
 
 ---
 
-## Context: what the code actually does today
+## Context: what the code did before the path-primary migration (superseded)
 
 > Derived from explore-agent deep-reads of the codebase (2026-06-29).
+>
+> Superseded by the path-primary migration: the present-tense claims below
+> (hash-keyed `DATA_TABLE`, the `DeduplicateTask` "merge aliases" short-circuit,
+> `alias: Vec<FileModify>`) describe the original hash-primary design, not
+> current behavior. Retained as history — rewrite against path-primary before
+> implementing (see the cleanup note above).
 
 ### Single entry point for all indexing
 
@@ -31,7 +37,7 @@ report mismatches, and — after user review — optionally repair them.
 the filesystem watcher, `POST /post/index/image`, and post_upload.
 There is no separate `index_for_watch` function.
 
-### Task chain for a new file
+### Task chain for a new file (pre-path-primary)
 
 ```
 OpenFileTask → HashTask → DeduplicateTask → IndexTask → [VideoTask]
@@ -71,7 +77,7 @@ hash, then the second unique hash gets its own guard.
 After debounce fires → `index_image(relative, None)`. No per-path processing lock.
 Multiple paths run fully concurrently.
 
-### Persistence
+### Persistence (pre-path-primary)
 
 `FlushTreeTask` (`batcher/flush_tree.rs`): redb write transaction on `DATA_TABLE`
 (`TableDefinition<&str, AbstractData>` keyed by hash). Writes the **full**
@@ -82,7 +88,7 @@ albums for update; dispatches `UpdateTreeTask` (detached).
 rebuilds `TREE.in_memory` (the sorted in-memory query/sort cache). Pure
 in-memory rebuild, no additional disk writes.
 
-### AbstractData field provenance
+### AbstractData field provenance (pre-path-primary)
 
 | Category                                      | Fields                                                                                                                                           |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -111,7 +117,9 @@ Keep `workflow::index_image` untouched — it is the discovery path and already
 works correctly.
 
 Add `workflow::scrub_file(hash: &ArrayString<64>) -> ScrubResult` as the scrub
-primitive:
+primitive (design written under the pre-path-primary model — the "live alias
+path" steps below need rewriting for the single-canonical-path model before
+implementation):
 
 ```
 1. Load existing AbstractData from DATA_TABLE (if missing: ScrubResult::RecordGone)

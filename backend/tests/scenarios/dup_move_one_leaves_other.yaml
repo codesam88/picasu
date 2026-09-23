@@ -2,9 +2,9 @@ name: moving one duplicate leaves the other unchanged
 # Path-primary contract: moving one file of a hash-collision pair changes only
 # that file's path and album membership.  The other file stays in its original
 # album at its original path.
-# NOTE: This test is flaky due to a race condition in DeduplicateTask when
-# two same-hash files are indexed concurrently. It will stabilize when the
-# production pipeline uses path-primary identity (Phase 7).
+# NOTE: This test was flaky under the pre-path-primary DeduplicateTask, which
+# raced when two same-hash files were indexed concurrently. Phase 7 (the
+# path-primary pipeline) removed the merge race; the scenario is stable now.
 given:
   - dir_album: /dup_move/source_album
     id_as: $source_album
@@ -53,7 +53,7 @@ when:
 then:
   - response.status: 200
   # Source album should still have placeholder + remaining copy = 2 items.
-  # In the current hash-merging model, both files move together and the
-  # source album becomes empty (only placeholder remains = 1).
+  # Under the pre-path-primary hash-merging model, both files moved together
+  # and the source album became empty (only placeholder remains = 1).
   - compare:
       response.json.prefetch.dataLength: { ">=": 2 }
