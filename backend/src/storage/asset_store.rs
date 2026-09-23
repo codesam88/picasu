@@ -7,8 +7,8 @@ use crate::storage::db::{ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX, TREE};
 
 // ── Asset by path ────────────────────────────────────────────────────────────
 
-/// Look up an asset ID by its canonical path.
-pub fn get_asset_id_by_path(canonical_path: &str) -> Result<Option<ArrayString<64>>> {
+/// Look up an asset ID by its path.
+pub fn get_asset_id_by_path(path: &str) -> Result<Option<ArrayString<64>>> {
     let txn = TREE
         .in_disk
         .begin_read()
@@ -17,7 +17,7 @@ pub fn get_asset_id_by_path(canonical_path: &str) -> Result<Option<ArrayString<6
         .open_table(ASSET_BY_PATH)
         .context("Failed to open ASSET_BY_PATH")?;
 
-    match table.get(canonical_path)? {
+    match table.get(path)? {
         Some(guard) => {
             let id_str = guard.value();
             let id = ArrayString::from(id_str)
@@ -29,7 +29,7 @@ pub fn get_asset_id_by_path(canonical_path: &str) -> Result<Option<ArrayString<6
 }
 
 /// Insert or update a `path → asset_id` mapping.
-pub fn put_asset_by_path(canonical_path: &str, asset_id: ArrayString<64>) -> Result<()> {
+pub fn put_asset_by_path(path: &str, asset_id: ArrayString<64>) -> Result<()> {
     let txn = TREE
         .in_disk
         .begin_write()
@@ -39,7 +39,7 @@ pub fn put_asset_by_path(canonical_path: &str, asset_id: ArrayString<64>) -> Res
             .open_table(ASSET_BY_PATH)
             .context("Failed to open ASSET_BY_PATH for write")?;
         table
-            .insert(canonical_path, &*asset_id)
+            .insert(path, &*asset_id)
             .context("Failed to insert into ASSET_BY_PATH")?;
     }
     txn.commit()
@@ -47,7 +47,7 @@ pub fn put_asset_by_path(canonical_path: &str, asset_id: ArrayString<64>) -> Res
 }
 
 /// Remove a `path → asset_id` mapping.
-pub fn remove_asset_by_path(canonical_path: &str) -> Result<()> {
+pub fn remove_asset_by_path(path: &str) -> Result<()> {
     let txn = TREE
         .in_disk
         .begin_write()
@@ -57,7 +57,7 @@ pub fn remove_asset_by_path(canonical_path: &str) -> Result<()> {
             .open_table(ASSET_BY_PATH)
             .context("Failed to open ASSET_BY_PATH for write")?;
         table
-            .remove(canonical_path)
+            .remove(path)
             .context("Failed to remove from ASSET_BY_PATH")?;
     }
     txn.commit()
@@ -107,7 +107,7 @@ pub fn get_all_assets() -> Result<Vec<AssetRecord>> {
     Ok(records)
 }
 
-/// Find all asset records whose `canonical_path` is a descendant of `dir_path`.
+/// Find all asset records whose `path` is a descendant of `dir_path`.
 /// The directory itself is NOT included — only children and deeper descendants.
 pub fn get_assets_under_path(dir_path: &str) -> Result<Vec<AssetRecord>> {
     let prefix = if dir_path.ends_with('/') {
@@ -119,7 +119,7 @@ pub fn get_assets_under_path(dir_path: &str) -> Result<Vec<AssetRecord>> {
     let all = get_all_assets()?;
     Ok(all
         .into_iter()
-        .filter(|r| r.canonical_path.starts_with(&prefix))
+        .filter(|r| r.path.starts_with(&prefix))
         .collect())
 }
 
@@ -264,7 +264,7 @@ pub fn remove_from_dupe_group(content_hash: &str, asset_id: ArrayString<64>) -> 
 /// This is the primary entry point for adding a new asset to the stores.
 pub fn insert_asset(record: &AssetRecord) -> Result<()> {
     put_asset_by_id(record)?;
-    put_asset_by_path(&record.canonical_path, record.asset_id)?;
+    put_asset_by_path(&record.path, record.asset_id)?;
     if let Some(hash) = &record.content_hash {
         add_to_dupe_group(hash, record.asset_id)?;
     }
@@ -275,7 +275,7 @@ pub fn insert_asset(record: &AssetRecord) -> Result<()> {
 /// This is the primary entry point for removing an asset from the stores.
 pub fn remove_asset(record: &AssetRecord) -> Result<()> {
     remove_asset_by_id(&record.asset_id)?;
-    remove_asset_by_path(&record.canonical_path)?;
+    remove_asset_by_path(&record.path)?;
     if let Some(hash) = &record.content_hash {
         remove_from_dupe_group(hash, record.asset_id)?;
     }
@@ -340,8 +340,8 @@ mod tests {
             0,
         );
 
-        put_asset_by_path(&record.canonical_path, record.asset_id).unwrap();
-        let found = get_asset_id_by_path(&record.canonical_path).unwrap();
+        put_asset_by_path(&record.path, record.asset_id).unwrap();
+        let found = get_asset_id_by_path(&record.path).unwrap();
         assert_eq!(found, Some(record.asset_id));
 
         clear_tables();
@@ -367,7 +367,7 @@ mod tests {
         assert!(found.is_some());
         let found = found.unwrap();
         assert_eq!(found.asset_id, record.asset_id);
-        assert_eq!(found.canonical_path, "/test.jpg");
+        assert_eq!(found.path, "/test.jpg");
         assert_eq!(found.kind, AssetKind::Image);
 
         clear_tables();

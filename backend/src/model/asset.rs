@@ -60,10 +60,10 @@ pub struct AssetRecord {
     pub asset_id: ArrayString<64>,
     /// Whether this is an image, video, or album.
     pub kind: AssetKind,
-    /// Canonical filesystem path. For media files this is the absolute path
+    /// Filesystem path. For media files this is the absolute path
     /// to the file; for albums it is the directory path. Unique across all
     /// assets.
-    pub canonical_path: String,
+    pub path: String,
     /// Optional content hash (blake3). Albums do not have content hashes.
     pub content_hash: Option<ArrayString<64>>,
     /// File size in bytes. Zero for albums.
@@ -85,7 +85,7 @@ impl AssetRecord {
     /// Create a new media asset record with a generated `asset_id`.
     pub fn new_media(
         kind: AssetKind,
-        canonical_path: String,
+        path: String,
         content_hash: Option<ArrayString<64>>,
         file_size: u64,
         ext: String,
@@ -97,7 +97,7 @@ impl AssetRecord {
         Self {
             asset_id,
             kind,
-            canonical_path,
+            path,
             content_hash,
             file_size,
             ext,
@@ -109,13 +109,13 @@ impl AssetRecord {
     }
 
     /// Create a new album asset record with a generated `asset_id`.
-    pub fn new_album(canonical_path: String) -> Self {
+    pub fn new_album(path: String) -> Self {
         let asset_id = crate::process::hash::generate_random_hash();
         let now = chrono::Utc::now().timestamp_millis();
         Self {
             asset_id,
             kind: AssetKind::Album,
-            canonical_path,
+            path,
             content_hash: None,
             file_size: 0,
             ext: String::new(),

@@ -101,7 +101,7 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
             let object = ObjectSchema::new(display_id, ObjectType::Image);
             let mut metadata = ImageMetadata::new(record.file_size, 0, 0, record.ext.clone());
             metadata.path = Some(FileEntry {
-                file: record.canonical_path.clone(),
+                file: record.path.clone(),
                 modified: record.modified,
                 scan_time: record.scan_time,
                 is_trashed: record.is_trashed,
@@ -112,7 +112,7 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
             let object = ObjectSchema::new(display_id, ObjectType::Video);
             let mut metadata = VideoMetadata::new(record.file_size, 0, 0, record.ext.clone());
             metadata.path = Some(FileEntry {
-                file: record.canonical_path.clone(),
+                file: record.path.clone(),
                 modified: record.modified,
                 scan_time: record.scan_time,
                 is_trashed: record.is_trashed,
@@ -134,7 +134,7 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
                 item_count: 0,
                 item_size: 0,
                 share_list: std::collections::HashMap::new(),
-                dir_path: record.canonical_path.clone(),
+                dir_path: record.path.clone(),
                 custom_title: None,
                 is_trashed: record.is_trashed,
             };

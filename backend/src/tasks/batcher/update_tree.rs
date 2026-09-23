@@ -40,7 +40,7 @@ fn update_tree_task() {
     let mut database_timestamp_vec = build_from_asset_tables(&priority_list).unwrap_or_default();
 
     // Sort by timestamp descending, with a deterministic secondary key
-    // (the canonical asset path) so that items with equal timestamps have a
+    // (the asset path) so that items with equal timestamps have a
     // stable order.
     database_timestamp_vec.par_sort_by(|a, b| {
         b.timestamp.cmp(&a.timestamp).then_with(|| {

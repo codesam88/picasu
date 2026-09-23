@@ -20,7 +20,7 @@ use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use redb::{ReadableDatabase, ReadableTable};
 
-/// In-memory cache: canonical dir path → album ID.
+/// In-memory cache: dir path → album ID.
 /// The mutex is held for the full duration of `get_or_create_dir_album` to
 /// prevent races under concurrent file indexing.
 static DIR_ALBUM_CACHE: LazyLock<Mutex<HashMap<PathBuf, ArrayString<64>>>> =
@@ -67,7 +67,7 @@ pub fn init_dir_album_cache() {
         let Ok(record) = serde_json::from_str::<AssetRecord>(record_json.value()) else {
             continue;
         };
-        let path = PathBuf::from(&record.canonical_path);
+        let path = PathBuf::from(&record.path);
         if path.is_dir() {
             cache.insert(path, record.asset_id);
         } else {
@@ -332,7 +332,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
             ..record
         };
         if let Ok(json) = serde_json::to_string(&record) {
-            let _ = path_table.insert(record.canonical_path.as_str(), &*album_id);
+            let _ = path_table.insert(record.path.as_str(), &*album_id);
             let _ = id_table.insert(&*album_id, json.as_str());
         }
     }

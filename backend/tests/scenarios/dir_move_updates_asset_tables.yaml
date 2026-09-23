@@ -1,6 +1,6 @@
 name: directory move updates asset table paths
 # When a directory is moved via assign_album, the asset tables must be
-# updated so that the moved files' canonical paths reflect the new location.
+# updated so that the moved files' paths reflect the new location.
 given:
   - dir_album: /e2e_dir_move/source/child
     id_as: $child_album

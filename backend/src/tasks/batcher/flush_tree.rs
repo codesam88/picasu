@@ -77,18 +77,17 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
     // Process inserts: each AbstractData gets its own asset record.
     for abstract_data in insert_list {
         let content_hash = abstract_data.hash();
-        let canonical_path = abstract_data
+        let path = abstract_data
             .path()
             .map(|a| a.file.clone())
             .unwrap_or_default();
 
         // Check if this path already has an asset (idempotent re-index).
-        let existing_id =
-            if let Ok(Some(existing_id)) = asset_store::get_asset_id_by_path(&canonical_path) {
-                Some(existing_id)
-            } else {
-                None
-            };
+        let existing_id = if let Ok(Some(existing_id)) = asset_store::get_asset_id_by_path(&path) {
+            Some(existing_id)
+        } else {
+            None
+        };
         // Read the previous content hash before `begin_write`: store helpers
         // open their own transactions, which cannot run inside the flush
         // write transaction (redb is single-writer).
@@ -133,7 +132,7 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
         let record = AssetRecord {
             asset_id,
             kind,
-            canonical_path: canonical_path.clone(),
+            path: path.clone(),
             content_hash: Some(content_hash),
             file_size,
             ext,
@@ -168,7 +167,7 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
                     .insert(&*asset_id, json.as_str())
                     .expect("failed to insert into ASSET_BY_ID");
                 path_table
-                    .insert(canonical_path.as_str(), &*asset_id)
+                    .insert(path.as_str(), &*asset_id)
                     .expect("failed to insert into ASSET_BY_PATH");
 
                 // Write the metadata-only payload to METADATA_TABLE keyed by
@@ -179,7 +178,7 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
                     .expect("failed to insert into METADATA_TABLE");
 
                 log::info!(
-                    "flush_tree: wrote to METADATA_TABLE key={asset_id}, path={canonical_path}, content_hash={content_hash}"
+                    "flush_tree: wrote to METADATA_TABLE key={asset_id}, path={path}, content_hash={content_hash}"
                 );
 
                 // When the file's bytes changed, first drop this asset from its
@@ -222,30 +221,30 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
 
     // Process removes: delete from asset tables.
     for abstract_data in remove_list {
-        let canonical_path = abstract_data
+        let path = abstract_data
             .path()
             .map(|a| a.file.clone())
             .unwrap_or_default();
 
-        if canonical_path.is_empty() {
+        if path.is_empty() {
             // Path pruned (e.g., by sweep_stale_asset_paths) — `None` maps to
-            // an empty canonical path. Remove any asset in the DUPE_INDEX
-            // group whose canonical path no longer exists on disk.
+            // an empty path. Remove any asset in the DUPE_INDEX
+            // group whose path no longer exists on disk.
             let content_hash = abstract_data.hash();
             if let Ok(ids) = asset_store::get_dupe_ids(&content_hash) {
                 for id in ids {
                     if let Ok(Some(record)) = asset_store::get_asset_by_id(id.as_ref())
-                        && !std::path::Path::new(&record.canonical_path).exists()
+                        && !std::path::Path::new(&record.path).exists()
                     {
-                        remove_asset_from_tables(&id, &record.canonical_path, content_hash);
+                        remove_asset_from_tables(&id, &record.path, content_hash);
                     }
                 }
             }
         } else {
-            // Normal case: the record holds its canonical path — remove that
+            // Normal case: the record holds its path — remove that
             // specific asset.
-            if let Ok(Some(asset_id)) = asset_store::get_asset_id_by_path(&canonical_path) {
-                remove_asset_from_tables(&asset_id, &canonical_path, abstract_data.hash());
+            if let Ok(Some(asset_id)) = asset_store::get_asset_id_by_path(&path) {
+                remove_asset_from_tables(&asset_id, &path, abstract_data.hash());
             }
         }
 
@@ -295,15 +294,11 @@ fn remove_from_old_group(
 }
 
 /// Remove an asset from all tables: `ASSET_BY_ID`, `ASSET_BY_PATH`, `DUPE_INDEX`, `METADATA_TABLE`.
-fn remove_asset_from_tables(
-    asset_id: &ArrayString<64>,
-    canonical_path: &str,
-    content_hash: ArrayString<64>,
-) {
+fn remove_asset_from_tables(asset_id: &ArrayString<64>, path: &str, content_hash: ArrayString<64>) {
     use crate::storage::asset_store;
 
     let _ = asset_store::remove_asset_by_id(asset_id);
-    let _ = asset_store::remove_asset_by_path(canonical_path);
+    let _ = asset_store::remove_asset_by_path(path);
     let _ = asset_store::remove_from_dupe_group(&content_hash, *asset_id);
 
     let write_txn = TREE
@@ -424,10 +419,9 @@ mod tests {
     /// Identity keys that must never appear in the stored metadata payload —
     /// they live exclusively on `AssetRecord` (`ASSET_BY_ID`) and are
     /// re-projected onto the wire by composition.
-    const FORBIDDEN_IDENTITY_KEYS: [&str; 12] = [
+    const FORBIDDEN_IDENTITY_KEYS: [&str; 11] = [
         "path",
         "file",
-        "canonicalPath",
         "modified",
         "scanTime",
         "isTrashed",
@@ -504,7 +498,7 @@ mod tests {
 
         let stored_id = asset_store::get_asset_id_by_path("")
             .expect("lookup ASSET_BY_PATH")
-            .expect("album flush must register under its empty canonical path");
+            .expect("album flush must register under its empty path");
         let json = stored_metadata_json(&stored_id);
         assert_no_identity_keys(&json, "album metadata row");
 
@@ -642,7 +636,7 @@ mod tests {
         let id_b = asset_id_at(&path_b);
         assert_ne!(id_a, id_b);
 
-        // The normal remove branch resolves by canonical path via
+        // The normal remove branch resolves by path via
         // ASSET_BY_PATH and does not consult the filesystem, so the
         // remove input is the same path AbstractData used for the insert.
         flush_tables(&[], &[data_a]);

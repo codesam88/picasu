@@ -24,9 +24,9 @@ use crate::model::video::{VideoCombined, VideoMetadata};
 /// Metadata-only value stored in `METADATA_TABLE`, keyed by `asset_id`.
 ///
 /// Deliberately excludes every identity or identity-duplicated field: no
-/// `id`, no `path`/file entry, no `canonical_path`, no
-/// `modified`/`scan_time`/`is_trashed`, no `size`/`ext`, no `album`
-/// membership, no `dir_path`, no `obj_type`.
+/// `id`, no asset `path` (neither `AssetRecord.path` nor the view's
+/// `path`/file entry), no `modified`/`scan_time`/`is_trashed`, no
+/// `size`/`ext`, no `album` membership, no `dir_path`, no `obj_type`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Encode, Decode)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum MetadataRecord {
@@ -73,7 +73,7 @@ pub struct VideoPayload {
 
 /// Metadata-only payload for album assets. `id`, `dir_path`, and
 /// `is_trashed` are not stored here — composition fills them from the
-/// album's `AssetRecord` (`asset_id`, `canonical_path`, `is_trashed`).
+/// album's `AssetRecord` (`asset_id`, `path`, `is_trashed`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumPayload {
@@ -170,7 +170,7 @@ pub fn to_metadata_record(data: &AbstractData) -> MetadataRecord {
 /// [`AssetRecord`] plus its optional stored [`MetadataRecord`] payload.
 ///
 /// Identity is always taken from the record: the media file entry
-/// (`FileEntry { file: canonical_path, modified, scan_time, is_trashed }`),
+/// (`FileEntry { file: path, modified, scan_time, is_trashed }`),
 /// album `metadata.id`/`dir_path`/`is_trashed`, `object.id` (display rule:
 /// `content_hash.unwrap_or(asset_id)` for media, `asset_id` for albums),
 /// `obj_type` from `record.kind`, and size/ext/album membership. Metadata
@@ -206,7 +206,7 @@ pub fn compose_abstract_data(record: &AssetRecord, meta: Option<&MetadataRecord>
     // The media file entry is a view assembled from the record; the record
     // is the sole stored owner of the trash flag.
     let file_entry = FileEntry {
-        file: record.canonical_path.clone(),
+        file: record.path.clone(),
         modified: record.modified,
         scan_time: record.scan_time,
         is_trashed: record.is_trashed,
@@ -259,7 +259,7 @@ pub fn compose_abstract_data(record: &AssetRecord, meta: Option<&MetadataRecord>
             let mut object = ObjectSchema::new(display_id, obj_type);
             let mut metadata = AlbumMetadata {
                 id: record.asset_id,
-                dir_path: record.canonical_path.clone(),
+                dir_path: record.path.clone(),
                 is_trashed: record.is_trashed,
                 ..Default::default()
             };

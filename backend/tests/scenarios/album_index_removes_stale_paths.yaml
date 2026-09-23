@@ -1,6 +1,6 @@
 name: album_index_removes_stale_paths_when_file_deleted
 # Verifies that manual album indexing (POST /post/index/album) prunes
-# DB records whose canonical path no longer exists on disk after external
+# DB records whose path no longer exists on disk after external
 # deletion.  Without the fix, the stale path record persists until server
 # restart or watcher event.
 given:

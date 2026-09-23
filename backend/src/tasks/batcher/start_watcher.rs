@@ -152,7 +152,7 @@ fn submit_to_debounce_pool(path: PathBuf) {
 }
 
 /// Handle an external file removal: find the DB record that owns `path`,
-/// clear the record's canonical path, and if no path remains remove the
+/// clear the record's path, and if no path remains remove the
 /// record + thumbnail.
 fn submit_removal_to_watcher(path: PathBuf) {
     INDEX_RUNTIME.spawn(async move {

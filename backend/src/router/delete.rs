@@ -30,7 +30,7 @@ use std::path::Path;
 #[derive(utoipa::ToSchema)]
 pub struct DeleteList {
     /// Asset IDs to delete. Each asset is resolved via `ASSET_BY_ID` by its
-    /// `asset_id` key. The canonical file and sidecar are removed from disk.
+    /// `asset_id` key. The asset file and sidecar are removed from disk.
     asset_ids: Vec<String>,
     timestamp: i64,
 }
@@ -123,7 +123,7 @@ fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
             {
                 for desc in &descendants {
                     // Delete file + sidecar from disk.
-                    let file_path = Path::new(&desc.canonical_path);
+                    let file_path = Path::new(&desc.path);
                     if let Err(e) = std::fs::remove_file(file_path)
                         && e.kind() != std::io::ErrorKind::NotFound
                     {
@@ -144,7 +144,7 @@ fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
 
                     // Evict child album caches.
                     if desc.kind == crate::model::asset::AssetKind::Album {
-                        evict_dir_album(Path::new(&desc.canonical_path));
+                        evict_dir_album(Path::new(&desc.path));
                     }
                 }
 
@@ -172,7 +172,7 @@ fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
 ///
 /// For each `asset_id`:
 /// 1. Compose the view from the asset's `AssetRecord` (+ stored payload).
-/// 2. Delete the canonical file + sidecar from disk.
+/// 2. Delete the asset file + sidecar from disk.
 /// 3. Remove the compressed thumbnail only if no other assets share the
 ///    same content hash (checked via `DUPE_INDEX`).
 /// 4. Collect affected album IDs for later self-update.
@@ -242,7 +242,7 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
             }
         };
 
-        // Delete canonical file + sidecar from disk.
+        // Delete asset file + sidecar from disk.
         if let Some(file_entry) = abstract_data.path() {
             let original = Path::new(&file_entry.file);
             if let Err(e) = std::fs::remove_file(original)
