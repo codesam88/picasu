@@ -122,7 +122,7 @@ openapi-gen:
 # Auto-format .plan task frontmatter and body
 [group('tooling')]
 plan-format:
-    plan --root {{justfile_directory()}} format
+    npx prettier --write --no-error-on-unmatched-pattern '.plan/**/*.md'
 
 # Validate .plan task frontmatter structure
 [group('tooling')]
