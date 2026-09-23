@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: backend
@@ -488,7 +488,7 @@ All 34 Playwright + 62 frontend unit tests pass.
 
 ---
 
-## Phase 11: Fix DUPE_INDEX old-group removal on hash change — TODO
+## Phase 11: Fix DUPE_INDEX old-group removal on hash change — DONE
 
 **Background (verified 2026-09-22):** `flush_tree_task` (tasks/batcher/flush_tree.rs:139) adds the asset id to the
 _new_ hash group on insert but **never removes it from the old group** when a file's bytes change.
