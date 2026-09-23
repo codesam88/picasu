@@ -13,37 +13,37 @@ export const useEditStore = (isolationId: IsolationId) =>
       rotationQueue: new Map()
     }),
     actions: {
-      async queueRotate(hash: string, task: () => Promise<void>) {
-        // Get the current promise chain for this hash, or start a new one
+      async queueRotate(assetId: string, task: () => Promise<void>) {
+        // Get the current promise chain for this asset, or start a new one
         // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-        const previousTask = this.rotationQueue.get(hash) || Promise.resolve()
+        const previousTask = this.rotationQueue.get(assetId) || Promise.resolve()
 
         // Chain the new task to run after the previous one completes
         const newTask = previousTask
           .then(() => task())
           .catch((error: unknown) => {
-            console.error(`Rotation task failed for hash ${hash}:`, error)
+            console.error(`Rotation task failed for assetId ${assetId}:`, error)
           })
 
         // Update the queue with the new tail of the chain
-        this.rotationQueue.set(hash, newTask)
+        this.rotationQueue.set(assetId, newTask)
 
         // Wait for this specific task to finish (optional, depending on if caller needs to await)
         await newTask
       },
-      addRegenerate(hash: string) {
-        this.processingRegenerate.add(hash)
+      addRegenerate(assetId: string) {
+        this.processingRegenerate.add(assetId)
       },
-      removeRegenerate(hash: string) {
-        this.processingRegenerate.delete(hash)
+      removeRegenerate(assetId: string) {
+        this.processingRegenerate.delete(assetId)
       },
-      hasRegenerate(hash: string) {
-        return this.processingRegenerate.has(hash)
+      hasRegenerate(assetId: string) {
+        return this.processingRegenerate.has(assetId)
       },
-      incrementRotation(hash: string) {
+      incrementRotation(assetId: string) {
         // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions, @typescript-eslint/prefer-nullish-coalescing
-        const count = this.rotationCounts.get(hash) || 0
-        this.rotationCounts.set(hash, count + 1)
+        const count = this.rotationCounts.get(assetId) || 0
+        this.rotationCounts.set(assetId, count + 1)
       }
     }
   })()

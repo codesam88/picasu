@@ -42,14 +42,14 @@ export function createRoute(baseName: BaseName, component: Component): RouteReco
       getParentPage: (route) => {
         return {
           name: baseName,
-          params: { assetId: undefined, subhash: undefined },
+          params: {},
           query: route.query
         }
       },
       getChildPage: (route, assetId) => {
         return {
           name: `${baseName}ViewPage`,
-          params: { assetId: assetId, subhash: undefined },
+          params: { assetId: assetId },
           query: route.query
         }
       }
@@ -65,7 +65,7 @@ export function createRoute(baseName: BaseName, component: Component): RouteReco
           getParentPage: (route) => {
             return {
               name: baseName,
-              params: { assetId: undefined, subhash: undefined },
+              params: {},
               query: route.query
             }
           },
@@ -74,7 +74,7 @@ export function createRoute(baseName: BaseName, component: Component): RouteReco
           getChildPage: (route) => {
             return {
               name: `${baseName}ViewPage`,
-              params: { assetId: route.params.assetId, subhash: undefined },
+              params: { assetId: route.params.assetId },
               query: route.query
             }
           }

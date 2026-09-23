@@ -3,8 +3,7 @@ import { LocationQuery, RouteLocationNormalizedLoaded } from 'vue-router'
 export interface PageReturnType {
   name: string
   params: {
-    hash?: string | string[] | undefined
-    subhash?: string | string[] | undefined
+    assetId?: string | string[] | undefined
     albumId?: string | string[]
     shareId?: string | string[]
   }
@@ -23,7 +22,7 @@ declare module 'vue-router' {
     ) => PageReturnType
     getChildPage: (
       router: RouteLocationNormalizedLoaded,
-      hash: string | undefined
+      assetId: string | undefined
     ) => PageReturnType
   }
 }

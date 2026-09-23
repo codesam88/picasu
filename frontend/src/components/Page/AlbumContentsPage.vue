@@ -1,7 +1,7 @@
 <template>
   <PageTemplate>
     <template #content>
-      <GalleryMain :key="albumHash" :basic-string="basicString" />
+      <GalleryMain :key="albumId" :basic-string="basicString" />
     </template>
   </PageTemplate>
 </template>
@@ -14,13 +14,13 @@ import PageTemplate from './PageLayout/PageTemplate.vue'
 
 const route = useRoute()
 
-const albumHash = computed(() => {
-  const id = route.params.albumHash
+const albumId = computed(() => {
+  const id = route.params.albumId
   return typeof id === 'string' ? id : ''
 })
 
 const basicString = computed(() => {
-  if (!albumHash.value) return null
-  return `and(trashed:false, or(album:"${albumHash.value}", parent_album:"${albumHash.value}"))`
+  if (!albumId.value) return null
+  return `and(trashed:false, or(album:"${albumId.value}", parent_album:"${albumId.value}"))`
 })
 </script>

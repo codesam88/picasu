@@ -73,6 +73,13 @@ impl Claims {
 // src/router/claims/claims_hash.rs
 use arrayvec::ArrayString;
 
+/// JWT claims for image-serving tokens.
+///
+/// The token carries both identities: `hash` is the asset's content hash used
+/// to authorize compressed-thumbnail URLs (validated by [`GuardHash`]), and
+/// `asset_id` is the path-primary asset ID used to authorize original-file
+/// URLs (validated by [`GuardHashOriginal`]). Album-cover tokens carry the
+/// cover image's content hash in `hash` and the album's ID in `asset_id`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClaimsHash {
@@ -276,18 +283,26 @@ pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result
     Err(anyhow!("JWT not found in cookies"))
 }
 
-/// Extract hash from the request URL path (last segment before extension)
-pub fn extract_hash_from_path(req: &Request<'_>) -> Result<String> {
-    let hash_opt = req
+/// Extract the serving ID from the request URL path (last segment before the
+/// extension).
+///
+/// What the segment means depends on the guard that calls this: for
+/// compressed-thumbnail serving it is the asset's content hash (compared
+/// against the `hash` claim), and for original-file serving it is the
+/// path-primary `asset_id` (compared against the `asset_id` claim).
+pub fn extract_serving_id_from_path(req: &Request<'_>) -> Result<String> {
+    let id_opt = req
         .uri()
         .path()
         .segments()
         .last()
-        .and_then(|hash_with_ext| hash_with_ext.rsplit_once('.'))
-        .map(|(hash, _ext)| hash.to_string());
+        .and_then(|segment_with_ext| segment_with_ext.rsplit_once('.'))
+        .map(|(id, _ext)| id.to_string());
 
-    match hash_opt {
-        Some(hash) => Ok(hash),
+    match id_opt {
+        Some(id) => Ok(id),
+        // Message kept verbatim for wire compatibility; the segment itself is
+        // a content hash (compressed) or an asset ID (original).
         None => Err(anyhow!("No valid 'hash' parameter found in the uri")),
     }
 }
@@ -459,6 +474,8 @@ use rocket::serde::json::Json;
 
 use crate::error::ResultExt;
 
+/// Request guard for compressed image serving: the serving ID extracted from
+/// the URL path must equal the token's content `hash` claim.
 pub struct GuardHash;
 
 #[rocket::async_trait]
@@ -487,7 +504,7 @@ impl<'r> FromRequest<'r> for GuardHash {
             }
         };
 
-        let data_hash = match extract_hash_from_path(req) {
+        let data_hash = match extract_serving_id_from_path(req) {
             Ok(hash) => hash,
             Err(err) => {
                 return Outcome::Error((
@@ -512,6 +529,9 @@ impl<'r> FromRequest<'r> for GuardHash {
     }
 }
 
+/// Request guard for original-file serving: the asset ID extracted from the
+/// URL path must equal the token's `asset_id` claim (asset ID is
+/// authoritative — no hash fallback).
 pub struct GuardHashOriginal;
 
 #[rocket::async_trait]
@@ -546,7 +566,7 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
         }
 
         // Extract the asset_id from the URL path.
-        let url_id = match extract_hash_from_path(req) {
+        let url_id = match extract_serving_id_from_path(req) {
             Ok(id) => id,
             Err(err) => {
                 return Outcome::Error((

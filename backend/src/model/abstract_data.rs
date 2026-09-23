@@ -38,7 +38,8 @@ pub enum AbstractData {
 }
 
 impl AbstractData {
-    /// Get the object hash/id
+    /// Get `object.id`: the content hash for media records, the album's asset
+    /// ID for album records.
     pub fn hash(&self) -> ArrayString<64> {
         match self {
             AbstractData::Image(img) => img.object.id,

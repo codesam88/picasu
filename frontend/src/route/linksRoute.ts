@@ -16,14 +16,14 @@ export const linksRoute: RouteRecordRaw = {
     getParentPage: (route) => {
       return {
         name: 'timeline',
-        params: { hash: undefined, subhash: undefined },
+        params: {},
         query: route.query
       }
     },
     getChildPage: (route) => {
       return {
         name: 'links',
-        params: { hash: undefined, subhash: undefined },
+        params: {},
         query: route.query
       }
     }

@@ -46,9 +46,10 @@ pub struct DataBaseTimestampReturn {
 impl DataBaseTimestampReturn {
     /// Create with `asset_id` included in the token for path-primary identity.
     /// For albums, `cover_content_hash` is the cover image's `object.id`
-    /// (content hash) looked up from the data table.  It is used for the
-    /// token's `hash` claim (`GuardHash` validation) and exposed to the
-    /// frontend for compressed thumbnail URL construction.
+    /// (content hash), looked up from `METADATA_TABLE` by the cover's
+    /// `asset_id`.  It is used for the token's `hash` claim (`GuardHash`
+    /// validation) and exposed to the frontend for compressed thumbnail URL
+    /// construction.
     pub fn with_asset_id(
         abstract_data: AbstractData,
         priority_list: &[&str],

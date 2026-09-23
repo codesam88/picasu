@@ -83,24 +83,24 @@ Same store name + same ID = same singleton. Different ID = different instance.
 
 ## Route Levels
 
-Every page section (home, albums, all, etc.) shares a 4-level nested route structure, parameterized by `baseName`:
+Every page section (timeline, albums, favorite, etc.) shares a 2-level nested
+route structure, parameterized by `baseName`:
 
-| Level | URL pattern                                 | Route name               | Component                          |
-| ----- | ------------------------------------------- | ------------------------ | ---------------------------------- |
-| 1     | `/{baseName}`                               | `{baseName}`             | Page component (e.g. `AlbumsPage`) |
-| 2     | `/{baseName}/view/:hash`                    | `{baseName}ViewPage`     | `ViewPageMain`                     |
-| 3     | `/{baseName}/view/:hash/read`               | `{baseName}ReadPage`     | `HomeIsolated`                     |
-| 4     | `/{baseName}/view/:hash/read/view/:subhash` | `{baseName}ReadViewPage` | `ViewPageIsolated`                 |
+| Level | URL pattern                 | Route name           | Component                          |
+| ----- | --------------------------- | -------------------- | ---------------------------------- |
+| 1     | `/{baseName}`               | `{baseName}`         | Page component (e.g. `AlbumsPage`) |
+| 2     | `/{baseName}/view/:assetId` | `{baseName}ViewPage` | `ViewPage`                         |
 
-**baseName values with full 4-level structure:** `home`, `all`, `favorite`, `archived`, `trashed`, `albums`, `videos`, `album`
+**baseName values with the 2-level structure** (built by `createRoute`):
+`timeline`, `favorite`, `archived`, `trashed`, `albums`, `videos`
 
-**baseName values with partial structure:**
+**Other routes:**
 
-- `tags` — flat single page (`/tags`), no view/read overlays
-- `share` — 2 levels (`/share/:albumId-:shareId` and `/share/:albumId-:shareId/view/:hash`)
-- `config` — flat single page (`/config`)
-- `links` — flat single page (`/links`)
-- `login` — flat single page (`/login`)
+- `album` — 2 levels (`/album/:albumId` and `/album/:albumId/view/:assetId`,
+  child name `albumViewPage`); `albumId` is the album's asset ID
+- `share` — 2 levels (`/share/:albumId-:shareId` and
+  `/share/:albumId-:shareId/view/:assetId`, child name `shareViewPage`)
+- `tags`, `config`, `links`, `login` — flat single pages
 
 ---
 
@@ -145,10 +145,10 @@ The reusable infinite-scroll photo grid. Used at both level 1 (main page) and le
 
 ### ViewPage.vue
 
-Full-screen v-overlay that shows a single item (photo, video, or album detail).
+Full-screen view that shows a single item (photo, video, or album detail).
 
 - Receives `isolation-id` from its parent
-- Looks up `:hash` (level 2) or `:subhash` (level 4) in `dataStore(isolationId)`
+- Looks up the route's `:assetId` in `dataStore(isolationId)`
 - Renders `Display.vue` which conditionally shows media or album content
 
 ### DisplayAlbum.vue

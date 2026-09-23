@@ -67,8 +67,9 @@ Sensitive authentication and notification credentials. Only present when configu
 The filesystem watcher only reacts to _future_ create/modify events — it
 does not scan files already sitting under `image_home` when the app starts.
 After setting `image_home`, use **Scan Now** in the web UI to index what's
-already there. Scan Now processes files whose content hash isn't indexed
-yet — fast, safe to re-run routinely.
+already there. Scan Now re-walks the tree and indexes every media file it
+finds — identity is by path, and a content hash is computed per file only
+for duplicate grouping. Safe to re-run routinely.
 
 ## Storage locations
 

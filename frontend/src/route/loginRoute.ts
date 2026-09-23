@@ -17,14 +17,14 @@ export const loginRoute: RouteRecordRaw = {
     getParentPage: (route) => {
       return {
         name: 'timeline',
-        params: { hash: undefined, subhash: undefined },
+        params: {},
         query: route.query
       }
     },
     getChildPage: (route) => {
       return {
         name: 'login',
-        params: { hash: undefined, subhash: undefined },
+        params: {},
         query: route.query
       }
     }

@@ -174,7 +174,7 @@ pub fn clear_abstract_data_metadata(
 
 /// Extract the cover image's content hash from an album's `AbstractData`.
 /// Returns `None` for media items or albums without a cover.
-/// Looks up the cover image by its `cover` `asset_id` in the data table
+/// Looks up the cover image by its `cover` `asset_id` in `METADATA_TABLE`
 /// and returns the image's `object.id` (content hash).
 pub fn cover_content_hash_from_data(
     abstract_data: &AbstractData,

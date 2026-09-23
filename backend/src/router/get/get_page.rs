@@ -445,15 +445,15 @@ pub async fn service_worker() -> AppResult<FrontendResponse> {
     )
 ]
 /// Catch-all SPA fallback — serves index.html for valid Vue Router routes.
-/// Paths matching `/album/<hash>` validate the album exists before serving
-/// the SPA; invalid album hashes return 404. Rank 11 ensures specific
+/// Paths matching `/album/<asset-id>` validate the album exists before serving
+/// the SPA; invalid album IDs return 404. Rank 11 ensures specific
 /// routes (assets at rank 10, API, pages) take priority.
 #[get("/<path..>", rank = 11)]
 pub async fn spa_fallback(path: PathBuf) -> AppResult<FrontendResponse> {
     let path_str = path.display().to_string();
 
-    if let Some(hash) = path_str.strip_prefix("album/") {
-        let hash = hash.to_string();
+    if let Some(album_id) = path_str.strip_prefix("album/") {
+        let album_id = album_id.to_string();
         let exists = tokio::task::spawn_blocking(move || -> Result<bool, AppError> {
             use redb::ReadableDatabase;
 
@@ -466,7 +466,7 @@ pub async fn spa_fallback(path: PathBuf) -> AppResult<FrontendResponse> {
                 .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
 
             let is_album = match table
-                .get(&*hash)
+                .get(&*album_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to query data"))?
             {
                 Some(guard) => matches!(guard.value(), AbstractData::Album(_)),

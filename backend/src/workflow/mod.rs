@@ -73,8 +73,9 @@ async fn ensure_dir_albums(file_path: &std::path::Path) -> Option<ArrayString<64
 ///         If provided, the file is recorded under that album; otherwise the
 ///         album is resolved from `src`'s parent directory.
 ///
-/// If the content hash is already known, only the alias list is merged — no
-/// metadata extraction or thumbnail regeneration is re-run.
+/// If the content hash is already known, the file still gets its own
+/// path-primary record — records are never merged. Duplicate content is
+/// grouped via `DUPE_INDEX` only.
 pub async fn index_image(src: &Path, dst: Option<&Path>) -> Result<()> {
     let image_root =
         get_resolved_image_home().ok_or_else(|| anyhow::anyhow!("IMAGE_HOME not configured"))?;

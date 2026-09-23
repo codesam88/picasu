@@ -112,7 +112,7 @@ Use multiple scenarios or a multi-step `when:` block:
 ```yaml
 when:
   - call: PUT /put/assign_album
-    body: { hash: "${photo}", album_id: "${album}" }
+    body: { assetId: "${photo}", albumId: "${album}" }
     capture: response
   - call: GET /get/get-albums
     auth: true

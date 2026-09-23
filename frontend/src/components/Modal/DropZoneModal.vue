@@ -103,9 +103,9 @@ function onDrop(e: DragEvent) {
   const shareId = shareStore.shareId ?? undefined
   const isSharedAlbum = typeof albumId === 'string' && typeof shareId === 'string'
 
-  const albumHashParam = route.params.albumHash
+  const albumIdParam = route.params.albumId
   const isAlbumContentRoute =
-    route.meta.baseName === 'album' && route.meta.level === 1 && typeof albumHashParam === 'string'
+    route.meta.baseName === 'album' && route.meta.level === 1 && typeof albumIdParam === 'string'
 
   // 4. Determine presignedAlbumId (guaranteed to be string | undefined)
   let presignedAlbumId: string | undefined
@@ -117,7 +117,7 @@ function onDrop(e: DragEvent) {
     }
     presignedAlbumId = albumId
   } else if (isAlbumContentRoute) {
-    presignedAlbumId = albumHashParam
+    presignedAlbumId = albumIdParam
   }
 
   // 5. Stage files for the pre-upload options dialog

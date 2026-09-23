@@ -7,8 +7,8 @@
       :asset-id="assetId"
       :index="index"
       :abstract-data="abstractData"
-      :previous-hash="previousAssetId"
-      :next-hash="nextAssetId"
+      :previous-asset-id="previousAssetId"
+      :next-asset-id="nextAssetId"
       :previous-page="previousPage"
       :next-page="nextPage"
     />
