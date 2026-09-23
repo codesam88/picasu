@@ -152,7 +152,8 @@ fn submit_to_debounce_pool(path: PathBuf) {
 }
 
 /// Handle an external file removal: find the DB record that owns `path`,
-/// remove that alias, and if no aliases remain remove the record + thumbnail.
+/// clear the record's canonical path, and if no path remains remove the
+/// record + thumbnail.
 fn submit_removal_to_watcher(path: PathBuf) {
     INDEX_RUNTIME.spawn(async move {
         if let Err(e) = tokio::task::spawn_blocking(move || handle_removed_file(&path)).await {
@@ -171,7 +172,7 @@ fn submit_removal_to_watcher(path: PathBuf) {
 }
 
 fn handle_removed_file(removed: &Path) {
-    use crate::process::alias::prune_alias_paths;
+    use crate::process::path::prune_asset_path;
 
     // Scan in-memory tree to find the record that owns this path.
     let removed_str = removed.to_string_lossy();
@@ -191,11 +192,12 @@ fn handle_removed_file(removed: &Path) {
         return; // Unknown file, nothing to do.
     };
 
-    // prune_alias_paths removes the file (already gone — harmless NotFound),
-    // prunes the alias, and removes the thumbnail if no aliases remain.
-    let remaining = prune_alias_paths(&mut abstract_data, removed);
+    // prune_asset_path removes the file (already gone — harmless NotFound),
+    // clears the record's path, and removes the thumbnail once the path is
+    // gone.
+    let has_path = prune_asset_path(&mut abstract_data, removed);
 
-    if remaining {
+    if has_path {
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
     } else {
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::remove(vec![abstract_data]));

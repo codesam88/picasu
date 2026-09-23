@@ -54,7 +54,7 @@ fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
         .alias()
         .iter()
         .max()
-        .ok_or_else(|| anyhow!("alias collection is empty for hash: {hash}"))?
+        .ok_or_else(|| anyhow!("record has no canonical path for hash: {hash}"))?
         .file
         .clone();
 

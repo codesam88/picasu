@@ -350,7 +350,7 @@ fn move_album_into_album(
 /// `fs::rename` a whole album directory from `source_dir` to `dest_dir`, then
 /// rewrite every DB record whose path lived under `source_dir` — the moved
 /// album's own `dir_path`, any further-nested sub-albums' `dir_path`, and every
-/// image/video alias — to `dest_dir`.
+/// image/video asset path — to `dest_dir`.
 fn rename_whole_dir(
     metadata_table: &mut redb::Table<'_, &str, AbstractData>,
     source_dir: &Path,

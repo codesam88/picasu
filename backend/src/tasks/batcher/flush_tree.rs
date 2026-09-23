@@ -217,9 +217,9 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
             .unwrap_or_default();
 
         if canonical_path.is_empty() {
-            // Alias pruned (e.g., by sweep_stale_aliases) — `None` maps to an
-            // empty canonical path. Remove any asset in the DUPE_INDEX group
-            // whose canonical path no longer exists on disk.
+            // Path pruned (e.g., by sweep_stale_asset_paths) — `None` maps to
+            // an empty canonical path. Remove any asset in the DUPE_INDEX
+            // group whose canonical path no longer exists on disk.
             let content_hash = abstract_data.hash();
             if let Ok(ids) = asset_store::get_dupe_ids(&content_hash) {
                 for id in ids {
@@ -231,7 +231,8 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
                 }
             }
         } else {
-            // Normal case: the alias has a path — remove that specific asset.
+            // Normal case: the record holds its canonical path — remove that
+            // specific asset.
             if let Ok(Some(asset_id)) = asset_store::get_asset_id_by_path(&canonical_path) {
                 remove_asset_from_tables(&asset_id, &canonical_path, abstract_data.hash());
             }

@@ -126,9 +126,9 @@ pub fn lean_media_abstract_data(
 /// Strip share-hidden metadata fields from a response row.
 ///
 /// When `show_metadata` is false (a share that hides metadata), clears the
-/// album membership, tags, alias path, and EXIF so the filesystem path cannot
+/// album membership, tags, stored path, and EXIF so the filesystem path cannot
 /// leak through the shared view; tile rendering and locate rely on the
-/// row-level `asset_id`, not the alias.
+/// row-level `asset_id`, not the stored path.
 pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metadata: bool) {
     match abstract_data {
         AbstractData::Image(img) => {

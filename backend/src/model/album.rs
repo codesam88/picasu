@@ -46,7 +46,7 @@ impl AlbumCombined {
         // Membership is path-based: a file belongs to this album iff its
         // immediate parent directory is this album's directory. Files in
         // sub-directories belong to the corresponding child album instead.
-        // A file counts only while its alias is live (not trashed).
+        // A file counts only while its stored path is live (not trashed).
         let belongs_to_album = move |alias: Option<&crate::model::response::FileModify>| -> bool {
             alias.is_some_and(|a| {
                 !a.is_trashed && Path::new(&a.file).parent() == Some(dir_path.as_path())

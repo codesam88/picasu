@@ -64,7 +64,7 @@ pub async fn get_metadata(
             .value();
 
         // Same clearing rules the list path applies: strip metadata fields
-        // (including the alias path) when the share hides them.
+        // (including the stored path) when the share hides them.
         clear_abstract_data_metadata(&mut abstract_data, show_metadata);
         Ok(Json(abstract_data))
     })

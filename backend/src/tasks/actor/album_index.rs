@@ -226,14 +226,14 @@ pub fn index_album(src: &str) -> AppResult<()> {
             .await;
         debug!("BATCH flush_tree pre-sweep done (job {job_id})");
 
-        // Sweep stale aliases: remove DB records whose alias files no
-        // longer exist on disk under the target root.
+        // Sweep stale asset paths: remove DB records whose canonical file no
+        // longer exists on disk under the target root.
         debug!(
-            "sweeping stale aliases under {} (job {job_id})",
+            "sweeping stale asset paths under {} (job {job_id})",
             root.display()
         );
-        sweep_stale_aliases(&root);
-        debug!("stale alias sweep done (job {job_id})");
+        sweep_stale_asset_paths(&root);
+        debug!("stale asset path sweep done (job {job_id})");
 
         // Drain the sweep's detached remove/update batches, then
         // UpdateTreeTask for album metadata.
@@ -303,19 +303,19 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
         .collect()
 }
 
-/// Sweep stale aliases: for every DB record whose alias path is under
-/// `root`, check the alias.  If it points to a file that no longer exists on
-/// disk, prune it; if the alias is gone, remove the entire record (and its
-/// compressed thumbnail).
-fn sweep_stale_aliases(root: &Path) {
-    use crate::process::alias::normalize_alias_path;
+/// Sweep stale asset paths: for every DB record whose canonical path is under
+/// `root`, check that file.  If it no longer exists on disk, prune the path;
+/// once the path is gone, remove the entire record (and its compressed
+/// thumbnail).
+fn sweep_stale_asset_paths(root: &Path) {
+    use crate::process::path::normalize_asset_path;
 
     let candidates: Vec<_> = {
         let tree = TREE.in_memory.read().expect("lock poisoned");
         tree.iter()
             .filter(|dt| {
                 dt.abstract_data.alias().is_some_and(|a| {
-                    let abs = normalize_alias_path(&a.file);
+                    let abs = normalize_asset_path(&a.file);
                     abs.starts_with(root)
                 })
             })
@@ -327,20 +327,20 @@ fn sweep_stale_aliases(root: &Path) {
     let mut to_update = Vec::new();
 
     for mut data in candidates {
-        let had_aliases = data.alias().is_some();
+        let had_path = data.alias().is_some();
         let path_before = data.alias().map(|a| a.file.clone());
-        let remaining = crate::process::alias::prune_stale_aliases(&mut data);
+        let has_path = crate::process::path::prune_stale_asset_path(&mut data);
 
-        if !remaining && had_aliases {
+        if !has_path && had_path {
             to_remove.push(data);
-        } else if remaining && data.alias().map(|a| a.file.clone()) != path_before {
-            // Only persist records whose alias actually changed. Under the
-            // single-alias model a surviving prune never changes the path, so
-            // this branch only guards against future prune shapes; the
-            // in-memory tree clone can lag disk (`UpdateTreeTask` rebuilds it
-            // separately), and re-flushing an unchanged clone would overwrite
-            // fresher writes — including reverting a content-hash change this
-            // job just flushed.
+        } else if has_path && data.alias().map(|a| a.file.clone()) != path_before {
+            // Only persist records whose path actually changed. Under the
+            // single-canonical-path model a surviving prune never changes the
+            // path, so this branch only guards against future prune shapes;
+            // the in-memory tree clone can lag disk (`UpdateTreeTask` rebuilds
+            // it separately), and re-flushing an unchanged clone would
+            // overwrite fresher writes — including reverting a content-hash
+            // change this job just flushed.
             to_update.push(data);
         }
     }
@@ -350,7 +350,7 @@ fn sweep_stale_aliases(root: &Path) {
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::remove(to_remove));
     }
     if !to_update.is_empty() {
-        debug!("updating {} record(s) with pruned aliases", to_update.len());
+        debug!("updating {} record(s) with pruned paths", to_update.len());
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(to_update));
     }
 }

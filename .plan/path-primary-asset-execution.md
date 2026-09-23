@@ -302,7 +302,7 @@ The asset tables will instead be populated synchronously during
 
 ### Shared thumbnail cleanup — DONE
 
-- `remove_compressed_thumbnail()` in `alias.rs` checks `DUPE_INDEX` before
+- `remove_compressed_thumbnail()` in `path.rs` checks `DUPE_INDEX` before
   removing. If `get_dupe_ids(hash).len() > 1`, other assets still reference
   the content hash and the thumbnail is preserved.
 - Legacy delete path in `delete.rs` applies the same check.
@@ -341,7 +341,7 @@ The watcher code is already path-primary by design:
 
 - `DeduplicateTask` always returns `Some` (never merges aliases)
 - `FlushTreeTask` writes to all four tables (ASSET_BY_ID, ASSET_BY_PATH, DUPE_INDEX, DATA_TABLE)
-- `handle_removed_file` searches by canonical path alias, not hash
+- `handle_removed_file` searches by canonical path, not hash
 - Create/Modify events go through debounce → `index_image` (path-based)
 - Remove events go through `handle_removed_file` (path-based)
 
@@ -405,7 +405,7 @@ move, delete, refresh, pagination, and original serving.
 - `DATA_TABLE` still exists as a rich metadata store (tags, exif, etc.) — this is legitimate
 - `asset_record_to_abstract_data` uses content hash for display_id — legitimate for compressed thumbnail paths
 - `ser_de.rs` legacy schema deserialization — needed for reading existing data
-- `alias.rs` alias-based operations — used by delete/trash, not for identity
+- `path.rs` path helpers — used by delete/trash, not for identity
 
 Run the complete project checks and API/UI scenario suites.
 
@@ -467,7 +467,7 @@ Root causes resolved:
 - `DATA_TABLE` remaining as metadata store — legitimate, holds tags/exif/descriptions
 - `content_hash` used as `object.id` for media items — legitimate, required for compressed thumbnail path resolution
 - `ser_de.rs` legacy migrations — needed for schema versioning
-- `alias.rs` operations — used by delete/trash, not for identity
+- `path.rs` path helpers — used by delete/trash, not for identity
 
 ### Test counts
 
@@ -477,7 +477,7 @@ Root causes resolved:
 | `storage/asset_store.rs` | 9          | —             | —          |
 | `process/rebuild.rs`     | 8          | —             | —          |
 | `process/index_asset.rs` | 4          | —             | —          |
-| `process/alias.rs`       | 3          | 3             | —          |
+| `process/path.rs`        | 3          | 3             | —          |
 | `process/dir_album.rs`   | —          | 11            | —          |
 | Duplicate handling       | —          | 7             | 5          |
 | `assign_album`           | —          | 16            | 2          |
