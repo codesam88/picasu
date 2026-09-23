@@ -1,6 +1,6 @@
 use crate::error::{AppError, ErrorKind};
-use crate::model::abstract_data::AbstractData;
 use crate::model::album::Share;
+use crate::model::metadata_record::MetadataRecord;
 use crate::router::AppResult;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
@@ -74,12 +74,9 @@ fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) ->
     let album_opt = metadata_table
         .get(&*create_share.album_id)
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
-        .and_then(|guard| {
-            let abstract_data = guard.value();
-            match abstract_data {
-                AbstractData::Album(album) => Some(album),
-                _ => None,
-            }
+        .and_then(|guard| match guard.value() {
+            MetadataRecord::Album(album) => Some(album),
+            _ => None,
         });
 
     match album_opt {
@@ -101,9 +98,9 @@ fn create_and_insert_share(txn: &WriteTransaction, create_share: CreateShare) ->
                 show_upload: create_share.show_upload,
                 exp: create_share.exp,
             };
-            album.metadata.share_list.insert(share_id, share);
+            album.share_list.insert(share_id, share);
             metadata_table
-                .insert(&*create_share.album_id, AbstractData::Album(album))
+                .insert(&*create_share.album_id, MetadataRecord::Album(album))
                 .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
             Ok(link)
         }

@@ -158,11 +158,17 @@ pub struct ScrollBarData {
 
 use chrono::Utc;
 
-use std::{cmp::Ordering, path::Path};
+use std::path::Path;
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, Decode, Encode, utoipa::ToSchema)]
+/// The asset's file entry: the single source path and its timestamps,
+/// assembled from the identity `AssetRecord` at composition time. A view
+/// type for the wire — never stored (the metadata payload holds no path;
+/// `AssetRecord` owns the identity, including the trash flag).
+#[derive(
+    Debug, Default, Clone, PartialEq, Eq, Deserialize, Serialize, Decode, Encode, utoipa::ToSchema,
+)]
 #[serde(rename_all = "camelCase")]
-pub struct FileModify {
+pub struct FileEntry {
     pub file: String,
     pub modified: i64,
     pub scan_time: i64,
@@ -173,7 +179,7 @@ pub struct FileModify {
     pub is_trashed: bool,
 }
 
-impl FileModify {
+impl FileEntry {
     pub fn new(file: &Path, modified: i64) -> Self {
         Self {
             file: file.to_string_lossy().into_owned(),
@@ -181,30 +187,5 @@ impl FileModify {
             scan_time: Utc::now().timestamp_millis(),
             is_trashed: false,
         }
-    }
-}
-
-impl PartialEq for FileModify {
-    fn eq(&self, other: &Self) -> bool {
-        self.scan_time == other.scan_time
-    }
-}
-impl Eq for FileModify {}
-
-impl PartialOrd for FileModify {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for FileModify {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.scan_time.cmp(&other.scan_time)
-    }
-}
-
-impl std::hash::Hash for FileModify {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.scan_time.hash(state);
     }
 }

@@ -29,7 +29,7 @@ use std::path::Path;
 #[serde(rename_all = "camelCase")]
 #[derive(utoipa::ToSchema)]
 pub struct DeleteList {
-    /// Asset IDs to delete. Each asset is resolved via `METADATA_TABLE` by its
+    /// Asset IDs to delete. Each asset is resolved via `ASSET_BY_ID` by its
     /// `asset_id` key. The canonical file and sidecar are removed from disk.
     asset_ids: Vec<String>,
     timestamp: i64,
@@ -171,12 +171,14 @@ fn cleanup_album_descendants(abstract_data_to_remove: &[AbstractData]) {
 /// Process deletions by asset ID.
 ///
 /// For each `asset_id`:
-/// 1. Look up the `AbstractData` in `METADATA_TABLE` by `asset_id` key.
+/// 1. Compose the view from the asset's `AssetRecord` (+ stored payload).
 /// 2. Delete the canonical file + sidecar from disk.
 /// 3. Remove the compressed thumbnail only if no other assets share the
 ///    same content hash (checked via `DUPE_INDEX`).
 /// 4. Collect affected album IDs for later self-update.
 fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult, AppError> {
+    use crate::model::metadata_record::compose_abstract_data;
+
     let txn = TREE
         .in_disk
         .begin_read()
@@ -184,6 +186,9 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
     let metadata_table = txn
         .open_table(METADATA_TABLE)
         .or_raise(|| (ErrorKind::Database, "Failed to open METADATA_TABLE"))?;
+    let id_table = txn
+        .open_table(crate::storage::db::ASSET_BY_ID)
+        .or_raise(|| (ErrorKind::Database, "Failed to open ASSET_BY_ID"))?;
 
     let mut all_affected_album_ids = Vec::new();
     let mut abstract_data_to_remove = Vec::new();
@@ -196,7 +201,7 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
             )
         })?;
 
-        let abstract_data: AbstractData = metadata_table
+        let record_json = id_table
             .get(&*asset_id)
             .or_raise(|| {
                 (
@@ -206,8 +211,24 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
             })?
             .ok_or_else(|| {
                 AppError::new(ErrorKind::NotFound, format!("Asset not found: {asset_id}"))
+            })?;
+        let record: crate::model::asset::AssetRecord = serde_json::from_str(record_json.value())
+            .or_raise(|| {
+                (
+                    ErrorKind::Database,
+                    format!("Failed to deserialize AssetRecord for {asset_id}"),
+                )
+            })?;
+        let payload = metadata_table
+            .get(&*asset_id)
+            .or_raise(|| {
+                (
+                    ErrorKind::Database,
+                    format!("Failed to look up metadata for {asset_id}"),
+                )
             })?
-            .value();
+            .map(|guard| guard.value());
+        let abstract_data = compose_abstract_data(&record, payload.as_ref());
 
         // Collect affected albums.
         let affected_albums: Vec<ArrayString<64>> = match &abstract_data {

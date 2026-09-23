@@ -31,14 +31,43 @@ serving — never as record identity.
 
 redb table definitions live in `backend/src/storage/db.rs`:
 
-| Constant         | On-disk name      | Key → value                                | Role                                                                                                                                               |
-| ---------------- | ----------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `METADATA_TABLE` | `"metadata"`      | `asset_id` → `AbstractData`                | Fat per-asset record. Read for detail views, metadata edits, and `TREE` construction; lean list rows come from snapshots instead of per-row reads. |
-| `ASSET_BY_PATH`  | `"asset_by_path"` | canonical filesystem path → `asset_id`     | One row per physical file or directory. Enforces path uniqueness.                                                                                  |
-| `ASSET_BY_ID`    | `"asset_by_id"`   | `asset_id` → JSON-serialized `AssetRecord` | One row per asset: kind, canonical path, content hash, size, album membership, trash flag.                                                         |
-| `DUPE_INDEX`     | `"dupe_index"`    | `content_hash` → JSON `Vec<asset_id>`      | Dedup grouping only: asset IDs sharing identical content remain independently addressable. Albums never appear here.                               |
+| Constant         | On-disk name       | Key → value                                | Role                                                                                                                                                                            |
+| ---------------- | ------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `METADATA_TABLE` | `"asset_metadata"` | `asset_id` → `MetadataRecord`              | Metadata-only payload (tags, description, rating, EXIF, album stats/share/title). Read for detail views, metadata edits, and `TREE` composition; identity is never stored here. |
+| `ASSET_BY_PATH`  | `"asset_by_path"`  | canonical filesystem path → `asset_id`     | One row per physical file or directory. Enforces path uniqueness.                                                                                                               |
+| `ASSET_BY_ID`    | `"asset_by_id"`    | `asset_id` → JSON-serialized `AssetRecord` | One row per asset: kind, canonical path, content hash, size, album membership, trash flag. The sole stored owner of identity.                                                   |
+| `DUPE_INDEX`     | `"dupe_index"`     | `content_hash` → JSON `Vec<asset_id>`      | Dedup grouping only: asset IDs sharing identical content remain independently addressable. Albums never appear here.                                                            |
 
-### AbstractData variants
+The `METADATA_TABLE` value is `MetadataRecord`
+(`backend/src/model/metadata_record.rs`), a metadata-only payload keyed by
+`asset_id`:
+
+```rust
+pub enum MetadataRecord {
+    Image(ImagePayload),
+    Video(VideoPayload),
+    Album(AlbumPayload),
+}
+```
+
+| Group  | Fields                                                                                                                                    |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Object | `tags`, `description`, `rating`, `is_favorite`, `is_archived`, `update_at`, `pending`, `thumbhash`                                        |
+| Image  | `width`, `height`, `phash`, `exif_vec`                                                                                                    |
+| Video  | `width`, `height`, `duration`, `exif_vec`                                                                                                 |
+| Album  | `title`, `created_time`, `start_time`, `end_time`, `last_modified_time`, `cover`, `item_count`, `item_size`, `share_list`, `custom_title` |
+
+Identity fields are deliberately absent: no `id`, no `path`/file entry, no
+`canonical_path`, no `modified`/`scan_time`/`is_trashed`, no `size`/`ext`, no
+`album`, no `dir_path`, no `obj_type`. Readers compose the wire
+`AbstractData` from `AssetRecord` + payload via
+`compose_abstract_data`; writers extract the payload via
+`to_metadata_record`. The on-disk table name (`asset_metadata`) differs from
+the previous `metadata` table so rows written under the previous value type
+are never decoded — there is no migration; a clean rebuild repopulates the
+table.
+
+### AbstractData variants (wire/view type)
 
 ```rust
 pub enum AbstractData {
@@ -49,7 +78,8 @@ pub enum AbstractData {
 ```
 
 Every variant shares a common `ObjectSchema` plus a type-specific metadata
-struct.
+struct. `AbstractData` is the composed in-memory/wire view — it is not the
+stored form of `METADATA_TABLE` rows.
 
 #### ObjectSchema (common to all variants)
 
@@ -74,7 +104,6 @@ Source: `backend/src/model/image.rs`
 
 | Field      | Type                       | Description                                    |
 | ---------- | -------------------------- | ---------------------------------------------- |
-| `id`       | `ArrayString<64>`          | Content hash (`object.id`)                     |
 | `size`     | `u64`                      | File size in bytes                             |
 | `width`    | `u32`                      | Pixel width                                    |
 | `height`   | `u32`                      | Pixel height                                   |
@@ -82,7 +111,7 @@ Source: `backend/src/model/image.rs`
 | `phash`    | `Option<Vec<u8>>`          | Perceptual hash                                |
 | `album`    | `Option<ArrayString<64>>`  | Single album membership                        |
 | `exif_vec` | `BTreeMap<String, String>` | EXIF key-value pairs                           |
-| `path`     | `Option<FileModify>`       | Source path & timestamps; `None` = pruned/gone |
+| `path`     | `Option<FileEntry>`        | Source path & timestamps; `None` = pruned/gone |
 
 #### VideoMetadata
 
@@ -90,7 +119,6 @@ Source: `backend/src/model/video.rs`
 
 | Field      | Type                       | Description                                    |
 | ---------- | -------------------------- | ---------------------------------------------- |
-| `id`       | `ArrayString<64>`          | Content hash (`object.id`)                     |
 | `size`     | `u64`                      | File size in bytes                             |
 | `width`    | `u32`                      | Pixel width                                    |
 | `height`   | `u32`                      | Pixel height                                   |
@@ -98,7 +126,7 @@ Source: `backend/src/model/video.rs`
 | `duration` | `f64`                      | Video duration in seconds                      |
 | `album`    | `Option<ArrayString<64>>`  | Single album membership                        |
 | `exif_vec` | `BTreeMap<String, String>` | EXIF key-value pairs                           |
-| `path`     | `Option<FileModify>`       | Source path & timestamps; `None` = pruned/gone |
+| `path`     | `Option<FileEntry>`        | Source path & timestamps; `None` = pruned/gone |
 
 #### AlbumMetadata
 
@@ -106,7 +134,7 @@ Source: `backend/src/model/album.rs`
 
 | Field                | Type                              | Description                                                       |
 | -------------------- | --------------------------------- | ----------------------------------------------------------------- |
-| `id`                 | `ArrayString<64>`                 | Album asset ID (`object.id`)                                      |
+| `id`                 | `ArrayString<64>`                 | Album asset ID (`object.id`); composed from `AssetRecord`         |
 | `title`              | `Option<String>`                  | Display title (directory-name default unless customized)          |
 | `created_time`       | `i64`                             | Creation timestamp (ms)                                           |
 | `start_time`         | `Option<i64>`                     | Earliest media timestamp (ms)                                     |
@@ -116,16 +144,16 @@ Source: `backend/src/model/album.rs`
 | `item_count`         | `usize`                           | Number of member media items                                      |
 | `item_size`          | `u64`                             | Total member file size                                            |
 | `share_list`         | `HashMap<ArrayString<64>, Share>` | Named share configurations                                        |
-| `dir_path`           | `String`                          | Filesystem path of the album's directory (required)               |
+| `dir_path`           | `String`                          | Album directory path; composed from `AssetRecord.canonical_path`  |
 | `custom_title`       | `Option<String>`                  | User-set title override; `None` = derived from the directory name |
-| `is_trashed`         | `bool`                            | Record-level trash flag (albums have no stored path)              |
+| `is_trashed`         | `bool`                            | Trash flag; composed from `AssetRecord.is_trashed`                |
 
 Every album is directory-backed: `dir_path` is the album directory's path, and
 a media file belongs to the album whose `dir_path` matches the file's
-immediate parent directory. Membership is recorded on each media item's
-`album` field at index time.
+immediate parent directory. Membership is recorded on each media asset's
+`AssetRecord.album_id` and composed onto the view's `album` field.
 
-#### FileModify
+#### FileEntry
 
 Source: `backend/src/model/response.rs`
 
@@ -136,10 +164,11 @@ Source: `backend/src/model/response.rs`
 | `scan_time`  | `i64`    | Last scan timestamp (ms)                               |
 | `is_trashed` | `bool`   | Per-path trash flag (buried vs. visible in trash view) |
 
-Each media record carries the file path it was indexed from as its single
-`FileModify` (`path: Option<FileModify>`). Path-primary indexing creates one
-record per physical file; `None` means the path was pruned and the file is
-gone.
+`FileEntry` is a view type assembled from `AssetRecord`
+(`canonical_path`, `modified`, `scan_time`, `is_trashed`) at composition
+time — it is never stored. Each media record carries it as its single
+`path: Option<FileEntry>` on the wire; `None` means the path was pruned and
+the file is gone.
 
 #### Share
 
@@ -255,18 +284,24 @@ startup (or on demand after config changes).
 
 ## Per-record schema versioning
 
-`AbstractData` records in `index_v5.redb` are prefixed with a 2-byte header
-`[0xFF, version]` (implemented via redb's `Value` trait in
+Stored enum records (`MetadataRecord` in `index_v5.redb`) are prefixed with a
+2-byte header `[0xFF, version]` (implemented via redb's `Value` trait in
 `backend/src/storage/ser_de.rs`).
 
-`0xFF` is safe as a magic marker because `AbstractData` is a 3-variant enum;
+`0xFF` is safe as a magic marker because `MetadataRecord` is a 3-variant enum;
 bitcode encodes the discriminant in the lowest 2 bits of the first byte
 (values 0, 1, 2). A first byte of `0xFF` has bits `[1:0] = 11` = discriminant
-3, which is invalid — so no legitimately encoded `AbstractData` can start with
+3, which is invalid — so no legitimately encoded record can start with
 `0xFF`.
 
-Current schema version: **1** (`SCHEMA_VERSION` in `ser_de.rs`). The structs
-in `backend/src/model/` are the version-1 schema.
+Current schema versions: **1** (`SCHEMA_VERSION` for `AbstractData`, which is
+no longer written to disk, and `METADATA_SCHEMA_VERSION` for
+`MetadataRecord`), both in `ser_de.rs`. The structs in `backend/src/model/`
+are the current schema. The tree/query snapshot stores (`ReducedData`,
+`Prefetch`) do not embed `AbstractData`, so layout changes to the wire/view
+type do not affect them; the previous `metadata` table's rows are unreachable
+because `METADATA_TABLE` now uses the `asset_metadata` on-disk name (a clean
+rebuild repopulates it — there is no migration).
 
 ### Decode policy
 
@@ -275,20 +310,20 @@ selects the decoder:
 
 ```rust
 let [0xFF, version, payload @ ..] = data else { rebuild_required(...) };
-if version != SCHEMA_VERSION {
+if version != METADATA_SCHEMA_VERSION {
     rebuild_required(...); // unknown/unsupported version
 }
-decode::<AbstractData>(payload) // version 1: current structs, no transform
+decode::<MetadataRecord>(payload) // current structs, no transform
 ```
 
-- Version `1` (the `SCHEMA_VERSION` prefix) decodes the current structs
-  directly — no `From` conversions.
+- The current version byte decodes the current structs directly — no `From`
+  conversions.
 - Any other version byte, or input with no `0xFF` prefix at all, panics via
   `rebuild_required`, which tells the operator to rebuild
   (`POST /post/rebuild`) or start with a fresh `DATA_HOME`. Prefixless input
-  is rejected rather than treated as version 1, because version 1 means the
-  _current_ schema — silently decoding ancient prefixless bytes against it
-  would corrupt data.
+  is rejected rather than treated as the current version, because the current
+  version means the _current_ schema — silently decoding ancient prefixless
+  bytes against it would corrupt data.
 
 redb 4.2's `Value::from_bytes` returns the decoded value directly (no
 associated error type), so a decode failure can only surface as a panic —
@@ -300,9 +335,8 @@ Migration between schema versions is **not supported**; a clean rebuild is
 the only upgrade path. When the schema changes (new fields, removed fields,
 reordered variants):
 
-1. Increment `SCHEMA_VERSION`.
-2. Copy the current structs to frozen `AbstractDataVN` / `AlbumCombinedVN` /
-   etc. types.
+1. Increment the relevant schema version constant.
+2. Copy the current structs to frozen `VN` types.
 3. Add a match arm in `from_bytes` for the previous version.
 
 ---

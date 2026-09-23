@@ -1,5 +1,8 @@
 use crate::error::handle_error;
 use crate::model::abstract_data::AbstractData;
+use crate::model::asset::AssetRecord;
+use crate::model::metadata_record::{MetadataRecord, compose_abstract_data, to_metadata_record};
+use crate::storage::db::ASSET_BY_ID;
 use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
 use anyhow::Context;
@@ -41,54 +44,63 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
         .context("begin_write failed (album)")?;
     {
         let mut metadata_table = txn.open_table(METADATA_TABLE)?;
+        let mut id_table = txn.open_table(ASSET_BY_ID)?;
 
-        let album_opt = metadata_table
-            .get(&*album_id)
-            .expect("failed to get record")
-            .and_then(|guard| {
-                let abstract_data = guard.value();
-                match abstract_data {
+        let record = id_table
+            .get(&*album_id)?
+            .and_then(|guard| serde_json::from_str::<AssetRecord>(guard.value()).ok());
+        let payload = metadata_table.get(&*album_id)?.map(|guard| guard.value());
+
+        let album_combined = match (&record, &payload) {
+            (Some(record), Some(MetadataRecord::Album(_))) => {
+                match compose_abstract_data(record, payload.as_ref()) {
                     AbstractData::Album(album) => Some(album),
                     _ => None,
                 }
-            });
+            }
+            _ => None,
+        };
 
-        if let Some(mut album) = album_opt {
+        if let Some(mut album) = album_combined {
             album.object.pending = true;
             album.self_update();
             album.object.pending = false;
-            metadata_table
-                .insert(&*album_id, AbstractData::Album(album))
-                .expect("failed to insert");
+            metadata_table.insert(&*album_id, to_metadata_record(&AbstractData::Album(album)))?;
         } else {
             // Album has been deleted
             let ref_data = TREE.in_memory.read().expect("lock poisoned");
 
             // Collect all data contained in this album
-            let hash_list: Vec<_> = ref_data
+            let asset_ids: Vec<_> = ref_data
                 .par_iter()
                 .filter_map(|dt| match &dt.abstract_data {
                     AbstractData::Image(img) if img.metadata.album == Some(album_id) => {
-                        Some(img.object.id)
+                        Some(dt.asset_id)
                     }
                     AbstractData::Video(vid) if vid.metadata.album == Some(album_id) => {
-                        Some(vid.object.id)
+                        Some(dt.asset_id)
                     }
                     _ => None,
                 })
                 .collect();
 
-            // Clear album membership from these items
-            for hash in hash_list {
-                let mut abstract_data = metadata_table
-                    .get(&*hash)
-                    .expect("failed to get record")
-                    .expect("record not found")
-                    .value();
-                abstract_data.set_album(None);
-                metadata_table
-                    .insert(&*hash, abstract_data)
-                    .expect("failed to insert");
+            // Clear album membership on the surviving assets' identity
+            // records (membership is owned by `AssetRecord.album_id`).
+            for asset_id in asset_ids {
+                let existing = id_table
+                    .get(&*asset_id)?
+                    .map(|guard| guard.value().to_string());
+                let Some(json) = existing else {
+                    continue;
+                };
+                let Ok(mut record) = serde_json::from_str::<AssetRecord>(&json) else {
+                    continue;
+                };
+                if record.album_id == Some(album_id) {
+                    record.album_id = None;
+                    let updated = serde_json::to_string(&record)?;
+                    id_table.insert(&*asset_id, updated.as_str())?;
+                }
             }
         }
     }

@@ -427,7 +427,7 @@ async function findAlbum(
  * path-primary `assetId` (the API identity).
  *
  * Rows carry the on-disk path at `abstractData.path.file` (singular, see
- * FileModifySchema) — not a nested per-view path object — and the identity
+ * FileEntrySchema) — not a nested per-view path object — and the identity
  * at row-level `assetId`, not a content `hash`.
  */
 export function findPhotoAssetId(qualifiedPath: string, data: any[]): string | null {

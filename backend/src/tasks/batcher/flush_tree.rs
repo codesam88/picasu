@@ -52,11 +52,18 @@ fn flush_tree_task(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
 /// Write the insert/remove lists to the four asset tables (`ASSET_BY_ID`,
 /// `ASSET_BY_PATH`, `DUPE_INDEX`, `METADATA_TABLE`).
 ///
+/// This is the index/file-mutation flush: each inserted `AbstractData` is
+/// filesystem-fresh (scan output or a file-mutation result), so it is the
+/// one place allowed to derive and write a full [`AssetRecord`] identity.
+/// `METADATA_TABLE` receives only the metadata-only payload extracted from
+/// the input — never its identity fields.
+///
 /// Does not dispatch [`UpdateTreeTask`]; `flush_tree_task` does that after
 /// the tables are written. Tests call this directly so no background tree
 /// rebuild races their assertions.
 #[allow(clippy::too_many_lines)]
 fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
+    use crate::model::metadata_record::to_metadata_record;
     use crate::process::hash::generate_random_hash;
     use crate::storage::asset_store;
     use redb::ReadableTable;
@@ -98,16 +105,17 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
         };
 
         let modified = abstract_data.path().map_or(0, |a| a.modified);
-        // Carry the trash flag from the flushed data (albums store it on the
-        // record, media on the file entry) so lean list rows derived from this
-        // record see the same trashed state as the metadata row.
+        // Trash ownership lives on the record: carry the flag from the
+        // freshly scanned / file-mutation input so lean list rows derived
+        // from this record see the same trashed state that composition
+        // projects back onto the wire.
         let is_trashed = match abstract_data {
             AbstractData::Album(alb) => alb.metadata.is_trashed,
             _ => abstract_data.path().is_some_and(|a| a.is_trashed),
         };
-        // Mirror the stored path's scan_time (index time) rather than stamping
-        // "now", so re-flushing on a metadata edit does not rewrite identity
-        // times.
+        // The input is filesystem-fresh: its scan_time is the index time.
+        // Metadata edits no longer flow through this path, so a re-flush
+        // only happens on an actual re-scan or file mutation.
         let scan_time = abstract_data
             .path()
             .map_or_else(|| chrono::Utc::now().timestamp_millis(), |a| a.scan_time);
@@ -163,9 +171,11 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
                     .insert(canonical_path.as_str(), &*asset_id)
                     .expect("failed to insert into ASSET_BY_PATH");
 
-                // Write full AbstractData to METADATA_TABLE keyed by asset_id.
+                // Write the metadata-only payload to METADATA_TABLE keyed by
+                // asset_id; identity stays on the AssetRecord written above.
+                let payload = to_metadata_record(abstract_data);
                 metadata_table
-                    .insert(&*asset_id, abstract_data)
+                    .insert(&*asset_id, payload)
                     .expect("failed to insert into METADATA_TABLE");
 
                 log::info!(
@@ -251,7 +261,7 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
 /// Drop `asset_id` from its previous content-hash group (`old_hash`) using
 /// the flush transaction's own `DUPE_INDEX` handle.
 ///
-/// Mirrors [`crate::storage::asset_store::remove_from_dupe_group`], but that
+/// Duplicates [`crate::storage::asset_store::remove_from_dupe_group`], but that
 /// function opens its own write transaction — calling it here would deadlock,
 /// because redb permits only one open write transaction at a time and the
 /// flush transaction is already active.
@@ -377,6 +387,128 @@ mod tests {
         asset_store::get_asset_id_by_path(&path.to_string_lossy())
             .expect("lookup ASSET_BY_PATH")
             .expect("asset must exist at path")
+    }
+
+    /// Recursively collect every JSON object key of a stored metadata row.
+    fn json_keys(value: &serde_json::Value, out: &mut Vec<String>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, val) in map {
+                    out.push(key.clone());
+                    json_keys(val, out);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    json_keys(item, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Serialize the raw `METADATA_TABLE` row for `asset_id` as JSON.
+    fn stored_metadata_json(asset_id: &ArrayString<64>) -> serde_json::Value {
+        let txn = TREE
+            .in_disk
+            .begin_read()
+            .expect("begin read for stored metadata");
+        let table = txn.open_table(METADATA_TABLE).expect("open METADATA_TABLE");
+        let row = table
+            .get(&**asset_id)
+            .expect("read stored metadata row")
+            .expect("stored metadata row must exist");
+        serde_json::to_value(row.value()).expect("stored row must serialize to JSON")
+    }
+
+    /// Identity keys that must never appear in the stored metadata payload —
+    /// they live exclusively on `AssetRecord` (`ASSET_BY_ID`) and are
+    /// re-projected onto the wire by composition.
+    const FORBIDDEN_IDENTITY_KEYS: [&str; 12] = [
+        "path",
+        "file",
+        "canonicalPath",
+        "modified",
+        "scanTime",
+        "isTrashed",
+        "size",
+        "ext",
+        "album",
+        "dirPath",
+        "id",
+        "objType",
+    ];
+
+    fn assert_no_identity_keys(json: &serde_json::Value, context: &str) {
+        let mut keys = Vec::new();
+        json_keys(json, &mut keys);
+        for forbidden in FORBIDDEN_IDENTITY_KEYS {
+            assert!(
+                !keys.iter().any(|k| k == forbidden),
+                "{context}: stored metadata payload must not contain identity key \
+                 `{forbidden}` (identity lives on AssetRecord); keys: {keys:?}"
+            );
+        }
+    }
+
+    /// The stored media metadata row is a metadata-only payload: no `path`,
+    /// no top-level `id`, no size/ext/album — all identity lives on
+    /// `AssetRecord`.
+    #[test]
+    fn stored_media_metadata_payload_excludes_identity() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        clear_all_tables();
+
+        let dir = test_image_home().join("flush_payload_slim");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let path = make_jpeg(&dir, "photo.jpg", 4);
+        let hash = hash_file(&path);
+        let data = AbstractData::new(&path, hash).expect("build AbstractData");
+
+        flush_tables(&[data], &[]);
+
+        let id = asset_id_at(&path);
+        let json = stored_metadata_json(&id);
+        assert_no_identity_keys(&json, "image metadata row");
+
+        clear_all_tables();
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// The stored album metadata row is a metadata-only payload: no `dirPath`,
+    /// no top-level `id`, no `isTrashed` — identity lives on `AssetRecord`.
+    #[test]
+    fn stored_album_metadata_payload_excludes_identity() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        clear_all_tables();
+
+        use crate::model::album::{AlbumCombined, AlbumMetadata};
+        use crate::model::object::{ObjectSchema, ObjectType};
+
+        let album_id = ArrayString::from("album_payload_slim_test_id").expect("fits");
+        let data = AbstractData::Album(AlbumCombined {
+            object: ObjectSchema::new(album_id, ObjectType::Album),
+            metadata: AlbumMetadata {
+                id: album_id,
+                title: Some("Slim".to_string()),
+                created_time: 1,
+                dir_path: "/tmp/picasu_slim_album".to_string(),
+                ..Default::default()
+            },
+        });
+
+        flush_tables(&[data], &[]);
+
+        let stored_id = asset_store::get_asset_id_by_path("")
+            .expect("lookup ASSET_BY_PATH")
+            .expect("album flush must register under its empty canonical path");
+        let json = stored_metadata_json(&stored_id);
+        assert_no_identity_keys(&json, "album metadata row");
+
+        clear_all_tables();
     }
 
     #[test]

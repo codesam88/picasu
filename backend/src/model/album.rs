@@ -48,7 +48,7 @@ impl AlbumCombined {
         // sub-directories belong to the corresponding child album instead.
         // A file counts only while its stored path is live (not trashed).
         let belongs_to_album =
-            move |file_entry: Option<&crate::model::response::FileModify>| -> bool {
+            move |file_entry: Option<&crate::model::response::FileEntry>| -> bool {
                 file_entry.is_some_and(|a| {
                     !a.is_trashed && Path::new(&a.file).parent() == Some(dir_path.as_path())
                 })
@@ -125,15 +125,15 @@ impl AlbumCombined {
 mod tests {
     use std::path::Path;
 
-    use crate::model::response::FileModify;
+    use crate::model::response::FileEntry;
 
-    fn belongs_to_album(file_entry: Option<&FileModify>, dir_path: &str) -> bool {
+    fn belongs_to_album(file_entry: Option<&FileEntry>, dir_path: &str) -> bool {
         let dir_path = Path::new(dir_path);
         file_entry.is_some_and(|a| Path::new(&a.file).parent() == Some(dir_path))
     }
 
-    fn file_info(path: &str) -> Option<FileModify> {
-        Some(FileModify {
+    fn file_info(path: &str) -> Option<FileEntry> {
+        Some(FileEntry {
             file: path.to_string(),
             modified: 0,
             scan_time: 0,
@@ -205,7 +205,7 @@ pub struct AlbumMetadata {
     /// later directory rename instead of being re-derived from the new name.
     pub custom_title: Option<String>,
     /// Record-level trash flag for albums. Albums have no stored path, so the
-    /// flag lives here rather than on the `FileModify` file entry used for
+    /// flag lives here rather than on the `FileEntry` file entry used for
     /// images/videos.
     pub is_trashed: bool,
 }

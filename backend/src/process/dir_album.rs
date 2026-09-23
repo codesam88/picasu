@@ -9,15 +9,16 @@ use log::info;
 
 use crate::model::abstract_data::AbstractData;
 use crate::model::album::AlbumCombined;
-use crate::model::album::AlbumMetadata;
+use crate::model::asset::AssetRecord;
+use crate::model::metadata_record::{MetadataRecord, to_metadata_record};
 use crate::model::object::{ObjectSchema, ObjectType};
 use crate::process::hash::generate_random_hash;
+use crate::storage::db::ASSET_BY_ID;
 use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
-use crate::storage::db::open_metadata_table;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use redb::ReadableTable;
+use redb::{ReadableDatabase, ReadableTable};
 
 /// In-memory cache: canonical dir path → album ID.
 /// The mutex is held for the full duration of `get_or_create_dir_album` to
@@ -30,13 +31,25 @@ pub static PENDING_ALBUM_UPDATES: LazyLock<Mutex<HashSet<ArrayString<64>>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
 /// Populate `DIR_ALBUM_CACHE` from the database at startup by scanning all
-/// albums that have a `dir_path` set.  Must be called after `initialize()`.
+/// albums that have a stored metadata payload, joining each with its
+/// identity `AssetRecord` for the directory path.  Must be called after
+/// `initialize()`.
 ///
 /// If filesystem albums are enabled, all cached albums are also queued for a
 /// stats self-update so their counts are correct from first request.
 pub fn init_dir_album_cache() {
-    let metadata_table = open_metadata_table();
     let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
+
+    let read_txn = TREE
+        .in_disk
+        .begin_read()
+        .expect("failed to begin read transaction");
+    let metadata_table = read_txn
+        .open_table(METADATA_TABLE)
+        .expect("failed to open METADATA_TABLE");
+    let id_table = read_txn
+        .open_table(ASSET_BY_ID)
+        .expect("failed to open ASSET_BY_ID");
 
     let mut stale_count = 0usize;
     for entry in metadata_table
@@ -44,14 +57,21 @@ pub fn init_dir_album_cache() {
         .expect("failed to iterate table")
         .flatten()
     {
-        let (_, guard) = entry;
-        if let AbstractData::Album(album) = guard.value() {
-            let path = PathBuf::from(&album.metadata.dir_path);
-            if path.is_dir() {
-                cache.insert(path, album.metadata.id);
-            } else {
-                stale_count += 1;
-            }
+        let (key, guard) = entry;
+        if !matches!(guard.value(), MetadataRecord::Album(_)) {
+            continue;
+        }
+        let Some(record_json) = id_table.get(key.value()).ok().flatten() else {
+            continue;
+        };
+        let Ok(record) = serde_json::from_str::<AssetRecord>(record_json.value()) else {
+            continue;
+        };
+        let path = PathBuf::from(&record.canonical_path);
+        if path.is_dir() {
+            cache.insert(path, record.asset_id);
+        } else {
+            stale_count += 1;
         }
     }
 
@@ -268,7 +288,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         rating: albuminfo.rating,
         update_at: now,
     };
-    let metadata = AlbumMetadata {
+    let metadata = crate::model::album::AlbumMetadata {
         id: album_id,
         title: Some(title.clone()),
         created_time: now,
@@ -284,6 +304,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         is_trashed: false,
     };
     let abstract_data = AbstractData::Album(AlbumCombined { object, metadata });
+    let payload = to_metadata_record(&abstract_data);
 
     let txn = TREE
         .in_disk
@@ -294,7 +315,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
             .open_table(METADATA_TABLE)
             .context("Failed to open data table")?;
         table
-            .insert(&*album_id, abstract_data)
+            .insert(&*album_id, payload)
             .context("Failed to insert dir album")?;
 
         // Also write to path-primary asset tables.
@@ -305,8 +326,8 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
             .open_table(crate::storage::db::ASSET_BY_ID)
             .context("Failed to open ASSET_BY_ID")?;
 
-        let record = crate::model::asset::AssetRecord::new_album(dir_path_str.clone());
-        let record = crate::model::asset::AssetRecord {
+        let record = AssetRecord::new_album(dir_path_str.clone());
+        let record = AssetRecord {
             asset_id: album_id,
             ..record
         };

@@ -59,9 +59,11 @@ pub async fn rebuild_handler(
 }
 
 /// Replace every `METADATA_TABLE` row with one derived from the current
-/// `ASSET_BY_ID` records. Media rows inherit `record.album_id` so album
-/// membership filters keep working after a rebuild.
+/// `ASSET_BY_ID` records. Only the metadata-only payload is written;
+/// identity stays on the records (media rows carry no album field — album
+/// membership is `AssetRecord.album_id`).
 fn sync_metadata_table() -> anyhow::Result<()> {
+    use crate::model::metadata_record::to_metadata_record;
     use redb::ReadableTable;
 
     let records = asset_store::get_all_assets()?;
@@ -81,9 +83,8 @@ fn sync_metadata_table() -> anyhow::Result<()> {
             table.remove(key.as_str())?;
         }
         for record in &records {
-            let mut data = asset_record_to_abstract_data(record);
-            data.set_album(record.album_id);
-            table.insert(record.asset_id.as_str(), &data)?;
+            let data = asset_record_to_abstract_data(record);
+            table.insert(record.asset_id.as_str(), to_metadata_record(&data))?;
         }
     }
     txn.commit()?;

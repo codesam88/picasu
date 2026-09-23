@@ -1,5 +1,5 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
-use crate::model::abstract_data::AbstractData;
+use crate::model::metadata_record::MetadataRecord;
 use crate::router::AppResult;
 use crate::storage::db::{METADATA_TABLE, TREE};
 #[cfg(not(feature = "embed-frontend"))]
@@ -469,7 +469,7 @@ pub async fn spa_fallback(path: PathBuf) -> AppResult<FrontendResponse> {
                 .get(&*album_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to query data"))?
             {
-                Some(guard) => matches!(guard.value(), AbstractData::Album(_)),
+                Some(guard) => matches!(guard.value(), MetadataRecord::Album(_)),
                 None => false,
             };
 

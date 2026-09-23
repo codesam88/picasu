@@ -158,7 +158,7 @@ impl TreeSnapshot {
         // Concurrent counter for each tag
         let tag_counts: DashMap<String, AtomicUsize> = DashMap::new();
 
-        // Begin read‑only transaction and open the METADATA_TABLE
+        // Begin read-only transaction and open the METADATA_TABLE
         let metadata_table = open_metadata_table();
 
         // Walk the table in parallel; stop on first error
@@ -168,10 +168,10 @@ impl TreeSnapshot {
             .par_bridge()
             .try_for_each(|entry| -> Result<()> {
                 let (_, data) = entry.context("Read table row failed")?;
-                let abstract_data = data.value();
+                let payload = data.value();
 
                 // Count regular tags only
-                for tag in abstract_data.tag() {
+                for tag in payload.tags() {
                     tag_counts
                         .entry(tag.clone())
                         .or_insert_with(|| AtomicUsize::new(0))

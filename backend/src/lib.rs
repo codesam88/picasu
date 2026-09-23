@@ -34,7 +34,7 @@ use crate::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::looper::start_expire_check_loop;
 use crate::tasks::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
-use model::abstract_data::AbstractData;
+use model::metadata_record::MetadataRecord;
 
 #[allow(clippy::missing_panics_doc)]
 pub fn run() {
@@ -78,7 +78,7 @@ pub fn run() {
                     .iter()
                     .expect("failed to iterate table")
                     .filter_map(std::result::Result::ok)
-                    .filter(|(_, guard)| matches!(guard.value(), AbstractData::Album(_)))
+                    .filter(|(_, guard)| matches!(guard.value(), MetadataRecord::Album(_)))
                     .count();
 
                 let media_count = usize::try_from(total_count).unwrap_or(0) - album_count;

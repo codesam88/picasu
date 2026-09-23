@@ -324,34 +324,19 @@ fn sweep_stale_asset_paths(root: &Path) {
     };
 
     let mut to_remove = Vec::new();
-    let mut to_update = Vec::new();
 
     for mut data in candidates {
         let had_path = data.path().is_some();
-        let path_before = data.path().map(|a| a.file.clone());
         let has_path = crate::process::path::prune_stale_asset_path(&mut data);
 
         if !has_path && had_path {
             to_remove.push(data);
-        } else if has_path && data.path().map(|a| a.file.clone()) != path_before {
-            // Only persist records whose path actually changed. Under the
-            // single-canonical-path model a surviving prune never changes the
-            // path, so this branch only guards against future prune shapes;
-            // the in-memory tree clone can lag disk (`UpdateTreeTask` rebuilds
-            // it separately), and re-flushing an unchanged clone would
-            // overwrite fresher writes — including reverting a content-hash
-            // change this job just flushed.
-            to_update.push(data);
         }
     }
 
     if !to_remove.is_empty() {
         debug!("pruning {} stale record(s)", to_remove.len());
         BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::remove(to_remove));
-    }
-    if !to_update.is_empty() {
-        debug!("updating {} record(s) with pruned paths", to_update.len());
-        BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(to_update));
     }
 }
 

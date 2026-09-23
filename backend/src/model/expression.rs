@@ -365,14 +365,14 @@ mod tests {
     use crate::model::abstract_data::AbstractData;
     use crate::model::image::{ImageCombined, ImageMetadata};
     use crate::model::object::{ObjectSchema, ObjectType};
-    use crate::model::response::FileModify;
+    use crate::model::response::FileEntry;
     use arrayvec::ArrayString;
 
     fn img() -> ImageCombined {
         let id = ArrayString::from("test").expect("failed to create ArrayString");
         ImageCombined {
             object: ObjectSchema::new(id, ObjectType::Image),
-            metadata: ImageMetadata::new(id, 0, 0, 0, "jpg".to_string()),
+            metadata: ImageMetadata::new(0, 0, 0, "jpg".to_string()),
         }
     }
 
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn trashed_matches_flag() {
         let mut i = img();
-        i.metadata.path = Some(FileModify {
+        i.metadata.path = Some(FileEntry {
             file: "/Photos/trashed.jpg".to_string(),
             modified: 0,
             scan_time: 0,
@@ -448,7 +448,7 @@ mod tests {
     #[test]
     fn trashed_false_matches_live_path() {
         let mut i = img();
-        i.metadata.path = Some(FileModify {
+        i.metadata.path = Some(FileEntry {
             file: "/Photos/live.jpg".to_string(),
             modified: 0,
             scan_time: 0,
@@ -495,7 +495,7 @@ mod tests {
     #[test]
     fn path_matches_stored_path_case_insensitively() {
         let mut i = img();
-        i.metadata.path = Some(FileModify {
+        i.metadata.path = Some(FileEntry {
             file: "/Photos/Vacation/IMG_001.jpg".to_string(),
             modified: 0,
             scan_time: 0,

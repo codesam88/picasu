@@ -1,8 +1,10 @@
+use crate::model::abstract_data::AbstractData;
+use crate::model::asset::AssetRecord;
+use crate::model::metadata_record::compose_abstract_data;
+use crate::router::auth::GuardAuth;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::open_metadata_table;
-// use crate::error::AppError;
-use crate::{model::abstract_data::AbstractData, router::auth::GuardAuth};
-use redb::ReadableTable;
+use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE, TREE};
+use redb::{ReadableDatabase, ReadableTable};
 use rocket::get;
 use rocket::response::stream::ByteStream;
 use serde::Serialize;
@@ -24,7 +26,24 @@ pub struct ExportEntry {
 #[get("/get/get-export")]
 pub fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
     let _ = auth?;
-    let metadata_table = open_metadata_table();
+    let Ok(read_txn) = TREE.in_disk.begin_read() else {
+        return Err(crate::error::AppError::new(
+            crate::error::ErrorKind::Database,
+            "Failed to begin read transaction",
+        ));
+    };
+    let Ok(metadata_table) = read_txn.open_table(METADATA_TABLE) else {
+        return Err(crate::error::AppError::new(
+            crate::error::ErrorKind::Database,
+            "Failed to open METADATA_TABLE",
+        ));
+    };
+    let Ok(id_table) = read_txn.open_table(ASSET_BY_ID) else {
+        return Err(crate::error::AppError::new(
+            crate::error::ErrorKind::Database,
+            "Failed to open ASSET_BY_ID",
+        ));
+    };
     let byte_stream = ByteStream! {
         // Open DB and prepare to iterate
         let Ok(iter) = metadata_table.iter() else {
@@ -42,6 +61,15 @@ pub fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>
                 continue;
             };
 
+            // Compose each payload with its identity record so the export
+            // keeps the full AbstractData shape.
+            let Ok(Some(record_json)) = id_table.get(key.value()) else {
+                continue;
+            };
+            let Ok(record) = serde_json::from_str::<AssetRecord>(record_json.value()) else {
+                continue;
+            };
+
             // Insert a comma if not the first element
             if !first {
                 yield b",".to_vec();
@@ -51,7 +79,7 @@ pub fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>
             // Build the ExportEntry
             let export = ExportEntry {
                 key: key.value().to_string(),
-                value: value.value().clone(),
+                value: compose_abstract_data(&record, Some(&value.value())),
             };
 
             // Convert it to JSON

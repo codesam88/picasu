@@ -1,7 +1,7 @@
 use crate::process::sanitize::sanitize_text;
-use crate::process::transitor::index_to_asset_id;
+use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
 use crate::process::xmp_write::write_sidecar_for;
-use crate::storage::db::{open_metadata_table, open_tree_snapshot_table};
+use crate::storage::db::open_tree_snapshot_table;
 
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::router::auth::GuardReadOnlyMode;
@@ -46,7 +46,6 @@ pub async fn set_user_defined_description(
     let _ = auth?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
-        let metadata_table = open_metadata_table();
         let tree_snapshot = open_tree_snapshot_table(set_user_defined_description.timestamp)
             .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
 
@@ -61,12 +60,9 @@ pub async fn set_user_defined_description(
                 )
             })?;
 
-        if let Some(guard) = metadata_table
-            .get(&*asset_id)
+        if let Some(mut abstract_data) = compose_by_asset_id(&asset_id)
             .or_raise(|| (ErrorKind::Database, "Failed to get data from table"))?
         {
-            let mut abstract_data = guard.value();
-
             let description = set_user_defined_description
                 .description
                 .as_deref()
@@ -77,7 +73,8 @@ pub async fn set_user_defined_description(
                 warn!("Failed to write XMP sidecar: {e}");
             }
 
-            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(vec![abstract_data]));
+            store_metadata_record(&asset_id, &abstract_data, None)
+                .or_raise(|| (ErrorKind::Database, "Failed to store metadata"))?;
         }
 
         Ok(())

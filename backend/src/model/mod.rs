@@ -5,6 +5,7 @@ pub mod config;
 pub mod expression;
 pub mod image;
 pub mod media;
+pub mod metadata_record;
 pub mod object;
 pub mod response;
 pub mod video;

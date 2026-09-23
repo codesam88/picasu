@@ -1,11 +1,14 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
 use crate::model::album::AlbumCombined;
+use crate::model::asset::{AssetKind, AssetRecord};
+use crate::model::metadata_record::{compose_abstract_data, to_metadata_record};
 use crate::process::xmp_write::write_sidecar_for;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardShare;
 use crate::router::{AppResult, GuardResult};
+use crate::storage::db::ASSET_BY_ID;
 use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
 use crate::tasks::BATCH_COORDINATOR;
@@ -17,9 +20,11 @@ use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
 
-/// Read-modify-write a single album record: fetch it, apply `mutate`, write
-/// its `.albuminfo.xmp` sidecar (best-effort — logged, not fatal), and commit.
-/// Shared by every single-field album edit endpoint below.
+/// Read-modify-write a single album's metadata payload: fetch it composed
+/// with its identity `AssetRecord` (for `dir_path`/`id`/trash), apply
+/// `mutate`, write its `.albuminfo.xmp` sidecar (best-effort — logged, not
+/// fatal), and commit. Shared by every single-field album edit endpoint
+/// below. Identity fields are never written from the composed view.
 fn update_album(
     album_id: ArrayString<64>,
     mutate: impl FnOnce(&mut AlbumCombined),
@@ -32,13 +37,29 @@ fn update_album(
         let mut metadata_table = txn
             .open_table(METADATA_TABLE)
             .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
+        let id_table = txn
+            .open_table(ASSET_BY_ID)
+            .or_raise(|| (ErrorKind::Database, "Failed to open ASSET_BY_ID"))?;
 
-        let album = metadata_table
+        let record_json = id_table
             .get(&*album_id)
             .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
-            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?
-            .value();
-        let AbstractData::Album(mut album) = album else {
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?;
+        let record: AssetRecord = serde_json::from_str(record_json.value())
+            .or_raise(|| (ErrorKind::Database, "Failed to deserialize AssetRecord"))?;
+        if record.kind != AssetKind::Album {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                "Expected Album but got different type",
+            ));
+        }
+        let payload = metadata_table
+            .get(&*album_id)
+            .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
+            .map(|guard| guard.value());
+
+        let AbstractData::Album(mut album) = compose_abstract_data(&record, payload.as_ref())
+        else {
             return Err(AppError::new(
                 ErrorKind::InvalidInput,
                 "Expected Album but got different type",
@@ -52,7 +73,7 @@ fn update_album(
             warn!("Failed to write XMP sidecar: {e}");
         }
         metadata_table
-            .insert(&*album_id, abstract_data)
+            .insert(&*album_id, to_metadata_record(&abstract_data))
             .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
     }
     txn.commit()
@@ -105,27 +126,51 @@ pub async fn set_album_cover(
             let mut metadata_table = txn
                 .open_table(METADATA_TABLE)
                 .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
+            let id_table = txn
+                .open_table(ASSET_BY_ID)
+                .or_raise(|| (ErrorKind::Database, "Failed to open ASSET_BY_ID"))?;
 
-            let album = metadata_table
+            let record_for = |id: &ArrayString<64>| -> Result<AssetRecord, AppError> {
+                let json = id_table
+                    .get(&**id)
+                    .or_raise(|| (ErrorKind::Database, "Failed to get asset record"))?
+                    .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?;
+                serde_json::from_str(json.value())
+                    .or_raise(|| (ErrorKind::Database, "Failed to deserialize AssetRecord"))
+            };
+
+            let record = record_for(&album_id)?;
+            if record.kind != AssetKind::Album {
+                return Err(AppError::new(
+                    ErrorKind::InvalidInput,
+                    "Expected Album but got different type",
+                ));
+            }
+            let payload = metadata_table
                 .get(&*album_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
-                .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Album not found"))?
-                .value();
-            let AbstractData::Album(mut album) = album else {
+                .map(|guard| guard.value());
+            let AbstractData::Album(mut album) = compose_abstract_data(&record, payload.as_ref())
+            else {
                 return Err(AppError::new(
                     ErrorKind::InvalidInput,
                     "Expected Album but got different type",
                 ));
             };
-            let database = metadata_table
+
+            let cover_record = record_for(&cover_asset_id)
+                .map_err(|_| AppError::new(ErrorKind::NotFound, "Cover image not found"))?;
+            let cover_payload = metadata_table
                 .get(&*cover_asset_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to get cover image"))?
                 .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Cover image not found"))?
                 .value();
+            let cover_data = compose_abstract_data(&cover_record, Some(&cover_payload));
 
-            album.set_cover(&database, cover_asset_id);
+            album.set_cover(&cover_data, cover_asset_id);
+            let abstract_data = AbstractData::Album(album);
             metadata_table
-                .insert(&*album_id, AbstractData::Album(album))
+                .insert(&*album_id, to_metadata_record(&abstract_data))
                 .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
         }
         txn.commit()

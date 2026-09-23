@@ -1,6 +1,6 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
-use crate::model::abstract_data::AbstractData;
 use crate::model::album::Share;
+use crate::model::metadata_record::MetadataRecord;
 use crate::router::GuardResult;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
@@ -52,21 +52,17 @@ pub async fn edit_share(
             let album_opt = metadata_table
                 .get(json_data.album_id.as_str())
                 .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
-                .and_then(|guard| {
-                    let abstract_data = guard.value();
-                    match abstract_data {
-                        AbstractData::Album(album) => Some(album),
-                        _ => None,
-                    }
+                .and_then(|guard| match guard.value() {
+                    MetadataRecord::Album(album) => Some(album),
+                    _ => None,
                 });
 
             if let Some(mut album) = album_opt {
                 album
-                    .metadata
                     .share_list
                     .insert(json_data.share.url, json_data.share.clone());
                 metadata_table
-                    .insert(json_data.album_id.as_str(), AbstractData::Album(album))
+                    .insert(json_data.album_id.as_str(), MetadataRecord::Album(album))
                     .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
             }
         }
@@ -124,18 +120,15 @@ pub async fn delete_share(
             let album_opt = metadata_table
                 .get(json_data.album_id.as_str())
                 .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
-                .and_then(|guard| {
-                    let abstract_data = guard.value();
-                    match abstract_data {
-                        AbstractData::Album(album) => Some(album),
-                        _ => None,
-                    }
+                .and_then(|guard| match guard.value() {
+                    MetadataRecord::Album(album) => Some(album),
+                    _ => None,
                 });
 
             if let Some(mut album) = album_opt {
-                album.metadata.share_list.remove(&json_data.share_id);
+                album.share_list.remove(&json_data.share_id);
                 metadata_table
-                    .insert(json_data.album_id.as_str(), AbstractData::Album(album))
+                    .insert(json_data.album_id.as_str(), MetadataRecord::Album(album))
                     .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
             }
         }

@@ -4,7 +4,7 @@ import { findPhotoAssetId } from './playwright/executeGiven'
 // get-data rows are path-primary (backend DataBaseTimestampReturn, camelCase):
 // row-level `assetId` is the API identity; the on-disk path lives at
 // `abstractData.path.file` (singular). There is no `currentPath` object and no
-// row-level `hash` — see frontend/src/type/schemas.ts (FileModifySchema,
+// row-level `hash` — see frontend/src/type/schemas.ts (FileEntrySchema,
 // databaseTimestampSchema) and backend scenario
 // locate_same_hash_by_asset_id.yaml (response.json.[0].assetId /
 // response.json.[0].abstractData.path.file).
