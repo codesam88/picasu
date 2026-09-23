@@ -41,7 +41,7 @@ auto-rename, multi-file preflight validation, and frontend upload-option coverag
 
 ### Next, in order
 
-1. Complete hard delete, including original files, thumbnails, aliases, sidecars,
+1. Complete hard delete, including original files, thumbnails, asset records, sidecars,
    and cache eviction (`delete-from-disk.md`).
 2. Handle externally deleted files in the watcher and during manual album indexing
    (`watcher-remove-events.md`).
@@ -59,20 +59,20 @@ Image title editing remains explicitly deferred for v0.1.
 
 ## Related Plan Items
 
-| File                              | Status      | Notes                                                |
-| --------------------------------- | ----------- | ---------------------------------------------------- |
-| `delete-from-disk.md`             | in-progress | Delete removes files from disk + thumbnails          |
-| `watcher-remove-events.md`        | in-progress | Watcher handles Remove events                        |
-| `assign-album-conflict.md`        | in-progress | assign_album conflict handling (rename/replace/skip) |
-| `upload-conflict.md`              | done        | Upload conflict handling and upload hardening        |
-| `edit-flags-sidecar-writeback.md` | open        | edit_flags writes XMP sidecar                        |
-| `frontend-exif-display.md`        | open        | Expand ItemExif.vue beyond Make/Model                |
-| `test-exif-xmp-handling.md`       | open        | Non-JPEG container XMP coverage                      |
-| `expand-e2e-testing.md`           | open        | 12+ untested API endpoints                           |
-| `ui-refinement.md`                | open        | UI bugs and polish                                   |
-| `backend-unit-tests.md`           | open        | Pure function unit tests                             |
-| `clippy-unwrap-cleanup.md`        | backlog     | ~140 unwrap calls                                    |
-| `verify-file-actions.md`          | done        | E2E lifecycle coverage                               |
-| `stale-dir-album-cache.md`        | done        | Cache pruned at startup + request time               |
-| `frontend-rating-widget.md`       | done        | Star rating UI + edit_rating endpoint                |
-| `xmp-sidecar-metadata.md`         | done        | XMP sidecar lifecycle                                |
+| File                              | Status      | Notes                                         |
+| --------------------------------- | ----------- | --------------------------------------------- |
+| `delete-from-disk.md`             | in-progress | Delete removes files from disk + thumbnails   |
+| `watcher-remove-events.md`        | in-progress | Watcher handles Remove events                 |
+| `assign-album-conflict.md`        | in-progress | assign_album conflict handling (skip/rename)  |
+| `upload-conflict.md`              | done        | Upload conflict handling and upload hardening |
+| `edit-flags-sidecar-writeback.md` | open        | edit_flags writes XMP sidecar                 |
+| `frontend-exif-display.md`        | open        | Expand ItemExif.vue beyond Make/Model         |
+| `test-exif-xmp-handling.md`       | open        | Non-JPEG container XMP coverage               |
+| `expand-e2e-testing.md`           | open        | 12+ untested API endpoints                    |
+| `ui-refinement.md`                | open        | UI bugs and polish                            |
+| `backend-unit-tests.md`           | open        | Pure function unit tests                      |
+| `clippy-unwrap-cleanup.md`        | backlog     | ~140 unwrap calls                             |
+| `verify-file-actions.md`          | done        | E2E lifecycle coverage                        |
+| `stale-dir-album-cache.md`        | done        | Cache pruned at startup + request time        |
+| `frontend-rating-widget.md`       | done        | Star rating UI + edit_rating endpoint         |
+| `xmp-sidecar-metadata.md`         | done        | XMP sidecar lifecycle                         |

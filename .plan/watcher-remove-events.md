@@ -9,19 +9,23 @@ Tracked in `pre01.md` (meta) as 1b.
 
 ## Context
 
-`start_watcher.rs` handles `Create` and `Modify` events; `Remove` events fall through to `_ => {}`. A file deleted
-externally stays in the DB as a stale record with a broken alias. Breaks the "filesystem as source of truth" promise.
+`start_watcher.rs` handles `Create` and `Modify` events; `Remove` events fall
+through to `_ => {}`. A file deleted externally stays in the asset index as a
+stale record with a broken canonical path. This breaks the filesystem-as-source-
+of-truth promise.
 
 ## Tasks
 
-- [ ] Handle `EventKind::Remove(_)` in the watcher: look up the path in `DATA_TABLE` (scan aliases), remove the alias
-      from the record, and if no aliases remain, remove the whole record + thumbnail.
+- [ ] Handle `EventKind::Remove(_)` in the watcher: resolve the canonical path
+      through `ASSET_BY_PATH`, remove that asset from the asset tables and
+      `DUPE_INDEX`, and remove derived state when no asset still references it.
 - [x] On manual album indexing (`POST /post/index/album`), the sweep after scanning new files should also check existing
-      DB records under the target path for dead aliases.
+      asset records under the target path for missing canonical files.
 
 ## Progress (2026-09-07)
 
-- Task 2 (sweep on manual album index) shipped in PR \#17 via `sweep_stale_aliases` (`album_index.rs`), E2E scenario
-  `album_index_removes_stale_aliases.yaml` passes.
+- Task 2 (sweep on manual album index) shipped in PR \#17 via the stale-path
+  sweep in `album_index.rs`; E2E scenario `album_index_removes_stale_aliases.yaml`
+  passes.
 - Watcher `Remove` handling (task 1) remains open.
 - Locking/ordering concerns in the sweep are tracked separately in `album-index-sweep-concurrency.md`.
