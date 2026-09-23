@@ -27,7 +27,7 @@ pub use storage::files::DATA_PATH;
 use crate::init::initialize;
 use crate::init::initialize_logger;
 use crate::process::dir_album::init_dir_album_cache;
-use crate::storage::db::DATA_TABLE;
+use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
 use crate::storage::files::get_data_path;
 use crate::tasks::BATCH_COORDINATOR;
@@ -91,10 +91,12 @@ pub fn run() {
                 .expect("failed to begin write transaction");
 
             {
-                let table = txn.open_table(DATA_TABLE).expect("failed to open table");
+                let table = txn
+                    .open_table(METADATA_TABLE)
+                    .expect("failed to open table");
                 let total_count = table.len().expect("failed to get length");
 
-                // Constraint: DATA_TABLE stores mixed types (Albums and Media).
+                // Constraint: METADATA_TABLE stores mixed types (Albums and Media).
                 // We must perform an O(N) scan to differentiate counts.
                 let album_count = table
                     .iter()

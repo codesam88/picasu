@@ -1,6 +1,6 @@
 use crate::error::handle_error;
 use crate::model::abstract_data::AbstractData;
-use crate::storage::db::DATA_TABLE;
+use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
 use anyhow::Context;
 use anyhow::Result;
@@ -40,9 +40,9 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
         .begin_write()
         .context("begin_write failed (album)")?;
     {
-        let mut data_table = txn.open_table(DATA_TABLE)?;
+        let mut metadata_table = txn.open_table(METADATA_TABLE)?;
 
-        let album_opt = data_table
+        let album_opt = metadata_table
             .get(&*album_id)
             .expect("failed to get record")
             .and_then(|guard| {
@@ -57,7 +57,7 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
             album.object.pending = true;
             album.self_update();
             album.object.pending = false;
-            data_table
+            metadata_table
                 .insert(&*album_id, AbstractData::Album(album))
                 .expect("failed to insert");
         } else {
@@ -80,13 +80,13 @@ pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
 
             // Clear album membership from these items
             for hash in hash_list {
-                let mut abstract_data = data_table
+                let mut abstract_data = metadata_table
                     .get(&*hash)
                     .expect("failed to get record")
                     .expect("record not found")
                     .value();
                 abstract_data.set_album(None);
-                data_table
+                metadata_table
                     .insert(&*hash, abstract_data)
                     .expect("failed to insert");
             }

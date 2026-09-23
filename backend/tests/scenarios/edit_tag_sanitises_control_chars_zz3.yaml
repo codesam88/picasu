@@ -21,13 +21,12 @@ when:
       token: response.token
       ts: response.prefetch.timestamp
       idx: response.prefetch.locateTo
-    calc:
-      end: "${idx}+1"
-  - call: GET /get/get-data?timestamp=${ts}&start=${idx}&end=${end}
+  # Tags live on the metadata detail endpoint now (Phase 14 lean list rows).
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
     auth: false
     headers:
       Authorization: "Bearer ${token}"
 then:
   - response.status: 200
-  - response.json.[0].abstractData.tags:
+  - response.json.tags:
       contains: e2e_zz3clean

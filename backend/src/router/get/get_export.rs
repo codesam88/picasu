@@ -1,5 +1,5 @@
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::open_data_table;
+use crate::storage::db::open_metadata_table;
 // use crate::error::AppError;
 use crate::{model::abstract_data::AbstractData, router::auth::GuardAuth};
 use redb::ReadableTable;
@@ -24,10 +24,10 @@ pub struct ExportEntry {
 #[get("/get/get-export")]
 pub fn get_export(auth: GuardResult<GuardAuth>) -> AppResult<ByteStream![Vec<u8>]> {
     let _ = auth?;
-    let data_table = open_data_table();
+    let metadata_table = open_metadata_table();
     let byte_stream = ByteStream! {
         // Open DB and prepare to iterate
-        let Ok(iter) = data_table.iter() else {
+        let Ok(iter) = metadata_table.iter() else {
             yield b"{\"error\":\"failed to iterate\"}".to_vec();
             return;
         };

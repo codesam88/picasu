@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use redb::ReadableDatabase;
@@ -125,34 +123,7 @@ pub fn get_assets_under_path(dir_path: &str) -> Result<Vec<AssetRecord>> {
         .collect())
 }
 
-/// Resolve a content hash to an `asset_id`.
-///
-/// Tries `DUPE_INDEX` first, then scans `ASSET_BY_ID` for matching `content_hash`.
-/// Returns `None` if no asset has the given content hash.
-pub fn resolve_hash_to_asset_id(content_hash: &str) -> Result<Option<ArrayString<64>>> {
-    // Try DUPE_INDEX first.
-    let ids = get_dupe_ids(content_hash).ok().unwrap_or_default();
-    if !ids.is_empty() {
-        return Ok(Some(ids[0]));
-    }
-
-    // DUPE_INDEX empty — scan ASSET_BY_ID.
-    let records = get_all_assets()?;
-    for record in &records {
-        if record
-            .content_hash
-            .as_ref()
-            .map(arrayvec::ArrayString::as_str)
-            == Some(content_hash)
-        {
-            return Ok(Some(record.asset_id));
-        }
-    }
-
-    Ok(None)
-}
-
-/// Look up an `AbstractData` from `DATA_TABLE` by `asset_id`.
+/// Look up an `AbstractData` from `METADATA_TABLE` by `asset_id`.
 pub fn lookup_abstract_data_by_asset_id(
     asset_id: &str,
 ) -> Result<Option<crate::model::abstract_data::AbstractData>> {
@@ -161,8 +132,8 @@ pub fn lookup_abstract_data_by_asset_id(
         .begin_read()
         .context("Failed to begin read transaction")?;
     let table = txn
-        .open_table(crate::storage::db::DATA_TABLE)
-        .context("Failed to open DATA_TABLE")?;
+        .open_table(crate::storage::db::METADATA_TABLE)
+        .context("Failed to open METADATA_TABLE")?;
 
     if let Some(guard) = table.get(asset_id)? {
         return Ok(Some(guard.value()));

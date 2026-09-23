@@ -8,7 +8,7 @@ use crate::model::config::{APP_CONFIG, AppConfig};
 use crate::process::dir_album;
 use crate::router::builder::build_rocket_with_config;
 use crate::storage::cache::TREE_SNAPSHOT;
-use crate::storage::db::DATA_TABLE;
+use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
 use crate::storage::files::DATA_PATH;
 use crate::storage::files::get_resolved_image_home;
@@ -41,7 +41,8 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
 
     {
         let txn = TREE.in_disk.begin_write().expect("begin write txn");
-        txn.open_table(DATA_TABLE).expect("create DATA_TABLE");
+        txn.open_table(METADATA_TABLE)
+            .expect("create METADATA_TABLE");
         txn.open_table(crate::storage::db::ASSET_BY_PATH)
             .expect("create ASSET_BY_PATH");
         txn.open_table(crate::storage::db::ASSET_BY_ID)
@@ -129,18 +130,18 @@ pub fn reset_backend_state() {
         .expect("begin db write for cleanup");
     {
         let mut table = txn
-            .open_table(DATA_TABLE)
-            .expect("open DATA_TABLE for cleanup");
+            .open_table(METADATA_TABLE)
+            .expect("open METADATA_TABLE for cleanup");
         let keys: Vec<String> = table
             .iter()
-            .expect("iterate DATA_TABLE")
+            .expect("iterate METADATA_TABLE")
             .map(|r| r.expect("read row").0.value().to_string())
             .collect();
         for key in &keys {
             table.remove(key.as_str()).expect("remove key");
         }
     }
-    txn.commit().expect("commit DATA_TABLE drain");
+    txn.commit().expect("commit METADATA_TABLE drain");
 
     // Also drain the path-primary asset tables.
     let txn = TREE

@@ -7,7 +7,7 @@ use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardUpload;
 use crate::router::put::assign_album::OnConflict;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::{DATA_TABLE, TREE};
+use crate::storage::db::{METADATA_TABLE, TREE};
 use crate::storage::files::get_resolved_image_home;
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -452,7 +452,7 @@ fn read_upload_policy() -> UploadPolicy {
 /// Whether any index record references the uploaded file as either the
 /// absolute path or an `IMAGE_HOME`-relative path.
 ///
-/// Checks the on-disk `DATA_TABLE` (authoritative for a committed insert that
+/// Checks the on-disk `METADATA_TABLE` (authoritative for a committed insert that
 /// a mid-pipeline failure may leave before it reaches the in-memory tree) and
 /// the in-memory snapshot. Used by the upload error path to decide whether an
 /// uploaded file can be safely deleted: deleting is only safe when no record
@@ -474,7 +474,7 @@ fn record_exists_for(path: &Path, relative: &Path) -> bool {
     drop(mem);
 
     if let Ok(txn) = TREE.in_disk.begin_read()
-        && let Ok(table) = txn.open_table(DATA_TABLE)
+        && let Ok(table) = txn.open_table(METADATA_TABLE)
         && let Ok(mut iter) = table.iter()
     {
         return iter.any(|entry| {

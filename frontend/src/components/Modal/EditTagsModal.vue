@@ -78,9 +78,11 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
 import { useTagStore } from '@/store/tagStore'
+import { useDataStore } from '@/store/dataStore'
 import { getAssetIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
 import { editTags } from '@/api/editTags'
 import { editFlags } from '@/api/editFlags'
+import { fetchAssetMetadata } from '@/api/fetchMetadata'
 
 // Combobox item shape used by both real tags and virtual flag items.
 // `isFlag` distinguishes flag items from regular tags.
@@ -136,7 +138,19 @@ const allItems = computed<ComboboxItem[]>(() => {
   return [FAVORITE_ITEM, ARCHIVED_ITEM, ...tagItems]
 })
 
-onMounted(() => {
+onMounted(async () => {
+  // List rows are lean (Phase 14): fetch the detail record before seeding so
+  // the combobox prefills the item's actual tags and flag state. The modal can
+  // be opened without the info panel, so it triggers its own detail fetch.
+  const routeInit = getAssetIndexDataFromRoute(route)
+  if (routeInit !== undefined && routeInit.data.type !== 'album') {
+    const isolationId = getIsolationIdByRoute(route)
+    const detail = await fetchAssetMetadata(routeInit.assetId, isolationId)
+    if (detail !== null) {
+      useDataStore(isolationId).mergeMetadata(routeInit.index, detail)
+    }
+  }
+
   const useSubmit = (): undefined | (() => Promise<void>) => {
     const initializeResult = getAssetIndexDataFromRoute(route)
     if (initializeResult === undefined) {

@@ -591,6 +591,38 @@ fn dispatch_when_item<'c>(
         // `when` flow like any other call/upload verb.
         let cookie = auth_cookie(client);
         client.get("/get/index/status").cookie(cookie).dispatch()
+    } else if let Some(dup) = item.get("duplicate_of") {
+        // Binary-safe overwrite in `when`: reuses the given-block
+        // duplicate_of schema ({source, destination}) with the same fs::copy
+        // semantics, so a scenario can replace a file's bytes with valid
+        // (but different) media the watcher will re-index.
+        let src = dup["source"]
+            .as_str()
+            .expect("duplicate_of.source is required")
+            .trim_start_matches('/')
+            .to_string();
+        let dst = dup["destination"]
+            .as_str()
+            .expect("duplicate_of.destination is required")
+            .trim_start_matches('/')
+            .to_string();
+        let home = test_image_home();
+        let src_path = home.join(&src);
+        let dst_path = home.join(&dst);
+        assert!(
+            src_path.exists(),
+            "duplicate_of source does not exist: {src}"
+        );
+        if let Some(parent) = dst_path.parent() {
+            std::fs::create_dir_all(parent)
+                .unwrap_or_else(|e| panic!("create dir for duplicate_of {dst}: {e}"));
+        }
+        std::fs::copy(&src_path, &dst_path)
+            .unwrap_or_else(|e| panic!("duplicate_of copy {src} -> {dst}: {e}"));
+        // Return a status-200 probe response so this branches cleanly in the
+        // `when` flow like any other call/upload/write verb.
+        let cookie = auth_cookie(client);
+        client.get("/get/index/status").cookie(cookie).dispatch()
     } else {
         execute_call(item, vars, client)
     }
@@ -748,11 +780,14 @@ fn interpret_scenario(scenario: &Value) {
                         "given photo format must be jpeg or png, got {format}"
                     );
 
+                    let width = item["width"].as_u64().map_or(4, |w| w as u32);
+                    let height = item["height"].as_u64().map_or(4, |h| h as u32);
+
                     photo_specs.push(PhotoSpec {
                         output: Some(data.join(trimmed).to_string_lossy().to_string()),
                         format: Some(format),
-                        width: Some(4),
-                        height: Some(4),
+                        width: Some(width),
+                        height: Some(height),
                         tags: if has_tags { Some(tags) } else { None },
                         exif_date: exif_date.map(|d| d.to_string()),
                         minimal: false,

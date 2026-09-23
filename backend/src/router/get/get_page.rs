@@ -1,7 +1,7 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
 use crate::router::AppResult;
-use crate::storage::db::{DATA_TABLE, TREE};
+use crate::storage::db::{METADATA_TABLE, TREE};
 #[cfg(not(feature = "embed-frontend"))]
 use rocket::fs::NamedFile;
 use rocket::http::Status;
@@ -462,7 +462,7 @@ pub async fn spa_fallback(path: PathBuf) -> AppResult<FrontendResponse> {
                 .begin_read()
                 .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?;
             let table = read_txn
-                .open_table(DATA_TABLE)
+                .open_table(METADATA_TABLE)
                 .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
 
             let is_album = match table

@@ -31,12 +31,12 @@ pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<ArrayStr
     Ok(asset_id)
 }
 
-/// Resolve an `asset_id` to an `AbstractData` record via `DATA_TABLE`.
+/// Resolve an `asset_id` to an `AbstractData` record via `METADATA_TABLE`.
 pub fn asset_id_to_abstract_data(
     asset_id: ArrayString<64>,
-    data_table: &ReadOnlyTable<&'static str, AbstractData>,
+    metadata_table: &ReadOnlyTable<&'static str, AbstractData>,
 ) -> Result<AbstractData> {
-    if let Some(data) = data_table.get(&*asset_id)? {
+    if let Some(data) = metadata_table.get(&*asset_id)? {
         return Ok(data.value());
     }
 
@@ -108,6 +108,38 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
     }
 }
 
+/// Build the lean list-row `AbstractData` for an image/video from its identity
+/// `AssetRecord` plus the snapshot-carried display fields.
+///
+/// Phase 14 split: `get-data` no longer reads `METADATA_TABLE` per media row.
+/// The row carries identity, dimensions, alias, album membership, and the
+/// cache-bust/processing keys (`update_at`, `pending`) — tags, EXIF, and
+/// description are deliberately absent and must be fetched via
+/// `GET /get/metadata/{assetId}` (detail/sidebar). Rating, favorite, and
+/// archived flags likewise live behind the detail endpoint.
+pub fn lean_media_abstract_data(
+    record: &crate::model::asset::AssetRecord,
+    reduced: &crate::model::response::ReducedData,
+) -> AbstractData {
+    let mut data = asset_record_to_abstract_data(record);
+    data.set_width(reduced.width);
+    data.set_height(reduced.height);
+    // Album membership comes from the identity record, not the metadata row.
+    data.set_album(record.album_id);
+    match &mut data {
+        AbstractData::Image(img) => {
+            img.object.update_at = reduced.update_at;
+            img.object.pending = reduced.pending;
+        }
+        AbstractData::Video(vid) => {
+            vid.object.update_at = reduced.update_at;
+            vid.object.pending = reduced.pending;
+        }
+        AbstractData::Album(_) => {}
+    }
+    data
+}
+
 pub fn clear_abstract_data_metadata(
     abstract_data: &mut AbstractData,
     show_metadata: bool,
@@ -146,13 +178,13 @@ pub fn clear_abstract_data_metadata(
 /// and returns the image's `object.id` (content hash).
 pub fn cover_content_hash_from_data(
     abstract_data: &AbstractData,
-    data_table: &ReadOnlyTable<&'static str, AbstractData>,
+    metadata_table: &ReadOnlyTable<&'static str, AbstractData>,
 ) -> Option<ArrayString<64>> {
     let cover_asset_id = match abstract_data {
         AbstractData::Album(album) => album.metadata.cover?,
         _ => return None,
     };
-    let cover_data = asset_id_to_abstract_data(cover_asset_id, data_table).ok()?;
+    let cover_data = asset_id_to_abstract_data(cover_asset_id, metadata_table).ok()?;
     Some(cover_data.hash())
 }
 

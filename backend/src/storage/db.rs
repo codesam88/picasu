@@ -90,13 +90,13 @@ impl Tree {
         self.in_disk
             .begin_read()
             .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?
-            .open_table(DATA_TABLE)
-            .or_raise(|| (ErrorKind::Database, "Failed to open DATA_TABLE"))?
+            .open_table(METADATA_TABLE)
+            .or_raise(|| (ErrorKind::Database, "Failed to open METADATA_TABLE"))?
             .iter()
             .or_raise(|| {
                 (
                     ErrorKind::Database,
-                    "Failed to create iterator over DATA_TABLE",
+                    "Failed to create iterator over METADATA_TABLE",
                 )
             })?
             .par_bridge()
@@ -122,7 +122,7 @@ use redb::TableDefinition;
 
 use crate::model::abstract_data::AbstractData;
 
-pub const DATA_TABLE: TableDefinition<&str, AbstractData> = TableDefinition::new("database");
+pub const METADATA_TABLE: TableDefinition<&str, AbstractData> = TableDefinition::new("metadata");
 
 // ── Path-primary asset stores ────────────────────────────────────────────────
 //
@@ -146,13 +146,13 @@ pub const DUPE_INDEX: TableDefinition<&str, &str> = TableDefinition::new("dupe_i
 
 use anyhow::Result;
 
-pub fn open_data_table() -> ReadOnlyTable<&'static str, AbstractData> {
+pub fn open_metadata_table() -> ReadOnlyTable<&'static str, AbstractData> {
     let read_txn = TREE
         .in_disk
         .begin_read()
         .expect("failed to begin read transaction");
     read_txn
-        .open_table(DATA_TABLE)
+        .open_table(METADATA_TABLE)
         .expect("failed to open data table")
 }
 

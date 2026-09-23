@@ -7,7 +7,7 @@ use crate::router::auth::GuardReadOnlyMode;
 use crate::storage::db::TREE;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
-use crate::{router::AppResult, storage::db::DATA_TABLE};
+use crate::{router::AppResult, storage::db::METADATA_TABLE};
 
 use arrayvec::ArrayString;
 use redb::ReadableTable;
@@ -45,11 +45,11 @@ pub async fn edit_share(
             .begin_write()
             .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
         {
-            let mut data_table = txn
-                .open_table(DATA_TABLE)
+            let mut metadata_table = txn
+                .open_table(METADATA_TABLE)
                 .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
 
-            let album_opt = data_table
+            let album_opt = metadata_table
                 .get(json_data.album_id.as_str())
                 .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
                 .and_then(|guard| {
@@ -65,7 +65,7 @@ pub async fn edit_share(
                     .metadata
                     .share_list
                     .insert(json_data.share.url, json_data.share.clone());
-                data_table
+                metadata_table
                     .insert(json_data.album_id.as_str(), AbstractData::Album(album))
                     .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
             }
@@ -117,11 +117,11 @@ pub async fn delete_share(
             .begin_write()
             .or_raise(|| (ErrorKind::Database, "Failed to begin transaction"))?;
         {
-            let mut data_table = txn
-                .open_table(DATA_TABLE)
+            let mut metadata_table = txn
+                .open_table(METADATA_TABLE)
                 .or_raise(|| (ErrorKind::Database, "Failed to open data table"))?;
 
-            let album_opt = data_table
+            let album_opt = metadata_table
                 .get(json_data.album_id.as_str())
                 .or_raise(|| (ErrorKind::Database, "Failed to get album"))?
                 .and_then(|guard| {
@@ -134,7 +134,7 @@ pub async fn delete_share(
 
             if let Some(mut album) = album_opt {
                 album.metadata.share_list.remove(&json_data.share_id);
-                data_table
+                metadata_table
                     .insert(json_data.album_id.as_str(), AbstractData::Album(album))
                     .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
             }

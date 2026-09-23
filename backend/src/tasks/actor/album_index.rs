@@ -328,11 +328,17 @@ fn sweep_stale_aliases(root: &Path) {
 
     for mut data in candidates {
         let had_aliases = !data.alias().is_empty();
+        let aliases_before = data.alias().len();
         let remaining = crate::process::alias::prune_stale_aliases(&mut data);
 
         if !remaining && had_aliases {
             to_remove.push(data);
-        } else if remaining {
+        } else if remaining && data.alias().len() != aliases_before {
+            // Only persist records whose alias list actually changed. The
+            // in-memory tree clone can lag disk (`UpdateTreeTask` rebuilds it
+            // separately), and re-flushing an unchanged clone would overwrite
+            // fresher writes — including reverting a content-hash change this
+            // job just flushed.
             to_update.push(data);
         }
     }
