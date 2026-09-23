@@ -264,96 +264,62 @@ bitcode encodes the discriminant in the lowest 2 bits of the first byte
 3, which is invalid — so no legitimately encoded `AbstractData` can start with
 `0xFF`.
 
-Current schema version: **7** (`SCHEMA_VERSION` in `ser_de.rs`).
+Current schema version: **1** (`SCHEMA_VERSION` in `ser_de.rs`). The structs
+in `backend/src/model/` are the version-1 schema.
 
-### Version history
-
-| Version     | Encoding                                                                                                            | Notes                                                                         |
-| ----------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| 1 (legacy)  | `AlbumMetadata` without `dir_path`; media decoded via the v2 types                                                  | No version prefix on disk; detected by absence of `0xFF`                      |
-| 2           | Media metadata with `albums: HashSet`                                                                               | Read path collapses the set to `album: Option` (first element)                |
-| 3           | Media `album: Option`; `AlbumMetadata.dir_path: Option<String>` (no `custom_title`)                                 |                                                                               |
-| 4           | `AlbumMetadata` gains `custom_date`, still no `custom_title`                                                        | Read path treats existing `title` as `custom_title`; `custom_date` is dropped |
-| 5           | `AlbumMetadata` gains `custom_title` (still `dir_path: Option<String>`)                                             |                                                                               |
-| 6           | `dir_path` becomes required `String` (metadata-only albums removed); record-level `is_trashed`                      |                                                                               |
-| 7 (current) | Per-alias trash: `FileModify.is_trashed` added; `ObjectSchema.is_trashed` removed; `AlbumMetadata.is_trashed` added |                                                                               |
-
-### On-read migration
+### Decode policy
 
 When a record is read via the `Value::from_bytes` impl, the version byte
-selects the correct decoder:
+selects the decoder:
 
 ```rust
-match version {
-    1 => AbstractData::from(decode::<AbstractDataV1>(payload)),
-    2 => AbstractData::from(decode::<AbstractDataV2>(payload)),
-    // 3, 4, 5, 6 likewise decode the frozen type then convert
-    7 => decode::<AbstractData>(payload),  // current, no transform needed
-    v => panic!("Unknown schema version {v}"),
+let [0xFF, version, payload @ ..] = data else { rebuild_required(...) };
+if version != SCHEMA_VERSION {
+    rebuild_required(...); // unknown/unsupported version
 }
+decode::<AbstractData>(payload) // version 1: current structs, no transform
 ```
 
-Records with no `0xFF` prefix (pre-versioning) fall through to the v1 decoder.
+- Version `1` (the `SCHEMA_VERSION` prefix) decodes the current structs
+  directly — no `From` conversions.
+- Any other version byte, or input with no `0xFF` prefix at all, panics via
+  `rebuild_required`, which tells the operator to rebuild
+  (`POST /post/rebuild`) or start with a fresh `DATA_HOME`. Prefixless input
+  is rejected rather than treated as version 1, because version 1 means the
+  _current_ schema — silently decoding ancient prefixless bytes against it
+  would corrupt data.
 
-Each old-version type has a `From` impl that converts it to the current
-`AbstractData`:
+redb 4.2's `Value::from_bytes` returns the decoded value directly (no
+associated error type), so a decode failure can only surface as a panic —
+the same mechanism the other `Value` impls in `ser_de.rs` use.
 
-- **v2 → current**: `HashSet<ArrayString<64>> albums` collapses to
-  `Option<ArrayString<64>> album` (takes the first element; empty set becomes
-  `None`).
-- **v1 → current**: album records predate directory-backed albums, so they get
-  an empty-string `dir_path` sentinel (purely defensive — no v1 records are
-  expected to exist); image/video records pass through v2 first.
+### Changing the schema
 
-Old frozen types are preserved in `ser_de.rs` under `#[derive(bitcode::Decode)]`
-(no `Encode` except under `#[cfg(test)]`) so they serve as read-only migration
-targets.
+Migration between schema versions is **not supported**; a clean rebuild is
+the only upgrade path. When the schema changes (new fields, removed fields,
+reordered variants):
+
+1. Increment `SCHEMA_VERSION`.
+2. Copy the current structs to frozen `AbstractDataVN` / `AlbumCombinedVN` /
+   etc. types.
+3. Add a match arm in `from_bytes` for the previous version.
 
 ---
 
-## Database migration history
+## Database file formats
 
-Picasu has gone through five on-disk database formats. The current code only
-supports opening `index_v5.redb` directly.
+Picasu has gone through several on-disk database formats. The current code
+opens `index_v5.redb` directly.
 
-| Format       | File            | Storage engine | Schema                                    | Migration |
-| ------------ | --------------- | -------------- | ----------------------------------------- | --------- |
-| V2           | `index.redb`    | redb 2.6.x     | Flat `Database`/`Album` structs per table | Removed   |
-| V3           | `index.redb`    | redb 3.x       | `AbstractData` enum without `update_at`   | Removed   |
-| V4           | `index_v4.redb` | redb 3.x       | `AbstractData` with `update_at`           | Removed   |
-| V5 (current) | `index_v5.redb` | redb 4.x       | `AbstractData` schema v7                  | Current   |
+| Format       | File            | Storage engine | Schema           |
+| ------------ | --------------- | -------------- | ---------------- |
+| V2           | `index.redb`    | redb 2.6.x     | Removed          |
+| V3           | `index.redb`    | redb 3.x       | Removed          |
+| V4           | `index_v4.redb` | redb 3.x       | Removed          |
+| V5 (current) | `index_v5.redb` | redb 4.x       | Schema version 1 |
 
-### V2 → V4 migration (deleted code, commit `7abf4452`)
-
-The old `src/migration/` directory (deleted) contained:
-
-- **`v2_v3.rs`**: Read the old redb 2.6.x database using the `redb_old` crate.
-  Opened two tables (`"database"` with `OldDatabase` entries,
-  `"album"` with `OldAlbum` entries). Transformed each record:
-  - Extracted underscore-prefixed pseudo-tags (`_favorite`, `_archived`,
-    `_trashed`) into dedicated boolean fields.
-  - Moved `_user_defined_description` from `exif_vec` to the `description`
-    field.
-  - Converted `u128` timestamps to `i64`.
-  - Migrated `HashSet<ArrayString<64>> album` to `HashSet<ArrayString<64>>`
-    (same type).
-- **`v3_v4.rs`**: Same redb version (3.x), same `AbstractData` enum shape, but
-  the `ObjectSchema` lacked `update_at`. The migration stamped
-  `Utc::now().timestamp_millis()` on every record.
-
-Both paths wrote into a fresh `index_v4.redb` using `redb::Database::create()`,
-processing in batches of 5000 with Rayon parallelism.
-
-### V4 → V5 rename (commit `640c14c5`)
-
-No data transformation — just `std::fs::rename("index_v4.redb",
-"index_v5.redb")`. The file path was updated in `tree/new.rs` and the rename
-logic was removed along with the rest of the migration code
-(commit `7abf4452`).
-
-### Current startup guard
-
-`migration()` in `backend/src/lib.rs` checks for the existence of
-`db/index_v4.redb`. If found, startup is blocked with instructions to
-downgrade to v1.2.2 first, which is the last release that carried the old
-migration pipeline.
+Older formats are not supported and no migration path exists between them
+(or between per-record schema versions) — rebuild from the filesystem
+(`POST /post/rebuild`) or start with a fresh `DATA_HOME`. A stale
+`index_v4.redb` file, if present, is simply ignored: the app opens
+`index_v5.redb`.

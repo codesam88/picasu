@@ -2,13 +2,9 @@ use crate::model::response::Prefetch;
 
 use crate::model::{
     abstract_data::AbstractData,
-    album::{AlbumCombined, AlbumMetadata, Share},
-    object::{ObjectSchema, ObjectType},
-    response::{FileModify, ReducedData, Row},
+    response::{ReducedData, Row},
 };
-use arrayvec::ArrayString;
 use redb::{TypeName, Value};
-use std::collections::HashMap;
 
 // ── AbstractData versioned encoding ───────────────────────────────────────────
 //
@@ -20,634 +16,32 @@ use std::collections::HashMap;
 // which is invalid for this enum — so no legitimately encoded AbstractData record
 // can start with 0xFF.
 //
-// Records written before this versioning system was introduced have no prefix.
-// They carry the schema that corresponds to SCHEMA_VERSION 1, so the fallback
-// path in from_bytes treats them as version 1.
+// The structs in `model/` ARE the schema, and SCHEMA_VERSION below is their
+// on-disk version. Migration between schema versions is not supported: a
+// record with any other version byte — or with no [0xFF, version] prefix at
+// all — cannot be decoded, and `from_bytes` aborts with instructions to
+// rebuild (POST /post/rebuild or a fresh DATA_HOME).
 //
 // When the schema changes (new fields, removed fields, reordered variants):
 //   1. Increment SCHEMA_VERSION.
 //   2. Copy the current structs to AbstractDataVN / AlbumCombinedVN / etc.
 //   3. Add a match arm for the old version in from_bytes.
 
-const SCHEMA_VERSION: u8 = 7;
+const SCHEMA_VERSION: u8 = 1;
 
-// ── v7 schema types (per-alias trash) ─────────────────────────────────────────
-//
-// v7 moves trash tracking off the record-level `ObjectSchema.is_trashed` flag
-// onto per-alias `FileModify.is_trashed` for images/videos and onto
-// `AlbumMetadata.is_trashed` for albums. Legacy v1–v6 records carry the flag
-// on the frozen ObjectSchema; migration propagates it onto every alias of an
-// image/video record (preserving the record's buried/visible state) and onto
-// the album metadata flag.
-
-/// Legacy record-level `ObjectSchema` layout (v1–v6), with `is_trashed` on the
-/// record. v7 dropped that field from the live schema.
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-/// Frozen legacy record struct — layout must not change.
-#[allow(clippy::struct_excessive_bools)]
-struct ObjectSchemaV6 {
-    id: ArrayString<64>,
-    obj_type: ObjectType,
-    pending: bool,
-    thumbhash: Option<Vec<u8>>,
-    description: Option<String>,
-    tags: std::collections::HashSet<String>,
-    is_favorite: bool,
-    is_archived: bool,
-    is_trashed: bool,
-    rating: Option<u8>,
-    update_at: i64,
-}
-
-impl From<ObjectSchemaV6> for ObjectSchema {
-    fn from(obj: ObjectSchemaV6) -> Self {
-        Self {
-            id: obj.id,
-            obj_type: obj.obj_type,
-            pending: obj.pending,
-            thumbhash: obj.thumbhash,
-            description: obj.description,
-            tags: obj.tags,
-            is_favorite: obj.is_favorite,
-            is_archived: obj.is_archived,
-            rating: obj.rating,
-            update_at: obj.update_at,
-        }
-    }
-}
-
-/// Legacy 3-field `FileModify` layout (v1–v6). v7 added `is_trashed`.
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct FileModifyV6 {
-    file: String,
-    modified: i64,
-    scan_time: i64,
-}
-
-/// Carry a legacy record-level trash flag onto each alias of an image/video
-/// record during migration so a buried record stays buried.
-fn migrate_alias(alias: Vec<FileModifyV6>, trashed: bool) -> Vec<FileModify> {
-    alias
-        .into_iter()
-        .map(|a| FileModify {
-            file: a.file,
-            modified: a.modified,
-            scan_time: a.scan_time,
-            is_trashed: trashed,
-        })
-        .collect()
-}
-
-/// Build a legacy (v1–v6) record-level ObjectSchema for test fixtures.
-#[cfg(test)]
-fn legacy_object(id: ArrayString<64>, obj_type: ObjectType) -> ObjectSchemaV6 {
-    ObjectSchemaV6 {
-        id,
-        obj_type,
-        pending: false,
-        thumbhash: None,
-        description: None,
-        tags: std::collections::HashSet::new(),
-        is_favorite: false,
-        is_archived: false,
-        is_trashed: false,
-        rating: None,
-        update_at: 0,
-    }
-}
-
-// ── v2 schema types (ImageMetadata/VideoMetadata with albums: HashSet) ────────
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct ImageMetadataV2 {
-    id: ArrayString<64>,
-    size: u64,
-    width: u32,
-    height: u32,
-    ext: String,
-    phash: Option<Vec<u8>>,
-    albums: std::collections::HashSet<ArrayString<64>>,
-    exif_vec: std::collections::BTreeMap<String, String>,
-    alias: Vec<FileModifyV6>,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct ImageCombinedV2 {
-    object: ObjectSchemaV6,
-    metadata: ImageMetadataV2,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct VideoMetadataV2 {
-    id: ArrayString<64>,
-    size: u64,
-    width: u32,
-    height: u32,
-    ext: String,
-    duration: f64,
-    albums: std::collections::HashSet<ArrayString<64>>,
-    exif_vec: std::collections::BTreeMap<String, String>,
-    alias: Vec<FileModifyV6>,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct VideoCombinedV2 {
-    object: ObjectSchemaV6,
-    metadata: VideoMetadataV2,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-enum AbstractDataV2 {
-    Image(ImageCombinedV2),
-    Video(VideoCombinedV2),
-    Album(AlbumCombinedV3),
-}
-
-impl From<AbstractDataV2> for AbstractData {
-    fn from(v2: AbstractDataV2) -> Self {
-        use crate::model::{
-            image::{ImageCombined, ImageMetadata},
-            video::{VideoCombined, VideoMetadata},
-        };
-        match v2 {
-            AbstractDataV2::Image(img) => {
-                let trashed = img.object.is_trashed;
-                AbstractData::Image(ImageCombined {
-                    object: img.object.into(),
-                    metadata: ImageMetadata {
-                        id: img.metadata.id,
-                        size: img.metadata.size,
-                        width: img.metadata.width,
-                        height: img.metadata.height,
-                        ext: img.metadata.ext,
-                        phash: img.metadata.phash,
-                        album: img.metadata.albums.into_iter().next(),
-                        exif_vec: img.metadata.exif_vec,
-                        alias: migrate_alias(img.metadata.alias, trashed),
-                    },
-                })
-            }
-            AbstractDataV2::Video(vid) => {
-                let trashed = vid.object.is_trashed;
-                AbstractData::Video(VideoCombined {
-                    object: vid.object.into(),
-                    metadata: VideoMetadata {
-                        id: vid.metadata.id,
-                        size: vid.metadata.size,
-                        width: vid.metadata.width,
-                        height: vid.metadata.height,
-                        ext: vid.metadata.ext,
-                        duration: vid.metadata.duration,
-                        album: vid.metadata.albums.into_iter().next(),
-                        exif_vec: vid.metadata.exif_vec,
-                        alias: migrate_alias(vid.metadata.alias, trashed),
-                    },
-                })
-            }
-            AbstractDataV2::Album(alb) => {
-                AbstractData::Album(AlbumCombined::from(AlbumCombinedV5::from(alb)))
-            }
-        }
-    }
-}
-
-// ── v6 schema types (legacy layout shared by v3–v6 image/video records and
-// the pre-per-alias-trash AlbumMetadata) ──────────────────────────────────────
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct ImageMetadataV6 {
-    id: ArrayString<64>,
-    size: u64,
-    width: u32,
-    height: u32,
-    ext: String,
-    phash: Option<Vec<u8>>,
-    album: Option<ArrayString<64>>,
-    exif_vec: std::collections::BTreeMap<String, String>,
-    alias: Vec<FileModifyV6>,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct VideoMetadataV6 {
-    id: ArrayString<64>,
-    size: u64,
-    width: u32,
-    height: u32,
-    ext: String,
-    duration: f64,
-    album: Option<ArrayString<64>>,
-    exif_vec: std::collections::BTreeMap<String, String>,
-    alias: Vec<FileModifyV6>,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct ImageCombinedV6 {
-    object: ObjectSchemaV6,
-    metadata: ImageMetadataV6,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct VideoCombinedV6 {
-    object: ObjectSchemaV6,
-    metadata: VideoMetadataV6,
-}
-
-/// Legacy `AlbumMetadata` layout (v3–v6), before trash moved onto the record.
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct AlbumCombinedV6 {
-    object: ObjectSchemaV6,
-    metadata: AlbumMetadataV6,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct AlbumMetadataV6 {
-    id: ArrayString<64>,
-    title: Option<String>,
-    created_time: i64,
-    start_time: Option<i64>,
-    end_time: Option<i64>,
-    last_modified_time: i64,
-    cover: Option<ArrayString<64>>,
-    item_count: usize,
-    item_size: u64,
-    share_list: HashMap<ArrayString<64>, Share>,
-    dir_path: String,
-    custom_title: Option<String>,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-enum AbstractDataV6 {
-    Image(ImageCombinedV6),
-    Video(VideoCombinedV6),
-    Album(AlbumCombinedV6),
-}
-
-impl From<AlbumCombinedV6> for AlbumCombined {
-    fn from(v6: AlbumCombinedV6) -> Self {
-        let is_trashed = v6.object.is_trashed;
-        AlbumCombined {
-            object: v6.object.into(),
-            metadata: AlbumMetadata {
-                id: v6.metadata.id,
-                title: v6.metadata.title,
-                created_time: v6.metadata.created_time,
-                start_time: v6.metadata.start_time,
-                end_time: v6.metadata.end_time,
-                last_modified_time: v6.metadata.last_modified_time,
-                cover: v6.metadata.cover,
-                item_count: v6.metadata.item_count,
-                item_size: v6.metadata.item_size,
-                share_list: v6.metadata.share_list,
-                dir_path: v6.metadata.dir_path,
-                custom_title: v6.metadata.custom_title,
-                is_trashed,
-            },
-        }
-    }
-}
-
-impl From<AbstractDataV6> for AbstractData {
-    fn from(v6: AbstractDataV6) -> Self {
-        use crate::model::{
-            image::{ImageCombined, ImageMetadata},
-            video::{VideoCombined, VideoMetadata},
-        };
-        match v6 {
-            AbstractDataV6::Image(img) => {
-                let trashed = img.object.is_trashed;
-                AbstractData::Image(ImageCombined {
-                    object: img.object.into(),
-                    metadata: ImageMetadata {
-                        id: img.metadata.id,
-                        size: img.metadata.size,
-                        width: img.metadata.width,
-                        height: img.metadata.height,
-                        ext: img.metadata.ext,
-                        phash: img.metadata.phash,
-                        album: img.metadata.album,
-                        exif_vec: img.metadata.exif_vec,
-                        alias: migrate_alias(img.metadata.alias, trashed),
-                    },
-                })
-            }
-            AbstractDataV6::Video(vid) => {
-                let trashed = vid.object.is_trashed;
-                AbstractData::Video(VideoCombined {
-                    object: vid.object.into(),
-                    metadata: VideoMetadata {
-                        id: vid.metadata.id,
-                        size: vid.metadata.size,
-                        width: vid.metadata.width,
-                        height: vid.metadata.height,
-                        ext: vid.metadata.ext,
-                        duration: vid.metadata.duration,
-                        album: vid.metadata.album,
-                        exif_vec: vid.metadata.exif_vec,
-                        alias: migrate_alias(vid.metadata.alias, trashed),
-                    },
-                })
-            }
-            AbstractDataV6::Album(alb) => AbstractData::Album(AlbumCombined::from(alb)),
-        }
-    }
-}
-
-// ── v3 schema types (AlbumMetadata without custom_date) ───────────────────────
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct AlbumMetadataV3 {
-    id: ArrayString<64>,
-    title: Option<String>,
-    created_time: i64,
-    start_time: Option<i64>,
-    end_time: Option<i64>,
-    last_modified_time: i64,
-    cover: Option<ArrayString<64>>,
-    item_count: usize,
-    item_size: u64,
-    share_list: HashMap<ArrayString<64>, Share>,
-    dir_path: Option<String>,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct AlbumCombinedV3 {
-    object: ObjectSchemaV6,
-    metadata: AlbumMetadataV3,
-}
-
-impl From<AlbumCombinedV3> for AlbumCombinedV5 {
-    fn from(v3: AlbumCombinedV3) -> Self {
-        AlbumCombinedV5 {
-            object: v3.object,
-            metadata: AlbumMetadataV5 {
-                id: v3.metadata.id,
-                title: v3.metadata.title,
-                created_time: v3.metadata.created_time,
-                start_time: v3.metadata.start_time,
-                end_time: v3.metadata.end_time,
-                last_modified_time: v3.metadata.last_modified_time,
-                cover: v3.metadata.cover,
-                item_count: v3.metadata.item_count,
-                item_size: v3.metadata.item_size,
-                share_list: v3.metadata.share_list,
-                dir_path: v3.metadata.dir_path,
-                custom_title: None,
-            },
-        }
-    }
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-enum AbstractDataV3 {
-    Image(ImageCombinedV6),
-    Video(VideoCombinedV6),
-    Album(AlbumCombinedV3),
-}
-
-impl From<AbstractDataV3> for AbstractData {
-    fn from(v3: AbstractDataV3) -> Self {
-        match v3 {
-            AbstractDataV3::Image(img) => AbstractData::from(AbstractDataV6::Image(img)),
-            AbstractDataV3::Video(vid) => AbstractData::from(AbstractDataV6::Video(vid)),
-            AbstractDataV3::Album(alb) => {
-                AbstractData::Album(AlbumCombined::from(AlbumCombinedV5::from(alb)))
-            }
-        }
-    }
-}
-
-// ── v4 schema types (AlbumMetadata with custom_date, without custom_title) ───
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct AlbumMetadataV4 {
-    id: ArrayString<64>,
-    title: Option<String>,
-    created_time: i64,
-    start_time: Option<i64>,
-    end_time: Option<i64>,
-    last_modified_time: i64,
-    cover: Option<ArrayString<64>>,
-    item_count: usize,
-    item_size: u64,
-    share_list: HashMap<ArrayString<64>, Share>,
-    dir_path: Option<String>,
-    custom_date: Option<String>,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct AlbumCombinedV4 {
-    object: ObjectSchemaV6,
-    metadata: AlbumMetadataV4,
-}
-
-impl From<AlbumCombinedV4> for AlbumCombinedV5 {
-    fn from(v4: AlbumCombinedV4) -> Self {
-        AlbumCombinedV5 {
-            object: v4.object,
-            metadata: AlbumMetadataV5 {
-                id: v4.metadata.id,
-                // v4 couldn't tell apart an explicitly-set title from the
-                // path-derived default, so a pre-existing v4 record's title
-                // is conservatively treated as customized (preserving
-                // whatever is currently displayed) rather than risk
-                // silently reverting a real custom title to the directory
-                // name. `custom_date` had no display consumer and is
-                // dropped without replacement.
-                custom_title: v4.metadata.title.clone(),
-                title: v4.metadata.title,
-                created_time: v4.metadata.created_time,
-                start_time: v4.metadata.start_time,
-                end_time: v4.metadata.end_time,
-                last_modified_time: v4.metadata.last_modified_time,
-                cover: v4.metadata.cover,
-                item_count: v4.metadata.item_count,
-                item_size: v4.metadata.item_size,
-                share_list: v4.metadata.share_list,
-                dir_path: v4.metadata.dir_path,
-            },
-        }
-    }
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-enum AbstractDataV4 {
-    Image(ImageCombinedV6),
-    Video(VideoCombinedV6),
-    Album(AlbumCombinedV4),
-}
-
-impl From<AbstractDataV4> for AbstractData {
-    fn from(v4: AbstractDataV4) -> Self {
-        match v4 {
-            AbstractDataV4::Image(img) => AbstractData::from(AbstractDataV6::Image(img)),
-            AbstractDataV4::Video(vid) => AbstractData::from(AbstractDataV6::Video(vid)),
-            AbstractDataV4::Album(alb) => {
-                AbstractData::Album(AlbumCombined::from(AlbumCombinedV5::from(alb)))
-            }
-        }
-    }
-}
-
-// ── v5 schema types (AlbumMetadata with dir_path: Option<String>, before it
-// became required — metadata-only albums were deprecated in v6) ─────────────
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct AlbumMetadataV5 {
-    id: ArrayString<64>,
-    title: Option<String>,
-    created_time: i64,
-    start_time: Option<i64>,
-    end_time: Option<i64>,
-    last_modified_time: i64,
-    cover: Option<ArrayString<64>>,
-    item_count: usize,
-    item_size: u64,
-    share_list: HashMap<ArrayString<64>, Share>,
-    dir_path: Option<String>,
-    custom_title: Option<String>,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct AlbumCombinedV5 {
-    object: ObjectSchemaV6,
-    metadata: AlbumMetadataV5,
-}
-
-impl From<AlbumCombinedV5> for AlbumCombined {
-    fn from(v5: AlbumCombinedV5) -> Self {
-        let is_trashed = v5.object.is_trashed;
-        AlbumCombined {
-            object: v5.object.into(),
-            metadata: AlbumMetadata {
-                id: v5.metadata.id,
-                title: v5.metadata.title,
-                created_time: v5.metadata.created_time,
-                start_time: v5.metadata.start_time,
-                end_time: v5.metadata.end_time,
-                last_modified_time: v5.metadata.last_modified_time,
-                cover: v5.metadata.cover,
-                item_count: v5.metadata.item_count,
-                item_size: v5.metadata.item_size,
-                share_list: v5.metadata.share_list,
-                // Metadata-only (non-directory) albums are deprecated — every
-                // album now corresponds to a subdirectory. A legacy record
-                // with dir_path: None can't be represented in the new
-                // required-String field; sentinel to an empty path so
-                // decoding doesn't panic. Purely defensive: no such records
-                // are expected to exist (pre-release, no manual-album
-                // creation path has shipped).
-                dir_path: v5.metadata.dir_path.unwrap_or_default(),
-                custom_title: v5.metadata.custom_title,
-                is_trashed,
-            },
-        }
-    }
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-enum AbstractDataV5 {
-    Image(ImageCombinedV6),
-    Video(VideoCombinedV6),
-    Album(AlbumCombinedV5),
-}
-
-impl From<AbstractDataV5> for AbstractData {
-    fn from(v5: AbstractDataV5) -> Self {
-        match v5 {
-            AbstractDataV5::Image(img) => AbstractData::from(AbstractDataV6::Image(img)),
-            AbstractDataV5::Video(vid) => AbstractData::from(AbstractDataV6::Video(vid)),
-            AbstractDataV5::Album(alb) => AbstractData::Album(AlbumCombined::from(alb)),
-        }
-    }
-}
-
-// ── v1 schema types (AlbumMetadata without dir_path) ──────────────────────────
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct AlbumMetadataV1 {
-    id: ArrayString<64>,
-    title: Option<String>,
-    created_time: i64,
-    start_time: Option<i64>,
-    end_time: Option<i64>,
-    last_modified_time: i64,
-    cover: Option<ArrayString<64>>,
-    item_count: usize,
-    item_size: u64,
-    share_list: HashMap<ArrayString<64>, Share>,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-struct AlbumCombinedV1 {
-    object: ObjectSchemaV6,
-    metadata: AlbumMetadataV1,
-}
-
-#[derive(bitcode::Decode)]
-#[cfg_attr(test, derive(bitcode::Encode))]
-enum AbstractDataV1 {
-    Image(ImageCombinedV2),
-    Video(VideoCombinedV2),
-    Album(AlbumCombinedV1),
-}
-
-impl From<AbstractDataV1> for AbstractData {
-    fn from(v1: AbstractDataV1) -> Self {
-        match v1 {
-            AbstractDataV1::Image(img) => AbstractData::from(AbstractDataV2::Image(img)),
-            AbstractDataV1::Video(vid) => AbstractData::from(AbstractDataV2::Video(vid)),
-            AbstractDataV1::Album(alb) => {
-                let is_trashed = alb.object.is_trashed;
-                AbstractData::Album(AlbumCombined {
-                    object: alb.object.into(),
-                    metadata: AlbumMetadata {
-                        id: alb.metadata.id,
-                        title: alb.metadata.title,
-                        created_time: alb.metadata.created_time,
-                        start_time: alb.metadata.start_time,
-                        end_time: alb.metadata.end_time,
-                        last_modified_time: alb.metadata.last_modified_time,
-                        cover: alb.metadata.cover,
-                        item_count: alb.metadata.item_count,
-                        item_size: alb.metadata.item_size,
-                        share_list: alb.metadata.share_list,
-                        // v1 predates directory-backed albums entirely, so this
-                        // was always a metadata-only album — sentinel to an
-                        // empty path so decoding doesn't panic. Purely
-                        // defensive: no v1 records are expected to exist.
-                        dir_path: String::new(),
-                        custom_title: None,
-                        is_trashed,
-                    },
-                })
-            }
-        }
-    }
+/// Abort decoding of a record this build cannot interpret, with instructions
+/// for the operator.
+///
+/// redb 4.2's `Value::from_bytes` returns `SelfType<'a>` directly — the trait
+/// has no associated `Error` type — so a decode failure can only surface as a
+/// panic, the same mechanism every other `Value` impl in this file uses.
+fn rebuild_required(reason: &str) -> ! {
+    panic!(
+        "Cannot decode AbstractData record: {reason}. \
+         Migration between schema versions is not supported; \
+         rebuild the database via POST /post/rebuild, \
+         or start with a fresh DATA_HOME."
+    );
 }
 
 impl Value for AbstractData {
@@ -668,46 +62,20 @@ impl Value for AbstractData {
     where
         Self: 'a,
     {
-        if data.first() == Some(&0xFF) {
-            let version = data[1];
-            let payload = &data[2..];
-            match version {
-                1 => AbstractData::from(
-                    bitcode::decode::<AbstractDataV1>(payload)
-                        .expect("Failed to decode AbstractData v1"),
-                ),
-                2 => AbstractData::from(
-                    bitcode::decode::<AbstractDataV2>(payload)
-                        .expect("Failed to decode AbstractData v2"),
-                ),
-                3 => AbstractData::from(
-                    bitcode::decode::<AbstractDataV3>(payload)
-                        .expect("Failed to decode AbstractData v3"),
-                ),
-                4 => AbstractData::from(
-                    bitcode::decode::<AbstractDataV4>(payload)
-                        .expect("Failed to decode AbstractData v4"),
-                ),
-                5 => AbstractData::from(
-                    bitcode::decode::<AbstractDataV5>(payload)
-                        .expect("Failed to decode AbstractData v5"),
-                ),
-                6 => AbstractData::from(
-                    bitcode::decode::<AbstractDataV6>(payload)
-                        .expect("Failed to decode AbstractData v6"),
-                ),
-                7 => bitcode::decode::<AbstractData>(payload)
-                    .expect("Failed to decode AbstractData v7"),
-                v => panic!("Unknown AbstractData schema version {v}"),
-            }
-        } else {
-            // Record written before the versioning system was introduced.
-            // Its schema is identical to version 1 (no dir_path on AlbumMetadata).
-            AbstractData::from(
-                bitcode::decode::<AbstractDataV1>(data)
-                    .expect("Failed to decode AbstractData (unversioned legacy)"),
-            )
+        let [0xFF, version, payload @ ..] = data else {
+            rebuild_required(
+                "missing [0xFF, version] schema prefix \
+                 (record predates schema versioning, is truncated, \
+                 or was written by an unknown writer)",
+            );
+        };
+        if *version != SCHEMA_VERSION {
+            rebuild_required(&format!(
+                "unsupported schema version {version} \
+                 (this build reads schema version {SCHEMA_VERSION})"
+            ));
         }
+        bitcode::decode::<AbstractData>(payload).expect("Failed to decode AbstractData")
     }
 
     fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a> {
@@ -784,313 +152,6 @@ impl Value for Row {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::model::{
-        image::{ImageCombined, ImageMetadata},
-        object::ObjectType,
-    };
-
-    fn make_image_v3() -> AbstractData {
-        let id = ArrayString::from("test").expect("failed to create test ArrayString");
-        AbstractData::Image(ImageCombined {
-            object: ObjectSchema::new(id, ObjectType::Image),
-            metadata: ImageMetadata::new(id, 1024, 800, 600, "jpg".to_string()),
-        })
-    }
-
-    fn make_image_v2_bytes(ext: &str) -> Vec<u8> {
-        let id = ArrayString::from("img2").expect("failed to create test ArrayString");
-        let v2 = AbstractDataV2::Image(ImageCombinedV2 {
-            object: legacy_object(id, ObjectType::Image),
-            metadata: ImageMetadataV2 {
-                id,
-                size: 512,
-                width: 640,
-                height: 480,
-                ext: ext.to_string(),
-                phash: None,
-                albums: std::collections::HashSet::new(),
-                exif_vec: std::collections::BTreeMap::new(),
-                alias: vec![],
-            },
-        });
-        let mut bytes = vec![0xFF, 2u8];
-        bytes.extend(bitcode::encode(&v2));
-        bytes
-    }
-
-    fn make_album_v1() -> AbstractDataV1 {
-        let id = ArrayString::from("alb").expect("failed to create test ArrayString");
-        AbstractDataV1::Album(AlbumCombinedV1 {
-            object: legacy_object(id, ObjectType::Album),
-            metadata: AlbumMetadataV1 {
-                id,
-                title: Some("Holiday".to_string()),
-                created_time: 1000,
-                start_time: Some(500),
-                end_time: Some(2000),
-                last_modified_time: 1500,
-                cover: None,
-                item_count: 3,
-                item_size: 9000,
-                share_list: HashMap::new(),
-            },
-        })
-    }
-
-    #[test]
-    fn v3_round_trip_image() {
-        let original = make_image_v3();
-        let bytes = AbstractData::as_bytes(&original);
-        let decoded = AbstractData::from_bytes(&bytes);
-        match (original, decoded) {
-            (AbstractData::Image(orig), AbstractData::Image(dec)) => {
-                assert_eq!(orig.object.id, dec.object.id);
-                assert_eq!(orig.metadata.ext, dec.metadata.ext);
-            }
-            _ => panic!("variant mismatch after v3 round-trip"),
-        }
-    }
-
-    #[test]
-    fn v7_bytes_have_correct_prefix() {
-        let bytes = AbstractData::as_bytes(&make_image_v3());
-        assert_eq!(bytes[0], 0xFF, "magic marker must be 0xFF");
-        assert_eq!(bytes[1], 7, "version byte must match SCHEMA_VERSION");
-    }
-
-    fn make_album_v3_bytes() -> Vec<u8> {
-        let id = ArrayString::from("alb3").expect("failed to create test ArrayString");
-        let v3 = AbstractDataV3::Album(AlbumCombinedV3 {
-            object: legacy_object(id, ObjectType::Album),
-            metadata: AlbumMetadataV3 {
-                id,
-                title: Some("Reunion".to_string()),
-                created_time: 2000,
-                start_time: Some(1000),
-                end_time: Some(3000),
-                last_modified_time: 2500,
-                cover: None,
-                item_count: 5,
-                item_size: 12000,
-                share_list: HashMap::new(),
-                dir_path: Some("/photos/reunion".to_string()),
-            },
-        });
-        let mut bytes = vec![0xFF, 3u8];
-        bytes.extend(bitcode::encode(&v3));
-        bytes
-    }
-
-    #[test]
-    fn v3_album_migrates_to_no_custom_title() {
-        let bytes = make_album_v3_bytes();
-        let decoded = AbstractData::from_bytes(&bytes);
-        match decoded {
-            AbstractData::Album(alb) => {
-                assert_eq!(alb.metadata.title, Some("Reunion".to_string()));
-                assert_eq!(alb.metadata.dir_path, "/photos/reunion");
-                assert_eq!(alb.metadata.custom_title, None);
-            }
-            _ => panic!("expected Album variant after v3 migration"),
-        }
-    }
-
-    fn make_album_v4_bytes() -> Vec<u8> {
-        let id = ArrayString::from("alb4").expect("failed to create test ArrayString");
-        let v4 = AbstractDataV4::Album(AlbumCombinedV4 {
-            object: legacy_object(id, ObjectType::Album),
-            metadata: AlbumMetadataV4 {
-                id,
-                title: Some("Reunion 2".to_string()),
-                created_time: 2000,
-                start_time: Some(1000),
-                end_time: Some(3000),
-                last_modified_time: 2500,
-                cover: None,
-                item_count: 5,
-                item_size: 12000,
-                share_list: HashMap::new(),
-                dir_path: Some("/photos/reunion2".to_string()),
-                custom_date: Some("2024-06-01".to_string()),
-            },
-        });
-        let mut bytes = vec![0xFF, 4u8];
-        bytes.extend(bitcode::encode(&v4));
-        bytes
-    }
-
-    #[test]
-    fn v4_album_migrates_title_to_custom_title_and_drops_custom_date() {
-        let bytes = make_album_v4_bytes();
-        let decoded = AbstractData::from_bytes(&bytes);
-        match decoded {
-            AbstractData::Album(alb) => {
-                assert_eq!(alb.metadata.title, Some("Reunion 2".to_string()));
-                // A pre-existing v4 title is conservatively treated as
-                // customized, since v4 had no way to tell a user-set title
-                // apart from the path-derived default.
-                assert_eq!(alb.metadata.custom_title, Some("Reunion 2".to_string()));
-                assert_eq!(alb.metadata.dir_path, "/photos/reunion2");
-            }
-            _ => panic!("expected Album variant after v4 migration"),
-        }
-    }
-
-    fn make_album_v5_bytes(dir_path: Option<String>) -> Vec<u8> {
-        let id = ArrayString::from("alb5").expect("failed to create test ArrayString");
-        let v5 = AbstractDataV5::Album(AlbumCombinedV5 {
-            object: legacy_object(id, ObjectType::Album),
-            metadata: AlbumMetadataV5 {
-                id,
-                title: Some("Reunion 3".to_string()),
-                created_time: 2000,
-                start_time: Some(1000),
-                end_time: Some(3000),
-                last_modified_time: 2500,
-                cover: None,
-                item_count: 5,
-                item_size: 12000,
-                share_list: HashMap::new(),
-                dir_path,
-                custom_title: Some("Reunion 3".to_string()),
-            },
-        });
-        let mut bytes = vec![0xFF, 5u8];
-        bytes.extend(bitcode::encode(&v5));
-        bytes
-    }
-
-    #[test]
-    fn v5_dir_album_round_trips_unchanged() {
-        let bytes = make_album_v5_bytes(Some("/photos/reunion3".to_string()));
-        let decoded = AbstractData::from_bytes(&bytes);
-        match decoded {
-            AbstractData::Album(alb) => {
-                assert_eq!(alb.metadata.title, Some("Reunion 3".to_string()));
-                assert_eq!(alb.metadata.dir_path, "/photos/reunion3");
-                assert_eq!(alb.metadata.custom_title, Some("Reunion 3".to_string()));
-            }
-            _ => panic!("expected Album variant after v5 migration"),
-        }
-    }
-
-    /// Regression test: a legacy metadata-only (non-directory) album — the
-    /// kind deprecated in v6 — must decode to a sentinel empty `dir_path`
-    /// instead of panicking. Purely defensive: no such records are expected
-    /// to exist pre-release.
-    #[test]
-    fn v5_metadata_only_album_migrates_to_empty_dir_path_sentinel() {
-        let bytes = make_album_v5_bytes(None);
-        let decoded = AbstractData::from_bytes(&bytes);
-        match decoded {
-            AbstractData::Album(alb) => {
-                assert_eq!(alb.metadata.dir_path, "");
-            }
-            _ => panic!("expected Album variant after v5 migration"),
-        }
-    }
-
-    #[test]
-    fn v3_image_round_trips_unchanged() {
-        let id = ArrayString::from("img3").expect("failed to create test ArrayString");
-        let v3 = AbstractDataV3::Image(ImageCombinedV6 {
-            object: legacy_object(id, ObjectType::Image),
-            metadata: ImageMetadataV6 {
-                id,
-                size: 2048,
-                width: 1920,
-                height: 1080,
-                ext: "webp".to_string(),
-                phash: None,
-                album: None,
-                exif_vec: std::collections::BTreeMap::new(),
-                alias: vec![],
-            },
-        });
-        let mut bytes = vec![0xFF, 3u8];
-        bytes.extend(bitcode::encode(&v3));
-
-        let decoded = AbstractData::from_bytes(&bytes);
-        match decoded {
-            AbstractData::Image(img) => assert_eq!(img.metadata.ext, "webp"),
-            _ => panic!("expected Image variant after v3 passthrough"),
-        }
-    }
-
-    #[test]
-    fn v2_image_migrates_albums_to_album() {
-        let bytes = make_image_v2_bytes("png");
-        let decoded = AbstractData::from_bytes(&bytes);
-        match decoded {
-            AbstractData::Image(img) => {
-                assert_eq!(img.metadata.ext, "png");
-                assert_eq!(img.metadata.album, None, "empty HashSet migrates to None");
-            }
-            _ => panic!("expected Image variant after v2 migration"),
-        }
-    }
-
-    #[test]
-    fn v1_album_migrates_dir_path_to_empty_sentinel() {
-        // v1 predates directory-backed albums entirely, so this is always a
-        // metadata-only album — must decode to the empty-dir_path sentinel.
-        let mut bytes = vec![0xFF, 1u8];
-        bytes.extend(bitcode::encode(&make_album_v1()));
-
-        let decoded = AbstractData::from_bytes(&bytes);
-        match decoded {
-            AbstractData::Album(alb) => {
-                assert_eq!(alb.metadata.title, Some("Holiday".to_string()));
-                assert_eq!(alb.metadata.item_count, 3);
-                assert_eq!(alb.metadata.dir_path, "");
-                assert_eq!(alb.metadata.custom_title, None);
-            }
-            _ => panic!("expected Album variant after v1 migration"),
-        }
-    }
-
-    #[test]
-    fn legacy_unversioned_decodes_as_v1_schema() {
-        // A record with no 0xFF prefix is treated as the legacy v1 schema.
-        // V1 images have albums: HashSet, so we use ImageCombinedV2 (same layout).
-        let id = ArrayString::from("img").expect("failed to create test ArrayString");
-        let v1_img = AbstractDataV1::Image(ImageCombinedV2 {
-            object: legacy_object(id, ObjectType::Image),
-            metadata: ImageMetadataV2 {
-                id,
-                size: 0,
-                width: 0,
-                height: 0,
-                ext: "png".to_string(),
-                phash: None,
-                albums: std::collections::HashSet::new(),
-                exif_vec: std::collections::BTreeMap::new(),
-                alias: vec![],
-            },
-        });
-        let bytes = bitcode::encode(&v1_img); // no versioning prefix
-        assert_ne!(bytes[0], 0xFF, "legacy record must not start with 0xFF");
-
-        let decoded = AbstractData::from_bytes(&bytes);
-        match decoded {
-            AbstractData::Image(img) => {
-                assert_eq!(img.metadata.ext, "png");
-                assert_eq!(img.metadata.album, None);
-            }
-            _ => panic!("expected Image variant from legacy bytes"),
-        }
-    }
-
-    #[test]
-    #[should_panic(expected = "Unknown AbstractData schema version")]
-    fn unknown_version_panics() {
-        AbstractData::from_bytes(&[0xFF, 99, 0, 0, 0]);
-    }
-}
-
 impl Value for Prefetch {
     type SelfType<'a>
         = Self
@@ -1121,129 +182,91 @@ impl Value for Prefetch {
 }
 
 #[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{
+        image::{ImageCombined, ImageMetadata},
+        object::{ObjectSchema, ObjectType},
+    };
+    use arrayvec::ArrayString;
+
+    fn make_image() -> AbstractData {
+        let id = ArrayString::from("test").expect("failed to create test ArrayString");
+        AbstractData::Image(ImageCombined {
+            object: ObjectSchema::new(id, ObjectType::Image),
+            metadata: ImageMetadata::new(id, 1024, 800, 600, "jpg".to_string()),
+        })
+    }
+
+    #[test]
+    fn round_trip_image() {
+        let original = make_image();
+        let bytes = AbstractData::as_bytes(&original);
+        let decoded = AbstractData::from_bytes(&bytes);
+        match (original, decoded) {
+            (AbstractData::Image(orig), AbstractData::Image(dec)) => {
+                assert_eq!(orig.object.id, dec.object.id);
+                assert_eq!(orig.metadata.ext, dec.metadata.ext);
+            }
+            _ => panic!("variant mismatch after round-trip"),
+        }
+    }
+
+    #[test]
+    fn bytes_carry_schema_version_prefix() {
+        let bytes = AbstractData::as_bytes(&make_image());
+        assert_eq!(bytes[0], 0xFF, "magic marker must be 0xFF");
+        assert_eq!(
+            bytes[1], SCHEMA_VERSION,
+            "version byte must match SCHEMA_VERSION"
+        );
+        assert_eq!(SCHEMA_VERSION, 1, "current schema is version 1");
+    }
+
+    #[test]
+    #[should_panic(expected = "POST /post/rebuild")]
+    fn unknown_version_requires_rebuild() {
+        AbstractData::from_bytes(&[0xFF, 9, 0, 0, 0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "POST /post/rebuild")]
+    fn prefixless_record_requires_rebuild() {
+        // Current-schema payload with the version prefix stripped. Must NOT
+        // fall through to a legacy "version 1" decode: after the schema
+        // version reset, version 1 means the *current* structs, so silently
+        // decoding ancient prefixless bytes would corrupt data.
+        let bytes = bitcode::encode(&make_image());
+        assert_ne!(
+            bytes.first(),
+            Some(&0xFF),
+            "fixture must not carry the magic prefix"
+        );
+        AbstractData::from_bytes(&bytes);
+    }
+
+    #[test]
+    #[should_panic(expected = "POST /post/rebuild")]
+    fn magic_without_version_byte_requires_rebuild() {
+        // Truncated prefix: magic marker but no version byte.
+        AbstractData::from_bytes(&[0xFF]);
+    }
+}
+
+#[cfg(test)]
 mod integration_tests {
     use super::*;
     use crate::model::{
         image::{ImageCombined, ImageMetadata},
-        object::ObjectType,
+        object::{ObjectSchema, ObjectType},
     };
+    use arrayvec::ArrayString;
     use redb::{Database, ReadableDatabase, TableDefinition};
 
-    // Proxy Value impl that stores raw bytes under the same type_name as
-    // AbstractData.  This lets integration tests inject hand-crafted v1 (or
-    // legacy) records into a redb table that is subsequently read via the real
-    // AbstractData codec, exercising the full from_bytes migration path.
-    #[derive(Debug)]
-    struct RawRecord(Vec<u8>);
-
-    impl Value for RawRecord {
-        type SelfType<'a>
-            = Self
-        where
-            Self: 'a;
-        type AsBytes<'a>
-            = Vec<u8>
-        where
-            Self: 'a;
-
-        fn fixed_width() -> Option<usize> {
-            None
-        }
-
-        fn from_bytes<'a>(data: &'a [u8]) -> Self
-        where
-            Self: 'a,
-        {
-            RawRecord(data.to_vec())
-        }
-
-        fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Vec<u8> {
-            value.0.clone()
-        }
-
-        fn type_name() -> TypeName {
-            TypeName::new("AbstractData")
-        }
-    }
-
-    const RAW_TABLE: TableDefinition<&str, RawRecord> = TableDefinition::new("data");
     const TYPED_TABLE: TableDefinition<&str, AbstractData> = TableDefinition::new("data");
 
-    fn make_v1_album_bytes() -> Vec<u8> {
-        let id = ArrayString::from("alb").expect("failed to create test ArrayString");
-        let v1 = AbstractDataV1::Album(AlbumCombinedV1 {
-            object: legacy_object(id, ObjectType::Album),
-            metadata: AlbumMetadataV1 {
-                id,
-                title: Some("Holiday".to_string()),
-                created_time: 1000,
-                start_time: Some(500),
-                end_time: Some(2000),
-                last_modified_time: 1500,
-                cover: None,
-                item_count: 3,
-                item_size: 9000,
-                share_list: HashMap::new(),
-            },
-        });
-        let mut bytes = vec![0xFF, 1u8];
-        bytes.extend(bitcode::encode(&v1));
-        bytes
-    }
-
     #[test]
-    fn v1_album_migrates_through_redb() {
-        let v1_bytes = make_v1_album_bytes();
-
-        // Sanity: verify the fixture is well-formed before injecting it into redb.
-        // If this fails, the fixture is broken — not the migration path.
-        assert_eq!(v1_bytes[0], 0xFF, "fixture must start with magic marker");
-        assert_eq!(v1_bytes[1], 1u8, "fixture must carry version byte 1");
-        let fixture_v1 = bitcode::decode::<AbstractDataV1>(&v1_bytes[2..])
-            .expect("fixture payload must decode as valid AbstractDataV1");
-        match &fixture_v1 {
-            AbstractDataV1::Album(alb) => {
-                assert_eq!(alb.metadata.title, Some("Holiday".to_string()));
-                assert_eq!(alb.metadata.item_count, 3);
-            }
-            _ => panic!("fixture must produce AbstractDataV1::Album"),
-        }
-
-        let dir = tempfile::tempdir().expect("failed to create temp directory");
-        let db =
-            Database::create(dir.path().join("test.redb")).expect("failed to create test database");
-
-        {
-            let txn = db.begin_write().expect("failed to begin write transaction");
-            let mut table = txn.open_table(RAW_TABLE).expect("failed to open raw table");
-            table
-                .insert("alb", RawRecord(v1_bytes))
-                .expect("failed to insert test record");
-            drop(table);
-            txn.commit().expect("failed to commit transaction");
-        }
-
-        let txn = db.begin_read().expect("failed to begin read transaction");
-        let table = txn
-            .open_table(TYPED_TABLE)
-            .expect("failed to open typed table");
-        let guard = table
-            .get("alb")
-            .expect("failed to get test record")
-            .expect("test record not found");
-        match guard.value() {
-            AbstractData::Album(alb) => {
-                assert_eq!(alb.metadata.title, Some("Holiday".to_string()));
-                assert_eq!(alb.metadata.item_count, 3);
-                assert_eq!(alb.metadata.dir_path, "");
-                assert_eq!(alb.metadata.custom_title, None);
-            }
-            _ => panic!("expected Album variant after v1 migration through redb"),
-        }
-    }
-
-    #[test]
-    fn v2_image_round_trips_through_redb() {
+    fn image_round_trips_through_redb() {
         let id = ArrayString::from("img").expect("failed to create test ArrayString");
         let original = AbstractData::Image(ImageCombined {
             object: ObjectSchema::new(id, ObjectType::Image),

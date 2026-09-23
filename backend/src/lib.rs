@@ -29,34 +29,12 @@ use crate::init::initialize_logger;
 use crate::process::dir_album::init_dir_album_cache;
 use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
-use crate::storage::files::get_data_path;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::start_watcher::StartWatcherTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use crate::tasks::looper::start_expire_check_loop;
 use crate::tasks::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
 use model::abstract_data::AbstractData;
-
-fn migration() {
-    let v4_db_path = get_data_path().join("db/index_v4.redb");
-
-    if v4_db_path.exists() {
-        eprintln!(
-            "Old database format detected at: {}\n\n\
-             This version cannot directly migrate from database v4.\n\
-             Please follow these steps to upgrade safely:\n\
-                           1. Downgrade Picasu to version 1.2.2.\n\
-             2. Start the app (v1.2.2) to automatically migrate the database.\n\
-             3. Once confirmed working, update back to this latest version.\n\n\
-             Press Enter to exit...",
-            v4_db_path.display()
-        );
-
-        let mut input = String::new();
-        let _ = std::io::stdin().read_line(&mut input);
-        std::process::exit(1);
-    }
-}
 
 #[allow(clippy::missing_panics_doc)]
 pub fn run() {
@@ -66,10 +44,8 @@ pub fn run() {
     initialize_logger();
 
     // Initialize core subsystems (Config, DB, FFmpeg checks).
-    // Must run before migration() so DATA_PATH is resolved from config.
+    // Must run first so DATA_PATH is resolved from config.
     initialize();
-
-    migration();
 
     // Load the directory→album mapping cache from disk (must run after initialize()).
     init_dir_album_cache();
