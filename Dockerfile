@@ -6,7 +6,7 @@
 # backend/src/public/embedded.rs), so the dist directory has to
 # already exist when `cargo build` runs.
 ######################
-FROM node:lts@sha256:6dac556d980b7f0e5498d08f08cee0ca67798b4ad6c23964a9214920e67758d0 AS frontend-builder
+FROM node:lts@sha256:64af3819f9275802414d7cdc38c27e9d82bd564dec4d4da87d008255d36c63b4 AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
