@@ -53,7 +53,7 @@ const videosPageRoutes = createRoute('videos', VideosPage)
 // ======================================
 
 const albumContentRoute: RouteRecordRaw = {
-  path: '/album/:albumHash',
+  path: '/album/:albumId',
   component: AlbumContentsPage,
   name: 'album',
   meta: {
@@ -61,12 +61,12 @@ const albumContentRoute: RouteRecordRaw = {
     baseName: 'album',
     getParentPage: (route) => ({
       name: 'timeline',
-      params: { assetId: undefined, subhash: undefined },
+      params: {},
       query: route.query
     }),
     getChildPage: (route, assetId) => ({
       name: 'albumViewPage',
-      params: { albumHash: route.params.albumHash, assetId: assetId, subhash: undefined },
+      params: { albumId: route.params.albumId, assetId: assetId },
       query: route.query
     })
   },
@@ -80,14 +80,14 @@ const albumContentRoute: RouteRecordRaw = {
         baseName: 'album',
         getParentPage: (route) => ({
           name: 'album',
-          params: { albumHash: route.params.albumHash, assetId: undefined, subhash: undefined },
+          params: { albumId: route.params.albumId },
           query: route.query
         }),
         // No child page below level 2 (level 3/4 were eliminated). Identity fallback
         // since RouteMeta.getChildPage is required by the type but has no real caller here.
         getChildPage: (route) => ({
           name: 'albumViewPage',
-          params: { assetId: route.params.assetId, subhash: undefined },
+          params: { assetId: route.params.assetId },
           query: route.query
         })
       }
@@ -187,9 +187,9 @@ void router.isReady().then(async () => {
 
     // Level-1 routes that accept path params need them included in the ancestor entry.
     const level1Params: Record<string, string | undefined> = {}
-    const albumHash = to.params.albumHash
-    if (typeof albumHash === 'string') {
-      level1Params.albumHash = albumHash
+    const albumId = to.params.albumId
+    if (typeof albumId === 'string') {
+      level1Params.albumId = albumId
     }
 
     if (routeName === `${baseName}ViewPage`) {

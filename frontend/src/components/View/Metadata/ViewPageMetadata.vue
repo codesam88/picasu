@@ -9,7 +9,7 @@
       v-if="configStore.isMobile"
       :abstract-data="abstractData"
       :index="index"
-      :hash="assetId"
+      :asset-id="assetId"
       :isolation-id="isolationId"
     />
     <MetadataContent

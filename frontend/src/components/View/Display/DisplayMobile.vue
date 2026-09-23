@@ -19,7 +19,7 @@
       @zoom-change="onZoomChange"
       class="h-100"
     >
-      <swiper-slide v-if="previousHash !== undefined">
+      <swiper-slide v-if="previousAssetId !== undefined">
         <div class="swiper-zoom-container">
           <div class="slide-content">
             <ViewPageDisplayDatabase
@@ -57,7 +57,7 @@
         </div>
       </swiper-slide>
 
-      <swiper-slide v-if="nextHash !== undefined">
+      <swiper-slide v-if="nextAssetId !== undefined">
         <div class="swiper-zoom-container">
           <div class="slide-content">
             <ViewPageDisplayDatabase
@@ -90,7 +90,7 @@
       @swiper="onSwiper"
       class="h-100"
     >
-      <swiper-slide v-if="previousHash !== undefined">
+      <swiper-slide v-if="previousAssetId !== undefined">
         <div class="slide-content">
           <ViewPageDisplayDatabase
             v-if="
@@ -124,7 +124,7 @@
         </div>
       </swiper-slide>
 
-      <swiper-slide v-if="nextHash !== undefined">
+      <swiper-slide v-if="nextAssetId !== undefined">
         <div class="slide-content">
           <ViewPageDisplayDatabase
             v-if="
@@ -164,8 +164,8 @@ const props = defineProps<{
   assetId: string
   index: number
   abstractData: EnrichedUnifiedData | undefined
-  previousHash: string | undefined
-  nextHash: string | undefined
+  previousAssetId: string | undefined
+  nextAssetId: string | undefined
   previousPage: Record<string, unknown> | undefined
   nextPage: Record<string, unknown> | undefined
 }>()
@@ -181,7 +181,7 @@ const swiperInstance = ref<SwiperType | null>(null)
 const nextAbstractData = computed(() => dataStore.data.get(props.index + 1))
 const previousAbstractData = computed(() => dataStore.data.get(props.index - 1))
 
-const currentSlideIndex = computed(() => (props.previousHash !== undefined ? 1 : 0))
+const currentSlideIndex = computed(() => (props.previousAssetId !== undefined ? 1 : 0))
 
 function canHandleNav(): boolean {
   const modalStore = useModalStore('mainId')
@@ -220,8 +220,8 @@ function onSlideChange(swiper: SwiperType) {
   if (!canHandleNav()) return
 
   const currentIndex = swiper.activeIndex
-  const hasPrevious = props.previousHash !== undefined
-  const hasNext = props.nextHash !== undefined
+  const hasPrevious = props.previousAssetId !== undefined
+  const hasNext = props.nextAssetId !== undefined
 
   if (hasPrevious) {
     if (currentIndex === 0 && props.previousPage) {

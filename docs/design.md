@@ -37,12 +37,13 @@ their sidecars, and the directory tree are the user's photo repository. An
 image or video belongs to the album represented by its containing directory,
 and an ordinary move changes that tree on disk.
 
-The database, hashes, aliases, thumbnails, and other generated state are an
-index that helps the application search, group, and present the repository.
-They must be rebuildable from the filesystem. A hash match identifies files
-that may contain the same bytes; it does not establish user intent or give one
-file authority over another. Each indexed media file and its sidecar remains a
-distinct filesystem item, even when several files share a hash.
+The database, asset records, content hashes, thumbnails, and other generated
+state are an index that helps the application search, group, and present the
+repository. They must be rebuildable from the filesystem. A hash match
+identifies files that may contain the same bytes; it does not establish user
+intent or give one file authority over another. Each indexed media file and
+its sidecar remains a distinct filesystem item, even when several files share
+a hash.
 
 The distinction between these operations is important:
 
@@ -91,7 +92,7 @@ silently deleting user files.
   debounce period. A sync tool may temporarily remove or replace a path while
   transferring it. A changed media file is treated as removal of the old
   indexed item followed by indexing the new file; it is never an in-place
-  mutation of the old hash record. The event is recorded as a filesystem
+  mutation of the existing record. The event is recorded as a filesystem
   change and surfaced to the user; it is not treated as permission to delete
   another indexed file or its metadata.
 
@@ -125,20 +126,20 @@ silently deleting user files.
 - Directory indexing or watcher do not move files
 
 - Directory indexing or watcher may also encounter deleted files.
-  When the last indexed reference to an image is removed, derived thumbnails may be removed after
-  reconciliation. If the last alias is removed by external file access, the
-  watcher must use the recorded path to identify it because it cannot compute
-  the hash anymore.
-  - the watcher may notice delete operations and can lookup the file in DB,
-    delete the associated metadata and thumbnails
+  When an indexed file is removed, its record and derived thumbnails may be
+  removed after reconciliation. The watcher identifies the record by its
+  recorded path — deletion resolves against the path index, never by
+  computing a content hash.
+  - the watcher may notice delete operations and can look the path up in the
+    DB, delete the associated metadata and thumbnails
 
   - On manual indexing, consult the DB for the selected target path and check
-    if all known files exist. Mark missing aliases for reconciliation before
-    removing derived thumbnails or metadata.
+    whether the recorded file still exists. Mark missing records for
+    reconciliation before removing derived thumbnails or metadata.
     This cleanup sweep should be done after scanning for any new files, so that
-    moved/renamed files only result in alias remapping and not require recomputing
-    all thumbnails. A sidecar is treated as part of the physical alias and is
-    not transferred between unrelated aliases during indexing.
+    moved/renamed files only re-point the affected record and do not require
+    recomputing all thumbnails. A sidecar is treated as part of its physical
+    file and stays with that file during indexing.
   - A semi-regular cleanup sweep could be done on schedule. Could also verify hashes.
 
   - Discovery of deleted files or changed hashes should be logged...may point

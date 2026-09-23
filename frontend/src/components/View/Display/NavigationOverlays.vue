@@ -1,7 +1,7 @@
 <template>
   <div>
     <v-btn
-      v-if="show && previousHash !== undefined"
+      v-if="show && previousAssetId !== undefined"
       variant="plain"
       class="nav-btn nav-left"
       :to="previousPage"
@@ -11,7 +11,7 @@
       <v-icon>mdi-arrow-left</v-icon>
     </v-btn>
     <v-btn
-      v-if="show && nextHash !== undefined"
+      v-if="show && nextAssetId !== undefined"
       variant="plain"
       class="nav-btn nav-right"
       :to="nextPage"
@@ -26,8 +26,8 @@
 <script setup lang="ts">
 import type { RouteLocationRaw } from 'vue-router'
 defineProps<{
-  previousHash: string | undefined
-  nextHash: string | undefined
+  previousAssetId: string | undefined
+  nextAssetId: string | undefined
   previousPage: RouteLocationRaw | undefined
   nextPage: RouteLocationRaw | undefined
   show: boolean

@@ -32,7 +32,7 @@
             v-if="abstractData"
             :abstract-data="abstractData"
             :index="index"
-            :asset-id="hash"
+            :asset-id="assetId"
             :isolation-id="isolationId"
             compact
           />
@@ -69,7 +69,7 @@ import 'swiper/css/manipulation'
 
 const props = defineProps<{
   isolationId: IsolationId
-  hash: string
+  assetId: string
   index: number
   abstractData: EnrichedUnifiedData
 }>()

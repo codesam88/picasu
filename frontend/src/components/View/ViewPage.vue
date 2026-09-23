@@ -10,8 +10,8 @@
           <div class="view-modal">
             <NavigationOverlays
               v-if="!configStore.isMobile"
-              :previous-hash="previousAssetId"
-              :next-hash="nextAssetId"
+              :previous-asset-id="previousAssetId"
+              :next-asset-id="nextAssetId"
               :previous-page="previousPage"
               :next-page="nextPage"
               :show="!configStore.isMobile"
@@ -149,7 +149,7 @@ const previousAssetId = computed(() => {
 const nextPage = computed(() => {
   if (nextAssetId.value === undefined) return undefined
   if (route.meta.level === 2) {
-    const updatedParams = { ...route.params, hash: nextAssetId.value }
+    const updatedParams = { ...route.params, assetId: nextAssetId.value }
     return { ...route, params: updatedParams }
   }
   return undefined
@@ -158,7 +158,7 @@ const nextPage = computed(() => {
 const previousPage = computed(() => {
   if (previousAssetId.value === undefined) return undefined
   if (route.meta.level === 2) {
-    const updatedParams = { ...route.params, hash: previousAssetId.value }
+    const updatedParams = { ...route.params, assetId: previousAssetId.value }
     return { ...route, params: updatedParams }
   }
   return undefined

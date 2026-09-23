@@ -100,9 +100,11 @@ export async function searchByTag(tag: string, router: Router) {
 }
 
 /**
- * Extracts hash from a full URL.
+ * Extracts the serving ID from a full URL (last path segment before the
+ * extension): the content hash for compressed URLs, the asset ID for
+ * original-file URLs.
  */
-export function extractHashFromAbsoluteUrl(url: URL): string | null {
+export function extractServingIdFromAbsoluteUrl(url: URL): string | null {
   const segments = url.pathname.split('/').filter(Boolean)
   const lastSegment = segments.pop()
 
@@ -110,9 +112,11 @@ export function extractHashFromAbsoluteUrl(url: URL): string | null {
 }
 
 /**
- * Extracts hash from a relative path.
+ * Extracts the serving ID from a relative path (last path segment before the
+ * extension): the content hash for compressed URLs, the asset ID for
+ * original-file URLs.
  */
-export function extractHashFromPath(path: string): string | null {
+export function extractServingIdFromPath(path: string): string | null {
   const segments = path.split('/').filter(Boolean)
   const lastSegment = segments.pop()
 

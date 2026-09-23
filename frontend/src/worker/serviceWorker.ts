@@ -1,7 +1,7 @@
 import { getAssetToken, DB_NAME, DB_VERSION, SHARE_STORE_NAME } from '@/db/db'
 import type { ShareInfo } from '@/db/db'
 
-// Extract albumId and shareId from referer URL (e.g., /share/albumId-shareId or /share/albumId-shareId/view/hash)
+// Extract albumId and shareId from referer URL (e.g., /share/albumId-shareId or /share/albumId-shareId/view/assetId)
 function extractShareIdsFromReferer(referer: string): {
   albumId: string | null
   shareId: string | null

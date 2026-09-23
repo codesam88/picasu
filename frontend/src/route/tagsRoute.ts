@@ -20,14 +20,14 @@ export const tagsRoute: RouteRecordRaw = {
     getParentPage: (route) => {
       return {
         name: 'timeline',
-        params: { hash: undefined, subhash: undefined },
+        params: {},
         query: route.query
       }
     },
     getChildPage: (route) => {
       return {
         name: 'tags',
-        params: { hash: undefined, subhash: undefined },
+        params: {},
         query: route.query
       }
     }

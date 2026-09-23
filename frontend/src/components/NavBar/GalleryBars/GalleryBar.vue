@@ -21,7 +21,7 @@
             <template v-for="crumb in breadcrumbs" :key="crumb.id">
               <v-breadcrumbs-divider class="mx-1">/</v-breadcrumbs-divider>
               <v-breadcrumbs-item
-                :to="{ name: 'album', params: { albumHash: crumb.id } }"
+                :to="{ name: 'album', params: { albumId: crumb.id } }"
                 class="text-body-1"
               >
                 {{ crumb.name }}
@@ -103,9 +103,9 @@
         v-if="
           modalStore.showShareModal &&
           route.meta.baseName === 'album' &&
-          typeof route.params.albumHash === 'string'
+          typeof route.params.albumId === 'string'
         "
-        :album-id="route.params.albumHash"
+        :album-id="route.params.albumId"
         :mode="'create'"
       />
     </template>
@@ -159,11 +159,11 @@ interface Breadcrumb {
 const breadcrumbs = computed<Breadcrumb[]>(() => {
   if (route.meta.baseName !== 'album') return []
 
-  const albumHash = route.params.albumHash
-  if (typeof albumHash !== 'string') return []
+  const albumId = route.params.albumId
+  if (typeof albumId !== 'string') return []
 
   const trail: Breadcrumb[] = []
-  let currentId: string | null = albumHash
+  let currentId: string | null = albumId
 
   while (currentId !== null) {
     const info = albumStore.albums.get(currentId)
@@ -192,9 +192,9 @@ const pageTitle = computed(() => {
   const baseName = route.meta.baseName
   if (typeof baseName !== 'string') return ''
   if (baseName === 'album') {
-    const albumHash = route.params.albumHash
-    if (typeof albumHash !== 'string') return 'Album'
-    const info = albumStore.albums.get(albumHash)
+    const albumId = route.params.albumId
+    if (typeof albumId !== 'string') return 'Album'
+    const info = albumStore.albums.get(albumId)
     return info?.displayName ?? 'Album'
   }
   return baseTitleMap[baseName] ?? baseName
