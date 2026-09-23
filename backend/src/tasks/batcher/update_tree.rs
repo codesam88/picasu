@@ -63,9 +63,11 @@ fn update_tree_task() {
     info!(duration = &*duration; "In-memory cache updated ({}).", current_timestamp);
 }
 
-/// Build the in-memory tree from `ASSET_BY_ID` (one entry per file/path).
-/// Enriches with metadata from `METADATA_TABLE` when available.
+/// Build the in-memory tree from `ASSET_BY_ID` (one entry per file/path),
+/// composing each row from the asset's identity `AssetRecord` plus its
+/// optional `METADATA_TABLE` payload.
 fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimestamp>> {
+    use crate::model::metadata_record::compose_abstract_data;
     use redb::{ReadableDatabase, ReadableTable};
 
     let Ok(txn) = TREE.in_disk.begin_read() else {
@@ -87,18 +89,15 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
             Err(_) => continue,
         };
 
-        let rich_data = metadata_table
+        let payload = metadata_table
             .get(&*record.asset_id)
             .ok()
             .flatten()
             .map(|g| g.value());
 
-        let abstract_data = if let Some(mut data) = rich_data {
-            align_path_to_asset(&mut data, &record);
-            data
-        } else {
-            minimal_abstract_data(&record)
-        };
+        // Composition makes path drift impossible: the file entry is always
+        // assembled from the record, never read back from storage.
+        let abstract_data = compose_abstract_data(&record, payload.as_ref());
 
         entries.push(DatabaseTimestamp::with_asset_id(
             abstract_data,
@@ -116,90 +115,5 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
         None
     } else {
         Some(entries)
-    }
-}
-
-/// Align an `AbstractData` record's stored path with the given asset's
-/// canonical path. Keeps the stored path when it already matches the
-/// `AssetRecord`; replaces it with a synthetic entry built from the record
-/// when it mismatches or when the slot is empty (mirroring the old
-/// retain-then-push behaviour, so a tree row always carries its asset's
-/// path).
-fn align_path_to_asset(
-    data: &mut crate::model::abstract_data::AbstractData,
-    record: &crate::model::asset::AssetRecord,
-) {
-    use crate::model::abstract_data::AbstractData;
-    use crate::model::response::FileModify;
-    let asset_path = FileModify {
-        file: record.canonical_path.clone(),
-        modified: record.modified,
-        scan_time: record.scan_time,
-        is_trashed: record.is_trashed,
-    };
-    let slot = match data {
-        AbstractData::Image(img) => &mut img.metadata.path,
-        AbstractData::Video(vid) => &mut vid.metadata.path,
-        AbstractData::Album(_) => return,
-    };
-    match slot {
-        Some(a) if a.file == record.canonical_path => {}
-        _ => *slot = Some(asset_path),
-    }
-}
-
-/// Create a minimal `AbstractData` from an `AssetRecord` when rich metadata
-/// is not available in `METADATA_TABLE`.
-fn minimal_abstract_data(
-    record: &crate::model::asset::AssetRecord,
-) -> crate::model::abstract_data::AbstractData {
-    use crate::model::abstract_data::AbstractData;
-    use crate::model::response::FileModify;
-    let display_id = record.content_hash.unwrap_or(record.asset_id);
-    let object = crate::model::object::ObjectSchema::new(
-        display_id,
-        match record.kind {
-            crate::model::asset::AssetKind::Image => crate::model::object::ObjectType::Image,
-            crate::model::asset::AssetKind::Video => crate::model::object::ObjectType::Video,
-            crate::model::asset::AssetKind::Album => crate::model::object::ObjectType::Album,
-        },
-    );
-    let file_entry = FileModify {
-        file: record.canonical_path.clone(),
-        modified: record.modified,
-        scan_time: record.scan_time,
-        is_trashed: record.is_trashed,
-    };
-    match record.kind {
-        crate::model::asset::AssetKind::Image => {
-            let mut metadata = crate::model::image::ImageMetadata::new(
-                display_id,
-                record.file_size,
-                0,
-                0,
-                record.ext.clone(),
-            );
-            metadata.path = Some(file_entry);
-            AbstractData::Image(crate::model::image::ImageCombined { object, metadata })
-        }
-        crate::model::asset::AssetKind::Video => {
-            let mut metadata = crate::model::video::VideoMetadata::new(
-                display_id,
-                record.file_size,
-                0,
-                0,
-                record.ext.clone(),
-            );
-            metadata.path = Some(file_entry);
-            AbstractData::Video(crate::model::video::VideoCombined { object, metadata })
-        }
-        crate::model::asset::AssetKind::Album => {
-            let metadata = crate::model::album::AlbumMetadata {
-                id: display_id,
-                dir_path: record.canonical_path.clone(),
-                ..Default::default()
-            };
-            AbstractData::Album(crate::model::album::AlbumCombined { object, metadata })
-        }
     }
 }

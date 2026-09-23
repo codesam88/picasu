@@ -24,7 +24,7 @@ use super::{
     album::AlbumCombined,
     image::{ImageCombined, ImageMetadata},
     object::{ObjectSchema, ObjectType},
-    response::FileModify,
+    response::FileEntry,
     video::{VideoCombined, VideoMetadata},
 };
 
@@ -251,7 +251,7 @@ impl AbstractData {
 
     /// Get the asset's file entry. `None` for albums and for media
     /// records whose path has been pruned (file gone).
-    pub fn path(&self) -> Option<&FileModify> {
+    pub fn path(&self) -> Option<&FileEntry> {
         match self {
             AbstractData::Image(img) => img.metadata.path.as_ref(),
             AbstractData::Video(vid) => vid.metadata.path.as_ref(),
@@ -316,19 +316,19 @@ impl AbstractData {
             .as_millis();
         let modified_millis = i64::try_from(modified_millis).unwrap_or(0);
 
-        let file_entry = FileModify::new(path, modified_millis);
+        let file_entry = FileEntry::new(path, modified_millis);
         let obj_type = Self::determine_type(&ext);
 
         match obj_type {
             ObjectType::Image => {
                 let object = ObjectSchema::new(hash, ObjectType::Image);
-                let mut metadata = ImageMetadata::new(hash, size, 0, 0, ext);
+                let mut metadata = ImageMetadata::new(size, 0, 0, ext);
                 metadata.path = Some(file_entry);
                 Ok(AbstractData::Image(ImageCombined { object, metadata }))
             }
             ObjectType::Video => {
                 let object = ObjectSchema::new(hash, ObjectType::Video);
-                let mut metadata = VideoMetadata::new(hash, size, 0, 0, ext);
+                let mut metadata = VideoMetadata::new(size, 0, 0, ext);
                 metadata.path = Some(file_entry);
                 Ok(AbstractData::Video(VideoCombined { object, metadata }))
             }
@@ -411,10 +411,10 @@ impl AbstractData {
     }
 
     /// Get mutable access to the path *slot* itself for media records
-    /// (`None` for albums). Returns `Some(&mut Option<FileModify>)` even when
+    /// (`None` for albums). Returns `Some(&mut Option<FileEntry>)` even when
     /// the slot is empty so callers can edit, replace, or clear the path;
     /// use [`AbstractData::path`] for read-only field access.
-    pub fn path_mut(&mut self) -> Option<&mut Option<FileModify>> {
+    pub fn path_mut(&mut self) -> Option<&mut Option<FileEntry>> {
         match self {
             AbstractData::Image(img) => Some(&mut img.metadata.path),
             AbstractData::Video(vid) => Some(&mut vid.metadata.path),
@@ -446,27 +446,6 @@ impl AbstractData {
             AbstractData::Image(img) => img.object.is_archived = is_archived,
             AbstractData::Video(vid) => vid.object.is_archived = is_archived,
             AbstractData::Album(alb) => alb.object.is_archived = is_archived,
-        }
-    }
-
-    /// Set trashed status.
-    ///
-    /// For images/videos the flag lives on the asset's file entry, so this
-    /// updates it in place (a missing path carries no trash state). Albums
-    /// carry a single record-level flag on `AlbumMetadata`.
-    pub fn set_trashed(&mut self, is_trashed: bool) {
-        match self {
-            AbstractData::Image(img) => {
-                if let Some(entry) = img.metadata.path.as_mut() {
-                    entry.is_trashed = is_trashed;
-                }
-            }
-            AbstractData::Video(vid) => {
-                if let Some(entry) = vid.metadata.path.as_mut() {
-                    entry.is_trashed = is_trashed;
-                }
-            }
-            AbstractData::Album(alb) => alb.metadata.is_trashed = is_trashed,
         }
     }
 
@@ -553,8 +532,8 @@ mod tests {
     /// Build an image record with its single path-primary file entry.
     fn img_with_path(file: &str, modified: i64, scan_time: i64) -> AbstractData {
         let id = ArrayString::from("test").expect("failed to create ArrayString");
-        let mut metadata = ImageMetadata::new(id, 0, 0, 0, "jpg".to_string());
-        metadata.path = Some(FileModify {
+        let mut metadata = ImageMetadata::new(0, 0, 0, "jpg".to_string());
+        metadata.path = Some(FileEntry {
             file: file.to_string(),
             modified,
             scan_time,
@@ -571,13 +550,13 @@ mod tests {
         let id = ArrayString::from("test").expect("failed to create ArrayString");
         AbstractData::Image(ImageCombined {
             object: ObjectSchema::new(id, ObjectType::Image),
-            metadata: ImageMetadata::new(id, 0, 0, 0, "jpg".to_string()),
+            metadata: ImageMetadata::new(0, 0, 0, "jpg".to_string()),
         })
     }
 
     fn img_with_exif(key: &str, value: &str) -> AbstractData {
         let id = ArrayString::from("test").expect("failed to create ArrayString");
-        let mut metadata = ImageMetadata::new(id, 0, 0, 0, "jpg".to_string());
+        let mut metadata = ImageMetadata::new(0, 0, 0, "jpg".to_string());
         metadata.exif_vec.insert(key.to_string(), value.to_string());
         AbstractData::Image(ImageCombined {
             object: ObjectSchema::new(id, ObjectType::Image),
@@ -643,21 +622,5 @@ mod tests {
     fn empty_path_scan_time_returns_zero() {
         let data = img_without_path();
         assert_eq!(data.compute_timestamp(&["scan_time"]), 0);
-    }
-
-    #[test]
-    fn set_trashed_toggles_the_path_trash_flag() {
-        let mut data = img_with_path("/a.jpg", 1, 2);
-        data.set_trashed(true);
-        assert_eq!(data.path().map(|a| a.is_trashed), Some(true));
-        data.set_trashed(false);
-        assert_eq!(data.path().map(|a| a.is_trashed), Some(false));
-    }
-
-    #[test]
-    fn set_trashed_on_missing_path_is_a_noop() {
-        let mut data = img_without_path();
-        data.set_trashed(true);
-        assert!(data.path().is_none());
     }
 }

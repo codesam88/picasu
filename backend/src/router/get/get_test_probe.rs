@@ -8,22 +8,23 @@ use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::error::{AppError, ErrorKind, ResultExt};
-use crate::model::response::FileModify;
+use crate::model::asset::AssetKind;
+use crate::model::response::FileEntry;
 use crate::router::auth::GuardAuth;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::{DUPE_INDEX, METADATA_TABLE, TREE};
+use crate::storage::db::{ASSET_BY_ID, DUPE_INDEX, TREE};
 
-/// Test-only record probe: the asset's identity and its singular stored file
-/// entry, mirroring `AbstractData::path() -> Option<FileModify>`. `path` is
-/// `None` for albums and for media records whose file entry has been pruned.
-/// Only reachable in test builds when the bootstrap opts in; API E2E scenarios
-/// use this endpoint to observe the raw stored path instead.
+/// Test-only record probe: the asset's identity (`assetId`) and its file
+/// entry as composed from the `AssetRecord`, matching
+/// `AbstractData::path() -> Option<FileEntry>`. `path` is `None` for
+/// albums. Only reachable in test builds when the bootstrap opts in; API
+/// E2E scenarios use this endpoint to observe the asset's path instead.
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TestRecordProbe {
     #[schema(value_type = String)]
     pub asset_id: ArrayString<64>,
-    pub path: Option<FileModify>,
+    pub path: Option<FileEntry>,
 }
 
 /// One member of a `DUPE_INDEX` content-hash group. API scenario tests use
@@ -63,7 +64,7 @@ fn probe_enabled() -> bool {
         get,
         path = "/get/test/record/{asset_id}",
         responses(
-            (status = 200, description = "Test-only record probe with the asset's stored path", body = TestRecordProbe),
+            (status = 200, description = "Test-only record probe with the asset's path", body = TestRecordProbe),
             (status = 400, description = "Invalid asset_id"),
             (status = 404, description = "Probe disabled or record not found"),
         )
@@ -92,25 +93,34 @@ pub fn probe_record(
         .begin_read()
         .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?;
     let table = txn
-        .open_table(METADATA_TABLE)
-        .or_raise(|| (ErrorKind::Database, "Failed to open METADATA_TABLE"))?;
+        .open_table(ASSET_BY_ID)
+        .or_raise(|| (ErrorKind::Database, "Failed to open ASSET_BY_ID"))?;
 
-    // Look up by asset_id only — no hash fallback.
-    let abstract_data = table
+    // Look up by asset_id only — no hash fallback. The file entry is
+    // composed from the identity record; albums have no path.
+    let record_json = table
         .get(&*asset_id)
         .or_raise(|| {
             (
                 ErrorKind::Database,
-                "Failed to read record from METADATA_TABLE",
+                "Failed to read record from ASSET_BY_ID",
             )
         })?
-        .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Record not found"))?
-        .value();
+        .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Record not found"))?;
+    let record: crate::model::asset::AssetRecord = serde_json::from_str(record_json.value())
+        .or_raise(|| (ErrorKind::Database, "Failed to deserialize AssetRecord"))?;
 
-    Ok(Json(TestRecordProbe {
-        asset_id,
-        path: abstract_data.path().cloned(),
-    }))
+    let path = match record.kind {
+        AssetKind::Album => None,
+        AssetKind::Image | AssetKind::Video => Some(FileEntry {
+            file: record.canonical_path.clone(),
+            modified: record.modified,
+            scan_time: record.scan_time,
+            is_trashed: record.is_trashed,
+        }),
+    };
+
+    Ok(Json(TestRecordProbe { asset_id, path }))
 }
 
 /// Test-only probe: list the `asset_id` members of a `DUPE_INDEX`
@@ -227,7 +237,7 @@ mod tests {
     fn test_record_probe_serializes_asset_id_and_singular_path() {
         let probe = TestRecordProbe {
             asset_id: ArrayString::<64>::from("asset-123").expect("valid asset id"),
-            path: Some(FileModify {
+            path: Some(FileEntry {
                 file: "/images/a/photo.jpg".to_string(),
                 modified: 1,
                 scan_time: 2,

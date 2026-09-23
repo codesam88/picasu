@@ -884,10 +884,10 @@ func main() {
 
 Phase 14 lean read path: media rows are built from the snapshot's
 `ReducedData` plus the lean `ASSET_BY_ID` record — no per-row
-`METADATA_TABLE` (full `AbstractData`) read, and no tags/EXIF/description
-on the payload (those are served by `GET /get/metadata/{assetId}`).
+`METADATA_TABLE` (payload) read, and no tags/EXIF/description on the
+payload (those are served by `GET /get/metadata/{assetId}`).
 Album rows still read `METADATA_TABLE` because tiles need their stored
-title/cover/counts.
+title/cover/counts, composed with the album's `AssetRecord`.
 
 > Example responses
 
@@ -1749,9 +1749,9 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## Full metadata detail for a single asset, read from `METADATA_TABLE` by
+## Full metadata detail for a single asset, composed at the edge from the
 
-`asset_id`.
+asset's identity `AssetRecord` and its stored `METADATA_TABLE` payload.
 
 <a id="opIdget_metadata"></a>
 
@@ -1870,16 +1870,17 @@ func main() {
 
 This is the detail-side counterpart of `get-data`: list rows only carry
 lean identity fields (tags / EXIF / description / rating are stripped in
-Phase 14), so the sidebar, detail view, and edit prefill fetch the stored
-`AbstractData` here on demand.
+Phase 14), so the sidebar, detail view, and edit prefill fetch the full
+`AbstractData` view here on demand. The wire shape is unchanged:
+identity fields come from the record, metadata fields from the payload.
 
 Auth and share parity follow `get-data`: a `GuardTimestamp` bearer token
 (prefetch token) is required, and when the token resolves to a share with
 `show_metadata: false` the metadata fields are cleared before responding so
 a share that hides metadata cannot leak it through this route.
 
-<h3 id="full-metadata-detail-for-a-single-asset,-read-from-`metadata_table`-by
-`asset_id`.-responses">Responses</h3>
+<h3 id="full-metadata-detail-for-a-single-asset,-composed-at-the-edge-from-the
+asset's-identity-`assetrecord`-and-its-stored-`metadata_table`-payload.-responses">Responses</h3>
 
 | Status | Meaning                                                        | Description                        | Schema |
 | ------ | -------------------------------------------------------------- | ---------------------------------- | ------ |
@@ -2579,11 +2580,11 @@ func main() {
 
 <h3 id="probe_record-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                         | Schema                                    |
-| ------ | ---------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Test-only record probe with the asset's stored path | [TestRecordProbe](#schematestrecordprobe) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid asset_id                                    | None                                      |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | Probe disabled or record not found                  | None                                      |
+| Status | Meaning                                                          | Description                                  | Schema                                    |
+| ------ | ---------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Test-only record probe with the asset's path | [TestRecordProbe](#schematestrecordprobe) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid asset_id                             | None                                      |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | Probe disabled or record not found           | None                                      |
 
 <aside class="success">
 This operation does not require authentication
@@ -10470,10 +10471,10 @@ silent about what happened to the selected item.
 
 ### Properties
 
-| Name      | Type           | Required | Restrictions | Description                                                                                                                                      |
-| --------- | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| assetIds  | [string]       | true     | none         | Asset IDs to delete. Each asset is resolved via `METADATA_TABLE` by its<br>`asset_id` key. The canonical file and sidecar are removed from disk. |
-| timestamp | integer(int64) | true     | none         | none                                                                                                                                             |
+| Name      | Type           | Required | Restrictions | Description                                                                                                                                   |
+| --------- | -------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| assetIds  | [string]       | true     | none         | Asset IDs to delete. Each asset is resolved via `ASSET_BY_ID` by its<br>`asset_id` key. The canonical file and sidecar are removed from disk. |
+| timestamp | integer(int64) | true     | none         | none                                                                                                                                          |
 
 <h2 id="tocS_DeleteShare">DeleteShare</h2>
 <!-- backwards compatibility -->
@@ -10644,12 +10645,12 @@ invisible behind the HTTP surface.
 | removeTagsArray | [string]       | true     | none         | none        |
 | timestamp       | integer(int64) | true     | none         | none        |
 
-<h2 id="tocS_FileModify">FileModify</h2>
+<h2 id="tocS_FileEntry">FileEntry</h2>
 <!-- backwards compatibility -->
-<a id="schemafilemodify"></a>
-<a id="schema_FileModify"></a>
-<a id="tocSfilemodify"></a>
-<a id="tocsfilemodify"></a>
+<a id="schemafileentry"></a>
+<a id="schema_FileEntry"></a>
+<a id="tocSfileentry"></a>
+<a id="tocsfileentry"></a>
 
 ```json
 {
@@ -10659,6 +10660,11 @@ invisible behind the HTTP surface.
   "scanTime": 0
 }
 ```
+
+The asset's file entry: the single source path and its timestamps,
+assembled from the identity `AssetRecord` at composition time. A view
+type for the wire — never stored (the metadata payload holds no path;
+`AssetRecord` owns the identity, including the trash flag).
 
 ### Properties
 
@@ -11127,11 +11133,11 @@ Payload for renaming an album.
 }
 ```
 
-Test-only record probe: the asset's identity and its singular stored file
-entry, mirroring `AbstractData::path() -> Option<FileModify>`. `path` is
-`None` for albums and for media records whose file entry has been pruned.
-Only reachable in test builds when the bootstrap opts in; API E2E scenarios
-use this endpoint to observe the raw stored path instead.
+Test-only record probe: the asset's identity (`assetId`) and its file
+entry as composed from the `AssetRecord`, matching
+`AbstractData::path() -> Option<FileEntry>`. `path` is `None` for
+albums. Only reachable in test builds when the bootstrap opts in; API
+E2E scenarios use this endpoint to observe the asset's path instead.
 
 ### Properties
 
@@ -11148,9 +11154,9 @@ oneOf
 
 xor
 
-| Name          | Type                            | Required | Restrictions | Description |
-| ------------- | ------------------------------- | -------- | ------------ | ----------- |
-| » _anonymous_ | [FileModify](#schemafilemodify) | false    | none         | none        |
+| Name          | Type                          | Required | Restrictions | Description                                                                                                                                                                                                                                                                         |
+| ------------- | ----------------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| » _anonymous_ | [FileEntry](#schemafileentry) | false    | none         | The asset's file entry: the single source path and its timestamps,<br>assembled from the identity `AssetRecord` at composition time. A view<br>type for the wire — never stored (the metadata payload holds no path;<br>`AssetRecord` owns the identity, including the trash flag). |
 
 <h2 id="tocS_UpdatePasswordRequest">UpdatePasswordRequest</h2>
 <!-- backwards compatibility -->

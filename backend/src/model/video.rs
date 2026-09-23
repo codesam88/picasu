@@ -16,13 +16,12 @@ pub struct VideoCombined {
 use arrayvec::ArrayString;
 use std::collections::BTreeMap;
 
-use crate::model::response::FileModify;
+use crate::model::response::FileEntry;
 
 /// Video-specific metadata
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Encode, Decode)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoMetadata {
-    pub id: ArrayString<64>,
     pub size: u64,
     pub width: u32,
     pub height: u32,
@@ -33,13 +32,12 @@ pub struct VideoMetadata {
     /// The record's single source path and its timestamps. `None` means the
     /// path was pruned (file gone / stale sweep); path-primary records hold
     /// at most one path.
-    pub path: Option<FileModify>,
+    pub path: Option<FileEntry>,
 }
 
 impl VideoMetadata {
-    pub fn new(id: ArrayString<64>, size: u64, width: u32, height: u32, ext: String) -> Self {
+    pub fn new(size: u64, width: u32, height: u32, ext: String) -> Self {
         Self {
-            id,
             size,
             width,
             height,

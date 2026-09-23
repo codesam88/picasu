@@ -1,17 +1,18 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
 use crate::process::sanitize::sanitize_tag;
-use crate::process::transitor::index_to_asset_id;
+use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
 use crate::process::xmp_write::write_sidecar_for;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::TagInfo;
-use crate::storage::db::{open_metadata_table, open_tree_snapshot_table};
+use crate::storage::db::open_tree_snapshot_table;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
+use arrayvec::ArrayString;
 use log::warn;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 
@@ -45,11 +46,10 @@ pub async fn edit_tag(
     let _ = read_only_mode?;
 
     let vec_tags_info = tokio::task::spawn_blocking(move || -> Result<Vec<TagInfo>, AppError> {
-        let metadata_table = open_metadata_table();
         let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
             .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
 
-        let mut data_to_flush: Vec<AbstractData> = Vec::new();
+        let mut data_to_store: Vec<(ArrayString<64>, AbstractData)> = Vec::new();
 
         for &index in &json_data.index_array {
             let asset_id = index_to_asset_id(&tree_snapshot, index).or_raise(|| {
@@ -59,12 +59,12 @@ pub async fn edit_tag(
                 )
             })?;
 
-            if let Some(guard) = metadata_table
-                .get(&*asset_id)
+            // Read the composed view (identity from AssetRecord, metadata
+            // from the stored payload), mutate metadata only, then extract
+            // the payload back — identity is never written from this view.
+            if let Some(mut abstract_data) = compose_by_asset_id(&asset_id)
                 .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
             {
-                let mut abstract_data = guard.value();
-
                 // Apply tag additions and removals (only regular tags)
                 let tags = abstract_data.tag_mut();
                 for tag in &json_data.add_tags_array {
@@ -80,13 +80,14 @@ pub async fn edit_tag(
                 if let Err(e) = write_sidecar_for(&abstract_data) {
                     warn!("Failed to write XMP sidecar: {e}");
                 }
-                data_to_flush.push(abstract_data);
+                data_to_store.push((asset_id, abstract_data));
             }
         }
 
-        // Flush data
-        if !data_to_flush.is_empty() {
-            BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(data_to_flush));
+        // Store the metadata-only payloads; identity fields are not written.
+        for (asset_id, data) in &data_to_store {
+            store_metadata_record(asset_id, data, None)
+                .or_raise(|| (ErrorKind::Database, "Failed to store metadata"))?;
         }
 
         // Return TagInfo

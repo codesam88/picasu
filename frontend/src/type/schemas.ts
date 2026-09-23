@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import { fixedBigRowHeight } from '@/type/constants'
 
-export const FileModifySchema = z.object({
+export const FileEntrySchema = z.object({
   file: z.string(),
   modified: z.number(),
   scanTime: z.number(),
@@ -54,7 +54,7 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
   size: z.number(),
   phash: z.array(z.number()).nullable().optional().default([]),
   album: z.string().nullable().optional().default(null),
-  path: FileModifySchema.nullable().default(null)
+  path: FileEntrySchema.nullable().default(null)
 }).transform((data) => ({
   type: 'image' as const,
   id: data.id,
@@ -86,7 +86,7 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
   size: z.number(),
   duration: z.number().default(0),
   album: z.string().nullable().optional().default(null),
-  path: FileModifySchema.nullable().default(null)
+  path: FileEntrySchema.nullable().default(null)
 }).transform((data) => ({
   type: 'video' as const,
   id: data.id,

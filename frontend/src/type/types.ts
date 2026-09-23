@@ -1,7 +1,7 @@
 // src/type/types.ts
 import { z } from 'zod'
 import {
-  FileModifySchema,
+  FileEntrySchema,
   tagInfoSchema,
   scrollbarDataSchema,
   displayElementSchema,
@@ -18,7 +18,7 @@ import {
 } from '@type/schemas'
 
 // Basic types
-export type FileModify = z.infer<typeof FileModifySchema>
+export type FileEntry = z.infer<typeof FileEntrySchema>
 export type TagInfo = z.infer<typeof tagInfoSchema>
 export type AlbumInfo = z.infer<typeof albumInfoSchema>
 export type ScrollbarData = z.infer<typeof scrollbarDataSchema>

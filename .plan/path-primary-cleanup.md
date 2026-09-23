@@ -126,8 +126,7 @@ reference behavior and duplicate-preservation tests.
 
 ### 6. Metadata table value slimming (`FileModify` deduplication)
 
-**Status:** open — identified 2026-09-23 as a missing Phase 14 migration
-artifact.
+**Status:** complete.
 
 **Decision:** `METADATA_TABLE` is correctly keyed by `asset_id`, but its value
 is still the full legacy `AbstractData` record instead of a metadata-only
@@ -240,7 +239,7 @@ URL is built from an asset_id where a content hash is expected.
 4. Rename internal path helpers after their callers and test contracts settle. **Done.**
 5. Run the full alias/duplicate scenario subset, then the normal checks. **Done.**
 6. Slim the metadata-table value and deduplicate identity fields out of
-   `FileModify` (category 6, including A1–A4).
+   `FileModify` (category 6, including A1–A4). **Done.**
 7. Verify cover-serving identity end to end (category 8) — required before B2.
 8. Review and apply worker/token payload naming (category 7: B2 after 7, B3
    whenever).
@@ -310,3 +309,37 @@ URL is built from an asset_id where a content hash is expected.
   required, possible latent bug), and 9 (minor debt). Applied B1 locally:
   `refreshAlbumMetadata` `coverHash` → `coverAssetId` (the value is the cover
   asset's `asset_id`, not a content hash).
+- 2026-09-23: Category 6 done. `METADATA_TABLE` now stores `MetadataRecord`
+  (metadata-only payload: object tags/description/rating/flags/update_at/
+  pending/thumbhash + image phash/exif/dimensions + video duration + album
+  title/times/cover/stats/share_list/custom_title) under the new on-disk
+  table name `asset_metadata` — rows written under the previous `metadata`
+  name are intentionally orphaned (clean rebuild repopulates; no migration).
+  Write paths split: `FlushTreeTask`/`flush_tables` remains the
+  index/file-mutation flush (derives `AssetRecord`, stores
+  `to_metadata_record(...)`); metadata edits (edit_tag/edit_rating/
+  edit_description/edit_flags) now go through `store_metadata_record` (one
+  write txn, optional `AssetRecord.is_trashed` update) and dispatch only
+  `UpdateTreeTask`; edit_album/edit_share/create_share/album-self-update/
+  rebuild-sync/dir-album creation insert payloads. Read paths compose via
+  `compose_abstract_data(record, payload)` (get_metadata 404s on missing
+  record; TREE, delete, probe, export, shares, read_albums all compose).
+  Trash ownership settled on `AssetRecord.is_trashed`; composition projects
+  it onto the wire (media file entry, album metadata). A1 removed
+  `align_path_to_asset`; A2 removed the dead `to_update`/`path_before`
+  sweep branch; A3 dropped `FileModify`'s scan_time-only
+  `Eq`/`Ord`/`Hash` (the one `.max()` user in `index.rs` now reads the
+  single entry directly) and renamed the type to `FileEntry`
+  (backend + frontend `FileEntrySchema`/`FileEntry`, OpenAPI regenerated);
+  A4 removed `ImageMetadata.id`/`VideoMetadata.id` and stopped storing
+  album `metadata.id` (composition fills it from `asset_id`), so stored
+  payloads carry zero `id` fields. `AbstractData` bitcode `SCHEMA_VERSION`
+  left at 1 after verifying no snapshot store embeds `AbstractData`
+  (snapshots hold `ReducedData`/`Prefetch`); `MetadataRecord` gets its own
+  versioned `Value` impl. Startup now pre-creates all four store tables so
+  fresh DATA_HOMEs (Playwright) don't hit `TableDoesNotExist`. Wire
+  unchanged: `just check` and full `just test` green (backend 265 lib
+  tests incl. 100 scenarios + integration, utils 24, vitest 67,
+  Playwright 34/34), including the `metadata_only_loaded_on_detail` /
+  `metadata_detail_returns_full_metadata` / `abstractData.path.*` wire
+  guards and two new stored-payload identity-key tests.

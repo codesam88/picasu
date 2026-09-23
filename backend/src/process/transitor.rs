@@ -1,10 +1,10 @@
 use crate::constant::DEFAULT_PRIORITY_LIST;
 use crate::model::abstract_data::AbstractData;
+use crate::model::metadata_record::MetadataRecord;
 use crate::model::response::DataBaseTimestampReturn;
 use crate::storage::cache::MyCow;
 use anyhow::Result;
 use arrayvec::ArrayString;
-use redb::ReadOnlyTable;
 
 pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
     if index >= tree_snapshot.len() {
@@ -14,20 +14,74 @@ pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<ArrayStr
     Ok(asset_id)
 }
 
-/// Resolve an `asset_id` to an `AbstractData` record via `METADATA_TABLE`.
-pub fn asset_id_to_abstract_data(
-    asset_id: ArrayString<64>,
-    metadata_table: &ReadOnlyTable<&'static str, AbstractData>,
-) -> Result<AbstractData> {
-    if let Some(data) = metadata_table.get(&*asset_id)? {
-        return Ok(data.value());
-    }
+/// Read the stored metadata-only payload for `asset_id`, if any.
+pub fn load_metadata_record(asset_id: &str) -> Result<Option<MetadataRecord>> {
+    use crate::storage::db::{METADATA_TABLE, TREE};
+    use redb::ReadableDatabase;
 
-    Err(anyhow::anyhow!("No data found for asset_id: {asset_id}"))
+    let txn = TREE.in_disk.begin_read()?;
+    let table = txn.open_table(METADATA_TABLE)?;
+    Ok(table.get(asset_id)?.map(|guard| guard.value()))
 }
 
-/// Convert an `AssetRecord` to an `AbstractData` for API responses.
-/// This is a lossy conversion — EXIF, tags, and other metadata are not preserved.
+/// Compose the wire `AbstractData` view for `asset_id` from its identity
+/// `AssetRecord` plus optional stored payload. Returns `None` when the asset
+/// record does not exist.
+pub fn compose_by_asset_id(asset_id: &str) -> Result<Option<AbstractData>> {
+    let Some(record) = crate::storage::asset_store::get_asset_by_id(asset_id)? else {
+        return Ok(None);
+    };
+    let payload = load_metadata_record(asset_id)?;
+    Ok(Some(crate::model::metadata_record::compose_abstract_data(
+        &record,
+        payload.as_ref(),
+    )))
+}
+
+/// Metadata-edit write path: upsert the metadata-only payload extracted
+/// from `data` under `asset_id`, in one write transaction.
+///
+/// Identity is never read out of `data` for writing. When `trash` is
+/// `Some(flag)`, `AssetRecord.is_trashed` is read-modify-written inside the
+/// same transaction (redb is single-writer, so the `ASSET_BY_ID` JSON row
+/// is updated directly here rather than via store helpers that open their
+/// own transaction).
+pub fn store_metadata_record(
+    asset_id: &str,
+    data: &AbstractData,
+    trash: Option<bool>,
+) -> Result<()> {
+    use crate::model::asset::AssetRecord;
+    use crate::model::metadata_record::to_metadata_record;
+    use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE, TREE};
+    use redb::ReadableTable;
+
+    let payload = to_metadata_record(data);
+    let txn = TREE.in_disk.begin_write()?;
+    {
+        let mut metadata_table = txn.open_table(METADATA_TABLE)?;
+        metadata_table.insert(asset_id, payload)?;
+
+        if let Some(is_trashed) = trash {
+            let mut id_table = txn.open_table(ASSET_BY_ID)?;
+            let existing = id_table
+                .get(asset_id)?
+                .map(|guard| guard.value().to_string());
+            if let Some(json) = existing {
+                let mut record: AssetRecord = serde_json::from_str(&json)?;
+                record.is_trashed = is_trashed;
+                let updated = serde_json::to_string(&record)?;
+                id_table.insert(asset_id, updated.as_str())?;
+            }
+        }
+    }
+    txn.commit()?;
+    Ok(())
+}
+
+/// Convert an `AssetRecord` to a payload-less `AbstractData` for API
+/// responses. This is a lossy conversion — EXIF, tags, and other metadata
+/// are not preserved.
 /// Uses content hash as `object.id` for media items (required for compressed
 /// thumbnail path resolution). Uses `asset_id` for albums (no thumbnails).
 pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) -> AbstractData {
@@ -35,7 +89,7 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
     use crate::model::asset::AssetKind;
     use crate::model::image::{ImageCombined, ImageMetadata};
     use crate::model::object::{ObjectSchema, ObjectType};
-    use crate::model::response::FileModify;
+    use crate::model::response::FileEntry;
     use crate::model::video::{VideoCombined, VideoMetadata};
 
     // Media items use content hash as object.id (required for compressed
@@ -45,9 +99,8 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
     match record.kind {
         AssetKind::Image => {
             let object = ObjectSchema::new(display_id, ObjectType::Image);
-            let mut metadata =
-                ImageMetadata::new(display_id, record.file_size, 0, 0, record.ext.clone());
-            metadata.path = Some(FileModify {
+            let mut metadata = ImageMetadata::new(record.file_size, 0, 0, record.ext.clone());
+            metadata.path = Some(FileEntry {
                 file: record.canonical_path.clone(),
                 modified: record.modified,
                 scan_time: record.scan_time,
@@ -57,9 +110,8 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
         }
         AssetKind::Video => {
             let object = ObjectSchema::new(display_id, ObjectType::Video);
-            let mut metadata =
-                VideoMetadata::new(display_id, record.file_size, 0, 0, record.ext.clone());
-            metadata.path = Some(FileModify {
+            let mut metadata = VideoMetadata::new(record.file_size, 0, 0, record.ext.clone());
+            metadata.path = Some(FileEntry {
                 file: record.canonical_path.clone(),
                 modified: record.modified,
                 scan_time: record.scan_time,
@@ -157,18 +209,15 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
 
 /// Extract the cover image's content hash from an album's `AbstractData`.
 /// Returns `None` for media items or albums without a cover.
-/// Looks up the cover image by its `cover` `asset_id` in `METADATA_TABLE`
-/// and returns the image's `object.id` (content hash).
-pub fn cover_content_hash_from_data(
-    abstract_data: &AbstractData,
-    metadata_table: &ReadOnlyTable<&'static str, AbstractData>,
-) -> Option<ArrayString<64>> {
+/// The cover's `asset_id` resolves to its identity `AssetRecord`, whose
+/// `content_hash` is the display rule `object.id` composition would produce.
+pub fn cover_content_hash_from_data(abstract_data: &AbstractData) -> Option<ArrayString<64>> {
     let cover_asset_id = match abstract_data {
         AbstractData::Album(album) => album.metadata.cover?,
         _ => return None,
     };
-    let cover_data = asset_id_to_abstract_data(cover_asset_id, metadata_table).ok()?;
-    Some(cover_data.hash())
+    let record = crate::storage::asset_store::get_asset_by_id(&cover_asset_id).ok()??;
+    Some(record.content_hash.unwrap_or(record.asset_id))
 }
 
 #[cfg(test)]
@@ -177,13 +226,13 @@ mod tests {
     use crate::model::abstract_data::AbstractData;
     use crate::model::image::{ImageCombined, ImageMetadata};
     use crate::model::object::{ObjectSchema, ObjectType};
-    use crate::model::response::FileModify;
+    use crate::model::response::FileEntry;
     use arrayvec::ArrayString;
 
     fn img_with_path(is_trashed: bool) -> AbstractData {
         let id = ArrayString::from("test").expect("failed to create ArrayString");
-        let mut metadata = ImageMetadata::new(id, 0, 0, 0, "jpg".to_string());
-        metadata.path = Some(FileModify {
+        let mut metadata = ImageMetadata::new(0, 0, 0, "jpg".to_string());
+        metadata.path = Some(FileEntry {
             file: "/photos/a.jpg".to_string(),
             modified: 1,
             scan_time: 2,
@@ -199,7 +248,7 @@ mod tests {
         let id = ArrayString::from("test").expect("failed to create ArrayString");
         AbstractData::Image(ImageCombined {
             object: ObjectSchema::new(id, ObjectType::Image),
-            metadata: ImageMetadata::new(id, 0, 0, 0, "jpg".to_string()),
+            metadata: ImageMetadata::new(0, 0, 0, "jpg".to_string()),
         })
     }
 

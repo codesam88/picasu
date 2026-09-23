@@ -205,7 +205,7 @@ mod tests {
 
 // src/router/fairing/auth_utils.rs
 use crate::error::{AppError, ErrorKind};
-use crate::model::abstract_data::AbstractData;
+use crate::model::metadata_record::MetadataRecord;
 use crate::storage::db::METADATA_TABLE;
 use crate::storage::db::TREE;
 
@@ -366,15 +366,16 @@ fn resolve_share_internal(
             )
         })?;
 
-    let abstract_data = data_guard.value();
-    let AbstractData::Album(mut album) = abstract_data else {
+    // Share lookup reads the metadata-only payload; the album's identity id
+    // is the table key itself (`asset_id`).
+    let MetadataRecord::Album(mut album) = data_guard.value() else {
         return Err(AppError::new(
             ErrorKind::InvalidInput,
             format!("Data with id '{album_id}' is not an album"),
         ));
     };
 
-    let share = album.metadata.share_list.remove(share_id).ok_or_else(|| {
+    let share = album.share_list.remove(share_id).ok_or_else(|| {
         AppError::new(
             ErrorKind::NotFound,
             format!("Share '{share_id}' not found in album '{album_id}'"),
@@ -387,7 +388,7 @@ fn resolve_share_internal(
     let resolved_share = ResolvedShare::new(
         ArrayString::<64>::from(album_id)
             .map_err(|_| AppError::new(ErrorKind::Internal, "Failed to parse album_id"))?,
-        album.metadata.title,
+        album.title,
         share,
     );
     let claims = Claims::new_share(resolved_share);
@@ -435,13 +436,14 @@ pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
         && let Ok(read_txn) = TREE.in_disk.begin_read()
         && let Ok(table) = read_txn.open_table(METADATA_TABLE)
         && let Ok(Some(data_guard)) = table.get(album_id)
-        && let AbstractData::Album(mut album) = data_guard.value()
-        && let Some(share) = album.metadata.share_list.remove(share_id)
+        && let MetadataRecord::Album(mut album) = data_guard.value()
+        && let Some(share) = album.share_list.remove(share_id)
         && share.show_upload
         && validate_share_access(&share, req).is_ok()
         && let Some(Ok(album_id_parsed)) = req.query_value::<&str>("presigned_album_id_opt")
     {
-        return album.object.id.as_str() == album_id_parsed;
+        // The payload is keyed by the album's `asset_id`.
+        return album_id == album_id_parsed;
     }
 
     false

@@ -2,32 +2,40 @@ use crate::model::response::Prefetch;
 
 use crate::model::{
     abstract_data::AbstractData,
+    metadata_record::MetadataRecord,
     response::{ReducedData, Row},
 };
 use redb::{TypeName, Value};
 
-// ── AbstractData versioned encoding ───────────────────────────────────────────
+// ── Versioned bitcode encoding for stored enum records ────────────────────────
 //
-// Every AbstractData record on disk is prefixed with two bytes: [0xFF, version].
+// Every `AbstractData` / `MetadataRecord` record on disk is prefixed with two
+// bytes: [0xFF, version].
 //
-// 0xFF is safe as a magic marker because AbstractData is a 3-variant enum;
-// bitcode encodes its discriminant in the lowest 2 bits of the first byte
+// 0xFF is safe as a magic marker because both types are 3-variant enums;
+// bitcode encodes the discriminant in the lowest 2 bits of the first byte
 // (values 0, 1, 2).  A first byte of 0xFF has bits [1:0] = 11 = discriminant 3,
-// which is invalid for this enum — so no legitimately encoded AbstractData record
-// can start with 0xFF.
+// which is invalid for these enums — so no legitimately encoded record can
+// start with 0xFF.
 //
-// The structs in `model/` ARE the schema, and SCHEMA_VERSION below is their
-// on-disk version. Migration between schema versions is not supported: a
-// record with any other version byte — or with no [0xFF, version] prefix at
-// all — cannot be decoded, and `from_bytes` aborts with instructions to
-// rebuild (POST /post/rebuild or a fresh DATA_HOME).
+// The structs in `model/` ARE the schema, and the SCHEMA_VERSION constants
+// below are their on-disk version. Migration between schema versions is not
+// supported: a record with any other version byte — or with no [0xFF, version]
+// prefix at all — cannot be decoded, and `from_bytes` aborts with instructions
+// to rebuild (POST /post/rebuild or a fresh DATA_HOME).
 //
 // When the schema changes (new fields, removed fields, reordered variants):
-//   1. Increment SCHEMA_VERSION.
+//   1. Increment the schema version constant.
 //   2. Copy the current structs to AbstractDataVN / AlbumCombinedVN / etc.
 //   3. Add a match arm for the old version in from_bytes.
 
 const SCHEMA_VERSION: u8 = 1;
+
+/// On-disk schema version for `MetadataRecord` (the `METADATA_TABLE` value).
+/// The table's on-disk name changed when `MetadataRecord` replaced
+/// `AbstractData` as the stored value, so rows written under the previous
+/// name are never decoded by this impl.
+const METADATA_SCHEMA_VERSION: u8 = 1;
 
 /// Abort decoding of a record this build cannot interpret, with instructions
 /// for the operator.
@@ -35,9 +43,9 @@ const SCHEMA_VERSION: u8 = 1;
 /// redb 4.2's `Value::from_bytes` returns `SelfType<'a>` directly — the trait
 /// has no associated `Error` type — so a decode failure can only surface as a
 /// panic, the same mechanism every other `Value` impl in this file uses.
-fn rebuild_required(reason: &str) -> ! {
+fn rebuild_required(type_name: &str, reason: &str) -> ! {
     panic!(
-        "Cannot decode AbstractData record: {reason}. \
+        "Cannot decode {type_name} record: {reason}. \
          Migration between schema versions is not supported; \
          rebuild the database via POST /post/rebuild, \
          or start with a fresh DATA_HOME."
@@ -64,16 +72,20 @@ impl Value for AbstractData {
     {
         let [0xFF, version, payload @ ..] = data else {
             rebuild_required(
+                "AbstractData",
                 "missing [0xFF, version] schema prefix \
                  (record predates schema versioning, is truncated, \
                  or was written by an unknown writer)",
             );
         };
         if *version != SCHEMA_VERSION {
-            rebuild_required(&format!(
-                "unsupported schema version {version} \
-                 (this build reads schema version {SCHEMA_VERSION})"
-            ));
+            rebuild_required(
+                "AbstractData",
+                &format!(
+                    "unsupported schema version {version} \
+                     (this build reads schema version {SCHEMA_VERSION})"
+                ),
+            );
         }
         bitcode::decode::<AbstractData>(payload).expect("Failed to decode AbstractData")
     }
@@ -86,6 +98,55 @@ impl Value for AbstractData {
 
     fn type_name() -> TypeName {
         TypeName::new("AbstractData")
+    }
+}
+
+impl Value for MetadataRecord {
+    type SelfType<'a>
+        = Self
+    where
+        Self: 'a;
+    type AsBytes<'a>
+        = Vec<u8>
+    where
+        Self: 'a;
+
+    fn fixed_width() -> Option<usize> {
+        None
+    }
+
+    fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+    where
+        Self: 'a,
+    {
+        let [0xFF, version, payload @ ..] = data else {
+            rebuild_required(
+                "MetadataRecord",
+                "missing [0xFF, version] schema prefix \
+                 (record predates schema versioning, is truncated, \
+                 or was written by an unknown writer)",
+            );
+        };
+        if *version != METADATA_SCHEMA_VERSION {
+            rebuild_required(
+                "MetadataRecord",
+                &format!(
+                    "unsupported schema version {version} \
+                     (this build reads schema version {METADATA_SCHEMA_VERSION})"
+                ),
+            );
+        }
+        bitcode::decode::<MetadataRecord>(payload).expect("Failed to decode MetadataRecord")
+    }
+
+    fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a> {
+        let mut out = vec![0xFF, METADATA_SCHEMA_VERSION];
+        out.extend(bitcode::encode(value));
+        out
+    }
+
+    fn type_name() -> TypeName {
+        TypeName::new("MetadataRecord")
     }
 }
 
@@ -194,7 +255,7 @@ mod tests {
         let id = ArrayString::from("test").expect("failed to create test ArrayString");
         AbstractData::Image(ImageCombined {
             object: ObjectSchema::new(id, ObjectType::Image),
-            metadata: ImageMetadata::new(id, 1024, 800, 600, "jpg".to_string()),
+            metadata: ImageMetadata::new(1024, 800, 600, "jpg".to_string()),
         })
     }
 
@@ -270,7 +331,7 @@ mod integration_tests {
         let id = ArrayString::from("img").expect("failed to create test ArrayString");
         let original = AbstractData::Image(ImageCombined {
             object: ObjectSchema::new(id, ObjectType::Image),
-            metadata: ImageMetadata::new(id, 1024, 800, 600, "jpg".to_string()),
+            metadata: ImageMetadata::new(1024, 800, 600, "jpg".to_string()),
         });
 
         let dir = tempfile::tempdir().expect("failed to create temp directory");

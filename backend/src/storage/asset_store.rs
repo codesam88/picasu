@@ -123,10 +123,14 @@ pub fn get_assets_under_path(dir_path: &str) -> Result<Vec<AssetRecord>> {
         .collect())
 }
 
-/// Look up an `AbstractData` from `METADATA_TABLE` by `asset_id`.
+/// Compose the wire `AbstractData` view for `asset_id` from its identity
+/// `AssetRecord` plus optional stored metadata payload.
 pub fn lookup_abstract_data_by_asset_id(
     asset_id: &str,
 ) -> Result<Option<crate::model::abstract_data::AbstractData>> {
+    let Some(record) = get_asset_by_id(asset_id)? else {
+        return Ok(None);
+    };
     let txn = TREE
         .in_disk
         .begin_read()
@@ -134,12 +138,12 @@ pub fn lookup_abstract_data_by_asset_id(
     let table = txn
         .open_table(crate::storage::db::METADATA_TABLE)
         .context("Failed to open METADATA_TABLE")?;
+    let payload = table.get(asset_id)?.map(|guard| guard.value());
 
-    if let Some(guard) = table.get(asset_id)? {
-        return Ok(Some(guard.value()));
-    }
-
-    Ok(None)
+    Ok(Some(crate::model::metadata_record::compose_abstract_data(
+        &record,
+        payload.as_ref(),
+    )))
 }
 
 /// Insert or update an asset record.

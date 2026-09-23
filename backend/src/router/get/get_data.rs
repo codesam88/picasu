@@ -1,12 +1,11 @@
 // src/router/get/get_data.rs
 
 use crate::model::asset::{AssetKind, AssetRecord};
+use crate::model::metadata_record::compose_abstract_data;
 use crate::model::response::DataBaseTimestampReturn;
 use crate::model::response::{Row, ScrollBarData};
 use crate::process::resolve_show_download_and_metadata;
-use crate::process::transitor::{
-    asset_id_to_abstract_data, cover_content_hash_from_data, lean_media_abstract_data,
-};
+use crate::process::transitor::{cover_content_hash_from_data, lean_media_abstract_data};
 use crate::storage::cache::TREE_SNAPSHOT;
 use crate::storage::db::{ASSET_BY_ID, TREE, open_metadata_table, open_tree_snapshot_table};
 
@@ -24,10 +23,10 @@ use std::time::Instant;
 ///
 /// Phase 14 lean read path: media rows are built from the snapshot's
 /// `ReducedData` plus the lean `ASSET_BY_ID` record — no per-row
-/// `METADATA_TABLE` (full `AbstractData`) read, and no tags/EXIF/description
-/// on the payload (those are served by `GET /get/metadata/{assetId}`).
+/// `METADATA_TABLE` (payload) read, and no tags/EXIF/description on the
+/// payload (those are served by `GET /get/metadata/{assetId}`).
 /// Album rows still read `METADATA_TABLE` because tiles need their stored
-/// title/cover/counts.
+/// title/cover/counts, composed with the album's `AssetRecord`.
 #[utoipa::path(
         get,
         path = "/get/get-data",
@@ -104,18 +103,27 @@ pub async fn get_data(
                     })?;
 
                 let (abstract_data, cover_content_hash) = match record.kind {
-                    // Albums keep their full metadata row: tiles need
-                    // title/cover/counts, and cover_hash resolves via
-                    // METADATA_TABLE.
+                    // Albums keep their stored payload: tiles need
+                    // title/cover/counts; identity (dir_path, id, trash)
+                    // is composed from the AssetRecord.
                     AssetKind::Album => {
-                        let abstract_data = asset_id_to_abstract_data(asset_id, &metadata_table)
+                        let payload = metadata_table
+                            .get(&*asset_id)
                             .or_raise(|| {
                                 (
                                     ErrorKind::Database,
+                                    format!("Failed to read album payload for asset_id {asset_id}"),
+                                )
+                            })?
+                            .ok_or_else(|| {
+                                AppError::new(
+                                    ErrorKind::Database,
                                     format!("Failed to retrieve album for asset_id {asset_id}"),
                                 )
-                            })?;
-                        let cover = cover_content_hash_from_data(&abstract_data, &metadata_table);
+                            })?
+                            .value();
+                        let abstract_data = compose_abstract_data(&record, Some(&payload));
+                        let cover = cover_content_hash_from_data(&abstract_data);
                         (abstract_data, cover)
                     }
                     // Media rows: lean construction, no metadata read.
@@ -133,7 +141,7 @@ pub async fn get_data(
                         asset_id,
                         cover_content_hash,
                     );
-                // Row timestamps mirror the tree snapshot's date (computed
+                // Row timestamps equal the tree snapshot's date (computed
                 // from the full in-memory record when the snapshot was taken),
                 // so lean rows keep the EXIF-derived sort date.
                 database_timestamp_return.timestamp = reduced.date;

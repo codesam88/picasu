@@ -7,17 +7,18 @@ use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
 use crate::process::resolve_show_download_and_metadata;
 use crate::process::transitor::clear_abstract_data_metadata;
+use crate::process::transitor::compose_by_asset_id;
 use crate::router::auth::GuardTimestamp;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::open_metadata_table;
 
-/// Full metadata detail for a single asset, read from `METADATA_TABLE` by
-/// `asset_id`.
+/// Full metadata detail for a single asset, composed at the edge from the
+/// asset's identity `AssetRecord` and its stored `METADATA_TABLE` payload.
 ///
 /// This is the detail-side counterpart of `get-data`: list rows only carry
 /// lean identity fields (tags / EXIF / description / rating are stripped in
-/// Phase 14), so the sidebar, detail view, and edit prefill fetch the stored
-/// `AbstractData` here on demand.
+/// Phase 14), so the sidebar, detail view, and edit prefill fetch the full
+/// `AbstractData` view here on demand. The wire shape is unchanged:
+/// identity fields come from the record, metadata fields from the payload.
 ///
 /// Auth and share parity follow `get-data`: a `GuardTimestamp` bearer token
 /// (prefetch token) is required, and when the token resolves to a share with
@@ -51,17 +52,11 @@ pub async fn get_metadata(
             )
         })?;
 
-        let metadata_table = open_metadata_table();
-        let mut abstract_data = metadata_table
-            .get(&*asset_id)
-            .or_raise(|| {
-                (
-                    ErrorKind::Database,
-                    "Failed to read record from METADATA_TABLE",
-                )
-            })?
-            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Record not found"))?
-            .value();
+        // 404 when the identity record is missing; otherwise compose the
+        // record with its stored payload (payload defaults when absent).
+        let mut abstract_data = compose_by_asset_id(&asset_id)
+            .or_raise(|| (ErrorKind::Database, "Failed to compose record"))?
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Record not found"))?;
 
         // Same clearing rules the list path applies: strip metadata fields
         // (including the stored path) when the share hides them.

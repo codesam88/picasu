@@ -1,10 +1,10 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
-use crate::process::transitor::index_to_asset_id;
+use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
-use crate::storage::db::{open_metadata_table, open_tree_snapshot_table};
+use crate::storage::db::open_tree_snapshot_table;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
@@ -52,12 +52,11 @@ pub async fn edit_flags(
 
     let affected_album_ids =
         tokio::task::spawn_blocking(move || -> Result<HashSet<ArrayString<64>>, AppError> {
-            let metadata_table = open_metadata_table();
             let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
                 .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
 
             let mut affected_album_ids = HashSet::new();
-            let mut data_to_flush: Vec<AbstractData> = Vec::new();
+            let mut data_to_store: Vec<(ArrayString<64>, AbstractData)> = Vec::new();
 
             for &index in &json_data.index_array {
                 let asset_id = index_to_asset_id(&tree_snapshot, index).or_raise(|| {
@@ -67,35 +66,30 @@ pub async fn edit_flags(
                     )
                 })?;
 
-                if let Some(guard) = metadata_table
-                    .get(&*asset_id)
+                if let Some(mut abstract_data) = compose_by_asset_id(&asset_id)
                     .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
                 {
-                    let mut abstract_data = guard.value();
-
                     // If trashed is involved, record the album this data belongs to
                     if is_trashed_involved && let Some(album_id) = abstract_data.album() {
                         affected_album_ids.insert(album_id);
                     }
 
-                    // Apply flag changes
+                    // Favorite/archived are payload fields; the trash flag is
+                    // owned by AssetRecord and passed through the store call.
                     if let Some(is_favorite) = json_data.is_favorite {
                         abstract_data.set_favorite(is_favorite);
                     }
                     if let Some(is_archived) = json_data.is_archived {
                         abstract_data.set_archived(is_archived);
                     }
-                    if let Some(is_trashed) = json_data.is_trashed {
-                        abstract_data.set_trashed(is_trashed);
-                    }
 
-                    data_to_flush.push(abstract_data);
+                    data_to_store.push((asset_id, abstract_data));
                 }
             }
 
-            // Flush data
-            if !data_to_flush.is_empty() {
-                BATCH_COORDINATOR.execute_batch_detached(FlushTreeTask::insert(data_to_flush));
+            for (asset_id, data) in &data_to_store {
+                store_metadata_record(asset_id, data, json_data.is_trashed)
+                    .or_raise(|| (ErrorKind::Database, "Failed to store metadata"))?;
             }
 
             Ok(affected_album_ids)

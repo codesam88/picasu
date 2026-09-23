@@ -132,15 +132,22 @@ use std::fs;
 pub fn initialize_file() {
     let root = get_data_path();
 
-    // Ensure METADATA_TABLE exists so that read-only callers (e.g. init_dir_album_cache)
-    // never see TableDoesNotExist on a fresh or reset database.
+    // Ensure the store-of-record tables exist so that read-only callers
+    // (e.g. init_dir_album_cache, build_from_asset_tables) never see
+    // TableDoesNotExist on a fresh or reset database.
     {
         let txn = TREE
             .in_disk
             .begin_write()
             .expect("failed to begin write transaction");
         txn.open_table(METADATA_TABLE)
-            .expect("failed to open table");
+            .expect("failed to open METADATA_TABLE");
+        txn.open_table(crate::storage::db::ASSET_BY_PATH)
+            .expect("failed to open ASSET_BY_PATH");
+        txn.open_table(crate::storage::db::ASSET_BY_ID)
+            .expect("failed to open ASSET_BY_ID");
+        txn.open_table(crate::storage::db::DUPE_INDEX)
+            .expect("failed to open DUPE_INDEX");
         txn.commit().expect("failed to commit transaction");
     }
 

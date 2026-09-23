@@ -85,44 +85,71 @@ impl Tree {
         tag_infos
     }
 
-    /// Return all filesystem-backed (dir) albums.
+    /// Return all filesystem-backed (dir) albums, composed from each album's
+    /// identity `AssetRecord` plus its stored metadata payload.
     pub fn read_albums(&self) -> Result<Vec<AlbumCombined>, AppError> {
-        self.in_disk
+        use crate::model::asset::AssetRecord;
+        use crate::model::metadata_record::{MetadataRecord, compose_abstract_data};
+        use redb::ReadableDatabase;
+
+        let read_txn = self
+            .in_disk
             .begin_read()
-            .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?
+            .or_raise(|| (ErrorKind::Database, "Failed to begin read transaction"))?;
+        let metadata_table = read_txn
             .open_table(METADATA_TABLE)
-            .or_raise(|| (ErrorKind::Database, "Failed to open METADATA_TABLE"))?
-            .iter()
-            .or_raise(|| {
+            .or_raise(|| (ErrorKind::Database, "Failed to open METADATA_TABLE"))?;
+        let id_table = read_txn
+            .open_table(ASSET_BY_ID)
+            .or_raise(|| (ErrorKind::Database, "Failed to open ASSET_BY_ID"))?;
+
+        let mut albums = Vec::new();
+        for entry in metadata_table.iter().or_raise(|| {
+            (
+                ErrorKind::Database,
+                "Failed to create iterator over METADATA_TABLE",
+            )
+        })? {
+            let (key, guard) =
+                entry.or_raise(|| (ErrorKind::Database, "Failed to read METADATA_TABLE row"))?;
+            let MetadataRecord::Album(payload) = guard.value() else {
+                continue;
+            };
+            let record_json = id_table
+                .get(key.value())
+                .or_raise(|| (ErrorKind::Database, "Failed to read ASSET_BY_ID row"))?;
+            let Some(record_json) = record_json else {
+                continue;
+            };
+            let record: AssetRecord = serde_json::from_str(record_json.value()).or_raise(|| {
                 (
                     ErrorKind::Database,
-                    "Failed to create iterator over METADATA_TABLE",
+                    "Failed to deserialize AssetRecord for album",
                 )
-            })?
-            .par_bridge()
-            .filter_map(|entry| {
-                entry
-                    .map(|(_, guard)| match guard.value() {
-                        AbstractData::Album(album) => Some(album),
-                        _ => None,
-                    })
-                    .transpose()
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .or_raise(|| {
-                (
-                    ErrorKind::Database,
-                    "Failed to collect album records in parallel",
-                )
-            })
+            })?;
+            if let AbstractData::Album(album) =
+                compose_abstract_data(&record, Some(&MetadataRecord::Album(payload.clone())))
+            {
+                albums.push(album);
+            }
+        }
+        Ok(albums)
     }
 }
 
 use redb::TableDefinition;
 
 use crate::model::abstract_data::AbstractData;
+use crate::model::metadata_record::MetadataRecord;
 
-pub const METADATA_TABLE: TableDefinition<&str, AbstractData> = TableDefinition::new("metadata");
+/// `asset_id` → metadata-only [`MetadataRecord`] payload. Identity fields
+/// (path, times, trash, size/ext, album, ids) are not stored here — see
+/// [`crate::model::metadata_record`]. The on-disk name is `asset_metadata`;
+/// rows written under the previous `metadata` name held a different value
+/// type and are intentionally left unreferenced (a clean rebuild repopulates
+/// this table; there is no migration).
+pub const METADATA_TABLE: TableDefinition<&str, MetadataRecord> =
+    TableDefinition::new("asset_metadata");
 
 // ── Path-primary asset stores ────────────────────────────────────────────────
 //
@@ -146,7 +173,7 @@ pub const DUPE_INDEX: TableDefinition<&str, &str> = TableDefinition::new("dupe_i
 
 use anyhow::Result;
 
-pub fn open_metadata_table() -> ReadOnlyTable<&'static str, AbstractData> {
+pub fn open_metadata_table() -> ReadOnlyTable<&'static str, MetadataRecord> {
     let read_txn = TREE
         .in_disk
         .begin_read()
