@@ -207,8 +207,8 @@ impl AbstractData {
                     }
                 }
                 "modified" => {
-                    if let Some(max_scan_alias) = alias.iter().max_by_key(|a| a.scan_time) {
-                        return max_scan_alias.modified;
+                    if let Some(max_scan_path) = alias.iter().max_by_key(|a| a.scan_time) {
+                        return max_scan_path.modified;
                     }
                 }
                 "random" => {

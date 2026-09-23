@@ -21,9 +21,9 @@ when:
 then:
   - response.status: 200
   # One album placeholder + two distinct image files = 3 items.
-  # The current hash-merging implementation collapses source.jpg and copy.jpg
-  # into one record, yielding only 2 items. This assertion enforces that
-  # byte-identical files remain independently addressable assets.
+  # The pre-path-primary hash-merging implementation collapsed source.jpg and
+  # copy.jpg into one record, yielding only 2 items. This assertion enforces
+  # that byte-identical files remain independently addressable assets.
   - compare:
       response.json.prefetch.dataLength: { ">=": 3 }
   - file_exists: /dup_same_album/album/source.jpg

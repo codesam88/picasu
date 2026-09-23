@@ -577,8 +577,8 @@ fn dispatch_when_item<'c>(
         execute_upload(item, vars, client)
     } else if item.get("write_file").is_some() {
         // Overwrite a file's bytes AFTER it has been indexed, so a scenario can
-        // exercise genuine verify paths (e.g. merge verify-mismatch). Paths are
-        // IMAGE_HOME-relative with a leading slash.
+        // exercise genuine verify paths (e.g. content-change verify-mismatch).
+        // Paths are IMAGE_HOME-relative with a leading slash.
         let path = item["write_file"].as_str().expect("write_file is required");
         let full = test_image_home().join(path.trim_start_matches('/'));
         if let Some(parent) = full.parent() {

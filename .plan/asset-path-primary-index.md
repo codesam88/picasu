@@ -9,20 +9,20 @@ area: backend
 
 ## Problem
 
-The current data model uses the content hash as the primary asset identity.
-One database record can contain several filesystem aliases. This couples
+The original data model used the content hash as the primary asset identity.
+One database record could contain several filesystem aliases. This coupled
 deduplication, filesystem identity, album membership, thumbnail ownership,
 and API presentation.
 
-That causes observable ambiguity:
+That caused observable ambiguity:
 
-- Identical files in the same album collapse into one API/UI item because the
-  API returns one record per hash rather than one record per file.
-- Moving or deleting one alias requires special multi-alias behavior and can
+- Identical files in the same album collapsed into one API/UI item because the
+  API returned one record per hash rather than one record per file.
+- Moving or deleting one alias required special multi-alias behavior and could
   leave the record visible through another alias.
 - Filesystem paths and sidecars are first-order objects, but the database
-  represents them as secondary aliases.
-- Hash-based metadata sharing is useful, but hash-based presentation is not
+  represented them as secondary aliases.
+- Hash-based metadata sharing is useful, but hash-based presentation was not
   aligned with the file-first filesystem model.
 
 ## Decided Design
@@ -480,11 +480,11 @@ Current contract tests added before the replacement implementation:
 
 - `backend/tests/scenarios/duplicate_files_are_independent_album_items.yaml`
   asserts that two identical uploads produce two visible album items and two
-  physical files. It currently fails because the hash-primary implementation
-  returns one merged media item plus the album discovery fixture.
+  physical files. It failed under the hash-primary implementation, which
+  returned one merged media item plus the album discovery fixture.
 - `frontend/tests/playwright/scenarios/duplicate-files-visible-independently.yaml`
   asserts that two identical uploads remain as two grid items after a fresh
-  route load. It currently fails because the frontend receives one merged
+  route load. It failed because the frontend received one merged
   duplicate item.
 
 Independent duplicate move/delete scenarios are intentionally deferred until
@@ -493,8 +493,8 @@ against the current `hash + alias` request shape would preserve the ambiguity
 the replacement implementation is intended to remove.
 
 These scenarios are acceptance tests for the replacement implementation. The
-current hash-primary failures are intentional evidence of behavior that the
-new implementation must change.
+hash-primary failures were intentional evidence of behavior that the
+new implementation had to change.
 
 ## Closure note (2026-09-23)
 

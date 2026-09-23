@@ -168,8 +168,8 @@ pub struct FileModify {
     pub scan_time: i64,
     /// Trash flag for the record's single alias. The record is visible in the
     /// gallery while the alias is live and in the trash view while it is
-    /// trashed; a pruned alias (`alias: None`) matches neither view. Newly
-    /// discovered aliases are always live.
+    /// trashed; a pruned alias (`alias: None`) matches neither view. A newly
+    /// discovered path is always live.
     pub is_trashed: bool,
 }
 

@@ -5,7 +5,7 @@ priority: medium
 area: backend
 ---
 
-Concurrency/locking concerns in the stale-alias sweep introduced with the PR \#17 work. Raised in PR \#17 review
+Concurrency/locking concerns in the stale-path sweep introduced with the PR \#17 work. Raised in PR \#17 review
 (2026-09-07); needs confirming and deciding.
 
 ## Context

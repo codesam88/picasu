@@ -42,8 +42,9 @@ when:
     body: { Album: "${album}" }
 then:
   - response.status: 200
-  # One discovery fixture plus two uploaded files. The current hash-primary
-  # implementation returns only two; this is intentionally a migration test.
+  # One discovery fixture plus two uploaded files. The pre-path-primary
+  # hash-primary implementation returned only two; this was written as a
+  # migration test and now passes under path-primary.
   - compare:
       response.json.prefetch.dataLength: { ">=": 3 }
   # Both physical files must exist even when the API identity changes.
