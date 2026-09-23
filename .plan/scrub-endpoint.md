@@ -13,6 +13,11 @@ detect DB records whose derived fields have drifted from what fresh extraction w
 produce (due to partial write, extraction bug, FS corruption, or interrupted indexing),
 report mismatches, and — after user review — optionally repair them.
 
+> Cleanup note (2026-09-23): this design was written for hash-primary,
+> multi-alias records. It is not ready for implementation under path-primary.
+> Rewrite the data model, duplicate handling, and repair contract before
+> moving this item out of backlog. See `.plan/path-primary-cleanup.md`.
+
 ---
 
 ## Context: what the code actually does today

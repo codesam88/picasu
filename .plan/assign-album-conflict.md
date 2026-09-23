@@ -9,14 +9,13 @@ Tracked in `pre01.md` (meta) as 1c.
 
 ## Feature status
 
-The `assign_album` conflict feature has passing scenario coverage on `main`
-(`skip|rename|replace`). The design was explored and implemented on this branch
-as `rename|merge` (see Progress below), but that direction was **reverted in
-design review**: `merge` is too aggressive for an FS-first gallery where users
-may intentionally keep the same file in multiple albums via sync tools.
+The `assign_album` conflict feature has passing scenario coverage for the
+path-primary asset model. Each physical file is an independent asset identified
+by `asset_id`; same-content files remain independent and are grouped through
+`DUPE_INDEX`.
 
 **Target state:** `OnConflict` = `skip` / `rename` on both assign and upload.
-`replace` is dropped (data-loss hazard). No merge deduplication.
+`replace` is dropped (data-loss hazard). Identity-based merge is not supported.
 
 ## Conflict model
 
@@ -31,8 +30,8 @@ Two modes. The caller chooses per-operation. Backend default for missing field:
   (`photo-001.jpg`, `photo-002.jpg`, …). Return 200 with outcome `renamedFrom`.
   Never overwrites different bytes.
 
-Sidecar moves with the selected physical file. Sibling aliases sharing the
-same hash are left untouched (G1 — selected-alias-only move).
+Sidecars move with the physical file identified by `asset_id`. Other assets with
+the same content hash are left untouched.
 
 ### Sub-album dir move (`move_album_into_album`)
 
@@ -57,16 +56,15 @@ Upload has its own `save_file` conflict handling:
 
 ### API contract
 
-- `PUT /put/assign_album` — `on_conflict: skip | rename` (required, no
-  default). `alias: Option<String>` (required for items, must be absent
-  for albums, 400 otherwise).
+- `PUT /put/assign_album` — `asset_id` and `on_conflict: skip | rename`
+  (required, no default).
 - `POST /post/upload` — `on_conflict` query param, optional, absent →
   `rename`. Values: `skip`, `rename`.
 - Response body: `{ outcome: "moved" | "renamedFrom" | "skipped" }`.
 
 ## Routes & interaction vectors
 
-- `PUT /put/assign_album` — accepts image, video, or dir-album hashes. Reached
+- `PUT /put/assign_album` — accepts image, video, or dir-album asset IDs. Reached
   from `ItemAlbum.vue` (metadata panel), `ItemEditAlbums.vue` (single menu),
   `ItemBatchEditAlbums.vue` + `AssignAlbumModal.vue` (batch = sequential loop
   of independent calls).
@@ -76,19 +74,16 @@ Upload has its own `save_file` conflict handling:
   - trash-restore → move (`setTrashed(false)` then `assign_album`),
   - create-album → move (`createDirAlbum` then `assign_album`).
 
-## Open decisions
+## Decisions
 
-- **G1 — selected-alias-only move.** Assign operates on the concrete physical
-  file: the **selected alias**. A move affects only that alias; sibling aliases
-  sharing the same hash stay where they are. `AssignAlbumData` gains a required
-  `alias` field (the selected file's path); missing → 400 for items, must be
-  absent for albums.
+- **G1 — asset-specific move.** Assign operates on the one physical file
+  identified by `asset_id`. Same-content assets remain independent.
 
 - **G2 — conflict model.** `skip` / `rename` on both assign and upload.
   `replace` removed. Default upload strategy: `rename`. Assign `on_conflict`
   is required with no default.
 
-- **G3 — frontend pass-through.** `assignAlbum()` must send `alias` and
+- **G3 — frontend pass-through.** `assignAlbum()` sends `assetId` and
   `onConflict`. `AssignAlbumModal` gains a Skip / Rename radio (Rename
   default). Outcome maps to toast/chip: moved / renamedFrom / skipped.
   Batch flow surfaces per-file results.
@@ -126,8 +121,6 @@ Upload has its own `save_file` conflict handling:
    200 `skipped`, source and dest both present.
 4. `assign_rename_same_hash_different_name` — rename with same hash, different
    filename → both copies kept in target album.
-5. `assign_bypass_alias_required` — item move without `alias` → 400.
-6. `assign_album_alias_rejected` — album move with `alias` set → 400.
 
 ## Race conditions
 
@@ -140,21 +133,19 @@ Upload has its own `save_file` conflict handling:
 
 ## Security notes
 
-- Request inputs are opaque (`hash`, `album_id`) and resolved server-side —
+- Request inputs are opaque (`asset_id`, `album_id`) and resolved server-side —
   no path traversal from request bodies.
-- Unknown `album_id` / missing `hash` → 400 (covered).
+- Unknown `album_id` / missing `asset_id` → 400 (covered).
 - No code path writes different bytes over an existing indexed path.
 
 ## Implementation plan (commits)
 
-### Phase 1 — API contract + G1
+### Phase 1 — API contract + asset identity
 
-- **C1 — enum + alias.** `OnConflict` → `{Skip, Rename}` (drop Replace and
-  Merge, keep `#[default]` as `Rename` for upload backward compat). `AssignAlbumData`
-  gains required `alias` + required `on_conflict`. Backend validates alias
-  against the record (400 if missing/wrong). Move rewrites only the selected
-  alias entry. Stale-check on the selected alias. Return `AssignResult`
-  `{ outcome: moved | renamedFrom | skipped }`. utoipa schema updated.
+- **C1 — enum + asset ID.** `OnConflict` → `{Skip, Rename}`. `AssignAlbumData`
+  requires `asset_id` and `on_conflict`. The move resolves the canonical path
+  from the asset record. Return `AssignResult` `{ outcome: moved |
+renamedFrom | skipped }`. Update the utoipa schema.
 
 ### Phase 2 — Skip behavior
 
@@ -165,7 +156,7 @@ Upload has its own `save_file` conflict handling:
 
 ### Phase 3 — Frontend
 
-- **C3 — frontend.** `assignAlbum()` sends `alias` + `onConflict`. Modal:
+- **C3 — frontend.** `assignAlbum()` sends `assetId` + `onConflict`. Modal:
   Skip / Rename radio (Rename default). Outcome → toast (moved /
   renamedFrom / skipped). Batch per-file results. Upload: `on_conflict`
   stays absent (defaults to `rename`).
@@ -173,24 +164,20 @@ Upload has its own `save_file` conflict handling:
 ### Phase 4 — Tests
 
 - **C4 — scenarios.** Delete obsolete replace scenarios. Delete
-  `assign_conflict_default_skip` (replaced by required-field test). Add new
-  scenarios (self-move, outcome-skipped, alias-required, etc.). Update
-  surviving `assign_*` callers with `alias` + `onConflict`.
+  `assign_conflict_default_skip` (replaced by required-field test). Keep
+  self-move, conflict-outcome, and independent-duplicate scenarios. Update
+  surviving `assign_*` callers with `assetId` + `onConflict`.
 
 ### Phase 5 — Cleanup
 
-- **C5 — probe + dead code.** Remove merge-specific code paths. Remove
-  `merge_dedup_upload`. Remove `merge_album_tree`. Remove `DeduplicatedRemoved`
-  outcome variant. Keep test-only DB probe only if still useful for G1
-  alias-preservation tests; otherwise remove it.
+- **C5 — probe + dead code.** Keep only path-primary duplicate-group and
+  asset-record probes needed by tests. Remove obsolete identity-merge references
+  from plans and generated references.
 
 ## Progress
 
-- 2026-09-16: G1 resolved — selected-alias-only move, required `alias` field.
-- 2026-09-16: G2 initially settled as rename|merge. Explored and implemented
-  on this branch. Design review decided merge was wrong direction for FS-first
-  gallery. Reverted to skip/rename.
-- 2026-09-16–17: Implementation commits C1–C10 implemented the rename|merge
-  model. All are candidates for rollback except G1 (selected-alias-only move)
-  which is retained.
-- 2026-09-18: Plan rewritten for skip/rename target state.
+- 2026-09-16–18: Conflict handling settled on `skip` / `rename`; identity-based
+  merge and overwrite behavior are not supported.
+- 2026-09-23: Plan aligned with path-primary asset identity. The move contract
+  uses `asset_id`; duplicate behavior is covered independently through
+  `DUPE_INDEX` scenarios.

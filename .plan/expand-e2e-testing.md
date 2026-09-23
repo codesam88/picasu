@@ -25,6 +25,8 @@ Older items:
 - [ ] Share capability flags (`show_metadata`, `show_download`, `show_upload`) — create share with flags, verify metadata stripped / download suppressed / upload gated
 - [ ] `assign_album` targeting a manual album (no `dir_path`) → 4xx — confirm error on non-dir albums
 - [ ] Stale `DIR_ALBUM_CACHE` — dir deleted externally → clear error (needs `delete_dir` DSL verb first)
-- [ ] `POST /upload` with hash already known but different album → last-write-wins
-- [ ] `GET /object/*` with wrong hash-scoped token → 401/403
+- [ ] `POST /upload` with content hash already known in a different album →
+      create an independent asset, preserve both album entries, and update
+      `DUPE_INDEX` without last-write-wins behavior
+- [ ] `GET /object/*` with another asset's asset-ID token → 401/403
 - [ ] Prefetch snapshot expiry — blocked until prefetch-expiry bug is fixed
