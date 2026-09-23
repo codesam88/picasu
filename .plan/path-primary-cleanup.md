@@ -38,18 +38,22 @@ mark superseded decisions rather than silently rewriting history.
 
 ### 2. Assign-album request contract
 
-**Status:** needs focused review before implementation.
+**Status:** complete.
 
-**Decision:** likely remove `alias` from `AssignAlbumData` and the frontend
+**Decision:** remove `alias` from `AssignAlbumData` and the frontend
 request. `asset_id` already identifies the one physical file to move. Keep
 `on_conflict` and the `moved` / `renamedFrom` / `skipped` result contract.
+Reject unknown request fields (`deny_unknown_fields`); a legacy body that
+still sends `alias` is a 400, not a silent ignore — backward compatibility
+with the multi-alias shape is not a goal.
 
-**Scope after approval:**
+**Scope:**
 
 - Remove `alias` validation and plumbing from backend and frontend.
 - Update OpenAPI and all assign callers.
-- Replace alias-required and album-alias-rejected scenarios with asset-ID/path
-  validation scenarios only where they test actual behavior.
+- Alias-required and album-alias-rejected scenarios are obsolete under the
+  path-primary contract and have been removed from request bodies; no
+  replacement scenarios are needed for a field that no longer exists.
 - Verify stale-path behavior through the asset's canonical path, not a caller
   supplied path.
 
@@ -107,7 +111,7 @@ reference behavior and duplicate-preservation tests.
 ## Execution Order
 
 1. Align plans and comments; record superseded alias/G1/merge decisions. **Done.**
-2. Review and change the assign request contract.
+2. Review and change the assign request contract. **Done.**
 3. Reshape test probes and rename/consolidate scenarios.
 4. Rename internal path helpers after their callers and test contracts settle.
 5. Run the full alias/duplicate scenario subset, then the normal checks.
@@ -120,3 +124,15 @@ reference behavior and duplicate-preservation tests.
 - 2026-09-23: Completed direct alignment of the active/open lifecycle and
   assign plans with path-primary asset identity. Remaining work is the assign
   request contract, test probes, and internal helper naming.
+- 2026-09-23: Category 2 done. `alias` removed from `AssignAlbumData`,
+  `move_asset_into_album`/`move_album_into_album`, and the frontend
+  `assignAlbum` body; asset moves resolve `canonical_path` via `ASSET_BY_ID`.
+  Contract unit tests pin the OpenAPI schema (no `alias`; required =
+  `assetId`/`albumId`/`onConflict`). Scenario request bodies stripped of
+  `alias`; stale-path scenario keeps asserting non-200 via the canonical path.
+  OpenAPI reference regenerated. Categories 3–4 untouched.
+- 2026-09-23: Review follow-up: `AssignAlbumData` now uses
+  `deny_unknown_fields`, so a legacy body carrying `alias` fails
+  deserialization (unit-tested) instead of being silently ignored.
+  Category 2 scope no longer asks to replace alias-required /
+  album-alias-rejected scenarios — those cases are obsolete and removed.

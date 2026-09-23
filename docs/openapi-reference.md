@@ -4279,10 +4279,11 @@ the response does not race subsequent `prefetch`/`get-data` calls.
 This operation does not require authentication
 </aside>
 
-## Move a media item into the album's directory on disk, update the DB alias,
+## Move the asset identified by `asset_id` into the album's directory on disk
 
-and record the explicit album membership. Returns 400 if the file is not
-found at the recorded alias path (stale alias — user must re-index first).
+(resolved from its canonical physical path), update the stored path and
+album membership, and report the conflict outcome. Returns 400 if the file
+is missing at the asset's canonical path (stale record — re-index first).
 
 <a id="opIdassign_album"></a>
 
@@ -4307,7 +4308,6 @@ Accept: application/json
 ```javascript
 const inputBody = '{
   "albumId": "string",
-  "alias": "string",
   "assetId": "string",
   "onConflict": "skip"
 }';
@@ -4442,15 +4442,15 @@ func main() {
 ```json
 {
   "albumId": "string",
-  "alias": "string",
   "assetId": "string",
   "onConflict": "skip"
 }
 ```
 
-<h3 id="move-a-media-item-into-the-album's-directory-on-disk,-update-the-db-alias,
-and-record-the-explicit-album-membership.--returns-400-if-the-file-is-not
-found-at-the-recorded-alias-path-(stale-alias-—-user-must-re-index-first).-parameters">Parameters</h3>
+<h3 id="move-the-asset-identified-by-`asset_id`-into-the-album's-directory-on-disk
+(resolved-from-its-canonical-physical-path),-update-the-stored-path-and
+album-membership,-and-report-the-conflict-outcome.-returns-400-if-the-file
+is-missing-at-the-asset's-canonical-path-(stale-record-—-re-index-first).-parameters">Parameters</h3>
 
 | Name | In   | Type                                      | Required | Description |
 | ---- | ---- | ----------------------------------------- | -------- | ----------- |
@@ -4466,9 +4466,10 @@ found-at-the-recorded-alias-path-(stale-alias-—-user-must-re-index-first).-par
 }
 ```
 
-<h3 id="move-a-media-item-into-the-album's-directory-on-disk,-update-the-db-alias,
-and-record-the-explicit-album-membership.--returns-400-if-the-file-is-not
-found-at-the-recorded-alias-path-(stale-alias-—-user-must-re-index-first).-responses">Responses</h3>
+<h3 id="move-the-asset-identified-by-`asset_id`-into-the-album's-directory-on-disk
+(resolved-from-its-canonical-physical-path),-update-the-stored-path-and
+album-membership,-and-report-the-conflict-outcome.-returns-400-if-the-file
+is-missing-at-the-asset's-canonical-path-(stale-record-—-re-index-first).-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                     | Schema                              |
 | ------ | ---------------------------------------------------------------- | ------------------------------- | ----------------------------------- |
@@ -10271,7 +10272,6 @@ This operation does not require authentication
 ```json
 {
   "albumId": "string",
-  "alias": "string",
   "assetId": "string",
   "onConflict": "skip"
 }
@@ -10279,12 +10279,11 @@ This operation does not require authentication
 
 ### Properties
 
-| Name       | Type                            | Required | Restrictions | Description                                                                                                                    |
-| ---------- | ------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| albumId    | string                          | true     | none         | none                                                                                                                           |
-| alias      | string,null                     | false    | none         | Selected alias path for item records; must be absent (null) for albums.                                                        |
-| assetId    | string                          | true     | none         | Path-primary asset ID. The handler resolves the record via<br>`ASSET_BY_ID`, allowing independent movement of same-hash files. |
-| onConflict | [OnConflict](#schemaonconflict) | true     | none         | none                                                                                                                           |
+| Name       | Type                            | Required | Restrictions | Description                                                                                                                                                       |
+| ---------- | ------------------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| albumId    | string                          | true     | none         | none                                                                                                                                                              |
+| assetId    | string                          | true     | none         | Path-primary asset ID. The handler resolves the record and its<br>canonical physical path via `ASSET_BY_ID`, allowing independent<br>movement of same-hash files. |
+| onConflict | [OnConflict](#schemaonconflict) | true     | none         | none                                                                                                                                                              |
 
 <h2 id="tocS_AssignOutcome">AssignOutcome</h2>
 <!-- backwards compatibility -->

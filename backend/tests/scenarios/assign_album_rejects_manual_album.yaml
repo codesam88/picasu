@@ -9,6 +9,5 @@ when:
     assetId: "${asset_id}"
     albumId: "bogus-manual-album"
     onConflict: "rename"
-    alias: "${data_path}/manual_album_test/photo.jpg"
 then:
   - response.status: 400

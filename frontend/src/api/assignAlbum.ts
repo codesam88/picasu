@@ -21,20 +21,14 @@ export async function assignAlbum(
   const dataStore = useDataStore(isolationId)
 
   const success = await tryWithMessageStore('mainId', async () => {
-    const item = dataStore.data.get(index)
     const body: {
       assetId: string
       albumId: string
       onConflict: 'skip' | 'rename'
-      alias?: string
     } = {
       assetId,
       albumId,
       onConflict
-    }
-    if (item !== undefined && item.type !== 'album') {
-      const alias = item.alias?.file
-      if (alias !== undefined) body.alias = alias
     }
     const response = await axios.put<AssignAlbumResult>('/put/assign_album', body)
     if (response.status !== 200) {

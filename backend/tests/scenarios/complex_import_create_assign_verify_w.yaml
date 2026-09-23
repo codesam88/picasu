@@ -31,7 +31,6 @@ when:
       assetId: "${photo1_asset}"
       albumId: "${parent}"
       onConflict: "rename"
-      alias: "${data_path}/e2e_w/photo1.jpg"
     then:
       - response.status: 200
   # Step 3: Assign second photo to parent album
@@ -40,7 +39,6 @@ when:
       assetId: "${photo2_asset}"
       albumId: "${parent}"
       onConflict: "rename"
-      alias: "${data_path}/e2e_w/photo2.jpg"
     then:
       - response.status: 200
   # Step 4: Verify tag counts reflect all imported metadata

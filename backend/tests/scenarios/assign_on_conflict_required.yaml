@@ -13,7 +13,6 @@ when:
     body:
       assetId: "${src_asset}"
       albumId: "${album}"
-      alias: "${data_path}/e2e_oc/src/p.jpg"
     then:
       - response.status_not: 200
   # replace is no longer a valid enum value → 400
@@ -22,7 +21,6 @@ when:
       assetId: "${src_asset}"
       albumId: "${album}"
       onConflict: "replace"
-      alias: "${data_path}/e2e_oc/src/p.jpg"
     then:
       - response.status_not: 200
   # rename: move the file (no collision, so Moved)
@@ -31,7 +29,6 @@ when:
       assetId: "${src_asset}"
       albumId: "${album}"
       onConflict: "rename"
-      alias: "${data_path}/e2e_oc/src/p.jpg"
     then:
       - response.status: 200
       - response.json.outcome: "moved"
@@ -41,7 +38,6 @@ when:
       assetId: "${src_asset}"
       albumId: "${album}"
       onConflict: "skip"
-      alias: "${data_path}/e2e_oc/album/p.jpg"
     then:
       - response.status: 200
       - response.json.outcome: "skipped"
