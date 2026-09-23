@@ -3,8 +3,8 @@ use crate::storage::asset_store;
 use log::{info, warn};
 use std::path::{Path, PathBuf};
 
-/// Remove the original file and its `.xmp` sidecar from disk.
-fn remove_alias_file(file: &str) {
+/// Remove the asset's file and its `.xmp` sidecar from disk.
+fn remove_asset_file(file: &str) {
     let original = Path::new(file);
     if let Err(e) = std::fs::remove_file(original)
         && e.kind() != std::io::ErrorKind::NotFound
@@ -19,9 +19,9 @@ fn remove_alias_file(file: &str) {
     }
 }
 
-/// Normalize an alias file path to an absolute path, resolving relative paths
-/// against the configured image home.
-pub fn normalize_alias_path(file: &str) -> PathBuf {
+/// Normalize a stored asset path to an absolute path, resolving relative
+/// paths against the configured image home.
+pub fn normalize_asset_path(file: &str) -> PathBuf {
     let p = Path::new(file);
     if p.is_absolute() {
         p.to_path_buf()
@@ -32,25 +32,25 @@ pub fn normalize_alias_path(file: &str) -> PathBuf {
     }
 }
 
-/// Remove the given alias path from `data`, deleting its file + sidecar from
-/// disk.  Returns `true` if the record still has an alias remaining (and
-/// should be persisted), `false` if the alias is gone (thumbnail + DB removal
-/// caller's responsibility). Albums (no alias) return `false`.
-pub fn prune_alias_paths(data: &mut AbstractData, target: &Path) -> bool {
-    remove_alias_file(target.to_string_lossy().as_ref());
+/// Remove the asset path `target` from `data`, deleting its file + sidecar
+/// from disk.  Returns `true` if the record still holds its canonical path
+/// (and should be persisted), `false` once the path is gone (thumbnail + DB
+/// removal caller's responsibility). Albums (no path) return `false`.
+pub fn prune_asset_path(data: &mut AbstractData, target: &Path) -> bool {
+    remove_asset_file(target.to_string_lossy().as_ref());
 
-    let Some(alias_slot) = data.alias_mut() else {
+    let Some(path_slot) = data.alias_mut() else {
         return false;
     };
 
-    if alias_slot
+    if path_slot
         .as_ref()
         .is_some_and(|a| Path::new(&a.file) == target)
     {
-        *alias_slot = None;
+        *path_slot = None;
     }
 
-    if alias_slot.is_none() {
+    if path_slot.is_none() {
         remove_compressed_thumbnail(data);
         false
     } else {
@@ -58,22 +58,22 @@ pub fn prune_alias_paths(data: &mut AbstractData, target: &Path) -> bool {
     }
 }
 
-/// Remove the alias if its file no longer exists on disk.  Returns `true` if
-/// the record still has an alias remaining, `false` if the alias is gone
-/// (thumbnail already removed by this call). Albums return `false`.
-pub fn prune_stale_aliases(data: &mut AbstractData) -> bool {
-    let Some(alias_slot) = data.alias_mut() else {
+/// Remove the record's path if its file no longer exists on disk.  Returns
+/// `true` if the record still holds its canonical path, `false` once the path
+/// is gone (thumbnail already removed by this call). Albums return `false`.
+pub fn prune_stale_asset_path(data: &mut AbstractData) -> bool {
+    let Some(path_slot) = data.alias_mut() else {
         return false;
     };
 
-    let stale = alias_slot
+    let stale = path_slot
         .as_ref()
-        .is_some_and(|a| !normalize_alias_path(&a.file).exists());
+        .is_some_and(|a| !normalize_asset_path(&a.file).exists());
     if stale {
-        *alias_slot = None;
+        *path_slot = None;
     }
 
-    if alias_slot.is_none() {
+    if path_slot.is_none() {
         remove_compressed_thumbnail(data);
         false
     } else {

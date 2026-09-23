@@ -42,7 +42,7 @@ Branch `feat/delete-multi-alias` — TDD red-green implemented.
 - All checks pass: `just check` (clippy, fmt, vue-tsc, eslint, prettier, plan lint), `just test` (258 backend + 33
   Playwright E2E), zero failures.
 
-**Deferred (follow-up PR):** Refactor `start_watcher::handle_removed_file` and `album_index::sweep_stale_aliases` to
+**Deferred (follow-up PR):** Refactor `start_watcher::handle_removed_file` and `album_index::sweep_stale_asset_paths` to
 reuse shared delete logic (code-sharing requested in design review; adds `.xmp` sidecar cleanup for externally deleted
 aliases). The multi-alias "last alias only" rule is no longer applicable — the asset-ID model treats each physical file
 as a distinct asset, so deleting one asset never affects same-hash siblings.

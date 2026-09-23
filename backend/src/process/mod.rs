@@ -1,9 +1,9 @@
-pub mod alias;
 pub mod dir_album;
 pub mod exif;
 pub mod hash;
 pub mod index;
 pub mod misc;
+pub mod path;
 pub mod rebuild;
 pub mod sanitize;
 pub mod thumbnail;

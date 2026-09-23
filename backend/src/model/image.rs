@@ -31,8 +31,8 @@ pub struct ImageMetadata {
     pub album: Option<ArrayString<64>>,
     pub exif_vec: BTreeMap<String, String>,
     /// The record's single source path and its timestamps. `None` means the
-    /// alias was pruned (file gone / stale sweep) — path-primary records
-    /// never carry more than one alias.
+    /// path was pruned (file gone / stale sweep); path-primary records hold
+    /// at most one path.
     pub alias: Option<FileModify>,
 }
 

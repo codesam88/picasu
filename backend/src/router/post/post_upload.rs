@@ -262,7 +262,7 @@ pub async fn upload(
             // uploaded file is only safely removable when no index record
             // references it. Only a content-decode failure guarantees that,
             // so check before deleting — otherwise the file would be removed
-            // while a committed alias still points at it.
+            // while a committed index record still points at it.
             if record_exists_for(Path::new(&final_path), relative_src) {
                 error!("Uploaded file was indexed but the pipeline failed: {index_error}");
                 return Err(AppError::new(

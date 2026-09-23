@@ -40,8 +40,8 @@ fn update_tree_task() {
     let mut database_timestamp_vec = build_from_asset_tables(&priority_list).unwrap_or_default();
 
     // Sort by timestamp descending, with a deterministic secondary key
-    // (the alias path) so that items with equal timestamps have a stable
-    // order.
+    // (the canonical asset path) so that items with equal timestamps have a
+    // stable order.
     database_timestamp_vec.par_sort_by(|a, b| {
         b.timestamp.cmp(&a.timestamp).then_with(|| {
             let a_path = a.abstract_data.alias().map_or("", |a| a.file.as_str());
@@ -94,7 +94,7 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
             .map(|g| g.value());
 
         let abstract_data = if let Some(mut data) = rich_data {
-            trim_aliases_to_path(&mut data, &record);
+            align_path_to_asset(&mut data, &record);
             data
         } else {
             minimal_abstract_data(&record)
@@ -119,19 +119,19 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
     }
 }
 
-/// Align an `AbstractData` record's single alias with the given asset's
-/// path. Keeps the stored alias when its path already matches the
-/// `AssetRecord`; replaces it with a synthetic alias built from the record
+/// Align an `AbstractData` record's stored path with the given asset's
+/// canonical path. Keeps the stored path when it already matches the
+/// `AssetRecord`; replaces it with a synthetic entry built from the record
 /// when it mismatches or when the slot is empty (mirroring the old
 /// retain-then-push behaviour, so a tree row always carries its asset's
 /// path).
-fn trim_aliases_to_path(
+fn align_path_to_asset(
     data: &mut crate::model::abstract_data::AbstractData,
     record: &crate::model::asset::AssetRecord,
 ) {
     use crate::model::abstract_data::AbstractData;
     use crate::model::response::FileModify;
-    let alias = FileModify {
+    let asset_path = FileModify {
         file: record.canonical_path.clone(),
         modified: record.modified,
         scan_time: record.scan_time,
@@ -144,7 +144,7 @@ fn trim_aliases_to_path(
     };
     match slot {
         Some(a) if a.file == record.canonical_path => {}
-        _ => *slot = Some(alias),
+        _ => *slot = Some(asset_path),
     }
 }
 

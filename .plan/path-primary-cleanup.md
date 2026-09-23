@@ -79,7 +79,7 @@ separate `asset_id` values and, where necessary, the duplicate-group probe.
 
 ### 4. Internal alias naming and path helpers
 
-**Status:** defer until categories 1–3 settle.
+**Status:** complete.
 
 **Decision:** preserve the current `alias: Option<FileModify>` model field in
 the first pass if it is still the storage location for file metadata. Rename
@@ -87,9 +87,24 @@ helper functions and comments only when the new name is unambiguous and the
 change has no API consequence. A full field rename is a separate migration,
 not incidental cleanup.
 
-**Candidate scope:** `process/alias.rs`, `prune_alias_paths`,
-`prune_stale_aliases`, `normalize_alias_path`, `sweep_stale_aliases`,
-`trim_aliases_to_path`, and stale “remaining aliases” comments.
+**Candidate scope:** `process/path.rs`, `normalize_asset_path`,
+`prune_asset_path`, `prune_stale_asset_path`, `sweep_stale_asset_paths`,
+`align_path_to_asset`, and stale “remaining aliases” comments. These are the
+current names; they replace the previous `process/alias.rs`,
+`normalize_alias_path`, `prune_alias_paths`, `prune_stale_aliases`,
+`sweep_stale_aliases`, and `trim_aliases_to_path` (full mapping in the Result
+note below).
+
+**Result (2026-09-23):** renamed to path/asset terminology. `process/alias.rs`
+is now `process/path.rs`, hosting `normalize_asset_path`, `prune_asset_path`,
+`prune_stale_asset_path`, and the private `remove_asset_file`;
+`sweep_stale_aliases` → `sweep_stale_asset_paths` (`album_index.rs`);
+`trim_aliases_to_path` → `align_path_to_asset` (`update_tree.rs`). Stale
+“remaining aliases” / “alias path” comments and the index-task error string
+now use canonical-path wording. The `AbstractData.alias` storage field, the
+`alias()` / `alias_mut()` accessors, and external response fields are
+unchanged; `remove_compressed_thumbnail` keeps its DUPE_INDEX/shared-thumbnail
+semantics.
 
 ### 5. Merge and duplicate semantics
 
@@ -113,8 +128,8 @@ reference behavior and duplicate-preservation tests.
 1. Align plans and comments; record superseded alias/G1/merge decisions. **Done.**
 2. Review and change the assign request contract. **Done.**
 3. Reshape test probes and rename/consolidate scenarios. **Done.**
-4. Rename internal path helpers after their callers and test contracts settle.
-5. Run the full alias/duplicate scenario subset, then the normal checks.
+4. Rename internal path helpers after their callers and test contracts settle. **Done.**
+5. Run the full alias/duplicate scenario subset, then the normal checks. **Done.**
 
 ## Progress
 
@@ -145,3 +160,17 @@ reference behavior and duplicate-preservation tests.
   scenarios remained to remove; duplicate coverage stays on separate asset IDs
   plus the DUPE_INDEX group probe. OpenAPI reference regenerated. Category 4
   (internal helper renaming) untouched.
+- 2026-09-23: Category 4 (internal alias naming) done. `process/alias.rs` →
+  `process/path.rs` (module `path`) with `normalize_asset_path`,
+  `prune_asset_path`, `prune_stale_asset_path`, private `remove_asset_file`;
+  callers renamed `sweep_stale_aliases` → `sweep_stale_asset_paths` and
+  `trim_aliases_to_path` → `align_path_to_asset`. Stale “remaining
+  aliases”/“alias path” comments, debug logs, and the index-task error string
+  reworded to canonical-path terminology; field/wire references to
+  `AbstractData.alias` intentionally left as-is. `remove_compressed_thumbnail`
+  DUPE_INDEX/shared-thumbnail behavior unchanged. Symbol references updated in
+  `album-index-sweep-concurrency`, `delete-from-disk`, and
+  `path-primary-asset-execution`. Verification: `just check` and full
+  `just test` green (backend 265 unit + 3 integration tests, 34 Playwright
+  scenarios including the stale-path/duplicate subset, utils + frontend
+  vitest).

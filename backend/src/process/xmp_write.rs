@@ -14,8 +14,8 @@ use std::path::Path;
 ///   it would freeze and survive a later directory rename instead of being
 ///   re-derived from the new name.
 ///
-/// Images/videos write `{basename}.{ext}.xmp` alongside their primary alias
-/// file. Albums write `.albuminfo.xmp` inside `dir_path`. Items with no alias
+/// Images/videos write `{basename}.{ext}.xmp` alongside their asset file.
+/// Albums write `.albuminfo.xmp` inside `dir_path`. Items with no path
 /// (pruned or album) have nowhere on disk to write and are silently skipped
 /// (Ok returned).
 ///
