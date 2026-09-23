@@ -18,7 +18,7 @@ describe('databaseTimestampSchema', () => {
         isArchived: false,
         rating: null,
         updateAt: 0,
-        alias: []
+        alias: null
       },
       timestamp: 1700000000000,
       token: 'tok_123',
@@ -48,7 +48,7 @@ describe('databaseTimestampSchema', () => {
         isArchived: false,
         rating: null,
         updateAt: 0,
-        alias: []
+        alias: null
       },
       timestamp: 1700000000000,
       token: 'tok_123'
@@ -72,13 +72,13 @@ describe('databaseTimestampSchema', () => {
       isArchived: false,
       rating: null,
       updateAt: 0,
-      alias: []
+      alias: null
     }
 
     const item1 = {
       abstractData: {
         ...base,
-        alias: [{ file: '/path/a.jpg', modified: 1000, scanTime: 1000, isTrashed: false }]
+        alias: { file: '/path/a.jpg', modified: 1000, scanTime: 1000, isTrashed: false }
       },
       timestamp: 1700000000000,
       token: 'tok_a',
@@ -88,7 +88,7 @@ describe('databaseTimestampSchema', () => {
     const item2 = {
       abstractData: {
         ...base,
-        alias: [{ file: '/path/b.jpg', modified: 2000, scanTime: 2000, isTrashed: false }]
+        alias: { file: '/path/b.jpg', modified: 2000, scanTime: 2000, isTrashed: false }
       },
       timestamp: 1700000000001,
       token: 'tok_b',
@@ -122,7 +122,7 @@ describe('databaseTimestampSchema', () => {
         isArchived: false,
         rating: null,
         updateAt: 0,
-        alias: []
+        alias: null
       },
       timestamp: 1700000000000,
       token: 'tok_vid',
@@ -225,7 +225,7 @@ describe('databaseTimestampSchema', () => {
         height: 1080,
         ext: 'jpg',
         size: 1024000,
-        alias: []
+        alias: null
       },
       timestamp: 1700000000000,
       token: 'tok_img',

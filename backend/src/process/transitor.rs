@@ -1,27 +1,10 @@
 use crate::constant::DEFAULT_PRIORITY_LIST;
 use crate::model::abstract_data::AbstractData;
-use crate::model::response::{DataBaseTimestampReturn, FileModify};
+use crate::model::response::DataBaseTimestampReturn;
 use crate::storage::cache::MyCow;
 use anyhow::Result;
 use arrayvec::ArrayString;
 use redb::ReadOnlyTable;
-
-/// Trim the alias list to a single surfaced alias, preferring the newest
-/// alias matching the requested view (live in the gallery, trashed in the
-/// trash view) and falling back to the newest alias overall so the record is
-/// never dropped from either view.
-fn keep_view_alias(alias: &mut Vec<FileModify>, trashed_view: bool) {
-    let chosen = alias
-        .iter()
-        .filter(|a| a.is_trashed == trashed_view)
-        .max_by_key(|a| a.scan_time)
-        .or_else(|| alias.iter().max_by_key(|a| a.scan_time))
-        .cloned();
-    match chosen {
-        Some(last_alias) => *alias = vec![last_alias],
-        None => alias.clear(),
-    }
-}
 
 pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
     if index >= tree_snapshot.len() {
@@ -64,24 +47,24 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
             let object = ObjectSchema::new(display_id, ObjectType::Image);
             let mut metadata =
                 ImageMetadata::new(display_id, record.file_size, 0, 0, record.ext.clone());
-            metadata.alias = vec![FileModify {
+            metadata.alias = Some(FileModify {
                 file: record.canonical_path.clone(),
                 modified: record.modified,
                 scan_time: record.scan_time,
                 is_trashed: record.is_trashed,
-            }];
+            });
             AbstractData::Image(ImageCombined { object, metadata })
         }
         AssetKind::Video => {
             let object = ObjectSchema::new(display_id, ObjectType::Video);
             let mut metadata =
                 VideoMetadata::new(display_id, record.file_size, 0, 0, record.ext.clone());
-            metadata.alias = vec![FileModify {
+            metadata.alias = Some(FileModify {
                 file: record.canonical_path.clone(),
                 modified: record.modified,
                 scan_time: record.scan_time,
                 is_trashed: record.is_trashed,
-            }];
+            });
             AbstractData::Video(VideoCombined { object, metadata })
         }
         AssetKind::Album => {
@@ -140,27 +123,27 @@ pub fn lean_media_abstract_data(
     data
 }
 
-pub fn clear_abstract_data_metadata(
-    abstract_data: &mut AbstractData,
-    show_metadata: bool,
-    trashed_view: bool,
-) {
+/// Strip share-hidden metadata fields from a response row.
+///
+/// When `show_metadata` is false (a share that hides metadata), clears the
+/// album membership, tags, alias path, and EXIF so the filesystem path cannot
+/// leak through the shared view; tile rendering and locate rely on the
+/// row-level `asset_id`, not the alias.
+pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metadata: bool) {
     match abstract_data {
         AbstractData::Image(img) => {
-            keep_view_alias(&mut img.metadata.alias, trashed_view);
             if !show_metadata {
                 img.metadata.album = None;
                 img.object.tags.clear();
-                img.metadata.alias.clear();
+                img.metadata.alias = None;
                 img.metadata.exif_vec.clear();
             }
         }
         AbstractData::Video(vid) => {
-            keep_view_alias(&mut vid.metadata.alias, trashed_view);
             if !show_metadata {
                 vid.metadata.album = None;
                 vid.object.tags.clear();
-                vid.metadata.alias.clear();
+                vid.metadata.alias = None;
                 vid.metadata.exif_vec.clear();
             }
         }
@@ -188,12 +171,79 @@ pub fn cover_content_hash_from_data(
     Some(cover_data.hash())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::clear_abstract_data_metadata;
+    use crate::model::abstract_data::AbstractData;
+    use crate::model::image::{ImageCombined, ImageMetadata};
+    use crate::model::object::{ObjectSchema, ObjectType};
+    use crate::model::response::FileModify;
+    use arrayvec::ArrayString;
+
+    fn img_with_alias(is_trashed: bool) -> AbstractData {
+        let id = ArrayString::from("test").expect("failed to create ArrayString");
+        let mut metadata = ImageMetadata::new(id, 0, 0, 0, "jpg".to_string());
+        metadata.alias = Some(FileModify {
+            file: "/photos/a.jpg".to_string(),
+            modified: 1,
+            scan_time: 2,
+            is_trashed,
+        });
+        AbstractData::Image(ImageCombined {
+            object: ObjectSchema::new(id, ObjectType::Image),
+            metadata,
+        })
+    }
+
+    fn img_without_alias() -> AbstractData {
+        let id = ArrayString::from("test").expect("failed to create ArrayString");
+        AbstractData::Image(ImageCombined {
+            object: ObjectSchema::new(id, ObjectType::Image),
+            metadata: ImageMetadata::new(id, 0, 0, 0, "jpg".to_string()),
+        })
+    }
+
+    /// The alias survives `clear_abstract_data_metadata` for every view, for
+    /// every trash flag: with a single path-primary alias there is no
+    /// per-view alias selection left to do (this property was proven against
+    /// the old `keep_view_alias` implementation before it was deleted).
+    #[test]
+    fn clear_metadata_preserves_single_alias_for_every_view() {
+        for is_trashed in [false, true] {
+            let mut data = img_with_alias(is_trashed);
+            let before = data.alias().cloned();
+            clear_abstract_data_metadata(&mut data, true);
+            assert_eq!(
+                data.alias(),
+                before.as_ref(),
+                "single alias must survive (is_trashed={is_trashed})"
+            );
+        }
+    }
+
+    /// A pruned (`None`) alias stays `None` under the response trim.
+    #[test]
+    fn clear_metadata_keeps_pruned_alias_none() {
+        let mut data = img_without_alias();
+        clear_abstract_data_metadata(&mut data, true);
+        assert!(data.alias().is_none());
+    }
+
+    /// `show_metadata=false` clears the alias so a metadata-hiding share
+    /// cannot leak the filesystem path.
+    #[test]
+    fn clear_metadata_false_strips_alias() {
+        let mut data = img_with_alias(false);
+        clear_abstract_data_metadata(&mut data, false);
+        assert!(data.alias().is_none());
+    }
+}
+
 pub fn abstract_data_to_timestamp_return(
     mut abstract_data: AbstractData,
     timestamp: i64,
     show_download: bool,
     show_metadata: bool,
-    trashed_view: bool,
     asset_id: ArrayString<64>,
     cover_content_hash: Option<ArrayString<64>>,
 ) -> DataBaseTimestampReturn {
@@ -205,7 +255,7 @@ pub fn abstract_data_to_timestamp_return(
         asset_id,
         cover_content_hash,
     );
-    clear_abstract_data_metadata(&mut abstract_data, show_metadata, trashed_view);
+    clear_abstract_data_metadata(&mut abstract_data, show_metadata);
     DataBaseTimestampReturn {
         abstract_data,
         timestamp: result.timestamp,

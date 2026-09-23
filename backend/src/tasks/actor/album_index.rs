@@ -303,10 +303,10 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
         .collect()
 }
 
-/// Sweep stale aliases: for every DB record that has at least one alias
-/// path under `root`, check each alias.  If an alias points to a file
-/// that no longer exists on disk, prune it.  If no aliases remain, remove
-/// the entire record (and its compressed thumbnail).
+/// Sweep stale aliases: for every DB record whose alias path is under
+/// `root`, check the alias.  If it points to a file that no longer exists on
+/// disk, prune it; if the alias is gone, remove the entire record (and its
+/// compressed thumbnail).
 fn sweep_stale_aliases(root: &Path) {
     use crate::process::alias::normalize_alias_path;
 
@@ -314,7 +314,7 @@ fn sweep_stale_aliases(root: &Path) {
         let tree = TREE.in_memory.read().expect("lock poisoned");
         tree.iter()
             .filter(|dt| {
-                dt.abstract_data.alias().iter().any(|a| {
+                dt.abstract_data.alias().is_some_and(|a| {
                     let abs = normalize_alias_path(&a.file);
                     abs.starts_with(root)
                 })
@@ -327,14 +327,16 @@ fn sweep_stale_aliases(root: &Path) {
     let mut to_update = Vec::new();
 
     for mut data in candidates {
-        let had_aliases = !data.alias().is_empty();
-        let aliases_before = data.alias().len();
+        let had_aliases = data.alias().is_some();
+        let path_before = data.alias().map(|a| a.file.clone());
         let remaining = crate::process::alias::prune_stale_aliases(&mut data);
 
         if !remaining && had_aliases {
             to_remove.push(data);
-        } else if remaining && data.alias().len() != aliases_before {
-            // Only persist records whose alias list actually changed. The
+        } else if remaining && data.alias().map(|a| a.file.clone()) != path_before {
+            // Only persist records whose alias actually changed. Under the
+            // single-alias model a surviving prune never changes the path, so
+            // this branch only guards against future prune shapes; the
             // in-memory tree clone can lag disk (`UpdateTreeTask` rebuilds it
             // separately), and re-flushing an unchanged clone would overwrite
             // fresher writes — including reverting a content-hash change this

@@ -222,7 +222,7 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
         };
 
         // Delete canonical file + sidecar from disk.
-        for alias in abstract_data.alias() {
+        if let Some(alias) = abstract_data.alias() {
             let original = Path::new(&alias.file);
             if let Err(e) = std::fs::remove_file(original)
                 && e.kind() != std::io::ErrorKind::NotFound

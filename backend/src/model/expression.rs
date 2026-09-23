@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn trashed_matches_flag() {
         let mut i = img();
-        i.metadata.alias.push(FileModify {
+        i.metadata.alias = Some(FileModify {
             file: "/Photos/trashed.jpg".to_string(),
             modified: 0,
             scan_time: 0,
@@ -441,6 +441,32 @@ mod tests {
         let data = AbstractData::Image(i);
 
         assert!(run(Expression::Trashed(true), &data));
+        assert!(!run(Expression::Trashed(false), &data));
+    }
+
+    /// A live (non-trashed) single alias matches only the non-trashed filter.
+    #[test]
+    fn trashed_false_matches_live_alias() {
+        let mut i = img();
+        i.metadata.alias = Some(FileModify {
+            file: "/Photos/live.jpg".to_string(),
+            modified: 0,
+            scan_time: 0,
+            is_trashed: false,
+        });
+        let data = AbstractData::Image(i);
+
+        assert!(run(Expression::Trashed(false), &data));
+        assert!(!run(Expression::Trashed(true), &data));
+    }
+
+    /// A pruned alias (`None`) matches neither view, mirroring the old
+    /// empty-vec behaviour (`.any` over no aliases is always false).
+    #[test]
+    fn trashed_on_pruned_alias_matches_nothing() {
+        let data = AbstractData::Image(img());
+
+        assert!(!run(Expression::Trashed(true), &data));
         assert!(!run(Expression::Trashed(false), &data));
     }
 
@@ -469,7 +495,7 @@ mod tests {
     #[test]
     fn path_matches_alias_case_insensitively() {
         let mut i = img();
-        i.metadata.alias.push(FileModify {
+        i.metadata.alias = Some(FileModify {
             file: "/Photos/Vacation/IMG_001.jpg".to_string(),
             modified: 0,
             scan_time: 0,

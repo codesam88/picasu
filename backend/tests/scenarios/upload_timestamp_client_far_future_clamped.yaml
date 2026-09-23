@@ -32,6 +32,6 @@ then:
   - response.status: 200
   - file_exists: /e2e_utc_clamp/target/screenshot.jpeg
   - compare:
-      response.json.[0].abstractData.alias.[0].modified:
+      response.json.[0].abstractData.alias.modified:
         ">": 1600000000000
         "<": 4102444800000

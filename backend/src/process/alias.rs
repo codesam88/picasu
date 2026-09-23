@@ -33,19 +33,24 @@ pub fn normalize_alias_path(file: &str) -> PathBuf {
 }
 
 /// Remove the given alias path from `data`, deleting its file + sidecar from
-/// disk.  Returns `true` if the record still has aliases remaining (and should
-/// be persisted), `false` if the record is now empty (thumbnail + DB removal
-/// caller's responsibility).
+/// disk.  Returns `true` if the record still has an alias remaining (and
+/// should be persisted), `false` if the alias is gone (thumbnail + DB removal
+/// caller's responsibility). Albums (no alias) return `false`.
 pub fn prune_alias_paths(data: &mut AbstractData, target: &Path) -> bool {
     remove_alias_file(target.to_string_lossy().as_ref());
 
-    let Some(alias_vec) = data.alias_mut() else {
+    let Some(alias_slot) = data.alias_mut() else {
         return false;
     };
 
-    alias_vec.retain(|a| Path::new(&a.file) != target);
+    if alias_slot
+        .as_ref()
+        .is_some_and(|a| Path::new(&a.file) == target)
+    {
+        *alias_slot = None;
+    }
 
-    if alias_vec.is_empty() {
+    if alias_slot.is_none() {
         remove_compressed_thumbnail(data);
         false
     } else {
@@ -53,20 +58,22 @@ pub fn prune_alias_paths(data: &mut AbstractData, target: &Path) -> bool {
     }
 }
 
-/// Remove aliases whose files no longer exist on disk.  Returns `true` if the
-/// record still has aliases remaining, `false` if the record is now empty
-/// (thumbnail already removed by this call).
+/// Remove the alias if its file no longer exists on disk.  Returns `true` if
+/// the record still has an alias remaining, `false` if the alias is gone
+/// (thumbnail already removed by this call). Albums return `false`.
 pub fn prune_stale_aliases(data: &mut AbstractData) -> bool {
-    let Some(alias_vec) = data.alias_mut() else {
+    let Some(alias_slot) = data.alias_mut() else {
         return false;
     };
 
-    alias_vec.retain(|a| {
-        let abs = normalize_alias_path(&a.file);
-        abs.exists()
-    });
+    let stale = alias_slot
+        .as_ref()
+        .is_some_and(|a| !normalize_alias_path(&a.file).exists());
+    if stale {
+        *alias_slot = None;
+    }
 
-    if alias_vec.is_empty() {
+    if alias_slot.is_none() {
         remove_compressed_thumbnail(data);
         false
     } else {

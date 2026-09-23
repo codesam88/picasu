@@ -15,9 +15,9 @@ use std::path::Path;
 ///   re-derived from the new name.
 ///
 /// Images/videos write `{basename}.{ext}.xmp` alongside their primary alias
-/// file. Albums write `.albuminfo.xmp` inside `dir_path`. Items with no
-/// aliases have nowhere on disk to write and are silently skipped (Ok
-/// returned).
+/// file. Albums write `.albuminfo.xmp` inside `dir_path`. Items with no alias
+/// (pruned or album) have nowhere on disk to write and are silently skipped
+/// (Ok returned).
 ///
 /// Uses an atomic temp-file + rename to avoid partial-write races.
 /// Sidecar write failures are returned to the caller; callers should log and
@@ -34,11 +34,10 @@ pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
         return write_sidecar_content(&sidecar, &content);
     }
 
-    let alias = abstract_data.alias();
-    if alias.is_empty() {
+    let Some(alias) = abstract_data.alias() else {
         return Ok(());
-    }
-    let primary = Path::new(&alias[0].file);
+    };
+    let primary = Path::new(&alias.file);
     let sidecar = primary.with_extension("xmp");
     let content = format_xmp_packet(
         abstract_data.tag(),

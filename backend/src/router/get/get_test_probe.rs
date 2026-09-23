@@ -13,9 +13,10 @@ use crate::router::auth::GuardAuth;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{DUPE_INDEX, METADATA_TABLE, TREE};
 
-/// Full alias list for a single record. Only reachable in test builds when the
-/// bootstrap opts in; the regular API trims alias lists, so API E2E scenarios
-/// use this endpoint to observe the raw stored paths instead.
+/// The record's stored alias (0 or 1 entries: path-primary records hold a
+/// single path, `None` when pruned renders as an empty list). Only reachable
+/// in test builds when the bootstrap opts in; API E2E scenarios use this
+/// endpoint to observe the raw stored path instead.
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TestRecordProbe {
@@ -107,7 +108,7 @@ pub fn probe_record(
 
     Ok(Json(TestRecordProbe {
         hash: asset_id,
-        aliases: abstract_data.alias().to_vec(),
+        aliases: abstract_data.alias().into_iter().cloned().collect(),
     }))
 }
 

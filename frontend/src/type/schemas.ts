@@ -54,7 +54,7 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
   size: z.number(),
   phash: z.array(z.number()).nullable().optional().default([]),
   album: z.string().nullable().optional().default(null),
-  alias: z.array(AliasSchema).default([])
+  alias: AliasSchema.nullable().default(null)
 }).transform((data) => ({
   type: 'image' as const,
   id: data.id,
@@ -72,7 +72,7 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
   description: data.description,
   isFavorite: data.isFavorite,
   isArchived: data.isArchived,
-  isTrashed: data.alias[0]?.isTrashed ?? false,
+  isTrashed: data.alias?.isTrashed ?? false,
   rating: data.rating,
   updateAt: data.updateAt
 }))
@@ -86,7 +86,7 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
   size: z.number(),
   duration: z.number().default(0),
   album: z.string().nullable().optional().default(null),
-  alias: z.array(AliasSchema).default([])
+  alias: AliasSchema.nullable().default(null)
 }).transform((data) => ({
   type: 'video' as const,
   id: data.id,
@@ -104,7 +104,7 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
   description: data.description,
   isFavorite: data.isFavorite,
   isArchived: data.isArchived,
-  isTrashed: data.alias[0]?.isTrashed ?? false,
+  isTrashed: data.alias?.isTrashed ?? false,
   rating: data.rating,
   updateAt: data.updateAt
 }))

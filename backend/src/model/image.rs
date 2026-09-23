@@ -30,7 +30,10 @@ pub struct ImageMetadata {
     pub phash: Option<Vec<u8>>,
     pub album: Option<ArrayString<64>>,
     pub exif_vec: BTreeMap<String, String>,
-    pub alias: Vec<FileModify>,
+    /// The record's single source path and its timestamps. `None` means the
+    /// alias was pruned (file gone / stale sweep) — path-primary records
+    /// never carry more than one alias.
+    pub alias: Option<FileModify>,
 }
 
 impl ImageMetadata {
@@ -44,7 +47,7 @@ impl ImageMetadata {
             phash: None,
             album: None,
             exif_vec: BTreeMap::new(),
-            alias: Vec::new(),
+            alias: None,
         }
     }
 }
