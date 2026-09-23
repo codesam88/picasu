@@ -32,7 +32,7 @@ const ChipsContainer: FunctionalComponent<ChipsContainerProps> = (props) => {
       chips.push(h(DurationChip, { label: formattedDuration }))
     }
 
-    const file = data.alias?.file
+    const file = data.path?.file
     if (constStore.showFilenameChip && file !== undefined) {
       const base = basename(file)
       const filename = basename(base, extname(base))

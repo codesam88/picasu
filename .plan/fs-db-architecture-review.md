@@ -59,7 +59,7 @@ long-term design.
 Two research passes while fixing the sub-album-move bug found:
 
 - No hidden semantic dependency blocks a parent-pointer redesign: every
-  read of `alias[].file` / `AlbumMetadata.dir_path` as an absolute path
+  read of `path.file` / `AlbumMetadata.dir_path` as an absolute path
   string is either disk I/O (open/rename/read/write) or a path-comparison
   used purely for membership/parent lookup — both are compatible with
   resolving the path on demand instead of storing it.
@@ -69,15 +69,15 @@ Two research passes while fixing the sub-album-move bug found:
   the relationship as a first-class field. `ImageMetadata.album` /
   `VideoMetadata.album` already exist and could become the authoritative
   parent-pointer field for media items if membership checks were switched
-  from path-comparison (`Path::new(&item.alias.file).parent() ==
+  from path-comparison (`Path::new(&item.path.file).parent() ==
 dir_path`) to ID-comparison (`item.album == album_id`) — at which point
   a directory move would only need to update the _moved_ album's own
   parent pointer, since descendants' immediate-parent relationship never
   changes regardless of nesting depth.
 - The one genuinely tricky spot: `handle_removed_file` in
   `start_watcher.rs` matches an incoming absolute OS path from a
-  `notify::Remove` event against `alias[].file` by exact string equality
-  — this needs `alias.file` (or an equivalent on-demand resolution:
+  `notify::Remove` event against `path.file` by exact string equality
+  — this needs `path.file` (or an equivalent on-demand resolution:
   parent album's resolved directory + filename) to work, and would need
   reworking from a full-table linear scan into a bounded parent-lookup +
   filename match either way.

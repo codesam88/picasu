@@ -31,6 +31,6 @@ when:
 then:
   - response.status: 200
   - compare:
-      response.json.[0].abstractData.alias.modified:
+      response.json.[0].abstractData.path.modified:
         ">": 1600000000000
         "<": 2000000000000

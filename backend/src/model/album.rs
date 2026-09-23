@@ -47,18 +47,19 @@ impl AlbumCombined {
         // immediate parent directory is this album's directory. Files in
         // sub-directories belong to the corresponding child album instead.
         // A file counts only while its stored path is live (not trashed).
-        let belongs_to_album = move |alias: Option<&crate::model::response::FileModify>| -> bool {
-            alias.is_some_and(|a| {
-                !a.is_trashed && Path::new(&a.file).parent() == Some(dir_path.as_path())
-            })
-        };
+        let belongs_to_album =
+            move |file_entry: Option<&crate::model::response::FileModify>| -> bool {
+                file_entry.is_some_and(|a| {
+                    !a.is_trashed && Path::new(&a.file).parent() == Some(dir_path.as_path())
+                })
+            };
 
         let mut data_in_album: Vec<MediaItemInfo> = ref_data
             .par_iter()
             .filter_map(
                 |database_timestamp| match &database_timestamp.abstract_data {
                     AbstractData::Image(img) => {
-                        if belongs_to_album(img.metadata.alias.as_ref()) {
+                        if belongs_to_album(img.metadata.path.as_ref()) {
                             Some(MediaItemInfo {
                                 asset_id: database_timestamp.asset_id,
                                 size: img.metadata.size,
@@ -70,7 +71,7 @@ impl AlbumCombined {
                         }
                     }
                     AbstractData::Video(vid) => {
-                        if belongs_to_album(vid.metadata.alias.as_ref()) {
+                        if belongs_to_album(vid.metadata.path.as_ref()) {
                             Some(MediaItemInfo {
                                 asset_id: database_timestamp.asset_id,
                                 size: vid.metadata.size,
@@ -126,12 +127,12 @@ mod tests {
 
     use crate::model::response::FileModify;
 
-    fn belongs_to_album(alias: Option<&FileModify>, dir_path: &str) -> bool {
+    fn belongs_to_album(file_entry: Option<&FileModify>, dir_path: &str) -> bool {
         let dir_path = Path::new(dir_path);
-        alias.is_some_and(|a| Path::new(&a.file).parent() == Some(dir_path))
+        file_entry.is_some_and(|a| Path::new(&a.file).parent() == Some(dir_path))
     }
 
-    fn alias(path: &str) -> Option<FileModify> {
+    fn file_info(path: &str) -> Option<FileModify> {
         Some(FileModify {
             file: path.to_string(),
             modified: 0,
@@ -142,36 +143,36 @@ mod tests {
 
     #[test]
     fn dir_album_matches_file_inside_dir() {
-        let a = alias("/photos/vacation/img.jpg");
+        let a = file_info("/photos/vacation/img.jpg");
         assert!(belongs_to_album(a.as_ref(), "/photos/vacation"));
     }
 
     #[test]
     fn dir_album_does_not_match_file_in_subdirectory() {
-        let a = alias("/photos/vacation/day1/img.jpg");
+        let a = file_info("/photos/vacation/day1/img.jpg");
         assert!(!belongs_to_album(a.as_ref(), "/photos/vacation"));
     }
 
     #[test]
     fn child_dir_album_matches_its_own_direct_file() {
-        let a = alias("/photos/vacation/day1/img.jpg");
+        let a = file_info("/photos/vacation/day1/img.jpg");
         assert!(belongs_to_album(a.as_ref(), "/photos/vacation/day1"));
     }
 
     #[test]
     fn dir_album_does_not_match_sibling_dir() {
-        let a = alias("/photos/other/img.jpg");
+        let a = file_info("/photos/other/img.jpg");
         assert!(!belongs_to_album(a.as_ref(), "/photos/vacation"));
     }
 
     #[test]
     fn dir_album_does_not_match_partial_name_prefix() {
-        let a = alias("/photos/vacation2/img.jpg");
+        let a = file_info("/photos/vacation2/img.jpg");
         assert!(!belongs_to_album(a.as_ref(), "/photos/vacation"));
     }
 
     #[test]
-    fn pruned_alias_never_belongs_to_album() {
+    fn missing_path_never_belongs_to_album() {
         assert!(!belongs_to_album(None, "/photos/vacation"));
     }
 }
@@ -203,8 +204,8 @@ pub struct AlbumMetadata {
     /// NOT be written back to the sidecar, or it would freeze and survive a
     /// later directory rename instead of being re-derived from the new name.
     pub custom_title: Option<String>,
-    /// Record-level trash flag for albums. Albums have no alias set, so the
-    /// flag lives here rather than on the per-alias `FileModify` used for
+    /// Record-level trash flag for albums. Albums have no stored path, so the
+    /// flag lives here rather than on the `FileModify` file entry used for
     /// images/videos.
     pub is_trashed: bool,
 }

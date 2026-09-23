@@ -33,7 +33,7 @@ pub struct VideoMetadata {
     /// The record's single source path and its timestamps. `None` means the
     /// path was pruned (file gone / stale sweep); path-primary records hold
     /// at most one path.
-    pub alias: Option<FileModify>,
+    pub path: Option<FileModify>,
 }
 
 impl VideoMetadata {
@@ -47,7 +47,7 @@ impl VideoMetadata {
             duration: 0.0,
             album: None,
             exif_vec: BTreeMap::new(),
-            alias: None,
+            path: None,
         }
     }
 }

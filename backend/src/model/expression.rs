@@ -113,14 +113,14 @@ impl Expression {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::Image(img) => img
                         .metadata
-                        .alias
+                        .path
                         .iter()
-                        .any(|alias| alias.is_trashed == value),
+                        .any(|entry| entry.is_trashed == value),
                     AbstractData::Video(vid) => vid
                         .metadata
-                        .alias
+                        .path
                         .iter()
-                        .any(|alias| alias.is_trashed == value),
+                        .any(|entry| entry.is_trashed == value),
                     AbstractData::Album(alb) => alb.metadata.is_trashed == value,
                 })
             }
@@ -216,11 +216,11 @@ impl Expression {
             Expression::Path(path) => {
                 let path_lower = path.to_ascii_lowercase();
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Image(img) => img.metadata.alias.iter().any(|file_modify| {
-                        file_modify.file.to_ascii_lowercase().contains(&path_lower)
+                    AbstractData::Image(img) => img.metadata.path.iter().any(|file_entry| {
+                        file_entry.file.to_ascii_lowercase().contains(&path_lower)
                     }),
-                    AbstractData::Video(vid) => vid.metadata.alias.iter().any(|file_modify| {
-                        file_modify.file.to_ascii_lowercase().contains(&path_lower)
+                    AbstractData::Video(vid) => vid.metadata.path.iter().any(|file_entry| {
+                        file_entry.file.to_ascii_lowercase().contains(&path_lower)
                     }),
                     AbstractData::Album(_) => false,
                 })
@@ -241,12 +241,12 @@ impl Expression {
                             Box::new(move |abstract_data: &AbstractData| match abstract_data {
                                 AbstractData::Image(img) => img
                                     .metadata
-                                    .alias
+                                    .path
                                     .iter()
                                     .any(|a| normalize_parent(&a.file) == Some(dir.clone())),
                                 AbstractData::Video(vid) => vid
                                     .metadata
-                                    .alias
+                                    .path
                                     .iter()
                                     .any(|a| normalize_parent(&a.file) == Some(dir.clone())),
                                 AbstractData::Album(_) => false,
@@ -312,8 +312,8 @@ impl Expression {
                                 .is_some_and(|model_of_exif| {
                                     model_of_exif.to_ascii_lowercase().contains(&any_lower)
                                 })
-                            || img.metadata.alias.iter().any(|file_modify| {
-                                file_modify.file.to_ascii_lowercase().contains(&any_lower)
+                            || img.metadata.path.iter().any(|file_entry| {
+                                file_entry.file.to_ascii_lowercase().contains(&any_lower)
                             })
                     }
                     AbstractData::Video(vid) => {
@@ -340,8 +340,8 @@ impl Expression {
                                 .is_some_and(|model_of_exif| {
                                     model_of_exif.to_ascii_lowercase().contains(&any_lower)
                                 })
-                            || vid.metadata.alias.iter().any(|file_modify| {
-                                file_modify.file.to_ascii_lowercase().contains(&any_lower)
+                            || vid.metadata.path.iter().any(|file_entry| {
+                                file_entry.file.to_ascii_lowercase().contains(&any_lower)
                             })
                     }
                     AbstractData::Album(alb) => {
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn trashed_matches_flag() {
         let mut i = img();
-        i.metadata.alias = Some(FileModify {
+        i.metadata.path = Some(FileModify {
             file: "/Photos/trashed.jpg".to_string(),
             modified: 0,
             scan_time: 0,
@@ -444,11 +444,11 @@ mod tests {
         assert!(!run(Expression::Trashed(false), &data));
     }
 
-    /// A live (non-trashed) single alias matches only the non-trashed filter.
+    /// A live (non-trashed) file entry matches only the non-trashed filter.
     #[test]
-    fn trashed_false_matches_live_alias() {
+    fn trashed_false_matches_live_path() {
         let mut i = img();
-        i.metadata.alias = Some(FileModify {
+        i.metadata.path = Some(FileModify {
             file: "/Photos/live.jpg".to_string(),
             modified: 0,
             scan_time: 0,
@@ -460,10 +460,10 @@ mod tests {
         assert!(!run(Expression::Trashed(true), &data));
     }
 
-    /// A pruned alias (`None`) matches neither view, mirroring the old
-    /// empty-vec behaviour (`.any` over no aliases is always false).
+    /// A missing path (`None`) matches neither view, mirroring the old
+    /// empty-vec behaviour (`.any` over an empty list is always false).
     #[test]
-    fn trashed_on_pruned_alias_matches_nothing() {
+    fn trashed_on_missing_path_matches_nothing() {
         let data = AbstractData::Image(img());
 
         assert!(!run(Expression::Trashed(true), &data));
@@ -493,9 +493,9 @@ mod tests {
     // ── Path ──────────────────────────────────────────────────────────────────
 
     #[test]
-    fn path_matches_alias_case_insensitively() {
+    fn path_matches_stored_path_case_insensitively() {
         let mut i = img();
-        i.metadata.alias = Some(FileModify {
+        i.metadata.path = Some(FileModify {
             file: "/Photos/Vacation/IMG_001.jpg".to_string(),
             modified: 0,
             scan_time: 0,
@@ -706,14 +706,14 @@ impl Expression {
             Expression::Trashed(value) => Box::new(move |data: &AbstractData| match data {
                 AbstractData::Image(img) => img
                     .metadata
-                    .alias
+                    .path
                     .iter()
-                    .any(|alias| alias.is_trashed == value),
+                    .any(|entry| entry.is_trashed == value),
                 AbstractData::Video(vid) => vid
                     .metadata
-                    .alias
+                    .path
                     .iter()
-                    .any(|alias| alias.is_trashed == value),
+                    .any(|entry| entry.is_trashed == value),
                 AbstractData::Album(alb) => alb.metadata.is_trashed == value,
             }),
 
@@ -790,7 +790,7 @@ impl Expression {
                 }),
             },
 
-            /* ---------- Any: removes tag / alias / album / path matching ---------- */
+            /* ---------- Any: removes tag / path / album matching ---------- */
             Expression::Any(identifier) => {
                 let any_lower = identifier.to_ascii_lowercase();
                 Box::new(move |data| match data {

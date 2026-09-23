@@ -1,22 +1,19 @@
-// The DB and store names keep the legacy "hashToken" spelling for persistence
-// compatibility: renaming them would orphan tokens already written to users'
-// existing IndexedDB databases. Keys and function names use `assetId`.
-const DB_NAME = 'hashToken'
+const DB_NAME = 'assetToken'
 const DB_VERSION = 2
-const HASH_STORE_NAME = 'hashToken'
+const ASSET_STORE_NAME = 'assetToken'
 const SHARE_STORE_NAME = 'shareInfo'
 
 // Export constants for Service Worker
 export { DB_NAME, DB_VERSION, SHARE_STORE_NAME }
 
-function openHashDB(): Promise<IDBDatabase | null> {
+function openAssetDB(): Promise<IDBDatabase | null> {
   return new Promise((resolve) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result
-      if (!db.objectStoreNames.contains(HASH_STORE_NAME)) {
-        db.createObjectStore(HASH_STORE_NAME)
+      if (!db.objectStoreNames.contains(ASSET_STORE_NAME)) {
+        db.createObjectStore(ASSET_STORE_NAME)
       }
       if (!db.objectStoreNames.contains(SHARE_STORE_NAME)) {
         db.createObjectStore(SHARE_STORE_NAME)
@@ -38,15 +35,15 @@ function openHashDB(): Promise<IDBDatabase | null> {
 }
 
 export async function storeAssetToken(assetId: string, token: string): Promise<void> {
-  const db = await openHashDB()
+  const db = await openAssetDB()
   if (!db) {
     console.error('Failed to open database for storing asset token')
     return
   }
 
   return new Promise<void>((resolve) => {
-    const transaction = db.transaction(HASH_STORE_NAME, 'readwrite')
-    const store = transaction.objectStore(HASH_STORE_NAME)
+    const transaction = db.transaction(ASSET_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(ASSET_STORE_NAME)
     const request = store.put(token, assetId)
 
     request.onsuccess = () => {
@@ -61,15 +58,15 @@ export async function storeAssetToken(assetId: string, token: string): Promise<v
 }
 
 export async function getAssetToken(assetId: string): Promise<string | null> {
-  const db = await openHashDB()
+  const db = await openAssetDB()
   if (!db) {
     console.error('Failed to open database for retrieving asset token')
     return null
   }
 
   return new Promise<string | null>((resolve) => {
-    const transaction = db.transaction(HASH_STORE_NAME, 'readonly')
-    const store = transaction.objectStore(HASH_STORE_NAME)
+    const transaction = db.transaction(ASSET_STORE_NAME, 'readonly')
+    const store = transaction.objectStore(ASSET_STORE_NAME)
     const request = store.get(assetId)
 
     request.onsuccess = () => {
@@ -89,15 +86,15 @@ export async function getAssetToken(assetId: string): Promise<string | null> {
 }
 
 export async function deleteAssetToken(assetId: string): Promise<void> {
-  const db = await openHashDB()
+  const db = await openAssetDB()
   if (!db) {
     console.error('Failed to open database for deleting asset token')
     return
   }
 
   return new Promise<void>((resolve) => {
-    const transaction = db.transaction(HASH_STORE_NAME, 'readwrite')
-    const store = transaction.objectStore(HASH_STORE_NAME)
+    const transaction = db.transaction(ASSET_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(ASSET_STORE_NAME)
     const request = store.delete(assetId)
 
     request.onsuccess = () => {
@@ -130,7 +127,7 @@ export async function storeShareInfo(info: ShareInfo): Promise<void> {
     return
   }
 
-  const db = await openHashDB()
+  const db = await openAssetDB()
   if (!db) {
     console.error('Failed to open database for storing share info')
     return
@@ -155,7 +152,7 @@ export async function storeShareInfo(info: ShareInfo): Promise<void> {
 }
 
 export async function getShareInfo(albumId: string, shareId: string): Promise<ShareInfo | null> {
-  const db = await openHashDB()
+  const db = await openAssetDB()
   if (!db) {
     console.error('Failed to open database for retrieving share info')
     return null
@@ -181,7 +178,7 @@ export async function getShareInfo(albumId: string, shareId: string): Promise<Sh
 }
 
 export async function clearShareInfo(albumId: string, shareId: string): Promise<void> {
-  const db = await openHashDB()
+  const db = await openAssetDB()
   if (!db) {
     console.error('Failed to open database for clearing share info')
     return

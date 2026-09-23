@@ -47,7 +47,7 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
             let object = ObjectSchema::new(display_id, ObjectType::Image);
             let mut metadata =
                 ImageMetadata::new(display_id, record.file_size, 0, 0, record.ext.clone());
-            metadata.alias = Some(FileModify {
+            metadata.path = Some(FileModify {
                 file: record.canonical_path.clone(),
                 modified: record.modified,
                 scan_time: record.scan_time,
@@ -59,7 +59,7 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
             let object = ObjectSchema::new(display_id, ObjectType::Video);
             let mut metadata =
                 VideoMetadata::new(display_id, record.file_size, 0, 0, record.ext.clone());
-            metadata.alias = Some(FileModify {
+            metadata.path = Some(FileModify {
                 file: record.canonical_path.clone(),
                 modified: record.modified,
                 scan_time: record.scan_time,
@@ -95,8 +95,8 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
 /// `AssetRecord` plus the snapshot-carried display fields.
 ///
 /// Phase 14 split: `get-data` no longer reads `METADATA_TABLE` per media row.
-/// The row carries identity, dimensions, alias, album membership, and the
-/// cache-bust/processing keys (`update_at`, `pending`) — tags, EXIF, and
+/// The row carries identity, dimensions, the file entry, album membership, and
+/// the cache-bust/processing keys (`update_at`, `pending`) — tags, EXIF, and
 /// description are deliberately absent and must be fetched via
 /// `GET /get/metadata/{assetId}` (detail/sidebar). Rating, favorite, and
 /// archived flags likewise live behind the detail endpoint.
@@ -135,7 +135,7 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
             if !show_metadata {
                 img.metadata.album = None;
                 img.object.tags.clear();
-                img.metadata.alias = None;
+                img.metadata.path = None;
                 img.metadata.exif_vec.clear();
             }
         }
@@ -143,7 +143,7 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
             if !show_metadata {
                 vid.metadata.album = None;
                 vid.object.tags.clear();
-                vid.metadata.alias = None;
+                vid.metadata.path = None;
                 vid.metadata.exif_vec.clear();
             }
         }
@@ -180,10 +180,10 @@ mod tests {
     use crate::model::response::FileModify;
     use arrayvec::ArrayString;
 
-    fn img_with_alias(is_trashed: bool) -> AbstractData {
+    fn img_with_path(is_trashed: bool) -> AbstractData {
         let id = ArrayString::from("test").expect("failed to create ArrayString");
         let mut metadata = ImageMetadata::new(id, 0, 0, 0, "jpg".to_string());
-        metadata.alias = Some(FileModify {
+        metadata.path = Some(FileModify {
             file: "/photos/a.jpg".to_string(),
             modified: 1,
             scan_time: 2,
@@ -195,7 +195,7 @@ mod tests {
         })
     }
 
-    fn img_without_alias() -> AbstractData {
+    fn img_without_path() -> AbstractData {
         let id = ArrayString::from("test").expect("failed to create ArrayString");
         AbstractData::Image(ImageCombined {
             object: ObjectSchema::new(id, ObjectType::Image),
@@ -203,39 +203,39 @@ mod tests {
         })
     }
 
-    /// The alias survives `clear_abstract_data_metadata` for every view, for
-    /// every trash flag: with a single path-primary alias there is no
-    /// per-view alias selection left to do (this property was proven against
+    /// The file entry survives `clear_abstract_data_metadata` for every view,
+    /// for every trash flag: with a single path-primary entry there is no
+    /// per-view selection left to do (this property was proven against
     /// the old `keep_view_alias` implementation before it was deleted).
     #[test]
-    fn clear_metadata_preserves_single_alias_for_every_view() {
+    fn clear_metadata_preserves_single_path_for_every_view() {
         for is_trashed in [false, true] {
-            let mut data = img_with_alias(is_trashed);
-            let before = data.alias().cloned();
+            let mut data = img_with_path(is_trashed);
+            let before = data.path().cloned();
             clear_abstract_data_metadata(&mut data, true);
             assert_eq!(
-                data.alias(),
+                data.path(),
                 before.as_ref(),
-                "single alias must survive (is_trashed={is_trashed})"
+                "single file entry must survive (is_trashed={is_trashed})"
             );
         }
     }
 
-    /// A pruned (`None`) alias stays `None` under the response trim.
+    /// A missing (`None`) path stays `None` under the response trim.
     #[test]
-    fn clear_metadata_keeps_pruned_alias_none() {
-        let mut data = img_without_alias();
+    fn clear_metadata_keeps_missing_path_none() {
+        let mut data = img_without_path();
         clear_abstract_data_metadata(&mut data, true);
-        assert!(data.alias().is_none());
+        assert!(data.path().is_none());
     }
 
-    /// `show_metadata=false` clears the alias so a metadata-hiding share
+    /// `show_metadata=false` clears the file entry so a metadata-hiding share
     /// cannot leak the filesystem path.
     #[test]
-    fn clear_metadata_false_strips_alias() {
-        let mut data = img_with_alias(false);
+    fn clear_metadata_false_strips_path() {
+        let mut data = img_with_path(false);
         clear_abstract_data_metadata(&mut data, false);
-        assert!(data.alias().is_none());
+        assert!(data.path().is_none());
     }
 }
 

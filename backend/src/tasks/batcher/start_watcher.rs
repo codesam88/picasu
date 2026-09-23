@@ -181,7 +181,7 @@ fn handle_removed_file(removed: &Path) {
         tree.iter()
             .find(|dt| {
                 dt.abstract_data
-                    .alias()
+                    .path()
                     .iter()
                     .any(|a| a.file == removed_str.as_ref())
             })

@@ -18,7 +18,7 @@ export function enrichWithThumbhash(
  */
 export function getFilename(data: UnifiedData): string {
   if (data.type === 'image' || data.type === 'video') {
-    return data.alias?.file.split('/').pop() ?? ''
+    return data.path?.file.split('/').pop() ?? ''
   }
   return data.title ?? ''
 }

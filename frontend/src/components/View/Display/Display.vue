@@ -119,12 +119,10 @@ async function checkAndFetch(index: number): Promise<boolean> {
 
   queueStore.original.add(index)
 
-  // Get hash from either image/video id or album cover
-  const hash = abstractData.type === 'album' ? abstractData.cover : abstractData.id
-  if (hash == null) return false
+  const servingId = abstractData.type === 'album' ? abstractData.cover : abstractData.id
+  if (servingId == null) return false
 
-  // Use assetId for media items, content hash for album covers
-  const assetId = abstractData.type === 'album' ? hash : abstractData.assetId
+  const assetId = abstractData.type === 'album' ? servingId : abstractData.assetId
 
   await tokenStore.refreshTimestampTokenIfExpired()
   await tokenStore.refreshAssetTokenIfExpired(assetId)
@@ -143,7 +141,7 @@ async function checkAndFetch(index: number): Promise<boolean> {
 
   postToWorker.processImage({
     index,
-    hash,
+    hash: servingId,
     assetId,
     devicePixelRatio: window.devicePixelRatio,
     albumId: shareStore.albumId,

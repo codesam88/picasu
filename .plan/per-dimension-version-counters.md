@@ -39,7 +39,7 @@ redb), unaffected by the mutation.
 | ----------------- | ----------------------------------------------- | ------------------------------------------------------------ |
 | `TAG_VERSION`     | Tag values                                      | `edit_tag`                                                   |
 | `FLAG_VERSION`    | Trashed/Archived/Favorite                       | `edit_flags`                                                 |
-| `ALBUM_VERSION`   | Album membership, path aliases, album metadata  | `assign_album`, `edit_album` (title, cover), sub-album moves |
+| `ALBUM_VERSION`   | Album membership, asset paths, album metadata   | `assign_album`, `edit_album` (title, cover), sub-album moves |
 | `CONTENT_VERSION` | Item inventory: new, deleted, or replaced files | Watcher create/modify/remove, manual scan, upload            |
 
 `VERSION_COUNT_TIMESTAMP` stays — it still serves redb table naming and expire
@@ -139,7 +139,7 @@ key. New tests needed:
 
 1. **Scan/upload bump point**: caller-side or pipeline-side? See above.
 2. **`Any(..)` searches album path**: When a file changes albums, the file's
-   path alias changes. `Any` searches path aliases. Does `edit_album` + `Any(..)`
+   asset path changes. `Any` searches asset paths. Does `edit_album` + `Any(..)`
    need both `ALBUM_VERSION` and `CONTENT_VERSION`, or just `ALBUM_VERSION`?
    Currently `Any` depends on `TAG_VERSION + ALBUM_VERSION + CONTENT_VERSION` in
    this proposal — `CONTENT_VERSION` covers content identity changes (new hash),

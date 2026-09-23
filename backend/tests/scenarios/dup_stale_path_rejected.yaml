@@ -7,7 +7,7 @@ given:
 
 when:
   # Index the directory.  The file was already removed by the `remove` fixture,
-  # so the index should detect the stale alias and prune it.
+  # so the index should detect the stale path and prune it.
   - call: POST /post/index/album
     raw_body: '{"album": "/dup_stale"}'
     then:

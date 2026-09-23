@@ -20,7 +20,7 @@ const props = defineProps<{
 }>()
 
 const filePathComplete = computed(() => {
-  return props.database.alias?.file
+  return props.database.path?.file
 })
 
 const filePath = computed(() => {

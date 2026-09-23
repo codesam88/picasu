@@ -459,15 +459,15 @@ fn read_upload_policy() -> UploadPolicy {
 /// references it. If the database cannot be read, defaults to `true` (keep the
 /// file) so an uncertain lookup never deletes an uploaded file.
 fn record_exists_for(path: &Path, relative: &Path) -> bool {
-    let matches = |alias_file: &str| {
-        let alias = Path::new(alias_file);
-        alias == path || alias == relative
+    let matches = |record_path: &str| {
+        let candidate = Path::new(record_path);
+        candidate == path || candidate == relative
     };
 
     let mem = TREE.in_memory.read().expect("lock poisoned");
     if mem
         .iter()
-        .any(|dt| dt.abstract_data.alias().iter().any(|a| matches(&a.file)))
+        .any(|dt| dt.abstract_data.path().iter().any(|a| matches(&a.file)))
     {
         return true;
     }
@@ -478,7 +478,7 @@ fn record_exists_for(path: &Path, relative: &Path) -> bool {
         && let Ok(mut iter) = table.iter()
     {
         return iter.any(|entry| {
-            entry.is_ok_and(|(_, guard)| guard.value().alias().iter().any(|a| matches(&a.file)))
+            entry.is_ok_and(|(_, guard)| guard.value().path().iter().any(|a| matches(&a.file)))
         });
     }
 

@@ -51,7 +51,7 @@ fn index_task_match(abstract_data: AbstractData) -> Result<AbstractData> {
 fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
     let hash = abstract_data.hash();
     let newest_path = abstract_data
-        .alias()
+        .path()
         .iter()
         .max()
         .ok_or_else(|| anyhow!("record has no canonical path for hash: {hash}"))?

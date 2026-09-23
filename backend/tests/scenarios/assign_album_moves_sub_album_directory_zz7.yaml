@@ -1,6 +1,6 @@
 name: assign_album moves a sub-album's whole directory (with its photo) into the target album
 # Regression test: assign_album previously only handled Image/Video items —
-# an Album's .alias() is always empty, so moving a sub-album via the batch
+# an Album's .path() is always empty, so moving a sub-album via the batch
 # "Assign Album" UI silently 400'd ("Item has no alias"). Verifies the
 # directory (and its contents) physically moves and the DB record's path
 # updates to match.

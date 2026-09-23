@@ -46,13 +46,12 @@ describe('tokenStore', () => {
       expect(tokenStore.assetTokenMap.get('asset_b')).toBe('old_token_b')
     })
 
-    test('album cover tokens remain keyed by hash (no assetId)', () => {
+    test('album cover tokens are keyed by the cover asset id', () => {
       const tokenStore = useTokenStore('mainId')
 
-      // Albums use content hash for their cover token
-      tokenStore.assetTokenMap.set('album_cover_hash', 'cover_token')
+      tokenStore.assetTokenMap.set('cover_asset', 'cover_token')
 
-      expect(tokenStore.assetTokenMap.get('album_cover_hash')).toBe('cover_token')
+      expect(tokenStore.assetTokenMap.get('cover_asset')).toBe('cover_token')
     })
   })
 })

@@ -24,7 +24,7 @@ describe('dataStore', () => {
         thumbhash: null,
         pending: false,
         album: null as string | null,
-        alias: null,
+        path: null,
         description: null,
         isFavorite: false,
         isArchived: false,
@@ -86,7 +86,7 @@ describe('dataStore', () => {
         thumbhash: null,
         pending: false,
         album: null as string | null,
-        alias: null,
+        path: null,
         description: null,
         isFavorite: false,
         isArchived: false,
@@ -126,7 +126,7 @@ describe('dataStore', () => {
         thumbhash: null,
         pending: false,
         album: null,
-        alias: null,
+        path: null,
         description: null,
         isFavorite: false,
         isArchived: false,
@@ -167,7 +167,7 @@ describe('dataStore', () => {
       thumbhash: null as number[] | null,
       pending: false,
       album: 'album_x' as string | null,
-      alias: { file: '/photos/a.jpg', modified: 1, scanTime: 2, isTrashed: false } as {
+      path: { file: '/photos/a.jpg', modified: 1, scanTime: 2, isTrashed: false } as {
         file: string
         modified: number
         scanTime: number
@@ -197,7 +197,7 @@ describe('dataStore', () => {
       thumbhash: null,
       pending: false,
       album: 'album_x',
-      alias: { file: '/photos/a.jpg', modified: 1, scanTime: 2, isTrashed: false },
+      path: { file: '/photos/a.jpg', modified: 1, scanTime: 2, isTrashed: false },
       description: 'server description',
       isFavorite: true,
       isArchived: true,
@@ -208,7 +208,7 @@ describe('dataStore', () => {
 
     test('merges detail metadata into the lean row without touching identity fields', () => {
       const dataStore = useDataStore('mainId')
-      dataStore.data.set(0, { ...leanRow, alias: { ...leanRow.alias } })
+      dataStore.data.set(0, { ...leanRow, path: { ...leanRow.path } })
       dataStore.assetIdMapData.set('asset_m', 0)
 
       const merged = dataStore.mergeMetadata(0, detail)

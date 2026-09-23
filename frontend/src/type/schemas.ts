@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import { fixedBigRowHeight } from '@/type/constants'
 
-export const AliasSchema = z.object({
+export const FileModifySchema = z.object({
   file: z.string(),
   modified: z.number(),
   scanTime: z.number(),
@@ -54,7 +54,7 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
   size: z.number(),
   phash: z.array(z.number()).nullable().optional().default([]),
   album: z.string().nullable().optional().default(null),
-  alias: AliasSchema.nullable().default(null)
+  path: FileModifySchema.nullable().default(null)
 }).transform((data) => ({
   type: 'image' as const,
   id: data.id,
@@ -68,11 +68,11 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
   thumbhash: data.thumbhash,
   pending: data.pending,
   album: data.album ?? null,
-  alias: data.alias,
+  path: data.path,
   description: data.description,
   isFavorite: data.isFavorite,
   isArchived: data.isArchived,
-  isTrashed: data.alias?.isTrashed ?? false,
+  isTrashed: data.path?.isTrashed ?? false,
   rating: data.rating,
   updateAt: data.updateAt
 }))
@@ -86,7 +86,7 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
   size: z.number(),
   duration: z.number().default(0),
   album: z.string().nullable().optional().default(null),
-  alias: AliasSchema.nullable().default(null)
+  path: FileModifySchema.nullable().default(null)
 }).transform((data) => ({
   type: 'video' as const,
   id: data.id,
@@ -100,11 +100,11 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
   thumbhash: data.thumbhash,
   pending: data.pending,
   album: data.album ?? null,
-  alias: data.alias,
+  path: data.path,
   description: data.description,
   isFavorite: data.isFavorite,
   isArchived: data.isArchived,
-  isTrashed: data.alias?.isTrashed ?? false,
+  isTrashed: data.path?.isTrashed ?? false,
   rating: data.rating,
   updateAt: data.updateAt
 }))

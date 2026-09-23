@@ -71,7 +71,7 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
     for abstract_data in insert_list {
         let content_hash = abstract_data.hash();
         let canonical_path = abstract_data
-            .alias()
+            .path()
             .map(|a| a.file.clone())
             .unwrap_or_default();
 
@@ -97,18 +97,19 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
             AbstractData::Album(_) => AssetKind::Album,
         };
 
-        let modified = abstract_data.alias().map_or(0, |a| a.modified);
+        let modified = abstract_data.path().map_or(0, |a| a.modified);
         // Carry the trash flag from the flushed data (albums store it on the
-        // record, media on the alias) so lean list rows derived from this
+        // record, media on the file entry) so lean list rows derived from this
         // record see the same trashed state as the metadata row.
         let is_trashed = match abstract_data {
             AbstractData::Album(alb) => alb.metadata.is_trashed,
-            _ => abstract_data.alias().is_some_and(|a| a.is_trashed),
+            _ => abstract_data.path().is_some_and(|a| a.is_trashed),
         };
-        // Mirror the alias scan_time (index time) rather than stamping "now",
-        // so re-flushing on a metadata edit does not rewrite identity times.
+        // Mirror the stored path's scan_time (index time) rather than stamping
+        // "now", so re-flushing on a metadata edit does not rewrite identity
+        // times.
         let scan_time = abstract_data
-            .alias()
+            .path()
             .map_or_else(|| chrono::Utc::now().timestamp_millis(), |a| a.scan_time);
         let ext = match abstract_data {
             AbstractData::Image(img) => img.metadata.ext.clone(),
@@ -204,15 +205,15 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
         if let Some(album_id) = abstract_data.album() {
             mark_album_for_update(album_id);
         }
-        if let Some(file_modify) = abstract_data.alias() {
-            mark_dir_albums_for_path(Path::new(&file_modify.file));
+        if let Some(file_entry) = abstract_data.path() {
+            mark_dir_albums_for_path(Path::new(&file_entry.file));
         }
     }
 
     // Process removes: delete from asset tables.
     for abstract_data in remove_list {
         let canonical_path = abstract_data
-            .alias()
+            .path()
             .map(|a| a.file.clone())
             .unwrap_or_default();
 
@@ -241,8 +242,8 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
         if let Some(album_id) = abstract_data.album() {
             mark_album_for_update(album_id);
         }
-        if let Some(file_modify) = abstract_data.alias() {
-            mark_dir_albums_for_path(Path::new(&file_modify.file));
+        if let Some(file_entry) = abstract_data.path() {
+            mark_dir_albums_for_path(Path::new(&file_entry.file));
         }
     }
 }

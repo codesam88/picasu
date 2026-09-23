@@ -39,7 +39,7 @@ pub fn normalize_asset_path(file: &str) -> PathBuf {
 pub fn prune_asset_path(data: &mut AbstractData, target: &Path) -> bool {
     remove_asset_file(target.to_string_lossy().as_ref());
 
-    let Some(path_slot) = data.alias_mut() else {
+    let Some(path_slot) = data.path_mut() else {
         return false;
     };
 
@@ -62,7 +62,7 @@ pub fn prune_asset_path(data: &mut AbstractData, target: &Path) -> bool {
 /// `true` if the record still holds its canonical path, `false` once the path
 /// is gone (thumbnail already removed by this call). Albums return `false`.
 pub fn prune_stale_asset_path(data: &mut AbstractData) -> bool {
-    let Some(path_slot) = data.alias_mut() else {
+    let Some(path_slot) = data.path_mut() else {
         return false;
     };
 

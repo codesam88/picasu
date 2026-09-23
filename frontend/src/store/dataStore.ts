@@ -27,7 +27,7 @@ export const useDataStore = (isolationId: IsolationId) =>
        * List rows are lean: tags, EXIF, description, rating, and the
        * favorite/archived flags are absent until fetched. Only those
        * metadata fields are overwritten — identity fields (id, dimensions,
-       * alias, album, assetId, timestamp, thumbhashUrl) stay as the list
+       * path, album, assetId, timestamp, thumbhashUrl) stay as the list
        * provided them. Returns false when the row is missing or the detail
        * payload type does not match the row type.
        */

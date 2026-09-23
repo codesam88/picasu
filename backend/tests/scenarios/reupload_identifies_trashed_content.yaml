@@ -1,6 +1,6 @@
 name: re-uploading identical content creates a new visible asset
 # Path-primary contract: uploading identical content creates a new asset,
-# not a new alias on the existing record. The new asset is visible
+# not a new path entry on the existing record. The new asset is visible
 # regardless of the original's trash state.
 given:
   - dir_album: /e2e_reup/pool

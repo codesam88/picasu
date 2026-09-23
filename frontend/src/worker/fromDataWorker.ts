@@ -51,10 +51,6 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
         // asset_id (`data.cover`) for album covers.
         if (data.type === 'album') {
           if (data.cover !== null) {
-            // Cover-token keying: `data.cover` is the cover image's asset_id,
-            // not the album's record identity and not a content hash. The
-            // token stored under it carries the cover's content hash in its
-            // `hash` claim, which the compressed URL / GuardHash validates.
             tokenStore.assetTokenMap.set(data.cover, hashToken)
           }
         } else {
