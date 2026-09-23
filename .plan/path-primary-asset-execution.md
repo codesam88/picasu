@@ -512,7 +512,7 @@ membership to the same store ops `index_asset` uses (`remove_from_dupe_group` fo
 
 New assertion GREEN. Run `just check; just test`.
 
-## Phase 11b: Consolidate `index_asset` and `flush_tree` — TODO
+## Phase 11b: Consolidate `index_asset` and `flush_tree` — DONE
 
 **Background (verified 2026-09-22):** the earlier draft assumed the production pipeline did not populate the asset
 tables. That is wrong — `flush_tree_task` (flush_tree.rs:100-155) already writes `ASSET_BY_ID`, `ASSET_BY_PATH`,
@@ -546,7 +546,7 @@ hash, size) for the same inputs, then switch the call site. If B: port the old-g
 
 ---
 
-## Phase 12: Wire `rebuild_from_filesystem` into Production — TODO
+## Phase 12: Wire `rebuild_from_filesystem` into Production — DONE (Option B: `POST /post/rebuild`)
 
 **Goal:** Add a CLI command or startup hook that invokes `rebuild_from_filesystem` so the asset tables can be populated
 from a clean state.
@@ -582,7 +582,7 @@ Remove `#![allow(dead_code)]` from `backend/src/process/rebuild.rs`.
 
 ---
 
-## Phase 13: Remove `#[allow(dead_code)]` from Asset Module — TODO
+## Phase 13: Remove `#[allow(dead_code)]` from Asset Module — DONE
 
 **Goal:** Clean up all `#![allow(dead_code)]` annotations that were masking unused-code warnings during the incremental
 migration.
@@ -613,7 +613,7 @@ Run `just check` — zero warnings expected.
 
 ---
 
-## Phase 14: Metadata Consolidation — lean identity index + dedicated metadata table
+## Phase 14: Metadata Consolidation — lean identity index + dedicated metadata table — DONE
 
 **Decision (2026-09-22):** Consolidate toward two stores with clean separation, rather than collapsing metadata into
 `ASSET_BY_ID`. Rationale: serializing the full `AbstractData` (EXIF vec, tags, description) into the hot identity index
@@ -676,3 +676,36 @@ gate; all must remain green.
 ### Verify
 
 `just check; just test` after each step. Do not land Step 3 until the parity audit in Step 4 is written down.
+
+- **2026-09-22 — Phase 11b DONE (Option B).** `flush_tree_task` split into `flush_tables` (testable core, no
+  coordinator dispatch) + trailing `UpdateTreeTask` dispatch — production behavior unchanged. index_asset's four
+  behavioral guarantees ported as `flush_*` unit tests (test 3 mutation-verified non-vacuous); no flush gaps found —
+  all four already held. `process/index_asset.rs` deleted, `pub mod` removed, zero references remain. Backend count 259
+  (baseline included index_asset's 4; −4 +4). `just check` + `just test` green (259/24/62/34). Two playwright flakes
+  mid-gate attributed to host CPU contention; isolated reruns passed.
+- **2026-09-22 — Phase 12 DONE (Option B override).** `POST /post/rebuild` (GuardAuth + GuardReadOnlyMode) runs
+  rebuild via spawn_blocking, then `sync_data_table()` (rebuild mints new asset_ids; stale DATA_TABLE rows replaced
+  via `asset_record_to_abstract_data` + album_id), then `execute_batch_waiting(UpdateTreeTask)` so get-data cannot race
+  the tree refresh. Option A (CLI flag) overridden: TEST_ENV/DATA_PATH are process-global set-once, so scenarios
+  cannot relaunch with argv — the plan's own API-scenario test vehicle requires an HTTP endpoint. RED verified (404,
+  missing route). Scenario `rebuild_populates_asset_tables.yaml` asserts rebuild → discover by path → get-data
+  returns the asset. `#![allow(dead_code)]` removed from rebuild.rs. Gates green: backend 260 / utils 24 / vitest 62 /
+  playwright 34. Note: rebuild re-mints all asset_ids — outstanding tokens/links referencing old ids do not survive a
+  rebuild (pre-existing property of rebuild.rs, now reachable in production).
+- **2026-09-22 — Phase 13 DONE.** File-level `#![allow(dead_code)]` removed from `model/asset.rs` and
+  `storage/asset_store.rs`. Three warnings resolved: `resolve_hash_to_asset_id` deleted (zero callers, grep-verified);
+  `AssetRecord::is_media`/`is_album` kept with item-scoped `#[allow(dead_code)]` (cfg(test)-only callers are the Phase 2
+  contract tests — deleting would drop tested guarantees). clippy `-D warnings` + fmt clean; backend count unchanged
+  at 260. Out of scope (left): annotations in `storage/cache.rs`, `error.rs`.
+- **2026-09-22 — Phase 14 DONE.** `DATA_TABLE` → `METADATA_TABLE` renamed across 22 files (on-disk name `"database"`
+  → `"metadata"`; old rows orphaned, clean reindex repopulates). New `GET /get/metadata/{asset_id}` detail endpoint
+  (GuardTimestamp + share-metadata parity). get-data list rows now built from snapshot `ReducedData` (extended with
+  `update_at`/`pending`) + lean `ASSET_BY_ID` record — no per-row fat read; strips exif/tags/description
+  (+rating/isFavorite/isArchived absent from lean rows — not tile-visible). Frontend fetches detail on demand
+  (ViewPageMetadata panel open, EditTagsModal prefill) with `dataStore.mergeMetadata`. Sanctioned deviations: in-memory
+  TREE stays full (filters/get-tags parity; lean TREE + tag-index remains the documented follow-up); two scenarios
+  instead of one (interpreter asserts only against last when-response); 4 pre-existing tag scenarios migrated from
+  get-data rows to the detail endpoint (their list-row form contradicted the sanctioned strip). RED evidence captured
+  for both new scenarios; parity gate incl. all 4 sidebar Playwright scenarios green after `just frontend-build`
+  (stale-dist false alarm caught). Final gates: `just check` 0, `just test` 0 — backend 262 / utils 24 / vitest 65 /
+  playwright 34.
