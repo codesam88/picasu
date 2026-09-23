@@ -70,7 +70,6 @@ export interface FetchDataPayload {
   batch: number
   timestamp: number
   timestampToken: string
-  trashed?: boolean
 }
 
 export interface FetchRowPayload {

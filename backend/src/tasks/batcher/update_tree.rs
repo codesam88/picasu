@@ -40,20 +40,12 @@ fn update_tree_task() {
     let mut database_timestamp_vec = build_from_asset_tables(&priority_list).unwrap_or_default();
 
     // Sort by timestamp descending, with a deterministic secondary key
-    // (first alias path) so that items with equal timestamps have a stable
+    // (the alias path) so that items with equal timestamps have a stable
     // order.
     database_timestamp_vec.par_sort_by(|a, b| {
         b.timestamp.cmp(&a.timestamp).then_with(|| {
-            let a_path = a
-                .abstract_data
-                .alias()
-                .first()
-                .map_or("", |a| a.file.as_str());
-            let b_path = b
-                .abstract_data
-                .alias()
-                .first()
-                .map_or("", |a| a.file.as_str());
+            let a_path = a.abstract_data.alias().map_or("", |a| a.file.as_str());
+            let b_path = b.abstract_data.alias().map_or("", |a| a.file.as_str());
             a_path.cmp(b_path)
         })
     });
@@ -127,7 +119,12 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
     }
 }
 
-/// Trim an `AbstractData` record's aliases to only the given asset's path.
+/// Align an `AbstractData` record's single alias with the given asset's
+/// path. Keeps the stored alias when its path already matches the
+/// `AssetRecord`; replaces it with a synthetic alias built from the record
+/// when it mismatches or when the slot is empty (mirroring the old
+/// retain-then-push behaviour, so a tree row always carries its asset's
+/// path).
 fn trim_aliases_to_path(
     data: &mut crate::model::abstract_data::AbstractData,
     record: &crate::model::asset::AssetRecord,
@@ -140,24 +137,14 @@ fn trim_aliases_to_path(
         scan_time: record.scan_time,
         is_trashed: record.is_trashed,
     };
-    match data {
-        AbstractData::Image(img) => {
-            img.metadata
-                .alias
-                .retain(|a| a.file == record.canonical_path);
-            if img.metadata.alias.is_empty() {
-                img.metadata.alias.push(alias);
-            }
-        }
-        AbstractData::Video(vid) => {
-            vid.metadata
-                .alias
-                .retain(|a| a.file == record.canonical_path);
-            if vid.metadata.alias.is_empty() {
-                vid.metadata.alias.push(alias);
-            }
-        }
-        AbstractData::Album(_) => {}
+    let slot = match data {
+        AbstractData::Image(img) => &mut img.metadata.alias,
+        AbstractData::Video(vid) => &mut vid.metadata.alias,
+        AbstractData::Album(_) => return,
+    };
+    match slot {
+        Some(a) if a.file == record.canonical_path => {}
+        _ => *slot = Some(alias),
     }
 }
 
@@ -192,7 +179,7 @@ fn minimal_abstract_data(
                 0,
                 record.ext.clone(),
             );
-            metadata.alias = vec![alias];
+            metadata.alias = Some(alias);
             AbstractData::Image(crate::model::image::ImageCombined { object, metadata })
         }
         crate::model::asset::AssetKind::Video => {
@@ -203,7 +190,7 @@ fn minimal_abstract_data(
                 0,
                 record.ext.clone(),
             );
-            metadata.alias = vec![alias];
+            metadata.alias = Some(alias);
             AbstractData::Video(crate::model::video::VideoCombined { object, metadata })
         }
         crate::model::asset::AssetKind::Album => {

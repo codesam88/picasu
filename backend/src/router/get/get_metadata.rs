@@ -63,9 +63,9 @@ pub async fn get_metadata(
             .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Record not found"))?
             .value();
 
-        // Same trimming/clearing rules the list path applies: prefer the live
-        // alias, and strip metadata fields when the share hides them.
-        clear_abstract_data_metadata(&mut abstract_data, show_metadata, false);
+        // Same clearing rules the list path applies: strip metadata fields
+        // (including the alias path) when the share hides them.
+        clear_abstract_data_metadata(&mut abstract_data, show_metadata);
         Ok(Json(abstract_data))
     })
     .await

@@ -72,33 +72,33 @@ Source: `backend/src/model/object.rs`
 
 Source: `backend/src/model/image.rs`
 
-| Field      | Type                       | Description                   |
-| ---------- | -------------------------- | ----------------------------- |
-| `id`       | `ArrayString<64>`          | Content hash (`object.id`)    |
-| `size`     | `u64`                      | File size in bytes            |
-| `width`    | `u32`                      | Pixel width                   |
-| `height`   | `u32`                      | Pixel height                  |
-| `ext`      | `String`                   | File extension (e.g. `"jpg"`) |
-| `phash`    | `Option<Vec<u8>>`          | Perceptual hash               |
-| `album`    | `Option<ArrayString<64>>`  | Single album membership       |
-| `exif_vec` | `BTreeMap<String, String>` | EXIF key-value pairs          |
-| `alias`    | `Vec<FileModify>`          | Known file paths & timestamps |
+| Field      | Type                       | Description                                    |
+| ---------- | -------------------------- | ---------------------------------------------- |
+| `id`       | `ArrayString<64>`          | Content hash (`object.id`)                     |
+| `size`     | `u64`                      | File size in bytes                             |
+| `width`    | `u32`                      | Pixel width                                    |
+| `height`   | `u32`                      | Pixel height                                   |
+| `ext`      | `String`                   | File extension (e.g. `"jpg"`)                  |
+| `phash`    | `Option<Vec<u8>>`          | Perceptual hash                                |
+| `album`    | `Option<ArrayString<64>>`  | Single album membership                        |
+| `exif_vec` | `BTreeMap<String, String>` | EXIF key-value pairs                           |
+| `alias`    | `Option<FileModify>`       | Source path & timestamps; `None` = pruned/gone |
 
 #### VideoMetadata
 
 Source: `backend/src/model/video.rs`
 
-| Field      | Type                       | Description                   |
-| ---------- | -------------------------- | ----------------------------- |
-| `id`       | `ArrayString<64>`          | Content hash (`object.id`)    |
-| `size`     | `u64`                      | File size in bytes            |
-| `width`    | `u32`                      | Pixel width                   |
-| `height`   | `u32`                      | Pixel height                  |
-| `ext`      | `String`                   | File extension (e.g. `"mp4"`) |
-| `duration` | `f64`                      | Video duration in seconds     |
-| `album`    | `Option<ArrayString<64>>`  | Single album membership       |
-| `exif_vec` | `BTreeMap<String, String>` | EXIF key-value pairs          |
-| `alias`    | `Vec<FileModify>`          | Known file paths & timestamps |
+| Field      | Type                       | Description                                    |
+| ---------- | -------------------------- | ---------------------------------------------- |
+| `id`       | `ArrayString<64>`          | Content hash (`object.id`)                     |
+| `size`     | `u64`                      | File size in bytes                             |
+| `width`    | `u32`                      | Pixel width                                    |
+| `height`   | `u32`                      | Pixel height                                   |
+| `ext`      | `String`                   | File extension (e.g. `"mp4"`)                  |
+| `duration` | `f64`                      | Video duration in seconds                      |
+| `album`    | `Option<ArrayString<64>>`  | Single album membership                        |
+| `exif_vec` | `BTreeMap<String, String>` | EXIF key-value pairs                           |
+| `alias`    | `Option<FileModify>`       | Source path & timestamps; `None` = pruned/gone |
 
 #### AlbumMetadata
 
@@ -136,9 +136,10 @@ Source: `backend/src/model/response.rs`
 | `scan_time`  | `i64`    | Last scan timestamp (ms)                               |
 | `is_trashed` | `bool`   | Per-path trash flag (buried vs. visible in trash view) |
 
-Each media record carries the file path it was indexed from. Path-primary
-indexing creates one record per physical file, so new records hold a single
-`FileModify`; the field remains a list so trash state is tracked per path.
+Each media record carries the file path it was indexed from as its single
+`FileModify` (`alias: Option<FileModify>`). Path-primary indexing creates one
+record per physical file; `None` means the alias was pruned and the file is
+gone.
 
 #### Share
 

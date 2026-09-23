@@ -33,7 +33,7 @@ export async function assignAlbum(
       onConflict
     }
     if (item !== undefined && item.type !== 'album') {
-      const alias = item.alias[0]?.file
+      const alias = item.alias?.file
       if (alias !== undefined) body.alias = alias
     }
     const response = await axios.put<AssignAlbumResult>('/put/assign_album', body)

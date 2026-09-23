@@ -239,12 +239,10 @@ fn move_asset_into_album(
                 .flatten()
                 .map(|guard| guard.value());
             if let Some(mut abstract_data) = existing {
-                if let Some(alias) = abstract_data.alias_mut() {
-                    for a in alias.iter_mut() {
-                        if a.file == record.canonical_path {
-                            a.file.clone_from(&new_path);
-                        }
-                    }
+                if let Some(alias) = abstract_data.alias_mut().and_then(|slot| slot.as_mut())
+                    && alias.file == record.canonical_path
+                {
+                    alias.file.clone_from(&new_path);
                 }
                 abstract_data.set_album(Some(album_id));
                 metadata_table
@@ -424,13 +422,11 @@ fn rewrite_paths_under(data: &mut AbstractData, old_prefix: &Path, new_prefix: &
         }
         AbstractData::Image(_) | AbstractData::Video(_) => {
             let mut changed = false;
-            if let Some(alias) = data.alias_mut() {
-                for a in alias.iter_mut() {
-                    let p = PathBuf::from(&a.file);
-                    if let Ok(rel) = p.strip_prefix(old_prefix) {
-                        a.file = new_prefix.join(rel).to_string_lossy().into_owned();
-                        changed = true;
-                    }
+            if let Some(alias) = data.alias_mut().and_then(|slot| slot.as_mut()) {
+                let p = PathBuf::from(&alias.file);
+                if let Ok(rel) = p.strip_prefix(old_prefix) {
+                    alias.file = new_prefix.join(rel).to_string_lossy().into_owned();
+                    changed = true;
                 }
             }
             changed

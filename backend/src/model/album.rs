@@ -46,12 +46,11 @@ impl AlbumCombined {
         // Membership is path-based: a file belongs to this album iff its
         // immediate parent directory is this album's directory. Files in
         // sub-directories belong to the corresponding child album instead.
-        // A file counts only while it has at least one live (non-trashed)
-        // alias under the directory.
-        let belongs_to_album = move |alias: &[crate::model::response::FileModify]| -> bool {
-            alias
-                .iter()
-                .any(|a| !a.is_trashed && Path::new(&a.file).parent() == Some(dir_path.as_path()))
+        // A file counts only while its alias is live (not trashed).
+        let belongs_to_album = move |alias: Option<&crate::model::response::FileModify>| -> bool {
+            alias.is_some_and(|a| {
+                !a.is_trashed && Path::new(&a.file).parent() == Some(dir_path.as_path())
+            })
         };
 
         let mut data_in_album: Vec<MediaItemInfo> = ref_data
@@ -59,7 +58,7 @@ impl AlbumCombined {
             .filter_map(
                 |database_timestamp| match &database_timestamp.abstract_data {
                     AbstractData::Image(img) => {
-                        if belongs_to_album(&img.metadata.alias) {
+                        if belongs_to_album(img.metadata.alias.as_ref()) {
                             Some(MediaItemInfo {
                                 asset_id: database_timestamp.asset_id,
                                 size: img.metadata.size,
@@ -71,7 +70,7 @@ impl AlbumCombined {
                         }
                     }
                     AbstractData::Video(vid) => {
-                        if belongs_to_album(&vid.metadata.alias) {
+                        if belongs_to_album(vid.metadata.alias.as_ref()) {
                             Some(MediaItemInfo {
                                 asset_id: database_timestamp.asset_id,
                                 size: vid.metadata.size,
@@ -127,53 +126,53 @@ mod tests {
 
     use crate::model::response::FileModify;
 
-    fn belongs_to_album(alias: &[FileModify], dir_path: &str) -> bool {
+    fn belongs_to_album(alias: Option<&FileModify>, dir_path: &str) -> bool {
         let dir_path = Path::new(dir_path);
-        alias
-            .iter()
-            .any(|a| Path::new(&a.file).parent() == Some(dir_path))
+        alias.is_some_and(|a| Path::new(&a.file).parent() == Some(dir_path))
     }
 
-    fn alias(paths: &[&str]) -> Vec<FileModify> {
-        paths
-            .iter()
-            .map(|p| FileModify {
-                file: p.to_string(),
-                modified: 0,
-                scan_time: 0,
-                is_trashed: false,
-            })
-            .collect()
+    fn alias(path: &str) -> Option<FileModify> {
+        Some(FileModify {
+            file: path.to_string(),
+            modified: 0,
+            scan_time: 0,
+            is_trashed: false,
+        })
     }
 
     #[test]
     fn dir_album_matches_file_inside_dir() {
-        let a = alias(&["/photos/vacation/img.jpg"]);
-        assert!(belongs_to_album(&a, "/photos/vacation"));
+        let a = alias("/photos/vacation/img.jpg");
+        assert!(belongs_to_album(a.as_ref(), "/photos/vacation"));
     }
 
     #[test]
     fn dir_album_does_not_match_file_in_subdirectory() {
-        let a = alias(&["/photos/vacation/day1/img.jpg"]);
-        assert!(!belongs_to_album(&a, "/photos/vacation"));
+        let a = alias("/photos/vacation/day1/img.jpg");
+        assert!(!belongs_to_album(a.as_ref(), "/photos/vacation"));
     }
 
     #[test]
     fn child_dir_album_matches_its_own_direct_file() {
-        let a = alias(&["/photos/vacation/day1/img.jpg"]);
-        assert!(belongs_to_album(&a, "/photos/vacation/day1"));
+        let a = alias("/photos/vacation/day1/img.jpg");
+        assert!(belongs_to_album(a.as_ref(), "/photos/vacation/day1"));
     }
 
     #[test]
     fn dir_album_does_not_match_sibling_dir() {
-        let a = alias(&["/photos/other/img.jpg"]);
-        assert!(!belongs_to_album(&a, "/photos/vacation"));
+        let a = alias("/photos/other/img.jpg");
+        assert!(!belongs_to_album(a.as_ref(), "/photos/vacation"));
     }
 
     #[test]
     fn dir_album_does_not_match_partial_name_prefix() {
-        let a = alias(&["/photos/vacation2/img.jpg"]);
-        assert!(!belongs_to_album(&a, "/photos/vacation"));
+        let a = alias("/photos/vacation2/img.jpg");
+        assert!(!belongs_to_album(a.as_ref(), "/photos/vacation"));
+    }
+
+    #[test]
+    fn pruned_alias_never_belongs_to_album() {
+        assert!(!belongs_to_album(None, "/photos/vacation"));
     }
 }
 

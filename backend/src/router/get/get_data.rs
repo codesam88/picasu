@@ -37,19 +37,17 @@ use std::time::Instant;
         )
     )
 ]
-#[get("/get/get-data?<timestamp>&<start>&<end>&<trashed>")]
+#[get("/get/get-data?<timestamp>&<start>&<end>")]
 pub async fn get_data(
     guard_timestamp: GuardResult<GuardTimestamp>,
     timestamp: i64,
     start: usize,
     mut end: usize,
-    trashed: Option<bool>,
 ) -> AppResult<Json<Vec<DataBaseTimestampReturn>>> {
     let guard_timestamp = guard_timestamp?;
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
 
-        let trashed_view = trashed.unwrap_or(false);
         let resolved_share_opt = guard_timestamp.claims.resolved_share_opt;
         let (show_download, show_metadata) = resolve_show_download_and_metadata(resolved_share_opt);
 
@@ -132,7 +130,6 @@ pub async fn get_data(
                         timestamp,
                         show_download,
                         show_metadata,
-                        trashed_view,
                         asset_id,
                         cover_content_hash,
                     );

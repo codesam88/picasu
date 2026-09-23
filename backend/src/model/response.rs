@@ -166,9 +166,10 @@ pub struct FileModify {
     pub file: String,
     pub modified: i64,
     pub scan_time: i64,
-    /// Per-alias trash flag. A record is visible as long as it has at least one
-    /// non-trashed alias, and appears in the trash view while it has at least
-    /// one trashed alias. Newly discovered aliases are always live.
+    /// Trash flag for the record's single alias. The record is visible in the
+    /// gallery while the alias is live and in the trash view while it is
+    /// trashed; a pruned alias (`alias: None`) matches neither view. Newly
+    /// discovered aliases are always live.
     pub is_trashed: bool,
 }
 

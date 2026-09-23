@@ -29,7 +29,7 @@ setupWorkerAxiosInterceptor(workerAxios, postToMainData.notification)
 self.addEventListener('message', (e) => {
   const handler = createHandler<typeof toDataWorker>({
     fetchData: async (payload) => {
-      const { fetchMethod, batch, timestamp, timestampToken, trashed } = payload
+      const { fetchMethod, batch, timestamp, timestampToken } = payload
 
       // if there are too many batch are processed then try to terminate the oldest request
       if (fetchMethod === 'batch') {
@@ -43,8 +43,7 @@ self.addEventListener('message', (e) => {
         fetchMethod,
         batch,
         timestamp,
-        timestampToken,
-        trashed ?? false
+        timestampToken
       )
 
       if (result.size > 0) {
@@ -103,8 +102,7 @@ async function fetchData(
   fetchMethod: FetchDataMethod,
   index: number,
   timestamp: number,
-  timestampToken: string,
-  trashed: boolean
+  timestampToken: string
 ): Promise<{
   result: Map<
     number,
@@ -133,9 +131,7 @@ async function fetchData(
     }
   }
 
-  const fetchUrl = `/get/get-data?timestamp=${timestamp}&start=${start}&end=${end}${
-    trashed ? '&trashed=true' : ''
-  }`
+  const fetchUrl = `/get/get-data?timestamp=${timestamp}&start=${start}&end=${end}`
 
   const response = await workerAxios.get(fetchUrl, {
     headers: {

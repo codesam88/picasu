@@ -36,7 +36,7 @@ when:
     capture:
       hash_val: response.[0].abstractData.id
       asset_id_val: response.[0].assetId
-      alias_file: response.[0].abstractData.alias.[0].file
+      alias_file: response.[0].abstractData.alias.file
   # Move the record to the target album.
   - call: PUT /put/assign_album
     body: { assetId: "${asset_id_val}", albumId: "${target_album}", alias: "${alias_file}", onConflict: "rename" }
