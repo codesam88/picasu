@@ -136,7 +136,7 @@ pub async fn imported_file(
         let record = crate::storage::asset_store::get_asset_by_id(&asset_id)
             .or_raise(|| (ErrorKind::Database, "Failed to fetch asset record"))?
             .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Asset not found"))?;
-        Ok(std::path::PathBuf::from(&record.canonical_path))
+        Ok(std::path::PathBuf::from(&record.path))
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;

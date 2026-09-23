@@ -460,8 +460,7 @@ mod tests {
         assert!(!run(Expression::Trashed(true), &data));
     }
 
-    /// A missing path (`None`) matches neither view, mirroring the old
-    /// empty-vec behaviour (`.any` over an empty list is always false).
+    /// A missing path (`None`) matches neither the live nor the trashed view.
     #[test]
     fn trashed_on_missing_path_matches_nothing() {
         let data = AbstractData::Image(img());

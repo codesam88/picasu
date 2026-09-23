@@ -34,8 +34,8 @@ redb table definitions live in `backend/src/storage/db.rs`:
 | Constant         | On-disk name       | Key → value                                | Role                                                                                                                                                                            |
 | ---------------- | ------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `METADATA_TABLE` | `"asset_metadata"` | `asset_id` → `MetadataRecord`              | Metadata-only payload (tags, description, rating, EXIF, album stats/share/title). Read for detail views, metadata edits, and `TREE` composition; identity is never stored here. |
-| `ASSET_BY_PATH`  | `"asset_by_path"`  | canonical filesystem path → `asset_id`     | One row per physical file or directory. Enforces path uniqueness.                                                                                                               |
-| `ASSET_BY_ID`    | `"asset_by_id"`    | `asset_id` → JSON-serialized `AssetRecord` | One row per asset: kind, canonical path, content hash, size, album membership, trash flag. The sole stored owner of identity.                                                   |
+| `ASSET_BY_PATH`  | `"asset_by_path"`  | filesystem path → `asset_id`               | One row per physical file or directory. Enforces path uniqueness.                                                                                                               |
+| `ASSET_BY_ID`    | `"asset_by_id"`    | `asset_id` → JSON-serialized `AssetRecord` | One row per asset: kind, path, content hash, size, album membership, trash flag. The sole stored owner of identity.                                                             |
 | `DUPE_INDEX`     | `"dupe_index"`     | `content_hash` → JSON `Vec<asset_id>`      | Dedup grouping only: asset IDs sharing identical content remain independently addressable. Albums never appear here.                                                            |
 
 The `METADATA_TABLE` value is `MetadataRecord`
@@ -57,8 +57,9 @@ pub enum MetadataRecord {
 | Video  | `width`, `height`, `duration`, `exif_vec`                                                                                                 |
 | Album  | `title`, `created_time`, `start_time`, `end_time`, `last_modified_time`, `cover`, `item_count`, `item_size`, `share_list`, `custom_title` |
 
-Identity fields are deliberately absent: no `id`, no `path`/file entry, no
-`canonical_path`, no `modified`/`scan_time`/`is_trashed`, no `size`/`ext`, no
+Identity fields are deliberately absent: no `id`, no asset `path`
+(neither `AssetRecord.path` nor the view's `path`/file entry), no
+`modified`/`scan_time`/`is_trashed`, no `size`/`ext`, no
 `album`, no `dir_path`, no `obj_type`. Readers compose the wire
 `AbstractData` from `AssetRecord` + payload via
 `compose_abstract_data`; writers extract the payload via
@@ -144,7 +145,7 @@ Source: `backend/src/model/album.rs`
 | `item_count`         | `usize`                           | Number of member media items                                      |
 | `item_size`          | `u64`                             | Total member file size                                            |
 | `share_list`         | `HashMap<ArrayString<64>, Share>` | Named share configurations                                        |
-| `dir_path`           | `String`                          | Album directory path; composed from `AssetRecord.canonical_path`  |
+| `dir_path`           | `String`                          | Album directory path; composed from `AssetRecord.path`            |
 | `custom_title`       | `Option<String>`                  | User-set title override; `None` = derived from the directory name |
 | `is_trashed`         | `bool`                            | Trash flag; composed from `AssetRecord.is_trashed`                |
 
@@ -165,7 +166,7 @@ Source: `backend/src/model/response.rs`
 | `is_trashed` | `bool`   | Per-path trash flag (buried vs. visible in trash view) |
 
 `FileEntry` is a view type assembled from `AssetRecord`
-(`canonical_path`, `modified`, `scan_time`, `is_trashed`) at composition
+(`path`, `modified`, `scan_time`, `is_trashed`) at composition
 time — it is never stored. Each media record carries it as its single
 `path: Option<FileEntry>` on the wire; `None` means the path was pruned and
 the file is gone.

@@ -33,7 +33,7 @@ pub fn normalize_asset_path(file: &str) -> PathBuf {
 }
 
 /// Remove the asset path `target` from `data`, deleting its file + sidecar
-/// from disk.  Returns `true` if the record still holds its canonical path
+/// from disk.  Returns `true` if the record still holds its path
 /// (and should be persisted), `false` once the path is gone (thumbnail + DB
 /// removal caller's responsibility). Albums (no path) return `false`.
 pub fn prune_asset_path(data: &mut AbstractData, target: &Path) -> bool {
@@ -59,7 +59,7 @@ pub fn prune_asset_path(data: &mut AbstractData, target: &Path) -> bool {
 }
 
 /// Remove the record's path if its file no longer exists on disk.  Returns
-/// `true` if the record still holds its canonical path, `false` once the path
+/// `true` if the record still holds its path, `false` once the path
 /// is gone (thumbnail already removed by this call). Albums return `false`.
 pub fn prune_stale_asset_path(data: &mut AbstractData) -> bool {
     let Some(path_slot) = data.path_mut() else {

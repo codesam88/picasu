@@ -113,7 +113,7 @@ pub fn probe_record(
     let path = match record.kind {
         AssetKind::Album => None,
         AssetKind::Image | AssetKind::Video => Some(FileEntry {
-            file: record.canonical_path.clone(),
+            file: record.path.clone(),
             modified: record.modified,
             scan_time: record.scan_time,
             is_trashed: record.is_trashed,

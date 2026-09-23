@@ -346,7 +346,7 @@ impl AbstractData {
 
     // Path helper methods
 
-    /// Get the source path string (the record's canonical path; empty for
+    /// Get the source path string (the record's path; empty for
     /// albums and for records whose path has been pruned).
     pub fn source_path_string(&self) -> &str {
         match self {

@@ -32,7 +32,7 @@ mark superseded decisions rather than silently rewriting history.
 - Remove merge implementation work from its remaining actionable checklist;
   retain a short historical note that identity-based merge was rejected.
 - Update watcher and release-plan wording from “remaining aliases” to “the
-  asset's canonical path” where the implementation is already path-primary.
+  asset's path” where the implementation is already path-primary.
 - Identify backlog plans whose designs still assume `alias: Vec<...>` and mark
   them for rewrite before implementation (`scrub-endpoint` first).
 
@@ -54,7 +54,7 @@ with the multi-alias shape is not a goal.
 - Alias-required and album-alias-rejected scenarios are obsolete under the
   path-primary contract and have been removed from request bodies; no
   replacement scenarios are needed for a field that no longer exists.
-- Verify stale-path behavior through the asset's canonical path, not a caller
+- Verify stale-path behavior through the asset's path, not a caller
   supplied path.
 
 ### 3. Test probes and scenario contracts
@@ -102,7 +102,7 @@ is now `process/path.rs`, hosting `normalize_asset_path`, `prune_asset_path`,
 `sweep_stale_aliases` → `sweep_stale_asset_paths` (`album_index.rs`);
 `trim_aliases_to_path` → `align_path_to_asset` (`update_tree.rs`). Stale
 “remaining aliases” / “alias path” comments and the index-task error string
-now use canonical-path wording. The `AbstractData.alias` storage field, the
+now use path wording. The `AbstractData.alias` storage field, the
 `alias()` / `alias_mut()` accessors, and external response fields are
 unchanged; `remove_compressed_thumbnail` keeps its DUPE_INDEX/shared-thumbnail
 semantics.
@@ -135,7 +135,7 @@ rating, EXIF vec, cover ref”; the implementation reused `AbstractData` (the
 plan's parenthesized shortcut) to avoid rewriting every consumer. As a result
 four identity fields are stored twice: `FileModify { file, modified,
 scan_time, is_trashed }` in the metadata row duplicates
-`AssetRecord { canonical_path, modified, scan_time, is_trashed }` in
+`AssetRecord { path, modified, scan_time, is_trashed }` in
 `ASSET_BY_ID`, and `flush_tree` copies metadata-row fields _back_ into the
 identity tables on every metadata edit. The metadata row must stop being a
 write-side source of identity.
@@ -160,7 +160,7 @@ write-side source of identity.
   file entry, albums at record level — pick `AssetRecord.is_trashed` as sole
   owner); filters that currently scan full `AbstractData` in the TREE.
 - A1 — remove `align_path_to_asset` (`update_tree.rs`): it only repairs drift
-  between the metadata row's `path` and `AssetRecord.canonical_path` and dies
+  between the metadata row's `path` and `AssetRecord.path` and dies
   when identity writes come from `AssetRecord` alone.
 - A2 — delete the `to_update`/`path_before` guard branch in
   `sweep_stale_asset_paths` (`album_index.rs`): unreachable under the
@@ -255,10 +255,10 @@ URL is built from an asset_id where a content hash is expected.
   request contract, test probes, and internal helper naming.
 - 2026-09-23: Category 2 done. `alias` removed from `AssignAlbumData`,
   `move_asset_into_album`/`move_album_into_album`, and the frontend
-  `assignAlbum` body; asset moves resolve `canonical_path` via `ASSET_BY_ID`.
+  `assignAlbum` body; asset moves resolve `path` via `ASSET_BY_ID`.
   Contract unit tests pin the OpenAPI schema (no `alias`; required =
   `assetId`/`albumId`/`onConflict`). Scenario request bodies stripped of
-  `alias`; stale-path scenario keeps asserting non-200 via the canonical path.
+  `alias`; stale-path scenario keeps asserting non-200 via the path.
   OpenAPI reference regenerated. Categories 3–4 untouched.
 - 2026-09-23: Review follow-up: `AssignAlbumData` now uses
   `deny_unknown_fields`, so a legacy body carrying `alias` fails
@@ -280,7 +280,7 @@ URL is built from an asset_id where a content hash is expected.
   callers renamed `sweep_stale_aliases` → `sweep_stale_asset_paths` and
   `trim_aliases_to_path` → `align_path_to_asset`. Stale “remaining
   aliases”/“alias path” comments, debug logs, and the index-task error string
-  reworded to canonical-path terminology; field/wire references to
+  reworded to path terminology; field/wire references to
   `AbstractData.alias` intentionally left as-is. `remove_compressed_thumbnail`
   DUPE_INDEX/shared-thumbnail behavior unchanged. Symbol references updated in
   `album-index-sweep-concurrency`, `delete-from-disk`, and
@@ -343,3 +343,12 @@ URL is built from an asset_id where a content hash is expected.
   Playwright 34/34), including the `metadata_only_loaded_on_detail` /
   `metadata_detail_returns_full_metadata` / `abstractData.path.*` wire
   guards and two new stored-payload identity-key tests.
+- 2026-09-23: Renamed `AssetRecord.canonical_path` → `path` (review: the
+  “canonical” adjective only distinguished multi-form paths, which no longer
+  exist; one field covers files and album directories, so plain `path` matches
+  the glossary). Stored `ASSET_BY_ID` JSON key changed (`canonicalPath` →
+  `path`); no migration — the metadata-table rename already mandates a clean
+  rebuild. Prose, docs, scenarios, OpenAPI, and this plan updated;
+  `canonicalize_path` and `std::fs::canonicalize` kept (correct verb for
+  normalization). Also removed the last old-model reference in active code
+  (`expression.rs` empty-vec comment).

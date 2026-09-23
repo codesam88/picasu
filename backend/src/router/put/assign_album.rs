@@ -31,7 +31,7 @@ pub enum OnConflict {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssignAlbumData {
     /// Path-primary asset ID. The handler resolves the record and its
-    /// canonical physical path via `ASSET_BY_ID`, allowing independent
+    /// physical path via `ASSET_BY_ID`, allowing independent
     /// movement of same-hash files.
     #[schema(value_type = String)]
     pub asset_id: ArrayString<64>,
@@ -60,9 +60,9 @@ pub enum AssignOutcome {
 }
 
 /// Move the asset identified by `asset_id` into the album's directory on disk
-/// (resolved from its canonical physical path), update the stored path and
+/// (resolved from its physical path), update the stored path and
 /// album membership, and report the conflict outcome. Returns 400 if the file
-/// is missing at the asset's canonical path (stale record — re-index first).
+/// is missing at the asset's path (stale record — re-index first).
 #[utoipa::path(
         put,
         path = "/put/assign_album",
@@ -130,7 +130,7 @@ pub async fn assign_album(
 
 /// Move a single asset (identified by `asset_id`) into `album_dir`.
 /// This is the path-primary move: only the one physical file at the asset's
-/// canonical path is moved, regardless of hash-matched duplicates.
+/// path is moved, regardless of hash-matched duplicates.
 /// Albums move as directory trees via `move_album_into_album`.
 fn move_asset_into_album(
     asset_id: ArrayString<64>,
@@ -150,7 +150,7 @@ fn move_asset_into_album(
         return move_album_into_album(asset_id, album_id, album_dir, on_conflict);
     }
 
-    let source_path = PathBuf::from(&record.canonical_path);
+    let source_path = PathBuf::from(&record.path);
     if !source_path.exists() {
         return Err(AppError::new(
             ErrorKind::InvalidInput,
@@ -192,7 +192,7 @@ fn move_asset_into_album(
     // Update the asset record with the new path and album.
     let new_path = final_dest.to_string_lossy().into_owned();
     let mut updated = record.clone();
-    updated.canonical_path.clone_from(&new_path);
+    updated.path.clone_from(&new_path);
     updated.album_id = Some(album_id);
 
     // Update ASSET_BY_ID.
@@ -200,7 +200,7 @@ fn move_asset_into_album(
         .or_raise(|| (ErrorKind::Database, "Failed to update asset"))?;
 
     // Update ASSET_BY_PATH: remove old, add new.
-    asset_store::remove_asset_by_path(&record.canonical_path)
+    asset_store::remove_asset_by_path(&record.path)
         .or_raise(|| (ErrorKind::Database, "Failed to remove old path mapping"))?;
     asset_store::put_asset_by_path(&new_path, asset_id)
         .or_raise(|| (ErrorKind::Database, "Failed to add new path mapping"))?;
@@ -237,7 +237,7 @@ fn move_album_into_album(
     let record = crate::storage::asset_store::get_asset_by_id(&album_id)
         .or_raise(|| (ErrorKind::Database, "Failed to look up album"))?
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Album not found"))?;
-    let source_dir = PathBuf::from(&record.canonical_path);
+    let source_dir = PathBuf::from(&record.path);
     if !source_dir.is_dir() {
         return Err(AppError::new(
             ErrorKind::InvalidInput,
@@ -303,7 +303,7 @@ fn rename_dir(source_dir: &Path, dest_dir: &Path) -> Result<(), AppError> {
 }
 
 /// Update asset tables after a directory move.
-/// For each asset whose canonical path starts with `source_dir`, update it
+/// For each asset whose path starts with `source_dir`, update it
 /// to the corresponding path under `dest_dir`.
 fn update_asset_tables_after_dir_move(source_dir: &Path, dest_dir: &Path) -> Result<(), AppError> {
     use crate::storage::asset_store;
@@ -312,18 +312,18 @@ fn update_asset_tables_after_dir_move(source_dir: &Path, dest_dir: &Path) -> Res
         .or_raise(|| (ErrorKind::Database, "Failed to read asset records"))?;
 
     for record in records {
-        let old_path = PathBuf::from(&record.canonical_path);
+        let old_path = PathBuf::from(&record.path);
         if let Ok(rel) = old_path.strip_prefix(source_dir) {
             let new_path = dest_dir.join(rel);
             let new_path_str = new_path.to_string_lossy().into_owned();
 
             // Update ASSET_BY_PATH: remove old, add new.
-            let _ = asset_store::remove_asset_by_path(&record.canonical_path);
+            let _ = asset_store::remove_asset_by_path(&record.path);
             let _ = asset_store::put_asset_by_path(&new_path_str, record.asset_id);
 
-            // Update canonical_path in ASSET_BY_ID.
+            // Update path in ASSET_BY_ID.
             let mut updated = record.clone();
-            updated.canonical_path = new_path_str;
+            updated.path = new_path_str;
             let _ = asset_store::put_asset_by_id(&updated);
         }
     }
@@ -336,7 +336,7 @@ mod tests {
     use super::*;
 
     /// Path-primary request contract: `assetId` identifies the one physical
-    /// file (resolved server-side via its canonical path). There is no
+    /// file (resolved server-side via its path). There is no
     /// caller-supplied `alias` path in the body, and `onConflict` remains
     /// required with no default.
     #[test]
@@ -350,7 +350,7 @@ mod tests {
 
         assert!(
             !properties.contains_key("alias"),
-            "alias must not appear in AssignAlbumData; asset_id resolves the canonical path"
+            "alias must not appear in AssignAlbumData; asset_id resolves the path"
         );
 
         let mut required: Vec<&str> = schema["required"]

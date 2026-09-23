@@ -157,7 +157,7 @@ pub const METADATA_TABLE: TableDefinition<&str, MetadataRecord> =
 // file or directory has exactly one independently addressable asset record.
 // See `.plan/asset-path-primary-index.md` for the design contract.
 
-/// Maps canonical filesystem path → `asset_id`.
+/// Maps filesystem path → `asset_id`.
 /// One row per physical file or directory. Ensures path uniqueness.
 pub const ASSET_BY_PATH: TableDefinition<&str, &str> = TableDefinition::new("asset_by_path");
 

@@ -4275,9 +4275,9 @@ This operation does not require authentication
 
 ## Move the asset identified by `asset_id` into the album's directory on disk
 
-(resolved from its canonical physical path), update the stored path and
+(resolved from its physical path), update the stored path and
 album membership, and report the conflict outcome. Returns 400 if the file
-is missing at the asset's canonical path (stale record — re-index first).
+is missing at the asset's path (stale record — re-index first).
 
 <a id="opIdassign_album"></a>
 
@@ -4442,9 +4442,9 @@ func main() {
 ```
 
 <h3 id="move-the-asset-identified-by-`asset_id`-into-the-album's-directory-on-disk
-(resolved-from-its-canonical-physical-path),-update-the-stored-path-and
+(resolved-from-its-physical-path),-update-the-stored-path-and
 album-membership,-and-report-the-conflict-outcome.-returns-400-if-the-file
-is-missing-at-the-asset's-canonical-path-(stale-record-—-re-index-first).-parameters">Parameters</h3>
+is-missing-at-the-asset's-path-(stale-record-—-re-index-first).-parameters">Parameters</h3>
 
 | Name | In   | Type                                      | Required | Description |
 | ---- | ---- | ----------------------------------------- | -------- | ----------- |
@@ -4461,9 +4461,9 @@ is-missing-at-the-asset's-canonical-path-(stale-record-—-re-index-first).-para
 ```
 
 <h3 id="move-the-asset-identified-by-`asset_id`-into-the-album's-directory-on-disk
-(resolved-from-its-canonical-physical-path),-update-the-stored-path-and
+(resolved-from-its-physical-path),-update-the-stored-path-and
 album-membership,-and-report-the-conflict-outcome.-returns-400-if-the-file
-is-missing-at-the-asset's-canonical-path-(stale-record-—-re-index-first).-responses">Responses</h3>
+is-missing-at-the-asset's-path-(stale-record-—-re-index-first).-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                     | Schema                              |
 | ------ | ---------------------------------------------------------------- | ------------------------------- | ----------------------------------- |
@@ -10276,11 +10276,11 @@ the legacy multi-alias `alias` path) are rejected rather than ignored.
 
 ### Properties
 
-| Name       | Type                            | Required | Restrictions | Description                                                                                                                                                       |
-| ---------- | ------------------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| albumId    | string                          | true     | none         | none                                                                                                                                                              |
-| assetId    | string                          | true     | none         | Path-primary asset ID. The handler resolves the record and its<br>canonical physical path via `ASSET_BY_ID`, allowing independent<br>movement of same-hash files. |
-| onConflict | [OnConflict](#schemaonconflict) | true     | none         | none                                                                                                                                                              |
+| Name       | Type                            | Required | Restrictions | Description                                                                                                                                             |
+| ---------- | ------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| albumId    | string                          | true     | none         | none                                                                                                                                                    |
+| assetId    | string                          | true     | none         | Path-primary asset ID. The handler resolves the record and its<br>physical path via `ASSET_BY_ID`, allowing independent<br>movement of same-hash files. |
+| onConflict | [OnConflict](#schemaonconflict) | true     | none         | none                                                                                                                                                    |
 
 <h2 id="tocS_AssignOutcome">AssignOutcome</h2>
 <!-- backwards compatibility -->
@@ -10471,10 +10471,10 @@ silent about what happened to the selected item.
 
 ### Properties
 
-| Name      | Type           | Required | Restrictions | Description                                                                                                                                   |
-| --------- | -------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| assetIds  | [string]       | true     | none         | Asset IDs to delete. Each asset is resolved via `ASSET_BY_ID` by its<br>`asset_id` key. The canonical file and sidecar are removed from disk. |
-| timestamp | integer(int64) | true     | none         | none                                                                                                                                          |
+| Name      | Type           | Required | Restrictions | Description                                                                                                                               |
+| --------- | -------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| assetIds  | [string]       | true     | none         | Asset IDs to delete. Each asset is resolved via `ASSET_BY_ID` by its<br>`asset_id` key. The asset file and sidecar are removed from disk. |
+| timestamp | integer(int64) | true     | none         | none                                                                                                                                      |
 
 <h2 id="tocS_DeleteShare">DeleteShare</h2>
 <!-- backwards compatibility -->

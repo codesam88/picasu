@@ -226,7 +226,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
             .await;
         debug!("BATCH flush_tree pre-sweep done (job {job_id})");
 
-        // Sweep stale asset paths: remove DB records whose canonical file no
+        // Sweep stale asset paths: remove DB records whose asset file no
         // longer exists on disk under the target root.
         debug!(
             "sweeping stale asset paths under {} (job {job_id})",
@@ -303,7 +303,7 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
         .collect()
 }
 
-/// Sweep stale asset paths: for every DB record whose canonical path is under
+/// Sweep stale asset paths: for every DB record whose path is under
 /// `root`, check that file.  If it no longer exists on disk, prune the path;
 /// once the path is gone, remove the entire record (and its compressed
 /// thumbnail).

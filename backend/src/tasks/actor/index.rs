@@ -51,10 +51,10 @@ fn index_task_match(abstract_data: AbstractData) -> Result<AbstractData> {
 fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
     let hash = abstract_data.hash();
     // Path-primary records hold a single file entry.
-    let canonical_path = abstract_data
+    let path = abstract_data
         .path()
         .map(|entry| entry.file.clone())
-        .ok_or_else(|| anyhow!("record has no canonical path for hash: {hash}"))?;
+        .ok_or_else(|| anyhow!("record has no path for hash: {hash}"))?;
 
     if !matches!(abstract_data.ext_type(), "image" | "video") {
         return Err(anyhow!(
@@ -63,10 +63,7 @@ fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
         ));
     }
 
-    info!(
-        "indexing {} {hash}: {canonical_path}",
-        abstract_data.ext_type()
-    );
+    info!("indexing {} {hash}: {path}", abstract_data.ext_type());
 
     let is_image = abstract_data.is_image();
     if is_image {
@@ -75,7 +72,7 @@ fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
             return Err(e).context(format!(
                 "failed to process image metadata pipeline. Hash: {}, Path: {}",
                 abstract_data.hash(),
-                canonical_path
+                path
             ));
         }
     } else {
@@ -84,7 +81,7 @@ fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
             return Err(e).context(format!(
                 "failed to process video metadata pipeline. Hash: {}, Path: {}",
                 abstract_data.hash(),
-                canonical_path
+                path
             ));
         }
         abstract_data.set_pending(true);
