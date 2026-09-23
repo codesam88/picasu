@@ -48,8 +48,8 @@ Content-Type: application/json
 
 ```javascript
 const inputBody = '{
-  "deleteList": [
-    0
+  "assetIds": [
+    "string"
   ],
   "timestamp": 0
 }';
@@ -178,7 +178,7 @@ func main() {
 
 ```json
 {
-  "deleteList": [0],
+  "assetIds": ["string"],
   "timestamp": 0
 }
 ```
@@ -741,7 +741,7 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
-## get_data
+## Serve one page of timeline/list rows for a snapshot timestamp.
 
 <a id="opIdget_data"></a>
 
@@ -882,6 +882,13 @@ func main() {
 
 `GET /get/get-data`
 
+Phase 14 lean read path: media rows are built from the snapshot's
+`ReducedData` plus the lean `ASSET_BY_ID` record — no per-row
+`METADATA_TABLE` (full `AbstractData`) read, and no tags/EXIF/description
+on the payload (those are served by `GET /get/metadata/{assetId}`).
+Album rows still read `METADATA_TABLE` because tiles need their stored
+title/cover/counts.
+
 > Example responses
 
 > 200 Response
@@ -890,29 +897,33 @@ func main() {
 [
   {
     "abstractData": {},
+    "assetId": "string",
+    "coverHash": "string",
     "timestamp": 0,
     "token": "string"
   }
 ]
 ```
 
-<h3 id="get_data-responses">Responses</h3>
+<h3 id="serve-one-page-of-timeline/list-rows-for-a-snapshot-timestamp.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description             | Schema |
 | ------ | ---------------------------------------------------------------- | ----------------------- | ------ |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Data by timestamp range | Inline |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input           | None   |
 
-<h3 id="get_data-responseschema">Response Schema</h3>
+<h3 id="serve-one-page-of-timeline/list-rows-for-a-snapshot-timestamp.-responseschema">Response Schema</h3>
 
 Status Code **200**
 
-| Name           | Type                                                        | Required | Restrictions | Description |
-| -------------- | ----------------------------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_    | [[DataBaseTimestampReturn](#schemadatabasetimestampreturn)] | false    | none         | none        |
-| » abstractData | object                                                      | true     | none         | none        |
-| » timestamp    | integer(int64)                                              | true     | none         | none        |
-| » token        | string                                                      | true     | none         | none        |
+| Name           | Type                                                        | Required | Restrictions | Description                                                                                                                                                               |
+| -------------- | ----------------------------------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _anonymous_    | [[DataBaseTimestampReturn](#schemadatabasetimestampreturn)] | false    | none         | none                                                                                                                                                                      |
+| » abstractData | object                                                      | true     | none         | none                                                                                                                                                                      |
+| » assetId      | string                                                      | true     | none         | Path-primary asset ID.                                                                                                                                                    |
+| » coverHash    | string,null                                                 | false    | none         | For albums: the cover image's content hash (used for compressed<br>thumbnail URL construction and token validation). `None` for media<br>items or albums without a cover. |
+| » timestamp    | integer(int64)                                              | true     | none         | none                                                                                                                                                                      |
+| » token        | string                                                      | true     | none         | none                                                                                                                                                                      |
 
 <aside class="success">
 This operation does not require authentication
@@ -1738,6 +1749,147 @@ func main() {
 This operation does not require authentication
 </aside>
 
+## Full metadata detail for a single asset, read from `METADATA_TABLE` by
+
+`asset_id`.
+
+<a id="opIdget_metadata"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/metadata/{asset_id}
+
+```
+
+```http
+GET /get/metadata/{asset_id} HTTP/1.1
+
+```
+
+```javascript
+fetch("/get/metadata/{asset_id}", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/get/metadata/{asset_id}',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/get/metadata/{asset_id}')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/metadata/{asset_id}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/metadata/{asset_id}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/metadata/{asset_id}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/metadata/{asset_id}`
+
+This is the detail-side counterpart of `get-data`: list rows only carry
+lean identity fields (tags / EXIF / description / rating are stripped in
+Phase 14), so the sidebar, detail view, and edit prefill fetch the stored
+`AbstractData` here on demand.
+
+Auth and share parity follow `get-data`: a `GuardTimestamp` bearer token
+(prefetch token) is required, and when the token resolves to a share with
+`show_metadata: false` the metadata fields are cleared before responding so
+a share that hides metadata cannot leak it through this route.
+
+<h3 id="full-metadata-detail-for-a-single-asset,-read-from-`metadata_table`-by
+`asset_id`.-responses">Responses</h3>
+
+| Status | Meaning                                                        | Description                        | Schema |
+| ------ | -------------------------------------------------------------- | ---------------------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)        | Full metadata record for the asset | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4) | Unknown asset_id                   | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 ## get_fs_completion
 
 <a id="opIdget_fs_completion"></a>
@@ -2090,6 +2242,360 @@ null
 This operation does not require authentication
 </aside>
 
+## Test-only probe: list the `asset_id` members of a `DUPE_INDEX`
+
+content-hash group. Returns an empty list when no group exists for `hash`,
+so scenarios can assert both presence and absence of members. Disabled
+(404) unless the test bootstrap opted in via `enable_test_probe`.
+
+<a id="opIdprobe_dupe_group"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/test/dupe-group/{hash} \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/test/dupe-group/{hash} HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/test/dupe-group/{hash}", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/test/dupe-group/{hash}',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/test/dupe-group/{hash}', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/test/dupe-group/{hash}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/test/dupe-group/{hash}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/test/dupe-group/{hash}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/test/dupe-group/{hash}`
+
+> Example responses
+
+> 200 Response
+
+```json
+[
+  {
+    "assetId": "string"
+  }
+]
+```
+
+<h3 id="test-only-probe:-list-the-`asset_id`-members-of-a-`dupe_index`
+content-hash-group.-returns-an-empty-list-when-no-group-exists-for-`hash`,
+so-scenarios-can-assert-both-presence-and-absence-of-members.-disabled
+(404)-unless-the-test-bootstrap-opted-in-via-`enable_test_probe`.-responses">Responses</h3>
+
+| Status | Meaning                                                        | Description                                                 | Schema |
+| ------ | -------------------------------------------------------------- | ----------------------------------------------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)        | Test-only probe: members of a DUPE_INDEX content-hash group | Inline |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4) | Probe disabled                                              | None   |
+
+<h3 id="test-only-probe:-list-the-`asset_id`-members-of-a-`dupe_index`
+content-hash-group.-returns-an-empty-list-when-no-group-exists-for-`hash`,
+so-scenarios-can-assert-both-presence-and-absence-of-members.-disabled
+(404)-unless-the-test-bootstrap-opted-in-via-`enable_test_probe`.-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+| Name        | Type                                        | Required | Restrictions | Description                                                                                                                                                                                  |
+| ----------- | ------------------------------------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _anonymous_ | [[DupeGroupMember](#schemadupegroupmember)] | false    | none         | [One member of a `DUPE_INDEX` content-hash group. API scenario tests use<br>[`probe_dupe_group`] to observe hash-group membership, which is otherwise<br>invisible behind the HTTP surface.] |
+| » assetId   | string                                      | true     | none         | none                                                                                                                                                                                         |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## probe_record
+
+<a id="opIdprobe_record"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/test/record/{asset_id} \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/test/record/{asset_id} HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/test/record/{asset_id}", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/test/record/{asset_id}',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/test/record/{asset_id}', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/test/record/{asset_id}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/test/record/{asset_id}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/test/record/{asset_id}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/test/record/{asset_id}`
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "aliases": [
+    {
+      "file": "string",
+      "isTrashed": true,
+      "modified": 0,
+      "scanTime": 0
+    }
+  ],
+  "hash": "string"
+}
+```
+
+<h3 id="probe_record-responses">Responses</h3>
+
+| Status | Meaning                                                          | Description                                     | Schema                                    |
+| ------ | ---------------------------------------------------------------- | ----------------------------------------------- | ----------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Test-only record probe with the full alias list | [TestRecordProbe](#schematestrecordprobe) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid asset_id                                | None                                      |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | Probe disabled or record not found              | None                                      |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 ## compressed_file
 
 <a id="opIdcompressed_file"></a>
@@ -2221,12 +2727,9 @@ This operation does not require authentication
 ## Serve the original file directly from its current location under
 
 `imagePath` — there is no copy of it under `DATA_HOME`; `IMAGE_HOME` is
-the single, authoritative copy (see `docs/design.md` "Albums" and
-`TODO.md`'s "Storage architecture fix"). The route's `<file_path..>`
-segment is still `<hash-prefix>/<hash>.<ext>` for URL compatibility with
-the frontend and `GuardHashOriginal`'s validation, but only the hash
-(the file stem) is actually used, to look up the record's current
-`source_path()`.
+the single, authoritative copy. The route's `<file_path..>` segment is
+`<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via
+`ASSET_BY_ID`.
 
 <a id="opIdimported_file"></a>
 
@@ -2345,12 +2848,9 @@ func main() {
 
 <h3 id="serve-the-original-file-directly-from-its-current-location-under
 `imagepath`-—-there-is-no-copy-of-it-under-`data_home`;-`image_home`-is
-the-single,-authoritative-copy-(see-`docs/design.md`-"albums"-and
-`todo.md`'s-"storage-architecture-fix").-the-route's-`<file_path..>`
-segment-is-still-`<hash-prefix>/<hash>.<ext>`-for-url-compatibility-with
-the-frontend-and-`guardhashoriginal`'s-validation,-but-only-the-hash
-(the-file-stem)-is-actually-used,-to-look-up-the-record's-current
-`source_path()`.-responses">Responses</h3>
+the-single,-authoritative-copy.-the-route's-`<file_path..>`-segment-is
+`<prefix>/<id>.<ext>`-where-`id`-is-the-`asset_id`.-resolves-via
+`asset_by_id`.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description            | Schema |
 | ------ | ---------------------------------------------------------------- | ---------------------- | ------ |
@@ -3607,6 +4107,178 @@ background;-returns-`202-accepted`-immediately.-responses">Responses</h3>
 This operation does not require authentication
 </aside>
 
+## Rebuild the asset tables from the filesystem under `IMAGE_HOME`.
+
+<a id="opIdrebuild_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X POST /post/rebuild \
+  -H 'Accept: application/json'
+
+```
+
+```http
+POST /post/rebuild HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/post/rebuild", {
+  method: "POST",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.post '/post/rebuild',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.post('/post/rebuild', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('POST','/post/rebuild', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/post/rebuild");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("POST");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("POST", "/post/rebuild", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`POST /post/rebuild`
+
+Clears `ASSET_BY_PATH`/`ASSET_BY_ID`/`DUPE_INDEX`, walks the image root,
+and repopulates them. Then rewrites `METADATA_TABLE` from the fresh
+`AssetRecord`s (rebuild assigns new `asset_id`s, so stale rows keyed by
+the old ids must not remain) and waits for an in-memory tree refresh so
+the response does not race subsequent `prefetch`/`get-data` calls.
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "albumsCreated": 0,
+  "hashErrors": 0,
+  "mediaCreated": 0,
+  "unsupportedSkipped": 0
+}
+```
+
+<h3 id="rebuild-the-asset-tables-from-the-filesystem-under-`image_home`.-responses">Responses</h3>
+
+| Status | Meaning                                                                 | Description      | Schema                              |
+| ------ | ----------------------------------------------------------------------- | ---------------- | ----------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                 | Rebuild complete | [RebuildStats](#schemarebuildstats) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)        | Invalid input    | None                                |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5) | Read-only mode   | None                                |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 ## Move a media item into the album's directory on disk, update the DB alias,
 
 and record the explicit album membership. Returns 400 if the file is not
@@ -3619,7 +4291,8 @@ found at the recorded alias path (stale alias — user must re-index first).
 ```shell
 # You can also use wget
 curl -X PUT /put/assign_album \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -3627,17 +4300,20 @@ curl -X PUT /put/assign_album \
 PUT /put/assign_album HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
 ```javascript
 const inputBody = '{
   "albumId": "string",
-  "hash": "string",
+  "alias": "string",
+  "assetId": "string",
   "onConflict": "skip"
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/put/assign_album',
@@ -3659,7 +4335,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/assign_album',
@@ -3673,7 +4350,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/assign_album', headers = headers)
@@ -3689,6 +4367,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -3742,6 +4421,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -3762,7 +4442,8 @@ func main() {
 ```json
 {
   "albumId": "string",
-  "hash": "string",
+  "alias": "string",
+  "assetId": "string",
   "onConflict": "skip"
 }
 ```
@@ -3775,14 +4456,24 @@ found-at-the-recorded-alias-path-(stale-alias-—-user-must-re-index-first).-par
 | ---- | ---- | ----------------------------------------- | -------- | ----------- |
 | body | body | [AssignAlbumData](#schemaassignalbumdata) | true     | none        |
 
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "outcome": "moved"
+}
+```
+
 <h3 id="move-a-media-item-into-the-album's-directory-on-disk,-update-the-db-alias,
 and-record-the-explicit-album-membership.--returns-400-if-the-file-is-not
 found-at-the-recorded-alias-path-(stale-alias-—-user-must-re-index-first).-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                     | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Item assigned to album          | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input or item not found | None   |
+| Status | Meaning                                                          | Description                     | Schema                              |
+| ------ | ---------------------------------------------------------------- | ------------------------------- | ----------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Item assigned to album          | [AssignResult](#schemaassignresult) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input or item not found | None                                |
 
 <aside class="success">
 This operation does not require authentication
@@ -5265,7 +5956,7 @@ Content-Type: application/json
 
 ```javascript
 const inputBody = '{
-  "hash": "string"
+  "asset_id": "string"
 }';
 const headers = {
   'Content-Type':'application/json'
@@ -5392,7 +6083,7 @@ func main() {
 
 ```json
 {
-  "hash": "string"
+  "asset_id": "string"
 }
 ```
 
@@ -5436,7 +6127,7 @@ Content-Type: application/json
 ```javascript
 const inputBody = '{
   "albumId": "string",
-  "coverHash": "string"
+  "coverAssetId": "string"
 }';
 const headers = {
   'Content-Type':'application/json'
@@ -5564,7 +6255,7 @@ func main() {
 ```json
 {
   "albumId": "string",
-  "coverHash": "string"
+  "coverAssetId": "string"
 }
 ```
 
@@ -9282,8 +9973,8 @@ This operation does not require authentication
 
 ## Catch-all SPA fallback — serves index.html for valid Vue Router routes.
 
-Paths matching `/album/<hash>` validate the album exists before serving
-the SPA; invalid album hashes return 404. Rank 11 ensures specific
+Paths matching `/album/<asset-id>` validate the album exists before serving
+the SPA; invalid album IDs return 404. Rank 11 ensures specific
 routes (assets at rank 10, API, pages) take priority.
 
 <a id="opIdspa_fallback"></a>
@@ -9402,8 +10093,8 @@ func main() {
 `GET /{path}`
 
 <h3 id="catch-all-spa-fallback-—-serves-index.html-for-valid-vue-router-routes.
-paths-matching-`/album/<hash>`-validate-the-album-exists-before-serving
-the-spa;-invalid-album-hashes-return-404.-rank-11-ensures-specific
+paths-matching-`/album/<asset-id>`-validate-the-album-exists-before-serving
+the-spa;-invalid-album-ids-return-404.-rank-11-ensures-specific
 routes-(assets-at-rank-10,-api,-pages)-take-priority.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description                                            | Schema |
@@ -9580,18 +10271,71 @@ This operation does not require authentication
 ```json
 {
   "albumId": "string",
-  "hash": "string",
+  "alias": "string",
+  "assetId": "string",
   "onConflict": "skip"
 }
 ```
 
 ### Properties
 
-| Name       | Type                            | Required | Restrictions | Description |
-| ---------- | ------------------------------- | -------- | ------------ | ----------- |
-| albumId    | string                          | true     | none         | none        |
-| hash       | string                          | true     | none         | none        |
-| onConflict | [OnConflict](#schemaonconflict) | false    | none         | none        |
+| Name       | Type                            | Required | Restrictions | Description                                                                                                                    |
+| ---------- | ------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| albumId    | string                          | true     | none         | none                                                                                                                           |
+| alias      | string,null                     | false    | none         | Selected alias path for item records; must be absent (null) for albums.                                                        |
+| assetId    | string                          | true     | none         | Path-primary asset ID. The handler resolves the record via<br>`ASSET_BY_ID`, allowing independent movement of same-hash files. |
+| onConflict | [OnConflict](#schemaonconflict) | true     | none         | none                                                                                                                           |
+
+<h2 id="tocS_AssignOutcome">AssignOutcome</h2>
+<!-- backwards compatibility -->
+<a id="schemaassignoutcome"></a>
+<a id="schema_AssignOutcome"></a>
+<a id="tocSassignoutcome"></a>
+<a id="tocsassignoutcome"></a>
+
+```json
+"moved"
+```
+
+The concrete result of a successful assign: `moved`, `renamedFrom` (an
+auto-`-001` suffix collision), or `skipped` (destination already exists and
+strategy is skip).
+
+### Properties
+
+| Name        | Type   | Required | Restrictions | Description                                                                                                                                                                 |
+| ----------- | ------ | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _anonymous_ | string | false    | none         | The concrete result of a successful assign: `moved`, `renamedFrom` (an<br>auto-`-001` suffix collision), or `skipped` (destination already exists and<br>strategy is skip). |
+
+#### Enumerated Values
+
+| Property    | Value       |
+| ----------- | ----------- |
+| _anonymous_ | moved       |
+| _anonymous_ | renamedFrom |
+| _anonymous_ | skipped     |
+
+<h2 id="tocS_AssignResult">AssignResult</h2>
+<!-- backwards compatibility -->
+<a id="schemaassignresult"></a>
+<a id="schema_AssignResult"></a>
+<a id="tocSassignresult"></a>
+<a id="tocsassignresult"></a>
+
+```json
+{
+  "outcome": "moved"
+}
+```
+
+Outcome of an `assign_album` call, reported to the caller so the UI is never
+silent about what happened to the selected item.
+
+### Properties
+
+| Name    | Type                                  | Required | Restrictions | Description                                                                                                                                                                 |
+| ------- | ------------------------------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| outcome | [AssignOutcome](#schemaassignoutcome) | true     | none         | The concrete result of a successful assign: `moved`, `renamedFrom` (an<br>auto-`-001` suffix collision), or `skipped` (destination already exists and<br>strategy is skip). |
 
 <h2 id="tocS_ConfigResponse">ConfigResponse</h2>
 <!-- backwards compatibility -->
@@ -9698,6 +10442,8 @@ This operation does not require authentication
 ```json
 {
   "abstractData": {},
+  "assetId": "string",
+  "coverHash": "string",
   "timestamp": 0,
   "token": "string"
 }
@@ -9705,11 +10451,13 @@ This operation does not require authentication
 
 ### Properties
 
-| Name         | Type           | Required | Restrictions | Description |
-| ------------ | -------------- | -------- | ------------ | ----------- |
-| abstractData | object         | true     | none         | none        |
-| timestamp    | integer(int64) | true     | none         | none        |
-| token        | string         | true     | none         | none        |
+| Name         | Type           | Required | Restrictions | Description                                                                                                                                                               |
+| ------------ | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| abstractData | object         | true     | none         | none                                                                                                                                                                      |
+| assetId      | string         | true     | none         | Path-primary asset ID.                                                                                                                                                    |
+| coverHash    | string,null    | false    | none         | For albums: the cover image's content hash (used for compressed<br>thumbnail URL construction and token validation). `None` for media<br>items or albums without a cover. |
+| timestamp    | integer(int64) | true     | none         | none                                                                                                                                                                      |
+| token        | string         | true     | none         | none                                                                                                                                                                      |
 
 <h2 id="tocS_DeleteList">DeleteList</h2>
 <!-- backwards compatibility -->
@@ -9720,17 +10468,17 @@ This operation does not require authentication
 
 ```json
 {
-  "deleteList": [0],
+  "assetIds": ["string"],
   "timestamp": 0
 }
 ```
 
 ### Properties
 
-| Name       | Type           | Required | Restrictions | Description |
-| ---------- | -------------- | -------- | ------------ | ----------- |
-| deleteList | [integer]      | true     | none         | none        |
-| timestamp  | integer(int64) | true     | none         | none        |
+| Name      | Type           | Required | Restrictions | Description                                                                                                                                      |
+| --------- | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| assetIds  | [string]       | true     | none         | Asset IDs to delete. Each asset is resolved via `METADATA_TABLE` by its<br>`asset_id` key. The canonical file and sidecar are removed from disk. |
+| timestamp | integer(int64) | true     | none         | none                                                                                                                                             |
 
 <h2 id="tocS_DeleteShare">DeleteShare</h2>
 <!-- backwards compatibility -->
@@ -9773,6 +10521,29 @@ This operation does not require authentication
 | ------------- | -------------- | -------- | ------------ | ----------- |
 | displayHeight | integer(int32) | true     | none         | none        |
 | displayWidth  | integer(int32) | true     | none         | none        |
+
+<h2 id="tocS_DupeGroupMember">DupeGroupMember</h2>
+<!-- backwards compatibility -->
+<a id="schemadupegroupmember"></a>
+<a id="schema_DupeGroupMember"></a>
+<a id="tocSdupegroupmember"></a>
+<a id="tocsdupegroupmember"></a>
+
+```json
+{
+  "assetId": "string"
+}
+```
+
+One member of a `DUPE_INDEX` content-hash group. API scenario tests use
+[`probe_dupe_group`] to observe hash-group membership, which is otherwise
+invisible behind the HTTP surface.
+
+### Properties
+
+| Name    | Type   | Required | Restrictions | Description |
+| ------- | ------ | -------- | ------------ | ----------- |
+| assetId | string | true     | none         | none        |
 
 <h2 id="tocS_EditFlagsData">EditFlagsData</h2>
 <!-- backwards compatibility -->
@@ -9878,6 +10649,31 @@ This operation does not require authentication
 | removeTagsArray | [string]       | true     | none         | none        |
 | timestamp       | integer(int64) | true     | none         | none        |
 
+<h2 id="tocS_FileModify">FileModify</h2>
+<!-- backwards compatibility -->
+<a id="schemafilemodify"></a>
+<a id="schema_FileModify"></a>
+<a id="tocSfilemodify"></a>
+<a id="tocsfilemodify"></a>
+
+```json
+{
+  "file": "string",
+  "isTrashed": true,
+  "modified": 0,
+  "scanTime": 0
+}
+```
+
+### Properties
+
+| Name      | Type           | Required | Restrictions | Description                                                                                                                                                                                                                                               |
+| --------- | -------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| file      | string         | true     | none         | none                                                                                                                                                                                                                                                      |
+| isTrashed | boolean        | true     | none         | Trash flag for the record's single alias. The record is visible in the<br>gallery while the alias is live and in the trash view while it is<br>trashed; a pruned alias (`alias: None`) matches neither view. Newly<br>discovered aliases are always live. |
+| modified  | integer(int64) | true     | none         | none                                                                                                                                                                                                                                                      |
+| scanTime  | integer(int64) | true     | none         | none                                                                                                                                                                                                                                                      |
+
 <h2 id="tocS_FsCompletion">FsCompletion</h2>
 <!-- backwards compatibility -->
 <a id="schemafscompletion"></a>
@@ -9960,11 +10756,10 @@ This operation does not require authentication
 
 #### Enumerated Values
 
-| Property    | Value   |
-| ----------- | ------- |
-| _anonymous_ | skip    |
-| _anonymous_ | rename  |
-| _anonymous_ | replace |
+| Property    | Value  |
+| ----------- | ------ |
+| _anonymous_ | skip   |
+| _anonymous_ | rename |
 
 <h2 id="tocS_PartialUpdateConfigRequest">PartialUpdateConfigRequest</h2>
 <!-- backwards compatibility -->
@@ -10072,6 +10867,33 @@ continued
 | ----- | ------ | -------- | ------------ | ----------- |
 | token | string | true     | none         | none        |
 
+<h2 id="tocS_RebuildStats">RebuildStats</h2>
+<!-- backwards compatibility -->
+<a id="schemarebuildstats"></a>
+<a id="schema_RebuildStats"></a>
+<a id="tocSrebuildstats"></a>
+<a id="tocsrebuildstats"></a>
+
+```json
+{
+  "albumsCreated": 0,
+  "hashErrors": 0,
+  "mediaCreated": 0,
+  "unsupportedSkipped": 0
+}
+```
+
+Statistics from a clean filesystem rebuild.
+
+### Properties
+
+| Name               | Type    | Required | Restrictions | Description |
+| ------------------ | ------- | -------- | ------------ | ----------- |
+| albumsCreated      | integer | true     | none         | none        |
+| hashErrors         | integer | true     | none         | none        |
+| mediaCreated       | integer | true     | none         | none        |
+| unsupportedSkipped | integer | true     | none         | none        |
+
 <h2 id="tocS_ResolvedShare">ResolvedShare</h2>
 <!-- backwards compatibility -->
 <a id="schemaresolvedshare"></a>
@@ -10112,15 +10934,15 @@ continued
 
 ```json
 {
-  "hash": "string"
+  "asset_id": "string"
 }
 ```
 
 ### Properties
 
-| Name | Type   | Required | Restrictions | Description                 |
-| ---- | ------ | -------- | ------------ | --------------------------- |
-| hash | string | true     | none         | Hash of the image to rotate |
+| Name     | Type   | Required | Restrictions | Description                     |
+| -------- | ------ | -------- | ------------ | ------------------------------- |
+| asset_id | string | true     | none         | Asset ID of the image to rotate |
 
 <h2 id="tocS_Row">Row</h2>
 <!-- backwards compatibility -->
@@ -10185,7 +11007,7 @@ continued
 ```json
 {
   "albumId": "string",
-  "coverHash": "string"
+  "coverAssetId": "string"
 }
 ```
 
@@ -10193,10 +11015,10 @@ Payload for updating a specific album's cover image.
 
 ### Properties
 
-| Name      | Type   | Required | Restrictions | Description                            |
-| --------- | ------ | -------- | ------------ | -------------------------------------- |
-| albumId   | string | true     | none         | none                                   |
-| coverHash | string | true     | none         | The hash of the image to set as cover. |
+| Name         | Type   | Required | Restrictions | Description                                  |
+| ------------ | ------ | -------- | ------------ | -------------------------------------------- |
+| albumId      | string | true     | none         | none                                         |
+| coverAssetId | string | true     | none         | The `asset_id` of the image to set as cover. |
 
 <h2 id="tocS_SetAlbumTitle">SetAlbumTitle</h2>
 <!-- backwards compatibility -->
@@ -10295,6 +11117,39 @@ Payload for renaming an album.
 | ------ | ------- | -------- | ------------ | ----------- |
 | number | integer | true     | none         | none        |
 | tag    | string  | true     | none         | none        |
+
+<h2 id="tocS_TestRecordProbe">TestRecordProbe</h2>
+<!-- backwards compatibility -->
+<a id="schematestrecordprobe"></a>
+<a id="schema_TestRecordProbe"></a>
+<a id="tocStestrecordprobe"></a>
+<a id="tocstestrecordprobe"></a>
+
+```json
+{
+  "aliases": [
+    {
+      "file": "string",
+      "isTrashed": true,
+      "modified": 0,
+      "scanTime": 0
+    }
+  ],
+  "hash": "string"
+}
+```
+
+The record's stored alias (0 or 1 entries: path-primary records hold a
+single path, `None` when pruned renders as an empty list). Only reachable
+in test builds when the bootstrap opts in; API E2E scenarios use this
+endpoint to observe the raw stored path instead.
+
+### Properties
+
+| Name    | Type                              | Required | Restrictions | Description |
+| ------- | --------------------------------- | -------- | ------------ | ----------- |
+| aliases | [[FileModify](#schemafilemodify)] | true     | none         | none        |
+| hash    | string                            | true     | none         | none        |
 
 <h2 id="tocS_UpdatePasswordRequest">UpdatePasswordRequest</h2>
 <!-- backwards compatibility -->

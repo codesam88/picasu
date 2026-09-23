@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: high
 area: backend
@@ -495,3 +495,27 @@ the replacement implementation is intended to remove.
 These scenarios are acceptance tests for the replacement implementation. The
 current hash-primary failures are intentional evidence of behavior that the
 new implementation must change.
+
+## Closure note (2026-09-23)
+
+Implemented in full via `path-primary-asset-execution.md` (all phases done, commits `16467741` + `33354c27`),
+followed by the names/docs/structure cleanup in `design-sweep-and-structure-collapse.md` (`0c9d4ea3` through
+`65f16c95`). Gates at closure:
+`just check` 0, `just test` 0 — backend 263, utils 24, vitest 65, playwright 34.
+
+Open questions resolved by the implementation:
+
+- **asset_id allocation:** random (`generate_random_hash`), not path-derived — stable across moves/renames; path→id is a
+  separate `ASSET_BY_PATH` mapping.
+- **asset-specific vs content-shared:** lean `AssetRecord` (id, path, kind, size, times, album) is asset-specific;
+  content-shared state is `content_hash` + `DUPE_INDEX` group + the shared compressed thumbnail keyed by hash.
+- **thumbnail sharing:** automatic while a `DUPE_INDEX` group has >1 member; removed with the last member
+  (`remove_compressed_thumbnail` group check, pinned by `dup_delete_preserves_shared_thumbnail`).
+- **duplicate representation:** `DUPE_INDEX` only — no dedicated duplicate-management table.
+- **category indexes:** filtering is a full in-memory tree scan plus per-timestamp/count query-snapshot caches; no
+  durable tag/category index (deferred, see execution plan Phase 14).
+- **rebuild authority:** the filesystem is authoritative; `.albuminfo`/XMP sidecars enrich album metadata on write;
+  `rebuild_from_filesystem` derives album membership from parent directories.
+
+Initial Validation scenarios listed here as intentionally red are now green: `duplicate_files_are_independent_album_items`
+and the Playwright `duplicate-files-*` suite pass in every full gate.
