@@ -1,4 +1,4 @@
-name: test probe returns full aliases and catches wrong expectation
+name: test probe returns the stored path and catches wrong expectation
 given:
   - photo: /e2e_probe_selftest/photo.jpg
     id_as: $photo
@@ -7,7 +7,7 @@ when:
   - call: GET /get/test/record/${asset_id}
 then:
   - response.status: 200
-  - response.json.hash: "${asset_id}"
+  - response.json.assetId: "${asset_id}"
   # deliberately wrong: the probe returns the real absolute disk path, so this
   # must fail -> the selftest harness passes because the scenario panics.
-  - response.json.aliases.[0].file: /definitely/not/this/path.jpg
+  - response.json.path.file: /definitely/not/this/path.jpg

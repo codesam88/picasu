@@ -2572,25 +2572,18 @@ func main() {
 
 ```json
 {
-  "aliases": [
-    {
-      "file": "string",
-      "isTrashed": true,
-      "modified": 0,
-      "scanTime": 0
-    }
-  ],
-  "hash": "string"
+  "assetId": "string",
+  "path": {}
 }
 ```
 
 <h3 id="probe_record-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                     | Schema                                    |
-| ------ | ---------------------------------------------------------------- | ----------------------------------------------- | ----------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Test-only record probe with the full alias list | [TestRecordProbe](#schematestrecordprobe) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid asset_id                                | None                                      |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | Probe disabled or record not found              | None                                      |
+| Status | Meaning                                                          | Description                                         | Schema                                    |
+| ------ | ---------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Test-only record probe with the asset's stored path | [TestRecordProbe](#schematestrecordprobe) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid asset_id                                    | None                                      |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | Probe disabled or record not found                  | None                                      |
 
 <aside class="success">
 This operation does not require authentication
@@ -10277,6 +10270,9 @@ This operation does not require authentication
 }
 ```
 
+Request body for `PUT /put/assign_album`. Strict: unknown fields (including
+the legacy multi-alias `alias` path) are rejected rather than ignored.
+
 ### Properties
 
 | Name       | Type                            | Required | Restrictions | Description                                                                                                                                                       |
@@ -11126,29 +11122,35 @@ Payload for renaming an album.
 
 ```json
 {
-  "aliases": [
-    {
-      "file": "string",
-      "isTrashed": true,
-      "modified": 0,
-      "scanTime": 0
-    }
-  ],
-  "hash": "string"
+  "assetId": "string",
+  "path": {}
 }
 ```
 
-The record's stored alias (0 or 1 entries: path-primary records hold a
-single path, `None` when pruned renders as an empty list). Only reachable
-in test builds when the bootstrap opts in; API E2E scenarios use this
-endpoint to observe the raw stored path instead.
+Test-only record probe: the asset's identity and its singular stored file
+entry, mirroring `AbstractData::alias() -> Option<FileModify>`. `path` is
+`None` for albums and for media records whose file entry has been pruned.
+Only reachable in test builds when the bootstrap opts in; API E2E scenarios
+use this endpoint to observe the raw stored path instead.
 
 ### Properties
 
-| Name    | Type                              | Required | Restrictions | Description |
-| ------- | --------------------------------- | -------- | ------------ | ----------- |
-| aliases | [[FileModify](#schemafilemodify)] | true     | none         | none        |
-| hash    | string                            | true     | none         | none        |
+| Name    | Type   | Required | Restrictions | Description |
+| ------- | ------ | -------- | ------------ | ----------- |
+| assetId | string | true     | none         | none        |
+| path    | any    | false    | none         | none        |
+
+oneOf
+
+| Name          | Type | Required | Restrictions | Description |
+| ------------- | ---- | -------- | ------------ | ----------- |
+| » _anonymous_ | null | false    | none         | none        |
+
+xor
+
+| Name          | Type                            | Required | Restrictions | Description |
+| ------------- | ------------------------------- | -------- | ------------ | ----------- |
+| » _anonymous_ | [FileModify](#schemafilemodify) | false    | none         | none        |
 
 <h2 id="tocS_UpdatePasswordRequest">UpdatePasswordRequest</h2>
 <!-- backwards compatibility -->

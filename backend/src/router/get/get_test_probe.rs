@@ -13,16 +13,17 @@ use crate::router::auth::GuardAuth;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{DUPE_INDEX, METADATA_TABLE, TREE};
 
-/// The record's stored alias (0 or 1 entries: path-primary records hold a
-/// single path, `None` when pruned renders as an empty list). Only reachable
-/// in test builds when the bootstrap opts in; API E2E scenarios use this
-/// endpoint to observe the raw stored path instead.
+/// Test-only record probe: the asset's identity and its singular stored file
+/// entry, mirroring `AbstractData::alias() -> Option<FileModify>`. `path` is
+/// `None` for albums and for media records whose file entry has been pruned.
+/// Only reachable in test builds when the bootstrap opts in; API E2E scenarios
+/// use this endpoint to observe the raw stored path instead.
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TestRecordProbe {
     #[schema(value_type = String)]
-    pub hash: ArrayString<64>,
-    pub aliases: Vec<FileModify>,
+    pub asset_id: ArrayString<64>,
+    pub path: Option<FileModify>,
 }
 
 /// One member of a `DUPE_INDEX` content-hash group. API scenario tests use
@@ -62,7 +63,7 @@ fn probe_enabled() -> bool {
         get,
         path = "/get/test/record/{asset_id}",
         responses(
-            (status = 200, description = "Test-only record probe with the full alias list", body = TestRecordProbe),
+            (status = 200, description = "Test-only record probe with the asset's stored path", body = TestRecordProbe),
             (status = 400, description = "Invalid asset_id"),
             (status = 404, description = "Probe disabled or record not found"),
         )
@@ -107,8 +108,8 @@ pub fn probe_record(
         .value();
 
     Ok(Json(TestRecordProbe {
-        hash: asset_id,
-        aliases: abstract_data.alias().into_iter().cloned().collect(),
+        asset_id,
+        path: abstract_data.alias().cloned(),
     }))
 }
 
@@ -158,4 +159,98 @@ pub fn probe_dupe_group(
             .map(|asset_id| DupeGroupMember { asset_id })
             .collect(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Path-primary probe contract: the test-only record probe exposes the
+    /// asset's identity (`assetId`, formerly the misleadingly named `hash`)
+    /// and its singular stored path entry — never a fake multi-alias list
+    /// (`aliases`) and never hash-keyed identity.
+    #[test]
+    fn test_record_probe_schema_is_path_primary() {
+        let spec: serde_json::Value = serde_json::from_str(&crate::openapi::generate_json())
+            .expect("generated OpenAPI must be valid JSON");
+        let schema = &spec["components"]["schemas"]["TestRecordProbe"];
+        let properties = schema["properties"]
+            .as_object()
+            .expect("TestRecordProbe must declare properties");
+
+        assert!(
+            properties.contains_key("assetId"),
+            "probe must expose assetId (the lookup key); got keys: {properties:?}"
+        );
+        assert!(
+            properties.contains_key("path"),
+            "probe must expose the singular stored path; got keys: {properties:?}"
+        );
+        assert!(
+            !properties.contains_key("hash"),
+            "hash must not appear; the field holds an asset ID, not a content hash"
+        );
+        assert!(
+            !properties.contains_key("aliases"),
+            "aliases must not appear; the storage model holds one path per asset"
+        );
+
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .expect("TestRecordProbe must declare required fields")
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        assert!(
+            required.contains(&"assetId"),
+            "assetId must be required; got {required:?}"
+        );
+        assert!(
+            !required.contains(&"aliases"),
+            "aliases must not be required; got {required:?}"
+        );
+
+        let description =
+            spec["paths"]["/get/test/record/{asset_id}"]["get"]["responses"]["200"]["description"]
+                .as_str()
+                .unwrap_or_default();
+        assert!(
+            !description.contains("alias"),
+            "probe response description must use path-primary wording: {description}"
+        );
+    }
+
+    /// Wire-shape pin: the probe serializes as `assetId` + singular `path`
+    /// (camelCase), with `path: null` when the record has no stored file
+    /// entry — and never as `hash` / `aliases`.
+    #[test]
+    fn test_record_probe_serializes_asset_id_and_singular_path() {
+        let probe = TestRecordProbe {
+            asset_id: ArrayString::<64>::from("asset-123").expect("valid asset id"),
+            path: Some(FileModify {
+                file: "/images/a/photo.jpg".to_string(),
+                modified: 1,
+                scan_time: 2,
+                is_trashed: false,
+            }),
+        };
+        let json = serde_json::to_value(&probe).expect("probe must serialize");
+        assert_eq!(json["assetId"], "asset-123");
+        assert_eq!(json["path"]["file"], "/images/a/photo.jpg");
+        assert!(json.get("hash").is_none(), "hash must not be serialized");
+        assert!(
+            json.get("aliases").is_none(),
+            "aliases must not be serialized"
+        );
+
+        let pruned = TestRecordProbe {
+            asset_id: ArrayString::<64>::from("asset-456").expect("valid asset id"),
+            path: None,
+        };
+        let json = serde_json::to_value(&pruned).expect("probe must serialize");
+        assert!(
+            json["path"].is_null(),
+            "a record without a stored path serializes path as null: {json}"
+        );
+    }
 }

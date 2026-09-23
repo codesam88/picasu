@@ -59,7 +59,7 @@ with the multi-alias shape is not a goal.
 
 ### 3. Test probes and scenario contracts
 
-**Status:** needs focused review before implementation.
+**Status:** complete.
 
 **Decision:** test-only probes must expose path-primary terminology and must not
 preserve a fake multi-alias API. Duplicate behavior should be asserted using
@@ -112,7 +112,7 @@ reference behavior and duplicate-preservation tests.
 
 1. Align plans and comments; record superseded alias/G1/merge decisions. **Done.**
 2. Review and change the assign request contract. **Done.**
-3. Reshape test probes and rename/consolidate scenarios.
+3. Reshape test probes and rename/consolidate scenarios. **Done.**
 4. Rename internal path helpers after their callers and test contracts settle.
 5. Run the full alias/duplicate scenario subset, then the normal checks.
 
@@ -136,3 +136,12 @@ reference behavior and duplicate-preservation tests.
   deserialization (unit-tested) instead of being silently ignored.
   Category 2 scope no longer asks to replace alias-required /
   album-alias-rejected scenarios — those cases are obsolete and removed.
+- 2026-09-23: Test probes and scenario contracts done. `TestRecordProbe` is
+  now `{ assetId, path: Option<FileModify> }` (mirrors `AbstractData::alias()`),
+  replacing `hash` + `aliases: Vec<FileModify>`; response description reworded.
+  Probe contract unit tests pin the OpenAPI schema and JSON wire shape;
+  `assign_self_move_noop` asserts `path.file`; the harness selftest was renamed
+  to `test_probe_catches_wrong_path`. No alias-ordering/selection/count
+  scenarios remained to remove; duplicate coverage stays on separate asset IDs
+  plus the DUPE_INDEX group probe. OpenAPI reference regenerated. Category 4
+  (internal helper renaming) untouched.
