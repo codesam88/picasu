@@ -14,7 +14,7 @@ use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{DUPE_INDEX, METADATA_TABLE, TREE};
 
 /// Test-only record probe: the asset's identity and its singular stored file
-/// entry, mirroring `AbstractData::alias() -> Option<FileModify>`. `path` is
+/// entry, mirroring `AbstractData::path() -> Option<FileModify>`. `path` is
 /// `None` for albums and for media records whose file entry has been pruned.
 /// Only reachable in test builds when the bootstrap opts in; API E2E scenarios
 /// use this endpoint to observe the raw stored path instead.
@@ -109,7 +109,7 @@ pub fn probe_record(
 
     Ok(Json(TestRecordProbe {
         asset_id,
-        path: abstract_data.alias().cloned(),
+        path: abstract_data.path().cloned(),
     }))
 }
 

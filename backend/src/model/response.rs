@@ -166,9 +166,9 @@ pub struct FileModify {
     pub file: String,
     pub modified: i64,
     pub scan_time: i64,
-    /// Trash flag for the record's single alias. The record is visible in the
-    /// gallery while the alias is live and in the trash view while it is
-    /// trashed; a pruned alias (`alias: None`) matches neither view. A newly
+    /// Trash flag for the asset's file entry. The record is visible in the
+    /// gallery while the path is live and in the trash view while it is
+    /// trashed; a missing path (`path: None`) matches neither view. A newly
     /// discovered path is always live.
     pub is_trashed: bool,
 }

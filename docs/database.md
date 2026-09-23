@@ -82,7 +82,7 @@ Source: `backend/src/model/image.rs`
 | `phash`    | `Option<Vec<u8>>`          | Perceptual hash                                |
 | `album`    | `Option<ArrayString<64>>`  | Single album membership                        |
 | `exif_vec` | `BTreeMap<String, String>` | EXIF key-value pairs                           |
-| `alias`    | `Option<FileModify>`       | Source path & timestamps; `None` = pruned/gone |
+| `path`     | `Option<FileModify>`       | Source path & timestamps; `None` = pruned/gone |
 
 #### VideoMetadata
 
@@ -98,7 +98,7 @@ Source: `backend/src/model/video.rs`
 | `duration` | `f64`                      | Video duration in seconds                      |
 | `album`    | `Option<ArrayString<64>>`  | Single album membership                        |
 | `exif_vec` | `BTreeMap<String, String>` | EXIF key-value pairs                           |
-| `alias`    | `Option<FileModify>`       | Source path & timestamps; `None` = pruned/gone |
+| `path`     | `Option<FileModify>`       | Source path & timestamps; `None` = pruned/gone |
 
 #### AlbumMetadata
 
@@ -118,7 +118,7 @@ Source: `backend/src/model/album.rs`
 | `share_list`         | `HashMap<ArrayString<64>, Share>` | Named share configurations                                        |
 | `dir_path`           | `String`                          | Filesystem path of the album's directory (required)               |
 | `custom_title`       | `Option<String>`                  | User-set title override; `None` = derived from the directory name |
-| `is_trashed`         | `bool`                            | Record-level trash flag (albums have no per-path alias)           |
+| `is_trashed`         | `bool`                            | Record-level trash flag (albums have no stored path)              |
 
 Every album is directory-backed: `dir_path` is the album directory's path, and
 a media file belongs to the album whose `dir_path` matches the file's
@@ -137,8 +137,8 @@ Source: `backend/src/model/response.rs`
 | `is_trashed` | `bool`   | Per-path trash flag (buried vs. visible in trash view) |
 
 Each media record carries the file path it was indexed from as its single
-`FileModify` (`alias: Option<FileModify>`). Path-primary indexing creates one
-record per physical file; `None` means the alias was pruned and the file is
+`FileModify` (`path: Option<FileModify>`). Path-primary indexing creates one
+record per physical file; `None` means the path was pruned and the file is
 gone.
 
 #### Share

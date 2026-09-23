@@ -55,4 +55,4 @@ when:
 then:
   - response.status: 200
   # The asset should be locatable at the new path.
-  - response.json.[0].abstractData.alias.file: "${data_path}/e2e_neg_move/target/photo.jpg"
+  - response.json.[0].abstractData.path.file: "${data_path}/e2e_neg_move/target/photo.jpg"

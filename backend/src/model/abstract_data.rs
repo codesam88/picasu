@@ -148,7 +148,7 @@ impl AbstractData {
 
         let now_time = chrono::Local::now().naive_local();
         let exif_vec = self.exif_vec();
-        let alias = self.alias();
+        let file_entry = self.path();
 
         for &field in priority_list {
             match field {
@@ -167,8 +167,8 @@ impl AbstractData {
                 "filename" => {
                     let mut max_time: Option<NaiveDateTime> = None;
 
-                    if let Some(file_modify) = alias {
-                        let path = PathBuf::from(&file_modify.file);
+                    if let Some(entry) = file_entry {
+                        let path = PathBuf::from(&entry.file);
 
                         if let Some(file_name) = path.file_name()
                             && let Some(file_name_str) = file_name.to_str()
@@ -201,14 +201,14 @@ impl AbstractData {
                     }
                 }
                 "scan_time" => {
-                    let latest_scan_time = alias.iter().map(|a| a.scan_time).max();
+                    let latest_scan_time = file_entry.iter().map(|a| a.scan_time).max();
                     if let Some(latest_time) = latest_scan_time {
                         return latest_time;
                     }
                 }
                 "modified" => {
-                    if let Some(max_scan_path) = alias.iter().max_by_key(|a| a.scan_time) {
-                        return max_scan_path.modified;
+                    if let Some(latest_entry) = file_entry.iter().max_by_key(|a| a.scan_time) {
+                        return latest_entry.modified;
                     }
                 }
                 "random" => {
@@ -249,12 +249,12 @@ impl AbstractData {
         }
     }
 
-    /// Get the record's single alias. `None` for albums and for media
-    /// records whose alias has been pruned (file gone).
-    pub fn alias(&self) -> Option<&FileModify> {
+    /// Get the asset's file entry. `None` for albums and for media
+    /// records whose path has been pruned (file gone).
+    pub fn path(&self) -> Option<&FileModify> {
         match self {
-            AbstractData::Image(img) => img.metadata.alias.as_ref(),
-            AbstractData::Video(vid) => vid.metadata.alias.as_ref(),
+            AbstractData::Image(img) => img.metadata.path.as_ref(),
+            AbstractData::Video(vid) => vid.metadata.path.as_ref(),
             AbstractData::Album(_) => None,
         }
     }
@@ -316,20 +316,20 @@ impl AbstractData {
             .as_millis();
         let modified_millis = i64::try_from(modified_millis).unwrap_or(0);
 
-        let file_modify = FileModify::new(path, modified_millis);
+        let file_entry = FileModify::new(path, modified_millis);
         let obj_type = Self::determine_type(&ext);
 
         match obj_type {
             ObjectType::Image => {
                 let object = ObjectSchema::new(hash, ObjectType::Image);
                 let mut metadata = ImageMetadata::new(hash, size, 0, 0, ext);
-                metadata.alias = Some(file_modify);
+                metadata.path = Some(file_entry);
                 Ok(AbstractData::Image(ImageCombined { object, metadata }))
             }
             ObjectType::Video => {
                 let object = ObjectSchema::new(hash, ObjectType::Video);
                 let mut metadata = VideoMetadata::new(hash, size, 0, 0, ext);
-                metadata.alias = Some(file_modify);
+                metadata.path = Some(file_entry);
                 Ok(AbstractData::Video(VideoCombined { object, metadata }))
             }
             ObjectType::Album => Err(anyhow::anyhow!("Cannot create Album from file path")),
@@ -350,8 +350,8 @@ impl AbstractData {
     /// albums and for records whose path has been pruned).
     pub fn source_path_string(&self) -> &str {
         match self {
-            AbstractData::Image(img) => img.metadata.alias.as_ref().map_or("", |a| a.file.as_str()),
-            AbstractData::Video(vid) => vid.metadata.alias.as_ref().map_or("", |a| a.file.as_str()),
+            AbstractData::Image(img) => img.metadata.path.as_ref().map_or("", |a| a.file.as_str()),
+            AbstractData::Video(vid) => vid.metadata.path.as_ref().map_or("", |a| a.file.as_str()),
             AbstractData::Album(_) => "",
         }
     }
@@ -410,14 +410,14 @@ impl AbstractData {
             .to_path_buf()
     }
 
-    /// Get mutable access to the alias *slot* itself for media records
+    /// Get mutable access to the path *slot* itself for media records
     /// (`None` for albums). Returns `Some(&mut Option<FileModify>)` even when
-    /// the slot is empty so callers can edit, replace, or clear the alias;
-    /// use [`AbstractData::alias`] for read-only field access.
-    pub fn alias_mut(&mut self) -> Option<&mut Option<FileModify>> {
+    /// the slot is empty so callers can edit, replace, or clear the path;
+    /// use [`AbstractData::path`] for read-only field access.
+    pub fn path_mut(&mut self) -> Option<&mut Option<FileModify>> {
         match self {
-            AbstractData::Image(img) => Some(&mut img.metadata.alias),
-            AbstractData::Video(vid) => Some(&mut vid.metadata.alias),
+            AbstractData::Image(img) => Some(&mut img.metadata.path),
+            AbstractData::Video(vid) => Some(&mut vid.metadata.path),
             AbstractData::Album(_) => None,
         }
     }
@@ -451,19 +451,19 @@ impl AbstractData {
 
     /// Set trashed status.
     ///
-    /// For images/videos the flag lives on the record's single alias, so this
-    /// updates it in place (a pruned alias carries no trash state). Albums
+    /// For images/videos the flag lives on the asset's file entry, so this
+    /// updates it in place (a missing path carries no trash state). Albums
     /// carry a single record-level flag on `AlbumMetadata`.
     pub fn set_trashed(&mut self, is_trashed: bool) {
         match self {
             AbstractData::Image(img) => {
-                if let Some(alias) = img.metadata.alias.as_mut() {
-                    alias.is_trashed = is_trashed;
+                if let Some(entry) = img.metadata.path.as_mut() {
+                    entry.is_trashed = is_trashed;
                 }
             }
             AbstractData::Video(vid) => {
-                if let Some(alias) = vid.metadata.alias.as_mut() {
-                    alias.is_trashed = is_trashed;
+                if let Some(entry) = vid.metadata.path.as_mut() {
+                    entry.is_trashed = is_trashed;
                 }
             }
             AbstractData::Album(alb) => alb.metadata.is_trashed = is_trashed,
@@ -550,11 +550,11 @@ mod tests {
     use super::*;
     use crate::model::object::ObjectType;
 
-    /// Build an image record with its single path-primary alias.
-    fn img_with_alias(file: &str, modified: i64, scan_time: i64) -> AbstractData {
+    /// Build an image record with its single path-primary file entry.
+    fn img_with_path(file: &str, modified: i64, scan_time: i64) -> AbstractData {
         let id = ArrayString::from("test").expect("failed to create ArrayString");
         let mut metadata = ImageMetadata::new(id, 0, 0, 0, "jpg".to_string());
-        metadata.alias = Some(FileModify {
+        metadata.path = Some(FileModify {
             file: file.to_string(),
             modified,
             scan_time,
@@ -566,8 +566,8 @@ mod tests {
         })
     }
 
-    /// Build an image record whose alias has been pruned (`None`).
-    fn img_without_alias() -> AbstractData {
+    /// Build an image record whose path has been pruned (`None`).
+    fn img_without_path() -> AbstractData {
         let id = ArrayString::from("test").expect("failed to create ArrayString");
         AbstractData::Image(ImageCombined {
             object: ObjectSchema::new(id, ObjectType::Image),
@@ -586,14 +586,14 @@ mod tests {
     }
 
     #[test]
-    fn scan_time_returns_alias_scan_time() {
-        let data = img_with_alias("/b.jpg", 200, 2000);
+    fn scan_time_returns_path_scan_time() {
+        let data = img_with_path("/b.jpg", 200, 2000);
         assert_eq!(data.compute_timestamp(&["scan_time"]), 2000);
     }
 
     #[test]
-    fn modified_returns_alias_modified() {
-        let data = img_with_alias("/b.jpg", 999, 2000);
+    fn modified_returns_path_modified() {
+        let data = img_with_path("/b.jpg", 999, 2000);
         assert_eq!(data.compute_timestamp(&["modified"]), 999);
     }
 
@@ -606,7 +606,7 @@ mod tests {
 
     #[test]
     fn invalid_exif_datetime_falls_through_to_next_priority() {
-        let data = img_with_alias("/img.jpg", 42, 1234);
+        let data = img_with_path("/img.jpg", 42, 1234);
         // DateTimeOriginal is missing; should fall through to modified
         assert_eq!(
             data.compute_timestamp(&["DateTimeOriginal", "modified"]),
@@ -618,14 +618,14 @@ mod tests {
     fn filename_timestamp_is_parsed() {
         // Timestamp must end at a word boundary; the regex uses \b after the last digit group.
         // "20190704_153000.jpg" works: the dot after "00" is a non-word char.
-        let data = img_with_alias("/Photos/20190704_153000.jpg", 0, 1);
+        let data = img_with_path("/Photos/20190704_153000.jpg", 0, 1);
         let ts = data.compute_timestamp(&["filename"]);
         assert!(ts > 0, "expected a positive timestamp parsed from filename");
     }
 
     #[test]
     fn priority_list_order_is_respected() {
-        let mut data = img_with_alias("/a.jpg", 55, 999);
+        let mut data = img_with_path("/a.jpg", 55, 999);
         if let AbstractData::Image(ref mut img) = data {
             img.metadata.exif_vec.insert(
                 "DateTimeOriginal".to_string(),
@@ -640,24 +640,24 @@ mod tests {
     }
 
     #[test]
-    fn empty_alias_scan_time_returns_zero() {
-        let data = img_without_alias();
+    fn empty_path_scan_time_returns_zero() {
+        let data = img_without_path();
         assert_eq!(data.compute_timestamp(&["scan_time"]), 0);
     }
 
     #[test]
-    fn set_trashed_toggles_the_single_alias_flag() {
-        let mut data = img_with_alias("/a.jpg", 1, 2);
+    fn set_trashed_toggles_the_path_trash_flag() {
+        let mut data = img_with_path("/a.jpg", 1, 2);
         data.set_trashed(true);
-        assert_eq!(data.alias().map(|a| a.is_trashed), Some(true));
+        assert_eq!(data.path().map(|a| a.is_trashed), Some(true));
         data.set_trashed(false);
-        assert_eq!(data.alias().map(|a| a.is_trashed), Some(false));
+        assert_eq!(data.path().map(|a| a.is_trashed), Some(false));
     }
 
     #[test]
-    fn set_trashed_on_pruned_alias_is_a_noop() {
-        let mut data = img_without_alias();
+    fn set_trashed_on_missing_path_is_a_noop() {
+        let mut data = img_without_path();
         data.set_trashed(true);
-        assert!(data.alias().is_none());
+        assert!(data.path().is_none());
     }
 }

@@ -10662,12 +10662,12 @@ invisible behind the HTTP surface.
 
 ### Properties
 
-| Name      | Type           | Required | Restrictions | Description                                                                                                                                                                                                                                             |
-| --------- | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| file      | string         | true     | none         | none                                                                                                                                                                                                                                                    |
-| isTrashed | boolean        | true     | none         | Trash flag for the record's single alias. The record is visible in the<br>gallery while the alias is live and in the trash view while it is<br>trashed; a pruned alias (`alias: None`) matches neither view. A newly<br>discovered path is always live. |
-| modified  | integer(int64) | true     | none         | none                                                                                                                                                                                                                                                    |
-| scanTime  | integer(int64) | true     | none         | none                                                                                                                                                                                                                                                    |
+| Name      | Type           | Required | Restrictions | Description                                                                                                                                                                                                                                        |
+| --------- | -------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| file      | string         | true     | none         | none                                                                                                                                                                                                                                               |
+| isTrashed | boolean        | true     | none         | Trash flag for the asset's file entry. The record is visible in the<br>gallery while the path is live and in the trash view while it is<br>trashed; a missing path (`path: None`) matches neither view. A newly<br>discovered path is always live. |
+| modified  | integer(int64) | true     | none         | none                                                                                                                                                                                                                                               |
+| scanTime  | integer(int64) | true     | none         | none                                                                                                                                                                                                                                               |
 
 <h2 id="tocS_FsCompletion">FsCompletion</h2>
 <!-- backwards compatibility -->
@@ -11128,7 +11128,7 @@ Payload for renaming an album.
 ```
 
 Test-only record probe: the asset's identity and its singular stored file
-entry, mirroring `AbstractData::alias() -> Option<FileModify>`. `path` is
+entry, mirroring `AbstractData::path() -> Option<FileModify>`. `path` is
 `None` for albums and for media records whose file entry has been pruned.
 Only reachable in test builds when the bootstrap opts in; API E2E scenarios
 use this endpoint to observe the raw stored path instead.

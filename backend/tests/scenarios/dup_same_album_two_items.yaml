@@ -1,7 +1,7 @@
 name: identical files in one album are independently addressable assets
 # Path-primary contract: two byte-identical files in the same directory are
 # two distinct assets with separate asset IDs.  They appear as two items in
-# the album listing, not one merged alias record.
+# the album listing, not one merged path record.
 given:
   - dir_album: /dup_same_album/album
     id_as: $album

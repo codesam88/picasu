@@ -77,15 +77,16 @@ separate `asset_id` values and, where necessary, the duplicate-group probe.
 - Remove scenarios whose only purpose was multi-alias list ordering, alias
   selection, or alias-count validation.
 
-### 4. Internal alias naming and path helpers
+### 4. Internal naming and path helpers
 
 **Status:** complete.
 
-**Decision:** preserve the current `alias: Option<FileModify>` model field in
-the first pass if it is still the storage location for file metadata. Rename
-helper functions and comments only when the new name is unambiguous and the
-change has no API consequence. A full field rename is a separate migration,
-not incidental cleanup.
+**Decision:** the model/wire field is `path: Option<FileModify>` on
+`ImageMetadata`/`VideoMetadata`, exposed as `AbstractData::path()` /
+`path_mut()` and serialized as `abstractData.path`. The earlier first-pass
+deferral of the field rename is superseded; only genuine alias meanings
+(serde `alias` attributes, resolve-alias configs, legacy field-name strings
+in rejection tests) remain under the old word.
 
 **Candidate scope:** `process/path.rs`, `normalize_asset_path`,
 `prune_asset_path`, `prune_stale_asset_path`, `sweep_stale_asset_paths`,
@@ -123,6 +124,114 @@ reference behavior and duplicate-preservation tests.
 - Do not rename ordinary Rust/frontend metadata merge helpers; those are not
   duplicate-identity merge behavior.
 
+### 6. Metadata table value slimming (`FileModify` deduplication)
+
+**Status:** open — identified 2026-09-23 as a missing Phase 14 migration
+artifact.
+
+**Decision:** `METADATA_TABLE` is correctly keyed by `asset_id`, but its value
+is still the full legacy `AbstractData` record instead of a metadata-only
+struct. Phase 14's own target layout defines the value as “tags, description,
+rating, EXIF vec, cover ref”; the implementation reused `AbstractData` (the
+plan's parenthesized shortcut) to avoid rewriting every consumer. As a result
+four identity fields are stored twice: `FileModify { file, modified,
+scan_time, is_trashed }` in the metadata row duplicates
+`AssetRecord { canonical_path, modified, scan_time, is_trashed }` in
+`ASSET_BY_ID`, and `flush_tree` copies metadata-row fields _back_ into the
+identity tables on every metadata edit. The metadata row must stop being a
+write-side source of identity.
+
+**Scope:**
+
+- Extract a metadata-only value type (tags, description, rating, favorite,
+  archived, `exif_vec`, `phash`, album title/cover, `update_at`, `pending`) as
+  the `METADATA_TABLE` value; keep the `asset_id` key.
+- Edit endpoints read `AssetRecord` + metadata row in one transaction, mutate
+  metadata only, and write identity fields exclusively from `AssetRecord` —
+  removing the `FileModify` mirror-back in `flush_tree` and the drift-repair
+  role of `align_path_to_asset`.
+- `GET /get/metadata/{asset_id}` composes `AssetRecord` + metadata at the edge
+  so the wire response shape stays stable.
+- Demote `FileModify` to a view type assembled from `AssetRecord` (or remove it
+  from storage entirely); rename it for its role if it remains on the wire.
+- Consumers to convert: edit endpoints, `write_sidecar_for`,
+  `clear_abstract_data_metadata`, expression filters over the in-memory TREE,
+  `get_metadata`, and scenario assertions on `path.*`.
+- Risks: dual-row write atomicity; trash-flag ownership (media currently on the
+  file entry, albums at record level — pick `AssetRecord.is_trashed` as sole
+  owner); filters that currently scan full `AbstractData` in the TREE.
+- A1 — remove `align_path_to_asset` (`update_tree.rs`): it only repairs drift
+  between the metadata row's `path` and `AssetRecord.canonical_path` and dies
+  when identity writes come from `AssetRecord` alone.
+- A2 — delete the `to_update`/`path_before` guard branch in
+  `sweep_stale_asset_paths` (`album_index.rs`): unreachable under the
+  single-path model, and its stated fear (“re-flushing an unchanged clone would
+  overwrite fresher writes”) is a dual-write symptom.
+- A3 — drop `FileModify`'s `scan_time`-only `Eq`/`Ord`/`Hash` impls
+  (`response.rs`): multi-alias `Vec` de-duplication residue with actively
+  misleading semantics; goes away when the struct shrinks to a view type.
+- A4 — collapse the three identifiers per metadata row: `ObjectSchema.id` and
+  `ImageMetadata.id` both hold `display_id` and both flatten into the wire JSON
+  under the name `id`, and the row is additionally keyed by `asset_id`; decide
+  the single identity (key = `asset_id`) and stop storing content-hash-as-id
+  inside the metadata store.
+
+### 7. Worker payload and token identity naming (B2, B3)
+
+**Status:** open — required review/decision before implementation.
+
+**Decision pending:** two coupled naming questions that must not be half-done.
+
+- **B2 — the `hash` field on `ProcessImagePayload`/`ProcessSmallImagePayload`
+  carries two different values:** content hash for media rows
+  (`abstractData.id` = `display_id`) but the cover's `asset_id` on the album
+  refresh path (`refreshAlbumMetadata`). Required review: settle the correct
+  value via category 8 first, then either rename the field to `servingId` or
+  split it into `contentHash`/`coverAssetId`. Do not rename blind.
+- **B3 — `hashToken` vs `assetToken`:** the store and IndexedDB are
+  `assetToken`, but worker payloads (`workerApi`, `toDataWorker`, `toImgWorker`,
+  `types`, call sites) and the backend route `/post/renew-hash-token` with
+  `expiredHashToken` still say hash. Required decision: rename end-to-end
+  including the backend route (OpenAPI/wire churn) **or** keep `hashToken`
+  deliberately because the JWT's claim is a GuardHash content-hash claim and
+  document that rationale. Either is acceptable; a split naming is not.
+
+**Dependency:** B2 is blocked on category 8; B3 is independent.
+
+### 8. Cover-serving identity verification (C1)
+
+**Status:** open — verification required; possible latent bug.
+
+Initial gallery tiles fetch album covers with `coverHash` (content hash), pinned
+by the getter test “album cover thumbnail URL uses content hash, not
+asset_id”. The album metadata **refresh** path sends `hash: data.cover` into
+the img-worker, whose compressed-URL builder does
+`getSrc(event.hash, original=false)` → `/object/compressed/…/{data.cover}.jpg`.
+If `data.cover` is the cover asset's `asset_id` (as established earlier), that
+URL is built from an asset_id where a content hash is expected.
+
+**Required review before any B2 rename:**
+
+- Read the backend `/object/compressed` resolver: does it accept an asset_id
+  fallback, or does it require the content hash?
+- If asset_id is accepted, document the fallback; if not, add an E2E scenario
+  covering album cover display after a metadata refresh (likely failing today)
+  and fix the caller to send `coverHash`.
+- Outcome decides the correct value for B2's `hash`/`servingId` field.
+
+### 9. Minor terminology debt (D)
+
+**Status:** backlog — low priority; no blocking decision.
+
+- `DB_VERSION = 2` on the freshly renamed `assetToken` IndexedDB: works (fresh
+  create runs the upgrade path 0→2) but could reset to 1 since no legacy DB
+  exists under the new name. Cosmetic; no migration concern.
+- `expression.rs:463` test doc still explains behavior by reference to the
+  “old empty-vec” multi-entry model (historical-keep today; may be simplified
+  once no reader remembers the old model).
+- `ReducedData.hash` (content hash beside `asset_id`) is intentional for
+  compressed URLs — documented, no action.
+
 ## Execution Order
 
 1. Align plans and comments; record superseded alias/G1/merge decisions. **Done.**
@@ -130,6 +239,12 @@ reference behavior and duplicate-preservation tests.
 3. Reshape test probes and rename/consolidate scenarios. **Done.**
 4. Rename internal path helpers after their callers and test contracts settle. **Done.**
 5. Run the full alias/duplicate scenario subset, then the normal checks. **Done.**
+6. Slim the metadata-table value and deduplicate identity fields out of
+   `FileModify` (category 6, including A1–A4).
+7. Verify cover-serving identity end to end (category 8) — required before B2.
+8. Review and apply worker/token payload naming (category 7: B2 after 7, B3
+   whenever).
+9. Optional minor sweep (category 9).
 
 ## Progress
 
@@ -174,3 +289,24 @@ reference behavior and duplicate-preservation tests.
   `just test` green (backend 265 unit + 3 integration tests, 34 Playwright
   scenarios including the stale-path/duplicate subset, utils + frontend
   vitest).
+- 2026-09-23: Model/wire field rename done (category 4 decision updated).
+  `AbstractData.alias` storage field → `path`, accessors `alias()` /
+  `alias_mut()` → `path()` / `path_mut()`, wire field `abstractData.alias`
+  → `abstractData.path`, frontend `AliasSchema`/`Alias` →
+  `FileModifySchema`/`FileModify`. Scenario assertions, doc comments, and
+  docs reworded; genuine alias meanings (serde attributes, resolve-alias
+  configs, legacy rejection-test strings) kept. OpenAPI reference
+  regenerated.
+- 2026-09-23: Added category 6. `METADATA_TABLE` stores the full legacy
+  `AbstractData` value instead of the metadata-only payload its Phase 14 target
+  specifies, duplicating path/timestamps/trash between the metadata row and
+  `AssetRecord`. `flush_tree` mirrors those fields from the metadata row into
+  the identity tables on write; the fix inverts ownership (identity from
+  `AssetRecord` only) and slims the table value.
+- 2026-09-23: Diff review folded A1–A4 into category 6 scope (drift-repair
+  helper, dead sweep guard branch, scan_time-only `Eq`/`Ord`/`Hash` on
+  `FileModify`, triple-id metadata rows). Added categories 7 (worker/token
+  payload naming — decision required), 8 (cover-serving identity — verification
+  required, possible latent bug), and 9 (minor debt). Applied B1 locally:
+  `refreshAlbumMetadata` `coverHash` → `coverAssetId` (the value is the cover
+  asset's `asset_id`, not a content hash).

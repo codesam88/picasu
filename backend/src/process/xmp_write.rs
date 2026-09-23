@@ -34,11 +34,11 @@ pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
         return write_sidecar_content(&sidecar, &content);
     }
 
-    let Some(alias) = abstract_data.alias() else {
+    let Some(file_entry) = abstract_data.path() else {
         return Ok(());
     };
-    let primary = Path::new(&alias.file);
-    let sidecar = primary.with_extension("xmp");
+    let file_path = Path::new(&file_entry.file);
+    let sidecar = file_path.with_extension("xmp");
     let content = format_xmp_packet(
         abstract_data.tag(),
         abstract_data.description(),

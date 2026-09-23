@@ -25,7 +25,7 @@ of-truth promise.
 ## Progress (2026-09-07)
 
 - Task 2 (sweep on manual album index) shipped in PR \#17 via the stale-path
-  sweep in `album_index.rs`; E2E scenario `album_index_removes_stale_aliases.yaml`
+  sweep in `album_index.rs`; E2E scenario `album_index_removes_stale_paths.yaml`
   passes.
 - Watcher `Remove` handling (task 1) remains open.
 - Locking/ordering concerns in the sweep are tracked separately in `album-index-sweep-concurrency.md`.

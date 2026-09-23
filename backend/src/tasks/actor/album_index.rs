@@ -314,7 +314,7 @@ fn sweep_stale_asset_paths(root: &Path) {
         let tree = TREE.in_memory.read().expect("lock poisoned");
         tree.iter()
             .filter(|dt| {
-                dt.abstract_data.alias().is_some_and(|a| {
+                dt.abstract_data.path().is_some_and(|a| {
                     let abs = normalize_asset_path(&a.file);
                     abs.starts_with(root)
                 })
@@ -327,13 +327,13 @@ fn sweep_stale_asset_paths(root: &Path) {
     let mut to_update = Vec::new();
 
     for mut data in candidates {
-        let had_path = data.alias().is_some();
-        let path_before = data.alias().map(|a| a.file.clone());
+        let had_path = data.path().is_some();
+        let path_before = data.path().map(|a| a.file.clone());
         let has_path = crate::process::path::prune_stale_asset_path(&mut data);
 
         if !has_path && had_path {
             to_remove.push(data);
-        } else if has_path && data.alias().map(|a| a.file.clone()) != path_before {
+        } else if has_path && data.path().map(|a| a.file.clone()) != path_before {
             // Only persist records whose path actually changed. Under the
             // single-canonical-path model a surviving prune never changes the
             // path, so this branch only guards against future prune shapes;

@@ -49,8 +49,8 @@ export async function editFlags(
       if (flags.isTrashed !== undefined) {
         const isTrashed = flags.isTrashed
         data.isTrashed = isTrashed
-        if ((data.type === 'image' || data.type === 'video') && data.alias) {
-          data.alias.isTrashed = isTrashed
+        if ((data.type === 'image' || data.type === 'video') && data.path) {
+          data.path.isTrashed = isTrashed
         }
       }
     }

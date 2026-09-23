@@ -44,8 +44,8 @@ fn update_tree_task() {
     // stable order.
     database_timestamp_vec.par_sort_by(|a, b| {
         b.timestamp.cmp(&a.timestamp).then_with(|| {
-            let a_path = a.abstract_data.alias().map_or("", |a| a.file.as_str());
-            let b_path = b.abstract_data.alias().map_or("", |a| a.file.as_str());
+            let a_path = a.abstract_data.path().map_or("", |a| a.file.as_str());
+            let b_path = b.abstract_data.path().map_or("", |a| a.file.as_str());
             a_path.cmp(b_path)
         })
     });
@@ -138,8 +138,8 @@ fn align_path_to_asset(
         is_trashed: record.is_trashed,
     };
     let slot = match data {
-        AbstractData::Image(img) => &mut img.metadata.alias,
-        AbstractData::Video(vid) => &mut vid.metadata.alias,
+        AbstractData::Image(img) => &mut img.metadata.path,
+        AbstractData::Video(vid) => &mut vid.metadata.path,
         AbstractData::Album(_) => return,
     };
     match slot {
@@ -164,7 +164,7 @@ fn minimal_abstract_data(
             crate::model::asset::AssetKind::Album => crate::model::object::ObjectType::Album,
         },
     );
-    let alias = FileModify {
+    let file_entry = FileModify {
         file: record.canonical_path.clone(),
         modified: record.modified,
         scan_time: record.scan_time,
@@ -179,7 +179,7 @@ fn minimal_abstract_data(
                 0,
                 record.ext.clone(),
             );
-            metadata.alias = Some(alias);
+            metadata.path = Some(file_entry);
             AbstractData::Image(crate::model::image::ImageCombined { object, metadata })
         }
         crate::model::asset::AssetKind::Video => {
@@ -190,7 +190,7 @@ fn minimal_abstract_data(
                 0,
                 record.ext.clone(),
             );
-            metadata.alias = Some(alias);
+            metadata.path = Some(file_entry);
             AbstractData::Video(crate::model::video::VideoCombined { object, metadata })
         }
         crate::model::asset::AssetKind::Album => {

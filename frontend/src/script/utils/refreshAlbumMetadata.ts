@@ -39,14 +39,14 @@ export async function refreshAlbumMetadata(albumId: string) {
         return
       }
 
-      const coverHash = data.cover
-      if (coverHash === null) return
+      const coverAssetId = data.cover
+      if (coverAssetId === null) return
 
       await tokenStore.refreshTimestampTokenIfExpired()
-      await tokenStore.refreshAssetTokenIfExpired(coverHash)
+      await tokenStore.refreshAssetTokenIfExpired(coverAssetId)
 
       const timestampToken = tokenStore.timestampToken
-      const assetToken = tokenStore.assetTokenMap.get(coverHash)
+      const assetToken = tokenStore.assetTokenMap.get(coverAssetId)
 
       if (timestampToken === null) {
         console.error('timestampToken is null after refresh')
@@ -60,12 +60,8 @@ export async function refreshAlbumMetadata(albumId: string) {
 
       postToWorker.processImage({
         index: albumIndex,
-        hash: coverHash,
-        // `data.cover` is the cover image's asset_id (album metadata.cover),
-        // not a content hash — here it is only the worker's blob cache key.
-        // Album record identity stays the album asset_id; the cover's content
-        // hash for the compressed URL / GuardHash claim is `data.coverHash`.
-        assetId: coverHash,
+        hash: coverAssetId,
+        assetId: coverAssetId,
         devicePixelRatio: window.devicePixelRatio,
         albumId: shareStore.albumId,
         shareId: shareStore.shareId,
@@ -77,12 +73,8 @@ export async function refreshAlbumMetadata(albumId: string) {
 
       postToWorker.processSmallImage({
         index: albumIndex,
-        hash: coverHash,
-        // `data.cover` is the cover image's asset_id (album metadata.cover),
-        // not a content hash — here it is only the worker's blob cache key.
-        // Album record identity stays the album asset_id; the cover's content
-        // hash for the compressed URL / GuardHash claim is `data.coverHash`.
-        assetId: coverHash,
+        hash: coverAssetId,
+        assetId: coverAssetId,
         width: 300,
         height: 300,
         devicePixelRatio: window.devicePixelRatio,
