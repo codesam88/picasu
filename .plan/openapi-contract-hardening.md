@@ -27,11 +27,12 @@ High — contract wrong or materially incomplete:
       `GuardAuth`/`GuardTimestamp` (24 router files). Introduce a reusable
       `Unauthorized` response component and sweep it across `#[utoipa::path]`
       responses (or post-process the generated spec).
-- [ ] Remove test-only probes from the public spec: `probe_record`,
+- [x] Remove test-only probes from the public spec: `probe_record`,
       `probe_dupe_group` + `TestRecordProbe`/`DupeGroupMember` schemas are
       registered unconditionally; handlers compile into production and are only
-      flag-gated (404 unless test bootstrap). Gate registration behind
-      `cfg(test)` or exclude from `--dump-openapi`.
+      flag-gated (404 unless test bootstrap). **Done** — `--dump-openapi` now
+      serves `openapi_public::public_json()`, which strips `/get/test/*` and
+      the two probe schemas; probe contract tests keep the full generated spec.
 
 Medium — bad patterns and type fidelity:
 
@@ -77,3 +78,13 @@ Low — consistency and polish:
       hits; consider `widdershins --summary` or trimming sample languages.
 
 ## Progress
+
+- 2026-09-23: Rework-adjacent subset executed by the path-primary cleanup
+  sweep (see `.plan/path-primary-cleanup.md`): test-only probes stripped from
+  the public spec; `PUT /put/assign_album` given tag `albums`, a single-line
+  summary and explicit description (fixes its mangled reference anchors);
+  `OnConflict` and `AssignAlbumData.albumId` documented. Reference regenerated.
+- 2026-09-23: Dependency for task 1 (`renew-hash-token`): decide
+  `path-primary-cleanup` category 7/B3 first — if the route is renamed
+  hash→asset token, register the final path instead of documenting the old one
+  and then changing it.
