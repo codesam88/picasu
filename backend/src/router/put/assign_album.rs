@@ -29,17 +29,18 @@ pub enum OnConflict {
     Rename,
 }
 
+/// Request body for `PUT /put/assign_album`. Strict: unknown fields (including
+/// the legacy multi-alias `alias` path) are rejected rather than ignored.
 #[derive(Debug, Deserialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssignAlbumData {
-    /// Path-primary asset ID. The handler resolves the record via
-    /// `ASSET_BY_ID`, allowing independent movement of same-hash files.
+    /// Path-primary asset ID. The handler resolves the record and its
+    /// canonical physical path via `ASSET_BY_ID`, allowing independent
+    /// movement of same-hash files.
     #[schema(value_type = String)]
     pub asset_id: ArrayString<64>,
     #[schema(value_type = String)]
     pub album_id: ArrayString<64>,
-    /// Selected alias path for item records; must be absent (null) for albums.
-    pub alias: Option<String>,
     pub on_conflict: OnConflict,
 }
 
@@ -62,9 +63,10 @@ pub enum AssignOutcome {
     Skipped,
 }
 
-/// Move a media item into the album's directory on disk, update the DB alias,
-/// and record the explicit album membership.  Returns 400 if the file is not
-/// found at the recorded alias path (stale alias — user must re-index first).
+/// Move the asset identified by `asset_id` into the album's directory on disk
+/// (resolved from its canonical physical path), update the stored path and
+/// album membership, and report the conflict outcome. Returns 400 if the file
+/// is missing at the asset's canonical path (stale record — re-index first).
 #[utoipa::path(
         put,
         path = "/put/assign_album",
@@ -88,7 +90,6 @@ pub async fn assign_album(
     let asset_id = data.asset_id;
     let album_id = data.album_id;
     let on_conflict = data.on_conflict;
-    let selected_alias: Option<String> = data.alias;
 
     // Resolve album's directory from the in-memory cache.
     let album_dir = get_dir_path_for_album(album_id)
@@ -105,13 +106,7 @@ pub async fn assign_album(
     }
 
     let outcome = tokio::task::spawn_blocking(move || {
-        move_asset_into_album(
-            asset_id,
-            album_id,
-            &album_dir,
-            on_conflict,
-            selected_alias.as_deref(),
-        )
+        move_asset_into_album(asset_id, album_id, &album_dir, on_conflict)
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
@@ -146,7 +141,6 @@ fn move_asset_into_album(
     album_id: ArrayString<64>,
     album_dir: &Path,
     on_conflict: OnConflict,
-    selected_alias: Option<&str>,
 ) -> Result<AssignOutcome, AppError> {
     use crate::storage::asset_store;
 
@@ -157,14 +151,7 @@ fn move_asset_into_album(
 
     // Albums move as directory trees.
     if record.kind == crate::model::asset::AssetKind::Album {
-        #[allow(clippy::needless_option_as_deref)]
-        return move_album_into_album(
-            asset_id,
-            album_id,
-            album_dir,
-            on_conflict,
-            selected_alias.as_deref(),
-        );
+        return move_album_into_album(asset_id, album_id, album_dir, on_conflict);
     }
 
     let source_path = PathBuf::from(&record.canonical_path);
@@ -277,14 +264,7 @@ fn move_album_into_album(
     target_album_id: ArrayString<64>,
     target_dir: &Path,
     on_conflict: OnConflict,
-    selected_alias: Option<&str>,
 ) -> Result<AssignOutcome, AppError> {
-    if selected_alias.is_some() {
-        return Err(AppError::new(
-            ErrorKind::InvalidInput,
-            "aliases do not apply to album records",
-        ));
-    }
     let (old_dir, new_dir_opt, outcome) = {
         let txn = TREE
             .in_disk
@@ -461,4 +441,65 @@ fn update_asset_tables_after_dir_move(source_dir: &Path, dest_dir: &Path) -> Res
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Path-primary request contract: `assetId` identifies the one physical
+    /// file (resolved server-side via its canonical path). There is no
+    /// caller-supplied `alias` path in the body, and `onConflict` remains
+    /// required with no default.
+    #[test]
+    fn assign_album_data_schema_is_path_primary() {
+        let spec: serde_json::Value = serde_json::from_str(&crate::openapi::generate_json())
+            .expect("generated OpenAPI must be valid JSON");
+        let schema = &spec["components"]["schemas"]["AssignAlbumData"];
+        let properties = schema["properties"]
+            .as_object()
+            .expect("AssignAlbumData must declare properties");
+
+        assert!(
+            !properties.contains_key("alias"),
+            "alias must not appear in AssignAlbumData; asset_id resolves the canonical path"
+        );
+
+        let mut required: Vec<&str> = schema["required"]
+            .as_array()
+            .expect("AssignAlbumData must declare required fields")
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        required.sort_unstable();
+        assert_eq!(required, ["albumId", "assetId", "onConflict"]);
+    }
+
+    /// The path-primary body (assetId + albumId + onConflict, no alias)
+    /// deserializes into the handler's request type.
+    #[test]
+    fn assign_album_data_deserializes_without_alias() {
+        let data: AssignAlbumData = serde_json::from_str(
+            r#"{"assetId":"asset-1","albumId":"album-1","onConflict":"rename"}"#,
+        )
+        .expect("path-primary body without alias must deserialize");
+        assert_eq!(&*data.asset_id, "asset-1");
+        assert_eq!(&*data.album_id, "album-1");
+        assert_eq!(data.on_conflict, OnConflict::Rename);
+    }
+
+    /// A legacy body that still carries `alias` is rejected: the field is
+    /// not part of the path-primary contract, and backward compatibility
+    /// with the multi-alias request shape is not a goal.
+    #[test]
+    fn assign_album_data_rejects_legacy_alias_field() {
+        let err = serde_json::from_str::<AssignAlbumData>(
+            r#"{"assetId":"asset-1","albumId":"album-1","onConflict":"rename","alias":"/old/path.jpg"}"#,
+        )
+        .expect_err("legacy alias field must be rejected");
+        assert!(
+            err.to_string().contains("alias"),
+            "rejection must name the unknown field: {err}"
+        );
+    }
 }

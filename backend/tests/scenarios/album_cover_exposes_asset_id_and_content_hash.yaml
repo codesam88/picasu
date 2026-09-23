@@ -11,7 +11,6 @@ when:
       assetId: "${asset_id}"
       albumId: "${album}"
       onConflict: "rename"
-      alias: "${data_path}/e2e_cover_hash/photo.jpg"
     then:
       - response.status: 200
   - call: POST /get/prefetch?locate=${album}

@@ -22,7 +22,6 @@ when:
       assetId: "${asset_id}"
       albumId: "${album}"
       onConflict: "rename"
-      alias: "${data_path}/e2e_y/import/sunset.jpg"
     then:
       - response.status: 200
   # Step 2: Verify tags and album membership via the metadata detail read.

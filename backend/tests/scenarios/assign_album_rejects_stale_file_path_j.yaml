@@ -12,6 +12,5 @@ when:
       assetId: "${asset_id}"
       albumId: "${album}"
       onConflict: "rename"
-      alias: "${data_path}/e2e_j/photo.jpg"
 then:
   - response.status_not: 200

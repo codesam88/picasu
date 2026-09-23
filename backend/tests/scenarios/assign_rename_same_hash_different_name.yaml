@@ -27,7 +27,6 @@ when:
       assetId: "${src_asset}"
       albumId: "${album}"
       onConflict: "rename"
-      alias: "${data_path}/e2e_rsdn/src/other.jpg"
     then:
       - response.status: 200
   # Re-index and check the album has both files.

@@ -15,7 +15,6 @@ when:
       assetId: "${asset_id}"
       albumId: "${album}"
       onConflict: "rename"
-      alias: "${data_path}/e2e_z7/import/photo.jpg"
 then:
   - response.status: 200
   # Source is gone

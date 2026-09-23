@@ -13,7 +13,6 @@ when:
       assetId: "${asset_id}"
       albumId: "${album_a}"
       onConflict: "rename"
-      alias: "${data_path}/gen_e2e_i_import/gen_e2e_i_photo.jpg"
     then:
       - response.status: 200
   - call: PUT /put/assign_album
@@ -21,7 +20,6 @@ when:
       assetId: "${asset_id}"
       albumId: "${album_b}"
       onConflict: "rename"
-      alias: "${data_path}/gen_e2e_i_import/gen_e2e_i_photo.jpg"
     then:
       - response.status: 200
 then: []

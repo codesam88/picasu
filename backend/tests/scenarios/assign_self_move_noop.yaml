@@ -14,7 +14,6 @@ when:
       assetId: "${p_asset}"
       albumId: "${album}"
       onConflict: "rename"
-      alias: "${data_path}/e2e_self/a/photo.jpg"
     then:
       - response.status: 200
   - call: PUT /put/assign_album
@@ -22,7 +21,6 @@ when:
       assetId: "${p_asset}"
       albumId: "${album}"
       onConflict: "skip"
-      alias: "${data_path}/e2e_self/a/photo.jpg"
     then:
       - response.status: 200
   - call: GET /get/test/record/${p_asset}
