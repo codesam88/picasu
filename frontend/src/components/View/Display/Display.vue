@@ -46,6 +46,7 @@ import delay from 'delay'
 import { useConfigStore } from '@/store/configStore'
 import { handleRotateImage } from '@/script/utils/rotate'
 import { useTokenStore } from '@/store/tokenStore'
+import { coverServingIds } from '@utils/getter'
 import { useShareStore } from '@/store/shareStore'
 
 const props = defineProps<{
@@ -119,10 +120,20 @@ async function checkAndFetch(index: number): Promise<boolean> {
 
   queueStore.original.add(index)
 
-  const servingId = abstractData.type === 'album' ? abstractData.cover : abstractData.id
-  if (servingId == null) return false
-
-  const assetId = abstractData.type === 'album' ? servingId : abstractData.assetId
+  let hash: string
+  let assetId: string
+  if (abstractData.type === 'album') {
+    const serving = coverServingIds(abstractData.cover, abstractData.coverHash)
+    if (serving === null) {
+      queueStore.original.delete(index)
+      return false
+    }
+    hash = serving.hash
+    assetId = serving.assetId
+  } else {
+    hash = abstractData.id
+    assetId = abstractData.assetId
+  }
 
   await tokenStore.refreshTimestampTokenIfExpired()
   await tokenStore.refreshAssetTokenIfExpired(assetId)
@@ -141,7 +152,7 @@ async function checkAndFetch(index: number): Promise<boolean> {
 
   postToWorker.processImage({
     index,
-    hash: servingId,
+    hash,
     assetId,
     devicePixelRatio: window.devicePixelRatio,
     albumId: shareStore.albumId,

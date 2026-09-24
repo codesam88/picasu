@@ -15,6 +15,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
   defineStore('tokenStore' + isolationId, {
     state: (): {
       timestampToken: string | null
+      /** One serving token (JWT with a content-hash claim) per asset_id. */
       assetTokenMap: Map<string, string>
       _renewingTimestamp: Promise<void> | null
     } => ({

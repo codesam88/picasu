@@ -95,6 +95,8 @@ use bitcode::{Decode, Encode};
 pub struct ReducedData {
     /// Path-primary asset ID.
     pub asset_id: ArrayString<64>,
+    /// Content hash (blake3) of the media — compressed-thumbnail URLs and the
+    /// serving token's `hash` claim.
     pub hash: ArrayString<64>,
     pub width: u32,
     pub height: u32,

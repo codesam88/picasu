@@ -1,0 +1,43 @@
+name: set as cover updates album metadata
+# Flow coverage for Set as Cover (PUT /put/set_album_cover). The content-hash
+# contract for the compressed cover fetch is pinned by the coverServingIds unit
+# test; this DSL cannot observe which image is rendered as the album cover, so
+# cover-image identity is not asserted here.
+given:
+  - dir_album: coverflow/album
+  - photo: coverflow/album/first.jpg
+  - photo: coverflow/album/second.jpg
+
+steps:
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: coverflow
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: album
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.select_first: true
+    assert:
+      - ui.visible: testid/batch-menu
+
+  - when:
+      - click.testid: batch-menu
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: option/Set as Cover
+    assert:
+      - ui.toast:
+          type: success
+          contains: Album cover updated
+      - ui.visible: main/

@@ -88,3 +88,8 @@ Low — consistency and polish:
   `path-primary-cleanup` category 7/B3 first — if the route is renamed
   hash→asset token, register the final path instead of documenting the old one
   and then changing it.
+- 2026-09-24: Superseding the B3 dependency note: `path-primary-cleanup`
+  category 7/B3 was withdrawn (content hash intentionally stays in compressed
+  URLs and token claims; route remains `/post/renew-hash-token`). Task 1's
+  rename dependency is resolved — it may proceed at any time via the
+  `build.rs` `router/auth.rs` route-scan fix.

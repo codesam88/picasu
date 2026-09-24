@@ -7,7 +7,10 @@ import { createActionCreators } from 'typesafe-agent-events'
 // === To ImgWorker Payloads ===
 export interface ProcessSmallImagePayload {
   index: number
+  /** Content hash — segment of the content-addressed compressed URL (the
+   * value GuardHash checks against the serving token's `hash` claim). */
   hash: string
+  /** Asset identity — blob-cache key and token-store key. */
   assetId: string
   width: number
   height: number
@@ -23,7 +26,10 @@ export interface ProcessSmallImagePayload {
 
 export interface ProcessImagePayload {
   index: number
+  /** Content hash — segment of the content-addressed compressed URL (the
+   * value GuardHash checks against the serving token's `hash` claim). */
   hash: string
+  /** Asset identity — blob-cache key and token-store key. */
   assetId: string
   devicePixelRatio: number
   albumId: null | string

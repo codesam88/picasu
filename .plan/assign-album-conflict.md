@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: backend
@@ -182,3 +182,6 @@ renamedFrom | skipped }`. Update the utoipa schema.
 - 2026-09-23: Plan aligned with path-primary asset identity. The move contract
   uses `asset_id`; duplicate behavior is covered independently through
   `DUPE_INDEX` scenarios.
+- 2026-09-24: Closed. skip/rename contract shipped with the alias field removed,
+  `deny_unknown_fields` rejection of legacy bodies, contract unit tests, and
+  passing scenario coverage; no merge or replace paths remain.
