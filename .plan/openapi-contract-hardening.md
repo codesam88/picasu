@@ -13,6 +13,45 @@ Route coverage itself is complete (apparent gaps were parser artifacts of
 multi-line attributes and Rocket `{x..}` segments); the problems are in the
 contract content, organization, and rendering. No work started yet.
 
+## Problem and Hardening Strategy
+
+The exposed API can drift even when a focused rework follows the intended
+path-primary design and removes known migration artifacts. The recent review
+found stale naming, incorrect identifier values at live call sites, missing
+OpenAPI operations, incomplete authentication responses, and documentation
+that rendered incorrectly. These defects were not caught by the existing API
+or Playwright scenarios because those tests cover selected workflows rather
+than the complete public contract. The generated OpenAPI document also did
+not prevent drift: route registration, annotations, generated paths, and
+public-spec filtering are separate sources of truth.
+
+The first five hardening mechanisms should be established as recurring CI
+checks and treated as a single API review gate:
+
+1. **Checked-in generated public spec.** Generate the normalized public
+   `openapi.json` in CI and compare it with the reviewed repository artifact.
+   Any route, parameter, schema, response, security, or documentation change
+   must appear in the diff and receive normal code review.
+2. **Mounted-route/spec parity.** Compare the actual mounted `(method, path)`
+   routes with the operations in the public spec. Fail on undocumented routes,
+   stale spec operations, duplicate operation IDs, and accidental exposure of
+   test-only or internal routes. Prefer an explicit route inventory or runtime
+   route metadata over regex-only source discovery.
+3. **OpenAPI structural linting.** Enforce project rules for operation IDs,
+   tags, summaries, descriptions, request schemas, success/error responses,
+   security requirements, path/query parameters, and named schemas. This
+   should catch incomplete annotations even when an operation is present.
+4. **Breaking-change detection.** Diff the generated spec against the latest
+   released baseline and classify removed operations, narrowed schemas,
+   newly-required fields, enum changes, response changes, and security changes
+   as breaking or review-required. Require an explicit override or release
+   note for accepted breaking changes.
+5. **Spec-driven contract smoke tests.** Use the OpenAPI document to exercise
+   every operation at least for reachability, authentication behavior, input
+   validation, unknown-field rejection, expected status families, and response
+   schema validation. Start with deterministic seeded fixtures and expand to
+   property-based testing only where the endpoint state model permits it.
+
 ## Tasks
 
 High — contract wrong or materially incomplete:
