@@ -5,7 +5,7 @@ import { EnrichedUnifiedData, DisplayElement, IsolationId } from '@type/types'
 import { useImgStore } from '@/store/imgStore'
 import { useQueueStore } from '@/store/queueStore'
 import { useWorkerStore } from '@/store/workerStore'
-import { getArrayValue } from '@utils/getter'
+import { coverServingIds, getArrayValue } from '@utils/getter'
 import { useShareStore } from '@/store/shareStore'
 import { useTokenStore } from '@/store/tokenStore'
 import { useConstStore } from '@/store/constStore'
@@ -158,18 +158,19 @@ async function checkAndFetch(
     })
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   } else if (abstractData.type === 'album' && abstractData.cover != null) {
-    const hash = abstractData.coverHash ?? abstractData.cover
-    await tokenStore.refreshAssetTokenIfExpired(abstractData.cover)
+    const serving = coverServingIds(abstractData.cover, abstractData.coverHash)
+    if (serving === null) return
+    await tokenStore.refreshAssetTokenIfExpired(serving.assetId)
 
-    const assetToken = tokenStore.assetTokenMap.get(abstractData.cover)
+    const assetToken = tokenStore.assetTokenMap.get(serving.assetId)
     if (assetToken === undefined) {
       throw new Error(`assetToken is undefined after refresh for cover: ${abstractData.cover}`)
     }
 
     getArrayValue(workerStore.postToImgWorkerList, workerIndex).processSmallImage({
       index,
-      hash,
-      assetId: abstractData.cover,
+      hash: serving.hash,
+      assetId: serving.assetId,
       width: displayWidth,
       height: displayHeight,
       devicePixelRatio: window.devicePixelRatio,

@@ -123,6 +123,23 @@ export function extractServingIdFromPath(path: string): string | null {
   return lastSegment?.split('.').shift() ?? null
 }
 
+/**
+ * Serving IDs for an album-cover fetch.
+ *
+ * `hash` is the cover's content hash — the segment of the content-addressed
+ * compressed URL and the value `GuardHash` checks against the serving token's
+ * `hash` claim. `assetId` is the cover asset's identity — the blob-cache key
+ * and the token-store key. Returns `null` when either piece is missing; never
+ * falls back to the asset id for the hash slot.
+ */
+export function coverServingIds(
+  cover: string | null | undefined,
+  coverHash: string | null | undefined
+): { hash: string; assetId: string } | null {
+  if (cover == null || coverHash == null) return null
+  return { hash: coverHash, assetId: cover }
+}
+
 export function getSrc(
   hash: string,
   original: boolean,
@@ -131,8 +148,9 @@ export function getSrc(
   assetId?: string
 ) {
   const compressedOrImported = original ? 'imported' : 'compressed'
-  // For original files, assetId is required (backend resolves by assetId)
-  // For compressed files, always use content hash (backend stores by content hash)
+  // Original files are asset-addressed (backend resolves by assetId);
+  // compressed files are content-addressed (shared across duplicates) —
+  // GuardHash validates this segment against the token's hash claim.
   if (original) {
     if (assetId === undefined) {
       throw new Error('assetId is required for original file URLs')

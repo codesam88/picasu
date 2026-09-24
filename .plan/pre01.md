@@ -15,22 +15,22 @@ concern — rating — falls out of the metadata work.
 
 ## Tickets
 
-| Area | Summary                            | Status         | Ticket                              |
-| ---- | ---------------------------------- | -------------- | ----------------------------------- |
-| 1a   | Delete removes files from disk     | 🏗️ In progress | `delete-from-disk.md`               |
-| 1b   | Watcher handles Remove events      | 🏗️ In progress | `watcher-remove-events.md`          |
-| 1c   | assign_album conflict handling     | 🏗️ In progress | `assign-album-conflict.md`          |
-| 1d   | Upload conflict handling           | ✅ Done        | `upload-conflict.md`                |
-| 1e   | Verify file E2E                    | ✅ Done        | `verify-file-actions.md`            |
-| 2a   | XMP metadata read (IPTC, GPS)      | 🟡 Partial     | `test-exif-xmp-handling.md`         |
-| 2b   | Frontend EXIF display              | ❌ Open        | `frontend-exif-display.md`          |
-| 3a   | XMP sidecar write-back (all edits) | 🟡 Partial     | `edit-flags-sidecar-writeback.md`   |
-| 3b   | Sidecar moves with file            | ✅ Done        | `xmp-sidecar-metadata.md`           |
-| 3c   | Sidecar deletes with file          | ✅ Done        | `xmp-sidecar-metadata.md`           |
-| 3d   | Tag provenance                     | 🟡 Minimal     | no dedicated ticket (v1 acceptable) |
-| 4a   | Rating field                       | ✅ Done        | `frontend-rating-widget.md`         |
-| 4b   | Image title field                  | ⏭️ Deferred    | no dedicated ticket                 |
-| 5    | DIR_ALBUM_CACHE stale entries      | ✅ Done        | `stale-dir-album-cache.md`          |
+| Area | Summary                            | Status      | Ticket                              |
+| ---- | ---------------------------------- | ----------- | ----------------------------------- |
+| 1a   | Delete removes files from disk     | ✅ Done     | `delete-from-disk.md`               |
+| 1b   | Watcher handles Remove events      | ✅ Done     | `watcher-remove-events.md`          |
+| 1c   | assign_album conflict handling     | ✅ Done     | `assign-album-conflict.md`          |
+| 1d   | Upload conflict handling           | ✅ Done     | `upload-conflict.md`                |
+| 1e   | Verify file E2E                    | ✅ Done     | `verify-file-actions.md`            |
+| 2a   | XMP metadata read (IPTC, GPS)      | 🟡 Partial  | `test-exif-xmp-handling.md`         |
+| 2b   | Frontend EXIF display              | ❌ Open     | `frontend-exif-display.md`          |
+| 3a   | XMP sidecar write-back (all edits) | 🟡 Partial  | `edit-flags-sidecar-writeback.md`   |
+| 3b   | Sidecar moves with file            | ✅ Done     | `xmp-sidecar-metadata.md`           |
+| 3c   | Sidecar deletes with file          | ✅ Done     | `xmp-sidecar-metadata.md`           |
+| 3d   | Tag provenance                     | 🟡 Minimal  | no dedicated ticket (v1 acceptable) |
+| 4a   | Rating field                       | ✅ Done     | `frontend-rating-widget.md`         |
+| 4b   | Image title field                  | ⏭️ Deferred | no dedicated ticket                 |
+| 5    | DIR_ALBUM_CACHE stale entries      | ✅ Done     | `stale-dir-album-cache.md`          |
 
 ## Current Next Steps
 
@@ -40,6 +40,9 @@ strategies, filename sanitization, content validation, timestamp handling, bound
 auto-rename, multi-file preflight validation, and frontend upload-option coverage.
 
 ### Next, in order
+
+> 2026-09-24: items 1–3 below are complete (delete-from-disk, watcher
+> Remove handling, assign_album conflict handling).
 
 1. Complete hard delete, including original files, thumbnails, asset records, sidecars,
    and cache eviction (`delete-from-disk.md`).
@@ -59,20 +62,20 @@ Image title editing remains explicitly deferred for v0.1.
 
 ## Related Plan Items
 
-| File                              | Status      | Notes                                         |
-| --------------------------------- | ----------- | --------------------------------------------- |
-| `delete-from-disk.md`             | in-progress | Delete removes files from disk + thumbnails   |
-| `watcher-remove-events.md`        | in-progress | Watcher handles Remove events                 |
-| `assign-album-conflict.md`        | in-progress | assign_album conflict handling (skip/rename)  |
-| `upload-conflict.md`              | done        | Upload conflict handling and upload hardening |
-| `edit-flags-sidecar-writeback.md` | open        | edit_flags writes XMP sidecar                 |
-| `frontend-exif-display.md`        | open        | Expand ItemExif.vue beyond Make/Model         |
-| `test-exif-xmp-handling.md`       | open        | Non-JPEG container XMP coverage               |
-| `expand-e2e-testing.md`           | open        | 12+ untested API endpoints                    |
-| `ui-refinement.md`                | open        | UI bugs and polish                            |
-| `backend-unit-tests.md`           | open        | Pure function unit tests                      |
-| `clippy-unwrap-cleanup.md`        | backlog     | ~140 unwrap calls                             |
-| `verify-file-actions.md`          | done        | E2E lifecycle coverage                        |
-| `stale-dir-album-cache.md`        | done        | Cache pruned at startup + request time        |
-| `frontend-rating-widget.md`       | done        | Star rating UI + edit_rating endpoint         |
-| `xmp-sidecar-metadata.md`         | done        | XMP sidecar lifecycle                         |
+| File                              | Status  | Notes                                         |
+| --------------------------------- | ------- | --------------------------------------------- |
+| `delete-from-disk.md`             | done    | Delete removes files from disk + thumbnails   |
+| `watcher-remove-events.md`        | done    | Watcher handles Remove events                 |
+| `assign-album-conflict.md`        | done    | assign_album conflict handling (skip/rename)  |
+| `upload-conflict.md`              | done    | Upload conflict handling and upload hardening |
+| `edit-flags-sidecar-writeback.md` | open    | edit_flags writes XMP sidecar                 |
+| `frontend-exif-display.md`        | open    | Expand ItemExif.vue beyond Make/Model         |
+| `test-exif-xmp-handling.md`       | open    | Non-JPEG container XMP coverage               |
+| `expand-e2e-testing.md`           | open    | 12+ untested API endpoints                    |
+| `ui-refinement.md`                | open    | UI bugs and polish                            |
+| `backend-unit-tests.md`           | open    | Pure function unit tests                      |
+| `clippy-unwrap-cleanup.md`        | backlog | ~140 unwrap calls                             |
+| `verify-file-actions.md`          | done    | E2E lifecycle coverage                        |
+| `stale-dir-album-cache.md`        | done    | Cache pruned at startup + request time        |
+| `frontend-rating-widget.md`       | done    | Star rating UI + edit_rating endpoint         |
+| `xmp-sidecar-metadata.md`         | done    | XMP sidecar lifecycle                         |

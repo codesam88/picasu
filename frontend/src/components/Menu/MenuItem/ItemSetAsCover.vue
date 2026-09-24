@@ -1,5 +1,5 @@
 <template>
-  <v-list-item prepend-icon="mdi-archive-arrow-down" @click="setAsCover()">
+  <v-list-item prepend-icon="mdi-archive-arrow-down" value="set-as-cover" @click="setAsCover()">
     <v-list-item-title class="wrap">Set as Cover</v-list-item-title>
   </v-list-item>
 </template>
@@ -8,14 +8,15 @@
 import { useRoute } from 'vue-router'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useDataStore } from '@/store/dataStore'
+import { useMessageStore } from '@/store/messageStore'
 import { getIsolationIdByRoute } from '@utils/getter'
 import axios from 'axios'
-import { refreshAlbumMetadata } from '@utils/refreshAlbumMetadata'
 
 const route = useRoute()
 const isolationId = getIsolationIdByRoute(route)
 const collectionStore = useCollectionStore(isolationId)
 const dataStore = useDataStore(isolationId)
+const messageStore = useMessageStore('mainId')
 
 const setAsCover = async () => {
   if (collectionStore.editModeCollection.size !== 1) {
@@ -34,8 +35,7 @@ const setAsCover = async () => {
     return
   }
 
-  const albumId = route.params.assetId
-
+  const albumId = route.params.albumId
   if (typeof albumId !== 'string') {
     return
   }
@@ -53,7 +53,7 @@ const setAsCover = async () => {
     }
   )
 
-  await refreshAlbumMetadata(albumId)
+  messageStore.success('Album cover updated successfully')
   collectionStore.editModeOn = false
 }
 </script>

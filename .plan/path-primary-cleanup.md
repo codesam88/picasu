@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: chore
 priority: high
 area: backend
@@ -109,7 +109,7 @@ semantics.
 
 ### 5. Merge and duplicate semantics
 
-**Status:** mostly complete; audit only.
+**Status:** complete.
 
 **Decision:** do not reintroduce or emulate identity-based merge. Keep
 `DeduplicateTask` only as the path-primary indexing step that updates
@@ -177,59 +177,66 @@ write-side source of identity.
 
 ### 7. Worker payload and token identity naming (B2, B3)
 
-**Status:** open — required review/decision before implementation.
+**Status:** complete.
 
-**Decision pending:** two coupled naming questions that must not be half-done.
-
-- **B2 — the `hash` field on `ProcessImagePayload`/`ProcessSmallImagePayload`
-  carries two different values:** content hash for media rows
-  (`abstractData.id` = `display_id`) but the cover's `asset_id` on the album
-  refresh path (`refreshAlbumMetadata`). Required review: settle the correct
-  value via category 8 first, then either rename the field to `servingId` or
-  split it into `contentHash`/`coverAssetId`. Do not rename blind.
-- **B3 — `hashToken` vs `assetToken`:** the store and IndexedDB are
-  `assetToken`, but worker payloads (`workerApi`, `toDataWorker`, `toImgWorker`,
-  `types`, call sites) and the backend route `/post/renew-hash-token` with
-  `expiredHashToken` still say hash. Required decision: rename end-to-end
-  including the backend route (OpenAPI/wire churn) **or** keep `hashToken`
-  deliberately because the JWT's claim is a GuardHash content-hash claim and
-  document that rationale. Either is acceptable; a split naming is not.
-
-**Dependency:** B2 is blocked on category 8; B3 is independent.
+- **B2 — resolved with category 8.** The `hash` field's contract is the content
+  hash (compressed-URL segment + GuardHash claim); `assetId` is identity
+  (blob-cache key + token-store key). The album callers that sent an asset_id
+  into the `hash` slot were fixed under category 8 via `coverServingIds`. Field
+  names stand; no rename or split.
+- **B3 — withdrawn (2026-09-24).** Per design decision: content hash
+  deliberately stays in compressed URLs and the serving-token JWT —
+  `GuardHash` validates the URL segment against the token's `hash` claim, and
+  content-addressed thumbnails enable skipping regeneration for known hashes.
+  Each name is accurate for what it names: `hashToken` / `renew-hash-token` /
+  `ClaimsHash` = the hash-bound JWT type; the `assetToken` store/map = storage
+  keyed by `asset_id`. Not a half-finished rename; no code change.
+- Root-cause note retained for the hardening ticket: `build.rs` never scans
+  `router/auth.rs`, so the renew endpoints never enter the generated spec
+  (tracked as task 1 in `openapi-contract-hardening.md`).
 
 ### 8. Cover-serving identity verification (C1)
 
-**Status:** open — verification required; possible latent bug.
+**Status:** complete — verified real, fixed.
 
-Initial gallery tiles fetch album covers with `coverHash` (content hash), pinned
-by the getter test “album cover thumbnail URL uses content hash, not
-asset_id”. The album metadata **refresh** path sends `hash: data.cover` into
-the img-worker, whose compressed-URL builder does
-`getSrc(event.hash, original=false)` → `/object/compressed/…/{data.cover}.jpg`.
-If `data.cover` is the cover asset's `asset_id` (as established earlier), that
-URL is built from an asset_id where a content hash is expected.
+Confirmed defect chain: compressed files are content-addressed on disk and
+`GuardHash` compares the URL segment to the token's `hash` claim, so any
+request built from an asset_id fails. Investigation found three distinct bugs
+in the set-cover flow:
 
-**Required review before any B2 rename:**
+1. `ItemSetAsCover` read `route.params.assetId` on an album route whose param is
+   `albumId` — silent early return, so PUT never fired and no toast ever
+   appeared (the user-visible root cause).
+2. `refreshAlbumMetadata` depended on the album's own row being in `dataStore`,
+   which never happens on the album's contents page (the filter returns its
+   media and child albums, not itself) — the watch/toast chain was dead on its
+   only call path. The function was deleted; the toast now fires in
+   `ItemSetAsCover` immediately after a successful PUT.
+3. The remaining live fetch sites sent mixed values into the `hash` slot.
+   `coverServingIds(cover, coverHash)` in `getter.ts` pins the contract
+   (`hash` = content hash, `assetId` = cover asset id, `null` when either is
+   missing): used by `SmallImageContainer` (whose `?? cover` fallback that sent
+   an asset_id was removed) and `Display.vue`'s album branch.
 
-- Read the backend `/object/compressed` resolver: does it accept an asset_id
-  fallback, or does it require the content hash?
-- If asset_id is accepted, document the fallback; if not, add an E2E scenario
-  covering album cover display after a metadata refresh (likely failing today)
-  and fix the caller to send `coverHash`.
-- Outcome decides the correct value for B2's `hash`/`servingId` field.
+Also in scope: `ItemSetAsCover`'s `v-list-item` gained `value="set-as-cover"`
+so it exposes `role=option` like its menu siblings (scenario clickability);
+`ReducedData.hash` got its missing doc comment (D3).
+
+Tests: `coverServingIds` unit contract (RED→GREEN); new Playwright scenario
+`set-cover-updates-album-metadata` (toast + integrity — cover-image identity is
+not DSL-observable, so the unit test is the hash-contract guard); full suite
+green: backend 265, vitest 70, Playwright 35/35.
 
 ### 9. Minor terminology debt (D)
 
-**Status:** backlog — low priority; no blocking decision.
+**Status:** complete.
 
-- `DB_VERSION = 2` on the freshly renamed `assetToken` IndexedDB: works (fresh
-  create runs the upgrade path 0→2) but could reset to 1 since no legacy DB
-  exists under the new name. Cosmetic; no migration concern.
-- `expression.rs:463` test doc still explains behavior by reference to the
-  “old empty-vec” multi-entry model (historical-keep today; may be simplified
-  once no reader remembers the old model).
-- `ReducedData.hash` (content hash beside `asset_id`) is intentional for
-  compressed URLs — documented, no action.
+- D1 `DB_VERSION` stays at 2 — dismissed: opening an existing `assetToken` DB
+  (created at version 2) with version 1 raises IndexedDB `VersionError`.
+- D2 `expression.rs` empty-vec comment — already done in `f2391520`.
+- D3 `ReducedData.hash` — missing doc comment added alongside category 8
+  (content hash: compressed-thumbnail URLs and the serving-token `hash`
+  claim).
 
 ## Execution Order
 
@@ -240,10 +247,10 @@ URL is built from an asset_id where a content hash is expected.
 5. Run the full alias/duplicate scenario subset, then the normal checks. **Done.**
 6. Slim the metadata-table value and deduplicate identity fields out of
    `FileModify` (category 6, including A1–A4). **Done.**
-7. Verify cover-serving identity end to end (category 8) — required before B2.
-8. Review and apply worker/token payload naming (category 7: B2 after 7, B3
-   whenever).
-9. Optional minor sweep (category 9).
+7. Fix cover-serving identity (category 8) — B2 callers ride along. **Done.**
+8. B3 asset-token rename — **Withdrawn** (content hash intentionally stays in
+   URLs and JWT claims; see category 7).
+9. Category 9 one-liner (`ReducedData.hash` doc). **Done.**
 
 ## Progress
 
@@ -362,3 +369,22 @@ URL is built from an asset_id where a content hash is expected.
   remaining generic findings stay in `openapi-contract-hardening.md`.
   Verification: `just check` + full `just test` green (backend 268 incl. the
   new spec-contract tests, utils 24, vitest 67, Playwright 34/34).
+- 2026-09-23: Categories 7–9 reviewed against code. C1 confirmed as a real
+  bug end-to-end (set-cover refresh requests `/object/compressed/{asset_id}`
+  while compressed files are content-hash-named and GuardHash validates the
+  content-hash claim); B2 resolved as a value bug in that same path, not a
+  field-name problem; B3 decided for a full asset-token rename (JWT claims
+  unchanged); renew-endpoint spec omission root-caused to `build.rs` not
+  scanning `router/auth.rs`; category 9: D2 already done, D1 dismissed
+  (`VersionError` risk), D3 confirmed as an undocumented field. Sections 7–9
+  rewritten with verdicts and scopes; implementation pending.
+- 2026-09-24: Categories 7–9 closed. B3 withdrawn after the JWT/GuardHash
+  review — content hash intentionally stays in compressed URLs and the
+  serving-token claims (GuardHash binding; skip-thumbnail-for-known-hash
+  future); `hashToken` vs `assetToken` documented as JWT-type vs storage-key,
+  both accurate. C1 fixed: `ItemSetAsCover` route-param bug (`assetId` →
+  `albumId`), dead `refreshAlbumMetadata` deleted with toast moved after PUT,
+  `coverServingIds` contract applied at the live fetch sites, menu-item
+  `value` attr, new e2e scenario; D3 doc added. Full `just check` + `just test`
+  green (backend 265, vitest 70, Playwright 35/35). All categories 1–9
+  complete — cleanup finished.
