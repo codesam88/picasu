@@ -66,6 +66,21 @@ No operation may report success until its required filesystem changes are
 durable, and a partial operation must remain visible for repair rather than
 silently deleting user files.
 
+#### Identity and serving invariants
+
+An `assetId` identifies one physical indexed file and is used for asset
+records, storage lookups, and asset-token maps. A content hash identifies the
+bytes and is used for content-addressed compressed objects and hash-bound
+serving URLs. They are both stable strings at the HTTP boundary but are not
+interchangeable values. A content hash must never be substituted with an
+`assetId` when constructing a compressed-object URL or `GuardHash` claim.
+
+The public HTTP API is an interface for the backend and alternate frontends,
+not only an implementation detail of the shipped SPA. Its generated OpenAPI
+description, mounted routes, request/response schemas, security behavior, and
+error responses must describe the same interface. Changes to one of these
+surfaces require the others to be regenerated or checked together.
+
 ### Importing and filesystem synchronization
 
 - Basic functions:
@@ -123,31 +138,21 @@ silently deleting user files.
   directory merge or file flattening occurs. The source directory is always
   moved as one unit.
 
-- Directory indexing or watcher do not move files
+- Directory indexing and the watcher do not move files. They reconcile the
+  index with the filesystem and report changes for explicit operations.
 
-- Directory indexing or watcher may also encounter deleted files.
-  When an indexed file is removed, its record and derived thumbnails may be
-  removed after reconciliation. The watcher identifies the record by its
-  recorded path — deletion resolves against the path index, never by
-  computing a content hash.
-  - the watcher may notice delete operations and can look the path up in the
-    DB, delete the associated metadata and thumbnails
+- When an indexed file is removed, watcher removal handling resolves the
+  recorded path through the path index and prunes the asset record, duplicate
+  membership, and derived state. It does not compute a content hash to find a
+  replacement record and does not remove another same-hash file.
 
-  - On manual indexing, consult the DB for the selected target path and check
-    whether the recorded file still exists. Mark missing records for
-    reconciliation before removing derived thumbnails or metadata.
-    This cleanup sweep should be done after scanning for any new files, so that
-    moved/renamed files only re-point the affected record and do not require
-    recomputing all thumbnails. A sidecar is treated as part of its physical
-    file and stays with that file during indexing.
-  - A semi-regular cleanup sweep could be done on schedule. Could also verify hashes.
+- Manual indexing performs the same stale-path reconciliation under the
+  indexed directory after scanning for new files. A moved or renamed file is
+  reconciled by path without recomputing unrelated thumbnails. The sidecar is
+  part of the physical file and stays paired with it.
 
-  - Discovery of deleted files or changed hashes should be logged...may point
-    to corruption/loss...
-
-  - use occasional sweeps to ensure images are there...could also verify hashes
-
-  - for any accessed thumbnail, use DB to test existance of the original image?
+- Scheduled reconciliation and hash verification remain useful operational
+  safeguards, but they are separate from watcher and manual-index behavior.
 
 ### Album Properties
 
