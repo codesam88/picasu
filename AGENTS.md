@@ -27,10 +27,22 @@ The `.plan/` directory tracks pending and completed work. Run `plan list` to vie
 
 ## Project Development Workflow
 
-- Take a step back and consider best-practice solutions before diving in.
-- Clarify ambiguous requirements with the user before starting.
-- Always present the proposed solution and its trade-offs for review before implementing.
-- Before claiming success, run applicable tests to verify. In doubt, run full test suite: `just check; just test`.
+- Before diving into solutions, take a step back and consider best-practice,
+  pros and cons of available options. Clarify ambiguous requirements and trade-offs
+  with the user. Verify claims and assumptions based on actual code and tests.
+- For non-trivial work, establish a bounded change before editing: the intended
+  outcome, the files or subsystem in scope, and the checks that will establish
+  success. Use the task list and `.plan/` when the work spans multiple steps,
+  work systematic and iterative using dedicated worker sub-agents per task.
+- Prefer repository mechanisms over agent memory. If a recurring concern cannot
+  be checked by the existing commands, tests, or linters, record it as a
+  tooling/backlog item instead of expanding this file with a one-off reminder.
+- Keep implementation, tests, design documentation, and generated artifacts
+  aligned in the same change when they describe the same behavior. Do not claim
+  a safeguard exists unless its check is implemented and has run.
+- Before claiming success, run the applicable automated checks, inspect the
+  final diff and status, and report any checks or quality gates that remain
+  unavailable. Successful test suite run does not replace quality checks.
 - When done, provide a summary of the change and give a chance to review or course correct. Commit only on request.
 - Commit messages should include a summary of what was changed and why. Do not include verbose examples or documentation. Only large commits may contain lists of changes.
 - Update code-level documentation where applicable. Refrain from including verbose examples and documentation without request.

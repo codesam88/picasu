@@ -16,7 +16,12 @@
    vibe-coded artifacts that hand-written tests miss, and enables scaling
    without proportional maintenance cost.
 
-3. All tools run locally for quick turnaround. CI orchestrates slower tests
+3. Test behavior and implementation health separately. Passing workflow tests
+   does not prove that public contracts are documented, architectural
+   boundaries are preserved, or complexity and duplication have not grown.
+   Those properties need their own executable checks and explicit budgets.
+
+4. All tools run locally for quick turnaround. CI orchestrates slower tests
    and higher-level processes (PR, release). Automate testing across all
    supported build configurations.
 
@@ -26,21 +31,30 @@
 
 A layered pipeline that catches defects at the earliest possible stage:
 
-| Layer            | What it catches                                       | How                                                |
-| ---------------- | ----------------------------------------------------- | -------------------------------------------------- |
-| Static (compile) | Category errors, unsafe code, style violations        | TypeScript, clippy, ESLint, `cargo fmt`/`prettier` |
-| Unit             | Pure-function logic errors                            | `#[cfg(test)]` blocks via `cargo test`             |
-| Integration      | Multi-component interaction bugs                      | `src/tests/` against real redb in a tempdir        |
-| E2E — API        | HTTP contract violations, regressions                 | YAML scenarios → Rocket `local::Client`            |
-| E2E — UI         | Full-stack user-flow regressions                      | YAML scenarios → Playwright                        |
-| Precommit        | Format, lint, unit+integration+API-E2E, openapi drift | `just precommit`                                   |
-| CI               | All of the above + audit + release build              | GitHub Actions                                     |
+| Layer            | What it catches                                     | How                                                 |
+| ---------------- | --------------------------------------------------- | --------------------------------------------------- |
+| Static (compile) | Category errors, unsafe code, style violations      | TypeScript, clippy, ESLint, `cargo fmt`/`prettier`  |
+| Unit             | Pure-function logic errors                          | `#[cfg(test)]` blocks via `cargo test`              |
+| Integration      | Multi-component interaction bugs                    | `src/tests/` against real redb in a tempdir         |
+| E2E — API        | HTTP contract violations, regressions               | YAML scenarios → Rocket `local::Client`             |
+| E2E — UI         | Full-stack user-flow regressions                    | YAML scenarios → Playwright                         |
+| Contract         | Public API drift and compatibility errors           | OpenAPI generation, parity, lint, diff, smoke tests |
+| Property/state   | Invariant and sequence errors                       | Property-based and model-based tests                |
+| Mutation         | Tests that pass despite meaningful behavior changes | Targeted mutation testing                           |
+| Architecture     | Dependency violations, churn, and code smells       | Boundary rules, quality budgets, artifact scans     |
+| Precommit        | Format/lint plus branch-configured checks           | `just precommit`                                    |
+| CI               | Current suite, audit, and release-build checks      | GitHub Actions                                      |
 
 Each layer filters defects the previous one cannot catch. Static analysis
 cannot verify multi-step index → dedup → flush → album update; integration
 tests can. Integration tests cannot verify HTTP response shape after a
 config change; API E2E can. API E2E cannot verify the login page renders;
 UI E2E can.
+
+The Contract, Property/state, Mutation, and Architecture rows describe the
+target quality pipeline. The current repository has partial checks in these
+areas; the full gates are tracked in `.plan/automated-quality-gates.md` and
+must not be described as active until their commands are implemented and run.
 
 Two build configurations: **developer** (debug, no `embed-frontend`, fast
 iteration) and **production** (release, `embed-frontend`, self-contained
@@ -112,17 +126,46 @@ playwright-report/results.json`).
 Derives an OpenAPI 3.1 spec from `#[utoipa::path]` annotations on route
 handlers. `build.rs` checks every handler registered in the `routes![]` macro
 for an annotation and prints `cargo:warning=` for any missing during every
-build. `just openapi-docs-check` (in `just precommit` on `main`) regenerates
-and diffs the committed spec files — unannotated new routes or stale docs
-fail the gate.
+build. `just openapi-docs-check` regenerates and diffs the committed generated
+artifacts when that check is run.
+
+This is useful annotation and artifact coverage, but it is not yet complete
+contract enforcement. It does not prove that every mounted public route is in
+the generated public spec, that every spec operation is mounted, that
+authentication and error responses are documented, or that string-valued
+identifiers are used with the correct semantics. Public-spec filtering is also
+a separate step. These are the reasons for the route/spec parity, structural
+lint, breaking-diff, and spec-driven smoke-test work in
+`.plan/openapi-contract-hardening.md`.
 
 See `docs/openapi-generator.md` for the full design, and
-`docs/mdbook/src/openapi-reference.md` for the rendered reference.
+`docs/openapi-reference.md` for the rendered reference.
 
-**Future: scenario-to-endpoint tracing.** The scenario `call:` verb
-currently validates method+path pairs against `openapi.json`
-(unidirectional: scenario → spec). A bidirectional trace would show which
-endpoints lack scenario coverage and which scenarios cover which endpoints.
+The scenario `call:` verb currently validates method+path pairs against
+`openapi.json` (unidirectional: scenario → spec). A bidirectional trace would
+show which endpoints lack scenario coverage and which scenarios cover which
+endpoints; this is one part of the planned contract gate.
+
+### Structural and behavioral quality checks
+
+The current pipeline is strongest at example-based behavior. It does not yet
+measure whether tests detect altered behavior or whether a change increases
+implementation risk. The backlog item `.plan/automated-quality-gates.md`
+tracks the following extensions:
+
+- Property-based and stateful/model-based tests for indexing idempotence,
+  watcher reconciliation, album membership, deletion, duplicate handling, and
+  identity invariants.
+- Mutation testing for high-risk domains and changed modules.
+- Architecture boundary checks and forbidden legacy-artifact scans.
+- Changed-code budgets for complexity, file size, duplication, dependency
+  fan-in/fan-out, nesting, ignored tests, unchecked errors, and broad types.
+- Change-impact reports that make broad churn visible even when feature tests
+  pass.
+
+These checks complement API and UI scenarios. They test properties of the
+implementation and the test suite itself rather than adding more examples of
+the same workflows.
 
 ---
 
