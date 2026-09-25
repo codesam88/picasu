@@ -124,6 +124,20 @@ Low — consistency and polish:
 
 ## Progress
 
+- 2026-09-25: Added negative self-checks so the gates cannot be neutered
+  silently. The `routes![]` scanner moved out of `build.rs` into
+  `backend/build/route_scan.rs`, shared with `src/tests/route_scan.rs`, because
+  a build script cannot be unit-tested in place — its parsing bug is exactly
+  what made the renewal routes undocumented. The parity comparison moved into
+  pure functions (`undocumented_routes`, `stale_operations`,
+  `duplicate_operation_ids`) that `src/tests/openapi_contract.rs` exercises with
+  deliberately drifted inputs, and a new test asserts `public_json()` equals the
+  committed `backend/openapi.json`, so artifact drift fails `cargo test` and not
+  only `just openapi-check`. 13 mutations (neuter each comparison, drop the
+  exclusion filter, widen the exclusion, ignore the HTTP method, no-op the path
+  normalizer, revert the scanner to line-based parsing, accept non-identifier
+  entries, stop stripping comments, end the block at the first bracket, scan
+  only the first block, stale artifact) were each verified to fail a named test.
 - 2026-09-25: Established hardening mechanisms 1 and 2.
   `backend/openapi.json` is now a committed, pretty-printed, sorted-key
   artifact; `just openapi-check` regenerates and diffs it and is part of
