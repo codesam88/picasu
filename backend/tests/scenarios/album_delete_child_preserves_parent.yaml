@@ -1,0 +1,42 @@
+name: deleting a child album preserves its parent and sibling assets
+given:
+  - dir_album: /e2e_child_delete/parent
+    id_as: $parent_album
+  - dir_album: /e2e_child_delete/parent/child
+    id_as: $child_album
+  - photo: /e2e_child_delete/parent/photo.jpg
+    id_as: $parent_photo
+    asset_id_as: $parent_asset
+  - photo: /e2e_child_delete/parent/child/photo.jpg
+    id_as: $child_photo
+    asset_id_as: $child_asset
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_child_delete"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: POST /get/prefetch?locate=${child_album}
+    capture:
+      ts: response.prefetch.timestamp
+  - call: DELETE /delete/delete-data
+    raw_body: '{"assetIds":["${child_album}"],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_child_delete"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: GET /get/get-albums
+then:
+  - response.status: 200
+  - file_exists: /e2e_child_delete/parent
+  - file_exists: /e2e_child_delete/parent/photo.jpg
+  - file_absent: /e2e_child_delete/parent/child
+  - file_absent: /e2e_child_delete/parent/child/photo.jpg
+  - array_where:
+      where:
+        dirPath: e2e_child_delete/parent
+      assert:
+        albumId: ${parent_album}
