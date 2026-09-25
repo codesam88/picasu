@@ -10,6 +10,7 @@ use crate::router::auth::ClaimsTimestamp;
 use crate::router::auth::GuardShare;
 use crate::storage::cache::QUERY_SNAPSHOT;
 use crate::storage::cache::TREE_SNAPSHOT;
+use crate::storage::cache::next_snapshot_id;
 use crate::storage::db::TREE;
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
 use crate::tasks::BATCH_COORDINATOR;
@@ -19,7 +20,6 @@ use crate::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
 
 use anyhow::Result;
 use bitcode::{Decode, Encode};
-use chrono::Utc;
 use log::info;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::serde::json::Json;
@@ -181,7 +181,7 @@ fn insert_data_into_tree_snapshot(reduced_data_vector: Vec<ReducedData>) -> (i64
     let db_start_time = Instant::now();
 
     // Persist to snapshot
-    let timestamp_millis = Utc::now().timestamp_millis();
+    let timestamp_millis = next_snapshot_id();
     let reduced_data_vector_length = reduced_data_vector.len();
     TREE_SNAPSHOT
         .in_memory

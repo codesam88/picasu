@@ -5,6 +5,7 @@ use rayon::prelude::*;
 use redb::ReadableTable;
 use std::error::Error;
 use std::sync::LazyLock;
+use std::sync::atomic::AtomicI64;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
@@ -40,6 +41,31 @@ impl TreeSnapshot {
         Self {
             in_disk: &TREE_SNAPSHOT_IN_DISK,
             in_memory: &TREE_SNAPSHOT_IN_MEMORY,
+        }
+    }
+}
+
+static LAST_SNAPSHOT_ID: AtomicI64 = AtomicI64::new(0);
+
+/// Allocates an id for a new `TREE_SNAPSHOT` entry. The id is also the snapshot
+/// timestamp handed to the client in the prefetch token, so it must be unique per
+/// snapshot: wall-clock milliseconds are not, and two snapshots sharing an id
+/// would make the later one overwrite the earlier one — its rows would be served
+/// under the earlier snapshot's still-valid token.
+///
+/// Ids stay within a millisecond or two of the wall clock and re-sync as soon as
+/// the clock passes the last id, so the expiry bookkeeping that compares snapshot
+/// timestamps against the tree version keeps working.
+pub fn next_snapshot_id() -> i64 {
+    let now = Utc::now().timestamp_millis();
+    loop {
+        let last = LAST_SNAPSHOT_ID.load(Ordering::SeqCst);
+        let next = now.max(last.saturating_add(1));
+        if LAST_SNAPSHOT_ID
+            .compare_exchange(last, next, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            return next;
         }
     }
 }
@@ -484,6 +510,56 @@ impl Expire {
             // this check again.
             Some(_) | None => false,
         }
+    }
+}
+
+#[cfg(test)]
+mod snapshot_id_tests {
+    use super::*;
+    use std::collections::HashSet;
+    use std::thread;
+
+    #[test]
+    fn snapshot_ids_are_unique_within_a_millisecond() {
+        let ids: HashSet<i64> = (0..10_000).map(|_| next_snapshot_id()).collect();
+
+        assert_eq!(
+            ids.len(),
+            10_000,
+            "snapshot ids must not repeat: a repeated id overwrites the previous \
+             snapshot and lets its token serve the newer snapshot's rows"
+        );
+    }
+
+    #[test]
+    fn snapshot_ids_are_unique_across_threads() {
+        let ids: Vec<i64> = (0..8)
+            .map(|_| thread::spawn(|| (0..1_000).map(|_| next_snapshot_id()).collect::<Vec<i64>>()))
+            .flat_map(|handle| handle.join().expect("snapshot id thread panicked"))
+            .collect();
+
+        let unique: HashSet<i64> = ids.iter().copied().collect();
+        assert_eq!(
+            unique.len(),
+            ids.len(),
+            "concurrent prefetches must not share a snapshot id"
+        );
+    }
+
+    #[test]
+    fn snapshot_ids_never_fall_behind_the_wall_clock() {
+        // Ids may run ahead of the clock when many snapshots are created within
+        // one millisecond, and re-sync once the clock catches up. They must never
+        // be older than the clock: expiry bookkeeping only discards a snapshot
+        // once a newer tree version exists, so a stale id would expire a snapshot
+        // that is still in use.
+        let before = Utc::now().timestamp_millis();
+        let id = next_snapshot_id();
+
+        assert!(
+            id >= before,
+            "snapshot id {id} is older than the wall clock {before}"
+        );
     }
 }
 
