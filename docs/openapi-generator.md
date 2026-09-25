@@ -114,7 +114,7 @@ fails a named test instead of quietly passing. See
 The markdown reference is generated but not drift-checked: `widdershins` is
 fetched with `npx --yes` at generation time, which needs network access that CI
 gates should not depend on. Regenerate it with `just docs-openapi` when the spec
-changes.
+changes; it therefore lags `backend/openapi.json` until someone does.
 
 ### Coverage check
 

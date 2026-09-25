@@ -1,4 +1,5 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
+use crate::openapi_components::Unauthorized;
 
 use crate::process::dir_album::{
     get_dir_path_for_album, get_parent_album_id, mark_album_for_update,
@@ -80,6 +81,7 @@ pub enum AssignOutcome {
         responses(
             (status = 200, description = "Item assigned to album", body = AssignResult),
             (status = 400, description = "Invalid input or item not found"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

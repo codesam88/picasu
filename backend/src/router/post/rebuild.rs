@@ -4,6 +4,7 @@ use rocket::post;
 use rocket::serde::json::Json;
 
 use crate::error::{AppError, ErrorKind, ResultExt};
+use crate::openapi_components::Unauthorized;
 use crate::process::rebuild::{RebuildStats, rebuild_from_filesystem};
 use crate::process::transitor::asset_record_to_abstract_data;
 use crate::router::auth::GuardAuth;
@@ -28,6 +29,7 @@ use crate::tasks::batcher::update_tree::UpdateTreeTask;
         responses(
             (status = 200, description = "Rebuild complete", body = RebuildStats),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
             (status = 405, description = "Read-only mode"),
         )
     )

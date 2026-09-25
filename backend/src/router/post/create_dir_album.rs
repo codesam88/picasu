@@ -1,4 +1,5 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
+use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::{
     get_dir_path_for_album, get_or_create_dir_album, mark_album_for_update,
 };
@@ -29,6 +30,7 @@ pub struct CreateDirAlbumData {
         responses(
             (status = 200, description = "New album ID", body = String),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

@@ -1,5 +1,6 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
+use crate::openapi_components::Unauthorized;
 use crate::process::misc::{generate_phash, generate_thumbhash};
 use crate::process::thumbnail::generate_thumbnail_for_image;
 use crate::router::{AppResult, GuardResult};
@@ -30,6 +31,7 @@ pub struct RotateImageRequest {
         responses(
             (status = 200, description = "Image rotated"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

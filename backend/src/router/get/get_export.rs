@@ -1,6 +1,7 @@
 use crate::model::abstract_data::AbstractData;
 use crate::model::asset::AssetRecord;
 use crate::model::metadata_record::compose_abstract_data;
+use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{ASSET_BY_ID, METADATA_TABLE, TREE};
@@ -20,6 +21,7 @@ pub struct ExportEntry {
         responses(
             (status = 200, description = "Export data as JSON"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

@@ -4,6 +4,7 @@ use crate::model::expression::{AlbumFilterValue, Expression};
 use crate::model::response::DatabaseTimestamp;
 use crate::model::response::Prefetch;
 use crate::model::response::ReducedData;
+use crate::openapi_components::Unauthorized;
 use crate::router::AppResult;
 use crate::router::GuardResult;
 use crate::router::auth::ClaimsTimestamp;
@@ -280,6 +281,7 @@ fn execute_prefetch_logic(
         responses(
             (status = 200, description = "Prefetch result", body = PrefetchReturn),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

@@ -7,6 +7,7 @@ use tokio::task::spawn_blocking;
 
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::config::{APP_CONFIG, AppConfig};
+use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
@@ -38,6 +39,7 @@ pub struct PartialUpdateConfigRequest {
         responses(
             (status = 200, description = "Config updated"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]
@@ -134,6 +136,7 @@ pub struct UpdatePasswordRequest {
         responses(
             (status = 200, description = "Password updated"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

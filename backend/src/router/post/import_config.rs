@@ -7,6 +7,7 @@ use rocket::serde::json::Json;
 
 use crate::error::{AppError, ErrorKind};
 use crate::model::config::AppConfig;
+use crate::openapi_components::Unauthorized;
 use crate::router::AppResult;
 use crate::router::auth::GuardAuth;
 
@@ -17,6 +18,7 @@ use crate::router::auth::GuardAuth;
         responses(
             (status = 200, description = "Config imported"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

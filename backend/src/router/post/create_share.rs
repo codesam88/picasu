@@ -1,6 +1,7 @@
 use crate::error::{AppError, ErrorKind};
 use crate::model::album::Share;
 use crate::model::metadata_record::MetadataRecord;
+use crate::openapi_components::Unauthorized;
 use crate::router::AppResult;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
@@ -36,6 +37,7 @@ pub struct CreateShare {
         responses(
             (status = 200, description = "Share link created", body = String),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

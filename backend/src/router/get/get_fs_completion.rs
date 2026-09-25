@@ -1,3 +1,4 @@
+use crate::openapi_components::Unauthorized;
 use crate::router::{AppError, AppResult, ErrorKind, auth::GuardAuth};
 use rocket::get;
 // use rocket::http::Status;
@@ -37,6 +38,7 @@ fn absolutize(p: &Path) -> PathBuf {
         responses(
             (status = 200, description = "Filesystem path completion", body = FsCompletion),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

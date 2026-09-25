@@ -1,5 +1,6 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
+use crate::openapi_components::Unauthorized;
 use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
@@ -31,6 +32,7 @@ pub struct EditFlagsData {
         responses(
             (status = 200, description = "Flags updated"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

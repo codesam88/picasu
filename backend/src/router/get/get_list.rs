@@ -1,6 +1,7 @@
 use crate::error::AppError;
 use crate::model::album::Share;
 use crate::model::config::APP_CONFIG;
+use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::get_parent_album_id;
 use crate::router::auth::GuardAuth;
 use crate::router::{AppResult, GuardResult};
@@ -18,6 +19,7 @@ use std::path::Path;
         responses(
             (status = 200, description = "List of tags", body = Vec<TagInfo>),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]
@@ -50,6 +52,7 @@ pub struct AlbumInfo {
         path = "/get/get-albums",
         responses(
             (status = 200, description = "List of albums", body = Vec<AlbumInfo>),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

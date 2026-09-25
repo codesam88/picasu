@@ -1,5 +1,10 @@
 {
   "components": {
+    "responses": {
+      "Unauthorized": {
+        "description": "Authentication credentials are missing, malformed, expired, or invalid for this operation."
+      }
+    },
     "schemas": {
       "AlbumIndexState": {
         "enum": [
@@ -1111,6 +1116,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1145,6 +1153,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1166,6 +1177,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1187,6 +1201,9 @@
               }
             },
             "description": "List of albums"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1212,6 +1229,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "summary": "Serve one page of timeline/list rows for a snapshot timestamp.",
@@ -1227,6 +1247,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1296,6 +1319,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1317,6 +1343,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1329,6 +1358,9 @@
         "responses": {
           "200": {
             "description": "Full metadata record for the asset"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
           "404": {
             "description": "Unknown asset_id"
@@ -1354,6 +1386,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1383,6 +1418,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1423,6 +1461,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1437,6 +1478,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "summary": "Serve the original file directly from its current location under\n`imagePath` — there is no copy of it under `DATA_HOME`; `IMAGE_HOME` is\nthe single, authoritative copy. The route's `<file_path..>` segment is\n`<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via\n`ASSET_BY_ID`.",
@@ -1468,7 +1512,7 @@
             "description": "JWT token"
           },
           "401": {
-            "description": "Invalid password"
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1493,6 +1537,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1524,6 +1571,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "summary": "Create a new subdirectory under an existing dir-album's directory and\nregister it as a new album. Returns the new album's ID.",
@@ -1556,6 +1606,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1580,6 +1633,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "summary": "Walk a directory under `IMAGE_HOME` and index all media files in the\nbackground.  `album` is a path relative to `IMAGE_HOME` — use `\"/\"` for\nthe root.  Status can be polled via `GET /get/index/status`.",
@@ -1595,6 +1651,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "summary": "Cancel a running album index job.",
@@ -1620,6 +1679,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "summary": "Index a single image by its path relative to `IMAGE_HOME`.  Runs in the\nbackground; returns `202 Accepted` immediately.",
@@ -1643,6 +1705,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
           "405": {
             "description": "Read-only mode"
@@ -1678,6 +1743,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1709,6 +1777,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1741,6 +1812,9 @@
           },
           "400": {
             "description": "Invalid input or item not found"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "summary": "Move an asset into an album",
@@ -1768,6 +1842,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1792,6 +1869,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1816,6 +1896,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1840,6 +1923,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1864,6 +1950,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1888,6 +1977,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1922,6 +2014,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1944,6 +2039,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1968,6 +2066,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -1992,6 +2093,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "summary": "Updates the cover image of a specific album.",
@@ -2018,6 +2122,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "summary": "Updates the display title of a specific album.",
@@ -2043,6 +2150,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []
@@ -2219,6 +2329,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         },
         "tags": []

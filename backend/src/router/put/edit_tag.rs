@@ -1,5 +1,6 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
+use crate::openapi_components::Unauthorized;
 use crate::process::sanitize::sanitize_tag;
 use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
 use crate::process::xmp_write::write_sidecar_for;
@@ -33,6 +34,7 @@ pub struct EditTagsData {
         responses(
             (status = 200, description = "Tags updated", body = Vec<TagInfo>),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]
