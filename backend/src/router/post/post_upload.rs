@@ -1,6 +1,7 @@
 use crate::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::config::APP_CONFIG;
+use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::get_dir_path_for_album;
 use crate::process::sanitize::{FilenameSanitize, find_unique_path, sanitize_filename};
 use crate::router::auth::GuardReadOnlyMode;
@@ -156,6 +157,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
         responses(
             (status = 200, description = "Upload successful"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

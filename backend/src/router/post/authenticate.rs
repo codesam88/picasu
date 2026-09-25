@@ -2,6 +2,7 @@ use rocket::post;
 use rocket::serde::json::Json;
 
 use crate::model::config::APP_CONFIG;
+use crate::openapi_components::Unauthorized;
 use crate::router::auth::Claims;
 use crate::router::{AppError, AppResult, ErrorKind};
 
@@ -11,7 +12,7 @@ use crate::router::{AppError, AppResult, ErrorKind};
         request_body = String,
         responses(
             (status = 200, description = "JWT token", body = String),
-            (status = 401, description = "Invalid password"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

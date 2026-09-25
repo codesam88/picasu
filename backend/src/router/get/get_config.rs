@@ -3,6 +3,7 @@ use rocket::http::ContentType;
 use rocket::serde::json::Json;
 
 use crate::model::config::APP_CONFIG;
+use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardShare;
 use serde::Serialize;
@@ -37,6 +38,7 @@ pub struct ConfigResponse {
         responses(
             (status = 200, description = "Public configuration", body = ConfigResponse),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]
@@ -72,6 +74,7 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
         responses(
             (status = 200, description = "Exported configuration", body = String),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

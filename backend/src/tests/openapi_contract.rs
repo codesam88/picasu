@@ -353,3 +353,229 @@ fn self_check_detects_a_method_mismatch() {
     assert!(undocumented_routes(&mounted, &documented).contains("POST /get/config"));
     assert!(stale_operations(&documented, &mounted).contains("GET /get/config"));
 }
+
+// ── Shared 401 response component ─────────────────────────────────────────────
+//
+// Every operation that can answer 401 must reference the single
+// `Unauthorized` component registered by `backend/build.rs`, so the meaning of
+// a 401 is documented once instead of drifting per route.
+
+/// Parse the public spec.
+fn public_spec() -> serde_json::Value {
+    serde_json::from_str(&public_json()).expect("public spec must be valid JSON")
+}
+
+/// The operation object for `(method, path)`, or `Null` when undocumented.
+fn operation<'a>(spec: &'a serde_json::Value, method: &str, path: &str) -> &'a serde_json::Value {
+    &spec["paths"][path][method.to_ascii_lowercase()]
+}
+
+/// `GET /unauthorized` is the landing page whose own response body is a 401,
+/// not an API authentication failure, so it keeps an inline response instead of
+/// the shared component. Named explicitly rather than exempted by tag, so a new
+/// page operation cannot bypass the rule.
+fn is_unauthorized_landing_page(method: &str, path: &str) -> bool {
+    method == "get" && path == "/unauthorized"
+}
+
+/// The `401` response entry of an operation, or `Null` when it declares none.
+fn unauthorized_response<'a>(operation: &'a serde_json::Value) -> &'a serde_json::Value {
+    &operation["responses"]["401"]
+}
+
+/// Every non-page operation whose handler can produce a 401 — guard signature
+/// or in-handler `ErrorKind::Auth` path — must document one. The two page-like
+/// omissions are deliberate: `GET /get/get-rows` and `GET /get/get-scroll-bar`
+/// bind `GuardResult<GuardTimestamp>` but discard it with `let _ = auth;`
+/// (`src/router/get/get_data.rs`), so the handler can never answer 401.
+const GUARDED_OPERATIONS: &[(&str, &str)] = &[
+    ("delete", "/delete/delete-data"),
+    ("get", "/get/config"),
+    ("get", "/get/config/export"),
+    ("get", "/get/get-albums"),
+    ("get", "/get/get-data"),
+    ("get", "/get/get-export"),
+    ("get", "/get/get-tags"),
+    ("get", "/get/index/status"),
+    ("get", "/get/metadata/{asset_id}"),
+    ("get", "/get/path-completion"),
+    ("post", "/get/prefetch"),
+    ("get", "/object/compressed/{file_path}"),
+    ("get", "/object/imported/{file_path}"),
+    ("post", "/post/authenticate"),
+    ("post", "/post/config/import"),
+    ("post", "/post/create_dir_album"),
+    ("post", "/post/create_share"),
+    ("post", "/post/index/album"),
+    ("post", "/post/index/cancel"),
+    ("post", "/post/index/image"),
+    ("post", "/post/rebuild"),
+    ("post", "/post/renew-hash-token"),
+    ("post", "/post/renew-timestamp-token"),
+    ("put", "/put/assign_album"),
+    ("put", "/put/config"),
+    ("put", "/put/config/password"),
+    ("put", "/put/delete_share"),
+    ("put", "/put/edit_flags"),
+    ("put", "/put/edit_rating"),
+    ("put", "/put/edit_share"),
+    ("put", "/put/edit_tag"),
+    ("put", "/put/regenerate-thumbnail-with-frame"),
+    ("put", "/put/rotate-image"),
+    ("put", "/put/set_album_cover"),
+    ("put", "/put/set_album_title"),
+    ("put", "/put/set_user_defined_description"),
+    ("post", "/upload"),
+];
+
+#[test]
+fn spec_registers_the_shared_unauthorized_response() {
+    let spec = public_spec();
+    let unauthorized = spec["components"]["responses"]["Unauthorized"]
+        .as_object()
+        .expect(
+            "components.responses.Unauthorized is not registered — `backend/build.rs` must emit \
+             `components(responses(Unauthorized))` and import `crate::openapi_components::Unauthorized`",
+        );
+    let description = unauthorized
+        .get("description")
+        .and_then(|d| d.as_str())
+        .unwrap_or_default();
+    assert!(
+        !description.is_empty(),
+        "the Unauthorized component must describe when a 401 occurs"
+    );
+    assert!(
+        spec["paths"]["/get/get-data"]["get"]["responses"]["401"]["$ref"]
+            == "#/components/responses/Unauthorized",
+        "the `$ref` target must match the registered component name"
+    );
+}
+
+#[test]
+fn unauthorized_response_is_referenced_not_inlined() {
+    let spec = public_spec();
+    let paths = spec["paths"].as_object().expect("spec paths object");
+    let mut violations = Vec::new();
+
+    for (path, item) in paths {
+        for (method, operation) in item.as_object().expect("path item object") {
+            let unauthorized = unauthorized_response(operation);
+            if unauthorized.is_null() {
+                continue;
+            }
+            if is_unauthorized_landing_page(method, path) {
+                continue;
+            }
+            let expected = serde_json::json!({
+                "$ref": "#/components/responses/Unauthorized"
+            });
+            if unauthorized != &expected {
+                violations.push(format!(
+                    "{method} {path}: 401 must be `{expected}`, got `{unauthorized}`"
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "operations must reference the shared Unauthorized component instead of \
+         inlining a duplicate response literal:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn guarded_operations_declare_unauthorized() {
+    let spec = public_spec();
+    let mut missing = Vec::new();
+    let mut vanished = Vec::new();
+
+    for (method, path) in GUARDED_OPERATIONS {
+        let declared = unauthorized_response(operation(&spec, method, path));
+        if operation(&spec, method, path).is_null() {
+            vanished.push(format!("{method} {path}"));
+        } else if declared.is_null() {
+            missing.push(format!("{method} {path}"));
+        }
+    }
+
+    assert!(
+        vanished.is_empty(),
+        "GUARDED_OPERATIONS lists operations that no longer exist in the spec — \
+         remove the stale entries:\n{}",
+        vanished.join("\n")
+    );
+    assert!(
+        missing.is_empty(),
+        "guarded operations that can return 401 but do not document it — add \
+         `(status = 401, response = Unauthorized)` to their `#[utoipa::path]` \
+         responses:\n{}",
+        missing.join("\n")
+    );
+}
+
+/// The other direction: an operation declaring a 401 must be listed in
+/// `GUARDED_OPERATIONS`, so the list cannot quietly fall behind the spec and a
+/// new route is not documented ad hoc.
+///
+/// Limitation, stated so it is not mistaken for more than it is: a newly added
+/// guarded route that declares *no* 401 at all is still invisible here, because
+/// the intent to require one lives in the handler signature, not in the spec.
+/// Deriving it would mean parsing handler sources; `backend/build.rs` already
+/// reads them, so that is a possible later extension.
+#[test]
+fn unauthorized_declarations_are_listed() {
+    let spec = public_spec();
+    let listed: HashSet<Operation> = GUARDED_OPERATIONS
+        .iter()
+        .map(|(method, path)| (spec_method(method), (*path).to_string()))
+        .collect();
+
+    let mut unlisted = Vec::new();
+    for (path, item) in spec["paths"].as_object().expect("spec paths object") {
+        for (method, operation) in item.as_object().expect("path item object") {
+            if unauthorized_response(operation).is_null()
+                || is_unauthorized_landing_page(method, path)
+            {
+                continue;
+            }
+            let identity = (spec_method(method), path.clone());
+            if !listed.contains(&identity) {
+                unlisted.push(format!("{method} {path}"));
+            }
+        }
+    }
+
+    assert!(
+        unlisted.is_empty(),
+        "operations declaring a 401 that are not in GUARDED_OPERATIONS — add \
+         them, or drop the declaration if the route cannot return 401:\n{}",
+        unlisted.join("\n")
+    );
+}
+
+#[test]
+fn operations_that_cannot_return_401_declare_none() {
+    // KNOWN GAP, tracked in `.plan/bug-get-rows-auth-guard-discarded.md`:
+    // these handlers receive `GuardResult<GuardTimestamp>` but discard it
+    // (`let _ = auth;` in `src/router/get/get_data.rs`), so the routes answer
+    // without validating the token and a 401 would document behavior they do
+    // not have. Delete this test together with the plan entry when the handlers
+    // are fixed; until then it is a tripwire, not an invariant.
+    let spec = public_spec();
+    for path in ["/get/get-rows", "/get/get-scroll-bar"] {
+        let operation = operation(&spec, "get", path);
+        assert!(
+            !operation.is_null(),
+            "{path} is no longer documented; remove it from this list"
+        );
+        assert!(
+            unauthorized_response(operation).is_null(),
+            "{path} discards its guard result and cannot answer 401 — fix the \
+             handler first (see .plan/bug-get-rows-auth-guard-discarded.md), \
+             then document the 401 and delete this test"
+        );
+    }
+}

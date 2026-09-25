@@ -4,6 +4,7 @@ use crate::model::album::ResolvedShare;
 #[allow(unused_imports)]
 use crate::model::album::Share;
 use crate::model::config::APP_CONFIG;
+use crate::openapi_components::Unauthorized;
 use crate::router::{AppResult, GuardError, GuardResult};
 use chrono::Utc;
 use jsonwebtoken::{EncodingKey, Header, encode};
@@ -616,6 +617,7 @@ pub struct RenewHashTokenReturn {
         responses(
             (status = 200, description = "Hash token renewed", body = RenewHashTokenReturn),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]
@@ -892,6 +894,7 @@ pub struct RenewTimestampTokenReturn {
         responses(
             (status = 200, description = "Timestamp token renewed", body = RenewTimestampTokenReturn),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

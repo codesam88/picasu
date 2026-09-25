@@ -3,6 +3,7 @@ use rocket::post;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 
+use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
@@ -30,6 +31,7 @@ pub struct IndexImageRequest {
         responses(
             (status = 200, description = "Album indexing started"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]
@@ -53,6 +55,7 @@ pub fn index_album_handler(
         responses(
             (status = 200, description = "Image indexing started"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]
@@ -81,6 +84,7 @@ pub fn index_image_handler(
         responses(
             (status = 200, description = "Album index cancelled"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

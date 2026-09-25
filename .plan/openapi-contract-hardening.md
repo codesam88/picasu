@@ -61,11 +61,22 @@ High — contract wrong or materially incomplete:
       it is absent from the spec; sibling `/post/renew-timestamp-token` is
       documented (asymmetric omission). Add a coverage test comparing mounted
       routes against the spec so this class of omission cannot recur.
-- [ ] Document `401` on guarded operations: only 2/65 ops currently declare
+- [x] Document `401` on guarded operations: only 2/65 ops currently declare
       `401` (`authenticate`, `/unauthorized`) while data endpoints sit behind
       `GuardAuth`/`GuardTimestamp` (24 router files). Introduce a reusable
       `Unauthorized` response component and sweep it across `#[utoipa::path]`
-      responses (or post-process the generated spec).
+      responses (or post-process the generated spec). **Done** — one
+      `Unauthorized` `ToResponse` component in `backend/src/openapi_components.rs`,
+      registered by the `build.rs` generator from a single `RESPONSE_COMPONENTS`
+      list, referenced by 37 operations (2 → 38 declaring a 401). Each route was
+      checked individually: `GuardReadOnlyMode` answers 405, and
+      `get-rows`/`get-scroll-bar` discard their guard result and so genuinely
+      cannot 401 — that gap is tracked as
+      `bug-get-rows-auth-guard-discarded.md` and is a security finding, not a
+      documentation one. `POST /post/authenticate` lost its specific "Invalid
+      password" wording because utoipa cannot attach a description to a `$ref`;
+      the shared description covers it. Follow-up: 405 is declared on only one of
+      the 20 `GuardReadOnlyMode` routes.
 - [x] Remove test-only probes from the public spec: `probe_record`,
       `probe_dupe_group` + `TestRecordProbe`/`DupeGroupMember` schemas are
       registered unconditionally; handlers compile into production and are only
@@ -124,6 +135,16 @@ Low — consistency and polish:
 
 ## Progress
 
+- 2026-09-25: Documented the 401 contract. The sweep exposed a real security
+  gap rather than only a documentation one: `GET /get/get-rows` and
+  `GET /get/get-scroll-bar` discard `GuardResult<GuardTimestamp>` with
+  `let _ = auth;`, so both answer 200 to an unauthenticated caller, and
+  `/get/get-scroll-bar` panics on an unknown snapshot id without credentials.
+  Recorded as `bug-get-rows-auth-guard-discarded.md` (high, open) and left
+  unfixed here because it is a behavior change, not documentation. The contract
+  tests for 401 are bidirectional: an operation declaring a 401 must be listed in
+  `GUARDED_OPERATIONS`, and a listed operation that stops existing fails with a
+  stale-entry message instead of a missing-declaration one.
 - 2026-09-25: Added negative self-checks so the gates cannot be neutered
   silently. The `routes![]` scanner moved out of `build.rs` into
   `backend/build/route_scan.rs`, shared with `src/tests/route_scan.rs`, because

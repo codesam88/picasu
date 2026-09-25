@@ -1,5 +1,6 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
+use crate::openapi_components::Unauthorized;
 use crate::process::misc::generate_dynamic_image;
 use crate::process::misc::{generate_phash, generate_thumbhash};
 use crate::router::{AppResult, GuardResult};
@@ -33,6 +34,7 @@ pub struct RegenerateThumbnailForm<'r> {
         responses(
             (status = 200, description = "Thumbnail regenerated"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

@@ -3,6 +3,7 @@ use crate::model::abstract_data::AbstractData;
 use crate::model::album::AlbumCombined;
 use crate::model::asset::{AssetKind, AssetRecord};
 use crate::model::metadata_record::{compose_abstract_data, to_metadata_record};
+use crate::openapi_components::Unauthorized;
 use crate::process::xmp_write::write_sidecar_for;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
@@ -101,6 +102,7 @@ pub struct SetAlbumCover {
         responses(
             (status = 200, description = "Album cover updated"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]
@@ -210,6 +212,7 @@ pub struct SetAlbumTitle {
         responses(
             (status = 200, description = "Album title updated"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

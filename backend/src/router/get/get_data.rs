@@ -4,6 +4,7 @@ use crate::model::asset::{AssetKind, AssetRecord};
 use crate::model::metadata_record::compose_abstract_data;
 use crate::model::response::DataBaseTimestampReturn;
 use crate::model::response::{Row, ScrollBarData};
+use crate::openapi_components::Unauthorized;
 use crate::process::resolve_show_download_and_metadata;
 use crate::process::transitor::{cover_content_hash_from_data, lean_media_abstract_data};
 use crate::storage::cache::TREE_SNAPSHOT;
@@ -33,6 +34,7 @@ use std::time::Instant;
         responses(
             (status = 200, description = "Data by timestamp range", body = Vec<DataBaseTimestampReturn>),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

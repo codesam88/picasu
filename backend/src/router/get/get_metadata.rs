@@ -5,6 +5,7 @@ use rocket::serde::json::Json;
 
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
+use crate::openapi_components::Unauthorized;
 use crate::process::resolve_show_download_and_metadata;
 use crate::process::transitor::clear_abstract_data_metadata;
 use crate::process::transitor::compose_by_asset_id;
@@ -30,6 +31,7 @@ use crate::router::{AppResult, GuardResult};
         responses(
             (status = 200, description = "Full metadata record for the asset"),
             (status = 404, description = "Unknown asset_id"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

@@ -1,4 +1,5 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
+use crate::openapi_components::Unauthorized;
 use crate::router::{
     AppResult, GuardResult,
     auth::{GuardHash, GuardHashOriginal, GuardShare},
@@ -39,6 +40,7 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
         responses(
             (status = 200, description = "Compressed file"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]
@@ -109,6 +111,7 @@ pub async fn compressed_file(
         responses(
             (status = 200, description = "Imported original file"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

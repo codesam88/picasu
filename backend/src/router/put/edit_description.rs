@@ -1,3 +1,4 @@
+use crate::openapi_components::Unauthorized;
 use crate::process::sanitize::sanitize_text;
 use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
 use crate::process::xmp_write::write_sidecar_for;
@@ -31,6 +32,7 @@ pub struct SetUserDefinedDescription {
         responses(
             (status = 200, description = "Description updated"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]

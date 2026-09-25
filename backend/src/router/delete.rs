@@ -8,6 +8,7 @@ pub fn generate_delete_routes() -> Vec<Route> {
 // src/router/delete/delete_data.rs
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
+use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::evict_dir_album;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
@@ -44,6 +45,7 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
         responses(
             (status = 200, description = "Data deleted"),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]
