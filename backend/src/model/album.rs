@@ -27,6 +27,14 @@ struct MediaItemInfo {
     timestamp: i64,
 }
 
+fn path_is_in_album_or_descendant(path: &str, dir_path: &Path) -> bool {
+    let path = Path::new(path);
+    path.starts_with(dir_path)
+        && path
+            .file_name()
+            .is_some_and(|name| name != ".__picasu_ph__.jpg")
+}
+
 impl AlbumCombined {
     pub fn set_cover(&mut self, cover_data: &AbstractData, asset_id: ArrayString<64>) {
         self.metadata.cover = Some(asset_id);
@@ -47,12 +55,13 @@ impl AlbumCombined {
         // immediate parent directory is this album's directory. Files in
         // sub-directories belong to the corresponding child album instead.
         // A file counts only while its stored path is live (not trashed).
-        let belongs_to_album =
-            move |file_entry: Option<&crate::model::response::FileEntry>| -> bool {
-                file_entry.is_some_and(|a| {
-                    !a.is_trashed && Path::new(&a.file).parent() == Some(dir_path.as_path())
-                })
-            };
+        let belongs_to_album = |file_entry: Option<&crate::model::response::FileEntry>| -> bool {
+            file_entry.is_some_and(|a| {
+                !a.is_trashed
+                    && path_is_in_album_or_descendant(&a.file, &dir_path)
+                    && Path::new(&a.file).parent() == Some(dir_path.as_path())
+            })
+        };
 
         let mut data_in_album: Vec<MediaItemInfo> = ref_data
             .par_iter()
@@ -88,10 +97,42 @@ impl AlbumCombined {
             .collect();
 
         if data_in_album.is_empty() {
+            let mut descendant_data: Vec<MediaItemInfo> = ref_data
+                .par_iter()
+                .filter_map(
+                    |database_timestamp| match &database_timestamp.abstract_data {
+                        AbstractData::Image(img) => img.metadata.path.as_ref().and_then(|file| {
+                            (!file.is_trashed
+                                && path_is_in_album_or_descendant(&file.file, &dir_path))
+                            .then(|| MediaItemInfo {
+                                asset_id: database_timestamp.asset_id,
+                                size: img.metadata.size,
+                                thumbhash: img.object.thumbhash.clone(),
+                                timestamp: database_timestamp.timestamp,
+                            })
+                        }),
+                        AbstractData::Video(vid) => vid.metadata.path.as_ref().and_then(|file| {
+                            (!file.is_trashed
+                                && path_is_in_album_or_descendant(&file.file, &dir_path))
+                            .then(|| MediaItemInfo {
+                                asset_id: database_timestamp.asset_id,
+                                size: vid.metadata.size,
+                                thumbhash: vid.object.thumbhash.clone(),
+                                timestamp: database_timestamp.timestamp,
+                            })
+                        }),
+                        AbstractData::Album(_) => None,
+                    },
+                )
+                .collect();
+            descendant_data.sort_by_key(|info| std::cmp::Reverse(info.timestamp));
+
             self.metadata.start_time = None;
             self.metadata.end_time = None;
-            self.metadata.cover = None;
-            self.object.thumbhash = None;
+            self.metadata.cover = descendant_data.first().map(|info| info.asset_id);
+            self.object.thumbhash = descendant_data
+                .first()
+                .and_then(|info| info.thumbhash.clone());
             self.metadata.item_count = 0;
             self.metadata.item_size = 0;
             return;
@@ -125,6 +166,7 @@ impl AlbumCombined {
 mod tests {
     use std::path::Path;
 
+    use super::path_is_in_album_or_descendant;
     use crate::model::response::FileEntry;
 
     fn belongs_to_album(file_entry: Option<&FileEntry>, dir_path: &str) -> bool {
@@ -174,6 +216,22 @@ mod tests {
     #[test]
     fn missing_path_never_belongs_to_album() {
         assert!(!belongs_to_album(None, "/photos/vacation"));
+    }
+
+    #[test]
+    fn placeholder_path_is_not_an_album_cover_candidate() {
+        assert!(!path_is_in_album_or_descendant(
+            "/photos/vacation/.__picasu_ph__.jpg",
+            Path::new("/photos/vacation")
+        ));
+    }
+
+    #[test]
+    fn path_in_descendant_directory_is_in_album_or_descendant() {
+        assert!(path_is_in_album_or_descendant(
+            "/photos/vacation/day1/img.jpg",
+            Path::new("/photos/vacation")
+        ));
     }
 }
 

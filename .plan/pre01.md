@@ -37,7 +37,7 @@ The remaining release work falls into four categories:
 | A2  | Flag edits don't write sidecars         | `edit-flags-sidecar-writeback.md`        | open — needs favorite XMP mapping decision |
 | B1  | EXIF/XMP read for non-JPEG containers   | `test-exif-xmp-handling.md`              | open — JPEG covered; PNG/TIFF/MP4 gap      |
 | B2  | UI bugs (Escape/back, lightbox, theme)  | `ui-refinement.md`                       | open — bug checklist only; 4/21 done       |
-| B3  | Parent-only albums have no thumbnail    | `bug-parent-album-no-thumbnail.md`       | open — root cause identified               |
+| B3  | Parent-only albums have no thumbnail    | `bug-parent-album-no-thumbnail.md`       | done — descendant cover fallback           |
 | C1  | License / SPDX / OSSF review            | `license-and-ossf-review.md`             | idea — promote to open, run before tagging |
 | D1  | Filename sanitization corner-case tests | `filename-sanitization-test-gaps.md`     | open — behavior decisions + tests          |
 

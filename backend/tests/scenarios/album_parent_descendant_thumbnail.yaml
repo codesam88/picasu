@@ -1,0 +1,31 @@
+name: parent album gets thumbnail from descendant photo
+given:
+  - dir_album: /e2e_parent_thumb
+    id_as: $parent
+  - dir_album: /e2e_parent_thumb/child
+    id_as: $child
+  - photo: /e2e_parent_thumb/child/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_parent_thumb"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: POST /get/prefetch
+    body: {}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/get-data?timestamp=${ts}&start=0&end=20
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - array_where:
+      where:
+        abstractData.id: "${parent}"
+      assert:
+        abstractData.cover: "${asset_id}"
