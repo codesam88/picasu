@@ -1,5 +1,5 @@
 ---
-status: backlog
+status: in-progress
 type: chore
 priority: medium
 area: testing
@@ -97,3 +97,11 @@ The acceptance criterion is not simply higher test count. The resulting gates
 must detect missing or stale API descriptions, semantic identifier mistakes,
 behavioral regressions outside example scenarios, and measurable structural
 degradation while keeping intentional exceptions reviewable and finite.
+
+## Progress
+
+- 2026-09-25: Expanded the cheap static gate to typecheck and lint frontend test
+  and Playwright tooling, pinned Prettier through the lockfile, included the
+  `paste-shim` utility in Rust format/Clippy checks, and added Rust to CodeQL.
+  An all-target Rust Clippy trial found substantial existing test debt, so that
+  broader scope remains follow-up work rather than an immediately blocking gate.
