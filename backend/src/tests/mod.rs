@@ -6,3 +6,6 @@ mod fixtures;
 
 #[cfg(test)]
 mod backend_api;
+
+#[cfg(test)]
+mod capabilities;
