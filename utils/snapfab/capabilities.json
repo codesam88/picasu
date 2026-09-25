@@ -11,8 +11,9 @@
       },
       "metadataFields": {
         "exif": ["embedded"],
-        "xmp": ["embedded"]
+        "xmp": ["embedded", "sidecar"]
       },
+      "unsupportedMetadataFields": [],
       "expectedFailureClasses": ["none"]
     },
     {
@@ -27,6 +28,7 @@
         "exif": ["embedded"],
         "xmp": ["sidecar"]
       },
+      "unsupportedMetadataFields": ["xmp:embedded"],
       "expectedFailureClasses": ["none"]
     }
   ]
