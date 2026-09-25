@@ -150,8 +150,8 @@ pub fn asset_record_to_abstract_data(record: &crate::model::asset::AssetRecord) 
 /// The row carries identity, dimensions, the file entry, album membership, and
 /// the cache-bust/processing keys (`update_at`, `pending`) — tags, EXIF, and
 /// description are deliberately absent and must be fetched via
-/// `GET /get/metadata/{assetId}` (detail/sidebar). Rating, favorite, and
-/// archived flags likewise live behind the detail endpoint.
+/// `GET /get/metadata/{assetId}` (detail/sidebar). Rating likewise lives
+/// behind the detail endpoint.
 pub fn lean_media_abstract_data(
     record: &crate::model::asset::AssetRecord,
     reduced: &crate::model::response::ReducedData,

@@ -8,22 +8,19 @@ import { tryWithMessageStore } from '@/script/utils/try_catch'
 export interface EditFlagsPayload {
   indexArray: number[]
   timestamp: number
-  isFavorite?: boolean
-  isArchived?: boolean
   isTrashed?: boolean
 }
 
 /**
- * Update boolean flags (isFavorite, isArchived, isTrashed) on one or more items.
+ * Update the boolean flag (isTrashed) on one or more items.
  *
  * This is the dedicated API for flag mutations, separate from `editTags` which
- * handles string tags. The edit-tags modals (EditTagsModal / EditBatchTagsModal)
- * surface these flags as virtual "flag items" in the combobox alongside real tags,
- * then split the result at submit time: real tags → editTags, flags → editFlags.
+ * handles string tags. Favorite and archived were removed together with the
+ * fields they toggled, so trash is the only flag this endpoint carries.
  */
 export async function editFlags(
   indexArray: number[],
-  flags: { isFavorite?: boolean; isArchived?: boolean; isTrashed?: boolean },
+  flags: { isTrashed?: boolean },
   isolationId: IsolationId
 ) {
   const prefetchStore = usePrefetchStore(isolationId)
@@ -40,12 +37,6 @@ export async function editFlags(
   for (const index of indexArray) {
     const data = dataStore.data.get(index)
     if (data) {
-      if (flags.isFavorite !== undefined) {
-        data.isFavorite = flags.isFavorite
-      }
-      if (flags.isArchived !== undefined) {
-        data.isArchived = flags.isArchived
-      }
       if (flags.isTrashed !== undefined) {
         const isTrashed = flags.isTrashed
         data.isTrashed = isTrashed
@@ -68,14 +59,6 @@ export async function editFlags(
 }
 
 // Convenience functions
-export async function setFavorite(indexArray: number[], value: boolean, isolationId: IsolationId) {
-  await editFlags(indexArray, { isFavorite: value }, isolationId)
-}
-
-export async function setArchived(indexArray: number[], value: boolean, isolationId: IsolationId) {
-  await editFlags(indexArray, { isArchived: value }, isolationId)
-}
-
 export async function setTrashed(indexArray: number[], value: boolean, isolationId: IsolationId) {
   await editFlags(indexArray, { isTrashed: value }, isolationId)
 }

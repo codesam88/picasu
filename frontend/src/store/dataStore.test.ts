@@ -26,8 +26,6 @@ describe('dataStore', () => {
         album: null as string | null,
         path: null,
         description: null,
-        isFavorite: false,
-        isArchived: false,
         isTrashed: false,
         rating: null,
         updateAt: 0,
@@ -88,8 +86,6 @@ describe('dataStore', () => {
         album: null as string | null,
         path: null,
         description: null,
-        isFavorite: false,
-        isArchived: false,
         isTrashed: false,
         rating: null,
         updateAt: 0,
@@ -128,8 +124,6 @@ describe('dataStore', () => {
         album: null,
         path: null,
         description: null,
-        isFavorite: false,
-        isArchived: false,
         isTrashed: false,
         rating: null,
         updateAt: 0,
@@ -174,8 +168,6 @@ describe('dataStore', () => {
         isTrashed: boolean
       },
       description: null as string | null,
-      isFavorite: false,
-      isArchived: false,
       isTrashed: false,
       rating: null as number | null,
       updateAt: 0,
@@ -199,8 +191,6 @@ describe('dataStore', () => {
       album: 'album_x',
       path: { file: '/photos/a.jpg', modified: 1, scanTime: 2, isTrashed: false },
       description: 'server description',
-      isFavorite: true,
-      isArchived: true,
       isTrashed: false,
       rating: 4,
       updateAt: 4242
@@ -224,8 +214,9 @@ describe('dataStore', () => {
       expect(row.exif).toEqual({ Make: 'Apple' })
       expect(row.description).toBe('server description')
       expect(row.rating).toBe(4)
-      expect(row.isFavorite).toBe(true)
-      expect(row.isArchived).toBe(true)
+      // The favorite/archived flags were removed from the payload entirely.
+      expect('isFavorite' in row).toBe(false)
+      expect('isArchived' in row).toBe(false)
       expect(row.updateAt).toBe(4242)
       expect(row.phash).toEqual([9, 9])
       // Identity fields stay as the list provided them.
@@ -257,8 +248,6 @@ describe('dataStore', () => {
         thumbhash: null as number[] | null,
         pending: false,
         description: null as string | null,
-        isFavorite: false,
-        isArchived: false,
         rating: null as number | null,
         updateAt: 0,
         thumbhashUrl: null as string | null,

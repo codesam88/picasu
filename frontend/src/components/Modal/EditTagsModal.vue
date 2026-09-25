@@ -31,22 +31,14 @@
                 autocomplete="off"
               >
                 <template #chip="{ props: chipProps, internalItem }">
-                  <v-chip v-bind="chipProps">
-                    <template v-if="isFlagItem(internalItem.raw)" #prepend>
-                      <v-icon size="small" class="me-1">{{ internalItem.raw.icon }}</v-icon>
-                    </template>
-                    {{ internalItem.title }}
-                  </v-chip>
+                  <v-chip v-bind="chipProps">{{ internalItem.title }}</v-chip>
                 </template>
-                <template #item="{ internalItem, props: itemProps }">
+                <template #item="{ props: itemProps }">
                   <v-list-item v-bind="itemProps">
                     <template #prepend="{ isActive }">
                       <v-list-item-action>
                         <v-checkbox-btn :model-value="isActive" />
                       </v-list-item-action>
-                    </template>
-                    <template #append>
-                      <v-icon v-if="internalItem.raw.isFlag">{{ internalItem.raw.icon }}</v-icon>
                     </template>
                   </v-list-item>
                 </template>
@@ -68,11 +60,9 @@
 /**
  * This modal is used for editing the tags of a single photo on the single photo view page.
  *
- * Virtual flag items (isFavorite / isArchived) are surfaced alongside real tags in the
- * same combobox using Vuetify's `return-object` mode. The combobox model is a mixed
- * array of plain strings (real tags) and ComboboxItem objects (flag items). On save,
- * the model is split: real tags go through `editTags`, while flag changes go through
- * `editFlags` — the two are independent API calls with separate optimistic updates.
+ * The combobox runs in Vuetify's `return-object` mode, so its model is a mixed array of
+ * plain strings (user-typed free text) and ComboboxItem objects (tags picked from the
+ * dropdown). `getTagString` normalizes both to the tag string before saving.
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
@@ -81,42 +71,17 @@ import { useTagStore } from '@/store/tagStore'
 import { useDataStore } from '@/store/dataStore'
 import { getAssetIndexDataFromRoute, getIsolationIdByRoute } from '@utils/getter'
 import { editTags } from '@/api/editTags'
-import { editFlags } from '@/api/editFlags'
 import { fetchAssetMetadata } from '@/api/fetchMetadata'
 
-// Combobox item shape used by both real tags and virtual flag items.
-// `isFlag` distinguishes flag items from regular tags.
+// Combobox item shape used for tags picked from the dropdown.
 interface ComboboxItem {
   title: string
   value: string
-  isFlag: boolean
-  icon?: string
 }
 
 // With `return-object`, the combobox model contains ComboboxItem objects for items
 // selected from the dropdown, and plain strings for user-typed free-text tags.
 type ModelValue = string | ComboboxItem
-
-// Virtual flag items — these appear in the combobox dropdown but are NOT real tags.
-// They map to boolean flags (isFavorite / isArchived) on the data object and are
-// persisted via the `editFlags` API, not `editTags`.
-const FAVORITE_ITEM: ComboboxItem = {
-  title: 'Favorite',
-  value: 'isFavorite',
-  isFlag: true,
-  icon: 'mdi-star'
-}
-const ARCHIVED_ITEM: ComboboxItem = {
-  title: 'Archived',
-  value: 'isArchived',
-  isFlag: true,
-  icon: 'mdi-archive-arrow-down'
-}
-
-// Type guard: returns true for virtual flag items (ComboboxItem with isFlag === true).
-function isFlagItem(v: ModelValue): v is ComboboxItem {
-  return typeof v === 'object' && v.isFlag
-}
 
 // Extract the plain tag string from a model value.
 // For user-typed strings this is the string itself; for ComboboxItem objects it's `.value`.
@@ -132,16 +97,14 @@ const route = useRoute()
 const modalStore = useModalStore('mainId')
 const tagStore = useTagStore('mainId')
 
-// Merge virtual flag items with real tags into a single dropdown list.
-const allItems = computed<ComboboxItem[]>(() => {
-  const tagItems = tagStore.tags.map((t) => ({ title: t.tag, value: t.tag, isFlag: false }))
-  return [FAVORITE_ITEM, ARCHIVED_ITEM, ...tagItems]
-})
+const allItems = computed<ComboboxItem[]>(() =>
+  tagStore.tags.map((t) => ({ title: t.tag, value: t.tag }))
+)
 
 onMounted(async () => {
   // List rows are lean (Phase 14): fetch the detail record before seeding so
-  // the combobox prefills the item's actual tags and flag state. The modal can
-  // be opened without the info panel, so it triggers its own detail fetch.
+  // the combobox prefills the item's actual tags. The modal can be opened
+  // without the info panel, so it triggers its own detail fetch.
   const routeInit = getAssetIndexDataFromRoute(route)
   if (routeInit !== undefined && routeInit.data.type !== 'album') {
     const isolationId = getIsolationIdByRoute(route)
@@ -172,19 +135,11 @@ onMounted(async () => {
       return undefined
     }
 
-    const defaultIsFavorite = data.isFavorite
-    const defaultIsArchived = data.isArchived
-
-    // Seed the model with existing tags plus active flag items.
+    // Seed the model with the item's current tags.
     changedTagsArray.value = [...defaultTags]
-    if (data.isFavorite) changedTagsArray.value.push(FAVORITE_ITEM)
-    if (data.isArchived) changedTagsArray.value.push(ARCHIVED_ITEM)
 
     const innerSubmit = async () => {
-      const currentValues = changedTagsArray.value
-
-      // Split the model: filter out flag items to get real tags only.
-      const currentTags = currentValues.filter((v) => !isFlagItem(v)).map(getTagString)
+      const currentTags = changedTagsArray.value.map(getTagString)
 
       const hashArray: number[] = [index]
       const addTagsArray = currentTags.filter((tag) => !defaultTags.includes(tag))
@@ -194,19 +149,8 @@ onMounted(async () => {
 
       modalStore.showEditTagsModal = false
 
-      // Persist real tag changes via editTags (with optimistic update).
       if (addTagsArray.length > 0 || removeTagsArray.length > 0) {
         await editTags(hashArray, addTagsArray, removeTagsArray, isolationId)
-      }
-
-      // Persist flag changes via editFlags — only send flags that actually changed.
-      const isFavoriteNow = currentValues.some((v) => isFlagItem(v) && v.value === 'isFavorite')
-      const isArchivedNow = currentValues.some((v) => isFlagItem(v) && v.value === 'isArchived')
-      const flagChanges: { isFavorite?: boolean; isArchived?: boolean } = {}
-      if (defaultIsFavorite !== isFavoriteNow) flagChanges.isFavorite = isFavoriteNow
-      if (defaultIsArchived !== isArchivedNow) flagChanges.isArchived = isArchivedNow
-      if (Object.keys(flagChanges).length > 0) {
-        await editFlags(hashArray, flagChanges, isolationId)
       }
     }
     return innerSubmit

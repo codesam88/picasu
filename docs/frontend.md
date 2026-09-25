@@ -83,7 +83,7 @@ Same store name + same ID = same singleton. Different ID = different instance.
 
 ## Route Levels
 
-Every page section (timeline, albums, favorite, etc.) shares a 2-level nested
+Every page section (timeline, albums, trash, etc.) shares a 2-level nested
 route structure, parameterized by `baseName`:
 
 | Level | URL pattern                 | Route name           | Component                          |
@@ -92,7 +92,7 @@ route structure, parameterized by `baseName`:
 | 2     | `/{baseName}/view/:assetId` | `{baseName}ViewPage` | `ViewPage`                         |
 
 **baseName values with the 2-level structure** (built by `createRoute`):
-`timeline`, `favorite`, `archived`, `trashed`, `albums`, `videos`
+`timeline`, `trashed`, `albums`, `videos`
 
 **Other routes:**
 
@@ -214,13 +214,11 @@ Filters are string expressions parsed by the Chevrotain lexer (`lexer.ts`). Each
 
 | Page         | basicString                                                 |
 | ------------ | ----------------------------------------------------------- |
-| HomePage     | `and(not(type:"album"), archived:false, trashed:false)`     |
+| HomePage     | `and(not(type:"album"), trashed:false)`                     |
 | AllPage      | `trashed:false`                                             |
-| FavoritePage | `and(favorite:true, trashed:false)`                         |
-| ArchivedPage | `and(archived:true, trashed:false)`                         |
 | TrashedPage  | `trashed:true`                                              |
 | AlbumsPage   | `and(type:"album", trashed:false, root_album:true)`         |
-| VideosPage   | `and(type:"video", archived:false, trashed:false)`          |
+| VideosPage   | `and(type:"video", trashed:false)`                          |
 | HomeIsolated | `and(trashed:false, or(album:"<id>", parent_album:"<id>"))` |
 
 `parent_album:"<id>"` matches album objects whose directory parent is the given album. It is always false for images/videos.

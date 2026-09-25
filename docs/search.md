@@ -50,15 +50,9 @@ not(model: "outdated")
 
 Search for data that does **not** have the **outdated** model.
 
-### 7. Search by Status (Favorite, Archived, Trashed)
+### 7. Search by Status (Trashed)
 
-With the new flags update, you can explicitly search for item statuses using boolean values (`true` or `false`).
-
-```
-favorite: true
-```
-
-Search for data marked as **favorite**.
+You can explicitly search for the trash status using a boolean value (`true` or `false`).
 
 ```
 trashed: false
@@ -67,10 +61,10 @@ trashed: false
 Search for data that is **not** in the trash.
 
 ```
-archived: true
+trashed: true
 ```
 
-Search for data that is **archived**.
+Search for data that **is** in the trash.
 
 ### 8. Complex Combination
 

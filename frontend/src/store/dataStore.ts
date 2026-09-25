@@ -24,12 +24,11 @@ export const useDataStore = (isolationId: IsolationId) =>
        * Merge a detail-endpoint payload (GET /get/metadata/{assetId}) into the
        * list row at `index`.
        *
-       * List rows are lean: tags, EXIF, description, rating, and the
-       * favorite/archived flags are absent until fetched. Only those
-       * metadata fields are overwritten — identity fields (id, dimensions,
-       * path, album, assetId, timestamp, thumbhashUrl) stay as the list
-       * provided them. Returns false when the row is missing or the detail
-       * payload type does not match the row type.
+       * List rows are lean: tags, EXIF, description, and rating are absent
+       * until fetched. Only those metadata fields are overwritten — identity
+       * fields (id, dimensions, path, album, assetId, timestamp, thumbhashUrl)
+       * stay as the list provided them. Returns false when the row is missing
+       * or the detail payload type does not match the row type.
        */
       mergeMetadata(index: number, detail: UnifiedData): boolean {
         const data = this.data.get(index)
@@ -47,8 +46,6 @@ export const useDataStore = (isolationId: IsolationId) =>
         data.exif = detail.exif
         data.description = detail.description
         data.rating = detail.rating
-        data.isFavorite = detail.isFavorite
-        data.isArchived = detail.isArchived
         data.updateAt = detail.updateAt
         data.pending = detail.pending
         if (data.type === 'image' && detail.type === 'image') {

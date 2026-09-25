@@ -85,21 +85,22 @@ describe('any', () => {
   })
 })
 
-describe('favorite', () => {
-  test('true', () => {
-    expect(parse('favorite:true')).toEqual({ Favorite: true })
+// The favorite/archived flags were removed together with the object fields
+// they filtered, so their query keywords must not survive in the language.
+describe('removed status keywords', () => {
+  test('favorite is rejected by the lexer', () => {
+    const { errors } = MyLexer.tokenize('favorite:true')
+    expect(errors.length).toBeGreaterThan(0)
   })
-  test('false', () => {
-    expect(parse('favorite:false')).toEqual({ Favorite: false })
+  test('archived is rejected by the lexer', () => {
+    const { errors } = MyLexer.tokenize('archived:true')
+    expect(errors.length).toBeGreaterThan(0)
   })
-})
-
-describe('archived', () => {
-  test('true', () => {
-    expect(parse('archived:true')).toEqual({ Archived: true })
-  })
-  test('false', () => {
-    expect(parse('archived:false')).toEqual({ Archived: false })
+  test('a query mixing them does not parse', () => {
+    const { tokens } = MyLexer.tokenize('and(favorite:true, trashed:false)')
+    parser.input = tokens
+    parser.expression()
+    expect(parser.errors.length).toBeGreaterThan(0)
   })
 })
 
@@ -116,10 +117,10 @@ describe('trashed', () => {
 
 describe('not', () => {
   test('wraps inner expression', () => {
-    expect(parse('not(favorite:true)')).toEqual({ Not: { Favorite: true } })
+    expect(parse('not(trashed:true)')).toEqual({ Not: { Trashed: true } })
   })
   test('double negation', () => {
-    expect(parse('not(not(archived:false))')).toEqual({ Not: { Not: { Archived: false } } })
+    expect(parse('not(not(trashed:false))')).toEqual({ Not: { Not: { Trashed: false } } })
   })
 })
 
@@ -128,13 +129,13 @@ describe('and', () => {
     expect(parse('and(tag:"a", tag:"b")')).toEqual({ And: [{ Tag: 'a' }, { Tag: 'b' }] })
   })
   test('three terms', () => {
-    expect(parse('and(favorite:true, archived:false, trashed:false)')).toEqual({
-      And: [{ Favorite: true }, { Archived: false }, { Trashed: false }]
+    expect(parse('and(type:"image", trashed:false, root_album:false)')).toEqual({
+      And: [{ ExtType: 'image' }, { Trashed: false }, { RootAlbum: false }]
     })
   })
   test('nested inside not', () => {
-    expect(parse('not(and(archived:true, trashed:true))')).toEqual({
-      Not: { And: [{ Archived: true }, { Trashed: true }] }
+    expect(parse('not(and(type:"video", trashed:true))')).toEqual({
+      Not: { And: [{ ExtType: 'video' }, { Trashed: true }] }
     })
   })
 })
@@ -151,8 +152,8 @@ describe('or', () => {
     })
   })
   test('nested inside and', () => {
-    expect(parse('and(favorite:true, or(type:"image", type:"video"))')).toEqual({
-      And: [{ Favorite: true }, { Or: [{ ExtType: 'image' }, { ExtType: 'video' }] }]
+    expect(parse('and(trashed:false, or(type:"image", type:"video"))')).toEqual({
+      And: [{ Trashed: false }, { Or: [{ ExtType: 'image' }, { ExtType: 'video' }] }]
     })
   })
 })

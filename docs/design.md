@@ -169,7 +169,6 @@ surfaces require the others to be regenerated or checked together.
 - sidecar files are are moved together with the original file
 - Customizable data/dialogs:
   - tags/labels
-  - favorite
   - description
   - rating
   - ...?

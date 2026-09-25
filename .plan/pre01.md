@@ -34,7 +34,7 @@ The remaining release work falls into four categories:
 | #   | Item                                    | Ticket                                   | Status                                     |
 | --- | --------------------------------------- | ---------------------------------------- | ------------------------------------------ |
 | A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | open — needs repro + root cause            |
-| A2  | Flag edits don't write sidecars         | `edit-flags-sidecar-writeback.md`        | open — needs favorite XMP mapping decision |
+| A2  | Flag edits don't write sidecars         | `edit-flags-sidecar-writeback.md`        | open — needs trash XMP mapping decision    |
 | B1  | EXIF/XMP read for non-JPEG containers   | `test-exif-xmp-handling.md`              | open — JPEG covered; PNG/TIFF/MP4 gap      |
 | B2  | UI bugs (Escape/back, lightbox, theme)  | `ui-refinement.md`                       | open — bug checklist only; 4/21 done       |
 | B3  | Parent-only albums have no thumbnail    | `bug-parent-album-no-thumbnail.md`       | open — root cause identified               |
@@ -52,12 +52,13 @@ reappear under the root. _Why critical:_ reported by a user; directly contradict
 file-lifecycle work already shipped (delete-from-disk, watcher Remove handling). Needs
 reproduction and root-cause investigation before estimate is reliable.
 
-**A2 — Favorite / Archived / Trashed don't write an XMP sidecar.**
+**A2 — Trashed doesn't write an XMP sidecar.**
 _What:_ `PUT /put/edit_flags` updates the database but never calls `write_sidecar_for`,
-unlike tag, description, rating, and album-title edits. Decide how `is_favorite` maps to
-XMP (`xmp:Rating=5` vs `xmp:Label`), then call the writer. _Why critical:_ flag editing is
-exposed in the UI (menus, tag editor virtual items), so this is the one editable surface
-that fails the release rule. Small scope: one call site + one mapping decision.
+unlike tag, description, rating, and album-title edits. Decide how `is_trashed` maps to
+XMP, then call the writer. _Why critical:_ flag editing is exposed in the UI (delete /
+restore menu items), so this is the one editable surface that fails the release rule.
+Small scope: one call site + one mapping decision. (Favorite and archived were removed
+with the branch that dropped those fields, so only trash remains to map.)
 
 ### B. Metadata & UI
 

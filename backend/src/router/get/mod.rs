@@ -30,16 +30,12 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_page::timeline,
         get_page::timeline_view,
         get_page::tags,
-        get_page::favorite,
-        get_page::favorite_view,
         get_page::albums,
         get_page::albums_view,
         get_page::album_page,
         get_page::share,
         get_page::links,
         get_page::config,
-        get_page::archived,
-        get_page::archived_view,
         get_page::trashed,
         get_page::trashed_view,
         get_page::setting,
@@ -58,4 +54,42 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_test_probe::probe_record,
         get_test_probe::probe_dupe_group,
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::generate_get_routes;
+
+    /// The favorite/archived page routes were removed with the flags they
+    /// exposed; no GET route may keep serving them.
+    #[test]
+    fn no_favorite_or_archived_page_routes() {
+        let routes = generate_get_routes();
+        let paths: Vec<&str> = routes.iter().map(|route| route.uri.path()).collect();
+
+        for path in paths {
+            assert!(
+                !path.starts_with("/favorite"),
+                "removed route re-registered: {path}"
+            );
+            assert!(
+                !path.starts_with("/archived"),
+                "removed route re-registered: {path}"
+            );
+        }
+    }
+
+    /// The trash view is the flag-based page that survives, so its routes
+    /// must still be registered.
+    #[test]
+    fn trashed_page_routes_are_retained() {
+        let routes = generate_get_routes();
+        let paths: Vec<&str> = routes.iter().map(|route| route.uri.path()).collect();
+
+        assert!(paths.contains(&"/trashed"), "/trashed must stay registered");
+        assert!(
+            paths.iter().any(|p| p.starts_with("/trashed/view")),
+            "/trashed/view must stay registered"
+        );
+    }
 }

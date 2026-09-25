@@ -283,8 +283,6 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         thumbhash: None,
         description: albuminfo.description,
         tags: albuminfo.tags,
-        is_favorite: false,
-        is_archived: false,
         rating: albuminfo.rating,
         update_at: now,
     };

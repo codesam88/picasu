@@ -5,48 +5,6 @@
         <v-icon>mdi-tag</v-icon>
       </v-avatar>
     </template>
-    <v-list-item-title v-if="route.meta.baseName !== 'share'">
-      <v-chip
-        v-if="isFavorite"
-        prepend-icon="mdi-star"
-        color="warning"
-        variant="tonal"
-        class="ma-1"
-        link
-        @click="setFavorite([index], false, isolationId)"
-        >favorite</v-chip
-      >
-      <v-chip
-        v-else
-        prepend-icon="mdi-star-outline"
-        color="grey"
-        variant="tonal"
-        class="ma-1"
-        link
-        @click="setFavorite([index], true, isolationId)"
-        >favorite</v-chip
-      >
-      <v-chip
-        v-if="isArchived"
-        prepend-icon="mdi-archive-arrow-down"
-        color="primary"
-        variant="tonal"
-        class="ma-1"
-        link
-        @click="setArchived([index], false, isolationId)"
-        >archived</v-chip
-      >
-      <v-chip
-        v-else
-        prepend-icon="mdi-archive-arrow-down"
-        color="grey"
-        variant="tonal"
-        class="ma-1"
-        link
-        @click="setArchived([index], true, isolationId)"
-        >archived</v-chip
-      >
-    </v-list-item-title>
     <v-list-item-subtitle class="text-wrap">
       <v-chip
         variant="flat"
@@ -77,17 +35,10 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { useModalStore } from '@/store/modalStore'
-import { IsolationId } from '@type/types'
 import { searchByTag } from '@utils/getter'
-import { setFavorite, setArchived } from '@/api/editFlags'
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const props = defineProps<{
-  isolationId: IsolationId
-  index: number
+defineProps<{
   tags: string[]
-  isFavorite: boolean
-  isArchived: boolean
 }>()
 
 const modalStore = useModalStore('mainId')

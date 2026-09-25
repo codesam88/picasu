@@ -14,8 +14,6 @@ describe('databaseTimestampSchema', () => {
         size: 1024,
         tags: [],
         exifVec: {},
-        isFavorite: false,
-        isArchived: false,
         rating: null,
         updateAt: 0,
         path: null
@@ -44,8 +42,6 @@ describe('databaseTimestampSchema', () => {
         size: 1024,
         tags: [],
         exifVec: {},
-        isFavorite: false,
-        isArchived: false,
         rating: null,
         updateAt: 0,
         path: null
@@ -68,8 +64,6 @@ describe('databaseTimestampSchema', () => {
       size: 1024,
       tags: [],
       exifVec: {},
-      isFavorite: false,
-      isArchived: false,
       rating: null,
       updateAt: 0,
       path: null
@@ -118,8 +112,6 @@ describe('databaseTimestampSchema', () => {
         duration: 120,
         tags: [],
         exifVec: {},
-        isFavorite: false,
-        isArchived: false,
         rating: null,
         updateAt: 0,
         path: null
@@ -236,5 +228,32 @@ describe('databaseTimestampSchema', () => {
     const result = databaseTimestampSchema.parse(input)
     expect(result.abstractData.type).toBe('image')
     expect(result.coverHash).toBe('should_be_ignored')
+  })
+
+  test('favorite and archived flags are gone from the parsed asset', () => {
+    const input = {
+      abstractData: {
+        type: 'image' as const,
+        id: 'abc123',
+        pending: false,
+        width: 100,
+        height: 100,
+        ext: 'jpg',
+        size: 1024,
+        tags: [],
+        exifVec: {},
+        rating: null,
+        updateAt: 0,
+        path: null
+      },
+      timestamp: 1700000000000,
+      token: 'tok_123',
+      assetId: 'asset_abc'
+    }
+
+    const result = databaseTimestampSchema.parse(input)
+    expect('isFavorite' in result.abstractData).toBe(false)
+    expect('isArchived' in result.abstractData).toBe(false)
+    expect(result.abstractData.id).toBe('abc123')
   })
 })
