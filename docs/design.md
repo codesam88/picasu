@@ -59,6 +59,28 @@ an optional, app-specific helper stored next to a directory; it customizes the
 presentation of that folder but does not define the folder, its membership, or
 its identity. Losing or rebuilding `.albuminfo` must not lose photos.
 
+#### Metadata precedence and lifecycle
+
+Metadata is resolved from the repository, never from the generated database:
+
+1. Read metadata embedded in the raw media file.
+2. Apply the paired sidecar as a partial overlay. Fields present in the sidecar
+   override the raw value; fields absent from the sidecar inherit the raw value.
+   An omitted field must not clear the raw value.
+3. Store only the resolved merged view in the database. The database is a
+   rebuildable cache and is never the source of truth.
+4. Frontend metadata edits are explicit user intent. By default they create or
+   update the sidecar and do not modify the raw media file.
+5. Merging selected metadata back into the raw file is a separate explicit
+   action. It must preserve unmanaged metadata, use an atomic replacement, and
+   leave the sidecar as the authoritative overlay if the format cannot be
+   written safely.
+
+Deleting the database and reindexing reconstructs the same view from raw files
+and sidecars. Deleting a sidecar removes the overlay and exposes the raw
+metadata again; it does not delete metadata from the raw file. External raw
+changes are visible for every field not overridden by the sidecar.
+
 Database updates and filesystem operations are not one atomic transaction. A
 journal records the intended filesystem operation and its progress; startup
 recovery and indexing rebuild or reconcile generated state from the repository.
