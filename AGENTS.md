@@ -70,7 +70,7 @@ Every task lives as a markdown file in `.plan/<slug>.md` with YAML frontmatter. 
 - **Update:** update 'status' to reflect status. append progress notes at the bottom (newest first). Do not rewrite history.
 - **Complete:** set `status: done` when finished. Do not delete the file.
 - **Block:** set `status: blocked` and note the blocker in the body.
-- **Validate:** run `plan lint` to check; `plan format` to auto-format.
+- **Validate:** run `just plan-lint` to check; `just plan-format` to auto-format.
 
 ## Code documentation
 
