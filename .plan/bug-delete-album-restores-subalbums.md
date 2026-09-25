@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: bug
 priority: high
 area: backend
@@ -19,10 +19,9 @@ sub-albums and re-creates their DB records under the root.
 Expanded API coverage for recursive deletion and added a frontend Playwright
 scenario for the reported flow: soft-delete a parent album, permanently delete
 it from Trash, then verify the child does not return. The scenario passes, so
-the UI flow does not reproduce the resurrection bug on the current tree.
-
-The normal album Delete action is a soft delete; recursive filesystem cleanup
-only occurs through the permanent-delete action.
+the current UI flow does not reproduce the resurrection bug. The normal album
+Delete action is a soft delete; recursive filesystem cleanup only occurs
+through the permanent-delete action.
 
 ### Progress (2026-09-20)
 

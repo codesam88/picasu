@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: medium
 area: backend
@@ -15,7 +15,9 @@ sidecars. `is_favorite` and `is_archived` were removed together with the fields
 they toggled, so trash is the only flag left — and it has no standard XMP
 mapping.
 
-## Tasks
+## Resolution
 
-- [ ] Call `write_sidecar_for` from `edit_flags`.
-- [ ] Decide mapping for `is_trashed` (no standard XMP key represents a trash state).
+The favorite and archived flags were removed. The remaining trash flag is an
+application lifecycle state, not durable file metadata; no XMP mapping was
+selected. This item is closed without adding a sidecar write from
+`edit_flags`.
