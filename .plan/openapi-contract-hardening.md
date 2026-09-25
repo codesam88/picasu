@@ -68,12 +68,13 @@ High — contract wrong or materially incomplete:
       responses (or post-process the generated spec). **Done** — one
       `Unauthorized` `ToResponse` component in `backend/src/openapi_components.rs`,
       registered by the `build.rs` generator from a single `RESPONSE_COMPONENTS`
-      list, referenced by 37 operations (2 → 38 declaring a 401). Each route was
-      checked individually: `GuardReadOnlyMode` answers 405, and
-      `get-rows`/`get-scroll-bar` discard their guard result and so genuinely
-      cannot 401 — that gap is tracked as
-      `bug-get-rows-auth-guard-discarded.md` and is a security finding, not a
-      documentation one. `POST /post/authenticate` lost its specific "Invalid
+      list, referenced by 39 operations (2 → 40 declaring a 401: +37 in the
+      sweep, +2 when `get-rows`/`get-scroll-bar` were fixed). Each route was
+      checked individually: `GuardReadOnlyMode` answers 405;
+      `get-rows`/`get-scroll-bar` originally discarded their guard result —
+      that gap was fixed (guard propagated, both operations now declare 401)
+      and recorded in `bug-get-rows-auth-guard-discarded.md` (done).
+      `POST /post/authenticate` lost its specific "Invalid
       password" wording because utoipa cannot attach a description to a `$ref`;
       the shared description covers it. Follow-up: 405 is declared on only one of
       the 20 `GuardReadOnlyMode` routes.
@@ -137,11 +138,13 @@ Low — consistency and polish:
 
 - 2026-09-25: Documented the 401 contract. The sweep exposed a real security
   gap rather than only a documentation one: `GET /get/get-rows` and
-  `GET /get/get-scroll-bar` discard `GuardResult<GuardTimestamp>` with
-  `let _ = auth;`, so both answer 200 to an unauthenticated caller, and
+  `GET /get/get-scroll-bar` discarded `GuardResult<GuardTimestamp>` with
+  `let _ = auth;`, so both answered 200 to an unauthenticated caller, and
   `/get/get-scroll-bar` panics on an unknown snapshot id without credentials.
-  Recorded as `bug-get-rows-auth-guard-discarded.md` (high, open) and left
-  unfixed here because it is a behavior change, not documentation. The contract
+  Recorded as `bug-get-rows-auth-guard-discarded.md` and fixed separately, since
+  it is a behavior change rather than documentation: both handlers now
+  propagate the guard, both operations declare 401, and two scenarios assert
+  401 for missing, malformed and expired tokens. The contract
   tests for 401 are bidirectional: an operation declaring a 401 must be listed in
   `GUARDED_OPERATIONS`, and a listed operation that stops existing fails with a
   stale-entry message instead of a missing-declaration one.

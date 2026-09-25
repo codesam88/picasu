@@ -1,0 +1,45 @@
+name: "negative: get-scroll-bar rejects missing, malformed and expired bearer tokens"
+# GET /get/get-scroll-bar binds GuardResult<GuardTimestamp> and must propagate
+# a failed guard as 401 (same contract as the sibling /get/get-data). The
+# timestamp in the query is a real, freshly minted prefetch snapshot id in
+# every step, so 401 can only come from the guard rejecting the token — and
+# the handler's panic on unknown snapshot ids is never reached.
+given:
+  - dir_album: /e2e_scroll_auth/album
+    id_as: $album
+  - photo: /e2e_scroll_auth/album/photo_a.jpg
+    id_as: $photo_a
+    asset_id_as: $asset_a
+when:
+  - call: POST /post/index/album
+    body: { album: "/e2e_scroll_auth" }
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Mint a timestamp + token for a snapshot that exists.
+  - call: POST /get/prefetch?locate=${asset_a}
+    capture:
+      ts: response.prefetch.timestamp
+  # 1. No Authorization header at all.
+  - call: GET /get/get-scroll-bar?timestamp=${ts}
+    auth: false
+    then:
+      - response.status: 401
+  # 2. Malformed bearer token (not a JWT).
+  - call: GET /get/get-scroll-bar?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer not-a-jwt"
+    then:
+      - response.status: 401
+  # 3. Well-formed token with the matching timestamp claim but expired exp.
+  - mint_timestamp_token:
+      as: $expired_token
+      timestamp: "${ts}"
+      exp_offset: -3600
+  - call: GET /get/get-scroll-bar?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${expired_token}"
+then:
+  - response.status: 401
