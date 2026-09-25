@@ -28,5 +28,7 @@ jobs:
         with:
           node-version: "24"
       - run: just install-plan
+      - run: npm ci
+        working-directory: frontend
       - run: just docs-check
       - run: just plan-lint
