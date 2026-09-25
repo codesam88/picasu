@@ -1,0 +1,33 @@
+name: "negative: unknown snapshot id answered 400 for get-scroll-bar"
+# A well-formed but unknown snapshot id (never minted, or expired after ~1h)
+# must make GET /get/get-scroll-bar return a client error instead of panicking.
+# The bearer token's timestamp claim equals the unknown id, so GuardTimestamp
+# passes and the handler itself produces the status.
+given:
+  - dir_album: /e2e_unknown_snapshot_scroll/album
+    id_as: $album
+  - photo: /e2e_unknown_snapshot_scroll/album/photo_a.jpg
+    id_as: $photo_a
+    asset_id_as: $asset_a
+when:
+  - call: POST /post/index/album
+    body: { album: "/e2e_unknown_snapshot_scroll" }
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Mint a real snapshot, then derive a plausible millisecond id one hour
+  # further ahead — well-formed, but no snapshot table exists for it.
+  - call: POST /get/prefetch?locate=${asset_a}
+    capture:
+      ts: response.prefetch.timestamp
+    calc:
+      unknown_ts: "${ts}+3600000"
+  - mint_timestamp_token:
+      as: $unknown_token
+      timestamp: "${unknown_ts}"
+  - call: GET /get/get-scroll-bar?timestamp=${unknown_ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${unknown_token}"
+then:
+  - response.status: 400

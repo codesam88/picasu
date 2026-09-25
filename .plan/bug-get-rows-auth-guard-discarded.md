@@ -55,6 +55,32 @@ snapshot id, or return a client error.
 
 ## Progress
 
+- 2026-09-25: **Decided: an unknown snapshot id returns `400`, never panics.**
+  The Notes section's open question — should `/get/get-scroll-bar` still panic
+  on an unknown snapshot id — is resolved as a client error on both
+  `/get/get-scroll-bar` and `/get/get-rows`. Rationale: the snapshot id is
+  client-supplied (a millisecond epoch handed out by `/get/prefetch` and
+  dropped again by the ~1h expire check), so asking for an expired or
+  never-minted id is ordinary invalid input, and both operations already
+  publish `(status = 400, description = "Invalid input")`, so 400 matches the
+  checked-in contract with no spec change. A panic on input-dependent control
+  flow converts to an opaque 500 at best. Mechanism: `read_tree_snapshot` now
+  returns the typed `SnapshotReadError` (`NotFound` when the id's redb table
+  does not exist, `Storage` for `begin_read`/iteration/decode failures);
+  `read_scrollbar` returns `Result` (all three former `.expect` sites
+  propagated; an unconvertible stored date is a `Storage` data error); the
+  handlers map `NotFound` → `ErrorKind::InvalidInput` (400) and `Storage` →
+  `ErrorKind::Database` (500) via one shared `map_snapshot_read_error` in
+  `get_data.rs`. Verified test-first: scenarios
+  `unknown_snapshot_get_rows_400.yaml` / `unknown_snapshot_get_scroll_bar_400.yaml`
+  (valid bearer token minted for a future-but-unknown id) failed before the
+  change (both answered 500, the scrollbar one after panicking at
+  `cache.rs:119`) and pass after; unit tests
+  `read_scrollbar_unknown_timestamp_returns_not_found` /
+  `read_row_unknown_timestamp_returns_not_found` assert the `NotFound`
+  variant without `#[should_panic]`. Known follow-up outside this scope: the
+  frontend swallows the new 400 (`workerAxiosInterceptor.ts` only toasts on
+  500), so a stale tab gets silent empty rows — needs its own task.
 - 2026-09-25: **Fixed.** Both handlers now propagate the guard with
   `let _ = auth?;`, matching the sibling `/get/get-data`; `get_scroll_bar`
   returns `AppResult<Json<Vec<ScrollBarData>>>` so the guard error responds

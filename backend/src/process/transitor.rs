@@ -7,7 +7,10 @@ use anyhow::Result;
 use arrayvec::ArrayString;
 
 pub fn index_to_asset_id(tree_snapshot: &MyCow, index: usize) -> Result<ArrayString<64>> {
-    if index >= tree_snapshot.len() {
+    // `len()` is fallible (redb read failure propagates as an error rather
+    // than panicking inside a handler); `?` lifts it into the anyhow error.
+    let len = tree_snapshot.len()?;
+    if index >= len {
         return Err(anyhow::anyhow!("Index out of bounds: {index}"));
     }
     let asset_id = tree_snapshot.get_asset_id(index)?;
