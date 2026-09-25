@@ -69,18 +69,82 @@ pub fn next_snapshot_id() -> i64 {
         }
     }
 }
-use anyhow::{Result, bail};
+use anyhow::Result;
+
+/// Why a `TREE_SNAPSHOT` read failed.
+///
+/// `read_tree_snapshot` fails in two structurally different ways and callers
+/// must be able to tell them apart:
+///
+/// - [`SnapshotReadError::NotFound`]: no table named after the requested
+///   snapshot id exists. Snapshot ids are client-held values (minted by
+///   `/get/prefetch`, dropped again by the ~1h expire check), so an unknown
+///   id is client input and maps to `ErrorKind::InvalidInput` (400) at the
+///   handler.
+/// - [`SnapshotReadError::Storage`]: everything else — beginning the read
+///   transaction, opening a table that exists but cannot be read, iterating
+///   it, or stored values that fail to decode (e.g. an unconvertible `date`).
+///   These are server-side faults and map to `ErrorKind::Database` (500).
+///
+/// The enum lives in the storage layer rather than in `crate::error` because
+/// it describes snapshot-store failure modes, not HTTP semantics; the mapping
+/// onto `AppError` happens in the router handlers, where the HTTP contract is
+/// known.
+#[derive(Debug)]
+pub enum SnapshotReadError {
+    /// No snapshot with this id exists in memory or on disk.
+    NotFound { timestamp: i64 },
+    /// The snapshot store failed, or stored data failed to decode.
+    Storage(anyhow::Error),
+}
+
+impl std::fmt::Display for SnapshotReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SnapshotReadError::NotFound { timestamp } => {
+                write!(f, "tree snapshot {timestamp} not found")
+            }
+            SnapshotReadError::Storage(err) => {
+                write!(f, "tree snapshot storage failure: {err}")
+            }
+        }
+    }
+}
+
+impl Error for SnapshotReadError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            SnapshotReadError::NotFound { .. } => None,
+            SnapshotReadError::Storage(err) => Some(err.as_ref()),
+        }
+    }
+}
 
 impl TreeSnapshot {
-    pub fn read_row(&'static self, row_index: usize, timestamp: i64) -> Result<Row> {
+    /// Reads one batch of display rows for snapshot `timestamp`.
+    ///
+    /// Fails with [`SnapshotReadError::NotFound`] when the snapshot id is
+    /// unknown; every other failure is reported as
+    /// [`SnapshotReadError::Storage`].
+    pub fn read_row(
+        &'static self,
+        row_index: usize,
+        timestamp: i64,
+    ) -> Result<Row, SnapshotReadError> {
         let tree_snapshot = self.read_tree_snapshot(timestamp)?;
 
-        let data_length = tree_snapshot.len();
+        let data_length = tree_snapshot.len()?;
         let chunk_count = data_length.div_ceil(ROW_BATCH_NUMBER); // Calculate total chunks
 
         if row_index > chunk_count {
             error!("read_rows out of bound");
-            bail!("Row index out of bounds");
+            // An out-of-bounds row index has always surfaced as a server
+            // error (`ErrorKind::Database` → 500); keep that mapping —
+            // reclassifying it as client input is a separate contract
+            // decision outside this change.
+            return Err(SnapshotReadError::Storage(anyhow::anyhow!(
+                "Row index out of bounds"
+            )));
         }
 
         let number_vec = (row_index * ROW_BATCH_NUMBER)
@@ -94,7 +158,8 @@ impl TreeSnapshot {
                     display_height: height,
                 })
             })
-            .collect::<Result<Vec<DisplayElement>>>()?;
+            .collect::<Result<Vec<DisplayElement>>>()
+            .map_err(SnapshotReadError::Storage)?;
 
         Ok(Row {
             start: row_index * ROW_BATCH_NUMBER,
@@ -112,24 +177,38 @@ use crate::model::response::ScrollBarData;
 use chrono::{Datelike, TimeZone, Utc};
 
 impl TreeSnapshot {
-    pub fn read_scrollbar(&'static self, timestamp: i64) -> Vec<ScrollBarData> {
+    /// Builds the temporal distribution (year/month buckets with their first
+    /// row index) of snapshot `timestamp`.
+    ///
+    /// Propagates [`SnapshotReadError`] instead of panicking: an unknown
+    /// snapshot id yields `NotFound` (mapped to 400 by the handler), and a
+    /// stored date that does not convert to a `DateTime` is treated as
+    /// corrupt stored data (`Storage` → 500), never as a panic.
+    pub fn read_scrollbar(
+        &'static self,
+        timestamp: i64,
+    ) -> Result<Vec<ScrollBarData>, SnapshotReadError> {
         let start_time = Instant::now();
-        let tree_snapshot = self
-            .read_tree_snapshot(timestamp)
-            .expect("failed to read tree snapshot for scrollbar");
+        let tree_snapshot = self.read_tree_snapshot(timestamp)?;
         let mut scroll_bar_data_vec = Vec::new();
         let mut last_year = None;
         let mut last_month = None;
 
+        // Stored dates are milliseconds since the epoch; a value outside
+        // chrono's supported range is a data error, not a client error.
+        let to_year_month = |date: i64| -> Result<(i32, u32), SnapshotReadError> {
+            let datetime = Utc.timestamp_millis_opt(date).single().ok_or_else(|| {
+                SnapshotReadError::Storage(anyhow::anyhow!(
+                    "invalid timestamp {date} in tree snapshot data"
+                ))
+            })?;
+            Ok((datetime.year(), datetime.month()))
+        };
+
         match tree_snapshot {
             MyCow::DashMap(ref_data) => {
-                ref_data.iter().enumerate().for_each(|(index, data)| {
-                    let datetime = Utc
-                        .timestamp_millis_opt(data.date)
-                        .single()
-                        .expect("invalid timestamp");
-                    let year = datetime.year();
-                    let month = datetime.month();
+                for (index, data) in ref_data.iter().enumerate() {
+                    let (year, month) = to_year_month(data.date)?;
                     if last_year != Some(year) || last_month != Some(month) {
                         last_year = Some(year);
                         last_month = Some(month);
@@ -142,39 +221,34 @@ impl TreeSnapshot {
                         };
                         scroll_bar_data_vec.push(scrollbar_data);
                     }
-                });
+                }
             }
-            MyCow::Redb(redb) => {
-                redb.iter()
-                    .expect("failed to iterate redb table for scrollbar")
-                    .enumerate()
-                    .for_each(|(index, result)| {
-                        let (_key, value) =
-                            result.expect("failed to read row from scrollbar table");
-                        let data = value.value();
-                        let datetime = Utc
-                            .timestamp_millis_opt(data.date)
-                            .single()
-                            .expect("invalid timestamp");
-                        let year = datetime.year();
-                        let month = datetime.month();
-                        if last_year != Some(year) || last_month != Some(month) {
-                            last_year = Some(year);
-                            last_month = Some(month);
-                            let scrollbar_data = ScrollBarData {
-                                #[allow(clippy::cast_sign_loss)]
-                                year: year as usize,
-                                #[allow(clippy::cast_sign_loss)]
-                                month: month as usize,
-                                index,
-                            };
-                            scroll_bar_data_vec.push(scrollbar_data);
-                        }
-                    });
+            MyCow::Redb(redb_table) => {
+                let entries = redb_table
+                    .iter()
+                    .map_err(|err| SnapshotReadError::Storage(err.into()))?;
+                for (index, entry) in entries.enumerate() {
+                    let (_key, value) =
+                        entry.map_err(|err| SnapshotReadError::Storage(err.into()))?;
+                    let data = value.value();
+                    let (year, month) = to_year_month(data.date)?;
+                    if last_year != Some(year) || last_month != Some(month) {
+                        last_year = Some(year);
+                        last_month = Some(month);
+                        let scrollbar_data = ScrollBarData {
+                            #[allow(clippy::cast_sign_loss)]
+                            year: year as usize,
+                            #[allow(clippy::cast_sign_loss)]
+                            month: month as usize,
+                            index,
+                        };
+                        scroll_bar_data_vec.push(scrollbar_data);
+                    }
+                }
             }
         }
         info!(duration = &*format!("{:?}", start_time.elapsed()); "Generate scrollbar");
-        scroll_bar_data_vec
+        Ok(scroll_bar_data_vec)
     }
 }
 
@@ -225,18 +299,37 @@ use dashmap::mapref::one::Ref;
 use redb::{ReadOnlyTable, ReadableDatabase, ReadableTableMetadata, TableDefinition};
 
 impl TreeSnapshot {
-    pub fn read_tree_snapshot(&'static self, timestamp: i64) -> Result<MyCow> {
+    /// Opens snapshot `timestamp`, preferring the in-memory map and falling
+    /// back to the on-disk store.
+    ///
+    /// The failure modes are deliberately distinct: `begin_read()` failing is
+    /// a storage fault, while the table named after the id not existing means
+    /// the snapshot was never minted or has been dropped by the ~1h expire
+    /// check. The latter is client input and becomes
+    /// [`SnapshotReadError::NotFound`]; everything else is
+    /// [`SnapshotReadError::Storage`].
+    pub fn read_tree_snapshot(&'static self, timestamp: i64) -> Result<MyCow, SnapshotReadError> {
         if let Some(data) = self.in_memory.get(&timestamp) {
             return Ok(MyCow::DashMap(data));
         }
 
-        let read_txn = self.in_disk.begin_read()?;
+        let read_txn = self
+            .in_disk
+            .begin_read()
+            .map_err(|err| SnapshotReadError::Storage(err.into()))?;
 
         let binding = timestamp.to_string();
         let table_definition: TableDefinition<u64, ReducedData> = TableDefinition::new(&binding);
 
-        let table = read_txn.open_table(table_definition)?;
-        Ok(MyCow::Redb(table))
+        match read_txn.open_table(table_definition) {
+            Ok(table) => Ok(MyCow::Redb(table)),
+            Err(redb::TableError::TableDoesNotExist(_)) => {
+                Err(SnapshotReadError::NotFound { timestamp })
+            }
+            // Type mismatches, I/O failures, closed database: server-side
+            // faults, not a property of the requested id.
+            Err(err) => Err(SnapshotReadError::Storage(err.into())),
+        }
     }
 }
 
@@ -247,18 +340,30 @@ pub enum MyCow {
 }
 
 impl MyCow {
+    /// Number of entries in the snapshot. Fallible: a failed `len()` on the
+    /// on-disk store must surface as an error on the request path, not as a
+    /// panic inside a handler.
     #[allow(clippy::cast_possible_truncation)]
-    pub fn len(&self) -> usize {
+    pub fn len(&self) -> Result<usize, SnapshotReadError> {
         match self {
-            MyCow::DashMap(data) => data.value().len(),
-            MyCow::Redb(table) => table.len().expect("failed to get table length") as usize,
+            MyCow::DashMap(data) => Ok(data.value().len()),
+            MyCow::Redb(table) => {
+                let len = table
+                    .len()
+                    .map_err(|err| SnapshotReadError::Storage(err.into()))?;
+                Ok(len as usize)
+            }
         }
     }
 
     pub fn get_width_height(&self, index: usize) -> Result<(u32, u32)> {
         match self {
             MyCow::DashMap(data) => {
-                let data = &data.value()[index];
+                // `.get` instead of indexing: an index past the end is a
+                // caller bug that must fail as an error, not panic a handler.
+                let data = data.value().get(index).context(format!(
+                    "Fail to find with and height in tree snapshots for index {index}"
+                ))?;
                 Ok((data.width, data.height))
             }
             MyCow::Redb(table) => {
@@ -559,6 +664,63 @@ mod snapshot_id_tests {
         assert!(
             id >= before,
             "snapshot id {id} is older than the wall clock {before}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tree_snapshot_read_tests {
+    use super::*;
+
+    /// A `TreeSnapshot` over a fresh, empty temp database with an empty
+    /// in-memory map, so no snapshot id exists in either store.
+    fn empty_tree_snapshot() -> &'static TreeSnapshot {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let db_path = dir.path().join("tree_snapshot_test.redb");
+        // Leak the tempdir so it stays alive for the lifetime of the leaked database.
+        Box::leak(Box::new(dir));
+        let db = redb::Database::create(db_path).expect("failed to create test database");
+        Box::leak(Box::new(TreeSnapshot {
+            in_disk: Box::leak(Box::new(db)),
+            in_memory: Box::leak(Box::new(DashMap::new())),
+        }))
+    }
+
+    /// Regression test for the panic at `read_scrollbar`: a snapshot id that
+    /// exists in neither the in-memory map nor the on-disk store must surface
+    /// as `SnapshotReadError::NotFound` so handlers can answer 400 instead of
+    /// panicking. A plain `Err` would also silence the panic but lose the
+    /// distinction the handler mapping relies on, so the variant is asserted.
+    #[test]
+    fn read_scrollbar_unknown_timestamp_returns_not_found() {
+        let snapshot = empty_tree_snapshot();
+        // A plausible millisecond epoch that was never minted in this store.
+        let timestamp = 1_700_000_000_000_i64;
+
+        let err = snapshot
+            .read_scrollbar(timestamp)
+            .expect_err("read_scrollbar must not succeed for an unknown snapshot id");
+
+        assert!(
+            matches!(err, SnapshotReadError::NotFound { timestamp: seen } if seen == timestamp),
+            "expected SnapshotReadError::NotFound {{ timestamp: {timestamp} }}, got {err:?}"
+        );
+    }
+
+    /// `read_row` must propagate the same typed error so `/get/get-rows` maps
+    /// an unknown snapshot id to 400 like its scrollbar sibling.
+    #[test]
+    fn read_row_unknown_timestamp_returns_not_found() {
+        let snapshot = empty_tree_snapshot();
+        let timestamp = 1_700_000_000_000_i64;
+
+        let err = snapshot
+            .read_row(0, timestamp)
+            .expect_err("read_row must not succeed for an unknown snapshot id");
+
+        assert!(
+            matches!(err, SnapshotReadError::NotFound { timestamp: seen } if seen == timestamp),
+            "expected SnapshotReadError::NotFound {{ timestamp: {timestamp} }}, got {err:?}"
         );
     }
 }

@@ -7,7 +7,7 @@ use crate::model::response::{Row, ScrollBarData};
 use crate::openapi_components::Unauthorized;
 use crate::process::resolve_show_download_and_metadata;
 use crate::process::transitor::{cover_content_hash_from_data, lean_media_abstract_data};
-use crate::storage::cache::TREE_SNAPSHOT;
+use crate::storage::cache::{SnapshotReadError, TREE_SNAPSHOT};
 use crate::storage::db::{ASSET_BY_ID, TREE, open_metadata_table, open_tree_snapshot_table};
 
 use crate::error::{AppError, ErrorKind, ResultExt};
@@ -19,6 +19,24 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use redb::ReadableDatabase;
 use rocket::serde::json::Json;
 use std::time::Instant;
+
+/// Maps a tree-snapshot read failure onto the HTTP error model.
+///
+/// A snapshot id that is absent from both the in-memory map and the on-disk
+/// store was never minted or has been dropped by the ~1h expire check, which
+/// makes it client input: it maps to `ErrorKind::InvalidInput` (400), matching
+/// the `(status = 400, description = "Invalid input")` both operations already
+/// publish. Everything the snapshot store reports as `Storage` is a genuine
+/// server-side fault and stays `ErrorKind::Database` (500).
+fn map_snapshot_read_error(err: SnapshotReadError) -> AppError {
+    match err {
+        SnapshotReadError::NotFound { timestamp } => AppError::new(
+            ErrorKind::InvalidInput,
+            format!("Unknown snapshot id: {timestamp}"),
+        ),
+        SnapshotReadError::Storage(source) => AppError::from_err(ErrorKind::Database, source),
+    }
+}
 
 /// Serve one page of timeline/list rows for a snapshot timestamp.
 ///
@@ -66,7 +84,7 @@ pub async fn get_data(
             .open_table(ASSET_BY_ID)
             .or_raise(|| (ErrorKind::Database, "Failed to open ASSET_BY_ID"))?;
 
-        end = end.min(tree_snapshot.len());
+        end = end.min(tree_snapshot.len().map_err(map_snapshot_read_error)?);
 
         if start >= end {
             return Ok(Json(vec![]));
@@ -182,7 +200,7 @@ pub async fn get_rows(
         let start_time = Instant::now();
         let filtered_rows = TREE_SNAPSHOT
             .read_row(index, timestamp)
-            .or_raise(|| (ErrorKind::Database, "Failed to read row from snapshot"))?;
+            .map_err(map_snapshot_read_error)?;
         let duration = format!("{:?}", start_time.elapsed());
         info!(duration = &*duration; "Read rows: index = {index}");
         Ok(Json(filtered_rows))
@@ -208,6 +226,8 @@ pub fn get_scroll_bar(
     timestamp: i64,
 ) -> AppResult<Json<Vec<ScrollBarData>>> {
     let _ = auth?;
-    let scrollbar_data = TREE_SNAPSHOT.read_scrollbar(timestamp);
+    let scrollbar_data = TREE_SNAPSHOT
+        .read_scrollbar(timestamp)
+        .map_err(map_snapshot_read_error)?;
     Ok(Json(scrollbar_data))
 }
