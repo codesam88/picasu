@@ -13,16 +13,21 @@ export default tseslint.config(
       '**/dev-dist/**/*',
       'src/script/lexer/MyParserCst.d.ts',
       '**/*.mjs',
-      'src/type/MyParserCst.d.ts',
-      'playwright.config.ts',
-      'tests/**/*'
+      'src/type/MyParserCst.d.ts'
     ]
   },
   eslint.configs.recommended,
-  ...tseslint.configs.strictTypeChecked,
-  ...tseslint.configs.stylisticTypeChecked,
+  ...tseslint.configs.strictTypeChecked.map((config) => ({
+    ...config,
+    files: ['src/**/*']
+  })),
+  ...tseslint.configs.stylisticTypeChecked.map((config) => ({
+    ...config,
+    files: ['src/**/*']
+  })),
   ...pluginVue.configs['flat/strongly-recommended'],
   {
+    files: ['src/**/*'],
     languageOptions: {
       parser: vueParser,
       parserOptions: {
@@ -42,6 +47,25 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       'vue/multi-word-component-names': 'off',
       '@typescript-eslint/no-unnecessary-type-parameters': 'off'
+    }
+  },
+  {
+    files: ['playwright.config.ts', 'tests/**/*.ts'],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        sourceType: 'module'
+      },
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+        NodeJS: 'readonly'
+      }
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      'no-redeclare': 'off'
     }
   },
   prettierConfig

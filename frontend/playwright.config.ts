@@ -1,11 +1,8 @@
 import { defineConfig } from '@playwright/test'
 import * as path from 'path'
 import * as os from 'os'
-import { fileURLToPath } from 'url'
 import { TEST_DIR } from './tests/playwright/paths'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
 const isCI = !!process.env.CI
 
 export default defineConfig({

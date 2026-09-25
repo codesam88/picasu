@@ -324,7 +324,7 @@ export const Covers = z
 export const UiScenario = z
   .object({
     name: z.string(),
-    covers: Covers.optional().default({}),
+    covers: Covers.optional().default({ api: [], ui: [] }),
     given: z.array(GivenItem).optional().default([]),
     steps: z.array(UiStep).min(1).optional(),
     when: z.array(UiWhenItem).min(1).optional(),

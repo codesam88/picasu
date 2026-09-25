@@ -1,8 +1,8 @@
 {
-  "include": ["vite.config.ts", "vitest.config.ts"],
+  "include": ["vite.config.ts", "vitest.config.ts", "playwright.config.ts", "tests/**/*.ts"],
   "compilerOptions": {
     "types": ["node", "vuetify"],
-    "lib": ["webworker"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "webworker"],
     "paths": {
       "@/*": ["./src/*"]
     },

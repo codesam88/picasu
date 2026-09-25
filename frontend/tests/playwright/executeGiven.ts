@@ -186,7 +186,9 @@ export async function executeGiven(
       const filePath = path.join(imageHome, qualified)
       try {
         fs.unlinkSync(filePath)
-      } catch {}
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      }
     }
 
     if ('move' in item) {
@@ -447,16 +449,4 @@ function createHashJwt(payload: Record<string, unknown>, secret: string): string
   const body = base64urlEncode(Buffer.from(JSON.stringify(payload)))
   const signature = createHmac('sha256', secret).update(`${header}.${body}`).digest()
   return `${header}.${body}.${base64urlEncode(signature)}`
-}
-
-function readJwtSecretFromConfig(configDir: string): string {
-  try {
-    const configPath = path.join(configDir, 'config.toml')
-    const raw = fs.readFileSync(configPath, 'utf-8')
-    const match = raw.match(/auth_key\s*=\s*"([^"]+)"/)
-    if (match) return match[1]
-  } catch {
-    // fall through
-  }
-  return 'change_me'
 }
