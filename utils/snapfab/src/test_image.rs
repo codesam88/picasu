@@ -20,8 +20,16 @@ impl ImageFormat {
     #[allow(dead_code)]
     pub fn from_path(path: &str) -> Option<Self> {
         let ext = path.rsplit('.').next()?.to_lowercase();
-        match ext.as_str() {
-            "jpg" | "jpeg" => Some(Self::Jpeg),
+        let format = &crate::capabilities::capabilities()
+            .capability_for_extension(&ext)?
+            .format;
+        Self::from_name(format)
+    }
+
+    #[allow(dead_code)]
+    pub fn from_name(format: &str) -> Option<Self> {
+        match format {
+            "jpeg" => Some(Self::Jpeg),
             "png" => Some(Self::Png),
             _ => None,
         }
@@ -171,17 +179,14 @@ pub fn generate_photo(
     stats: &mut PerfCounter,
     enabled_modes: &[RenderMode],
 ) -> (Vec<u8>, RenderMode) {
-    let fmt = match spec.format.as_deref().or_else(|| {
-        spec.output
+    let fmt = match spec.format.as_deref() {
+        Some(format) => ImageFormat::from_name(format)
+            .unwrap_or_else(|| panic!("manifest format `{format}` is not generatable by snapfab")),
+        None => spec
+            .output
             .as_deref()
             .and_then(ImageFormat::from_path)
-            .map(|f| match f {
-                ImageFormat::Jpeg => "jpeg",
-                ImageFormat::Png => "png",
-            })
-    }) {
-        Some("png") => ImageFormat::Png,
-        _ => ImageFormat::Jpeg,
+            .unwrap_or(ImageFormat::Jpeg),
     };
 
     let width = spec
@@ -1163,13 +1168,21 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             let mut rng = SmallRng::seed_from_u64(seed);
             let mut stats = PerfCounter::new();
             let enabled = enabled(&generators);
-            let formats = ["jpeg", "png"];
+            let manifest = crate::capabilities::capabilities();
+            let formats = manifest
+                .formats
+                .iter()
+                .map(|entry| entry.format.as_str())
+                .collect::<Vec<_>>();
 
             for i in 0..count {
                 let idx: usize =
                     rng.sample(Uniform::new(0u32, formats.len() as u32).unwrap()) as usize;
                 let fmt = formats[idx];
-                let ext = if fmt == "jpeg" { "jpg" } else { "png" };
+                let ext = manifest
+                    .capability_for_format(fmt)
+                    .and_then(|entry| entry.extensions.first())
+                    .expect("manifest format must have an extension");
                 let filename = format!("photo_{:04}.{}", i + 1, ext);
                 let path = dir.join(&filename);
 
@@ -1198,6 +1211,53 @@ mod tests {
 
     fn test_rng() -> SmallRng {
         SmallRng::seed_from_u64(42)
+    }
+
+    #[test]
+    fn every_manifest_format_is_generatable() {
+        let manifest = crate::capabilities::capabilities();
+        let unsupported = manifest
+            .formats
+            .iter()
+            .filter(|entry| ImageFormat::from_name(&entry.format).is_none())
+            .map(|entry| entry.format.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(
+            unsupported.is_empty(),
+            "manifest declares non-generatable formats: {unsupported:?}"
+        );
+    }
+
+    #[test]
+    fn image_format_resolves_manifest_aliases() {
+        assert_eq!(
+            ImageFormat::from_path("photo.JPEG"),
+            Some(ImageFormat::Jpeg)
+        );
+        assert_eq!(
+            ImageFormat::from_path("photo.jfif"),
+            Some(ImageFormat::Jpeg)
+        );
+        assert_eq!(ImageFormat::from_path("photo.png"), Some(ImageFormat::Png));
+        assert_eq!(ImageFormat::from_path("photo.webp"), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "not generatable by snapfab")]
+    fn test_generate_rejects_non_generatable_format() {
+        let spec = PhotoSpec {
+            output: None,
+            format: Some("tiff".into()),
+            width: Some(4),
+            height: Some(4),
+            exif_date: None,
+            tags: None,
+            minimal: false,
+        };
+        let mut rng = test_rng();
+        let mut stats = PerfCounter::new();
+        generate_photo(&spec, &mut rng, &mut stats, ACTIVE_MODES);
     }
 
     #[test]

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "formats": [
+    {
+      "format": "jpeg",
+      "extensions": ["jpg", "jpeg", "jfif", "jpe"],
+      "contentSignature": {
+        "offset": 0,
+        "bytesHex": "ffd8ff",
+        "mime": "image/jpeg"
+      },
+      "metadataFields": {
+        "exif": ["embedded"],
+        "xmp": ["embedded"]
+      },
+      "expectedFailureClasses": ["none"]
+    },
+    {
+      "format": "png",
+      "extensions": ["png"],
+      "contentSignature": {
+        "offset": 0,
+        "bytesHex": "89504e470d0a1a0a",
+        "mime": "image/png"
+      },
+      "metadataFields": {
+        "exif": ["embedded"],
+        "xmp": ["sidecar"]
+      },
+      "expectedFailureClasses": ["none"]
+    }
+  ]
+}

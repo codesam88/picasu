@@ -245,3 +245,19 @@ Randomization should complement, not replace, the deterministic matrix.
   capabilities.
 - `just check`, backend tests, frontend tests, and the relevant Playwright
   scenarios pass.
+
+## Progress
+
+- 2026-09-25 — Iteration 0 implemented on `feat/format-capability-manifest`.
+  Added the repository-owned snapfab manifest (`utils/snapfab/capabilities.json`)
+  with schema/semantic validation, signature decoding, format and extension
+  lookup, and manifest-driven randomized fixture selection. A completeness test
+  now fails if the manifest declares a format snapfab cannot generate, and
+  `generate_photo` rejects explicitly requested non-generatable formats instead
+  of silently emitting JPEG bytes. A backend test asserts every manifest
+  extension is accepted by the upload/index allowlist. The manifest only claims
+  metadata the backend actually reads (JPEG EXIF + XMP, PNG EXIF, PNG sidecar
+  XMP); the unsupported JPEG IPTC read claim was removed. The snapfab binary now
+  consumes the library crate instead of recompiling the modules. Focused tests,
+  `just utils-check`, and `just plan-lint` pass. No scenario-loader unit test
+  exists yet; the loader is covered by the Playwright interpreter spec.

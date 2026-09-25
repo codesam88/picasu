@@ -8,6 +8,9 @@ mod fixtures;
 mod backend_api;
 
 #[cfg(test)]
+mod capabilities;
+
+#[cfg(test)]
 mod openapi_contract;
 
 #[cfg(test)]
