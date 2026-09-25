@@ -1,13 +1,23 @@
+use std::collections::HashMap;
 use std::fmt::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-// Shared with the unit tests in `src/tests/route_scan.rs`: the scanner decides
+// Shared with the unit tests in `src/tests/ast_scan.rs`: the analysis decides
 // which handlers reach `paths(...)`, and a parsing mistake there silently
-// drops routes from the spec.
-#[path = "build/route_scan.rs"]
-mod route_scan;
+// drops routes from the spec. The module is pure — it returns findings and
+// this script prints them as `cargo:warning=` lines.
+#[path = "build/ast_scan.rs"]
+mod ast_scan;
 
-use route_scan::scan_routes;
+// The single Rocket→OpenAPI path translation, also shared with the
+// mounted-route parity gate in `src/tests/openapi_contract.rs`: both compare
+// the same two strings, so they must use the same implementation. `ast_scan`
+// calls it as `super::route_path::to_spec_path`, which is why this
+// declaration must exist next to the `ast_scan` module.
+#[path = "build/route_path.rs"]
+mod route_path;
+
+use ast_scan::{HandlersScan, scan_handlers, scan_routes};
 
 #[derive(Clone)]
 struct Route {
@@ -28,16 +38,48 @@ fn main() {
     let all_routes = collect_all_routes(&router_root);
     let mut annotated: Vec<Route> = Vec::new();
     let mut missing: Vec<&Route> = Vec::new();
+    // Defining files are parsed once; their path findings are printed once.
+    let mut handler_scans: HashMap<PathBuf, HandlersScan> = HashMap::new();
 
     for r in &all_routes {
-        if has_annotation(r, backend_root) {
-            annotated.push(Route {
+        let source = route_source(r, backend_root);
+        if !handler_scans.contains_key(&source) {
+            let scan = match std::fs::read_to_string(&source) {
+                Ok(content) => scan_handlers(&content, &source),
+                // An I/O problem is not a missing annotation: say so, then
+                // fall back — the route reports as missing below, as before.
+                Err(err) => {
+                    println!("cargo:warning=cannot read {}: {err}", source.display());
+                    HandlersScan::default()
+                }
+            };
+            for finding in &scan.findings {
+                println!("cargo:warning={}", finding.message());
+            }
+            // Attribute path agreement: compare exactly the two strings the
+            // parity gate compares — the shared translation of the Rocket
+            // URI against the annotation's declared path.
+            for handler in &scan.handlers {
+                if let Some(finding) = handler.path_mismatch(&source) {
+                    println!("cargo:warning={}", finding.message());
+                }
+            }
+            handler_scans.insert(source.clone(), scan);
+        }
+        let scan = handler_scans
+            .get(&source)
+            .expect("handler scan inserted in the iteration above");
+        // The annotation gate is per function: only *this* handler's own
+        // `#[utoipa::path]` counts, never a sibling's in the same file.
+        // `candidate` prefers the annotated one when a `#[cfg(test)]`
+        // duplicate shares the name, so the real route is not dropped.
+        match scan.candidate(&r.handler) {
+            Some(handler) if handler.annotated => annotated.push(Route {
                 group_prefix: r.group_prefix.clone(),
                 module_path: r.module_path.clone(),
                 handler: r.handler.clone(),
-            });
-        } else {
-            missing.push(r);
+            }),
+            _ => missing.push(r),
         }
     }
 
@@ -170,8 +212,11 @@ fn generate_openapi_rs(annotated: &[Route], dest: &Path) {
     // Do NOT rerun on dest — it's generated, would cause rebuild loop.
 }
 
-fn has_annotation(route: &Route, backend_root: &Path) -> bool {
-    let source = if route.module_path == route.group_prefix {
+/// File that declares `route`'s handler: `router/<group>.rs` for an
+/// unqualified entry (its module resolves to the group), otherwise
+/// `router/<group>/<module>.rs`.
+fn route_source(route: &Route, backend_root: &Path) -> PathBuf {
+    if route.module_path == route.group_prefix {
         backend_root
             .join("src")
             .join("router")
@@ -182,20 +227,19 @@ fn has_annotation(route: &Route, backend_root: &Path) -> bool {
             .join("router")
             .join(&route.group_prefix)
             .join(format!("{}.rs", route.module_path))
-    };
-    let Ok(content) = std::fs::read_to_string(&source) else {
-        return false;
-    };
-    content.contains("utoipa::path") && content.contains(&format!("fn {}(", route.handler))
+    }
 }
 
 fn collect_all_routes(router_root: &Path) -> Vec<Route> {
+    // Every entry must name a file under `router/`: an entry that cannot be
+    // read is reported as `cargo:warning=cannot read …` below rather than
+    // skipped silently (there is no `fairing/` module — the fairing-style
+    // renewal routes live in `auth.rs`, so no such entry exists).
     let mod_entries = [
         ("get", "get/mod.rs"),
         ("post", "post/mod.rs"),
         ("put", "put/mod.rs"),
         ("delete", "delete.rs"),
-        ("fairing", "fairing/mod.rs"),
         // `auth.rs` mounts the token renewal routes through
         // `generate_fairing_routes()`. It has to be scanned here as well,
         // otherwise its annotated handlers never reach `paths(...)` and the
@@ -207,11 +251,19 @@ fn collect_all_routes(router_root: &Path) -> Vec<Route> {
 
     for (group_prefix, rel_path) in &mod_entries {
         let path = router_root.join(rel_path);
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            continue;
+        let content = match std::fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(err) => {
+                println!("cargo:warning=cannot read {}: {err}", path.display());
+                continue;
+            }
         };
 
-        for handler in scan_routes(&content, group_prefix) {
+        let scan = scan_routes(&content, group_prefix, &path);
+        for finding in &scan.findings {
+            println!("cargo:warning={}", finding.message());
+        }
+        for handler in scan.handlers {
             routes.push(Route {
                 group_prefix: group_prefix.to_string(),
                 module_path: handler.module_path,
