@@ -74,10 +74,16 @@ The goal is an exact, auditable mapping between:
      `router/delete.rs` and `router/auth.rs` to discover every registered
      handler. A module missing from that list has its routes mounted but
      undocumented, which the parity test reports.
-   - Splits each `routes![]` block on commas, so a single-line
-     `routes![a, b]` registers both handlers.
-   - For each handler, reads its source file to check for a
-     `#[utoipa::path]` annotation.
+   - Parses each `routes![]` macro's token stream out of the file's AST (in
+     `backend/build/ast_scan.rs`), so a single-line `routes![a, b]` registers
+     both handlers and an entry that is not a plain `handler` or
+     `module::handler` path is reported instead of guessed at.
+   - Parses each handler's source file and checks _that function_ for a
+     `#[utoipa::path]` annotation — per function, not per file — and warns
+     when the annotation's `path = "..."` disagrees with the Rocket
+     attribute's URI after the shared `to_spec_path` translation in
+     `backend/build/route_path.rs`, which the parity gate also uses, so the
+     two comparisons cannot drift apart.
    - Prints `cargo:warning=` for any handler missing an annotation.
    - Writes `backend/src/openapi.rs` with the correct `__path_*` imports and
      `paths(...)` registration.
@@ -101,11 +107,18 @@ The goal is an exact, auditable mapping between:
    taxonomy below (every operation carries a known tag, `pages` sits on the
    SPA page routes and on nothing else).
 
-6. **`route_scan` tests** (`cargo test --lib route_scan`) — cover the scanner in
-   `backend/build/route_scan.rs`, which `build.rs` shares with the test module so
-   the `routes![]` parsing is testable outside the build script.
+6. **`ast_scan` tests** (`cargo test --lib ast_scan`) — cover the AST analysis in
+   `backend/build/ast_scan.rs`, which `build.rs` shares with the test module so
+   the `routes![]` parsing, the per-function annotation check and the attribute
+   path-agreement check are testable outside the build script.
 
-7. **`committed_artifact_is_up_to_date`** — asserts `public_json()` equals the
+7. **`route_path` tests** (`cargo test --lib route_path`) — cover the shared
+   Rocket→OpenAPI translation in `backend/build/route_path.rs`, including the
+   test that pins its two call sites to the same behaviour: every Rocket path
+   declared in the router (derived with the `ast_scan` pass) must translate to
+   a path in the committed `backend/openapi.json`.
+
+8. **`committed_artifact_is_up_to_date`** — asserts `public_json()` equals the
    committed `backend/openapi.json`, so a stale artifact fails `cargo test` as
    well as `just openapi-check`.
 
@@ -234,4 +247,6 @@ The explicit schema list was redundant and has been removed.
 | `backend/openapi.json`                  | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked) |
 | `docs/openapi-reference.md`             | widdershins         | Human-readable API reference                       |
 | `backend/src/tests/openapi_contract.rs` | —                   | Mounted-route / spec parity gate                   |
-| `build.rs`                              | —                   | Route scanner + `openapi.rs` generator + coverage  |
+| `backend/build/ast_scan.rs`             | —                   | AST route/handler analysis shared with unit tests  |
+| `backend/build/route_path.rs`           | —                   | Shared Rocket→OpenAPI path translation             |
+| `build.rs`                              | —                   | AST route scan + `openapi.rs` generator + coverage |

@@ -19,35 +19,16 @@ use rocket::http::Method;
 use crate::openapi_public::{is_test_only_path, public_json};
 use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, build_test_rocket};
 
+// The shared Rocket→OpenAPI path translation, also used by `build.rs` for
+// the annotation path check. The rules and why they exist are documented in
+// `build/route_path.rs`; do not restate or reimplement them here.
+#[path = "../../build/route_path.rs"]
+mod route_path;
+
+use route_path::to_spec_path;
+
 /// A mounted route or a documented operation, as a comparable identity.
 type Operation = (Method, String);
-
-/// Rewrite a Rocket route URI to OpenAPI path-template form.
-///
-/// Rocket declares segments as `<name>` / `<name..>`; OpenAPI uses `{name}`. A
-/// leading underscore in a Rocket segment name (`<_path..>`, used to avoid a
-/// clash with the handler name) has no OpenAPI counterpart and is dropped. The
-/// query part is dropped because it is documented per parameter, not in the path.
-fn to_spec_path(uri: &str) -> String {
-    let path = uri.split('?').next().unwrap_or(uri);
-    let mut out = String::with_capacity(path.len());
-    let mut rest = path;
-    while let Some(start) = rest.find('<') {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 1..];
-        let Some(end) = after.find('>') else {
-            // Not a segment declaration; keep the remainder verbatim.
-            out.push_str(&rest[start..]);
-            return out;
-        };
-        out.push('{');
-        out.push_str(after[..end].trim_end_matches('.').trim_start_matches('_'));
-        out.push('}');
-        rest = &after[end + 1..];
-    }
-    out.push_str(rest);
-    out
-}
 
 /// Parse a spec method key. `Method` has no fallible parser, and an unknown
 /// verb should fail the gate rather than be skipped.
@@ -83,17 +64,25 @@ fn spec_operations() -> HashSet<Operation> {
     operations
 }
 
+/// A path the documented contract deliberately does not cover, method aside:
+/// the test-only probes stripped from the public spec, and the static file
+/// server for the built frontend, which serves bytes rather than API
+/// operations. Shared with the source-level translation test in
+/// `tests/route_path.rs`, which derives declarations from the router sources
+/// and has no method information.
+pub(super) fn is_outside_contract_path(path: &str) -> bool {
+    is_test_only_path(path) || path.starts_with("/assets")
+}
+
 /// Mounted routes that are deliberately absent from the documented contract.
 fn is_outside_contract(operation: &Operation) -> bool {
     let (method, path) = operation;
-    // Test-only probes: mounted in every build, enabled only by the test
-    // bootstrap, and stripped from the public spec on purpose.
+    // Test-only probes are out of contract regardless of method; the shared
+    // path predicate below narrows the file-server case to its GET mount.
     if is_test_only_path(path) {
         return true;
     }
-    // Static file server for the built frontend. It serves bytes, not API
-    // operations, so it carries no OpenAPI operation.
-    *method == Method::Get && path.starts_with("/assets")
+    *method == Method::Get && is_outside_contract_path(path)
 }
 
 /// Mounted routes that are in scope of the contract but not documented.
@@ -219,25 +208,6 @@ fn contract_exclusions_match_mounted_routes() {
             operation.1
         );
     }
-}
-
-#[test]
-fn rocket_paths_normalize_to_spec_templates() {
-    assert_eq!(
-        to_spec_path("/get/metadata/<asset_id>"),
-        "/get/metadata/{asset_id}"
-    );
-    assert_eq!(
-        to_spec_path("/albums/view/<_path..>"),
-        "/albums/view/{path}"
-    );
-    assert_eq!(
-        to_spec_path("/object/compressed/<file_path..>"),
-        "/object/compressed/{file_path}"
-    );
-    // Query parameters are documented per parameter, not in the path.
-    assert_eq!(to_spec_path("/get/prefetch?<locate>"), "/get/prefetch");
-    assert_eq!(to_spec_path("/upload"), "/upload");
 }
 
 // ── Operation tags ────────────────────────────────────────────────────────────

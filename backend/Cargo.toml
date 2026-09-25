@@ -65,6 +65,16 @@ infer = "0.22.0"
 tempfile = "3"
 serde_yaml = "0.9"
 snapfab = { version = "0.1", path = "../utils/snapfab" }
+# `build/ast_scan.rs` is shared with `src/tests/ast_scan.rs` via `#[path]`, so
+# the test target needs the same parser crates the build script uses.
+proc-macro2 = "1"
+syn = { version = "2", features = ["full", "parsing", "extra-traits", "visit"] }
+
+# `build/ast_scan.rs` parses router sources with syn; syn 2 and proc-macro2
+# are already in the lock file via rocket_codegen and utoipa-gen.
+[build-dependencies]
+proc-macro2 = "1"
+syn = { version = "2", features = ["full", "parsing", "extra-traits", "visit"] }
 
 [features]
 embed-frontend = []
