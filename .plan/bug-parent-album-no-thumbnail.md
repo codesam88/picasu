@@ -1,19 +1,16 @@
 ---
-status: open
+status: done
 type: bug
 priority: medium
 area: backend
 ---
 
-## Notes
+### Progress (2026-09-25)
 
-Albums that contain only sub-albums (no direct images) do not get a
-thumbnail preview. They should randomly pick an image from one of the
-sub-albums as their thumbnail.
-
-The `AlbumCombined::self_update()` in `model/album.rs` computes `cover`
-by scanning asset paths whose parent matches the album's `dir_path`. For
-parent-only albums this set is empty, so no cover is assigned.
+Implemented descendant cover selection for parent-only albums. The fallback
+uses the newest eligible descendant image and ignores generated
+`.__picasu_ph__.jpg` placeholders. Added unit coverage and an API scenario
+verifying the parent album exposes the descendant asset as its cover.
 
 ### Progress (2026-09-20)
 
