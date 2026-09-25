@@ -7,7 +7,7 @@ updates:
       interval: weekly
     open-pull-requests-limit: 3
     groups:
-      updates:
+      frontend:
         applies-to: version-updates
         patterns:
           - "*"
@@ -21,7 +21,7 @@ updates:
       interval: weekly
     open-pull-requests-limit: 3
     groups:
-      updates:
+      github-actions:
         applies-to: version-updates
         patterns:
           - "*"
@@ -35,7 +35,7 @@ updates:
       interval: weekly
     open-pull-requests-limit: 3
     groups:
-      updates:
+      rust:
         applies-to: version-updates
         patterns:
           - "*"
