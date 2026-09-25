@@ -103,6 +103,9 @@ Medium — bad patterns and type fidelity:
 
 Low — consistency and polish:
 
+- [ ] Document remaining `/upload` query params on the utoipa path: only `auto_rename` is annotated; add
+      `presigned_album_id_opt` and `on_conflict` (valid values `skip`|`rename`, defaults). Absorbed from
+      `openapi-upload-query-params.md` (2026-09-24).
 - [ ] Add descriptions to bare enums: `OnConflict` (`skip`/`rename` need
       behavior semantics), `AlbumIndexState`.
 - [ ] Decide a naming convention and document it: snake query params

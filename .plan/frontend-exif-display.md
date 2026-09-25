@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: medium
 area: frontend
@@ -12,3 +12,9 @@ Expand the metadata panel to show more EXIF fields.
 - `description` field: already stored and returned by API; verify it is displayed and editable via `PUT /put/set_user_defined_description`
 
 Fields are already extracted by the backend at index time via `kamadak-exif`. This is a display-only frontend change.
+
+## Progress
+
+- 2026-09-24: Closed. `ItemExif.vue` already renders Make/Model, FNumber, ExposureTime, FocalLength, and
+  PhotographicSensitivity (ISO). Description is displayed and editable in `MetadataContent.vue`. `ItemDate.vue` shows a
+  DateTime field — no further ticketed work tracked here.

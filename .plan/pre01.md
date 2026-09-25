@@ -5,77 +5,129 @@ priority: high
 area: meta
 ---
 
-# pre01: First-Release Feature Plan
+# pre01: v0.1 Release Plan
 
-## Overview
+## What this release promises
 
-Three interlocking areas for first release: file lifecycle correctness, metadata
-read from files, and metadata write-back to XMP sidecars. A fourth cross-cutting
-concern — rating — falls out of the metadata work.
+1. **File operations stay in sync** — delete, move, upload, and external changes keep the
+   filesystem and database consistent (originals, thumbnails, sidecars, caches).
+2. **Metadata is read from files** — EXIF/XMP extracted at index time and shown in the UI.
+3. **User edits are written back** — editing metadata never touches the original asset;
+   changes go to an XMP sidecar next to the file (`{name}.{ext}.xmp`, or `.albuminfo.xmp`
+   for albums).
 
-## Tickets
+**Release rule:** anything editable in the UI must be a working, confirmed function.
 
-| Area | Summary                            | Status      | Ticket                              |
-| ---- | ---------------------------------- | ----------- | ----------------------------------- |
-| 1a   | Delete removes files from disk     | ✅ Done     | `delete-from-disk.md`               |
-| 1b   | Watcher handles Remove events      | ✅ Done     | `watcher-remove-events.md`          |
-| 1c   | assign_album conflict handling     | ✅ Done     | `assign-album-conflict.md`          |
-| 1d   | Upload conflict handling           | ✅ Done     | `upload-conflict.md`                |
-| 1e   | Verify file E2E                    | ✅ Done     | `verify-file-actions.md`            |
-| 2a   | XMP metadata read (IPTC, GPS)      | 🟡 Partial  | `test-exif-xmp-handling.md`         |
-| 2b   | Frontend EXIF display              | ❌ Open     | `frontend-exif-display.md`          |
-| 3a   | XMP sidecar write-back (all edits) | 🟡 Partial  | `edit-flags-sidecar-writeback.md`   |
-| 3b   | Sidecar moves with file            | ✅ Done     | `xmp-sidecar-metadata.md`           |
-| 3c   | Sidecar deletes with file          | ✅ Done     | `xmp-sidecar-metadata.md`           |
-| 3d   | Tag provenance                     | 🟡 Minimal  | no dedicated ticket (v1 acceptable) |
-| 4a   | Rating field                       | ✅ Done     | `frontend-rating-widget.md`         |
-| 4b   | Image title field                  | ⏭️ Deferred | no dedicated ticket                 |
-| 5    | DIR_ALBUM_CACHE stale entries      | ✅ Done     | `stale-dir-album-cache.md`          |
+## Workstreams
 
-## Current Next Steps
+The remaining release work falls into four categories:
 
-The release-critical work is now concentrated in filesystem lifecycle behavior
-and the remaining metadata paths. Upload handling is complete, including conflict
-strategies, filename sanitization, content validation, timestamp handling, bounded
-auto-rename, multi-file preflight validation, and frontend upload-option coverage.
+| Category                | What it covers                                      | Items      |
+| ----------------------- | --------------------------------------------------- | ---------- |
+| **A. Correctness**      | Behavior that is wrong or violates the release rule | A1, A2     |
+| **B. Metadata & UI**    | Completing the metadata promise; visible polish     | B1, B2, B3 |
+| **C. Release hygiene**  | Legal/licensing gate before tagging                 | C1         |
+| **D. Confidence tests** | Tests that pin down shipped behavior                | D1         |
 
-### Next, in order
+## Status overview
 
-> 2026-09-24: items 1–3 below are complete (delete-from-disk, watcher
-> Remove handling, assign_album conflict handling).
+| #   | Item                                    | Ticket                                   | Status                                     |
+| --- | --------------------------------------- | ---------------------------------------- | ------------------------------------------ |
+| A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | open — needs repro + root cause            |
+| A2  | Flag edits don't write sidecars         | `edit-flags-sidecar-writeback.md`        | open — needs favorite XMP mapping decision |
+| B1  | EXIF/XMP read for non-JPEG containers   | `test-exif-xmp-handling.md`              | open — JPEG covered; PNG/TIFF/MP4 gap      |
+| B2  | UI bugs (Escape/back, lightbox, theme)  | `ui-refinement.md`                       | open — bug checklist only; 4/21 done       |
+| B3  | Parent-only albums have no thumbnail    | `bug-parent-album-no-thumbnail.md`       | open — root cause identified               |
+| C1  | License / SPDX / OSSF review            | `license-and-ossf-review.md`             | idea — promote to open, run before tagging |
+| D1  | Filename sanitization corner-case tests | `filename-sanitization-test-gaps.md`     | open — behavior decisions + tests          |
 
-1. Complete hard delete, including original files, thumbnails, asset records, sidecars,
-   and cache eviction (`delete-from-disk.md`).
-2. Handle externally deleted files in the watcher and during manual album indexing
-   (`watcher-remove-events.md`).
-3. Add conflict handling to `assign_album`, including resolved sidecar destinations
-   (`assign-album-conflict.md`).
-4. Complete XMP sidecar write-back for `edit_flags`, after deciding the favorite
-   mapping (`edit-flags-sidecar-writeback.md`).
-5. Add non-JPEG XMP/IPTC coverage and expand frontend EXIF display
-   (`test-exif-xmp-handling.md`, `frontend-exif-display.md`).
-6. Run the remaining release-confidence work: API/UI E2E coverage, backend unit
-   coverage, and the highest-impact UI bugs (`expand-e2e-testing.md`,
-   `backend-unit-tests.md`, `ui-refinement.md`).
+## Item details (what / why)
 
-Image title editing remains explicitly deferred for v0.1.
+### A. Correctness
 
-## Related Plan Items
+**A1 — Deleting an album resurrects its sub-albums.**
+_What:_ deleting an album should recursively remove sub-albums and files; instead the
+physical directory survives, the next index sweep re-discovers the sub-albums, and they
+reappear under the root. _Why critical:_ reported by a user; directly contradicts the
+file-lifecycle work already shipped (delete-from-disk, watcher Remove handling). Needs
+reproduction and root-cause investigation before estimate is reliable.
 
-| File                              | Status  | Notes                                         |
-| --------------------------------- | ------- | --------------------------------------------- |
-| `delete-from-disk.md`             | done    | Delete removes files from disk + thumbnails   |
-| `watcher-remove-events.md`        | done    | Watcher handles Remove events                 |
-| `assign-album-conflict.md`        | done    | assign_album conflict handling (skip/rename)  |
-| `upload-conflict.md`              | done    | Upload conflict handling and upload hardening |
-| `edit-flags-sidecar-writeback.md` | open    | edit_flags writes XMP sidecar                 |
-| `frontend-exif-display.md`        | open    | Expand ItemExif.vue beyond Make/Model         |
-| `test-exif-xmp-handling.md`       | open    | Non-JPEG container XMP coverage               |
-| `expand-e2e-testing.md`           | open    | 12+ untested API endpoints                    |
-| `ui-refinement.md`                | open    | UI bugs and polish                            |
-| `backend-unit-tests.md`           | open    | Pure function unit tests                      |
-| `clippy-unwrap-cleanup.md`        | backlog | ~140 unwrap calls                             |
-| `verify-file-actions.md`          | done    | E2E lifecycle coverage                        |
-| `stale-dir-album-cache.md`        | done    | Cache pruned at startup + request time        |
-| `frontend-rating-widget.md`       | done    | Star rating UI + edit_rating endpoint         |
-| `xmp-sidecar-metadata.md`         | done    | XMP sidecar lifecycle                         |
+**A2 — Favorite / Archived / Trashed don't write an XMP sidecar.**
+_What:_ `PUT /put/edit_flags` updates the database but never calls `write_sidecar_for`,
+unlike tag, description, rating, and album-title edits. Decide how `is_favorite` maps to
+XMP (`xmp:Rating=5` vs `xmp:Label`), then call the writer. _Why critical:_ flag editing is
+exposed in the UI (menus, tag editor virtual items), so this is the one editable surface
+that fails the release rule. Small scope: one call site + one mapping decision.
+
+### B. Metadata & UI
+
+**B1 — Non-JPEG XMP read coverage.**
+_What:_ XMP extraction (`xmp.rs`) is unit-tested only against JPEG-style packets; XMP/IPTC
+packet placement differs per container (PNG zTXt/iTXt, TIFF, MP4 uuid box). Add one test
+per representative container. _Why:_ "metadata read from files" is a core release promise;
+today it is only demonstrably true for JPEG. Video-pipeline coverage needs
+`ffmpeg`/`ffprobe` and may be split off if unavailable in CI.
+
+**B2 — UI bug pass.**
+_What:_ the bug checklist in `ui-refinement.md` — Escape/back navigation, lightbox
+controls, theme placement. _Why:_ daily-visible glitches that undermine the first
+impression. The polish/feature items in the same ticket (breadcrumbs, nav rework) are
+**not** release-scoped.
+
+**B3 — Parent-only albums show no thumbnail.**
+_What:_ albums containing only sub-albums get no cover; `AlbumCombined::self_update()`
+computes the cover from assets whose parent matches `dir_path`, and that set is empty for
+parent-only albums. Pick a descendant image instead. _Why:_ visible gap in every album
+tree; root cause is already identified, fix is local.
+
+### C. Release hygiene
+
+**C1 — License / SPDX / OSSF scorecard review.**
+_What:_ review dependencies and repo metadata for license issues; add SPDX labels; check
+OSSF scorecard. _Why:_ explicit pre-first-release gate; currently an `idea` — promote to
+`open` when starting.
+
+### D. Confidence tests
+
+**D1 — Filename sanitization corner-case tests.**
+_What:_ pin down `sanitize_filename` / `resolve_filename` corner cases raised in PR #17
+review: C0/DEL control characters (currently unfiltered — decide policy first), `resolve_filename`
+unit tests (generated-name fallback, `file_stem` edges, reject-message paths), fullwidth
+separators, tier-2 boundary coverage. _Why:_ filename handling is upload-path security
+surface with shipped behavior that has known untested branches; tests are cheap and the
+one policy decision (control chars) is small.
+
+## Explicitly out of scope for v0.1
+
+- **Image title editing** — not exposed in the UI; nothing to make work.
+- **Tag origin tracking** ("provenance") — user tag edits already persist to sidecars;
+  origin tracking only matters for a future scrub/repair feature.
+- **`error-handling-and-activity-log`** — largest open ticket, cross-cutting scope;
+  deferring does not violate the release rule. Post-v01 (or a backend-logging-only slice).
+- **`openapi-contract-hardening`** — only the two high items (renew-hash-token
+  registration, 401 sweep) are candidates if schedule allows; the remaining ~11 tasks
+  backlog.
+- **Test infrastructure** — coverage reports, Pinia store tests, e2e expansion (closed
+  obsolete 2026-09-24), unified harness, quality gates.
+- **Backlog architecture/perf work** — fs-db review, clippy unwrap cleanup, view-cache
+  eviction, scrub endpoint (stale design), docker verification (unless Docker is a
+  release deliverable).
+
+## Already done (for context)
+
+File lifecycle (delete removes files, watcher Remove handling, `assign_album` conflicts,
+upload conflict handling + hardening), EXIF display in the metadata panel, rating field,
+sidecar lifecycle (moves/deletes with file), dir-album cache pruning, backend unit tests
+for the five pure-function targets, snapfab migration.
+
+## Related plan items
+
+| File                                     | Status | Item |
+| ---------------------------------------- | ------ | ---- |
+| `bug-delete-album-restores-subalbums.md` | open   | A1   |
+| `edit-flags-sidecar-writeback.md`        | open   | A2   |
+| `test-exif-xmp-handling.md`              | open   | B1   |
+| `ui-refinement.md`                       | open   | B2   |
+| `bug-parent-album-no-thumbnail.md`       | open   | B3   |
+| `license-and-ossf-review.md`             | idea   | C1   |
+| `filename-sanitization-test-gaps.md`     | open   | D1   |

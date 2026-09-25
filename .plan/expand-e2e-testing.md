@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: medium
 area: testing
@@ -30,3 +30,9 @@ Older items:
       `DUPE_INDEX` without last-write-wins behavior
 - [ ] `GET /object/*` with another asset's asset-ID token → 401/403
 - [ ] Prefetch snapshot expiry — blocked until prefetch-expiry bug is fixed
+
+## Progress
+
+- 2026-09-24: Closed as obsolete per decision — not pursued as a standing ticket. Several checklist items are already
+  covered by existing scenarios under other names (e.g. authenticate, set cover/title, edit\_flags, delete, index
+  status). Remaining coverage gaps should be opened as individual tickets if needed rather than tracked here.

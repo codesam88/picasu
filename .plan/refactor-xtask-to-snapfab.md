@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: chore
 priority: medium
 area: tooling
@@ -110,3 +110,9 @@ should also use minimal mode.
 | `backend/src/tests/`                        | update use paths                         |
 | `frontend/tests/playwright/executeGiven.ts` | spawn path + minimal flag                |
 | `justfile`                                  | update cargo run -p invocations          |
+
+## Progress
+
+- 2026-09-24: Closed. Scope items 1, 3, 4, and `executeGiven.ts` landed as specified (`utils/snapfab`, `xtask/` removed,
+  `PhotoSpec.minimal`, spawn via `cargo run -p snapfab`). Scope item 2 (`utils/plan`) was not built: the plan CLI now
+  comes from the external `tablethat` tool (see `.cargo/config.toml` and justfile install recipe).

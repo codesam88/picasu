@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: medium
 area: testing
@@ -12,3 +12,9 @@ Backend unit tests for pure functions with non-trivial branches, per `docs/test-
 3. **`Expression` filter predicates** (`generate_filter.rs`) — filters composed at runtime; incorrect predicate logic silently returns wrong results
 4. **`compute_timestamp`** (`abstract_data.rs`) — priority logic across EXIF, file, and fallback timestamps
 5. **`belongs_to_album` path-prefix branch** (`combined.rs`) — dir-vs-manual discriminator; path-prefix semantics are subtle
+
+## Progress
+
+- 2026-09-24: Closed. All five targets have unit tests in tree: `prettify_dir_name` (`dir_album.rs`), schema dispatch
+  (`ser_de.rs` `mod tests`), `Expression` predicates (`expression.rs`), `compute_timestamp` (`abstract_data.rs`),
+  `belongs_to_album` (`album.rs`).

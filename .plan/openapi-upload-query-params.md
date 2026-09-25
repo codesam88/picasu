@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: low
 area: backend
@@ -31,3 +31,6 @@ widespread absence of annotations — so nothing currently tracks these missing 
 `auto_rename` done in PR \#17 (utoipa 5 `params(("auto_rename" = Option<bool>, Query, description = ...))`, confirmed
 in a `--dump-openapi` run). `presigned_album_id_opt` and `on_conflict` remain undocumented — pre-existing drift, kept
 out of PR scope.
+
+- 2026-09-24: Closed. `auto_rename` already documented. Remaining work (`presigned_album_id_opt`, `on_conflict` query
+  params on `POST /upload`) folded into `openapi-contract-hardening.md`.
