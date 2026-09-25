@@ -105,6 +105,116 @@ MP4 and MOV tests require both `ffmpeg` and `ffprobe`.
 - Corrupt metadata behavior must be explicit: test current fallback behavior
   first, then change it only with a separate product decision.
 
+## Iterative implementation plan
+
+Each iteration follows the same contract: a worker sub-agent first writes a
+minimal regression test and demonstrates the expected failure; the agent then
+implements the smallest production change; the parent session reviews the diff
+and runs focused tests before the full applicable checks. Agents must not edit
+unrelated files, change established semantics silently, or commit independently.
+
+### Iteration 0 — Define the capability manifest
+
+- **Owner:** test-infrastructure worker.
+- **Tests first:** validate a manifest schema containing format, extension,
+  content signature, supported metadata fields, sidecar behavior, and expected
+  failure class. Add a selftest that rejects an incomplete manifest entry.
+- **Implementation:** add a repository-owned manifest used by scenario
+  fixtures and randomized selection. Keep it independent of UI code.
+- **Gate:** manifest unit tests, `just plan-lint`, and the existing scenario
+  loader tests.
+
+### Iteration 1 — Enforce misnamed-file rejection
+
+- **Owner:** backend API worker.
+- **Tests first:** add upload scenarios for JPEG bytes named `.png`, PNG bytes
+  named `.jpg`, MP4 bytes named `.mov`, and a supported extension with random
+  bytes. Assert status, error code, claimed filename, claimed extension, and
+  detected type in the user-facing message.
+- **Implementation:** centralize signature detection and make the upload path
+  reject mismatches regardless of `validate_upload_content`. Reuse the same
+  detector for filesystem indexing where a supported file is encountered.
+- **Gate:** focused API scenarios, backend unit tests, and the frontend toast
+  assertion for the notification text. Do not add a new error type solely for
+  the test; the contract must describe the existing error path.
+
+### Iteration 2 — Solidify JPEG and PNG contracts
+
+- **Owner:** backend metadata worker.
+- **Tests first:** retain the JPEG APP1/IPTC scenario; add PNG EXIF, dimensions,
+  thumbnail, and sidecar-XMP scenarios. Add a test proving embedded PNG XMP is
+  not promised and does not silently become a required field.
+- **Implementation:** only change extraction if a failing test demonstrates a
+  real JPEG/PNG regression. Do not add PNG embedded-XMP decompression.
+- **Gate:** snapfab tests, metadata API scenarios, and the targeted frontend
+  metadata sidebar scenario.
+
+### Iteration 3 — Add TIFF and WebP real fixtures
+
+- **Owner:** fixture/format worker.
+- **Tests first:** add pinned, provenance-documented TIFF and WebP fixtures
+  and one indexing scenario for each. Assert only fields demonstrated by the
+  fixture and current decoder: dimensions, thumbnail, EXIF where verified, and
+  sidecar XMP.
+- **Implementation:** extend the `image` decoder features only if the fixture
+  fails for a supported format; do not infer metadata support from extension
+  acceptance.
+- **Gate:** fixture manifest validation, backend API scenarios, and `just
+backend-check`.
+
+### Iteration 4 — Add MP4 and MOV integration coverage
+
+- **Owner:** video backend worker.
+- **Tests first:** add tiny deterministic ffmpeg-generated MP4 and MOV fixtures,
+  then assert ffprobe format/stream metadata, dimensions, thumbnail, and any
+  verified XMP source. Add a missing-tool test that reports a clear diagnostic.
+- **Implementation:** keep ffprobe and raw XMP responsibilities separate. Do
+  not claim UUID-box support until a real fixture demonstrates it.
+- **Gate:** video scenarios with `ffmpeg`/`ffprobe` present, backend tests, and
+  release-build compilation.
+
+### Iteration 5 — Define corrupt/missing metadata fallback
+
+- **Owner:** backend metadata worker.
+- **Tests first:** cover empty files, truncated media, corrupt EXIF/XMP inside a
+  decodable image, corrupt sidecars, and missing optional fields. Assert stable
+  API responses and no panics.
+- **Implementation:** preserve the current fallback where it is safe. Any change
+  from raw to sidecar to default precedence requires a separate decision and a
+  failing test that demonstrates the old behavior is wrong.
+- **Gate:** negative API scenarios, metadata unit tests, and a reindex test that
+  proves the DB cache can be reconstructed from raw plus sidecar data.
+
+### Iteration 6 — Implement seeded randomized scenarios
+
+- **Owner:** test-infrastructure worker.
+- **Tests first:** add harness tests for deterministic seed replay, capability
+  filtering, logged format selection, and exclusion of unsupported formats.
+- **Implementation:** add fixed CI seeds first; add broader nightly seeds only
+  after the deterministic matrix is green. Randomize input selection, never
+  expected outcomes.
+- **Gate:** frontend and API scenario suites with a recorded seed manifest.
+
+### Iteration 7 — UI cross-format smoke coverage
+
+- **Owner:** frontend worker.
+- **Tests first:** add one small upload → gallery → metadata → delete flow for
+  each capability group: still image, TIFF/WebP image, and MP4/MOV video.
+- **Implementation:** keep UI scenarios behavior-focused; do not duplicate
+  backend parser assertions in Playwright.
+- **Gate:** targeted Playwright tests, then the full frontend suite.
+
+## Sub-agent coordination rules
+
+- Assign one bounded subsystem per worker and require exact file ownership in
+  the task prompt.
+- Workers report the red test, implementation files, focused verification, and
+  unresolved contract questions.
+- The parent session reviews each diff before starting the next iteration.
+- A worker may not mark a format supported merely because a fixture was added.
+- If a test requires a product decision, stop that iteration and record the
+  decision in this plan before implementation continues.
+
 ## Randomized scenario rollout
 
 Randomization should complement, not replace, the deterministic matrix.
