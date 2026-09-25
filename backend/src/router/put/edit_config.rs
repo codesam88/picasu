@@ -35,6 +35,7 @@ pub struct PartialUpdateConfigRequest {
 #[utoipa::path(
         put,
         path = "/put/config",
+        tag = "config",
         request_body = PartialUpdateConfigRequest,
         responses(
             (status = 200, description = "Config updated"),
@@ -132,6 +133,7 @@ pub struct UpdatePasswordRequest {
 #[utoipa::path(
         put,
         path = "/put/config/password",
+        tag = "config",
         request_body = UpdatePasswordRequest,
         responses(
             (status = 200, description = "Password updated"),

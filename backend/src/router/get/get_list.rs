@@ -16,6 +16,7 @@ use std::path::Path;
 #[utoipa::path(
         get,
         path = "/get/get-tags",
+        tag = "timeline",
         responses(
             (status = 200, description = "List of tags", body = Vec<TagInfo>),
             (status = 400, description = "Invalid input"),
@@ -50,6 +51,7 @@ pub struct AlbumInfo {
 #[utoipa::path(
         get,
         path = "/get/get-albums",
+        tag = "albums",
         responses(
             (status = 200, description = "List of albums", body = Vec<AlbumInfo>),
             (status = 401, response = Unauthorized),

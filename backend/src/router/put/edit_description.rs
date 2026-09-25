@@ -28,6 +28,7 @@ pub struct SetUserDefinedDescription {
 #[utoipa::path(
         put,
         path = "/put/set_user_defined_description",
+        tag = "albums",
         request_body = SetUserDefinedDescription,
         responses(
             (status = 200, description = "Description updated"),

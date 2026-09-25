@@ -37,6 +37,7 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
 #[utoipa::path(
         get,
         path = "/object/compressed/{file_path}",
+        tag = "serving",
         responses(
             (status = 200, description = "Compressed file"),
             (status = 400, description = "Invalid input"),
@@ -108,6 +109,7 @@ pub async fn compressed_file(
 #[utoipa::path(
         get,
         path = "/object/imported/{file_path}",
+        tag = "serving",
         responses(
             (status = 200, description = "Imported original file"),
             (status = 400, description = "Invalid input"),

@@ -31,6 +31,7 @@ use std::time::Instant;
 #[utoipa::path(
         get,
         path = "/get/get-data",
+        tag = "timeline",
         responses(
             (status = 200, description = "Data by timestamp range", body = Vec<DataBaseTimestampReturn>),
             (status = 400, description = "Invalid input"),
@@ -162,6 +163,7 @@ pub async fn get_data(
 #[utoipa::path(
         get,
         path = "/get/get-rows",
+        tag = "timeline",
         responses(
             (status = 200, description = "Row data", body = Row),
             (status = 400, description = "Invalid input"),
@@ -192,6 +194,7 @@ pub async fn get_rows(
 #[utoipa::path(
         get,
         path = "/get/get-scroll-bar",
+        tag = "timeline",
         responses(
             (status = 200, description = "Scroll bar data", body = Vec<ScrollBarData>),
             (status = 400, description = "Invalid input"),

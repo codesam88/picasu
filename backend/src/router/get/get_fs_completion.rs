@@ -35,6 +35,7 @@ fn absolutize(p: &Path) -> PathBuf {
 #[utoipa::path(
         get,
         path = "/get/path-completion",
+        tag = "config",
         responses(
             (status = 200, description = "Filesystem path completion", body = FsCompletion),
             (status = 400, description = "Invalid input"),

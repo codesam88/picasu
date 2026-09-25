@@ -30,6 +30,7 @@ pub struct EditTagsData {
 #[utoipa::path(
         put,
         path = "/put/edit_tag",
+        tag = "assets",
         request_body = EditTagsData,
         responses(
             (status = 200, description = "Tags updated", body = Vec<TagInfo>),

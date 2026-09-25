@@ -9,6 +9,7 @@ use crate::router::{AppError, AppResult, ErrorKind};
 #[utoipa::path(
         post,
         path = "/post/authenticate",
+        tag = "auth",
         request_body = String,
         responses(
             (status = 200, description = "JWT token", body = String),

@@ -26,6 +26,7 @@ use crate::tasks::batcher::update_tree::UpdateTreeTask;
 #[utoipa::path(
         post,
         path = "/post/rebuild",
+        tag = "index",
         responses(
             (status = 200, description = "Rebuild complete", body = RebuildStats),
             (status = 400, description = "Invalid input"),
