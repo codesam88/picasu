@@ -384,10 +384,10 @@ fn unauthorized_response<'a>(operation: &'a serde_json::Value) -> &'a serde_json
 }
 
 /// Every non-page operation whose handler can produce a 401 — guard signature
-/// or in-handler `ErrorKind::Auth` path — must document one. The two page-like
-/// omissions are deliberate: `GET /get/get-rows` and `GET /get/get-scroll-bar`
-/// bind `GuardResult<GuardTimestamp>` but discard it with `let _ = auth;`
-/// (`src/router/get/get_data.rs`), so the handler can never answer 401.
+/// or in-handler `ErrorKind::Auth` path — must document one. No omissions:
+/// every operation here either propagates its guard (or auth error) and is
+/// listed, or answers a different status (e.g. `GuardReadOnlyMode` 405) and is
+/// not.
 const GUARDED_OPERATIONS: &[(&str, &str)] = &[
     ("delete", "/delete/delete-data"),
     ("get", "/get/config"),
@@ -395,6 +395,8 @@ const GUARDED_OPERATIONS: &[(&str, &str)] = &[
     ("get", "/get/get-albums"),
     ("get", "/get/get-data"),
     ("get", "/get/get-export"),
+    ("get", "/get/get-rows"),
+    ("get", "/get/get-scroll-bar"),
     ("get", "/get/get-tags"),
     ("get", "/get/index/status"),
     ("get", "/get/metadata/{asset_id}"),
@@ -554,28 +556,4 @@ fn unauthorized_declarations_are_listed() {
          them, or drop the declaration if the route cannot return 401:\n{}",
         unlisted.join("\n")
     );
-}
-
-#[test]
-fn operations_that_cannot_return_401_declare_none() {
-    // KNOWN GAP, tracked in `.plan/bug-get-rows-auth-guard-discarded.md`:
-    // these handlers receive `GuardResult<GuardTimestamp>` but discard it
-    // (`let _ = auth;` in `src/router/get/get_data.rs`), so the routes answer
-    // without validating the token and a 401 would document behavior they do
-    // not have. Delete this test together with the plan entry when the handlers
-    // are fixed; until then it is a tripwire, not an invariant.
-    let spec = public_spec();
-    for path in ["/get/get-rows", "/get/get-scroll-bar"] {
-        let operation = operation(&spec, "get", path);
-        assert!(
-            !operation.is_null(),
-            "{path} is no longer documented; remove it from this list"
-        );
-        assert!(
-            unauthorized_response(operation).is_null(),
-            "{path} discards its guard result and cannot answer 401 — fix the \
-             handler first (see .plan/bug-get-rows-auth-guard-discarded.md), \
-             then document the 401 and delete this test"
-        );
-    }
 }

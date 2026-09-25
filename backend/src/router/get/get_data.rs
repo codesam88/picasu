@@ -165,6 +165,7 @@ pub async fn get_data(
         responses(
             (status = 200, description = "Row data", body = Row),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]
@@ -174,7 +175,7 @@ pub async fn get_rows(
     index: usize,
     timestamp: i64,
 ) -> AppResult<Json<Row>> {
-    let _ = auth;
+    let _ = auth?;
     tokio::task::spawn_blocking(move || {
         let start_time = Instant::now();
         let filtered_rows = TREE_SNAPSHOT
@@ -194,16 +195,16 @@ pub async fn get_rows(
         responses(
             (status = 200, description = "Scroll bar data", body = Vec<ScrollBarData>),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
         )
     )
 ]
 #[get("/get/get-scroll-bar?<timestamp>")]
-#[allow(clippy::needless_pass_by_value)]
 pub fn get_scroll_bar(
     auth: GuardResult<GuardTimestamp>,
     timestamp: i64,
-) -> Json<Vec<ScrollBarData>> {
-    let _ = auth;
+) -> AppResult<Json<Vec<ScrollBarData>>> {
+    let _ = auth?;
     let scrollbar_data = TREE_SNAPSHOT.read_scrollbar(timestamp);
-    Json(scrollbar_data)
+    Ok(Json(scrollbar_data))
 }

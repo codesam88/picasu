@@ -1,0 +1,47 @@
+name: "negative: get-rows rejects missing, malformed and expired bearer tokens"
+# GET /get/get-rows binds GuardResult<GuardTimestamp> and must propagate a
+# failed guard as 401 (same contract as the sibling /get/get-data). The
+# snapshot id in the query is a real, freshly minted prefetch timestamp in
+# every step, so 401 can only come from the guard rejecting the token —
+# never from a missing snapshot.
+given:
+  - dir_album: /e2e_rows_auth/album
+    id_as: $album
+  - photo: /e2e_rows_auth/album/photo_a.jpg
+    id_as: $photo_a
+    asset_id_as: $asset_a
+when:
+  - call: POST /post/index/album
+    body: { album: "/e2e_rows_auth" }
+    then:
+      - response.status: 202
+  - wait_index: true
+  # Mint a timestamp + token for a snapshot that exists.
+  - call: POST /get/prefetch?locate=${asset_a}
+    capture:
+      ts: response.prefetch.timestamp
+  # Row 0 always exists for a non-empty snapshot, so a pre-fix 200 here can
+  # only be the unauthenticated handler answering (index=0 is in bounds).
+  # 1. No Authorization header at all.
+  - call: GET /get/get-rows?index=0&timestamp=${ts}
+    auth: false
+    then:
+      - response.status: 401
+  # 2. Malformed bearer token (not a JWT).
+  - call: GET /get/get-rows?index=0&timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer not-a-jwt"
+    then:
+      - response.status: 401
+  # 3. Well-formed token with the matching timestamp claim but expired exp.
+  - mint_timestamp_token:
+      as: $expired_token
+      timestamp: "${ts}"
+      exp_offset: -3600
+  - call: GET /get/get-rows?index=0&timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${expired_token}"
+then:
+  - response.status: 401

@@ -148,6 +148,16 @@
           "type": "boolean",
           "default": true
         },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "integer",
+              "boolean"
+            ]
+          }
+        },
         "capture": {
           "type": "object"
         },
@@ -387,8 +397,57 @@
         },
         {
           "$ref": "#/definitions/apiWriteFile"
+        },
+        {
+          "$ref": "#/definitions/apiMintTimestampToken"
+        },
+        {
+          "$ref": "#/definitions/apiWaitIndex"
         }
       ]
+    },
+    "apiWaitIndex": {
+      "type": "object",
+      "properties": {
+        "wait_index": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "wait_index"
+      ],
+      "additionalProperties": false
+    },
+    "apiMintTimestampToken": {
+      "type": "object",
+      "properties": {
+        "mint_timestamp_token": {
+          "type": "object",
+          "properties": {
+            "as": {
+              "type": "string",
+              "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
+            },
+            "timestamp": {
+              "type": "string"
+            },
+            "exp_offset": {
+              "type": "integer",
+              "default": 300
+            }
+          },
+          "required": [
+            "as",
+            "timestamp"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "mint_timestamp_token"
+      ],
+      "additionalProperties": false
     },
     "apiScenario": {
       "type": "object",

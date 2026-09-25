@@ -118,6 +118,35 @@ when:
     auth: true
 ```
 
+### Minting a timestamp token (`mint_timestamp_token`)
+
+Timestamp bearer tokens are signed server-side (`exp` included), so a
+scenario cannot produce one — let alone an expired one — through
+`capture`/`calc` alone. A multi-step `when:` block may include a mint item
+instead of a call:
+
+```yaml
+when:
+  - call: POST /get/prefetch?locate=${asset}
+    capture:
+      ts: response.prefetch.timestamp
+  - mint_timestamp_token:
+      as: $expired_token
+      timestamp: "${ts}"
+      exp_offset: -3600
+  - call: GET /get/get-rows?index=0&timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${expired_token}"
+```
+
+`as` binds the signed JWT to `${expired_token}` for later interpolation;
+`timestamp` becomes the token's `timestamp` claim (pass the snapshot the
+request targets so expiry, not a claim mismatch, is the rejection reason);
+`exp_offset` is seconds relative to now (`300`, the app default, when
+omitted). A mint produces no HTTP response, so it cannot be the last item
+of `when:` — nothing for `then:` to assert against.
+
 ### Escape-hatch policy (API)
 
 No raw-Rust escape hatch for assertions. A missing assertion form is

@@ -10,6 +10,7 @@ use serde_json::Value;
 use snapfab::{PhotoSpec, generate_batch};
 
 use crate::DATA_PATH;
+use crate::router::auth::ClaimsTimestamp;
 use crate::tests::bootstrap::*;
 use crate::tests::fixtures::*;
 
@@ -667,6 +668,56 @@ fn process_calc(call: &Value, vars: &mut HashMap<String, String>) {
     }
 }
 
+// ── Mint a timestamp token ──
+
+/// Handle a `mint_timestamp_token` item in a multi-step `when:` block.
+///
+/// Binds a signed `ClaimsTimestamp` JWT to the variable named by `as`, using
+/// the same secret the server validates with. `exp_offset` (seconds relative
+/// to now, default `300` to mirror `ClaimsTimestamp::new`) lets a scenario
+/// mint an already-expired token — the DSL cannot otherwise produce one,
+/// because `exp` is signed server-side and no endpoint returns an expired
+/// token. `timestamp` must equal the snapshot the request targets, so the
+/// token's own claims are valid and expiry is the only rejection reason.
+///
+/// Returns `false` when the item is not a mint, so the caller dispatches it
+/// as an ordinary call. A mint produces no HTTP response, so it cannot be the
+/// last `when` item (nothing for the top-level `then:` to assert against).
+///
+/// # Panics
+///
+/// Panics when `as` or `timestamp` is missing, or `timestamp` is not an
+/// integer after interpolation.
+fn process_mint_timestamp_token(call: &Value, vars: &mut HashMap<String, String>) -> bool {
+    let Some(mint) = call.get("mint_timestamp_token") else {
+        return false;
+    };
+
+    let name = mint["as"]
+        .as_str()
+        .unwrap_or_else(|| panic!("mint_timestamp_token.as is required"));
+    let timestamp_str = mint["timestamp"]
+        .as_str()
+        .unwrap_or_else(|| panic!("mint_timestamp_token.timestamp is required"));
+    let timestamp: i64 = interpolate(timestamp_str, vars)
+        .parse()
+        .unwrap_or_else(|e| panic!("mint_timestamp_token.timestamp must be an integer: {e}"));
+    let exp_offset: i64 = mint
+        .get("exp_offset")
+        .and_then(Value::as_i64)
+        .unwrap_or(300);
+
+    let exp = u64::try_from(chrono::Utc::now().timestamp() + exp_offset)
+        .unwrap_or_else(|e| panic!("mint_timestamp_token.exp_offset out of range: {e}"));
+    let claims = ClaimsTimestamp {
+        resolved_share_opt: None,
+        timestamp,
+        exp,
+    };
+    vars.insert(name.trim_start_matches('$').to_string(), claims.encode());
+    true
+}
+
 // ── Check if a then item has JSON assertion keys ──
 
 fn has_json_assertions(item: &Value) -> bool {
@@ -910,6 +961,17 @@ fn interpret_scenario(scenario: &Value) {
         let mut client_opt: Option<Client> = None;
 
         for (i, call) in calls.iter().enumerate() {
+            // Mint items bind a token into `vars` without an HTTP call, so
+            // they are handled before client dispatch. They cannot be the
+            // final item: there would be no response for `then:` to assert.
+            if process_mint_timestamp_token(call, &mut vars) {
+                assert!(
+                    i != calls.len() - 1,
+                    "mint_timestamp_token cannot be the last when item — no response \
+                     to assert against"
+                );
+                continue;
+            }
             if client_opt.is_none() {
                 client_opt = Some(make_client());
             }

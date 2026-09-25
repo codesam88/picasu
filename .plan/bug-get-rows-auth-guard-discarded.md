@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: bug
 priority: high
 area: backend
@@ -52,3 +52,28 @@ expired token, and document the `401` on both operations with
 
 Decide separately whether `/get/get-scroll-bar` should still panic on an unknown
 snapshot id, or return a client error.
+
+## Progress
+
+- 2026-09-25: **Fixed.** Both handlers now propagate the guard with
+  `let _ = auth?;`, matching the sibling `/get/get-data`; `get_scroll_bar`
+  returns `AppResult<Json<Vec<ScrollBarData>>>` so the guard error responds
+  401 while the success path keeps the same body and status. Both
+  `#[utoipa::path]` annotations declare `(status = 401, response = Unauthorized)`,
+  both operations were added to `GUARDED_OPERATIONS`, and the
+  `operations_that_cannot_return_401_declare_none` tripwire was deleted.
+  Verified test-first: two new scenarios
+  (`backend/tests/scenarios/token_get_rows_requires_token.yaml`,
+  `token_get_scroll_bar_requires_token.yaml`) assert 401 for missing, malformed
+  and expired bearer tokens against a real prefetch snapshot id — both failed
+  against the old handlers (200 vs expected 401) and pass after the fix. The
+  scenario DSL gained a `mint_timestamp_token` when-item (harness
+  `backend_api.rs` + `tests/schema.json`) because an expired token's `exp` is
+  signed server-side and could not otherwise be produced. `cargo test --lib`,
+  `cargo test --release --lib`, fmt/clippy and `just check` (incl.
+  `openapi-check`) pass. Origin re-verified against git history: `84f29aa5`
+  rewrote both handlers from `_auth: GuardTimestamp` to
+  `GuardResult<GuardTimestamp>` plus `let _ = auth;` while converting sibling
+  handlers in the same commit to `let _ = auth?;`. The separate panic on an
+  unknown snapshot id for `/get/get-scroll-bar` remains an open decision,
+  unchanged by this fix.
