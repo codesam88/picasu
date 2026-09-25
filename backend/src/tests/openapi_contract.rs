@@ -96,6 +96,40 @@ fn is_outside_contract(operation: &Operation) -> bool {
     *method == Method::Get && path.starts_with("/assets")
 }
 
+/// Mounted routes that are in scope of the contract but not documented.
+fn undocumented_routes(mounted: &HashSet<Operation>, documented: &HashSet<Operation>) -> String {
+    render(
+        &mounted
+            .difference(documented)
+            .filter(|operation| !is_outside_contract(operation))
+            .cloned()
+            .collect(),
+    )
+}
+
+/// Operations in the spec that no route serves any more.
+fn stale_operations(documented: &HashSet<Operation>, mounted: &HashSet<Operation>) -> String {
+    render(&documented.difference(mounted).cloned().collect())
+}
+
+/// `operationId` values claimed by more than one path.
+fn duplicate_operation_ids(spec: &serde_json::Value) -> Vec<String> {
+    let mut seen: HashMap<&str, &str> = HashMap::new();
+    let mut duplicates = Vec::new();
+    for (path, item) in spec["paths"].as_object().expect("spec paths object") {
+        for operation in item.as_object().expect("path item object").values() {
+            let id = operation["operationId"]
+                .as_str()
+                .expect("every operation declares an operationId");
+            if let Some(previous) = seen.insert(id, path) {
+                duplicates.push(format!("{id}: {previous} and {path}"));
+            }
+        }
+    }
+    duplicates.sort_unstable();
+    duplicates
+}
+
 fn render(operations: &HashSet<Operation>) -> String {
     let mut lines: Vec<String> = operations
         .iter()
@@ -118,35 +152,28 @@ fn every_mounted_route_is_documented() {
     let mounted = mounted_operations();
     let documented = spec_operations();
 
-    let undocumented: HashSet<Operation> = mounted
-        .difference(&documented)
-        .filter(|operation| !is_outside_contract(operation))
-        .cloned()
-        .collect();
+    let undocumented = undocumented_routes(&mounted, &documented);
 
     assert!(
         undocumented.is_empty(),
         "mounted routes missing from the public spec:\n{}\n\
          Fix: add a `#[utoipa::path]` annotation to the handler and make sure its \
          module is scanned by `backend/build.rs`.",
-        render(&undocumented)
+        undocumented
     );
 }
 
 #[test]
 fn every_spec_operation_is_mounted() {
     let _guard = lock_state();
-    let stale: HashSet<Operation> = spec_operations()
-        .difference(&mounted_operations())
-        .cloned()
-        .collect();
+    let stale = stale_operations(&spec_operations(), &mounted_operations());
 
     assert!(
         stale.is_empty(),
         "operations documented in the public spec but not mounted:\n{}\n\
          Fix: the route was renamed or removed — regenerate the spec with \
          `just openapi-gen` and review the diff.",
-        render(&stale)
+        stale
     );
 }
 
@@ -155,20 +182,8 @@ fn operation_ids_are_unique() {
     let _guard = lock_state();
     let spec: serde_json::Value =
         serde_json::from_str(&public_json()).expect("public spec must be valid JSON");
-    let mut seen: HashMap<&str, &str> = HashMap::new();
-    let mut duplicates = Vec::new();
 
-    for (path, item) in spec["paths"].as_object().expect("spec paths object") {
-        for operation in item.as_object().expect("path item object").values() {
-            let id = operation["operationId"]
-                .as_str()
-                .expect("every operation declares an operationId");
-            if let Some(previous) = seen.insert(id, path) {
-                duplicates.push(format!("{id}: {previous} and {path}"));
-            }
-        }
-    }
-
+    let duplicates = duplicate_operation_ids(&spec);
     assert!(
         duplicates.is_empty(),
         "duplicate operationIds break generated client method names:\n{}",
@@ -223,4 +238,118 @@ fn rocket_paths_normalize_to_spec_templates() {
     // Query parameters are documented per parameter, not in the path.
     assert_eq!(to_spec_path("/get/prefetch?<locate>"), "/get/prefetch");
     assert_eq!(to_spec_path("/upload"), "/upload");
+}
+
+// ── Negative self-checks ──────────────────────────────────────────────────────
+//
+// The gates above only fail if the comparison still works. A refactor that
+// emptied `undocumented_routes`, or a path-normalization change that silently
+// made every route "match", would turn the contract gate into a no-op that
+// still reports success. These tests feed the comparison deliberately drifted
+// inputs and require it to notice, so the gate cannot be neutered silently.
+
+/// Build an operation set from `(method, path)` pairs.
+fn operations(entries: &[(Method, &str)]) -> HashSet<Operation> {
+    entries
+        .iter()
+        .map(|(method, path)| (*method, (*path).to_string()))
+        .collect()
+}
+
+#[test]
+fn self_check_detects_an_undocumented_mounted_route() {
+    let mounted = operations(&[
+        (Method::Get, "/get/get-data"),
+        (Method::Post, "/post/undeclared"),
+    ]);
+    let documented = operations(&[(Method::Get, "/get/get-data")]);
+
+    let undetected = undocumented_routes(&mounted, &documented);
+    assert!(
+        undetected.contains("POST /post/undeclared"),
+        "a mounted route missing from the spec must be reported, got: {undetected:?}"
+    );
+}
+
+#[test]
+fn self_check_detects_a_documented_operation_that_is_not_mounted() {
+    // What a stale `path = "..."` in an annotation looks like: documented,
+    // mounted under a different path.
+    let mounted = operations(&[(Method::Post, "/post/index/album")]);
+    let documented = operations(&[(Method::Post, "/post/index/album-RENAMED")]);
+
+    let undetected = stale_operations(&documented, &mounted);
+    assert!(
+        undetected.contains("POST /post/index/album-RENAMED"),
+        "a spec operation with no matching route must be reported, got: {undetected:?}"
+    );
+}
+
+#[test]
+fn self_check_reports_nothing_when_both_views_agree() {
+    let entries = [
+        (Method::Get, "/get/get-data"),
+        (Method::Post, "/post/renew-hash-token"),
+        (Method::Put, "/put/assign_album"),
+    ];
+    let mounted = operations(&entries);
+    let documented = operations(&entries);
+
+    assert_eq!(undocumented_routes(&mounted, &documented), "");
+    assert_eq!(stale_operations(&documented, &mounted), "");
+}
+
+#[test]
+fn self_check_does_not_report_excluded_routes_as_undocumented() {
+    // If the exclusions were removed from the comparison, the probes and the
+    // file server would be reported as drift on every run. This asserts the
+    // filter is doing the work, and that the exclusions are still narrow.
+    let mounted = operations(&[
+        (Method::Get, "/get/test/record/{asset_id}"),
+        (Method::Get, "/assets/{path}"),
+        (Method::Post, "/post/real-route"),
+    ]);
+    let documented = operations(&[(Method::Post, "/post/real-route")]);
+
+    let undetected = undocumented_routes(&mounted, &documented);
+    assert_eq!(
+        undetected, "",
+        "test-only and file-server routes must stay out of the contract report"
+    );
+    // ...and an excluded prefix must not swallow a real route.
+    let real_route = (Method::Get, "/get/test-but-real".to_string());
+    assert!(!is_outside_contract(&real_route));
+}
+
+#[test]
+fn self_check_detects_duplicate_operation_ids() {
+    let spec = serde_json::json!({
+        "paths": {
+            "/get/get-data": {"get": {"operationId": "get_data"}},
+            "/get/get-rows": {"get": {"operationId": "get_data"}},
+            "/get/get-tags": {"get": {"operationId": "get_tags"}}
+        }
+    });
+
+    let duplicates = duplicate_operation_ids(&spec);
+    assert_eq!(
+        duplicates,
+        vec!["get_data: /get/get-data and /get/get-rows"]
+    );
+
+    let unique = duplicate_operation_ids(&serde_json::json!({
+        "paths": {"/get/get-data": {"get": {"operationId": "get_data"}}}
+    }));
+    assert!(unique.is_empty());
+}
+
+#[test]
+fn self_check_detects_a_method_mismatch() {
+    // Same path, different verb: `GET /get/config` documented while only
+    // `POST /get/config` is mounted. Path-only comparison would miss it.
+    let mounted = operations(&[(Method::Post, "/get/config")]);
+    let documented = operations(&[(Method::Get, "/get/config")]);
+
+    assert!(undocumented_routes(&mounted, &documented).contains("POST /get/config"));
+    assert!(stale_operations(&documented, &mounted).contains("GET /get/config"));
 }

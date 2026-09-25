@@ -96,8 +96,20 @@ The goal is an exact, auditable mapping between:
    pre-commit hook runs it for any commit that touches `backend/`.
 
 5. **`openapi_contract` tests** (`cargo test --lib openapi_contract`) — compare
-   the mounted Rocket routes with the public spec. See
-   `.plan/openapi-contract-hardening.md` for the remaining contract work.
+   the mounted Rocket routes with the public spec.
+
+6. **`route_scan` tests** (`cargo test --lib route_scan`) — cover the scanner in
+   `backend/build/route_scan.rs`, which `build.rs` shares with the test module so
+   the `routes![]` parsing is testable outside the build script.
+
+7. **`committed_artifact_is_up_to_date`** — asserts `public_json()` equals the
+   committed `backend/openapi.json`, so a stale artifact fails `cargo test` as
+   well as `just openapi-check`.
+
+The gate logic has negative self-checks: each comparison is a pure function
+exercised with deliberately drifted inputs, so a refactor that empties a check
+fails a named test instead of quietly passing. See
+`.plan/openapi-contract-hardening.md` for the remaining contract work.
 
 The markdown reference is generated but not drift-checked: `widdershins` is
 fetched with `npx --yes` at generation time, which needs network access that CI

@@ -9,3 +9,6 @@ mod backend_api;
 
 #[cfg(test)]
 mod openapi_contract;
+
+#[cfg(test)]
+mod route_scan;

@@ -147,4 +147,22 @@ mod tests {
             serde_json::from_str(&public_json()).expect("public spec must be valid JSON");
         assert_sorted(&spec, "");
     }
+
+    /// The committed artifact must equal a fresh generation, so spec drift
+    /// fails `cargo test` as well as `just openapi-check`. Without this, a
+    /// stale `backend/openapi.json` would only be caught by a recipe that
+    /// developers can skip locally.
+    #[test]
+    fn committed_artifact_is_up_to_date() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("openapi.json");
+        let committed = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!("cannot read {}: {e}", path.display());
+        });
+
+        assert_eq!(
+            committed,
+            public_json(),
+            "backend/openapi.json is stale — run `just openapi-gen` and commit the result"
+        );
+    }
 }

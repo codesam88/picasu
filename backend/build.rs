@@ -1,6 +1,14 @@
 use std::fmt::Write;
 use std::path::Path;
 
+// Shared with the unit tests in `src/tests/route_scan.rs`: the scanner decides
+// which handlers reach `paths(...)`, and a parsing mistake there silently
+// drops routes from the spec.
+#[path = "build/route_scan.rs"]
+mod route_scan;
+
+use route_scan::scan_routes;
+
 #[derive(Clone)]
 struct Route {
     group_prefix: String,
@@ -187,58 +195,12 @@ fn collect_all_routes(router_root: &Path) -> Vec<Route> {
             continue;
         };
 
-        let mut search_start = 0usize;
-        while let Some(routes_start) = content[search_start..].find("routes![") {
-            let abs_start = search_start + routes_start;
-            let body_start = abs_start + "routes![".len();
-            let rest = &content[body_start..];
-            if let Some(end) = find_matching_bracket(rest) {
-                let block = &rest[..end];
-                // Entries are comma-separated, not line-separated: a single-line
-                // `routes![a, b]` must yield the same routes as the multi-line
-                // form. A line-based scan silently merged `a, b` into one
-                // handler name, which dropped both routes from `paths(...)`.
-                let without_comments: String = block
-                    .lines()
-                    .map(|line| match line.find("//") {
-                        Some(pos) => &line[..pos],
-                        None => line,
-                    })
-                    .collect::<Vec<&str>>()
-                    .join("\n");
-
-                for entry in without_comments.split(',') {
-                    let entry = entry.trim().trim_end_matches(']').trim();
-                    if entry.is_empty() {
-                        continue;
-                    }
-                    if !entry
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
-                    {
-                        println!(
-                            "cargo:warning=unparsable routes![] entry in {}: {entry}",
-                            path.display()
-                        );
-                        continue;
-                    }
-
-                    let (mod_name, handler) = if let Some(pos) = entry.rfind("::") {
-                        (entry[..pos].to_string(), entry[pos + 2..].to_string())
-                    } else {
-                        (group_prefix.to_string(), entry.to_string())
-                    };
-
-                    routes.push(Route {
-                        group_prefix: group_prefix.to_string(),
-                        module_path: mod_name,
-                        handler,
-                    });
-                }
-                search_start = body_start + end + 1;
-            } else {
-                break;
-            }
+        for handler in scan_routes(&content, group_prefix) {
+            routes.push(Route {
+                group_prefix: group_prefix.to_string(),
+                module_path: handler.module_path,
+                handler: handler.handler,
+            });
         }
     }
 
@@ -308,21 +270,4 @@ fn generate_scenarios_rs(_annotated: &[Route], backend_root: &Path) {
     let dest = Path::new(&out_dir).join("scenarios.rs");
     std::fs::write(&dest, out.as_bytes())
         .unwrap_or_else(|e| panic!("write {}: {e}", dest.display()));
-}
-
-fn find_matching_bracket(s: &str) -> Option<usize> {
-    let mut depth = 0u32;
-    for (i, ch) in s.char_indices() {
-        match ch {
-            '[' => depth += 1,
-            ']' => {
-                if depth == 0 {
-                    return Some(i);
-                }
-                depth -= 1;
-            }
-            _ => {}
-        }
-    }
-    None
 }
