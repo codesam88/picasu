@@ -24,7 +24,7 @@ The remaining release work falls into four categories:
 
 | Category                | What it covers                                      | Items      |
 | ----------------------- | --------------------------------------------------- | ---------- |
-| **A. Correctness**      | Behavior that is wrong or violates the release rule | A1, A2     |
+| **A. Correctness**      | Behavior that is wrong or violates the release rule | A1         |
 | **B. Metadata & UI**    | Completing the metadata promise; visible polish     | B1, B2, B3 |
 | **C. Release hygiene**  | Legal/licensing gate before tagging                 | C1         |
 | **D. Confidence tests** | Tests that pin down shipped behavior                | D1         |
@@ -33,8 +33,7 @@ The remaining release work falls into four categories:
 
 | #   | Item                                    | Ticket                                   | Status                                     |
 | --- | --------------------------------------- | ---------------------------------------- | ------------------------------------------ |
-| A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | open — needs repro + root cause            |
-| A2  | Flag edits don't write sidecars         | `edit-flags-sidecar-writeback.md`        | open — needs trash XMP mapping decision    |
+| A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | done — UI/API coverage added; no repro     |
 | B1  | EXIF/XMP read for non-JPEG containers   | `test-exif-xmp-handling.md`              | open — JPEG covered; PNG/TIFF/MP4 gap      |
 | B2  | UI bugs (Escape/back, lightbox, theme)  | `ui-refinement.md`                       | open — bug checklist only; 4/21 done       |
 | B3  | Parent-only albums have no thumbnail    | `bug-parent-album-no-thumbnail.md`       | done — descendant cover fallback           |
@@ -49,25 +48,17 @@ The remaining release work falls into four categories:
 _What:_ deleting an album should recursively remove sub-albums and files; instead the
 physical directory survives, the next index sweep re-discovers the sub-albums, and they
 reappear under the root. _Why critical:_ reported by a user; directly contradicts the
-file-lifecycle work already shipped (delete-from-disk, watcher Remove handling). Needs
-reproduction and root-cause investigation before estimate is reliable.
+file-lifecycle work already shipped (delete-from-disk, watcher Remove handling). Added
+API and frontend coverage for the reported flow; the current UI flow does not reproduce
+the resurrection bug, so no code change is currently justified.
 
-**A2 — Trashed doesn't write an XMP sidecar.**
-_What:_ `PUT /put/edit_flags` updates the database but never calls `write_sidecar_for`,
-unlike tag, description, rating, and album-title edits. Decide how `is_trashed` maps to
-XMP, then call the writer. _Why critical:_ flag editing is exposed in the UI (delete /
-restore menu items), so this is the one editable surface that fails the release rule.
-Small scope: one call site + one mapping decision. (Favorite and archived were removed
-with the branch that dropped those fields, so only trash remains to map.)
-
-### B. Metadata & UI
-
-**B1 — Non-JPEG XMP read coverage.**
-_What:_ XMP extraction (`xmp.rs`) is unit-tested only against JPEG-style packets; XMP/IPTC
-packet placement differs per container (PNG zTXt/iTXt, TIFF, MP4 uuid box). Add one test
-per representative container. _Why:_ "metadata read from files" is a core release promise;
-today it is only demonstrably true for JPEG. Video-pipeline coverage needs
-`ffmpeg`/`ffprobe` and may be split off if unavailable in CI.
+**B1 — Common-format metadata coverage.**
+_What:_ establish a real-fixture matrix for supported image/video formats,
+container-aware XMP/EXIF behavior, misnamed/corrupt-file contracts, and seeded
+randomized scenario selection. The detailed plan is in
+`test-exif-xmp-handling.md`. _Why:_ "metadata read from files" is a core
+release promise; JPEG-only evidence is insufficient, and tests must not imply
+support that the current allowlist and parser do not provide.
 
 **B2 — UI bug pass.**
 _What:_ the bug checklist in `ui-refinement.md` — Escape/back navigation, lightbox
@@ -125,10 +116,9 @@ for the five pure-function targets, snapfab migration.
 
 | File                                     | Status | Item |
 | ---------------------------------------- | ------ | ---- |
-| `bug-delete-album-restores-subalbums.md` | open   | A1   |
-| `edit-flags-sidecar-writeback.md`        | open   | A2   |
+| `bug-delete-album-restores-subalbums.md` | done   | A1   |
 | `test-exif-xmp-handling.md`              | open   | B1   |
 | `ui-refinement.md`                       | open   | B2   |
-| `bug-parent-album-no-thumbnail.md`       | open   | B3   |
+| `bug-parent-album-no-thumbnail.md`       | done   | B3   |
 | `license-and-ossf-review.md`             | idea   | C1   |
 | `filename-sanitization-test-gaps.md`     | open   | D1   |
