@@ -56,7 +56,7 @@ fn main() {
 }
 
 fn generate_openapi_rs(annotated: &[Route], dest: &Path) {
-    let group_order: [&str; 5] = ["get", "post", "put", "delete", "fairing"];
+    let group_order: [&str; 6] = ["get", "post", "put", "delete", "fairing", "auth"];
     let mut annotated = annotated.to_vec();
     annotated.sort_by(|a, b| {
         let a_grp = group_order
@@ -114,6 +114,7 @@ fn generate_openapi_rs(annotated: &[Route], dest: &Path) {
             "put" => "// ── PUT routes",
             "delete" => "// ── DELETE routes",
             "fairing" => "// ── FAIRING routes",
+            "auth" => "// ── auth routes (router/auth.rs)",
             _ => "",
         };
         if section != current_group {
@@ -171,6 +172,11 @@ fn collect_all_routes(router_root: &Path) -> Vec<Route> {
         ("put", "put/mod.rs"),
         ("delete", "delete.rs"),
         ("fairing", "fairing/mod.rs"),
+        // `auth.rs` mounts the token renewal routes through
+        // `generate_fairing_routes()`. It has to be scanned here as well,
+        // otherwise its annotated handlers never reach `paths(...)` and the
+        // routes are mounted but undocumented.
+        ("auth", "auth.rs"),
     ];
 
     let mut routes = Vec::new();
@@ -188,14 +194,32 @@ fn collect_all_routes(router_root: &Path) -> Vec<Route> {
             let rest = &content[body_start..];
             if let Some(end) = find_matching_bracket(rest) {
                 let block = &rest[..end];
-                for line in block.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.is_empty() || trimmed.starts_with("//") {
+                // Entries are comma-separated, not line-separated: a single-line
+                // `routes![a, b]` must yield the same routes as the multi-line
+                // form. A line-based scan silently merged `a, b` into one
+                // handler name, which dropped both routes from `paths(...)`.
+                let without_comments: String = block
+                    .lines()
+                    .map(|line| match line.find("//") {
+                        Some(pos) => &line[..pos],
+                        None => line,
+                    })
+                    .collect::<Vec<&str>>()
+                    .join("\n");
+
+                for entry in without_comments.split(',') {
+                    let entry = entry.trim().trim_end_matches(']').trim();
+                    if entry.is_empty() {
                         continue;
                     }
-                    let entry = trimmed.strip_suffix(',').unwrap_or(trimmed).trim();
-                    let entry = entry.strip_suffix(']').unwrap_or(entry).trim();
-                    if entry.is_empty() {
+                    if !entry
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
+                    {
+                        println!(
+                            "cargo:warning=unparsable routes![] entry in {}: {entry}",
+                            path.display()
+                        );
                         continue;
                     }
 

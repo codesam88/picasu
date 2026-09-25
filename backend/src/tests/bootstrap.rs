@@ -212,11 +212,22 @@ pub fn reset_backend_state() {
     config.password = None;
 }
 
+/// Build the test Rocket instance with the current APP_CONFIG, without a
+/// client. Used by tests that inspect the mounted route table.
+pub fn build_test_rocket() -> rocket::Rocket<rocket::Build> {
+    let _ = &*TEST_ENV;
+    let config = APP_CONFIG
+        .get()
+        .expect("APP_CONFIG set")
+        .read()
+        .expect("APP_CONFIG lock")
+        .clone();
+    build_rocket_with_config(config)
+}
+
 /// Build a Rocket test client with the current APP_CONFIG.
 pub fn make_client() -> Client {
-    let _ = &*TEST_ENV;
-    let config = APP_CONFIG.get().unwrap().read().unwrap().clone();
-    Client::tracked(build_rocket_with_config(config)).expect("valid rocket instance")
+    Client::tracked(build_test_rocket()).expect("valid rocket instance")
 }
 
 #[cfg(test)]
