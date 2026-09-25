@@ -30,6 +30,7 @@ pub struct RegenerateThumbnailForm<'r> {
 #[utoipa::path(
         put,
         path = "/put/regenerate-thumbnail-with-frame",
+        tag = "assets",
         request_body = Value,
         responses(
             (status = 200, description = "Thumbnail regenerated"),

@@ -27,6 +27,7 @@ pub struct RotateImageRequest {
 #[utoipa::path(
         put,
         path = "/put/rotate-image",
+        tag = "assets",
         request_body = RotateImageRequest,
         responses(
             (status = 200, description = "Image rotated"),

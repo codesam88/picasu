@@ -240,6 +240,88 @@ fn rocket_paths_normalize_to_spec_templates() {
     assert_eq!(to_spec_path("/upload"), "/upload");
 }
 
+// ── Operation tags ────────────────────────────────────────────────────────────
+//
+// Every operation carries exactly one tag from a small taxonomy so the
+// generated reference groups by subject instead of by whichever handler was
+// annotated last. The taxonomy and its meaning are documented in
+// `docs/openapi-generator.md`; the comparison is a pure function so the
+// negative self-checks below can feed it drifted input.
+
+/// Every tag the taxonomy allows. Adding a tag is a deliberate one-line change
+/// here plus the matching row in `docs/openapi-generator.md`.
+const KNOWN_TAGS: &[&str] = &[
+    "albums", "assets", "auth", "config", "index", "pages", "serving", "timeline", "upload",
+];
+
+/// Path shapes that identify data-API operations, as opposed to SPA HTML pages.
+const DATA_API_PREFIXES: &[&str] = &["/delete/", "/get/", "/object/", "/post/", "/put/"];
+
+/// Whether `path` is a data-API operation rather than an SPA page route.
+///
+/// Derived from path shape because the spec alone does not say which file
+/// annotated an operation. Stated assumption: every public-spec operation that
+/// is *not* under one of these prefixes (or `POST /upload`) is one of the
+/// `router/get/get_page.rs` HTML routes. The two things that would break the
+/// assumption — the test-only probes and the `/assets` file server — are
+/// excluded from the public spec. If a data route were ever added outside
+/// these shapes, this function would classify it as a page and the tag gate
+/// would fail loudly instead of accepting the wrong grouping.
+fn is_data_api_path(path: &str) -> bool {
+    DATA_API_PREFIXES
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
+        || path == "/upload"
+}
+
+/// Report every way a spec's operation tags can violate the taxonomy: an
+/// operation with no tags, a tag outside [`KNOWN_TAGS`], a data-API path
+/// carrying `pages`, and a page path missing `pages`. Pure — it reads only the
+/// JSON it is given, so self-checks can feed it deliberately drifted input.
+fn tag_violations(spec: &serde_json::Value) -> String {
+    let mut violations = Vec::new();
+    for (path, item) in spec["paths"].as_object().expect("spec paths object") {
+        for (method, operation) in item.as_object().expect("path item object") {
+            let id = format!("{method} {path}");
+            let tags: Vec<&str> = operation["tags"]
+                .as_array()
+                .map(|entries| entries.iter().filter_map(|t| t.as_str()).collect())
+                .unwrap_or_default();
+            if tags.is_empty() {
+                violations.push(format!("{id}: declares no tags"));
+            }
+            for tag in &tags {
+                if !KNOWN_TAGS.contains(tag) {
+                    violations.push(format!("{id}: unknown tag `{tag}`"));
+                }
+            }
+            let data_api = is_data_api_path(path);
+            if data_api && tags.contains(&"pages") {
+                violations.push(format!("{id}: data-API path carries the `pages` tag"));
+            }
+            if !data_api && !tags.contains(&"pages") {
+                violations.push(format!("{id}: SPA page path must carry `pages`"));
+            }
+        }
+    }
+    violations.join("\n")
+}
+
+/// The taxonomy gate: every operation in the public spec is grouped by exactly
+/// the known tags, and `pages` sits on the SPA page routes and nowhere else.
+#[test]
+fn every_operation_carries_a_known_tag() {
+    let report = tag_violations(&public_spec());
+
+    assert!(
+        report.is_empty(),
+        "operation tags violate the taxonomy (documented in \
+         docs/openapi-generator.md):\n{report}\n\
+         Fix: set `tag = \"...\"` in the handler's `#[utoipa::path]` annotation \
+         and run `just openapi-gen`.",
+    );
+}
+
 // ── Negative self-checks ──────────────────────────────────────────────────────
 //
 // The gates above only fail if the comparison still works. A refactor that
@@ -352,6 +434,90 @@ fn self_check_detects_a_method_mismatch() {
 
     assert!(undocumented_routes(&mounted, &documented).contains("POST /get/config"));
     assert!(stale_operations(&documented, &mounted).contains("GET /get/config"));
+}
+
+#[test]
+fn self_check_detects_an_untagged_operation() {
+    // What dropping `tag = "..."` from an annotation looks like: the operation
+    // serializes without a usable `tags` array.
+    let spec = serde_json::json!({
+        "paths": {
+            "/get/get-data": {"get": {"tags": ["timeline"]}},
+            "/put/edit_tag": {"put": {}}
+        }
+    });
+
+    let report = tag_violations(&spec);
+    assert!(
+        report.contains("put /put/edit_tag: declares no tags"),
+        "an operation with no tags must be reported, got: {report:?}"
+    );
+    assert!(
+        !report.contains("/get/get-data"),
+        "a conforming operation must not be reported, got: {report:?}"
+    );
+}
+
+#[test]
+fn self_check_detects_an_unknown_tag() {
+    // A tag outside the taxonomy: present, so the missing-tag rule cannot
+    // catch it, but not in `KNOWN_TAGS`.
+    let spec = serde_json::json!({
+        "paths": {"/put/edit_tag": {"put": {"tags": ["metadata"]}}}
+    });
+
+    let report = tag_violations(&spec);
+    assert!(
+        report.contains("put /put/edit_tag: unknown tag `metadata`"),
+        "a tag outside KNOWN_TAGS must be reported, got: {report:?}"
+    );
+}
+
+#[test]
+fn self_check_detects_a_data_api_path_tagged_pages() {
+    // The mistake this gate exists to prevent: a data-API operation wearing
+    // the SPA page tag, which randomizes the reference grouping again.
+    let spec = serde_json::json!({
+        "paths": {"/get/get-data": {"get": {"tags": ["pages"]}}}
+    });
+
+    let report = tag_violations(&spec);
+    assert!(
+        report.contains("get /get/get-data: data-API path carries the `pages` tag"),
+        "a data-API operation tagged `pages` must be reported, got: {report:?}"
+    );
+}
+
+#[test]
+fn self_check_detects_a_page_path_without_the_pages_tag() {
+    // The other direction of the `pages` rule: an SPA page route that lost
+    // (or never got) its tag must be reported too.
+    let spec = serde_json::json!({
+        "paths": {"/login": {"get": {"tags": ["auth"]}}}
+    });
+
+    let report = tag_violations(&spec);
+    assert!(
+        report.contains("get /login: SPA page path must carry `pages`"),
+        "an untagged-by-shape page operation must be reported, got: {report:?}"
+    );
+}
+
+#[test]
+fn self_check_accepts_a_conformant_tag_set() {
+    let spec = serde_json::json!({
+        "paths": {
+            "/get/get-data": {"get": {"tags": ["timeline"]}},
+            "/login": {"get": {"tags": ["pages"]}},
+            "/upload": {"post": {"tags": ["upload"]}}
+        }
+    });
+
+    assert_eq!(
+        tag_violations(&spec),
+        "",
+        "a spec that follows the taxonomy must report no violations"
+    );
 }
 
 // ── Shared 401 response component ─────────────────────────────────────────────

@@ -26,6 +26,7 @@ pub struct CreateDirAlbumData {
 #[utoipa::path(
         post,
         path = "/post/create_dir_album",
+        tag = "albums",
         request_body = CreateDirAlbumData,
         responses(
             (status = 200, description = "New album ID", body = String),

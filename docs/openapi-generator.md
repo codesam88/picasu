@@ -20,8 +20,9 @@ fall out of sync.
 Neither input is the runtime route table, though, so a third check closes the
 loop: `backend/src/tests/openapi_contract.rs` compares the routes Rocket
 actually mounts against the operations in the public spec, and fails on an
-undocumented mounted route, a documented operation that is no longer mounted, or
-a duplicate `operationId`.
+undocumented mounted route, a documented operation that is no longer mounted, a
+duplicate `operationId`, or a tag-taxonomy violation (an operation with no tag,
+a tag outside the known set, or `pages` on a data-API operation).
 
 The goal is an exact, auditable mapping between:
 
@@ -96,7 +97,9 @@ The goal is an exact, auditable mapping between:
    pre-commit hook runs it for any commit that touches `backend/`.
 
 5. **`openapi_contract` tests** (`cargo test --lib openapi_contract`) — compare
-   the mounted Rocket routes with the public spec.
+   the mounted Rocket routes with the public spec, and enforce the tag
+   taxonomy below (every operation carries a known tag, `pages` sits on the
+   SPA page routes and on nothing else).
 
 6. **`route_scan` tests** (`cargo test --lib route_scan`) — cover the scanner in
    `backend/build/route_scan.rs`, which `build.rs` shares with the test module so
@@ -124,11 +127,30 @@ handler. No module-level exemptions exist — every route is subject to the chec
 
 ## Tag conventions
 
-| Tag      | Routes                      | Description                                                            |
-| -------- | --------------------------- | ---------------------------------------------------------------------- |
-| _(none)_ | Standard data API endpoints | `GET /get/...`, `POST /post/...`, `PUT /put/...`, `DELETE /delete/...` |
-| `pages`  | SPA HTML page routes        | `GET /albums`, `GET /login`, etc. — serve `index.html`                 |
-| `albums` | Album assignment            | `PUT /put/assign_album`                                                |
+Every operation carries exactly one tag from this table, set as
+`tag = "..."` in its `#[utoipa::path]` annotation. The tag is what the
+generated reference groups operations by, so the vocabulary stays small and
+subject-oriented.
+
+| Tag        | Subject                                                                             | Example                            |
+| ---------- | ----------------------------------------------------------------------------------- | ---------------------------------- |
+| `auth`     | Authentication and token renewal                                                    | `POST /post/authenticate`          |
+| `albums`   | Albums and shares: creation, assignment, covers, titles, descriptions, share links  | `PUT /put/assign_album`            |
+| `assets`   | Per-asset metadata and editing: flags, rating, tags, rotation, thumbnails, deletion | `PUT /put/edit_tag`                |
+| `config`   | Server configuration: read, write, password, export/import, path completion         | `PUT /put/config`                  |
+| `index`    | Filesystem indexing jobs and full rebuild                                           | `POST /post/index/album`           |
+| `serving`  | Media byte delivery (compressed and original files)                                 | `GET /object/imported/{file_path}` |
+| `timeline` | Grid/list data: prefetch, rows, scrollbar, tag list, export                         | `GET /get/get-data`                |
+| `upload`   | File upload                                                                         | `POST /upload`                     |
+| `pages`    | SPA HTML page routes served from `router/get/get_page.rs` (serve `index.html`)      | `GET /login`                       |
+
+`pages` is reserved: every SPA page route must carry it, and no data-API
+operation may. The gate is `every_operation_carries_a_known_tag` in
+`backend/src/tests/openapi_contract.rs`, whose `KNOWN_TAGS` constant must be
+extended by one line (along with a row here) when the taxonomy grows. The
+`pages` expectation is derived from path shape — data-API prefixes versus
+everything else — rather than a hardcoded list of page paths; see the comment
+on `is_data_api_path` for the assumption that makes that derivation valid.
 
 ## Workflow
 
@@ -139,8 +161,9 @@ handler. No module-level exemptions exist — every route is subject to the chec
    `collect_all_routes` — otherwise the route is mounted but undocumented.
 2. Add `#[utoipa::path(...)]` with the route's HTTP method, path, parameters,
    and response types. The annotated `path` must match the mounted route
-   exactly; the parity test fails on a mismatch. Pick the appropriate tag (or
-   omit for standard data APIs).
+   exactly; the parity test fails on a mismatch. Set `tag = "..."` to the
+   subject from the Tag conventions table — every operation must carry one,
+   and the tag gate fails on a missing or unknown tag.
 3. Run `just openapi-gen` and `just docs-openapi` to regenerate the spec
    artifact and the reference.
 4. Run `cargo test --lib openapi_contract` and `just openapi-check`.

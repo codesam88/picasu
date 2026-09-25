@@ -28,6 +28,7 @@ pub struct EditRatingData {
 #[utoipa::path(
         put,
         path = "/put/edit_rating",
+        tag = "assets",
         request_body = EditRatingData,
         responses(
             (status = 200, description = "Rating updated"),

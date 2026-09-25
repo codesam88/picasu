@@ -98,6 +98,7 @@ pub struct SetAlbumCover {
 #[utoipa::path(
         put,
         path = "/put/set_album_cover",
+        tag = "albums",
         request_body = SetAlbumCover,
         responses(
             (status = 200, description = "Album cover updated"),
@@ -208,6 +209,7 @@ pub struct SetAlbumTitle {
 #[utoipa::path(
         put,
         path = "/put/set_album_title",
+        tag = "albums",
         request_body = SetAlbumTitle,
         responses(
             (status = 200, description = "Album title updated"),

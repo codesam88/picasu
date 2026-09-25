@@ -28,6 +28,7 @@ use crate::router::{AppResult, GuardResult};
 #[utoipa::path(
         get,
         path = "/get/metadata/{asset_id}",
+        tag = "assets",
         responses(
             (status = 200, description = "Full metadata record for the asset"),
             (status = 404, description = "Unknown asset_id"),

@@ -1121,7 +1121,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "assets"
+        ]
       }
     },
     "/favicon.ico": {
@@ -1158,7 +1160,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "config"
+        ]
       }
     },
     "/get/config/export": {
@@ -1182,7 +1186,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "config"
+        ]
       }
     },
     "/get/get-albums": {
@@ -1206,7 +1212,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "albums"
+        ]
       }
     },
     "/get/get-data": {
@@ -1235,7 +1243,9 @@
           }
         },
         "summary": "Serve one page of timeline/list rows for a snapshot timestamp.",
-        "tags": []
+        "tags": [
+          "timeline"
+        ]
       }
     },
     "/get/get-export": {
@@ -1252,7 +1262,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "timeline"
+        ]
       }
     },
     "/get/get-rows": {
@@ -1276,7 +1288,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "timeline"
+        ]
       }
     },
     "/get/get-scroll-bar": {
@@ -1303,7 +1317,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "timeline"
+        ]
       }
     },
     "/get/get-tags": {
@@ -1330,7 +1346,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "timeline"
+        ]
       }
     },
     "/get/index/status": {
@@ -1354,7 +1372,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "index"
+        ]
       }
     },
     "/get/metadata/{asset_id}": {
@@ -1373,7 +1393,9 @@
           }
         },
         "summary": "Full metadata detail for a single asset, composed at the edge from the\nasset's identity `AssetRecord` and its stored `METADATA_TABLE` payload.",
-        "tags": []
+        "tags": [
+          "assets"
+        ]
       }
     },
     "/get/path-completion": {
@@ -1397,7 +1419,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "config"
+        ]
       }
     },
     "/get/prefetch": {
@@ -1429,7 +1453,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "timeline"
+        ]
       }
     },
     "/links": {
@@ -1472,7 +1498,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "serving"
+        ]
       }
     },
     "/object/imported/{file_path}": {
@@ -1490,7 +1518,9 @@
           }
         },
         "summary": "Serve the original file directly from its current location under\n`imagePath` — there is no copy of it under `DATA_HOME`; `IMAGE_HOME` is\nthe single, authoritative copy. The route's `<file_path..>` segment is\n`<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via\n`ASSET_BY_ID`.",
-        "tags": []
+        "tags": [
+          "serving"
+        ]
       }
     },
     "/post/authenticate": {
@@ -1521,7 +1551,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/post/config/import": {
@@ -1548,7 +1580,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "config"
+        ]
       }
     },
     "/post/create_dir_album": {
@@ -1583,7 +1617,9 @@
           }
         },
         "summary": "Create a new subdirectory under an existing dir-album's directory and\nregister it as a new album. Returns the new album's ID.",
-        "tags": []
+        "tags": [
+          "albums"
+        ]
       }
     },
     "/post/create_share": {
@@ -1617,7 +1653,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "albums"
+        ]
       }
     },
     "/post/index/album": {
@@ -1645,7 +1683,9 @@
           }
         },
         "summary": "Walk a directory under `IMAGE_HOME` and index all media files in the\nbackground.  `album` is a path relative to `IMAGE_HOME` — use `\"/\"` for\nthe root.  Status can be polled via `GET /get/index/status`.",
-        "tags": []
+        "tags": [
+          "index"
+        ]
       }
     },
     "/post/index/cancel": {
@@ -1663,7 +1703,9 @@
           }
         },
         "summary": "Cancel a running album index job.",
-        "tags": []
+        "tags": [
+          "index"
+        ]
       }
     },
     "/post/index/image": {
@@ -1691,7 +1733,9 @@
           }
         },
         "summary": "Index a single image by its path relative to `IMAGE_HOME`.  Runs in the\nbackground; returns `202 Accepted` immediately.",
-        "tags": []
+        "tags": [
+          "index"
+        ]
       }
     },
     "/post/rebuild": {
@@ -1720,7 +1764,9 @@
           }
         },
         "summary": "Rebuild the asset tables from the filesystem under `IMAGE_HOME`.",
-        "tags": []
+        "tags": [
+          "index"
+        ]
       }
     },
     "/post/renew-hash-token": {
@@ -1754,7 +1800,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/post/renew-timestamp-token": {
@@ -1788,7 +1836,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/put/assign_album": {
@@ -1853,7 +1903,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "config"
+        ]
       }
     },
     "/put/config/password": {
@@ -1880,7 +1932,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "config"
+        ]
       }
     },
     "/put/delete_share": {
@@ -1907,7 +1961,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "albums"
+        ]
       }
     },
     "/put/edit_flags": {
@@ -1934,7 +1990,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "assets"
+        ]
       }
     },
     "/put/edit_rating": {
@@ -1961,7 +2019,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "assets"
+        ]
       }
     },
     "/put/edit_share": {
@@ -1988,7 +2048,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "albums"
+        ]
       }
     },
     "/put/edit_tag": {
@@ -2025,7 +2087,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "assets"
+        ]
       }
     },
     "/put/regenerate-thumbnail-with-frame": {
@@ -2050,7 +2114,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "assets"
+        ]
       }
     },
     "/put/rotate-image": {
@@ -2077,7 +2143,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "assets"
+        ]
       }
     },
     "/put/set_album_cover": {
@@ -2105,7 +2173,9 @@
           }
         },
         "summary": "Updates the cover image of a specific album.",
-        "tags": []
+        "tags": [
+          "albums"
+        ]
       }
     },
     "/put/set_album_title": {
@@ -2134,7 +2204,9 @@
           }
         },
         "summary": "Updates the display title of a specific album.",
-        "tags": []
+        "tags": [
+          "albums"
+        ]
       }
     },
     "/put/set_user_defined_description": {
@@ -2161,7 +2233,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "albums"
+        ]
       }
     },
     "/redirect-to-login": {
@@ -2340,7 +2414,9 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "tags": []
+        "tags": [
+          "upload"
+        ]
       }
     },
     "/videos": {

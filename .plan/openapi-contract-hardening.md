@@ -87,10 +87,20 @@ High — contract wrong or materially incomplete:
 
 Medium — bad patterns and type fidelity:
 
-- [ ] Tag every operation: 39/65 ops have no tags, the other 26 all carry the
+- [x] Tag every operation: 39/65 ops have no tags, the other 26 all carry the
       misnomer `pages`; reference grouping/TOC is effectively random. Suggest
       `auth`, `albums`, `assets`, `config`, `index`, `metadata`, `shares`,
-      `serving`, `upload`.
+      `serving`, `upload`. **Done** — all 61 public ops now carry exactly one
+      tag; distribution: `pages` 22, `albums` 9, `assets` 7, `config` 6,
+      `timeline` 6, `index` 5, `auth` 3, `serving` 2, `upload` 1. The
+      suggestion list needed two corrections: `metadata` and `shares` were not
+      used (their operations belong to `assets` and `albums` respectively),
+      and `timeline` — the grid-data group (`prefetch`, `get-data`,
+      `get-rows`, `get-scroll-bar`, `get-tags`, `get-export`) — was missing
+      from it. Gated by `every_operation_carries_a_known_tag` in
+      `backend/src/tests/openapi_contract.rs` (known set, missing tags, and
+      `pages`-by-path-shape), with negative self-checks; taxonomy documented
+      in `docs/openapi-generator.md`.
 - [ ] Add missing schema field descriptions: ~204 `none` cells across ~30 of
       39 schemas (`EditTagsData`, `DeleteList`, `CreateShare`, `Prefetch`, …).
       Existing hand-written `///` comments (`FileEntry`, `coverHash`) are the
@@ -135,6 +145,22 @@ Low — consistency and polish:
       hits; consider `widdershins --summary` or trimming sample languages.
 
 ## Progress
+
+- 2026-09-25: Tagged every public operation and gated the taxonomy (Medium
+  "Tag every operation"). Each `#[utoipa::path]` annotation got one
+  `tag = "..."` line (`pages` kept on the 22 SPA routes, `albums` kept on
+  `assign_album`); 38 operations were untagged before. Final distribution:
+  `pages` 22, `albums` 9, `assets` 7, `config` 6, `timeline` 6, `index` 5,
+  `auth` 3, `serving` 2, `upload` 1 (61 total). The plan's suggestion list was
+  off: `metadata`/`shares` were folded into `assets`/`albums`, and `timeline`
+  (grid data) had to be added; `pages` was already in use. The gate is
+  `every_operation_carries_a_known_tag` with the vocabulary in a `KNOWN_TAGS`
+  constant and the `pages` expectation derived from data-API path shapes (the
+  spec alone cannot say which file annotated an operation — assumption
+  documented on `is_data_api_path`). Three mutations (drop the missing-tag
+  report, drop the unknown-tag report, drop the data-API/`pages` report) each
+  failed their named self-check before reverting. Taxonomy table and
+  enforcement noted in `docs/openapi-generator.md`.
 
 - 2026-09-25: Documented the 401 contract. The sweep exposed a real security
   gap rather than only a documentation one: `GET /get/get-rows` and

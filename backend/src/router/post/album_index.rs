@@ -27,6 +27,7 @@ pub struct IndexImageRequest {
 #[utoipa::path(
         post,
         path = "/post/index/album",
+        tag = "index",
         request_body = IndexAlbumRequest,
         responses(
             (status = 200, description = "Album indexing started"),
@@ -51,6 +52,7 @@ pub fn index_album_handler(
 #[utoipa::path(
         post,
         path = "/post/index/image",
+        tag = "index",
         request_body = IndexImageRequest,
         responses(
             (status = 200, description = "Image indexing started"),
@@ -81,6 +83,7 @@ pub fn index_image_handler(
 #[utoipa::path(
         post,
         path = "/post/index/cancel",
+        tag = "index",
         responses(
             (status = 200, description = "Album index cancelled"),
             (status = 400, description = "Invalid input"),

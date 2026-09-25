@@ -14,6 +14,7 @@ use crate::router::auth::GuardAuth;
 #[utoipa::path(
         post,
         path = "/post/config/import",
+        tag = "config",
         request_body = AppConfig,
         responses(
             (status = 200, description = "Config imported"),
