@@ -5,21 +5,40 @@ updates:
     directory: /frontend
     schedule:
       interval: weekly
-    allow:
-      - dependency-type: production
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
+    groups:
+      updates:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: daily
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      updates:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: daily
-
-  - package-ecosystem: docker
-    directory: /
-    schedule:
-      interval: daily
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      updates:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
