@@ -19,7 +19,8 @@ function waitForServer(url: string, proc: ChildProcess): Promise<void> {
     const finish = (err?: Error) => {
       if (done) return
       done = true
-      err ? reject(err) : resolve()
+      if (err) reject(err)
+      else resolve()
     }
 
     // Fail immediately if the process exits before the server is ready.

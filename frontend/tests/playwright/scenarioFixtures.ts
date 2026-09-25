@@ -2,13 +2,14 @@ import { test as base } from '@playwright/test'
 import { createPaths, type WorkerPaths } from './paths'
 import { startBackend } from './backendLauncher'
 
-export type ScenarioFixtures = {
+export interface ScenarioFixtures {
   backendPaths: WorkerPaths
 }
 
 export const test = base.extend<ScenarioFixtures>({
   backendPaths: [
-    async ({}, use) => {
+    async ({ browser: _browser }, use) => {
+      void _browser
       const paths = createPaths()
       const handle = await startBackend(paths)
       await use(paths)
