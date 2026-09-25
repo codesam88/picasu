@@ -38,8 +38,6 @@ const BaseObjectRaw = z.object({
   description: z.string().nullable().optional(),
   tags: z.array(z.string()).default([]),
   exifVec: z.record(z.string(), z.string()).default({}),
-  isFavorite: z.boolean().default(false),
-  isArchived: z.boolean().default(false),
   isTrashed: z.boolean().default(false),
   rating: z.number().int().min(0).max(5).nullable().optional().default(null),
   updateAt: z.number().default(0)
@@ -70,8 +68,6 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
   album: data.album ?? null,
   path: data.path,
   description: data.description,
-  isFavorite: data.isFavorite,
-  isArchived: data.isArchived,
   isTrashed: data.path?.isTrashed ?? false,
   rating: data.rating,
   updateAt: data.updateAt
@@ -102,8 +98,6 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
   album: data.album ?? null,
   path: data.path,
   description: data.description,
-  isFavorite: data.isFavorite,
-  isArchived: data.isArchived,
   isTrashed: data.path?.isTrashed ?? false,
   rating: data.rating,
   updateAt: data.updateAt
@@ -136,8 +130,6 @@ const AlbumSchemaRaw = BaseObjectRaw.extend({
   itemSize: data.itemSize,
   pending: data.pending,
   description: data.description,
-  isFavorite: data.isFavorite,
-  isArchived: data.isArchived,
   isTrashed: data.isTrashed,
   rating: data.rating,
   updateAt: data.updateAt,

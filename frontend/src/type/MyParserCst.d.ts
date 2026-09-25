@@ -52,8 +52,6 @@ export type AtomicExpressionCstChildren = {
   albumExpression?: AlbumExpressionCstNode[]
   pathExpression?: PathExpressionCstNode[]
   anyExpression?: AnyExpressionCstNode[]
-  favoriteExpression?: FavoriteExpressionCstNode[]
-  archivedExpression?: ArchivedExpressionCstNode[]
   trashedExpression?: TrashedExpressionCstNode[]
   rootAlbumExpression?: RootAlbumExpressionCstNode[]
   parentAlbumExpression?: ParentAlbumExpressionCstNode[]
@@ -155,26 +153,6 @@ export type AnyExpressionCstChildren = {
   Identifier: IToken[]
 }
 
-export interface FavoriteExpressionCstNode extends CstNode {
-  name: 'favoriteExpression'
-  children: FavoriteExpressionCstChildren
-}
-
-export type FavoriteExpressionCstChildren = {
-  Favorite: IToken[]
-  BooleanValue: IToken[]
-}
-
-export interface ArchivedExpressionCstNode extends CstNode {
-  name: 'archivedExpression'
-  children: ArchivedExpressionCstChildren
-}
-
-export type ArchivedExpressionCstChildren = {
-  Archived: IToken[]
-  BooleanValue: IToken[]
-}
-
 export interface TrashedExpressionCstNode extends CstNode {
   name: 'trashedExpression'
   children: TrashedExpressionCstChildren
@@ -219,8 +197,6 @@ export interface ICstNodeVisitor<IN, OUT> extends ICstVisitor<IN, OUT> {
   albumExpression(children: AlbumExpressionCstChildren, param?: IN): OUT
   pathExpression(children: PathExpressionCstChildren, param?: IN): OUT
   anyExpression(children: AnyExpressionCstChildren, param?: IN): OUT
-  favoriteExpression(children: FavoriteExpressionCstChildren, param?: IN): OUT
-  archivedExpression(children: ArchivedExpressionCstChildren, param?: IN): OUT
   trashedExpression(children: TrashedExpressionCstChildren, param?: IN): OUT
   rootAlbumExpression(children: RootAlbumExpressionCstChildren, param?: IN): OUT
   parentAlbumExpression(children: ParentAlbumExpressionCstChildren, param?: IN): OUT

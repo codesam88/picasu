@@ -166,34 +166,6 @@ pub async fn timeline_view(_path: PathBuf) -> AppResult<FrontendResponse> {
 
 #[utoipa::path(
         get,
-        path = "/favorite",
-        tag = "pages",
-        responses(
-            (status = 200, description = "SPA page (HTML)"),
-        )
-    )
-]
-#[get("/favorite")]
-pub async fn favorite() -> AppResult<FrontendResponse> {
-    serve_file("index.html").await
-}
-
-#[utoipa::path(
-        get,
-        path = "/favorite/view/{path}",
-        tag = "pages",
-        responses(
-            (status = 200, description = "SPA page (HTML)"),
-        )
-    )
-]
-#[get("/favorite/view/<_path..>")]
-pub async fn favorite_view(_path: PathBuf) -> AppResult<FrontendResponse> {
-    serve_file("index.html").await
-}
-
-#[utoipa::path(
-        get,
         path = "/albums",
         tag = "pages",
         responses(
@@ -250,34 +222,6 @@ pub async fn album_page(dynamic_album_id: String) -> AppResult<FrontendResponse>
 ]
 #[get("/share/<_path..>")]
 pub async fn share(_path: PathBuf) -> AppResult<FrontendResponse> {
-    serve_file("index.html").await
-}
-
-#[utoipa::path(
-        get,
-        path = "/archived",
-        tag = "pages",
-        responses(
-            (status = 200, description = "SPA page (HTML)"),
-        )
-    )
-]
-#[get("/archived")]
-pub async fn archived() -> AppResult<FrontendResponse> {
-    serve_file("index.html").await
-}
-
-#[utoipa::path(
-        get,
-        path = "/archived/view/{path}",
-        tag = "pages",
-        responses(
-            (status = 200, description = "SPA page (HTML)"),
-        )
-    )
-]
-#[get("/archived/view/<_path..>")]
-pub async fn archived_view(_path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 

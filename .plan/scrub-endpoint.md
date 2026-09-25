@@ -93,7 +93,7 @@ in-memory rebuild, no additional disk writes.
 | Category                                      | Fields                                                                                                                                           |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Content-derived** (scrub re-extracts these) | `width`, `height`, `size`, `exif_vec`, `thumbhash`, `phash` (image only), on-disk thumbnail at `compressed_path()`                               |
-| **User-set** (scrub must NOT overwrite)       | `description`, `is_favorite`, `is_archived`, `is_trashed`, `album`, `update_at`                                                                  |
+| **User-set** (scrub must NOT overwrite)       | `description`, `is_trashed`, `album`, `update_at`                                                                                                |
 | **Mixed / ambiguous**                         | `tags` — XMP keyword discovery merges into the same `HashSet<String>` as user-added tags; cannot be cleanly separated without storing provenance |
 | **Filesystem-derived**                        | `alias: Vec<FileModify>` (paths + mtimes); pruning dead aliases is a separate concern                                                            |
 

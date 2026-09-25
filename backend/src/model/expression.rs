@@ -31,8 +31,6 @@ pub enum Expression {
     Any(String),
     ParentAlbum(ArrayString<64>),
     Trashed(bool),
-    Archived(bool),
-    Favorite(bool),
 }
 
 use crate::model::abstract_data::AbstractData;
@@ -95,20 +93,6 @@ impl Expression {
                     tags.is_empty() != exists
                 }),
             },
-            Expression::Favorite(value) => {
-                Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Image(img) => img.object.is_favorite == value,
-                    AbstractData::Video(vid) => vid.object.is_favorite == value,
-                    AbstractData::Album(alb) => alb.object.is_favorite == value,
-                })
-            }
-            Expression::Archived(value) => {
-                Box::new(move |abstract_data: &AbstractData| match abstract_data {
-                    AbstractData::Image(img) => img.object.is_archived == value,
-                    AbstractData::Video(vid) => vid.object.is_archived == value,
-                    AbstractData::Album(alb) => alb.object.is_archived == value,
-                })
-            }
             Expression::Trashed(value) => {
                 Box::new(move |abstract_data: &AbstractData| match abstract_data {
                     AbstractData::Image(img) => img
@@ -412,21 +396,24 @@ mod tests {
 
     // ── Boolean flags ─────────────────────────────────────────────────────────
 
+    /// `Favorite`/`Archived` were removed together with the object flags they
+    /// filtered; the wire representation (serde variant names) is what pins
+    /// that a filter query carrying them is now rejected instead of silently
+    /// matching nothing.
     #[test]
-    fn favorite_matches_flag() {
-        let mut i = img();
-        i.object.is_favorite = true;
-        let data = AbstractData::Image(i);
-
-        assert!(run(Expression::Favorite(true), &data));
-        assert!(!run(Expression::Favorite(false), &data));
-    }
-
-    #[test]
-    fn archived_matches_flag() {
-        let data = AbstractData::Image(img()); // is_archived = false by default
-        assert!(run(Expression::Archived(false), &data));
-        assert!(!run(Expression::Archived(true), &data));
+    fn favorite_and_archived_variants_are_rejected() {
+        assert!(
+            serde_json::from_str::<Expression>(r#"{"Favorite":true}"#).is_err(),
+            "removed Favorite variant must not deserialize"
+        );
+        assert!(
+            serde_json::from_str::<Expression>(r#"{"Archived":false}"#).is_err(),
+            "removed Archived variant must not deserialize"
+        );
+        assert!(
+            serde_json::from_str::<Expression>(r#"{"Trashed":true}"#).is_ok(),
+            "the retained trash filter must still deserialize"
+        );
     }
 
     #[test]
@@ -586,16 +573,32 @@ mod tests {
 
     // ── Logical operators ─────────────────────────────────────────────────────
 
+    /// A trashed `.jpg` image — the primitive predicates the combination
+    /// tests below compose (trash was the flag that survived the removal of
+    /// favorite/archived).
+    fn trashed_jpg() -> ImageCombined {
+        let mut i = img();
+        i.metadata.path = Some(FileEntry {
+            file: "/Photos/trashed.jpg".to_string(),
+            modified: 0,
+            scan_time: 0,
+            is_trashed: true,
+        });
+        i
+    }
+
     #[test]
     fn and_requires_all_predicates() {
-        let mut i = img();
-        i.object.is_favorite = true;
-        i.object.is_archived = true;
-        let data = AbstractData::Image(i);
+        let data = AbstractData::Image(trashed_jpg());
 
-        let both = Expression::And(vec![Expression::Favorite(true), Expression::Archived(true)]);
-        let one_false =
-            Expression::And(vec![Expression::Favorite(true), Expression::Trashed(true)]);
+        let both = Expression::And(vec![
+            Expression::Trashed(true),
+            Expression::Ext("jpg".to_string()),
+        ]);
+        let one_false = Expression::And(vec![
+            Expression::Trashed(false),
+            Expression::Ext("jpg".to_string()),
+        ]);
 
         assert!(run(both, &data));
         assert!(!run(one_false, &data));
@@ -603,12 +606,16 @@ mod tests {
 
     #[test]
     fn or_requires_at_least_one_predicate() {
-        let mut i = img();
-        i.object.is_favorite = true;
-        let data = AbstractData::Image(i);
+        let data = AbstractData::Image(trashed_jpg());
 
-        let either = Expression::Or(vec![Expression::Favorite(true), Expression::Trashed(true)]);
-        let neither = Expression::Or(vec![Expression::Favorite(false), Expression::Trashed(true)]);
+        let either = Expression::Or(vec![
+            Expression::Trashed(false),
+            Expression::Ext("jpg".to_string()),
+        ]);
+        let neither = Expression::Or(vec![
+            Expression::Trashed(false),
+            Expression::Ext("png".to_string()),
+        ]);
 
         assert!(run(either, &data));
         assert!(!run(neither, &data));
@@ -616,14 +623,23 @@ mod tests {
 
     #[test]
     fn not_inverts_predicate() {
-        let data = AbstractData::Image(img()); // is_favorite = false
+        // A live path: `Trashed(false)` matches it, `Trashed(true)` does not
+        // (a missing path would match neither side of the comparison).
+        let mut i = img();
+        i.metadata.path = Some(FileEntry {
+            file: "/Photos/live.jpg".to_string(),
+            modified: 0,
+            scan_time: 0,
+            is_trashed: false,
+        });
+        let data = AbstractData::Image(i);
 
         assert!(run(
-            Expression::Not(Box::new(Expression::Favorite(true))),
+            Expression::Not(Box::new(Expression::Trashed(true))),
             &data
         ));
         assert!(!run(
-            Expression::Not(Box::new(Expression::Favorite(false))),
+            Expression::Not(Box::new(Expression::Trashed(false))),
             &data
         ));
     }
@@ -692,16 +708,6 @@ impl Expression {
             | Expression::ParentAlbum(_) => Box::new(|_| false),
 
             /* ---------- Boolean field filters ---------- */
-            Expression::Favorite(value) => Box::new(move |data: &AbstractData| match data {
-                AbstractData::Image(img) => img.object.is_favorite == value,
-                AbstractData::Video(vid) => vid.object.is_favorite == value,
-                AbstractData::Album(alb) => alb.object.is_favorite == value,
-            }),
-            Expression::Archived(value) => Box::new(move |data: &AbstractData| match data {
-                AbstractData::Image(img) => img.object.is_archived == value,
-                AbstractData::Video(vid) => vid.object.is_archived == value,
-                AbstractData::Album(alb) => alb.object.is_archived == value,
-            }),
             Expression::Trashed(value) => Box::new(move |data: &AbstractData| match data {
                 AbstractData::Image(img) => img
                     .metadata

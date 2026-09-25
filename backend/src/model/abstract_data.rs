@@ -431,24 +431,6 @@ impl AbstractData {
         }
     }
 
-    /// Set favorite status
-    pub fn set_favorite(&mut self, is_favorite: bool) {
-        match self {
-            AbstractData::Image(img) => img.object.is_favorite = is_favorite,
-            AbstractData::Video(vid) => vid.object.is_favorite = is_favorite,
-            AbstractData::Album(alb) => alb.object.is_favorite = is_favorite,
-        }
-    }
-
-    /// Set archived status
-    pub fn set_archived(&mut self, is_archived: bool) {
-        match self {
-            AbstractData::Image(img) => img.object.is_archived = is_archived,
-            AbstractData::Video(vid) => vid.object.is_archived = is_archived,
-            AbstractData::Album(alb) => alb.object.is_archived = is_archived,
-        }
-    }
-
     /// Set rating (0–5); None clears it
     pub fn set_rating(&mut self, rating: Option<u8>) {
         match self {

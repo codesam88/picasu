@@ -38,7 +38,7 @@ redb), unaffected by the mutation.
 | Counter           | Tracks                                          | Bumped by                                                    |
 | ----------------- | ----------------------------------------------- | ------------------------------------------------------------ |
 | `TAG_VERSION`     | Tag values                                      | `edit_tag`                                                   |
-| `FLAG_VERSION`    | Trashed/Archived/Favorite                       | `edit_flags`                                                 |
+| `FLAG_VERSION`    | Trashed                                         | `edit_flags`                                                 |
 | `ALBUM_VERSION`   | Album membership, asset paths, album metadata   | `assign_album`, `edit_album` (title, cover), sub-album moves |
 | `CONTENT_VERSION` | Item inventory: new, deleted, or replaced files | Watcher create/modify/remove, manual scan, upload            |
 
@@ -53,7 +53,7 @@ counters:
 | Expression                                          | Needs counters                                  |
 | --------------------------------------------------- | ----------------------------------------------- |
 | `Tag(..)`                                           | `TAG_VERSION`                                   |
-| `Trashed`, `Favorite`, `Archived`                   | `FLAG_VERSION`                                  |
+| `Trashed`                                           | `FLAG_VERSION`                                  |
 | `Album(..)`, `Path(..)`, `RootAlbum`, `ParentAlbum` | `ALBUM_VERSION`                                 |
 | `Ext(..)`, `Model(..)`, `Make(..)`, `ExtType(..)`   | `CONTENT_VERSION`                               |
 | `Any(..)`                                           | `TAG_VERSION + ALBUM_VERSION + CONTENT_VERSION` |

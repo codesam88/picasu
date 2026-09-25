@@ -52,7 +52,7 @@ pub enum MetadataRecord {
 
 | Group  | Fields                                                                                                                                    |
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Object | `tags`, `description`, `rating`, `is_favorite`, `is_archived`, `update_at`, `pending`, `thumbhash`                                        |
+| Object | `tags`, `description`, `rating`, `update_at`, `pending`, `thumbhash`                                                                      |
 | Image  | `width`, `height`, `phash`, `exif_vec`                                                                                                    |
 | Video  | `width`, `height`, `duration`, `exif_vec`                                                                                                 |
 | Album  | `title`, `created_time`, `start_time`, `end_time`, `last_modified_time`, `cover`, `item_count`, `item_size`, `share_list`, `custom_title` |
@@ -94,8 +94,6 @@ Source: `backend/src/model/object.rs`
 | `thumbhash`   | `Option<Vec<u8>>` | Binary thumbnail hash                  |
 | `description` | `Option<String>`  | User-written description               |
 | `tags`        | `HashSet<String>` | User-applied tags                      |
-| `is_favorite` | `bool`            | Favorited flag                         |
-| `is_archived` | `bool`            | Archived flag                          |
 | `rating`      | `Option<u8>`      | Star rating, if set                    |
 | `update_at`   | `i64`             | Last-updated timestamp (ms)            |
 

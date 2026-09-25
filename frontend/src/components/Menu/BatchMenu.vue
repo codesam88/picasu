@@ -27,9 +27,7 @@
 
             <v-divider></v-divider>
 
-            <!-- Archive and Favorite Actions -->
-            <ItemArchive :index-list="editModeList" />
-            <ItemFavorite :index-list="editModeList" />
+            <!-- Tag Actions -->
             <ItemBatchEditTags />
             <ItemBatchEditAlbums />
 
@@ -62,8 +60,6 @@ import { useConfigStore } from '@/store/configStore'
 
 import ItemSetAsCover from '@Menu/MenuItem/ItemSetAsCover.vue'
 import ItemAlbumInfo from '@Menu/MenuItem/ItemAlbumInfo.vue'
-import ItemArchive from '@Menu/MenuItem/ItemArchive.vue'
-import ItemFavorite from '@Menu/MenuItem/ItemFavorite.vue'
 import ItemBatchEditTags from '@Menu/MenuItem/ItemBatchEditTags.vue'
 import ItemBatchEditAlbums from '@Menu/MenuItem/ItemBatchEditAlbums.vue'
 import ItemDownload from '@Menu/MenuItem/ItemDownload.vue'

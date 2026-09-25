@@ -17,12 +17,11 @@ Consolidated from `ui-notes.md` — remaining work after nav/settings cleanup.
 ### Search / Filter bar
 
 - [ ] On click, show a dropdown to help build filters (tag picker, album picker, property toggles).
-- [ ] Unify global photo properties (favorite, trashed) as the same filter type, selectable via the search bar dropdown.
+- [ ] Unify global photo properties (trashed) as the same filter type, selectable via the search bar dropdown.
 
 ### Album view
 
 - [ ] Album properties in grid view: allow setting a fancy name and custom cover image.
-- [ ] Quick favorite labeling from grid view.
 
 ### Config / Settings
 
@@ -82,7 +81,7 @@ Consolidated from `ui-notes.md` — remaining work after nav/settings cleanup.
 
 - ViewImage
   - view/set custom title, description, tags...
-  - favorite rating
+  - rating
   - etc.
 
 - Edit / Batch Edit Modal

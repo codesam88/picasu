@@ -5,8 +5,6 @@ import type { RouteLocationRaw } from 'vue-router'
 import 'vue-router'
 
 import TimelineMain from '@/components/Page/TimelinePage.vue'
-import FavoritePage from '@/components/Page/FavoritePage.vue'
-import ArchivedPage from '@/components/Page/ArchivedPage.vue'
 import TrashedPage from '@/components/Page/TrashedPage.vue'
 import AlbumsPage from '@/components/Page/AlbumsPage.vue'
 import AlbumContentsPage from '@/components/Page/AlbumContentsPage.vue'
@@ -37,10 +35,6 @@ const simpleRoutes: RouteRecordRaw[] = [
 // ======================================
 
 const timelinePageRoutes = createRoute('timeline', TimelineMain)
-
-const favoritePageRoutes = createRoute('favorite', FavoritePage)
-
-const archivedPageRoutes = createRoute('archived', ArchivedPage)
 
 const trashedPageRoutes = createRoute('trashed', TrashedPage)
 
@@ -98,8 +92,6 @@ const albumContentRoute: RouteRecordRaw = {
 const routes: RouteRecordRaw[] = [
   ...simpleRoutes,
   ...timelinePageRoutes,
-  ...favoritePageRoutes,
-  ...archivedPageRoutes,
   ...trashedPageRoutes,
   ...albumsPageRoutes,
   ...videosPageRoutes,
@@ -132,8 +124,6 @@ router.afterEach((to) => {
 
   const baseTitleMap: Record<string, string> = {
     timeline: 'Timeline',
-    favorite: 'Favorites',
-    archived: 'Archived',
     trashed: 'Trash',
     albums: 'Albums',
     videos: 'Videos',

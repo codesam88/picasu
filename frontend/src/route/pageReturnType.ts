@@ -29,8 +29,6 @@ declare module 'vue-router' {
 
 type BaseName =
   | 'timeline'
-  | 'favorite'
-  | 'archived'
   | 'trashed'
   | 'albums'
   | 'videos'

@@ -225,26 +225,6 @@ const ui = computed<UIState>(() => {
         onClick: undefined
       }
 
-    case 'favorite':
-      return {
-        isSearchEmpty: false,
-        showUploadCard: false,
-        hasHoverEffect: false,
-        message: 'Add your favorite photos and videos here!',
-        icon: 'mdi-star',
-        onClick: undefined
-      }
-
-    case 'archived':
-      return {
-        isSearchEmpty: false,
-        showUploadCard: false,
-        hasHoverEffect: false,
-        message: 'Archived photos won\u2019t appear on the home page.',
-        icon: 'mdi-archive-arrow-down',
-        onClick: undefined
-      }
-
     case 'trashed':
       return {
         isSearchEmpty: false,

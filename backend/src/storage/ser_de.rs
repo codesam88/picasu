@@ -29,13 +29,13 @@ use redb::{TypeName, Value};
 //   2. Copy the current structs to AbstractDataVN / AlbumCombinedVN / etc.
 //   3. Add a match arm for the old version in from_bytes.
 
-const SCHEMA_VERSION: u8 = 1;
+const SCHEMA_VERSION: u8 = 2;
 
 /// On-disk schema version for `MetadataRecord` (the `METADATA_TABLE` value).
 /// The table's on-disk name changed when `MetadataRecord` replaced
 /// `AbstractData` as the stored value, so rows written under the previous
 /// name are never decoded by this impl.
-const METADATA_SCHEMA_VERSION: u8 = 1;
+const METADATA_SCHEMA_VERSION: u8 = 2;
 
 /// Abort decoding of a record this build cannot interpret, with instructions
 /// for the operator.
@@ -281,7 +281,7 @@ mod tests {
             bytes[1], SCHEMA_VERSION,
             "version byte must match SCHEMA_VERSION"
         );
-        assert_eq!(SCHEMA_VERSION, 1, "current schema is version 1");
+        assert_eq!(SCHEMA_VERSION, 2, "current schema is version 2");
     }
 
     #[test]
@@ -290,13 +290,40 @@ mod tests {
         AbstractData::from_bytes(&[0xFF, 9, 0, 0, 0]);
     }
 
+    /// Rows written before the favorite/archived removal carry the older
+    /// schema version on both stored types; they must be refused with
+    /// rebuild instructions rather than surfacing as a bare bitcode decode
+    /// failure.
+    #[test]
+    #[should_panic(expected = "POST /post/rebuild")]
+    fn pre_removal_object_version_requires_rebuild() {
+        AbstractData::from_bytes(&[0xFF, 1, 0, 0, 0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "POST /post/rebuild")]
+    fn pre_removal_metadata_version_requires_rebuild() {
+        MetadataRecord::from_bytes(&[0xFF, 1, 0, 0, 0]);
+    }
+
+    #[test]
+    fn metadata_bytes_carry_schema_version_prefix() {
+        let record = crate::model::metadata_record::to_metadata_record(&make_image());
+        let bytes = MetadataRecord::as_bytes(&record);
+        assert_eq!(bytes[0], 0xFF, "magic marker must be 0xFF");
+        assert_eq!(
+            bytes[1], METADATA_SCHEMA_VERSION,
+            "version byte must match METADATA_SCHEMA_VERSION"
+        );
+    }
+
     #[test]
     #[should_panic(expected = "POST /post/rebuild")]
     fn prefixless_record_requires_rebuild() {
         // Current-schema payload with the version prefix stripped. Must NOT
-        // fall through to a legacy "version 1" decode: after the schema
-        // version reset, version 1 means the *current* structs, so silently
-        // decoding ancient prefixless bytes would corrupt data.
+        // fall through to decoding it as one of the versioned schemas: no
+        // version byte means the record is unreadable, so silently decoding
+        // ancient prefixless bytes would corrupt data.
         let bytes = bitcode::encode(&make_image());
         assert_ne!(
             bytes.first(),

@@ -42,8 +42,6 @@ pub struct ImagePayload {
     pub tags: HashSet<String>,
     pub description: Option<String>,
     pub rating: Option<u8>,
-    pub is_favorite: bool,
-    pub is_archived: bool,
     pub update_at: i64,
     pub pending: bool,
     pub thumbhash: Option<Vec<u8>>,
@@ -60,8 +58,6 @@ pub struct VideoPayload {
     pub tags: HashSet<String>,
     pub description: Option<String>,
     pub rating: Option<u8>,
-    pub is_favorite: bool,
-    pub is_archived: bool,
     pub update_at: i64,
     pub pending: bool,
     pub thumbhash: Option<Vec<u8>>,
@@ -80,8 +76,6 @@ pub struct AlbumPayload {
     pub tags: HashSet<String>,
     pub description: Option<String>,
     pub rating: Option<u8>,
-    pub is_favorite: bool,
-    pub is_archived: bool,
     pub update_at: i64,
     pub pending: bool,
     pub thumbhash: Option<Vec<u8>>,
@@ -119,8 +113,6 @@ pub fn to_metadata_record(data: &AbstractData) -> MetadataRecord {
             tags: img.object.tags.clone(),
             description: img.object.description.clone(),
             rating: img.object.rating,
-            is_favorite: img.object.is_favorite,
-            is_archived: img.object.is_archived,
             update_at: img.object.update_at,
             pending: img.object.pending,
             thumbhash: img.object.thumbhash.clone(),
@@ -133,8 +125,6 @@ pub fn to_metadata_record(data: &AbstractData) -> MetadataRecord {
             tags: vid.object.tags.clone(),
             description: vid.object.description.clone(),
             rating: vid.object.rating,
-            is_favorite: vid.object.is_favorite,
-            is_archived: vid.object.is_archived,
             update_at: vid.object.update_at,
             pending: vid.object.pending,
             thumbhash: vid.object.thumbhash.clone(),
@@ -147,8 +137,6 @@ pub fn to_metadata_record(data: &AbstractData) -> MetadataRecord {
             tags: alb.object.tags.clone(),
             description: alb.object.description.clone(),
             rating: alb.object.rating,
-            is_favorite: alb.object.is_favorite,
-            is_archived: alb.object.is_archived,
             update_at: alb.object.update_at,
             pending: alb.object.pending,
             thumbhash: alb.object.thumbhash.clone(),
@@ -220,8 +208,6 @@ pub fn compose_abstract_data(record: &AssetRecord, meta: Option<&MetadataRecord>
                 object.tags.clone_from(&payload.tags);
                 object.description.clone_from(&payload.description);
                 object.rating = payload.rating;
-                object.is_favorite = payload.is_favorite;
-                object.is_archived = payload.is_archived;
                 object.update_at = payload.update_at;
                 object.pending = payload.pending;
                 object.thumbhash.clone_from(&payload.thumbhash);
@@ -241,8 +227,6 @@ pub fn compose_abstract_data(record: &AssetRecord, meta: Option<&MetadataRecord>
                 object.tags.clone_from(&payload.tags);
                 object.description.clone_from(&payload.description);
                 object.rating = payload.rating;
-                object.is_favorite = payload.is_favorite;
-                object.is_archived = payload.is_archived;
                 object.update_at = payload.update_at;
                 object.pending = payload.pending;
                 object.thumbhash.clone_from(&payload.thumbhash);
@@ -267,8 +251,6 @@ pub fn compose_abstract_data(record: &AssetRecord, meta: Option<&MetadataRecord>
                 object.tags.clone_from(&payload.tags);
                 object.description.clone_from(&payload.description);
                 object.rating = payload.rating;
-                object.is_favorite = payload.is_favorite;
-                object.is_archived = payload.is_archived;
                 object.update_at = payload.update_at;
                 object.pending = payload.pending;
                 object.thumbhash.clone_from(&payload.thumbhash);
@@ -285,5 +267,56 @@ pub fn compose_abstract_data(record: &AssetRecord, meta: Option<&MetadataRecord>
             }
             AbstractData::Album(AlbumCombined { object, metadata })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MetadataRecord, to_metadata_record};
+    use crate::model::abstract_data::AbstractData;
+    use crate::model::image::{ImageCombined, ImageMetadata};
+    use crate::model::object::{ObjectSchema, ObjectType};
+    use arrayvec::ArrayString;
+
+    fn img_data() -> AbstractData {
+        let id = ArrayString::from("test").expect("failed to create ArrayString");
+        AbstractData::Image(ImageCombined {
+            object: ObjectSchema::new(id, ObjectType::Image),
+            metadata: ImageMetadata::new(0, 0, 0, "jpg".to_string()),
+        })
+    }
+
+    /// The favorite/archived flags are no longer part of the stored payload:
+    /// neither the write side (`to_metadata_record`) nor the read side may
+    /// carry them.
+    #[test]
+    fn metadata_payload_omits_favorite_and_archived() {
+        let record = to_metadata_record(&img_data());
+        let value = serde_json::to_value(&record).expect("MetadataRecord must serialize");
+        let map = value
+            .as_object()
+            .expect("MetadataRecord serializes to an object");
+
+        assert!(
+            !map.contains_key("isFavorite"),
+            "isFavorite must be removed"
+        );
+        assert!(
+            !map.contains_key("isArchived"),
+            "isArchived must be removed"
+        );
+        assert_eq!(map.get("type"), Some(&serde_json::json!("image")));
+    }
+
+    #[test]
+    fn round_trip_keeps_retained_metadata_fields() {
+        let data = img_data();
+        let record = to_metadata_record(&data);
+        assert!(matches!(record, MetadataRecord::Image(_)));
+
+        let json = serde_json::to_string(&record).expect("payload must serialize");
+        let decoded: MetadataRecord =
+            serde_json::from_str(&json).expect("payload must deserialize back");
+        assert_eq!(decoded, record);
     }
 }

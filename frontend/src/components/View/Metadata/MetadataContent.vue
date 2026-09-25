@@ -69,14 +69,7 @@
           :readonly="isShareMode"
         />
         <v-divider></v-divider>
-        <ItemTag
-          v-if="showMetadata"
-          :isolation-id="props.isolationId"
-          :index="props.index"
-          :tags="abstractData.tags"
-          :is-favorite="abstractData.isFavorite"
-          :is-archived="abstractData.isArchived"
-        />
+        <ItemTag v-if="showMetadata" :tags="abstractData.tags" />
         <ItemAlbum
           v-if="route.meta.baseName !== 'share'"
           :isolation-id="props.isolationId"
@@ -90,13 +83,7 @@
         <ItemTitle :title="abstractData.title" />
         <ItemCount :album="abstractData" />
         <v-divider></v-divider>
-        <ItemTag
-          :isolation-id="props.isolationId"
-          :index="props.index"
-          :tags="abstractData.tags"
-          :is-favorite="abstractData.isFavorite"
-          :is-archived="abstractData.isArchived"
-        />
+        <ItemTag :tags="abstractData.tags" />
       </v-list>
     </div>
   </div>
