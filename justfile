@@ -113,11 +113,27 @@ utils-test:
 
 # ── Tooling ─────────────────────────────────────────────────────────────────────
 
-# Generate openapi.json from utoipa annotations
+# Generate the checked-in public OpenAPI artifact from utoipa annotations
 [group('utils')]
 openapi-gen:
     RUST_MIN_STACK=16777216 cargo run --package picasu -- --dump-openapi > backend/openapi.json
     @echo "wrote backend/openapi.json"
+
+# Fail when the checked-in public OpenAPI artifact is stale
+[group('utils')]
+openapi-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    generated="$(mktemp)"
+    trap 'rm -f "$generated"' EXIT
+    RUST_MIN_STACK=16777216 cargo run -q --package picasu -- --dump-openapi > "$generated"
+    if ! diff -u backend/openapi.json "$generated"; then
+        echo ""
+        echo "backend/openapi.json is out of date with the utoipa annotations."
+        echo "Run 'just openapi-gen' and commit the result."
+        exit 1
+    fi
+    echo "openapi.json matches the generated spec"
 
 # Auto-format .plan task frontmatter and body
 [group('tooling')]
@@ -179,7 +195,7 @@ format: backend-format utils-format frontend-format docs-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint
+check: backend-check utils-check frontend-check docs-check plan-lint openapi-check
 
 # Run tests (backend + utils + frontend)
 [group('global')]
@@ -265,6 +281,7 @@ precommit:
     echo "[ precommit ] On '$branch' — format/lint enforced; run tests at your disgression."
     if echo "$changed" | grep -q '^backend/'; then
         just backend-check
+        just openapi-check
     fi
     if echo "$changed" | grep -q '^utils/'; then
         just utils-check

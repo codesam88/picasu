@@ -96,10 +96,13 @@ Medium — bad patterns and type fidelity:
       (album-index, index-image, probe ops), breaking Parameters/Responses
       in-page links and duplicating description-as-anchor. Keep utoipa
       summaries single-line titles.
-- [ ] Update `docs/openapi-generator.md`: 4 references to
+- [x] Update `docs/openapi-generator.md`: 4 references to
       `docs/mdbook/src/openapi-reference.md` are stale; `justfile` writes
       `docs/openapi-reference.md`. Anything wiring a CI drift-check against
-      the doc path checks a nonexistent file.
+      the doc path checks a nonexistent file. **Done** — paths corrected, the
+      nonexistent `just openapi-docs`/`openapi-docs-check` recipes replaced with
+      the real `just docs-openapi`/`just openapi-check`, and the checked-in
+      artifact plus the parity gate documented.
 
 Low — consistency and polish:
 
@@ -121,6 +124,22 @@ Low — consistency and polish:
 
 ## Progress
 
+- 2026-09-25: Established hardening mechanisms 1 and 2.
+  `backend/openapi.json` is now a committed, pretty-printed, sorted-key
+  artifact; `just openapi-check` regenerates and diffs it and is part of
+  `just check` (so CI and the `main` pre-commit hook run it).
+  `backend/src/tests/openapi_contract.rs` compares Rocket's mounted route table
+  with the spec: undocumented mounted routes, documented-but-unmounted
+  operations, duplicate `operationId`s, and dead contract exclusions all fail.
+  Rocket's `<segment>`/`<segment..>` URI syntax is normalized to OpenAPI
+  `{segment}` templates; the test-only probes and the `/assets` file server are
+  explicit, reviewed exclusions. Both directions were verified by injecting
+  drift: renaming an annotated path fails `every_spec_operation_is_mounted`,
+  and un-scanning `router/auth.rs` fails `every_mounted_route_is_documented`.
+  Spec operation count went 59 → 61. Remaining: structural linting (3),
+  breaking-change detection (4), spec-driven contract smoke tests (5), plus the
+  content tasks above. The markdown reference is still not drift-checked
+  because `widdershins` is fetched over the network.
 - 2026-09-23: Rework-adjacent subset executed by the path-primary cleanup
   sweep (see `.plan/path-primary-cleanup.md`): test-only probes stripped from
   the public spec; `PUT /put/assign_album` given tag `albums`, a single-line
