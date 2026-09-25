@@ -134,6 +134,9 @@ unrelated files, change established semantics silently, or commit independently.
 - **Implementation:** centralize signature detection and make the upload path
   reject mismatches regardless of `validate_upload_content`. Reuse the same
   detector for filesystem indexing where a supported file is encountered.
+- **Carry-over:** the hardcoded `jpeg | png` list in
+  `backend/src/tests/backend_api.rs` is generator-side — it builds a
+  `snapfab::PhotoSpec` from a scenario — so replace it with a manifest lookup.
 - **Gate:** focused API scenarios, backend unit tests, and the frontend toast
   assertion for the notification text. Do not add a new error type solely for
   the test; the contract must describe the existing error path.
@@ -146,6 +149,9 @@ unrelated files, change established semantics silently, or commit independently.
   not promised and does not silently become a required field.
 - **Implementation:** only change extraction if a failing test demonstrates a
   real JPEG/PNG regression. Do not add PNG embedded-XMP decompression.
+- **Carry-over:** record the limitation of the APP1-unaware byte scan in
+  `backend/src/process/xmp.rs`, so the JPEG embedded-XMP claim is not read as a
+  guarantee that compact XMP is detected.
 - **Gate:** snapfab tests, metadata API scenarios, and the targeted frontend
   metadata sidebar scenario.
 
@@ -248,16 +254,24 @@ Randomization should complement, not replace, the deterministic matrix.
 
 ## Progress
 
+- 2026-09-25 — Second Iteration 0 review round: full validation-branch
+  coverage, the `unsupportedMetadataFields` representation, the manifest scope
+  note, and the `CapabilityError` traits. Corrected a factual error it surfaced:
+  `xmp.rs` resolves sidecars and scans embedded packets with no format dispatch,
+  so JPEG also supports sidecar XMP and the manifest now claims it. Mutation
+  checks confirmed each validation rule is load-bearing; the duplicate-entry
+  test was rewritten after the first check showed it was masked by the
+  contradiction check.
 - 2026-09-25 — Iteration 0 implemented on `feat/format-capability-manifest`.
-  Added the repository-owned snapfab manifest (`utils/snapfab/capabilities.json`)
-  with schema/semantic validation, signature decoding, format and extension
-  lookup, and manifest-driven randomized fixture selection. A completeness test
-  now fails if the manifest declares a format snapfab cannot generate, and
-  `generate_photo` rejects explicitly requested non-generatable formats instead
-  of silently emitting JPEG bytes. A backend test asserts every manifest
-  extension is accepted by the upload/index allowlist. The manifest only claims
-  metadata the backend actually reads (JPEG EXIF + XMP, PNG EXIF, PNG sidecar
-  XMP); the unsupported JPEG IPTC read claim was removed. The snapfab binary now
-  consumes the library crate instead of recompiling the modules. Focused tests,
-  `just utils-check`, and `just plan-lint` pass. No scenario-loader unit test
-  exists yet; the loader is covered by the Playwright interpreter spec.
+  Added `utils/snapfab/capabilities.json` with schema and semantic validation,
+  signature decoding, format/extension lookup, and manifest-driven randomized
+  fixture selection. A completeness test fails if the manifest declares a format
+  snapfab cannot generate, and `generate_photo` rejects explicitly requested
+  non-generatable formats instead of silently emitting JPEG bytes. A backend
+  test asserts every manifest extension is accepted by the upload/index
+  allowlist. The manifest only claims metadata the backend reads (JPEG EXIF +
+  XMP, PNG EXIF, PNG sidecar XMP); the unsupported JPEG IPTC claim was removed.
+  The snapfab binary now consumes the library crate instead of recompiling the
+  modules. Focused tests, `just utils-check`, and `just plan-lint` pass. No
+  scenario-loader unit test exists yet; the loader is covered by the Playwright
+  interpreter spec.
