@@ -1,0 +1,64 @@
+name: permanently deleting a parent album does not restore its child album
+covers:
+  api:
+    - PUT /put/edit_flags
+    - DELETE /delete/delete-data
+  ui:
+    - album soft delete moves the parent to trash
+    - permanent delete removes the parent and child tree
+    - child album does not reappear in the albums page
+given:
+  - dir_album: e2e_ui_album_delete/parent
+  - dir_album: e2e_ui_album_delete/parent/child
+  - photo: e2e_ui_album_delete/parent/child/photo.jpg
+steps:
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+      - ui.text_visible: E2e Ui Album Delete
+
+  - when:
+      - click.select_first: true
+      - click.testid: batch-menu
+    assert:
+      - ui.text_visible: Delete
+
+  - when:
+      - click: option/Delete
+    assert:
+      - ui.toast:
+          type: success
+          contains: Successfully updated
+
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.visible: main/
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  - when:
+      - click.select_first: true
+      - click.testid: batch-menu
+    assert:
+      - ui.text_visible: Permanently Delete
+
+  - when:
+      - click: option/Permanently Delete
+    assert:
+      - ui.toast:
+          type: success
+          contains: Successfully deleted data
+
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 0
+
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 0
