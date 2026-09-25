@@ -49,12 +49,12 @@ backend-build-release:
 # prettier --write
 [group('frontend')]
 frontend-format:
-    npx prettier --write frontend/
+    cd frontend && npx --no-install prettier --write .
 
 # prettier --check + vue-tsc + eslint
 [group('frontend')]
 frontend-check:
-    npx prettier --check frontend/ && cd frontend && npx vue-tsc --noEmit && npx eslint .
+    cd frontend && npx --no-install prettier --check . && npx --no-install vue-tsc --noEmit && npx --no-install vue-tsc --noEmit --project tsconfig.node.json && npx --no-install eslint .
 
 # vitest run
 [group('frontend')]
@@ -98,13 +98,13 @@ frontend-audit:
 # cargo fmt on utils/ crates
 [group('utils')]
 utils-format:
-    cargo fmt -p snapfab
+    cargo fmt -p snapfab -p paste
 
 # cargo fmt --check + cargo clippy on utils/ crates
 [group('utils')]
 utils-check:
-    cargo fmt --check -p snapfab
-    cargo clippy -p snapfab -- -D warnings -A clippy::unwrap_used
+    cargo fmt --check -p snapfab -p paste
+    cargo clippy -p snapfab -p paste -- -D warnings -A clippy::unwrap_used
 
 # cargo test on utils/ crates
 [group('utils')]
@@ -122,7 +122,7 @@ openapi-gen:
 # Auto-format .plan task frontmatter and body
 [group('tooling')]
 plan-format:
-    npx prettier --write --no-error-on-unmatched-pattern '.plan/**/*.md'
+    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../.plan/**/*.md'
 
 # Validate .plan task frontmatter structure
 [group('tooling')]
@@ -164,12 +164,12 @@ docs-serve:
 # Format markdown files (README, docs, .plan)
 [group('docs')]
 docs-format:
-    npx prettier --write --no-error-on-unmatched-pattern '*.md' 'docs/**/*.md' '.plan/**/*.md'
+    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md'
 
 # Check markdown formatting (docs, .plan)
 [group('docs')]
 docs-check:
-    npx prettier --check --no-error-on-unmatched-pattern '*.md' 'docs/**/*.md' '.plan/**/*.md'
+    cd frontend && npx --no-install prettier --check --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md'
 
 # ── Global ─────────────────────────────────────────────────────────────────────
 
