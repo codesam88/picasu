@@ -1,0 +1,6 @@
+# MIRAI 1.1.12 is a rustc driver; it must be paired with the exact nightly it was
+# built against. endorlabs/MIRAI v1.1.12 pins nightly-2025-01-10 with the
+# rustc-dev and rust-src components.
+[toolchain]
+channel = "nightly-2025-01-10"
+components = ["rustc-dev", "rust-src", "rust-std", "llvm-tools"]

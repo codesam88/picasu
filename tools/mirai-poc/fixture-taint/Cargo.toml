@@ -1,0 +1,11 @@
+[package]
+name = "mirai-poc-fixture-taint"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+mirai-annotations = "1.12.0"
