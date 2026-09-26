@@ -20,8 +20,32 @@ pub struct XmpData {
 /// - `xmp:Rating`   → rating (plain integer text node)
 /// - `dc:title`     → title (`rdf:Alt` of `rdf:li`)
 ///
-/// Limitations: only handles uncompressed, contiguous XMP packets.
-/// Compact XMP (namespace shorthand, RDF attribute syntax) may not be matched.
+/// # The scan is container-unaware
+///
+/// Nothing here parses a container. JPEG marker segments, PNG chunks, TIFF
+/// IFDs — no structure is walked; the only thing recognised is a literal
+/// `<element>…</element>` byte pair, and it is accepted anywhere in the input.
+/// Three consequences follow, and the capability manifest's
+/// `metadataFields.xmp` entries must be read in light of them:
+///
+/// 1. *Embedded* is a location, not a detection guarantee. A JPEG APP1 XMP
+///    packet is found because it happens to be stored verbatim in the file
+///    bytes. A packet serialized differently is not: compact XMP (namespace
+///    shorthand, RDF attribute syntax, a `dcterms:`-style prefix) has no
+///    literal `<dc:subject>`, so it yields no tags even though the file does
+///    carry XMP. Treat `jpeg.xmp: ["embedded"]` as "an XMP packet in the usual
+///    form is read", not "any XMP in a JPEG is read".
+/// 2. The converse also holds: any bytes containing those markers match,
+///    whether or not they are a well-formed packet inside the right segment.
+///    There is no APP1 or namespace check to keep a stray match honest.
+/// 3. Nothing is decompressed, so only plaintext survives. A PNG `zTXt`/`iTXt`
+///    chunk holding a deflate-compressed packet yields nothing.
+///
+/// PNG embedded XMP is not a supported contract (`capabilities.json` lists
+/// `xmp:embedded` under the PNG format's `unsupportedMetadataFields`) and
+/// `pinned_png_compressed_embedded_xmp_is_not_extracted` keeps it that way. An
+/// *uncompressed* PNG text chunk would be picked up by the byte scan, but that
+/// is an accident of the scan above and must not be read as PNG support.
 pub fn extract_xmp_data(bytes: &[u8]) -> XmpData {
     XmpData {
         tags: extract_bag_field(bytes, b"<dc:subject>", b"</dc:subject>"),
@@ -269,5 +293,140 @@ mod tests {
         let xmp = xmp_packet_with_keywords(&["family"]);
         let data = extract_xmp_data(xmp.as_bytes());
         assert_eq!(data.title, None);
+    }
+
+    /// PNG embedded XMP is not a supported contract, and the reason is pinned
+    /// here rather than left implicit: a PNG carries its XMP in a text chunk,
+    /// which may be deflate-compressed, and this extractor decompresses
+    /// nothing. A packet that is compressed is invisible; nothing about PNG
+    /// indexing may start depending on it.
+    #[test]
+    fn pinned_png_compressed_embedded_xmp_is_not_extracted() {
+        let xmp = xmp_packet_with_keywords(&["e2e_png_embedded"]);
+        // Guard against a vacuous fixture: the same packet in plaintext is
+        // readable, so only the compression can be hiding it.
+        assert_eq!(
+            extract_xmp_data(xmp.as_bytes()).tags,
+            HashSet::from(["e2e_png_embedded".to_string()])
+        );
+
+        let png = png_with_ztxt_chunk(b"XML:com.adobe.xmp", &zlib_fixed_huffman(xmp.as_bytes()));
+        assert!(
+            !png.windows(b"<dc:subject>".len())
+                .any(|w| w == b"<dc:subject>"),
+            "fixture must not leave the packet in plaintext"
+        );
+
+        let data = extract_xmp_data(&png);
+        assert_eq!(data.tags, HashSet::new());
+        assert_eq!(data.description, None);
+        assert_eq!(data.rating, None);
+        assert_eq!(data.title, None);
+    }
+
+    /// PNG bytes carrying an XMP packet in a `zTXt` chunk: chunk type,
+    /// keyword, null separator, compression method, deflate payload. The rest
+    /// of the stream is filler — the point is the shape of the metadata chunk,
+    /// not a decodable image.
+    fn png_with_ztxt_chunk(keyword: &[u8], payload: &[u8]) -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(b"zTXt");
+        data.extend_from_slice(keyword);
+        data.push(0x00); // keyword terminator
+        data.push(0x00); // compression method: deflate
+        data.extend_from_slice(payload);
+
+        let mut chunk = Vec::new();
+        chunk.extend_from_slice(
+            &u32::try_from(data.len())
+                .expect("ztxt chunk too large")
+                .to_be_bytes(),
+        );
+        chunk.extend_from_slice(&data);
+        chunk.extend_from_slice(&[0, 0, 0, 0]); // crc, not read by anything below
+
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        png.extend_from_slice(&chunk);
+        png.extend_from_slice(b"trailing image data");
+        png
+    }
+
+    /// `data` as a zlib stream holding one fixed-Huffman DEFLATE block.
+    ///
+    /// Literals only: it does not shrink anything, but it is a genuine deflate
+    /// stream that any inflater accepts. A stored (uncompressed) block would
+    /// not do — the plaintext would survive in the fixture, and the test above
+    /// would then pass for the wrong reason. Cross-checked against
+    /// `zlib.decompress`; no compression dependency is wanted here.
+    fn zlib_fixed_huffman(data: &[u8]) -> Vec<u8> {
+        // CMF 0x78 = deflate with a 32K window, FLG 0x01 makes the 16-bit
+        // header a multiple of 31 as zlib requires.
+        let mut bits = BitWriter::new(vec![0x78, 0x01]);
+        bits.push(0b011, 3); // BFINAL=1, BTYPE=fixed Huffman
+        for byte in data {
+            // Fixed literal code: 8 bits up to 0x8f, 9 bits above.
+            let (code, len) = if *byte < 144 {
+                (0x30 + u32::from(*byte), 8)
+            } else {
+                (0x190 + u32::from(*byte) - 144, 9)
+            };
+            bits.push(reverse(code, len), len);
+        }
+        bits.push(0, 7); // end of block
+        bits.finish();
+
+        let (mut a, mut b) = (1u32, 0u32); // Adler-32
+        for byte in data {
+            a = (a + u32::from(*byte)) % 65521;
+            b = (b + a) % 65521;
+        }
+        bits.out.extend_from_slice(&(((b << 16) | a).to_be_bytes()));
+        bits.out
+    }
+
+    /// DEFLATE packs bits LSB-first, so a Huffman code (defined MSB-first) has
+    /// to be reversed before it is written.
+    fn reverse(mut code: u32, len: u32) -> u32 {
+        let mut reversed = 0;
+        for _ in 0..len {
+            reversed = (reversed << 1) | (code & 1);
+            code >>= 1;
+        }
+        reversed
+    }
+
+    struct BitWriter {
+        out: Vec<u8>,
+        acc: u32,
+        pending: u32,
+    }
+
+    impl BitWriter {
+        fn new(out: Vec<u8>) -> Self {
+            Self {
+                out,
+                acc: 0,
+                pending: 0,
+            }
+        }
+
+        fn push(&mut self, bits: u32, len: u32) {
+            self.acc |= bits << self.pending;
+            self.pending += len;
+            while self.pending >= 8 {
+                self.out.push((self.acc & 0xff) as u8);
+                self.acc >>= 8;
+                self.pending -= 8;
+            }
+        }
+
+        /// Flush the last partial byte, zero-padded as deflate requires.
+        fn finish(&mut self) {
+            if self.pending > 0 {
+                self.out.push((self.acc & 0xff) as u8);
+                self.acc = 0;
+                self.pending = 0;
+            }
+        }
     }
 }
