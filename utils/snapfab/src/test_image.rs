@@ -50,6 +50,13 @@ impl ImageFormat {
         }
     }
 
+    /// The `little_exif` write target for this format.
+    ///
+    /// Only the JPEG variant is usable. `little_exif`'s PNG writer emits an
+    /// ImageMagick-style `zTXt` "Raw profile type exif" chunk, which readers
+    /// that follow the PNG spec do not read — including the backend's
+    /// `kamadak-exif`, whose PNG reader only looks for `eXIf`. `write_exif`
+    /// therefore assembles the PNG chunk itself.
     pub fn to_file_extension(self) -> FileExtension {
         match self {
             Self::Jpeg => FileExtension::JPEG,
@@ -247,8 +254,7 @@ pub fn generate_photo(
         meta.set_tag(ExifTag::Software(format!(
             "picasu/test-image ({mode_name})"
         )));
-        meta.write_to_vec(&mut bytes, fmt.to_file_extension())
-            .expect("write exif");
+        write_exif(&meta, fmt, &mut bytes);
     }
 
     if let Some(ref tags) = spec.tags
@@ -980,6 +986,94 @@ fn xml_escape(s: &str) -> String {
         .collect()
 }
 
+/// Write `meta` into `bytes` at the container's standard EXIF location.
+///
+/// JPEG gets a real APP1 segment holding `Exif\0\0` + TIFF block. PNG gets an
+/// `eXIf` chunk [PNGEXT150] holding the bare TIFF block — `little_exif` can
+/// read that chunk but cannot write it, and its PNG output is an
+/// ImageMagick-style `zTXt` "Raw profile type exif" chunk instead, which
+/// spec-following readers (the backend's included) skip.
+fn write_exif(meta: &Metadata, fmt: ImageFormat, bytes: &mut Vec<u8>) {
+    match fmt {
+        ImageFormat::Jpeg => meta
+            .write_to_vec(bytes, fmt.to_file_extension())
+            .expect("write exif"),
+        ImageFormat::Png => {
+            // A JPEG APP1 payload is marker(2) + length(2) + `Exif\0\0`(6)
+            // followed by the TIFF block an `eXIf` chunk wants verbatim.
+            let app1 = meta.as_u8_vec(FileExtension::JPEG).expect("encode exif");
+            let tiff = app1
+                .get(10..)
+                .expect("app1 payload to contain a TIFF block");
+            splice_exif_chunk(bytes, tiff);
+        }
+    }
+}
+
+/// Insert a PNG `eXIf` chunk carrying `tiff` ahead of the image data.
+///
+/// `eXIf` has to precede the first `IDAT` [PNGEXT150 3.7], which is also where
+/// readers that walk chunks in order expect to find it.
+fn splice_exif_chunk(png: &mut Vec<u8>, tiff: &[u8]) {
+    let at = first_idat_offset(png);
+
+    let mut chunk = Vec::with_capacity(tiff.len() + 12);
+    chunk.extend_from_slice(
+        &u32::try_from(tiff.len())
+            .expect("exif block too large for a png chunk")
+            .to_be_bytes(),
+    );
+    chunk.extend_from_slice(b"eXIf");
+    chunk.extend_from_slice(tiff);
+    let crc = png_crc32(&chunk[4..]);
+    chunk.extend_from_slice(&crc.to_be_bytes());
+
+    png.splice(at..at, chunk);
+}
+
+/// Offset of the first `IDAT` chunk's length field, i.e. the insertion point
+/// for ancillary metadata chunks that must precede the image data.
+fn first_idat_offset(png: &[u8]) -> usize {
+    const SIGNATURE_LEN: usize = 8;
+    let mut at = SIGNATURE_LEN;
+    while at + 8 <= png.len() {
+        let len = png
+            .get(at..at + 4)
+            .and_then(|b| b.try_into().ok())
+            .map(u32::from_be_bytes)
+            .expect("png chunk length field") as usize;
+        if png.get(at + 4..at + 8) == Some(b"IDAT") {
+            return at;
+        }
+        at += len + 12;
+    }
+    panic!("png without an IDAT chunk");
+}
+
+/// CRC-32 as PNG chunks require it: the reflected IEEE 802.3 polynomial.
+fn png_crc32(data: &[u8]) -> u32 {
+    const POLYNOMIAL: u32 = 0xedb8_8320;
+    let mut table = [0u32; 256];
+    for (i, entry) in table.iter_mut().enumerate() {
+        let mut crc = i as u32;
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 {
+                POLYNOMIAL ^ (crc >> 1)
+            } else {
+                crc >> 1
+            };
+        }
+        *entry = crc;
+    }
+
+    let mut crc = 0xffff_ffff;
+    for byte in data {
+        let index = ((crc ^ u32::from(*byte)) & 0xff) as usize;
+        crc = table[index] ^ (crc >> 8);
+    }
+    crc ^ 0xffff_ffff
+}
+
 fn build_xmp_app1(keywords: &[String], title: &str, description: &str) -> Vec<u8> {
     let items: String = keywords
         .iter()
@@ -1313,6 +1407,82 @@ mod tests {
         let (bytes, _mode) = generate_photo(&spec, &mut rng, &mut stats, ACTIVE_MODES);
         let exif_pos = bytes.windows(6).position(|w| w == b"Exif\0\0");
         assert!(exif_pos.is_some(), "EXIF APP1 marker not found");
+    }
+
+    /// PNG EXIF has to land in the standard `eXIf` chunk: a fixture written as
+    /// `little_exif`'s ImageMagick-style `zTXt` profile is invisible to every
+    /// spec-following reader, so a PNG metadata assertion over such a fixture
+    /// would be testing nothing.
+    #[test]
+    fn png_exif_is_written_as_a_standard_exif_chunk() {
+        let spec = PhotoSpec {
+            output: None,
+            format: Some("png".into()),
+            width: Some(4),
+            height: Some(4),
+            exif_date: Some("2024:06:19 12:00:00".into()),
+            tags: None,
+            minimal: false,
+        };
+        let mut rng = test_rng();
+        let mut stats = PerfCounter::new();
+        let (bytes, _mode) = generate_photo(&spec, &mut rng, &mut stats, ACTIVE_MODES);
+
+        let chunks = png_chunks(&bytes);
+        let exif_at = chunks
+            .iter()
+            .position(|(chunk_type, _)| *chunk_type == b"eXIf")
+            .expect("png fixture carries no eXIf chunk");
+        let idat_at = chunks
+            .iter()
+            .position(|(chunk_type, _)| *chunk_type == b"IDAT")
+            .expect("png fixture carries no image data");
+        assert!(
+            exif_at < idat_at,
+            "eXIf must precede the image data [PNGEXT150 3.7]"
+        );
+
+        let payload = chunks[exif_at].1;
+        assert!(
+            payload.starts_with(b"II*\0") || payload.starts_with(b"MM\0*"),
+            "eXIf payload is not a bare TIFF block: {payload:?}"
+        );
+
+        assert!(
+            !bytes
+                .windows(b"Raw profile type exif".len())
+                .any(|w| w == b"Raw profile type exif"),
+            "PNG must not carry the ImageMagick raw-profile chunk"
+        );
+    }
+
+    /// `(chunk type, payload)` for every chunk in file order, verifying each
+    /// chunk's CRC on the way.
+    fn png_chunks(png: &[u8]) -> Vec<(&[u8], &[u8])> {
+        let mut chunks = Vec::new();
+        let mut at = 8; // past the png signature
+        while at + 8 <= png.len() {
+            let len = u32::from_be_bytes(
+                png.get(at..at + 4)
+                    .and_then(|b| b.try_into().ok())
+                    .expect("png chunk length field"),
+            ) as usize;
+            let crc_at = at + 8 + len;
+            let stored_crc = u32::from_be_bytes(
+                png.get(crc_at..crc_at + 4)
+                    .and_then(|b| b.try_into().ok())
+                    .expect("png chunk crc field"),
+            );
+            assert_eq!(
+                stored_crc,
+                png_crc32(&png[at + 4..crc_at]),
+                "bad crc on chunk at offset {at}"
+            );
+            chunks.push((&png[at + 4..at + 8], &png[at + 8..crc_at]));
+            at = crc_at + 4;
+        }
+        assert!(!chunks.is_empty(), "png without chunks");
+        chunks
     }
 
     #[test]

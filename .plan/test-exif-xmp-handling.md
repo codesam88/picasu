@@ -278,6 +278,27 @@ Randomization should complement, not replace, the deterministic matrix.
 
 ## Progress
 
+- 2026-09-26 — Iteration 2 done. The PNG EXIF manifest claim was unbacked:
+  `little_exif` writes PNG EXIF as an ImageMagick-style zlib `zTXt` "Raw profile
+  type exif" chunk, which `kamadak-exif`'s PNG reader ignores (it only reads
+  `eXIf`), so PNG fixtures carried no readable EXIF at all. snapfab's fixture
+  writer now splices a spec-compliant `eXIf` chunk itself (CRC-verified, read
+  back through `kamadak-exif`); a unit test rejects the raw-profile chunk
+  returning. Added scenarios `png_metadata_exif_dimensions_thumbnail`,
+  `png_sidecar_xmp_tags`, and the negative control
+  `png_without_xmp_source_has_no_tags`; the JPEG APP1 scenarios were retained
+  unchanged. Embedded PNG XMP stays unpromised: `pinned_png_compressed_embedded_xmp_is_not_extracted`
+  pins that no decompression exists, and the manifest's contradiction rule was
+  mutation-checked as guarding `png.xmp: ["sidecar"]`. The container-unaware
+  byte scan is now documented on `extract_xmp_data`, including that compact XMP
+  is not guaranteed detected and that an uncompressed PNG text chunk would be
+  matched only by accident. Mutation checks: 6/6 new assertions detected.
+  Contract questions recorded: the backend reads no IPTC anywhere (snapfab
+  writes it, nothing consumes it — kept unclaimed, no parsing added), and a
+  PNG-embedded-XMP API scenario is not feasible with the UTF-8-only `raw_file`
+  fixture, so that claim is pinned at unit level. Gates: `cargo test -p picasu`
+  (309), `cargo test -p snapfab` (33), `just backend-check`, `just utils-check`,
+  `just plan-lint`, targeted Playwright metadata sidebar scenario — all pass.
 - 2026-09-25 — Evaluated ffprobe as a second identifier for content and rejected
   it. Measured against ffmpeg 8.0: it reports a container group as a single name
   (`mov,mp4,m4a,3gp,3g2,mj2` for mp4/mov/m4v, `matroska,webm` for mkv/webm,

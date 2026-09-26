@@ -1,0 +1,29 @@
+name: png sidecar xmp keywords become tags
+# Sidecar XMP is the only XMP source PNG is promised (the manifest declares
+# `xmp: [sidecar]` and lists `xmp:embedded` as unsupported), so the sidecar
+# keywords have to reach the tag index on their own. The PNG fixture carries no
+# XMP packet at all, which is what makes this the sidecar path rather than the
+# JPEG embedded APP1 path exercised by `photo_tags_reflect_injected_metadata_b`.
+# The negative control is `png_without_xmp_source_has_no_tags`.
+given:
+  - photo: /e2e_png_sidecar/photo.png
+    format: png
+  - raw_file: /e2e_png_sidecar/photo.xmp
+    content: |
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_png_sidecar_alpine</rdf:li>
+      <rdf:li>e2e_png_sidecar_winter</rdf:li>
+      </rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+when:
+  - call: GET /get/get-tags
+then:
+  - response.status: 200
+  - array_min_counts:
+      e2e_png_sidecar_alpine: 1
+      e2e_png_sidecar_winter: 1
