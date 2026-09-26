@@ -17,6 +17,13 @@ mod ast_scan;
 #[path = "build/route_path.rs"]
 mod route_path;
 
+// `build/reachability.rs` (request-taint reachability) is deliberately NOT
+// included here. The full-crate pass takes ~1.2 s measured in debug on this
+// tree, and this script re-runs on every `src/router` or `src/lib.rs` edit —
+// not cheap enough for an advisory signal that `cargo build` must not fail
+// on anyway. The enforcement point is the gate test in
+// `src/tests/reachability.rs`, which `cargo test --lib` / `just test` runs.
+
 use ast_scan::{HandlersScan, scan_handlers, scan_routes};
 
 #[derive(Clone)]

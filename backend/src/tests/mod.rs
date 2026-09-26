@@ -15,3 +15,6 @@ mod ast_scan;
 
 #[cfg(test)]
 mod route_path;
+
+#[cfg(test)]
+mod reachability;

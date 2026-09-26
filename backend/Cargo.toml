@@ -67,7 +67,12 @@ serde_yaml = "0.9"
 snapfab = { version = "0.1", path = "../utils/snapfab" }
 # `build/ast_scan.rs` is shared with `src/tests/ast_scan.rs` via `#[path]`, so
 # the test target needs the same parser crates the build script uses.
-proc-macro2 = "1"
+# `span-locations` gives `Span::start()` line/column accuracy outside a
+# proc-macro context — `build/reachability.rs` (also included via `#[path]`,
+# by `src/tests/reachability.rs`) reports sink findings by file:line, so the
+# registry and the gate can point at the exact site. The build script itself
+# does not include that module (see the comment in `build.rs`).
+proc-macro2 = { version = "1", features = ["span-locations"] }
 syn = { version = "2", features = ["full", "parsing", "extra-traits", "visit"] }
 
 # `build/ast_scan.rs` parses router sources with syn; syn 2 and proc-macro2

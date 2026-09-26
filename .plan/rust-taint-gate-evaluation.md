@@ -1,5 +1,5 @@
 ---
-status: backlog
+status: done
 type: chore
 priority: medium
 area: testing
@@ -77,3 +77,11 @@ also documents excluding test code at extraction time
 `CODEQL_EXTRACTOR_RUST_OPTION_CARGO_CFG_OVERRIDES=-test`); the CLI form did not
 exclude `src/tests/` in testing here (155 app + 102 test sites), so the correct
 incantation still needs pinning down.
+
+## Progress
+
+- 2026-09-26: **Gate built** as this evaluation decided: `backend/build/reachability.rs`
+  (syn-based, sees the attribute token trees CodeQL cannot) with the registry
+  gate in `backend/src/tests/reachability.rs` and `backend/reachability-registry.txt`.
+  See `.plan/request-taint-reachability-gate.md` for results, the acid test and
+  the recorded limits.
