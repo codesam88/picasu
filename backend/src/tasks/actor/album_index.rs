@@ -12,7 +12,7 @@ use tokio::task::JoinHandle;
 use walkdir::{DirEntry, WalkDir};
 
 use crate::error::{AppError, ErrorKind, handle_error};
-use crate::model::media::is_valid_media_file;
+use crate::model::media::{MediaOutcome, SkipReason, classify_media_file};
 use crate::router::AppResult;
 use crate::storage::db::TREE;
 use crate::storage::files::get_data_path;
@@ -181,7 +181,16 @@ pub fn index_album(src: &str) -> AppResult<()> {
             increment_scanned(job_id);
 
             let abs_path = entry.into_path();
-            if !is_valid_media_file(&abs_path) {
+            if let MediaOutcome::Skip(reason) = classify_media_file(&abs_path) {
+                // An unsupported extension is unremarkable in a media folder and
+                // has always been ignored silently. Only content that
+                // contradicts a supported extension is worth surfacing.
+                if !matches!(reason, SkipReason::UnsupportedExtension) {
+                    info!(
+                        "Ignoring unrecognized file {}: {reason:?}",
+                        abs_path.display()
+                    );
+                }
                 continue;
             }
 

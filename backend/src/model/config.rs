@@ -58,19 +58,20 @@ pub struct AppConfig {
     /// their composed form. Optional (unlike the always-on sanitization tiers).
     #[serde(default = "default_true")]
     pub normalize_upload_filenames: bool,
-    /// Cross-check uploads against the declared `Content-Type`. When enabled,
-    /// the first 512 bytes of each uploaded file are sniffed with the
-    /// [`infer`](https://crates.io/crates/infer) magic-byte database and the
-    /// detected signature must fall in the family of the extension derived
-    /// from the `Content-Type`: `jpg|jpeg|jfif|jpe` → JPEG, `tif|tiff` →
-    /// TIFF, `mp4|mov|m4v` → ISO BMFF, `mkv|webm` → EBML, `mpeg` → MPEG-PS,
-    /// and `png`, `webp`, `bmp`, `gif`, `avi`, `flv`, `wmv` 1:1. Mismatches
-    /// and unrecognizable bytes are rejected with `400 InvalidInput`; the
-    /// check is signature-based only, never a full decode, so unusual-but-valid
-    /// variants still pass. The stored file extension remains the one derived
-    /// from the declared `Content-Type`. See
-    /// `backend/src/router/post/post_upload.rs` (`validate_upload_content`).
-    /// Disable only if legitimate media is being rejected.
+    /// Cross-check uploaded content against the type its declared
+    /// `Content-Type` implies. The declared extension yields the expected
+    /// format from the supported-format table; the content is then identified
+    /// and the two are compared. See `backend/src/process/format.rs`.
+    ///
+    /// Content that cannot be identified at all is always rejected, with or
+    /// without this setting: there is no way to tell whether such bytes are
+    /// what the extension claims. This setting governs only the mismatch case,
+    /// where the content *is* identified but is not the type the extension
+    /// claims — for example a video uploaded with an image content type, or an
+    /// image named with the wrong extension. Enabled (the default) rejects
+    /// those with `400 InvalidInput`; disabling it stores the file anyway, which
+    /// misdescribes it and leaves the indexer trusting a wrong extension. Only
+    /// disable this to tolerate mislabeled files.
     #[serde(default = "default_true")]
     pub validate_upload_content: bool,
     /// Trust the `lastModified` the upload client sends with each file. When

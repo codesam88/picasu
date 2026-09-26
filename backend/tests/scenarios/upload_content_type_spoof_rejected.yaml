@@ -13,4 +13,4 @@ when:
 then:
   - response.status: 400
   - response.json.kind: "InvalidInput"
-  - response.json.message: "Uploaded content is png, but the declared type is jpeg"
+  - response.json.message: "Uploaded file \"photo.jpg\" contains png content, but the declared type is jpeg"

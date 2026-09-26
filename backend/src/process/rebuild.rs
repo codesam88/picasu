@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::model::asset::{AssetKind, AssetRecord, canonicalize_path};
-use crate::model::media::is_valid_media_file;
+use crate::model::media::{MediaOutcome, classify_media_file};
 use crate::process::hash::blake3_hasher;
 use crate::storage::asset_store;
 
@@ -77,7 +77,8 @@ pub fn rebuild_from_filesystem(image_root: &Path) -> Result<RebuildStats> {
                 .with_context(|| format!("Failed to insert album asset for {}", path.display()))?;
             stats.albums_created += 1;
         } else if entry.file_type().is_file() {
-            if !is_valid_media_file(path) {
+            if let MediaOutcome::Skip(reason) = classify_media_file(path) {
+                info!("Ignoring unrecognized file {}: {reason:?}", path.display());
                 stats.unsupported_skipped += 1;
                 continue;
             }
@@ -198,7 +199,8 @@ fn is_image_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .is_some_and(|ext| {
-            crate::constant::VALID_IMAGE_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str())
+            crate::process::format::kind_for_extension(&ext.to_ascii_lowercase())
+                == Some(crate::process::format::MediaKind::Image)
         })
 }
 

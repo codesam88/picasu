@@ -1,7 +1,7 @@
-use crate::constant::{VALID_IMAGE_EXTENSIONS, VALID_VIDEO_EXTENSIONS};
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::config::APP_CONFIG;
 use crate::process::dir_album::get_dir_path_for_album;
+use crate::process::format::{self, Detection, kind_for_extension};
 use crate::process::sanitize::{FilenameSanitize, find_unique_path, sanitize_filename};
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardUpload;
@@ -292,9 +292,12 @@ pub async fn upload(
 /// Validates every file in the batch before any file is written.
 ///
 /// Rejects files whose name cannot be sanitized, whose extension is not a
-/// supported image/video type, or (when `validate_content` is enabled) whose
-/// decoded content does not match the declared type. Any rejection aborts the
-/// whole request, so a partial upload never leaves a subset of files behind.
+/// supported image/video type, or whose content cannot be identified at all.
+///
+/// When the content *is* identified but contradicts the extension-derived type,
+/// that is the one case `validate_content` governs: rejecting is the default,
+/// and disabling the setting tolerates a mislabeled file. Any rejection aborts
+/// the whole request, so a partial upload never leaves a subset of files behind.
 fn validate_upload_batch(
     files: &[TempFile<'_>],
     auto_rename: bool,
@@ -305,17 +308,51 @@ fn validate_upload_batch(
         resolve_filename(&raw_filename, auto_rename, policy.normalize_nfc)?;
         let extension = get_extension(file)?;
 
-        if !(VALID_IMAGE_EXTENSIONS.contains(&extension.as_str())
-            || VALID_VIDEO_EXTENSIONS.contains(&extension.as_str()))
-        {
+        if kind_for_extension(&extension).is_none() {
             error!("Rejected invalid file type: {}", extension);
             return Err(AppError::new(
                 ErrorKind::InvalidInput,
                 format!("Invalid file type: {extension}"),
             ));
         }
-        if policy.validate_content {
-            validate_upload_content(file, &extension)?;
+
+        match detect_upload_content(file)? {
+            // Nothing could identify the bytes, so there is no way to tell
+            // whether they are what the extension claims. Always rejected.
+            None => {
+                error!("Rejected unrecognized upload content: {raw_filename:?}");
+                return Err(unrecognized_upload_content(&raw_filename, &extension));
+            }
+            // Identified as a real format that is outside our table, so it
+            // cannot match the extension-derived type. Same corner case as a
+            // plain mismatch, reported with the format that was found.
+            Some(Detection::Unsupported { detected_extension }) => {
+                if policy.validate_content {
+                    error!(
+                        "Rejected unsupported upload content {raw_filename:?}: detected {detected_extension}"
+                    );
+                    return Err(unsupported_upload_content(
+                        &raw_filename,
+                        &detected_extension,
+                    ));
+                }
+            }
+            Some(Detection::Supported(detected))
+                if !format::extension_matches(&extension, detected) =>
+            {
+                if policy.validate_content {
+                    error!(
+                        "Rejected misnamed upload {raw_filename:?}: declared {extension}, detected {}",
+                        detected.canonical_extension()
+                    );
+                    return Err(mismatched_upload_content(
+                        &raw_filename,
+                        &extension,
+                        detected.canonical_extension(),
+                    ));
+                }
+            }
+            Some(Detection::Supported(_)) => {}
         }
     }
     Ok(())
@@ -484,60 +521,35 @@ fn record_exists_for(path: &Path, relative: &Path) -> bool {
     true
 }
 
-/// Reject uploads whose bytes do not match the `Content-Type`-derived
-/// extension. Enabled via `validate_upload_content`. Detection is signature
-/// based via the `infer` crate — never a full decode — so unusual-but-valid
-/// variants still pass; the stored extension itself is still taken from the
-/// declared `Content-Type`.
-fn validate_upload_content(file: &TempFile<'_>, extension: &str) -> Result<(), AppError> {
-    use std::io::Read;
+/// Detect the content format of an uploaded file.
+fn detect_upload_content(file: &TempFile<'_>) -> Result<Option<Detection>, AppError> {
     let path = file
         .path()
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "Uploaded file is empty"))?;
-    let mut head = [0u8; 512];
-    let mut reader = std::fs::File::open(path)
-        .or_raise(|| (ErrorKind::IO, "Failed to read uploaded file for validation"))?;
-    let n = reader
-        .read(&mut head)
-        .or_raise(|| (ErrorKind::IO, "Failed to read uploaded file for validation"))?;
-    let head = &head[..n];
-
-    let Some(detected) = infer::get(head) else {
-        return Err(unrecognized_upload_content(extension));
-    };
-    let detected_ext = detected.extension();
-    let matches = match extension {
-        // JPEG family: jpg/jpeg/jfif/jpe are byte-identical in signature.
-        "jpg" | "jpeg" | "jfif" | "jpe" => detected_ext == "jpg",
-        "tif" | "tiff" => detected_ext == "tif",
-        // MP4 and QuickTime share the ISO BMFF box structure.
-        "mp4" | "mov" | "m4v" => matches!(detected_ext, "mp4" | "mov" | "m4v"),
-        // Matroska and WebM share the EBML container.
-        "mkv" | "webm" => matches!(detected_ext, "mkv" | "webm"),
-        // The whitelist spells the MPEG-PS extension "mpeg"; infer uses "mpg".
-        "mpeg" => detected_ext == "mpg",
-        // Remaining whitelisted types (png, webp, bmp, gif, avi, flv, wmv)
-        // map 1:1 onto infer's canonical extension.
-        other => detected_ext == other,
-    };
-    if matches {
-        Ok(())
-    } else {
-        Err(mismatched_upload_content(extension, detected_ext))
-    }
+    format::detect_from_path(path)
+        .or_raise(|| (ErrorKind::IO, "Failed to read uploaded file for validation"))
 }
 
-fn unrecognized_upload_content(extension: &str) -> AppError {
+fn unrecognized_upload_content(filename: &str, extension: &str) -> AppError {
     AppError::new(
         ErrorKind::InvalidInput,
-        format!("Uploaded content is not recognized as {extension}"),
+        format!("Uploaded file {filename:?} is not recognized as {extension}"),
     )
 }
 
-fn mismatched_upload_content(extension: &str, detected: &str) -> AppError {
+fn unsupported_upload_content(filename: &str, detected: &str) -> AppError {
     AppError::new(
         ErrorKind::InvalidInput,
-        format!("Uploaded content is {detected}, but the declared type is {extension}"),
+        format!("Uploaded file {filename:?} contains {detected} content, which is not supported"),
+    )
+}
+
+fn mismatched_upload_content(filename: &str, extension: &str, detected: &str) -> AppError {
+    AppError::new(
+        ErrorKind::InvalidInput,
+        format!(
+            "Uploaded file {filename:?} contains {detected} content, but the declared type is {extension}"
+        ),
     )
 }
 

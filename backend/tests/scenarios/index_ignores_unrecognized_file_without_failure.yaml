@@ -1,0 +1,22 @@
+name: album index ignores an unrecognized file without failing the job
+# A file whose content matches no supported signature is ignored, so the scan
+# finishes and reports no failures. Without the content gate this file would be
+# handed to the indexer and fail to decode, failing the job.
+given:
+  - dir_album: /e2e_unrecognized/parent
+    id_as: $album
+  - photo: /e2e_unrecognized/parent/valid.jpg
+  - raw_file: /e2e_unrecognized/parent/garbage.jpg
+    content: "this is not an image, just arbitrary text bytes"
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_unrecognized"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: GET /get/index/status
+then:
+  - response.status: 200
+  - response.json.failed: 0
+  - compare:
+      response.json.processed: { ">=": 1 }

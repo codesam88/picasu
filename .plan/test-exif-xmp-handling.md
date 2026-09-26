@@ -55,10 +55,11 @@ MP4 and MOV tests require both `ffmpeg` and `ffprobe`.
    - Valid image bytes under a different supported image extension.
    - Valid MP4/MOV bytes under a different supported video extension.
    - Corrupt EXIF or XMP inside an otherwise decodable image.
-   - Reject misnamed files regardless of `validate_upload_content`. The error
-     must include the claimed filename/extension and the detected content type.
-   - Keep the existing `validate_upload_content` setting covered separately for
-     files whose extension is supported and whose content is unrecognized.
+   - Reject misnamed files by default, and accept them when
+     `validate_upload_content` is disabled. The error must include the claimed
+     filename/extension and the detected content type.
+   - Reject unidentifiable content regardless of `validate_upload_content`, so
+     the setting has no effect on bytes that cannot be identified at all.
 4. **UI: representative file types**
    - Run a small cross-format smoke matrix through upload, gallery rendering,
      metadata sidebar, and deletion.
@@ -97,9 +98,11 @@ MP4 and MOV tests require both `ffmpeg` and `ffprobe`.
 - HEIF/HEIC and AVIF remain unsupported and rejected by extension policy.
 - PNG embedded XMP remains unsupported. Do not add extraction work or positive
   embedded-XMP assertions for it in this scope.
-- Misnamed files are rejected regardless of `validate_upload_content`. The
-  rejection notification must include the claimed filename/extension and the
-  detected content type.
+- Misnamed files are rejected by default and tolerated when
+  `validate_upload_content` is disabled. The rejection notification must include
+  the claimed filename/extension and the detected content type.
+- Content that cannot be identified at all is rejected regardless of
+  `validate_upload_content`.
 - MP4/MOV UUID metadata and ffprobe metadata are separate contracts. Tests
   must distinguish them and report which source supplied each field.
 - Corrupt metadata behavior must be explicit: test current fallback behavior
@@ -131,15 +134,29 @@ unrelated files, change established semantics silently, or commit independently.
   named `.jpg`, MP4 bytes named `.mov`, and a supported extension with random
   bytes. Assert status, error code, claimed filename, claimed extension, and
   detected type in the user-facing message.
-- **Implementation:** centralize signature detection and make the upload path
-  reject mismatches regardless of `validate_upload_content`. Reuse the same
-  detector for filesystem indexing where a supported file is encountered.
+- **Implementation:** centralize signature detection and reuse it for
+  filesystem indexing, where non-matching content is an unrecognized file to
+  ignore and log rather than a scan failure.
+- **Upload decision order:** the declared extension yields the expected content
+  identifier from the supported-format table, and an unknown extension is
+  rejected. The content is then identified, which yields either a real type or
+  `unrecognized`. Unidentifiable content is always rejected. A _mismatch_ — the
+  content is identified but is not the type the extension claims — is the one
+  case `validate_upload_content` governs, so a mislabeled file can be tolerated
+  by disabling it.
 - **Carry-over:** the hardcoded `jpeg | png` list in
   `backend/src/tests/backend_api.rs` is generator-side — it builds a
   `snapfab::PhotoSpec` from a scenario — so replace it with a manifest lookup.
 - **Gate:** focused API scenarios, backend unit tests, and the frontend toast
   assertion for the notification text. Do not add a new error type solely for
   the test; the contract must describe the existing error path.
+- **Deferred from this iteration:**
+  - The MP4-bytes-named-`.mov` scenario. No MP4 fixture can be produced yet:
+    snapfab generates only JPEG/PNG and `raw_file` writes UTF-8 text, so a
+    binary fixture mechanism is needed. Belongs with Iteration 4.
+  - A scenario proving the flag still _permits_ an upload. It would need
+    unrecognized-but-decodable bytes, which no fixture can express today.
+  - The frontend toast assertion named in the gate above.
 
 ### Iteration 2 — Solidify JPEG and PNG contracts
 
@@ -254,6 +271,25 @@ Randomization should complement, not replace, the deterministic matrix.
 
 ## Progress
 
+- 2026-09-25 — Indexer side of Iteration 1. `model::media::classify_media_file`
+  combines the extension allowlist with content detection, and the album scan,
+  watcher, and DB rebuild now skip and log anything it rejects rather than
+  counting it as a failure. `is_valid_media_file` deliberately stays
+  extension-only because the watcher needs it for `Remove` events, where the
+  file is already gone. Both new scenarios were mutation-checked: removing the
+  gate fails them. Exact index counters are deliberately not asserted, because
+  indexing writes a thumbnail into the scanned directory and the count is not
+  stable.
+- 2026-09-25 — Iteration 1 upload path. Added `backend/src/process/format.rs`
+  with the backend's own signature table, built on `infer` and verified against
+  the crate's matcher order and canonical extensions. A file whose content
+  contradicts its declared type is now rejected regardless of
+  `validate_upload_content`; only content matching no signature stays behind
+  that flag, and recognized-but-unsupported formats (HEIF/AVIF) are reported by
+  name instead of degrading to "not recognized". Error messages now carry the
+  claimed filename, claimed extension, and detected type. Replaced
+  `upload_content_type_validation_opt_out.yaml`, which asserted the removed
+  behavior, with scenarios covering the new one. Deferrals recorded above.
 - 2026-09-25 — Second Iteration 0 review round: full validation-branch
   coverage, the `unsupportedMetadataFields` representation, the manifest scope
   note, and the `CapabilityError` traits. Corrected a factual error it surfaced:
