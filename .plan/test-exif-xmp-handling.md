@@ -278,6 +278,35 @@ Randomization should complement, not replace, the deterministic matrix.
 
 ## Progress
 
+- 2026-09-26 — Iteration 3 done. Pinned fixtures added under
+  `utils/snapfab/fixtures/` (TIFF 48×32 synthetic, python3-stdlib construction;
+  WebP 48×32 lossless VP8L + VP8X/EXIF mux, ImageMagick/libwebp output, layout
+  matching kamadak-exif's own `tests/exif.webp`), both ~5 KB with SHA-256,
+  license, expected metadata, and failure class recorded in a new top-level
+  `fixtures[]` array of `capabilities.json`. The manifest gained
+  `fixtureSource` (`generated`/`pinned`) and `pinnedFixtures` per format;
+  tiff/webp claim `exif: [embedded]` + `xmp: [sidecar]` only after end-to-end
+  verification, with `xmp:embedded` unsupported. `every_manifest_format_is_generatable`
+  became `every_generated_manifest_format_is_generatable`, paired with
+  `repository_manifest_pins_exactly_the_formats_snapfab_cannot_encode`: snapfab
+  _can_ encode TIFF/WebP pixels but neither encoder attaches EXIF, so pinned is
+  the honest source until an EXIF-capable encoder exists. The scenario harness
+  gained a binary-safe `fixture` given step (manifest-id → copy into IMAGE_HOME,
+  digests verified in snapfab tests); `raw_file` stays UTF-8-only. Four
+  scenarios added: per-format positive (ext, dimensions, EXIF dates,
+  sidecar tags, thumbnail) and negative controls. Mutation checks: 24 scenario
+  - 25 manifest mutations, all detected; two initially masked cases were
+    restructured so each validation rule is pinned by its own error message.
+    Open questions recorded: kamadak-exif reads a WebP `EXIF` chunk only as a
+    bare TIFF block (a JPEG-style `Exif\0\0` prefix yields silently empty EXIF —
+    product decision if files in the wild carry it); TIFF/WebP embedded XMP is
+    unclaimed rather than disproven (the byte scan would likely match; belongs to
+    the plan's parser unit layer); TIFF `contentSignature` is little-endian only;
+    the fixture regenerator script is not checked in (provenance text covers
+    re-derivation); digest verification runs in snapfab's test, not per-scenario
+    placement. Gates: `cargo test -p picasu` (313), `cargo test -p snapfab` (45),
+    `just backend-check`, `just utils-check`, `just docs-check`, `just plan-lint`
+    — all pass.
 - 2026-09-26 — Iteration 2 done. The PNG EXIF manifest claim was unbacked:
   `little_exif` writes PNG EXIF as an ImageMagick-style zlib `zTXt` "Raw profile
   type exif" chunk, which `kamadak-exif`'s PNG reader ignores (it only reads

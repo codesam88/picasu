@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rocket::http::{ContentType, Status};
 use rocket::local::blocking::Client;
@@ -559,6 +559,61 @@ fn execute_upload<'c>(
     req.dispatch()
 }
 
+// ── Pinned fixture placement ──
+
+/// Repository root, the base the capability manifest's fixture paths are
+/// recorded against. `CARGO_MANIFEST_DIR` is `<repo>/backend`.
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap_or_else(|| {
+            panic!(
+                "backend manifest dir {} has no parent",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        })
+        .to_path_buf()
+}
+
+/// The IMAGE_HOME-relative destination of a `fixture` given item.
+fn pinned_fixture_destination(item: &Value) -> String {
+    let fixture = item["fixture"]
+        .as_object()
+        .unwrap_or_else(|| panic!("fixture must be an object with `source` and `destination`"));
+    fixture["destination"]
+        .as_str()
+        .unwrap_or_else(|| panic!("fixture.destination is required"))
+        .trim_start_matches('/')
+        .to_string()
+}
+
+/// Copy a checked-in fixture into `IMAGE_HOME`.
+///
+/// A `fixture` item (`{source: <id>, destination: <path>}`) is the binary-safe
+/// counterpart of `raw_file`, which can only write UTF-8 text and therefore
+/// cannot express a real image. `source` names an entry of the capability
+/// manifest, so the bytes come from a file whose SHA-256 the manifest tests
+/// verify; the scenario never embeds fixture bytes itself.
+fn place_pinned_fixture(item: &Value, image_home: &Path) {
+    let id = item["fixture"]["source"]
+        .as_str()
+        .unwrap_or_else(|| panic!("fixture.source must be a fixture id from capabilities.json"));
+    let entry = snapfab::capabilities::capabilities()
+        .fixture_by_id(id)
+        .unwrap_or_else(|| panic!("fixture id `{id}` is not declared in the capability manifest"));
+    let source = repo_root().join(&entry.path);
+    let bytes = std::fs::read(&source)
+        .unwrap_or_else(|e| panic!("read fixture {} from {}: {e}", id, source.display()));
+    let destination = pinned_fixture_destination(item);
+    let target = image_home.join(&destination);
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)
+            .unwrap_or_else(|e| panic!("create dir for fixture {id} to {destination}: {e}"));
+    }
+    std::fs::write(&target, &bytes)
+        .unwrap_or_else(|e| panic!("write fixture {id} to {destination}: {e}"));
+}
+
 // ── Dispatch a when item to call or upload ──
 
 fn dispatch_when_item<'c>(
@@ -803,6 +858,11 @@ fn interpret_scenario(scenario: &Value) {
                     }
                     std::fs::write(&path, content)
                         .unwrap_or_else(|e| panic!("write raw_file {trimmed}: {e}"));
+                } else if item.get("fixture").is_some() {
+                    if item.get("id_as").is_some() || item.get("asset_id_as").is_some() {
+                        has_id_as = true;
+                    }
+                    place_pinned_fixture(item, &data);
                 } else if let Some(photo) = item["photo"].as_str() {
                     let trimmed = photo.trim_start_matches('/');
 
@@ -945,6 +1005,20 @@ fn interpret_scenario(scenario: &Value) {
                                 let bare = id_name.trim_start_matches('$');
                                 let trimmed = photo.trim_start_matches('/');
                                 let asset_id = discover_asset_id(&client, trimmed);
+                                vars.insert(bare.to_string(), asset_id);
+                            }
+                        } else if item.get("fixture").is_some() {
+                            // A placed fixture is discoverable exactly like a
+                            // generated photo, by its destination path.
+                            let destination = pinned_fixture_destination(item);
+                            if let Some(id_name) = item["id_as"].as_str() {
+                                let bare = id_name.trim_start_matches('$');
+                                let hash = discover_photo_hash(&client, &destination);
+                                vars.insert(bare.to_string(), hash);
+                            }
+                            if let Some(id_name) = item["asset_id_as"].as_str() {
+                                let bare = id_name.trim_start_matches('$');
+                                let asset_id = discover_asset_id(&client, &destination);
                                 vars.insert(bare.to_string(), asset_id);
                             }
                         }

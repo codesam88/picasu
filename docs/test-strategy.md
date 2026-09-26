@@ -80,6 +80,10 @@ exposed behaviour is preserved.
 
 **Given** materialises state via fixtures (`src/tests/fixtures/`): real
 JPEGs with embedded XMP/EXIF metadata, directory albums, config overrides.
+Formats snapfab cannot encode (TIFF, WebP) are placed from checked-in bytes
+instead: a `fixture` given step names an entry of the capability manifest
+(`utils/snapfab/capabilities.json`), whose recorded SHA-256 is verified against
+the file, so no binary payload is ever embedded in a scenario.
 Fixtures are interface adapters — they translate abstract YAML declarations
 into HTTP calls and filesystem operations. When the backend's public API
 changes, only the fixtures change; the interpreter and the YAML scenarios
