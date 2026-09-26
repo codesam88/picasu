@@ -1307,19 +1307,26 @@ mod tests {
         SmallRng::seed_from_u64(42)
     }
 
+    /// Completeness: a format the manifest calls `generated` has to be one
+    /// snapfab can actually encode. Formats it cannot are declared `pinned`
+    /// and covered by checked-in bytes instead, so this no longer covers every
+    /// manifest entry — see
+    /// `repository_manifest_pins_exactly_the_formats_snapfab_cannot_encode`
+    /// for the other half of the rule.
     #[test]
-    fn every_manifest_format_is_generatable() {
+    fn every_generated_manifest_format_is_generatable() {
         let manifest = crate::capabilities::capabilities();
         let unsupported = manifest
             .formats
             .iter()
+            .filter(|entry| entry.fixture_source == "generated")
             .filter(|entry| ImageFormat::from_name(&entry.format).is_none())
             .map(|entry| entry.format.as_str())
             .collect::<Vec<_>>();
 
         assert!(
             unsupported.is_empty(),
-            "manifest declares non-generatable formats: {unsupported:?}"
+            "manifest declares non-generatable formats as generated: {unsupported:?}"
         );
     }
 
@@ -1334,7 +1341,16 @@ mod tests {
             Some(ImageFormat::Jpeg)
         );
         assert_eq!(ImageFormat::from_path("photo.png"), Some(ImageFormat::Png));
+        // A pinned manifest format resolves in the manifest but stays
+        // non-generatable: declaring coverage must not imply an encoder.
+        assert_eq!(
+            crate::capabilities::capabilities()
+                .capability_for_extension("webp")
+                .map(|entry| entry.format.as_str()),
+            Some("webp")
+        );
         assert_eq!(ImageFormat::from_path("photo.webp"), None);
+        assert_eq!(ImageFormat::from_path("photo.tif"), None);
     }
 
     #[test]

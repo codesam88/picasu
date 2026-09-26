@@ -1,5 +1,45 @@
 {
   "schemaVersion": 1,
+  "fixtures": [
+    {
+      "id": "tiff-48x32-exif",
+      "path": "utils/snapfab/fixtures/tiff/picasu-tiff-48x32-exif.tif",
+      "sha256": "0081378c866e5aea79818e3bdba2dd040c7906590de60dec0c8d2dcbea2611e9",
+      "origin": "synthetic",
+      "source": "Constructed for picasu, not taken from upstream: a 48x32 uncompressed RGB classic TIFF written field by field (little-endian header, IFD0 plus an Exif sub-IFD, one strip, 72 dpi). Pixels are the formula R = x*255/47, G = y*255/31, B = 128. DateTime is 2024:05:06 07:08:09 in IFD0, and DateTimeOriginal/DateTimeDigitized carry the same stamp in the Exif sub-IFD. No image encoder was involved, so the bytes depend only on that description.",
+      "version": "picasu fixture revision 1; python3 3.14 standard library only",
+      "license": "MIT (picasu repository LICENSE)",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "exif.ifd0.DateTime": "2024-05-06 07:08:09",
+        "exif.exif.DateTimeOriginal": "2024-05-06 07:08:09",
+        "exif.exif.DateTimeDigitized": "2024-05-06 07:08:09",
+        "thumbnail": "generated",
+        "xmp": "sidecar only; the file carries no XMP packet"
+      },
+      "intendedFailureClass": "none"
+    },
+    {
+      "id": "webp-48x32-exif",
+      "path": "utils/snapfab/fixtures/webp/picasu-webp-48x32-exif.webp",
+      "sha256": "355e477b26a3c8237d5c4d9a24592da0da23be80ba727688c30db1e85e817185",
+      "origin": "generated",
+      "source": "Constructed for picasu from the same 48x32 RGB buffer as the TIFF fixture (R = x*255/47, G = y*255/31, B = 128). The buffer is encoded losslessly into a VP8L bitstream and muxed as extended format: VP8X with the Exif flag set, an EXIF chunk holding the TIFF block of the TIFF fixture verbatim as a bare TIFF stream, then the VP8L chunk. That layout is what upstream kamadak-exif ships in its own tests/exif.webp, whose EXIF chunk likewise holds a bare TIFF block with no JPEG `Exif\\0\\0` identifier. The pixel data round-trips byte for byte.",
+      "version": "picasu fixture revision 1; VP8L bitstream from ImageMagick 7.1.2-18 (libwebp 1.5.0) via `magick -define webp:lossless=true -quality 100`",
+      "license": "MIT (picasu repository LICENSE); no libwebp code is redistributed, only its output",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "exif.riff_chunk.DateTime": "2024-05-06 07:08:09",
+        "exif.riff_chunk.DateTimeOriginal": "2024-05-06 07:08:09",
+        "exif.riff_chunk.DateTimeDigitized": "2024-05-06 07:08:09",
+        "thumbnail": "generated",
+        "xmp": "sidecar only; the file carries no XMP chunk"
+      },
+      "intendedFailureClass": "none"
+    }
+  ],
   "formats": [
     {
       "format": "jpeg",
@@ -14,7 +54,9 @@
         "xmp": ["embedded", "sidecar"]
       },
       "unsupportedMetadataFields": [],
-      "expectedFailureClasses": ["none"]
+      "expectedFailureClasses": ["none"],
+      "fixtureSource": "generated",
+      "pinnedFixtures": []
     },
     {
       "format": "png",
@@ -29,7 +71,43 @@
         "xmp": ["sidecar"]
       },
       "unsupportedMetadataFields": ["xmp:embedded"],
-      "expectedFailureClasses": ["none"]
+      "expectedFailureClasses": ["none"],
+      "fixtureSource": "generated",
+      "pinnedFixtures": []
+    },
+    {
+      "format": "tiff",
+      "extensions": ["tif", "tiff"],
+      "contentSignature": {
+        "offset": 0,
+        "bytesHex": "49492a00",
+        "mime": "image/tiff"
+      },
+      "metadataFields": {
+        "exif": ["embedded"],
+        "xmp": ["sidecar"]
+      },
+      "unsupportedMetadataFields": ["xmp:embedded"],
+      "expectedFailureClasses": ["none"],
+      "fixtureSource": "pinned",
+      "pinnedFixtures": ["tiff-48x32-exif"]
+    },
+    {
+      "format": "webp",
+      "extensions": ["webp"],
+      "contentSignature": {
+        "offset": 8,
+        "bytesHex": "57454250",
+        "mime": "image/webp"
+      },
+      "metadataFields": {
+        "exif": ["embedded"],
+        "xmp": ["sidecar"]
+      },
+      "unsupportedMetadataFields": ["xmp:embedded"],
+      "expectedFailureClasses": ["none"],
+      "fixtureSource": "pinned",
+      "pinnedFixtures": ["webp-48x32-exif"]
     }
   ]
 }

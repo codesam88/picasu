@@ -1,0 +1,49 @@
+name: webp exif dimensions thumbnail and sidecar xmp reach the metadata detail
+# The capability manifest declares WebP as `exif: [embedded]` and `xmp: [sidecar]`,
+# with `xmp:embedded` excluded. This pins the positive half of that contract on
+# the pinned fixture `webp-48x32-exif`: a lossless VP8L image behind a VP8X header
+# whose EXIF chunk carries a bare TIFF block, which is what `kamadak-exif` reads
+# out of a RIFF container. The decoded dimensions are the fixture's 48x32, the EXIF
+# dates come from that chunk, the sidecar XMP packet supplies the tags, and a
+# thumbnail is written to disk.
+# The negative control is `webp_without_xmp_source_has_no_tags`.
+given:
+  - fixture:
+      source: webp-48x32-exif
+      destination: /e2e_webp_meta/photo.webp
+    id_as: $photo
+    asset_id_as: $asset_id
+  - raw_file: /e2e_webp_meta/photo.xmp
+    content: |
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_webp_sidecar_alpine</rdf:li>
+      <rdf:li>e2e_webp_sidecar_winter</rdf:li>
+      </rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.ext: webp
+  - response.json.width: 48
+  - response.json.height: 32
+  - response.json.exifVec.DateTime: "2024-05-06 07:08:09"
+  - response.json.exifVec.DateTimeOriginal: "2024-05-06 07:08:09"
+  - response.json.tags:
+      contains: e2e_webp_sidecar_alpine
+  - response.json.tags:
+      contains: e2e_webp_sidecar_winter
+  - thumb_exists: $photo
+  - file_exists: e2e_webp_meta/photo.webp
