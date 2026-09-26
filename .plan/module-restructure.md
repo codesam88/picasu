@@ -15,8 +15,12 @@ Consolidated `backend/src/` modules for clarity. Eliminated the `public/` and
 
 ```
 backend/src/
-├── constant.rs        ← ROW_BATCH_NUMBER, VALID_IMAGE_EXTENSIONS, etc.
-│                        (was public/constant/mod.rs re-exports)
+├── constant.rs        ← ROW_BATCH_NUMBER, SNAPSHOT_MAX_LIFETIME_MS,
+│                        DEFAULT_PRIORITY_LIST, etc.
+│                        (was public/constant/mod.rs re-exports;
+│                        VALID_IMAGE_EXTENSIONS and VALID_VIDEO_EXTENSIONS
+│                        were later removed — the accepted-extension list is
+│                        now SUPPORTED_FORMATS in process/format.rs)
 ├── error.rs           ← AppError, ErrorKind, handle_error / handle_app_error
 │                        (was public/error.rs + public/error_data.rs)
 ├── frontend.rs        ← FrontendAssets struct
