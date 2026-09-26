@@ -154,16 +154,16 @@ unrelated files, change established semantics silently, or commit independently.
 - **Carry-over:** the hardcoded `jpeg | png` list in
   `backend/src/tests/backend_api.rs` is generator-side — it builds a
   `snapfab::PhotoSpec` from a scenario — so replace it with a manifest lookup.
-- **Gate:** focused API scenarios, backend unit tests, and the frontend toast
-  assertion for the notification text. Do not add a new error type solely for
-  the test; the contract must describe the existing error path.
-- **Deferred from this iteration:**
-  - The MP4-bytes-named-`.mov` scenario. No MP4 fixture can be produced yet:
-    snapfab generates only JPEG/PNG and `raw_file` writes UTF-8 text, so a
-    binary fixture mechanism is needed. Belongs with Iteration 4.
-  - A scenario proving the flag still _permits_ an upload. It would need
-    unrecognized-but-decodable bytes, which no fixture can express today.
-  - The frontend toast assertion named in the gate above.
+- **Gate:** focused API scenarios and backend unit tests. Do not add a new error
+  type solely for the test; the contract must describe the existing error path.
+  The message reaches the UI through an unmodified pass-through and an
+  upload-error toast is already asserted by
+  `upload-options-auto-rename-off-rejects.yaml`, so no frontend test is added
+  for this iteration. The flag's permissive path is covered by
+  `upload_misnamed_content_allowed_when_validation_off`.
+- **Deferred:** the MP4-bytes-named-`.mov` scenario. No MP4 fixture can be
+  produced yet: snapfab generates only JPEG/PNG and `raw_file` writes UTF-8
+  text, so a binary fixture mechanism is needed. Belongs with Iteration 4.
 
 ### Iteration 2 — Solidify JPEG and PNG contracts
 
