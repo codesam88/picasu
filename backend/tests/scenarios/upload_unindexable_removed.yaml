@@ -1,4 +1,7 @@
-name: Unindexable upload with validation off returns 400 and removes the file
+name: Unidentifiable upload content is rejected even with content validation off
+# Nothing can identify these bytes, so there is no way to tell whether they are
+# the image the extension claims. Unlike a mere type mismatch, this is rejected
+# regardless of validate_upload_content, and the file is never written.
 given:
   - dir_album: /e2e_up_unidx/target
     id_as: $album
@@ -15,5 +18,5 @@ when:
 then:
   - response.status: 400
   - response.json.kind: "InvalidInput"
-  - response.json.message: "Uploaded file could not be decoded as an image or video"
+  - response.json.message: "Uploaded file \"photo.jpg\" is not recognized as jpeg"
   - file_absent: "${data_path}/e2e_up_unidx/target/photo.jpeg"

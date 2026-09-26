@@ -1,5 +1,6 @@
 pub mod dir_album;
 pub mod exif;
+pub mod format;
 pub mod hash;
 pub mod index;
 pub mod misc;

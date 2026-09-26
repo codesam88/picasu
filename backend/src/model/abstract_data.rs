@@ -13,8 +13,6 @@ use rand::RngExt;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::constant::VALID_IMAGE_EXTENSIONS;
-
 /// Regex for parsing timestamps from filenames (e.g., `20231225_143052`)
 static FILE_NAME_TIME_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(\d{4})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})[^a-zA-Z0-9]?(\d{2})\b").expect("failed to compile FILE_NAME_TIME_REGEX")
@@ -337,7 +335,9 @@ impl AbstractData {
     }
 
     fn determine_type(ext: &str) -> ObjectType {
-        if VALID_IMAGE_EXTENSIONS.contains(&ext) {
+        if crate::process::format::kind_for_extension(ext)
+            == Some(crate::process::format::MediaKind::Image)
+        {
             ObjectType::Image
         } else {
             ObjectType::Video
