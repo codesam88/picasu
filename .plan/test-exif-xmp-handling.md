@@ -144,6 +144,13 @@ unrelated files, change established semantics silently, or commit independently.
   content is identified but is not the type the extension claims — is the one
   case `validate_upload_content` governs, so a mislabeled file can be tolerated
   by disabling it.
+- **Identification:** `infer` alone, fingerprinting the leading bytes. ffprobe
+  is not used to identify content. It was measured and rejected for the purpose:
+  it reports a whole container group as one name (`mov,mp4,m4a,3gp,3g2,mj2` for
+  mp4/mov/m4v, `matroska,webm` for mkv/webm, `asf` for wmv), so it would lose
+  the distinction `infer` makes by brand and DocType. `infer` fingerprints every
+  format in the table. The one video it cannot fingerprint is an MPEG transport
+  stream, which is not an accepted extension.
 - **Carry-over:** the hardcoded `jpeg | png` list in
   `backend/src/tests/backend_api.rs` is generator-side — it builds a
   `snapfab::PhotoSpec` from a scenario — so replace it with a manifest lookup.
@@ -271,6 +278,13 @@ Randomization should complement, not replace, the deterministic matrix.
 
 ## Progress
 
+- 2026-09-25 — Evaluated ffprobe as a second identifier for content and rejected
+  it. Measured against ffmpeg 8.0: it reports a container group as a single name
+  (`mov,mp4,m4a,3gp,3g2,mj2` for mp4/mov/m4v, `matroska,webm` for mkv/webm,
+  `asf` for wmv), so it cannot distinguish what `infer` separates by brand and
+  DocType, and it fingerprints nothing `infer` misses among the accepted
+  formats. Detection stays with `infer` alone; ffprobe remains only where it
+  already was, decoding video.
 - 2026-09-25 — Indexer side of Iteration 1. `model::media::classify_media_file`
   combines the extension allowlist with content detection, and the album scan,
   watcher, and DB rebuild now skip and log anything it rejects rather than

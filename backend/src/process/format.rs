@@ -5,6 +5,12 @@
 //! decode. Note that the WebP signature is weak: `infer` checks only that bytes
 //! 8..12 are `WEBP`, without confirming the `RIFF` prefix, so a file crafted
 //! with those four bytes is accepted as WebP.
+//!
+//! Detection is `infer` alone. It fingerprints every format in the table and is
+//! the more precise of the available tools within a container family, since it
+//! separates mp4/mov/m4v by brand and mkv/webm by `DocType`. ffprobe is not used
+//! to identify content: it reports those groups merged, so it would lose
+//! information rather than add it.
 
 use std::path::Path;
 
@@ -230,6 +236,10 @@ pub fn detect_from_bytes(head: &[u8]) -> Option<Detection> {
 }
 
 /// Identify the content of the file at `path`, reading only a leading window.
+///
+/// Returns `None` when the bytes match no known signature. Because only the
+/// leading bytes are read, a file caught mid-write still identifies by its
+/// signature.
 pub fn detect_from_path(path: &Path) -> std::io::Result<Option<Detection>> {
     Ok(infer::get_from_path(path)?.map(|detected| classify(detected.extension())))
 }
