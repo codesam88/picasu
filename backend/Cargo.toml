@@ -57,7 +57,7 @@ directories = "6.0.0"
 webbrowser = { version = "1.2.1", optional = true }
 rust-embed = "8.11.0"
 mime_guess = "2.0.5"
-utoipa = "5"
+utoipa = "6"
 unicode-normalization = "0.1.25"
 infer = "0.22.0"
 
