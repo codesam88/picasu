@@ -17,6 +17,7 @@
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use crate::process::exif::read_metadata_record;
 
@@ -32,7 +33,29 @@ use crate::process::exif::read_metadata_record;
 const XMP_DC: &str = "XMP-dc";
 const XMP_XMP: &str = "XMP-xmp";
 const IPTC: &str = "IPTC";
+const IPTC2: &str = "IPTC2";
+const IPTC3: &str = "IPTC3";
 const PNG: &str = "PNG";
+
+/// The family-1 group names one IIM record can appear under, in the order the
+/// mapping reads them.
+///
+/// The same IIM datasets are reported under different names depending on where
+/// the record was found: `IPTC` for the record in a format's standard place
+/// (the `8BIM` resource `0x0404` of a JPEG's APP13 block, tag 33723 of a TIFF),
+/// and a numbered name — `IPTC2`, `IPTC3`, … — for a record outside it. Measured
+/// on `ExifTool` 13.59 against a JPEG whose APP13 block holds two `0x0404`
+/// resources: the first is `IPTC`, the second `IPTC2`
+/// (`a_jpeg_with_two_iim_records_reads_both_them`), and the same numbering is
+/// what `ExifTool`'s own corpus exercises for `IPTC3`.
+///
+/// They are one family, not three, so all three names are read: a file whose
+/// only record sits outside the standard place carries a caption and keywords
+/// that belong in `description` and `tags`, and a name-only lookup loses them.
+/// The order is the standard record first, which is also the priority
+/// `ExifTool` itself gives a non-standard record (it marks one low-priority,
+/// since it is the copy a tool appended rather than the file's own).
+const IIM_GROUPS: &[&str] = &[IPTC, IPTC2, IPTC3];
 
 /// `XMP-dc:Subject` — the `rdf:Bag` of keywords.
 const SUBJECT: &str = "Subject";
@@ -178,6 +201,11 @@ impl<'a> XmpSource<'a> {
 /// | `rating`      | `XMP-xmp:Rating`               | —                                  | —                 |
 /// | `tags`        | `XMP-dc:Subject` ∪ `IPTC:Keywords` (2:25) | —                     | —                 |
 ///
+/// `IPTC:` in that table is every group name in [`IIM_GROUPS`], not one of them:
+/// a dataset is read from the record `ExifTool` numbered as well as from the one
+/// it did not, so a file whose IIM record sits outside the standard place fills
+/// the same fields.
+///
 /// The scalars are **first non-empty wins**, in the order XMP → IPTC → text, so
 /// a file that carries the field twice in two families is described by the one
 /// the app would have written. A value that is present but blank does not count
@@ -210,13 +238,13 @@ fn map_native_fields(xmp: &XmpSource<'_>, image: Option<&Value>) -> NativeMetada
         tags: keywords(record, image),
         description: first_text(&[
             field(record, XMP_DC, DESCRIPTION),
-            field(image, IPTC, CAPTION_ABSTRACT),
+            iim_field(image, CAPTION_ABSTRACT),
             field(image, PNG, DESCRIPTION),
         ]),
         rating: raw_field(record, XMP_XMP, RATING).and_then(rating_from),
         title: first_text(&[
             field(record, XMP_DC, TITLE),
-            field(image, IPTC, OBJECT_NAME),
+            iim_field(image, OBJECT_NAME),
             field(image, PNG, TITLE),
         ]),
     }
@@ -252,15 +280,12 @@ fn map_asset_metadata(xmp: &XmpSource<'_>, image: Option<&Value>) -> AssetMetada
 ///   packet, as it does its own EXIF `Software` tag). The namespace matters and
 ///   is kept: `xmp:Rating` and `XMP-microsoft:RatingPercent` are different
 ///   properties, and dropping the namespace would collide them.
-/// * `IPTC`, `IPTC2`, `IPTC3` — the IIM record. `ExifTool` files the same IIM
-///   datasets under different group names depending on the record version they
-///   came from (measured on its own corpus: `IPTC` for the record a JPEG carries,
-///   `IPTC2` for a version-2 record, `IPTC3` for a version-3 one). The native
-///   mapping reads `IPTC:` alone, so a version-2 record's caption is *not* in
-///   `description` — and its keys belong here rather than nowhere. That gap in
-///   the native mapping is Iteration 2's to close, not this one's to paper over:
-///   the bucket is the complement of what was consumed, not a second path to the
-///   same fields.
+/// * `IPTC`, `IPTC2`, `IPTC3` — the IIM record, under whichever group name
+///   `ExifTool` filed it (see [`IIM_GROUPS`]). The native mapping reads all of
+///   them, so the three datasets it consumes are excluded here under each name:
+///   a numbered record's `Caption-Abstract` is in `description`, not repeated in
+///   the bucket. That is the complement staying exact — a key consumed natively
+///   is consumed whatever group the engine filed it in.
 /// * `PNG`, the text chunks. See the exclusion below for the other half of that
 ///   group.
 ///
@@ -360,27 +385,40 @@ fn collect_further_from(
 /// Every `(group, tag)` pair [`map_native_fields`] reads, as the bucket's
 /// exclusion list.
 ///
-/// Stated from the same group and tag constants the native mapping uses rather
+/// Built from the same group and tag constants the native mapping uses rather
 /// than from literals, so a renamed constant moves the exclusion with it and a
 /// newly consumed key that is not added here shows up as the same key in both
 /// places — which
 /// `no_native_key_is_repeated_in_the_bucket` and the API-level scenario
-/// `metadata_detail_exposes_further_data` both fail on.
-const NATIVE_KEYS: &[(&str, &str)] = &[
-    // description
-    (XMP_DC, DESCRIPTION),
-    (IPTC, CAPTION_ABSTRACT),
-    (PNG, DESCRIPTION),
-    // title
-    (XMP_DC, TITLE),
-    (IPTC, OBJECT_NAME),
-    (PNG, TITLE),
-    // rating
-    (XMP_XMP, RATING),
-    // tags
-    (XMP_DC, SUBJECT),
-    (IPTC, KEYWORDS),
-];
+/// `metadata_detail_exposes_further_data` both fail on. It is a `LazyLock`
+/// because one entry depends on the other: the IIM datasets are consumed from
+/// every group name in [`IIM_GROUPS`], so the list is their cross product rather
+/// than three hand-copied triples.
+static NATIVE_KEYS: LazyLock<Vec<(&'static str, &'static str)>> = LazyLock::new(|| {
+    let mut keys = vec![
+        // description
+        (XMP_DC, DESCRIPTION),
+        (PNG, DESCRIPTION),
+        // title
+        (XMP_DC, TITLE),
+        (PNG, TITLE),
+        // rating
+        (XMP_XMP, RATING),
+        // tags
+        (XMP_DC, SUBJECT),
+    ];
+    keys.extend(IIM_GROUPS.iter().flat_map(|group| {
+        [
+            // description
+            (*group, CAPTION_ABSTRACT),
+            // title
+            (*group, OBJECT_NAME),
+            // tags
+            (*group, KEYWORDS),
+        ]
+    }));
+    keys
+});
 
 /// The XMP family, matched by shape: one group per used namespace, plus a bare
 /// `XMP` for a packet written in the XMP namespace itself.
@@ -388,15 +426,17 @@ fn is_xmp_family(group: &str) -> bool {
     group == "XMP" || group.starts_with("XMP-")
 }
 
-/// The IIM record — under whichever record version `ExifTool` files it — and the
+/// The IIM record — under whichever group name `ExifTool` filed it — and the
 /// PNG text chunks, which share a group with the container's own properties.
 fn is_written_metadata_family(group: &str) -> bool {
-    matches!(group, IPTC | "IPTC2" | "IPTC3" | PNG)
+    IIM_GROUPS.contains(&group) || group == PNG
 }
 
 /// Whether the native mapping already owns this key.
 fn is_native_key(group: &str, tag: &str) -> bool {
-    NATIVE_KEYS.contains(&(group, tag))
+    NATIVE_KEYS
+        .iter()
+        .any(|(candidate_group, candidate_tag)| *candidate_group == group && *candidate_tag == tag)
 }
 
 /// The PNG container's own image properties, which `ExifTool` reports in the
@@ -464,12 +504,25 @@ fn value_text(value: &Value) -> Option<String> {
 }
 
 /// The keyword carriers, unioned. See [`map_native_fields`] for why this is the
-/// one field that is not first-wins.
+/// one field that is not first-wins. An IIM record's keywords are read from
+/// every group name in [`IIM_GROUPS`], for the same reason the scalars are: the
+/// numbered records hold the same dataset.
 fn keywords(xmp: Option<&Value>, image: Option<&Value>) -> HashSet<String> {
     let mut tags = HashSet::new();
     tags.extend(keyword_items(raw_field(xmp, XMP_DC, SUBJECT)));
-    tags.extend(keyword_items(raw_field(image, IPTC, KEYWORDS)));
+    for group in IIM_GROUPS {
+        tags.extend(keyword_items(raw_field(image, group, KEYWORDS)));
+    }
     tags
+}
+
+/// One IIM dataset as text, from the first record that supplies it. Blank values
+/// do not count, exactly as in the XMP family, so a record that carries an empty
+/// caption does not shadow the record that carries the real one.
+fn iim_field(record: Option<&Value>, tag: &str) -> Option<String> {
+    IIM_GROUPS
+        .iter()
+        .find_map(|group| field(record, group, tag))
 }
 
 /// The first supplied value, in the order given. A blank never reaches this:
@@ -596,6 +649,45 @@ mod tests {
         })
     }
 
+    /// `two-records.jpg`, a JPEG whose APP13 block holds **two** Photoshop
+    /// image resources of type `0x0404` — two IIM records in one file, as a
+    /// tool that appends a record rather than replacing one produces.
+    /// `ExifTool` files the first under `IPTC:` and numbers the rest, so the
+    /// second is `IPTC2:`. Measured on 13.59 against a file built by the
+    /// `two_iim_records_in_one_app13` helper below; the group naming itself is
+    /// documented by ExifTool ("a number added for non-standard IPTC"),
+    /// measured on its own corpus for `IPTC2` and `IPTC3`.
+    fn recorded_iptc_numbered_records() -> Value {
+        json!({
+            "SourceFile": "two-records.jpg",
+            "File:FileType": "JPEG",
+            "IPTC:ApplicationRecordVersion": 4,
+            "IPTC:ObjectName": "Standard record object name",
+            "IPTC:Keywords": "standard_kw",
+            "IPTC2:ApplicationRecordVersion": 4,
+            "IPTC2:ObjectName": "Numbered record object name",
+            "IPTC2:Keywords": ["numbered_kw", "second_numbered_kw"],
+            "IPTC2:Caption-Abstract": "Numbered record caption",
+            "IPTC2:City": "Numberedville"
+        })
+    }
+
+    /// The three group names the same IIM datasets appear under, as a record
+    /// with nothing in the standard location at all: `ExifTool` files a record
+    /// it finds only outside the standard place under a numbered group, and a
+    /// file may carry the third as well.
+    fn recorded_iptc_all_three_groups() -> Value {
+        json!({
+            "SourceFile": "numbered-only.jpg",
+            "File:FileType": "JPEG",
+            "IPTC2:Caption-Abstract": "Caption in the second group",
+            "IPTC2:Keywords": "kw2",
+            "IPTC3:Caption-Abstract": "Caption in the third group",
+            "IPTC3:Keywords": ["kw3"],
+            "IPTC3:ObjectName": "Object name in the third group"
+        })
+    }
+
     /// `alltext.png`, a PNG whose text chunks use keywords of their own — the
     /// standard ones plus arbitrary ones ExifTool reports verbatim.
     fn recorded_png_text_chunks() -> Value {
@@ -703,6 +795,63 @@ mod tests {
         let data = map_native_fields(&XmpSource::Unavailable, Some(&image));
         assert_eq!(data.title.as_deref(), Some("IPTC Object Name"));
         assert_eq!(data.description.as_deref(), Some("IPTC Caption"));
+    }
+
+    /// An IIM record is an IIM record whatever `ExifTool` files it under. The
+    /// datasets of a second (or third) record in the same file arrive as
+    /// `IPTC2:`/`IPTC3:` and used to stop at the mapping's `IPTC:`-only lookup,
+    /// so a file with nothing in the standard place had a caption and keywords
+    /// no field could hold — they landed in the further-data bucket instead of
+    /// in `description` and `tags`, which is the one thing that bucket is not for.
+    #[test]
+    fn an_iim_record_exiftool_files_as_iptc2_or_iptc3_fills_the_same_fields() {
+        let data = map_native_fields(
+            &XmpSource::Unavailable,
+            Some(&recorded_iptc_all_three_groups()),
+        );
+
+        assert_eq!(
+            data.description.as_deref(),
+            Some("Caption in the second group")
+        );
+        assert_eq!(
+            data.title.as_deref(),
+            Some("Object name in the third group")
+        );
+        assert_eq!(
+            data.tags,
+            HashSet::from(["kw2".to_string(), "kw3".to_string()]),
+            "keywords are a union, so a numbered record's add to it rather than \
+             replace it: {:?}",
+            data.tags
+        );
+        assert_eq!(data.rating, None);
+    }
+
+    /// The order the three groups are read in: the standard record first, then
+    /// the numbered ones. `ExifTool` itself marks a non-standard record
+    /// low-priority for the same reason — it is the record a tool appended, and
+    /// the standard one is the file's own — so this is the engine's precedence,
+    /// not a new one.
+    #[test]
+    fn the_standard_iim_record_outranks_a_numbered_one() {
+        let data = map_native_fields(
+            &XmpSource::Unavailable,
+            Some(&recorded_iptc_numbered_records()),
+        );
+
+        assert_eq!(data.title.as_deref(), Some("Standard record object name"));
+        // The standard record carries no caption here, so the numbered one
+        // supplies it rather than the field staying empty.
+        assert_eq!(data.description.as_deref(), Some("Numbered record caption"));
+        assert_eq!(
+            data.tags,
+            HashSet::from([
+                "standard_kw".to_string(),
+                "numbered_kw".to_string(),
+                "second_numbered_kw".to_string()
+            ])
+        );
     }
 
     // ── Mapping: tags ──────────────────────────────────────────────────────
@@ -881,6 +1030,16 @@ mod tests {
             "IPTC:Keywords": ["alpine", "winter"],
             "PNG:Title": "A Title",
             "PNG:Description": "A Description",
+            // The same three IIM datasets again, under the group names ExifTool
+            // gives a record it found outside the standard place. All of them
+            // are in the record so the complement test's control has something
+            // to exclude in every group, and none of them may reach the bucket.
+            "IPTC2:ObjectName": "Second record object name",
+            "IPTC2:Caption-Abstract": "Second record caption",
+            "IPTC2:Keywords": "stew",
+            "IPTC3:ObjectName": "Third record object name",
+            "IPTC3:Caption-Abstract": "Third record caption",
+            "IPTC3:Keywords": "jambalaya",
             // Everything else in the three source families.
             "XMP-xmp:CreatorTool": "snapfab 1.0",
             "XMP-x:XMPToolkit": "Image::ExifTool 13.59",
@@ -888,8 +1047,8 @@ mod tests {
             "IPTC:By-line": "Ada Lovelace",
             "IPTC:City": "London",
             "IPTC:ApplicationRecordVersion": 4,
-            "IPTC2:Caption-Abstract": "legacy record version",
-            "IPTC3:Keywords": "jambalaya",
+            "IPTC2:City": "Secondville",
+            "IPTC3:ApplicationRecordVersion": 4,
             "PNG:Comment": "A Comment",
             "PNG:ZKeyword": "zlib text value"
         })
@@ -898,8 +1057,8 @@ mod tests {
     /// The bucket is the exact complement of the native mapping, with the
     /// `Group:Tag` prefix kept so a key says which family it came from.
     ///
-    /// The control comes first: all nine native keys must really be in the
-    /// record and really be consumed, or the "complement" would hold vacuously.
+    /// The control comes first: every native key must really be in the record and
+    /// really be consumed, or the "complement" would hold vacuously.
     #[test]
     fn the_bucket_is_the_complement_of_the_native_keys_with_the_prefix_kept() {
         let record = recorded_kitchen_sink();
@@ -914,9 +1073,15 @@ mod tests {
         assert_eq!(native.rating, Some(5));
         assert_eq!(
             native.tags,
-            HashSet::from(["alpine".to_string(), "winter".to_string()])
+            HashSet::from([
+                "alpine".to_string(),
+                "winter".to_string(),
+                "stew".to_string(),
+                "jambalaya".to_string()
+            ]),
+            "keywords are a union across the IIM group names too"
         );
-        for key in NATIVE_KEYS {
+        for key in NATIVE_KEYS.iter() {
             let prefixed = format!("{}:{}", key.0, key.1);
             assert!(
                 record.get(&prefixed).is_some(),
@@ -931,11 +1096,11 @@ mod tests {
                 ("IPTC:ApplicationRecordVersion".to_string(), "4".to_string()),
                 ("IPTC:By-line".to_string(), "Ada Lovelace".to_string()),
                 ("IPTC:City".to_string(), "London".to_string()),
+                ("IPTC2:City".to_string(), "Secondville".to_string()),
                 (
-                    "IPTC2:Caption-Abstract".to_string(),
-                    "legacy record version".to_string()
+                    "IPTC3:ApplicationRecordVersion".to_string(),
+                    "4".to_string()
                 ),
-                ("IPTC3:Keywords".to_string(), "jambalaya".to_string()),
                 ("PNG:Comment".to_string(), "A Comment".to_string()),
                 ("PNG:ZKeyword".to_string(), "zlib text value".to_string()),
                 (
@@ -960,24 +1125,28 @@ mod tests {
         let record = recorded_kitchen_sink();
         let bucket = map_further_fields(&XmpSource::Record(&record), Some(&record));
 
-        for (group, tag) in NATIVE_KEYS {
+        for (group, tag) in NATIVE_KEYS.iter() {
             let prefixed = format!("{group}:{tag}");
             assert!(
                 !bucket.contains_key(&prefixed),
                 "{prefixed} is consumed by the native mapping and must not be in the bucket: {bucket:?}"
             );
         }
-        // The same key name in another IIM record version is a different key,
-        // and the native mapping does not read it (Iteration 2 reads `IPTC:`
-        // only), so it stays in the bucket. Pinned because the two records
-        // hold the same dataset and a name-only exclusion would drop it.
+        // The complement is by `(group, tag)`, not by tag name: a dataset the
+        // mapping does not read still reaches the bucket in a numbered record,
+        // under the group ExifTool filed it in, and a name-only exclusion would
+        // drop it. The consumed names are excluded in every group instead —
+        // `IPTC2:Caption-Abstract` and `IPTC3:Keywords` are asserted absent
+        // above, and they are the same datasets `IPTC:Caption-Abstract` and
+        // `IPTC:Keywords` are.
         assert_eq!(
-            bucket.get("IPTC2:Caption-Abstract").map(String::as_str),
-            Some("legacy record version")
+            bucket.get("IPTC2:City").map(String::as_str),
+            Some("Secondville")
         );
         assert_eq!(
-            bucket.get("IPTC3:Keywords").map(String::as_str),
-            Some("jambalaya")
+            bucket.get("IPTC:City").map(String::as_str),
+            Some("London"),
+            "the same dataset in the standard record is a separate key"
         );
     }
 
@@ -1542,6 +1711,125 @@ mod tests {
         assert_eq!(data.description.as_deref(), Some("A text description"));
         assert_eq!(data.title.as_deref(), Some("A text title"));
         assert!(data.tags.is_empty());
+    }
+
+    /// The premise of the numbered-group tests, through the real reader: a JPEG
+    /// with two IIM records in one APP13 block really is reported as `IPTC:` plus
+    /// `IPTC2:`, and the numbered record's caption and keywords reach the fields
+    /// the standard record left empty. Before the mapping read all three group
+    /// names, this file indexed with no caption and no tags at all — measured
+    /// against the recorded payload
+    /// `recorded_iptc_numbered_records` rather than assumed from it.
+    #[test]
+    fn a_jpeg_with_two_iim_records_reads_both_them() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let photo = jpeg_with_two_iim_records(dir.path(), "two-records.jpg");
+
+        let image = read_metadata_record(&photo).expect("read image");
+        // Control: the engine really does number the second record's group. If
+        // it stopped doing so, the assertions below would be measuring a
+        // mapping that no longer has a case to cover.
+        for key in [
+            "IPTC:ObjectName",
+            "IPTC2:Caption-Abstract",
+            "IPTC2:Keywords",
+        ] {
+            assert!(
+                image.get(key).is_some(),
+                "{key} must be reported for this fixture, got: {}",
+                image
+            );
+        }
+
+        let data = asset_metadata_for(&photo, Some(&image));
+        assert_eq!(
+            data.native.title.as_deref(),
+            Some("Standard record object name")
+        );
+        assert_eq!(
+            data.native.description.as_deref(),
+            Some("Numbered record caption"),
+            "the caption only the numbered record carries: {:?}",
+            data.native
+        );
+        assert_eq!(
+            data.native.tags,
+            HashSet::from([
+                "standard_kw".to_string(),
+                "numbered_kw".to_string(),
+                "second_numbered_kw".to_string()
+            ])
+        );
+        assert_eq!(
+            data.further.get("IPTC2:City").map(String::as_str),
+            Some("Numberedville"),
+            "a dataset the mapping does not read still reaches the bucket, under the \
+             group ExifTool filed it in: {:?}",
+            data.further
+        );
+    }
+
+    /// snapfab's JPEG with a second IIM record appended to its APP13 block.
+    ///
+    /// An APP13 marker segment holding a Photoshop 3.0 image-resource block,
+    /// built field by field: the `8BIM` signature, the two-byte resource id
+    /// `0x0404` (the IPTC-NAA record), an empty Pascal name padded to an even
+    /// length, the four-byte resource size, and the IIM datasets themselves —
+    /// each a `0x1c` marker, record number, dataset number, then a big-endian
+    /// length. Two `0x0404` resources in one block is what makes ExifTool file
+    /// the second one under a numbered group.
+    fn jpeg_with_two_iim_records(dir: &Path, name: &str) -> std::path::PathBuf {
+        let photo = snapfab_jpeg(dir, name, &[]);
+        let mut bytes = std::fs::read(&photo).expect("read generated jpeg");
+
+        let iim = |datasets: &[(u8, u8, &[u8])]| {
+            let mut out = Vec::new();
+            for (record, dataset, value) in datasets {
+                out.push(0x1c);
+                out.push(*record);
+                out.push(*dataset);
+                out.extend_from_slice(&(value.len() as u16).to_be_bytes());
+                out.extend_from_slice(value);
+            }
+            out
+        };
+        let resource = |datasets: &[(u8, u8, &[u8])]| {
+            let data = iim(datasets);
+            let mut out = b"8BIM\x04\x04\x00\x00".to_vec();
+            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            out.extend_from_slice(&data);
+            if data.len() % 2 == 1 {
+                // Photoshop pads an odd-length resource to an even one.
+                out.push(0);
+            }
+            out
+        };
+        let mut block = b"Photoshop 3.0\x00".to_vec();
+        block.extend_from_slice(&resource(&[
+            (2, 0, &[0x00, 0x04]),
+            (2, 5, b"Standard record object name"),
+            (2, 25, b"standard_kw"),
+        ]));
+        block.extend_from_slice(&resource(&[
+            (2, 0, &[0x00, 0x04]),
+            (2, 5, b"Numbered record object name"),
+            (2, 25, b"numbered_kw"),
+            (2, 25, b"second_numbered_kw"),
+            (2, 90, b"Numberedville"),
+            (2, 120, b"Numbered record caption"),
+        ]));
+        assert!(block.len() <= u16::MAX as usize, "APP13 payload too large");
+        let segment = [
+            vec![0xff, 0xed],
+            ((block.len() + 2) as u16).to_be_bytes().to_vec(),
+            block,
+        ]
+        .concat();
+
+        // Inserted after SOI, which the file opens with.
+        bytes.splice(2..2, segment);
+        std::fs::write(&photo, &bytes).expect("write jpeg with two records");
+        photo
     }
 
     /// A read that cannot happen at all is the non-fallible contract: empty

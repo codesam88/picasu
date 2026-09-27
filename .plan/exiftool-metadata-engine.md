@@ -199,6 +199,36 @@ backend-check`, `just utils-check`, `just docs-check`.
 
 ## Progress
 
+- 2026-09-27 — Iteration 4 done. Manifest vocabulary gained `iptc` and `text`
+  plus a `FIELD_SOURCES` cross-product table (a field may only be claimed from
+  a source it can live in — closes `container: [embedded]`, the open question
+  `test-exif-xmp-handling` left). Claim flips per decision 6: jpeg
+  `iptc: [embedded]` + pinned fixture `jpeg-48x32-iptc` (ImageMagick pixels +
+  ExifTool-written IIM, no XMP packet — proof that tags/description arrive via
+  IIM alone); png `xmp: [embedded, sidecar]` + `text: [embedded]`, unsupported
+  list emptied, pinned fixture `png-48x32-xmp-text` (checked-in python stdlib
+  generator: compressed `iTXt` XMP + `tEXt` Description/Comment/Source —
+  re-verified compressed, no plaintext packet); tiff/webp/mp4/mov claims
+  unchanged after measurement (their fixtures carry no IIM/XMP/text). Retired
+  reader names in fixture `expectedMetadata` fixed (`DateTime`→`ModifyDate`,
+  `DateTimeDigitized`→`CreateDate`) with a test forbidding retired names.
+  **Manifest policy change (ratified):** a `generated` format may now pin
+  additional fixtures backing claims its generator cannot produce — the old
+  "generated must not reference pinned fixtures" exclusivity made the two new
+  fixtures unregistrable; the teeth moved to an extension-match check, and
+  `pinned ⇔ snapfab-cannot-encode` is untouched. IPTC2/3 fix: all three
+  numbered IIM group names feed the native mapping (`IIM_GROUPS`, standard
+  record first, matching ExifTool's low-priority marking), `NATIVE_KEYS` is a
+  constant-derived cross product so the bucket complement moves with it; a
+  real two-record JPEG test asserts ExifTool actually reports `IPTC2` before
+  the mapping assertion. Stale `process/xmp.rs` comment fixed in the
+  randomized scenario. Mutations: 27/27 killed. Open: IIM-in-PNG (a `zTXt`/
+  `iTXt`-wrapped IIM record) unmeasured — no claim made; the flaky
+  `a_killed_child_is_replaced...` race (`/proc` visibility of a freshly
+  spawned child, seen once under heavier parallel ExifTool use) — fix in
+  Iteration 5. Gates: `cargo test -p snapfab` 72, `-p picasu` 418 (+3
+  integration, 1 ignored), `just backend-check/utils-check/docs-check`,
+  `cargo deny` — all pass; no frontend changes.
 - 2026-09-27 — Iteration 3 done. The read-only bucket ships as
   `furtherMetadata` (Rust `further_metadata`, sidebar section "Further
   metadata"): an image-persisted `BTreeMap` keyed `Group:Tag` whose split is
@@ -223,9 +253,11 @@ backend-check`, `just utils-check`, `just docs-check`.
   (bitcode field addition decodes as EOF) — existing libraries get the
   actionable `rebuild_required` message and need `POST /post/rebuild` after
   this build; `docs/database.md` updated. Carry-overs recorded: (a)
-  `IPTC2`/`IPTC3` records bypass Iteration 2's native mapping (version-2/3
-  IIM captions land in the bucket instead of `description`/`tags`) — fix in
-  Iteration 4's mapping pass; (b) `value_text` duplicates
+  `IPTC2`/`IPTC3` records bypass Iteration 2's native mapping — ExifTool files
+  an IIM record outside its standard location under a numbered group name
+  (non-standard _location_, not record version; wording corrected in
+  Iteration 4) — so such captions/keywords land in the bucket instead of
+  `description`/`tags`; fix in Iteration 4's mapping pass; (b) `value_text` duplicates
   `process::exif::json_value_to_string` (private) — hoist in Iteration 5;
   (c) share-mode (`show_metadata: false`) has only a unit test, no Playwright
   scenario. Gates: `cargo test -p picasu` 413 (+3 integration, 1 ignored),

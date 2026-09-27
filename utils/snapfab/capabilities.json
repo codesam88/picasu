@@ -2,6 +2,52 @@
   "schemaVersion": 1,
   "fixtures": [
     {
+      "id": "jpeg-48x32-iptc",
+      "path": "utils/snapfab/fixtures/jpeg/picasu-jpeg-48x32-iptc.jpg",
+      "sha256": "5f6e34f3b3c6355ecb3995df4992b31c2e1cbb41dafd573ec394b7cbe44e0520",
+      "origin": "generated",
+      "source": "Generated for picasu, not taken from an upstream project. ImageMagick writes the pixels and ExifTool writes the IIM record; neither writes an XMP packet, which is what makes the file an IIM-only case. Exact commands, run from the repository root: `magick -size 48x32 gradient:'#204060-#c0d0e0' -strip -quality 92 utils/snapfab/fixtures/jpeg/picasu-jpeg-48x32-iptc.jpg` followed by `exiftool -overwrite_original -q -IPTC:ObjectName='An IIM-only object name' -IPTC:Caption-Abstract='An IIM-only caption' -IPTC:Keywords=e2e_jpeg_iptc_alpine -IPTC:Keywords=e2e_jpeg_iptc_winter -IPTC:By-line='A. Fixture' -IPTC:City=Fixtureville -IPTC:CopyrightNotice='(c) 2024 picasu test fixtures' utils/snapfab/fixtures/jpeg/picasu-jpeg-48x32-iptc.jpg`. Re-running both reproduces the recorded SHA-256 exactly. `-strip` keeps an EXIF block out, and ExifTool's JPEG writer adds only the APP13 Photoshop image-resource block holding the IIM record (8BIM resource 0x0404): there is no APP1 XMP block and no `<?xpacket?>` markup anywhere in the file, which is the property the `iptc: [embedded]` claim is about.",
+      "version": "picasu fixture revision 1; ImageMagick 7.1.2-18 Q16 x86_64 23822 and ExifTool 13.59 (pure Perl)",
+      "license": "MIT (picasu repository LICENSE); no ImageMagick or ExifTool code is redistributed, only its output",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "IPTC:ObjectName": "An IIM-only object name",
+        "IPTC:Caption-Abstract": "An IIM-only caption",
+        "IPTC:Keywords": "e2e_jpeg_iptc_alpine, e2e_jpeg_iptc_winter",
+        "IPTC:By-line": "A. Fixture",
+        "IPTC:City": "Fixtureville",
+        "IPTC:CopyrightNotice": "(c) 2024 picasu test fixtures",
+        "thumbnail": "generated",
+        "xmp": "none; the file carries no XMP packet, so the IIM record is its only metadata source",
+        "exif": "none; the file carries no EXIF block, so the API returns an empty exifVec for it"
+      },
+      "intendedFailureClass": "none"
+    },
+    {
+      "id": "png-48x32-xmp-text",
+      "path": "utils/snapfab/fixtures/png/picasu-png-48x32-xmp-text.png",
+      "sha256": "f739401ce63dc6ee447c55765719d9a19461208eed897788dfafdd8486526b4a",
+      "origin": "generated",
+      "source": "Constructed for picasu, not taken from upstream: a 48x32 8-bit RGB PNG written chunk by chunk by the script checked in beside it, so no image encoder was involved and the bytes depend only on that script and the Python standard library. Exact command, run from the repository root: `python3 utils/snapfab/fixtures/png/generate_picasu-png-48x32-xmp-text.py utils/snapfab/fixtures/png/picasu-png-48x32-xmp-text.png`. Re-running it reproduces the recorded SHA-256 byte for byte. Pixels are the same buffer as the TIFF and WebP fixtures (R = x*255/47, G = y*255/31, B = 128). Chunk order is IHDR, three tEXt chunks (Description, Comment, Source), one iTXt chunk with the keyword `XML:com.adobe.xmp`, compression flag 1 and compression method 0, then IDAT and IEND. The packet is therefore deflate-compressed in the file: neither `<?xpacket` nor `dc:subject` appears in the bytes, and a reader has to inflate it. Why a script and not ExifTool, the tool that reads it: ExifTool 13.59 writes a PNG's XMP packet into an *uncompressed* iTXt chunk (measured: the compression flag after the keyword is 0) and writes no tEXt chunk of its own choosing, so it cannot produce the case the claim is about.",
+      "version": "picasu fixture revision 1; python3 3.14.4 with zlib 1.3.1, standard library only",
+      "license": "MIT (picasu repository LICENSE)",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "XMP-dc:Subject": "e2e_png_xmp_alpine, e2e_png_xmp_winter",
+        "XMP-dc:Title": "A title from the compressed packet",
+        "XMP-dc:Description": "A caption from the compressed packet",
+        "XMP-xmp:Rating": "4",
+        "PNG:Description": "A text chunk description, which the packet's own dc:description outranks",
+        "PNG:Comment": "A text chunk comment",
+        "PNG:Source": "picasu test fixtures",
+        "thumbnail": "generated",
+        "exif": "none; the file carries no eXIf chunk, so the API returns an empty exifVec for it"
+      },
+      "intendedFailureClass": "none"
+    },
+    {
       "id": "tiff-48x32-exif",
       "path": "utils/snapfab/fixtures/tiff/picasu-tiff-48x32-exif.tif",
       "sha256": "0081378c866e5aea79818e3bdba2dd040c7906590de60dec0c8d2dcbea2611e9",
@@ -12,9 +58,9 @@
       "expectedMetadata": {
         "width": "48",
         "height": "32",
-        "exif.ifd0.DateTime": "2024-05-06 07:08:09",
+        "exif.ifd0.ModifyDate": "2024-05-06 07:08:09",
         "exif.exif.DateTimeOriginal": "2024-05-06 07:08:09",
-        "exif.exif.DateTimeDigitized": "2024-05-06 07:08:09",
+        "exif.exif.CreateDate": "2024-05-06 07:08:09",
         "thumbnail": "generated",
         "xmp": "sidecar only; the file carries no XMP packet"
       },
@@ -31,9 +77,9 @@
       "expectedMetadata": {
         "width": "48",
         "height": "32",
-        "exif.riff_chunk.DateTime": "2024-05-06 07:08:09",
+        "exif.riff_chunk.ModifyDate": "2024-05-06 07:08:09",
         "exif.riff_chunk.DateTimeOriginal": "2024-05-06 07:08:09",
-        "exif.riff_chunk.DateTimeDigitized": "2024-05-06 07:08:09",
+        "exif.riff_chunk.CreateDate": "2024-05-06 07:08:09",
         "thumbnail": "generated",
         "xmp": "sidecar only; the file carries no XMP chunk"
       },
@@ -103,12 +149,13 @@
       },
       "metadataFields": {
         "exif": ["embedded"],
+        "iptc": ["embedded"],
         "xmp": ["embedded", "sidecar"]
       },
       "unsupportedMetadataFields": [],
       "expectedFailureClasses": ["none"],
       "fixtureSource": "generated",
-      "pinnedFixtures": []
+      "pinnedFixtures": ["jpeg-48x32-iptc"]
     },
     {
       "format": "png",
@@ -120,12 +167,13 @@
       },
       "metadataFields": {
         "exif": ["embedded"],
-        "xmp": ["sidecar"]
+        "text": ["embedded"],
+        "xmp": ["embedded", "sidecar"]
       },
-      "unsupportedMetadataFields": ["xmp:embedded"],
+      "unsupportedMetadataFields": [],
       "expectedFailureClasses": ["none"],
       "fixtureSource": "generated",
-      "pinnedFixtures": []
+      "pinnedFixtures": ["png-48x32-xmp-text"]
     },
     {
       "format": "tiff",
