@@ -1,5 +1,10 @@
 [workspace]
-members = ["backend", "utils/snapfab", "utils/paste-shim"]
+members = [
+    "backend",
+    "utils/openapi-sanity",
+    "utils/snapfab",
+    "utils/paste-shim",
+]
 default-members = ["backend"]
 resolver = "2"
 

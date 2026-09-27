@@ -1,30 +1,34 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-// Shared with the unit tests in `src/tests/ast_scan.rs`: the analysis decides
-// which handlers reach `paths(...)`, and a parsing mistake there silently
-// drops routes from the spec. The module is pure — it returns findings and
-// this script prints them as `cargo:warning=` lines.
-#[path = "build/ast_scan.rs"]
-mod ast_scan;
+use openapi_sanity::Finding;
 
-// The single Rocket→OpenAPI path translation, also shared with the
-// mounted-route parity gate in `src/tests/openapi_contract.rs`: both compare
-// the same two strings, so they must use the same implementation. `ast_scan`
-// calls it as `super::route_path::to_spec_path`, which is why this
-// declaration must exist next to the `ast_scan` module.
-#[path = "build/route_path.rs"]
-mod route_path;
-
-use ast_scan::{HandlersScan, scan_handlers, scan_routes};
-
+/// A handler registered by a `routes![...]` block, with the group it was found in.
 #[derive(Clone)]
 struct Route {
     group_prefix: String,
     module_path: String,
     handler: String,
 }
+
+/// Router files whose `routes![...]` blocks are scanned, as
+/// `(group prefix, path relative to src/router)`.
+///
+/// A module missing from this list has its routes mounted but undocumented, which
+/// the parity test in `src/tests/openapi_contract.rs` reports.
+const SCANNED_MODULES: &[(&str, &str)] = &[
+    ("get", "get/mod.rs"),
+    ("post", "post/mod.rs"),
+    ("put", "put/mod.rs"),
+    ("delete", "delete.rs"),
+    ("fairing", "fairing/mod.rs"),
+    // `auth.rs` mounts the token renewal routes through
+    // `generate_fairing_routes()`. It has to be scanned here as well,
+    // otherwise its annotated handlers never reach `paths(...)` and the
+    // routes are mounted but undocumented.
+    ("auth", "auth.rs"),
+];
 
 #[allow(clippy::cast_precision_loss)]
 fn main() {
@@ -35,51 +39,17 @@ fn main() {
     println!("cargo:rerun-if-changed=src/router");
     println!("cargo:rerun-if-changed=src/lib.rs");
 
-    let all_routes = collect_all_routes(&router_root);
+    let all_routes = collect_all_routes(backend_root, &router_root);
+    let total = all_routes.len();
+    let mut annotations = AnnotationIndex::new(backend_root, &router_root);
     let mut annotated: Vec<Route> = Vec::new();
-    let mut missing: Vec<&Route> = Vec::new();
-    // Defining files are parsed once; their path findings are printed once.
-    let mut handler_scans: HashMap<PathBuf, HandlersScan> = HashMap::new();
+    let mut missing: Vec<Route> = Vec::new();
 
-    for r in &all_routes {
-        let source = route_source(r, backend_root);
-        if !handler_scans.contains_key(&source) {
-            let scan = match std::fs::read_to_string(&source) {
-                Ok(content) => scan_handlers(&content, &source),
-                // An I/O problem is not a missing annotation: say so, then
-                // fall back — the route reports as missing below, as before.
-                Err(err) => {
-                    println!("cargo:warning=cannot read {}: {err}", source.display());
-                    HandlersScan::default()
-                }
-            };
-            for finding in &scan.findings {
-                println!("cargo:warning={}", finding.message());
-            }
-            // Attribute path agreement: compare exactly the two strings the
-            // parity gate compares — the shared translation of the Rocket
-            // URI against the annotation's declared path.
-            for handler in &scan.handlers {
-                if let Some(finding) = handler.path_mismatch(&source) {
-                    println!("cargo:warning={}", finding.message());
-                }
-            }
-            handler_scans.insert(source.clone(), scan);
-        }
-        let scan = handler_scans
-            .get(&source)
-            .expect("handler scan inserted in the iteration above");
-        // The annotation gate is per function: only *this* handler's own
-        // `#[utoipa::path]` counts, never a sibling's in the same file.
-        // `candidate` prefers the annotated one when a `#[cfg(test)]`
-        // duplicate shares the name, so the real route is not dropped.
-        match scan.candidate(&r.handler) {
-            Some(handler) if handler.annotated => annotated.push(Route {
-                group_prefix: r.group_prefix.clone(),
-                module_path: r.module_path.clone(),
-                handler: r.handler.clone(),
-            }),
-            _ => missing.push(r),
+    for r in all_routes {
+        if annotations.is_annotated(&r) {
+            annotated.push(r);
+        } else {
+            missing.push(r);
         }
     }
 
@@ -90,15 +60,12 @@ fn main() {
         );
     }
 
-    if !all_routes.is_empty() {
-        let annotated_count = annotated.len();
-        let total = all_routes.len();
-        if annotated_count != total {
-            let coverage_pct = (annotated_count as f64 / total as f64) * 100.0;
-            println!(
-                "cargo:warning=utoipa annotation coverage: {coverage_pct:.1}% ({annotated_count}/{total})"
-            );
-        }
+    let annotated_count = annotated.len();
+    if total > 0 && annotated_count != total {
+        let coverage_pct = (annotated_count as f64 / total as f64) * 100.0;
+        println!(
+            "cargo:warning=utoipa annotation coverage: {coverage_pct:.1}% ({annotated_count}/{total})"
+        );
     }
 
     generate_openapi_rs(&annotated, &backend_root.join("src").join("openapi.rs"));
@@ -212,67 +179,115 @@ fn generate_openapi_rs(annotated: &[Route], dest: &Path) {
     // Do NOT rerun on dest — it's generated, would cause rebuild loop.
 }
 
-/// File that declares `route`'s handler: `router/<group>.rs` for an
-/// unqualified entry (its module resolves to the group), otherwise
-/// `router/<group>/<module>.rs`.
-fn route_source(route: &Route, backend_root: &Path) -> PathBuf {
-    if route.module_path == route.group_prefix {
-        backend_root
-            .join("src")
-            .join("router")
-            .join(format!("{}.rs", route.group_prefix))
-    } else {
-        backend_root
-            .join("src")
-            .join("router")
-            .join(&route.group_prefix)
-            .join(format!("{}.rs", route.module_path))
+/// Which handler functions carry their own `#[utoipa::path]` annotation.
+///
+/// The answer is per function, not per file: a file that annotates one handler
+/// says nothing about its neighbours, and crediting a sibling's annotation is how
+/// a route reaches `paths(...)` carrying another operation's metadata. Each source
+/// file is read and parsed once, so a module with twenty handlers is not read
+/// twenty times.
+struct AnnotationIndex {
+    backend_root: PathBuf,
+    router_root: PathBuf,
+    cache: HashMap<PathBuf, HashSet<String>>,
+}
+
+impl AnnotationIndex {
+    fn new(backend_root: &Path, router_root: &Path) -> Self {
+        Self {
+            backend_root: backend_root.to_path_buf(),
+            router_root: router_root.to_path_buf(),
+            cache: HashMap::new(),
+        }
+    }
+
+    /// The file a route's handler function is defined in.
+    fn source(&self, route: &Route) -> PathBuf {
+        if route.module_path == route.group_prefix {
+            self.router_root.join(format!("{}.rs", route.group_prefix))
+        } else {
+            self.router_root
+                .join(&route.group_prefix)
+                .join(format!("{}.rs", route.module_path))
+        }
+    }
+
+    fn is_annotated(&mut self, route: &Route) -> bool {
+        let source = self.source(route);
+        if !self.cache.contains_key(&source) {
+            let annotated = annotated_handlers(&self.backend_root, &source);
+            self.cache.insert(source.clone(), annotated);
+        }
+        self.cache
+            .get(&source)
+            .is_some_and(|handlers| handlers.contains(&route.handler))
     }
 }
 
-fn collect_all_routes(router_root: &Path) -> Vec<Route> {
-    // Every entry must name a file under `router/`: an entry that cannot be
-    // read is reported as `cargo:warning=cannot read …` below rather than
-    // skipped silently (there is no `fairing/` module — the fairing-style
-    // renewal routes live in `auth.rs`, so no such entry exists).
-    let mod_entries = [
-        ("get", "get/mod.rs"),
-        ("post", "post/mod.rs"),
-        ("put", "put/mod.rs"),
-        ("delete", "delete.rs"),
-        // `auth.rs` mounts the token renewal routes through
-        // `generate_fairing_routes()`. It has to be scanned here as well,
-        // otherwise its annotated handlers never reach `paths(...)` and the
-        // routes are mounted but undocumented.
-        ("auth", "auth.rs"),
-    ];
+/// The functions in one source file that carry a `#[utoipa::path]` annotation.
+///
+/// A file that cannot be read contributes no annotations, so its handlers are
+/// reported as missing one rather than quietly dropped from the scan. A file that
+/// does not parse is reported by the analyzer, which then contributes no
+/// annotations for the same reason.
+fn annotated_handlers(backend_root: &Path, source: &Path) -> HashSet<String> {
+    let label = label_for(backend_root, source);
+    let Ok(content) = std::fs::read_to_string(source) else {
+        return HashSet::new();
+    };
 
+    let scan = openapi_sanity::scan_handlers(&label, &content);
+    report(&scan.findings);
+    scan.handlers
+        .into_iter()
+        .filter(|handler| handler.annotated)
+        .map(|handler| handler.name)
+        .collect()
+}
+
+/// The handlers registered by every `routes![...]` block in a scanned module.
+///
+/// Route order is the order the blocks appear in, which is what
+/// `generate_openapi_rs` sorts on; a block that fails to parse is reported and
+/// contributes no routes rather than partially registering one.
+fn collect_all_routes(backend_root: &Path, router_root: &Path) -> Vec<Route> {
     let mut routes = Vec::new();
 
-    for (group_prefix, rel_path) in &mod_entries {
+    for (group_prefix, rel_path) in SCANNED_MODULES {
         let path = router_root.join(rel_path);
-        let content = match std::fs::read_to_string(&path) {
-            Ok(content) => content,
-            Err(err) => {
-                println!("cargo:warning=cannot read {}: {err}", path.display());
-                continue;
-            }
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
         };
 
-        let scan = scan_routes(&content, group_prefix, &path);
-        for finding in &scan.findings {
-            println!("cargo:warning={}", finding.message());
-        }
-        for handler in scan.handlers {
-            routes.push(Route {
-                group_prefix: group_prefix.to_string(),
-                module_path: handler.module_path,
-                handler: handler.handler,
-            });
-        }
+        let label = label_for(backend_root, &path);
+        let scan = openapi_sanity::scan_routes(&label, &content, group_prefix);
+        report(&scan.findings);
+
+        routes.extend(scan.handlers.into_iter().map(|handler| Route {
+            group_prefix: (*group_prefix).to_string(),
+            module_path: handler.module_path,
+            handler: handler.handler,
+        }));
     }
 
     routes
+}
+
+/// Surface an analyzer finding as a build warning. The crate neither prints nor
+/// fails, so this is where its diagnostics reach the build log.
+fn report(findings: &[Finding]) {
+    for finding in findings {
+        println!("cargo:warning={finding}");
+    }
+}
+
+/// A file label for diagnostics, relative to the backend root when possible.
+fn label_for(backend_root: &Path, source: &Path) -> String {
+    source
+        .strip_prefix(backend_root)
+        .unwrap_or(source)
+        .display()
+        .to_string()
 }
 
 fn generate_scenarios_rs(_annotated: &[Route], backend_root: &Path) {

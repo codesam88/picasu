@@ -11,7 +11,4 @@ mod backend_api;
 mod openapi_contract;
 
 #[cfg(test)]
-mod ast_scan;
-
-#[cfg(test)]
-mod route_path;
+mod route_scan;

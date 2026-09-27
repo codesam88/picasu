@@ -40,12 +40,12 @@ The goal is an exact, auditable mapping between:
        │                               │
        ▼                               ▼
 ┌──────────────────────────────────────────────────────┐
-│   build.rs (runs every build, no feature flag)       │
+│   build.rs + utils/openapi-sanity (every build)      │
 │                                                      │
 │   1. Scan all routes![] for handler names            │
 │   2. Scan handler source for #[utoipa::path]         │
 │   3. Warn on any missing annotations                 │
-│   4. Write backend/src/openapi.rs                         │
+│   4. Write backend/src/openapi.rs                    │
 └──────────────┬───────────────────────────────────────┘
                │
                 ▼
@@ -74,19 +74,21 @@ The goal is an exact, auditable mapping between:
      `router/delete.rs` and `router/auth.rs` to discover every registered
      handler. A module missing from that list has its routes mounted but
      undocumented, which the parity test reports.
-   - Parses each `routes![]` macro's token stream out of the file's AST (in
-     `backend/build/ast_scan.rs`), so a single-line `routes![a, b]` registers
-     both handlers and an entry that is not a plain `handler` or
-     `module::handler` path is reported instead of guessed at.
-   - Parses each handler's source file and checks _that function_ for a
-     `#[utoipa::path]` annotation — per function, not per file — and warns
-     when the annotation's `path = "..."` disagrees with the Rocket
-     attribute's URI after the shared `to_spec_path` translation in
-     `backend/build/route_path.rs`, which the parity gate also uses, so the
-     two comparisons cannot drift apart.
-   - Prints `cargo:warning=` for any handler missing an annotation.
+   - For each handler, checks whether _its own_ function carries a
+     `#[utoipa::path]` annotation. A file that annotates one handler does not
+     annotate its neighbours, so the check is per function.
+   - Prints `cargo:warning=` for any handler missing an annotation, and for
+     anything the scanner could not parse.
    - Writes `backend/src/openapi.rs` with the correct `__path_*` imports and
      `paths(...)` registration.
+
+   The scanning itself lives in `utils/openapi-sanity`, not in the build script:
+   a build script cannot be unit-tested in place, and a build script is the one
+   place a parsing mistake hides. `build.rs` keeps only what needs the
+   filesystem — reading the router files, deciding which of them to scan, writing
+   the generated files — and takes the `routes![]` entries, the per-function
+   annotations and the Rocket-to-`OpenAPI` path translation from the shared
+   crate.
 
 2. **`just openapi-gen`** — runs the `picasu` binary with `--dump-openapi`
    (`cargo run -- --dump-openapi > backend/openapi.json`), which serves
@@ -105,20 +107,19 @@ The goal is an exact, auditable mapping between:
 5. **`openapi_contract` tests** (`cargo test --lib openapi_contract`) — compare
    the mounted Rocket routes with the public spec, and enforce the tag
    taxonomy below (every operation carries a known tag, `pages` sits on the
-   SPA page routes and on nothing else).
+   SPA page routes and on nothing else). Both sides of the comparison are
+   normalized with `openapi_sanity::to_spec_path`, the single path translation
+   the crate owns.
 
-6. **`ast_scan` tests** (`cargo test --lib ast_scan`) — cover the AST analysis in
-   `backend/build/ast_scan.rs`, which `build.rs` shares with the test module so
-   the `routes![]` parsing, the per-function annotation check and the attribute
-   path-agreement check are testable outside the build script.
+6. **`openapi-sanity` tests** (`cargo test -p openapi-sanity`) — cover the
+   scanner itself: `routes![]` entries in every layout, per-function annotation
+   attribution, Rocket route attributes and their URIs, the path translation and
+   the diagnostics for malformed input. The `route_scan` tests in the backend
+   (`cargo test --lib route_scan`) cover what only the backend can answer: which
+   router files `build.rs` scans, and that it scans them through the shared
+   crate rather than a private copy.
 
-7. **`route_path` tests** (`cargo test --lib route_path`) — cover the shared
-   Rocket→OpenAPI translation in `backend/build/route_path.rs`, including the
-   test that pins its two call sites to the same behaviour: every Rocket path
-   declared in the router (derived with the `ast_scan` pass) must translate to
-   a path in the committed `backend/openapi.json`.
-
-8. **`committed_artifact_is_up_to_date`** — asserts `public_json()` equals the
+7. **`committed_artifact_is_up_to_date`** — asserts `public_json()` equals the
    committed `backend/openapi.json`, so a stale artifact fails `cargo test` as
    well as `just openapi-check`.
 
@@ -170,8 +171,8 @@ on `is_data_api_path` for the assumption that makes that derivation valid.
 ### Adding a new data API route
 
 1. Add the handler function to a `routes![]` block. If the handler lives in a
-   module that is not scanned by `build.rs`, add that module to
-   `collect_all_routes` — otherwise the route is mounted but undocumented.
+   module that is not scanned by `build.rs`, add that module to its
+   `SCANNED_MODULES` list — otherwise the route is mounted but undocumented.
 2. Add `#[utoipa::path(...)]` with the route's HTTP method, path, parameters,
    and response types. The annotated `path` must match the mounted route
    exactly; the parity test fails on a mismatch. Set `tag = "..."` to the
@@ -243,10 +244,9 @@ The explicit schema list was redundant and has been removed.
 
 | File                                    | Generator           | Role                                               |
 | --------------------------------------- | ------------------- | -------------------------------------------------- |
+| `utils/openapi-sanity/`                 | —                   | `syn`-based route/annotation scanner + path rules  |
 | `backend/src/openapi.rs`                | `build.rs`          | ApiDoc struct with all routes (gitignored)         |
 | `backend/openapi.json`                  | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked) |
 | `docs/openapi-reference.md`             | widdershins         | Human-readable API reference                       |
 | `backend/src/tests/openapi_contract.rs` | —                   | Mounted-route / spec parity gate                   |
-| `backend/build/ast_scan.rs`             | —                   | AST route/handler analysis shared with unit tests  |
-| `backend/build/route_path.rs`           | —                   | Shared Rocket→OpenAPI path translation             |
-| `build.rs`                              | —                   | AST route scan + `openapi.rs` generator + coverage |
+| `build.rs`                              | —                   | Reads the router files, writes `openapi.rs`        |
