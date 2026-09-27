@@ -83,7 +83,12 @@ JPEGs with embedded XMP/EXIF metadata, directory albums, config overrides.
 Formats snapfab cannot encode (TIFF, WebP, MP4, MOV) are placed from
 checked-in bytes instead: a `fixture` given step names an entry of the capability
 manifest (`utils/snapfab/capabilities.json`), whose recorded SHA-256 is verified
-against the file, so no binary payload is ever embedded in a scenario.
+against the file, so no binary payload is ever embedded in a scenario. Pinned
+fixtures are additive rather than exclusive: a `generated` format may also pin
+one that backs a claim its generator cannot produce (a JPEG carrying an IIM
+record, a PNG carrying a compressed `iTXt` packet), guarded by the extension and
+checksum checks instead; `pinned ⇔ snapfab-cannot-encode` is the separate rule
+the manifest tests enforce.
 Fixtures are interface adapters — they translate abstract YAML declarations
 into HTTP calls and filesystem operations. When the backend's public API
 changes, only the fixtures change; the interpreter and the YAML scenarios

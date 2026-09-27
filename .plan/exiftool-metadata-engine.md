@@ -55,6 +55,17 @@ sidecars, invoking the tool, and mapping its JSON onto the app's fields.
      PNG-text still fill native fields no XMP source supplied. The
      `corrupt_xmp_sidecar_suppresses_embedded_xmp` pin changes meaning and is
      rewritten with the new contract stated in its comments.
+7. **ExifTool's write capability is the scope boundary; the parser is not
+   ours to test** (user, 2026-09-27). snapfab writes fixture metadata through
+   ExifTool itself (writer = reader, round-trip by construction), and any
+   feature ExifTool cannot write — measured, e.g. compressed PNG `iTXt`,
+   possibly attribute-form XMP — is _not claimed and not tested_: out of
+   scope, not an open gap. What this plan tests is the integration and the
+   overrides (mapping, precedence, sidecar rules, the further-bucket split),
+   not ExifTool's parsing fidelity. The acceptance criterion's "incl. compact
+   syntax" is therefore conditional on the Iteration 6 measurement: covered
+   if ExifTool writes compact form, amended out of the criterion if it does
+   not.
 
 ## Current state (measured)
 
@@ -173,6 +184,34 @@ backend-check`, `just utils-check`, `just docs-check`.
   the tree; release-build compile; `just check` + `just test`; flip this plan
   to `done` with a closing note.
 
+### Iteration 6 — snapfab writes metadata through ExifTool (decision 7)
+
+- **Owner:** fixture worker.
+- **Measurement first (the report's opening table):** what ExifTool 13.59
+  _writes_ and our engine reads back — JPEG APP1 XMP (element form),
+  attribute-form/compact XMP (the open question), IPTC IIM, EXIF, PNG
+  `eXIf`, PNG `iTXt`/`tEXt`/compressed `iTXt` (the last two known-negative:
+  reconfirm). Every "no" becomes an out-of-scope line per decision 7, and
+  `test-exif-xmp-handling`'s compact-syntax acceptance clause gets amended by
+  the parent if compact is unwritable.
+- **Tests first:** a snapfab precondition test for `exiftool` on `PATH`
+  (hard-failure diagnostic, same pattern as the backend's); red/parity tests
+  showing the current writers' observable outputs (dates, tags, IPTC
+  datasets, PNG `eXIf`, XMP APP1) are reproduced through the ExifTool path.
+- **Implementation:** `PhotoSpec`'s surface (`tags`, `exif_date`,
+  `further_iptc`, `format`, dimensions, `minimal`) stays; the internal
+  writers move to one shared ExifTool session (the `exiftool` crate, same
+  pattern as `process::exif`). Retire only what the new path makes dead:
+  `little_exif` (and the hand-spliced PNG `eXIf` + CRC table), the `iptc`
+  crate (+ pad-byte fix), `build_xmp_app1`/`splice_segment` — each deletion
+  gated on the full suites staying green, not on intent. Pinned fixtures are
+  _never_ regenerated (their SHAs are policy); test-time generation may
+  change bytes freely as long as semantic assertions hold. Playwright's
+  `snapfab batch` path uses the same code — CI and dev both have ExifTool.
+- **Gate:** `cargo test -p snapfab` + `cargo test -p picasu` (full),
+  `just check`, full `just test`, `cargo deny`; writer-retirement diff
+  reviewed by the parent before this plan closes.
+
 ## Sub-agent coordination rules
 
 - One bounded subsystem per worker; exact file ownership in the task prompt.
@@ -185,10 +224,16 @@ backend-check`, `just utils-check`, `just docs-check`.
 
 ## Acceptance criteria
 
-- JPEG: EXIF + XMP (embedded, incl. compact syntax, and sidecar) + IPTC IIM
+- JPEG: EXIF + XMP (embedded, and sidecar) + IPTC IIM
   read through ExifTool; PNG: EXIF + XMP (embedded incl. compressed `iTXt`,
   and sidecar) + text chunks read through ExifTool; each with at least one
-  scenario proving it end-to-end.
+  scenario proving it end-to-end. **Compact/attribute-form XMP amended out**
+  by decision 7: ExifTool cannot _write_ the attribute form (it always
+  re-serializes element form — measured), the parser is not ours to prove, and
+  the integration that is ours to prove is covered by the element-form
+  scenarios. The already-pinned compressed-`iTXt` PNG fixture stays: its
+  coverage landed before decision 7 and proves _our_ reader's integration with
+  a real-world encoding, which is exactly the integration-and-overrides goal.
 - Native fields obey XMP > IPTC > text first-wins; non-modelled fields appear
   in the read-only further-data category in the API and the sidebar.
 - `kamadak-exif` and the `xmp.rs` byte-scan parser are gone; no new

@@ -157,10 +157,24 @@ impl Session {
     /// the cause nameable in [`start_context`]; taking the path as an argument
     /// rather than hardcoding it is what lets a test observe that error without
     /// taking `exiftool` off the process-wide `PATH` for every other test.
+    ///
+    /// A failure is also logged. The indexer absorbs a read error into an empty
+    /// map, so a server whose `exiftool` is missing serves images with empty
+    /// metadata and says nothing — the log line is the only place an operator
+    /// sees the cause. It fires per *session creation*, not per call, and a
+    /// session that fails to start is never cached (see [`read_metadata_record`]),
+    /// so with the binary missing it repeats once per failing read — that is
+    /// deliberate. The one-line-per-image repetition is the intended signal: it
+    /// is the count of metadata reads that returned nothing, and a single
+    /// deduplicated warning would be scrolled away by the very indexing log it
+    /// is meant to explain.
     fn start_at(executable: &Path) -> Result<Self> {
         ExifTool::with_executable(executable)
             .map(|tool| Session { tool })
             .with_context(start_context)
+            .inspect_err(|err| {
+                log::error!("image metadata is unavailable: {err:#}");
+            })
     }
 
     fn read(&self, file_path: &Path) -> Result<Value, ExifToolError> {
@@ -206,10 +220,11 @@ fn is_transport_failure(err: &ExifToolError) -> bool {
     }
 }
 
-/// The install remedy [`read_all_metadata`] attaches to a session that could not
-/// be started. Without a working `exiftool` the reader is non-fallible, so the
-/// failure surfaces as an empty `exifVec` on every image rather than as an
-/// error, and the only place the cause is visible is this message.
+/// The install remedy [`read_metadata_record`] attaches to a session that could
+/// not be started, and the text the failure is logged with. Without a working
+/// `exiftool` the reader is non-fallible, so the failure surfaces as an empty
+/// `exifVec` on every image rather than as an error, and these two places are
+/// the only ones the cause is visible in.
 fn start_context() -> String {
     format!(
         "failed to start {EXIFTOOL} in -stay_open mode; install it with \
@@ -343,14 +358,19 @@ fn exif_map_from(grouped: &GroupedMetadata) -> BTreeMap<String, String> {
     exif
 }
 
-/// Flatten one `ExifTool` JSON value into the single string the map holds.
+/// Flatten one `ExifTool` JSON value into the single string the app prints it as.
 ///
 /// `ExifTool`'s JSON is not uniformly typed: `ExposureTime` arrives as the string
 /// `"1/3188"`, `FNumber` as the number `19.7`, a multi-valued tag as an array.
 /// `null` means "no value" and is dropped rather than stored as the text
 /// `"null"`; an object cannot occur while `-struct` is not requested, and is
 /// kept as JSON so nothing is silently lost if that ever changes.
-fn json_value_to_string(value: &Value) -> Option<String> {
+///
+/// Shared with the further-metadata bucket (`process::xmp::map_further_fields`)
+/// rather than reimplemented there: the same record is rendered in two places in
+/// one sidebar, and a value that `exifVec` printed one way and the bucket another
+/// would be the same metadata shown two ways.
+pub(crate) fn json_value_to_string(value: &Value) -> Option<String> {
     match value {
         Value::String(text) => Some(text.clone()),
         Value::Number(number) => Some(number.to_string()),
@@ -1381,10 +1401,7 @@ mod tests {
         let before = exiftool_children_of_this_thread();
 
         let mut session = Session::start().expect("start a session");
-        let spawned: Vec<u32> = exiftool_children_of_this_thread()
-            .into_iter()
-            .filter(|pid| !before.contains(pid))
-            .collect();
+        let spawned = wait_for_new_exiftool_children(&before);
         assert_eq!(
             spawned.len(),
             1,
@@ -1446,11 +1463,37 @@ mod tests {
     }
 
     /// PIDs of this thread's direct children that are `exiftool -stay_open`
-    /// sessions.
+    /// sessions, minus the ones in `before`.
     ///
     /// Children are tracked per thread by the kernel, and a session is created
     /// on the thread that reads with it, so this sees one session's child and
     /// not the ones the other `exiftool` tests are using in parallel.
+    ///
+    /// It polls rather than reading once, because the assertion is about how many
+    /// children a session owns and not about how fast the kernel publishes one:
+    /// a child is listed as soon as it exists, but its `cmdline` is empty until
+    /// it has `exec`'d, and under load (many `exiftool` tests in parallel) a
+    /// single read can land inside that window and see nothing. Bounded at ~1 s,
+    /// which is two orders of magnitude longer than the window has ever been
+    /// observed to last; a child that never appears is a real failure and falls
+    /// through as the empty list the assertion reports.
+    #[cfg(target_os = "linux")]
+    fn wait_for_new_exiftool_children(before: &[u32]) -> Vec<u32> {
+        for _ in 0..100 {
+            let spawned: Vec<u32> = exiftool_children_of_this_thread()
+                .into_iter()
+                .filter(|pid| !before.contains(pid))
+                .collect();
+            if !spawned.is_empty() {
+                return spawned;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        Vec::new()
+    }
+
+    /// PIDs of this thread's direct children that are `exiftool -stay_open`
+    /// sessions.
     #[cfg(target_os = "linux")]
     fn exiftool_children_of_this_thread() -> Vec<u32> {
         let Ok(listed) = std::fs::read_to_string("/proc/thread-self/children") else {

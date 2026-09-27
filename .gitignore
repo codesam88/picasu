@@ -31,3 +31,7 @@ picasu-data/
 # backend/openapi.json is intentionally NOT ignored: it is the checked-in public
 # API contract that `just openapi-check` diffs against a fresh generation.
 
+
+# Fixture generator scripts are plain python; never commit their caches.
+__pycache__/
+*.pyc
