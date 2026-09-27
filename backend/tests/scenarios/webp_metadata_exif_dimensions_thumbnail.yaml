@@ -2,10 +2,14 @@ name: webp exif dimensions thumbnail and sidecar xmp reach the metadata detail
 # The capability manifest declares WebP as `exif: [embedded]` and `xmp: [sidecar]`,
 # with `xmp:embedded` excluded. This pins the positive half of that contract on
 # the pinned fixture `webp-48x32-exif`: a lossless VP8L image behind a VP8X header
-# whose EXIF chunk carries a bare TIFF block, which is what `kamadak-exif` reads
+# whose EXIF chunk carries a bare TIFF block, which is what `exiftool` reads
 # out of a RIFF container. The decoded dimensions are the fixture's 48x32, the EXIF
 # dates come from that chunk, the sidecar XMP packet supplies the tags, and a
 # thumbnail is written to disk.
+#
+# EXIF 0x0131 is the field ExifTool names `ModifyDate`; the retired in-process
+# reader called the same tag `DateTime`, and `DateTime` is now EXIF 0x0132, which
+# this fixture does not carry.
 # The negative control is `webp_without_xmp_source_has_no_tags`.
 given:
   - fixture:
@@ -39,7 +43,7 @@ then:
   - response.json.ext: webp
   - response.json.width: 48
   - response.json.height: 32
-  - response.json.exifVec.DateTime: "2024-05-06 07:08:09"
+  - response.json.exifVec.ModifyDate: "2024-05-06 07:08:09"
   - response.json.exifVec.DateTimeOriginal: "2024-05-06 07:08:09"
   - response.json.tags:
       contains: e2e_webp_sidecar_alpine

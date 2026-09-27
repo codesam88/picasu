@@ -96,6 +96,15 @@ is a hard precondition rather than a skip: it resolves both binaries on `PATH`,
 runs them, and fails with a diagnostic naming the missing tool, what breaks, and
 how to install it, so a missing toolchain never passes as "video works".
 
+The same holds for `exiftool`, which reads image EXIF
+(`process::exif::generate_exif_for_image`).
+`process::exif::tests::image_metadata_requires_a_working_exiftool` is the same
+kind of precondition: the EXIF reader is non-fallible, so a missing ExifTool
+would empty every `exifVec` and let the EXIF scenarios pass without ever reading
+metadata. Dev machines install the pinned pure-Perl distribution with
+`just install-exiftool` (no root, into `~/.local`); CI and the runtime Docker
+image install `libimage-exiftool-perl`.
+
 **When** dispatches HTTP calls through Rocket's `local::Client`.
 `capture` and `calc` blocks chain multi-call scenarios where one response
 feeds the next request.

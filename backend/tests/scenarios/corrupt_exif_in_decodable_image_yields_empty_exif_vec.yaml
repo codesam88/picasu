@@ -2,16 +2,24 @@ name: corrupt EXIF inside a decodable image yields an empty exifVec and nothing 
 # Negative case: metadata corruption *inside* an otherwise decodable image.
 #
 # The patch replaces the TIFF byte-order marker that follows the JPEG `Exif\0\0`
-# header (`II*\0` → `II*\xff`) without changing the file length, so the JPEG
+# header (`II*\0` → `XY*\0`) without changing the file length, so the JPEG
 # structure — segments, quantisation tables, scan data — is untouched and the
 # image still decodes.
+#
+# The damaged byte-order marker is load-bearing: it is damage ExifTool cannot
+# work around. Measured with exiftool 13.59, corrupting the *IFD offset* instead
+# (the patch this scenario used to apply, `II*\0` → `II*\xff`) still yields every
+# tag, because the directory is located by scanning when the offset is wrong, so
+# that patch no longer produced an empty `exifVec` — it produced a full one. An
+# invalid byte-order marker has no fallback: the engine reports
+# `Malformed APP1 EXIF segment` and extracts nothing.
 #
 # Expected outcome: everything the pixels provide survives (dimensions, `ext`,
 # the thumbnail, and the XMP keywords carried in a different APP1 segment) and
 # only the EXIF block is lost, as an *empty object* rather than an error.
 # `generate_exif_for_image` is documented non-fallible: it swallows every
-# failure of `read_exif` and returns whatever it managed to read, which for an
-# unparseable block is nothing. So the API answers 200 with `exifVec: {}` —
+# failure to read EXIF and returns whatever it managed to read, which for an
+# unreadable block is nothing. So the API answers 200 with `exifVec: {}` —
 # a corrupt EXIF block never turns into a 4xx, a 5xx, or a panic.
 #
 # Positive control: `jpeg`-shaped EXIF reaching the API is pinned by
@@ -27,7 +35,7 @@ given:
   - patch_file:
       path: /e2e_corrupt_exif/photo.jpg
       find_hex: "45786966000049492a00"
-      replace_hex: "45786966000049492aff"
+      replace_hex: "45786966000058592a00"
 when:
   - call: POST /get/prefetch?locate=${asset_id}
     capture:

@@ -24,6 +24,17 @@ Make sure the following software is installed on your system:
 
   For other Linux distributions, use the appropriate package manager (e.g., `dnf`, `yum`, `pacman`) and find the corresponding package name for installation.
 
+- **ExifTool**: the image metadata engine, also an external binary. For Ubuntu,
+  use APT:
+
+  ```bash
+  sudo apt install -y libimage-exiftool-perl
+  ```
+
+  Or, without root, install the pinned pure-Perl distribution from the repository
+  root with `just install-exiftool` (unpacks into `~/.local` and symlinks
+  `~/.local/bin/exiftool`).
+
 - **Rust**: Install Rust using the official installer:
 
   ```bash
