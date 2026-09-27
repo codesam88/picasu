@@ -4,15 +4,52 @@ use std::fmt;
 use std::sync::LazyLock;
 
 const SUPPORTED_SCHEMA_VERSION: u32 = 1;
-/// Fields the backend actually reads. A field outside this list is rejected so a
-/// typo cannot masquerade as a capability claim. `container` is the field for
-/// container/stream metadata that does not live in the file's bytes at all:
-/// for a video it is produced by `ffprobe`, which is a different contract from
-/// `exif` and `xmp` and is recorded as such (`source: "probe"`).
-const METADATA_FIELDS: &[&str] = &["exif", "xmp", "container"];
+/// The metadata families the backend actually reads, one per thing a writer can
+/// put in a file. A field outside this list is rejected so a typo cannot
+/// masquerade as a capability claim.
+///
+/// * `exif` — the EXIF IFD family, which is what `exifVec` is built from.
+/// * `xmp` — an XMP packet, embedded or beside the file as a sidecar.
+/// * `iptc` — the IPTC IIM record (the Photoshop `8BIM` resource `0x0404` in a
+///   JPEG, tag 33723 in a TIFF).
+/// * `text` — a PNG text chunk (`tEXt`, `iTXt`, `zTXt`), the metadata a PNG
+///   carries when it has no XMP packet and no EXIF block.
+/// * `container` — container/stream metadata that does not live in the file's
+///   bytes at all: for a video it is produced by `ffprobe`, which is a
+///   different contract from the other four and is recorded as such
+///   (`source: "probe"`).
+const METADATA_FIELDS: &[&str] = &["exif", "xmp", "iptc", "text", "container"];
 /// `probe` marks a field the backend reads from an external tool rather than
 /// from the file itself. The other two are locations inside or beside the file.
 const METADATA_SOURCES: &[&str] = &["embedded", "sidecar", "probe"];
+/// Where each field can physically be, as `(field, sources)` pairs. The field
+/// list and the source list are each closed, but on their own they only reject a
+/// misspelling: they accept `container: [embedded]`, which is a claim about
+/// bytes that never exist. This table is the second half of the vocabulary — it
+/// says *where* a family can live, so a pair that parses is a pair that means
+/// something.
+///
+/// The pairs are not a policy choice but a property of the formats: an XMP
+/// packet can be in the bytes or next to them (a `.xmp` sidecar is a file of its
+/// own kind), an IIM record and a PNG text chunk are sections inside the image
+/// and have no sidecar form, and `container` metadata is ffprobe's description
+/// of the file rather than a section of it, so it has no `embedded` form.
+const FIELD_SOURCES: &[(&str, &[&str])] = &[
+    ("exif", &["embedded"]),
+    ("xmp", &["embedded", "sidecar"]),
+    ("iptc", &["embedded"]),
+    ("text", &["embedded"]),
+    ("container", &["probe"]),
+];
+
+/// Whether `source` is one of the places `field` can be read from.
+fn field_carries_source(field: &str, source: &str) -> bool {
+    FIELD_SOURCES
+        .iter()
+        .find(|(candidate, _)| *candidate == field)
+        .is_some_and(|(_, sources)| sources.contains(&source))
+}
+
 const FAILURE_CLASSES: &[&str] = &[
     "none",
     "signature_mismatch",
@@ -51,7 +88,8 @@ pub struct FormatCapability {
     pub extensions: Vec<String>,
     pub content_signature: ContentSignature,
     /// Metadata fields this manifest positively claims, mapped to the sources
-    /// the backend reads them from.
+    /// the backend reads them from. A `field: source` pair is only valid if the
+    /// field can live in that source at all — see [`FIELD_SOURCES`].
     pub metadata_fields: HashMap<String, Vec<String>>,
     /// `field:source` pairs deliberately excluded from the claims above,
     /// recorded so that a consumer can distinguish "not claimed" from "not
@@ -60,10 +98,12 @@ pub struct FormatCapability {
     pub unsupported_metadata_fields: Vec<String>,
     pub expected_failure_classes: Vec<String>,
     /// `generated` when snapfab encodes the format, `pinned` when checked-in
-    /// bytes back its coverage.
+    /// bytes are its only coverage. The two are not exclusive: a `generated`
+    /// format may also pin files that back claims its generator cannot produce.
     pub fixture_source: String,
-    /// Ids from `fixtures`. Required for `pinned` formats, empty for
-    /// `generated` ones.
+    /// Ids from `fixtures` whose bytes back this format's claims. Required for
+    /// a `pinned` format, empty or additional for a `generated` one. Each
+    /// fixture's own extension has to be one the format accepts.
     pub pinned_fixtures: Vec<String>,
 }
 
@@ -203,6 +243,12 @@ pub fn validate_manifest(manifest: &CapabilityManifest) -> Result<(), Capability
                 if !METADATA_SOURCES.contains(&source.as_str()) {
                     return validation_error("metadata source is not recognized");
                 }
+                if !field_carries_source(field, source) {
+                    return validation_error(&format!(
+                        "{field} is not carried in the file's {source} source: no format has \
+                         such a location for it"
+                    ));
+                }
             }
         }
         if entry.expected_failure_classes.is_empty() {
@@ -228,6 +274,12 @@ pub fn validate_manifest(manifest: &CapabilityManifest) -> Result<(), Capability
             if !METADATA_SOURCES.contains(source) {
                 return validation_error("unsupported metadata source is not recognized");
             }
+            if !field_carries_source(field, source) {
+                return validation_error(&format!(
+                    "{field} is not carried in the file's {source} source: no format has \
+                     such a location for it"
+                ));
+            }
             if entry
                 .metadata_fields
                 .get(*field)
@@ -247,18 +299,32 @@ pub fn validate_manifest(manifest: &CapabilityManifest) -> Result<(), Capability
             if !pinned_seen.insert(id.as_str()) {
                 return validation_error("pinned fixture ids must be unique per format");
             }
-            if !fixtures.contains(id.as_str()) {
+            let Some(fixture) = fixtures.get(id.as_str()) else {
                 return validation_error("pinned fixture id does not resolve to a fixture");
+            };
+            // A fixture backs a claim *about this format*, so its own extension
+            // has to be one the format accepts. This is what keeps a claim from
+            // being backed by another container's bytes.
+            let Some((_, extension)) = fixture.path.rsplit_once('.') else {
+                return validation_error("pinned fixture path must carry a file extension");
+            };
+            if !entry.extensions.iter().any(|value| value == extension) {
+                return validation_error(&format!(
+                    "pinned fixture {id} carries .{extension}, which {} does not accept",
+                    entry.format
+                ));
             }
         }
-        // A format is either generated or pinned, never both and never neither:
-        // an unbacked capability claim is exactly what this manifest must not
-        // contain.
+        // `fixtureSource` says where a format's coverage comes from — snapfab
+        // encodes it, or checked-in bytes do — and a `pinned` format is covered
+        // by nothing else, so it must name a fixture. A `generated` format may
+        // additionally pin files that back claims its generator cannot produce
+        // (a compressed `iTXt` packet, an IIM record without an XMP packet):
+        // those claims are backed rather than asserted, which is the point of
+        // the manifest. What may not happen either way is a claim with no file
+        // behind it, and a fixture no format references is rejected below.
         if entry.fixture_source == "pinned" && entry.pinned_fixtures.is_empty() {
             return validation_error("a pinned format must reference at least one fixture");
-        }
-        if entry.fixture_source == "generated" && !entry.pinned_fixtures.is_empty() {
-            return validation_error("a generated format must not reference pinned fixtures");
         }
     }
     for fixture in &manifest.fixtures {
@@ -273,14 +339,17 @@ pub fn validate_manifest(manifest: &CapabilityManifest) -> Result<(), Capability
     Ok(())
 }
 
-/// Validate the checked-in fixtures and return their ids.
-fn validate_fixtures(manifest: &CapabilityManifest) -> Result<HashSet<&str>, CapabilityError> {
+/// Validate the checked-in fixtures and return them by id, so the format rules
+/// can look up the path of one a format references.
+fn validate_fixtures(
+    manifest: &CapabilityManifest,
+) -> Result<HashMap<&str, &PinnedFixture>, CapabilityError> {
     let invalid = |message: &str| Err(CapabilityError::Validation(message.to_string()));
-    let mut ids = HashSet::new();
+    let mut ids = HashMap::new();
     let mut paths = HashSet::new();
     for fixture in &manifest.fixtures {
         validate_identifier(&fixture.id, "fixture ids")?;
-        if !ids.insert(fixture.id.as_str()) {
+        if ids.insert(fixture.id.as_str(), fixture).is_some() {
             return invalid("fixture ids must be unique");
         }
         if !paths.insert(fixture.path.as_str()) {
@@ -366,7 +435,10 @@ fn validation_error(message: &str) -> Result<(), CapabilityError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CapabilityError, load_capabilities, parse_manifest};
+    use super::{
+        CapabilityError, FIELD_SOURCES, METADATA_FIELDS, METADATA_SOURCES, field_carries_source,
+        load_capabilities, parse_manifest,
+    };
 
     /// Bytes of every checked-in fixture, keyed by the repository-relative
     /// path the manifest records. `include_bytes!` turns a missing or renamed
@@ -375,6 +447,14 @@ mod tests {
     /// other direction.
     fn embedded_fixtures() -> &'static [(&'static str, &'static [u8])] {
         &[
+            (
+                "utils/snapfab/fixtures/jpeg/picasu-jpeg-48x32-iptc.jpg",
+                include_bytes!("../fixtures/jpeg/picasu-jpeg-48x32-iptc.jpg"),
+            ),
+            (
+                "utils/snapfab/fixtures/png/picasu-png-48x32-xmp-text.png",
+                include_bytes!("../fixtures/png/picasu-png-48x32-xmp-text.png"),
+            ),
             (
                 "utils/snapfab/fixtures/tiff/picasu-tiff-48x32-exif.tif",
                 include_bytes!("../fixtures/tiff/picasu-tiff-48x32-exif.tif"),
@@ -419,6 +499,123 @@ mod tests {
         bytes
             .windows(ADOBE_XMP_UUID_BOX.len())
             .any(|window| window == ADOBE_XMP_UUID_BOX)
+    }
+
+    /// The IIM dataset headers a record written by `ExifTool` for a JPEG starts
+    /// each dataset with: marker `0x1c`, record number, dataset number. The
+    /// three below are the ones the `jpeg-48x32-iptc` fixture carries — 2:05
+    /// `ObjectName`, 2:25 `Keywords`, 2:120 `Caption-Abstract` — so finding one
+    /// of them is finding an IIM record whatever container it sits in. A scan
+    /// can in principle hit the same three bytes inside pixel data, which is
+    /// why each test that uses it also names a positive control.
+    const IIM_DATASET_HEADERS: &[&[u8]] = &[b"\x1c\x02\x05", b"\x1c\x02\x19", b"\x1c\x02\x78"];
+
+    /// Whether an IIM record is present in the bytes.
+    fn carries_iim_record(bytes: &[u8]) -> bool {
+        IIM_DATASET_HEADERS
+            .iter()
+            .any(|header| bytes.windows(header.len()).any(|window| window == *header))
+    }
+
+    /// The ways an XMP packet can appear in a file's bytes, in the forms the
+    /// pinned fixtures could carry one: the Adobe APP1 identifier of a JPEG's
+    /// extended packet, the `<?xpacket` wrapper any packet may keep, and the
+    /// `XML:com.adobe.xmp` keyword of a PNG text chunk.
+    const XMP_MARKERS: &[&[u8]] = &[
+        b"http://ns.adobe.com/xap/1.0/",
+        b"<?xpacket",
+        b"<x:xmpmeta",
+        b"XML:com.adobe.xmp",
+    ];
+
+    fn carries_xmp_marker(bytes: &[u8]) -> bool {
+        XMP_MARKERS
+            .iter()
+            .any(|marker| bytes.windows(marker.len()).any(|window| window == *marker))
+    }
+
+    /// The PNG chunks of `bytes` as `(type, data)`: length, type, data, CRC.
+    /// The walk stops at the first length it cannot read, so a truncated chunk
+    /// yields the chunks before it rather than a panic.
+    fn png_chunks(bytes: &[u8]) -> Vec<(&[u8], &[u8])> {
+        let mut chunks = Vec::new();
+        let mut at = 8; // past the 8-byte signature
+        while at + 8 <= bytes.len() {
+            let Some(length) = bytes
+                .get(at..at + 4)
+                .map(|window| u32::from_be_bytes(window.try_into().expect("4 bytes")))
+            else {
+                break;
+            };
+            let end = at + 12 + length as usize;
+            let Some(window) = bytes.get(at..end) else {
+                break;
+            };
+            chunks.push((&window[4..8], &window[8..8 + length as usize]));
+            at = end;
+        }
+        chunks
+    }
+
+    /// The data of the `iTXt` chunk whose keyword is `keyword`, and whether the
+    /// chunk's compression flag says the text is deflate-compressed. The payload
+    /// starts after the compression flag and method, so it is the text alone.
+    fn itxt_payload<'a>(bytes: &'a [u8], keyword: &[u8]) -> Option<(&'a [u8], bool)> {
+        png_chunks(bytes)
+            .into_iter()
+            .filter(|(kind, _)| *kind == b"iTXt")
+            .find_map(|(_, data)| {
+                let after_keyword = data.iter().position(|byte| *byte == 0)? + 1;
+                if data.get(..after_keyword)? != [keyword, b"\0"].concat() {
+                    return None;
+                }
+                // compression flag, compression method, then the text
+                let rest = data.get(after_keyword..)?;
+                Some((rest.get(2..)?, rest.first()? == &1))
+            })
+    }
+
+    /// The payload of every JPEG marker segment, as `(marker, payload)`. The
+    /// walk stops at the start-of-scan marker: what follows is entropy-coded
+    /// image data, not segments, and a `0xff` in it is not a marker.
+    fn jpeg_segments(bytes: &[u8]) -> Vec<(u8, &[u8])> {
+        let mut segments = Vec::new();
+        let mut at = 2; // past SOI
+        while at + 4 <= bytes.len() {
+            if bytes[at] != 0xff {
+                break;
+            }
+            let marker = bytes[at + 1];
+            if marker == 0xda {
+                break;
+            }
+            let Some(length) = bytes
+                .get(at + 2..at + 4)
+                .map(|window| usize::from(u16::from_be_bytes(window.try_into().expect("2 bytes"))))
+            else {
+                break;
+            };
+            let Some(window) = bytes.get(at + 4..at + 2 + length) else {
+                break;
+            };
+            segments.push((marker, window));
+            at += 2 + length;
+        }
+        segments
+    }
+
+    /// Whether a JPEG carries a Photoshop image-resource block holding the
+    /// resource `id` — the form an IIM record takes in a JPEG (`0x0404`): the
+    /// `8BIM` signature followed by the resource's own two-byte id.
+    fn carries_jpeg_image_resource(bytes: &[u8], id: &[u8; 2]) -> bool {
+        jpeg_segments(bytes)
+            .into_iter()
+            .filter(|(marker, _)| *marker == 0xed) // APP13
+            .any(|(_, payload)| {
+                payload
+                    .windows(6)
+                    .any(|window| window[..4] == *b"8BIM" && window[4..] == *id)
+            })
     }
 
     /// SHA-256 (FIPS 180-4) over `input`, lowercase hex.
@@ -873,12 +1070,409 @@ mod tests {
             assert!(
                 entry.metadata_fields["exif"].contains(&"embedded".to_string()),
                 "{format} should claim embedded EXIF: the pinned fixture carries an \
-                 Exif IFD and kamadak-exif reads TIFF blocks from both containers"
+                 Exif IFD and ExifTool reads TIFF blocks from both containers"
             );
             assert_eq!(
                 entry.unsupported_metadata_fields,
                 ["xmp:embedded"],
                 "{format} embedded XMP is not covered by a fixture yet"
+            );
+        }
+    }
+
+    /// The closed vocabulary, pinned as a whole list in each direction: a field
+    /// or source a reader can no longer find, and a family that should be
+    /// claimable but cannot be named, both change these lists and both have to
+    /// come through a manifest edit rather than a stray string.
+    ///
+    /// `FIELD_SOURCES` is pinned with them because it is a second, independent
+    /// list: a field that exists in `METADATA_FIELDS` and has no row there would
+    /// be claimable in no source at all, which is the state the table exists to
+    /// make impossible.
+    #[test]
+    fn the_metadata_vocabulary_is_the_families_and_the_places_they_can_live() {
+        assert_eq!(
+            METADATA_FIELDS,
+            ["exif", "xmp", "iptc", "text", "container"]
+        );
+        assert_eq!(METADATA_SOURCES, ["embedded", "sidecar", "probe"]);
+
+        let declared: Vec<&str> = FIELD_SOURCES.iter().map(|(field, _)| *field).collect();
+        assert_eq!(
+            declared, METADATA_FIELDS,
+            "every field needs a row saying where it can be read from"
+        );
+        for (_, sources) in FIELD_SOURCES {
+            for source in *sources {
+                assert!(
+                    METADATA_SOURCES.contains(source),
+                    "{source} is not a recognized source"
+                );
+            }
+        }
+    }
+
+    /// A field may only be claimed from a source it can physically live in.
+    /// Both name lists are closed, which rejects a misspelling but accepts a
+    /// nonsense pair like `container: [embedded]` — a claim about bytes that do
+    /// not exist in any format. This is the rule that rejects it.
+    ///
+    /// The positive control is the repository manifest itself: every claim it
+    /// makes today has to survive, or the table is rejecting a real claim.
+    #[test]
+    fn a_field_may_only_be_claimed_from_a_source_it_can_live_in() {
+        let manifest = load_capabilities().expect("manifest should load");
+        for entry in &manifest.formats {
+            for (field, sources) in &entry.metadata_fields {
+                for source in sources {
+                    assert!(
+                        field_carries_source(field, source),
+                        "{} claims {field}: {source}, which no format can carry",
+                        entry.format
+                    );
+                }
+            }
+        }
+
+        let claiming = |fields: &str| valid_entry().replace(r#"{"exif": ["embedded"]}"#, fields);
+        // The pairs a writer really can produce, one per family.
+        for fields in [
+            r#"{"exif": ["embedded"]}"#,
+            r#"{"xmp": ["embedded", "sidecar"]}"#,
+            r#"{"iptc": ["embedded"]}"#,
+            r#"{"text": ["embedded"]}"#,
+            r#"{"container": ["probe"]}"#,
+        ] {
+            assert_valid(&manifest_with(&[&claiming(fields)]));
+        }
+
+        for fields in [
+            r#"{"container": ["embedded"]}"#,
+            r#"{"container": ["sidecar"]}"#,
+            r#"{"iptc": ["probe"]}"#,
+            r#"{"iptc": ["sidecar"]}"#,
+            r#"{"xmp": ["probe"]}"#,
+            r#"{"exif": ["sidecar"]}"#,
+            r#"{"exif": ["probe"]}"#,
+            r#"{"text": ["sidecar"]}"#,
+            r#"{"text": ["probe"]}"#,
+        ] {
+            assert_validation_error(&[&claiming(fields)]);
+        }
+
+        // The same rule applies to a recorded exclusion: a pair that cannot
+        // happen is not a pair to exclude.
+        let excluded = valid_entry().replace(
+            r#""unsupportedMetadataFields": []"#,
+            r#""unsupportedMetadataFields": ["iptc:probe"]"#,
+        );
+        assert_validation_error(&[&excluded]);
+    }
+
+    /// JPEG gains IPTC: the IIM record is a section of the file (the `8BIM`
+    /// resource `0x0404` in its APP13 block), and `ExifTool` reads it, so
+    /// `iptc: [embedded]` is a claim about the bytes. The other two JPEG claims
+    /// are unchanged, and `unsupportedMetadataFields` stays empty: nothing about
+    /// JPEG is recorded as unreadable.
+    #[test]
+    fn repository_manifest_claims_embedded_iptc_for_jpeg() {
+        let manifest = load_capabilities().expect("manifest should load");
+        let jpeg = manifest
+            .capability_for_format("jpeg")
+            .expect("jpeg should be declared");
+
+        assert_eq!(
+            jpeg.metadata_fields.get("iptc").map(Vec::as_slice),
+            Some(&["embedded".to_string()][..]),
+            "a JPEG's IIM record is inside the file, and ExifTool reads it"
+        );
+        assert_eq!(
+            jpeg.metadata_fields.get("xmp").map(Vec::as_slice),
+            Some(&["embedded".to_string(), "sidecar".to_string()][..]),
+            "the embedded-packet and sidecar claims are unchanged"
+        );
+        assert_eq!(
+            jpeg.metadata_fields.get("exif").map(Vec::as_slice),
+            Some(&["embedded".to_string()][..])
+        );
+        assert_eq!(jpeg.unsupported_metadata_fields, Vec::<String>::new());
+    }
+
+    /// The claim decision 6 of `.plan/exiftool-metadata-engine.md` records:
+    /// PNG embedded XMP was "unsupported, no extraction work" and is now
+    /// supported, so `xmp: [sidecar]` becomes `xmp: [embedded, sidecar]` and
+    /// `xmp:embedded` leaves `unsupportedMetadataFields`. `text: [embedded]`
+    /// joins it: a PNG text chunk is metadata, and `ExifTool` reports it.
+    #[test]
+    fn repository_manifest_claims_embedded_xmp_and_text_for_png() {
+        let manifest = load_capabilities().expect("manifest should load");
+        let png = manifest
+            .capability_for_format("png")
+            .expect("png should be declared");
+
+        assert_eq!(
+            png.metadata_fields.get("xmp").map(Vec::as_slice),
+            Some(&["embedded".to_string(), "sidecar".to_string()][..]),
+            "an iTXt XMP packet is embedded XMP, and the sidecar claim stands"
+        );
+        assert_eq!(
+            png.metadata_fields.get("text").map(Vec::as_slice),
+            Some(&["embedded".to_string()][..]),
+            "a tEXt/iTXt/zTXt chunk is inside the file"
+        );
+        assert!(
+            !png.unsupported_metadata_fields
+                .contains(&"xmp:embedded".to_string()),
+            "the withdrawn exclusion is still recorded: {:?}",
+            png.unsupported_metadata_fields
+        );
+    }
+
+    /// The PNG claim above is only as good as a file that carries the thing. The
+    /// checked-in fixture does: an `iTXt` chunk whose compression flag is 1 —
+    /// the deflate-compressed packet `ExifTool` does not write and the retired
+    /// byte scan could not see — plus `tEXt` chunks, and none of it in
+    /// plaintext. A claim with no such file behind it would be an assertion.
+    #[test]
+    fn the_pinned_png_fixture_carries_a_compressed_itxt_packet_and_text_chunks() {
+        let manifest = load_capabilities().expect("manifest should load");
+        let png = manifest
+            .capability_for_format("png")
+            .expect("png should be declared");
+        assert!(
+            png.pinned_fixtures
+                .contains(&"png-48x32-xmp-text".to_string()),
+            "png pins the fixture that carries the embedded packet: {:?}",
+            png.pinned_fixtures
+        );
+        // The claim this fixture backs. Without it the evidence below would
+        // describe a file no manifest entry refers to.
+        for (field, source) in [("xmp", "embedded"), ("text", "embedded")] {
+            assert!(
+                png.metadata_fields[field].contains(&source.to_string()),
+                "png must claim {field}: {source} for this fixture to be backing anything: {:?}",
+                png.metadata_fields
+            );
+        }
+
+        let bytes = fixture_bytes("png-48x32-xmp-text");
+        let (_payload, compressed) = itxt_payload(bytes, b"XML:com.adobe.xmp")
+            .expect("the fixture carries an iTXt XMP packet");
+        assert!(
+            compressed,
+            "the packet must be deflate-compressed, or the claim is about the easy case"
+        );
+        for marker in [b"<?xpacket".as_slice(), b"<dc:subject>".as_slice()] {
+            assert!(
+                !bytes.windows(marker.len()).any(|window| window == marker),
+                "{marker:?} is readable in the file's bytes, so nothing had to be inflated"
+            );
+        }
+
+        let texts: Vec<&[u8]> = png_chunks(bytes)
+            .into_iter()
+            .filter(|(kind, _)| *kind == b"tEXt")
+            .map(|(_, data)| data)
+            .collect();
+        for keyword in [b"Comment".as_slice(), b"Source".as_slice()] {
+            assert!(
+                texts.iter().any(|data| data.starts_with(keyword)),
+                "the fixture carries no `tEXt` chunk under {keyword:?}, found {texts:?}"
+            );
+        }
+    }
+
+    /// The JPEG IPTC claim, measured the same way: the fixture's APP13 block
+    /// holds a Photoshop image resource `0x0404` — the IIM record — and the file
+    /// carries no XMP packet of any form, so the record is the only metadata
+    /// source a reader has to work with. That is what makes this fixture the
+    /// end-to-end proof of the claim independent of XMP.
+    #[test]
+    fn the_pinned_jpeg_fixture_carries_an_iim_record_and_no_xmp_packet() {
+        let manifest = load_capabilities().expect("manifest should load");
+        let jpeg = manifest
+            .capability_for_format("jpeg")
+            .expect("jpeg should be declared");
+        assert!(
+            jpeg.pinned_fixtures
+                .contains(&"jpeg-48x32-iptc".to_string()),
+            "jpeg pins the fixture that carries the IIM record: {:?}",
+            jpeg.pinned_fixtures
+        );
+        // The claim this fixture backs. Without it the evidence below would
+        // describe a file no manifest entry refers to.
+        assert!(
+            jpeg.metadata_fields["iptc"].contains(&"embedded".to_string()),
+            "jpeg must claim `iptc: [embedded]` for this fixture to be backing anything: {:?}",
+            jpeg.metadata_fields
+        );
+
+        let bytes = fixture_bytes("jpeg-48x32-iptc");
+        assert!(
+            bytes.starts_with(&[0xff, 0xd8, 0xff]),
+            "the fixture is a JPEG"
+        );
+        // Control: the record is really in the bytes, so "no XMP" below cannot
+        // pass for a file that carries no metadata at all.
+        assert!(
+            carries_iim_record(bytes),
+            "the fixture must carry an IIM record: no 2:05, 2:25 or 2:120 dataset header \
+             in the file"
+        );
+        assert!(
+            carries_jpeg_image_resource(bytes, &[0x04, 0x04]),
+            "the record must be the Photoshop image resource 0x0404 of an APP13 block, which \
+             is the form an IIM record takes in a JPEG"
+        );
+        assert!(
+            !carries_xmp_marker(bytes),
+            "the fixture carries an XMP packet, so the IIM record is not the only source: \
+             the claim needs a file whose metadata is IIM alone"
+        );
+    }
+
+    /// Provenance a reader cannot re-derive is not provenance. Both new fixtures
+    /// are tool output, so each records the command that produced it, and the
+    /// PNG records the script checked in beside it — the bytes depend on that
+    /// file, and a reader has to be able to find it.
+    #[test]
+    fn the_new_fixtures_record_the_command_and_the_toolchain_that_produced_them() {
+        let manifest = load_capabilities().expect("manifest should load");
+
+        for (id, command, toolchain) in [
+            (
+                "jpeg-48x32-iptc",
+                "exiftool -overwrite_original",
+                "ExifTool 13.59",
+            ),
+            (
+                "png-48x32-xmp-text",
+                "generate_picasu-png-48x32-xmp-text.py",
+                "python3",
+            ),
+        ] {
+            let pinned = manifest
+                .fixture_by_id(id)
+                .unwrap_or_else(|| panic!("{id} should be registered"));
+            assert_eq!(pinned.origin, "generated", "{id} is tool output");
+            assert!(
+                pinned.source.contains(command),
+                "{id} must record `{command}` so the bytes can be re-derived, got: {}",
+                pinned.source
+            );
+            assert!(
+                pinned.version.contains(toolchain),
+                "{id} must record the {toolchain} that produced it, got: {}",
+                pinned.version
+            );
+            assert!(
+                pinned.license.contains("MIT"),
+                "{id} must record a license, got: {}",
+                pinned.license
+            );
+            assert_eq!(pinned.intended_failure_class, "none");
+        }
+
+        // The PNG's generator is checked in next to the fixture, and the
+        // manifest names it, so the two cannot drift apart unnoticed.
+        let script = "utils/snapfab/fixtures/png/generate_picasu-png-48x32-xmp-text.py";
+        let png = manifest
+            .fixture_by_id("png-48x32-xmp-text")
+            .expect("png fixture should be registered");
+        assert!(
+            png.source.contains(script),
+            "the png fixture must name the script that generates it: {}",
+            png.source
+        );
+    }
+
+    /// The `expectedMetadata` of a fixture is what a reader must observe, so a
+    /// key has to be a name the *current* reader produces. The EXIF family was
+    /// the one place the manifest still carried the retired in-process reader's
+    /// names: EXIF 0x0131 and 0x9004 are `ModifyDate` and `CreateDate` under
+    /// `ExifTool`, not `DateTime` and `DateTimeDigitized`, and `ImageLength` is
+    /// `ImageHeight`. A fixture that named the old tags would send a reader
+    /// looking for a key the API cannot return.
+    #[test]
+    fn fixture_expectations_use_the_names_the_current_reader_reports() {
+        let manifest = load_capabilities().expect("manifest should load");
+
+        for fixture in &manifest.fixtures {
+            for key in fixture.expected_metadata.keys() {
+                for retired in ["DateTimeDigitized", "DateTime", "ImageLength"] {
+                    assert!(
+                        !key.split('.').any(|part| part == retired),
+                        "fixture {} expects `{key}`, which names the retired reader's `{retired}`",
+                        fixture.id
+                    );
+                }
+            }
+        }
+
+        for (id, group, tags) in [
+            ("tiff-48x32-exif", "exif.ifd0", &["ModifyDate"][..]),
+            (
+                "tiff-48x32-exif",
+                "exif.exif",
+                &["DateTimeOriginal", "CreateDate"][..],
+            ),
+            ("webp-48x32-exif", "exif.riff_chunk", &["ModifyDate"][..]),
+            (
+                "webp-48x32-exif",
+                "exif.riff_chunk",
+                &["DateTimeOriginal", "CreateDate"][..],
+            ),
+        ] {
+            let pinned = manifest
+                .fixture_by_id(id)
+                .unwrap_or_else(|| panic!("{id} should be registered"));
+            for tag in tags {
+                assert_eq!(
+                    pinned
+                        .expected_metadata
+                        .get(&format!("{group}.{tag}"))
+                        .map(String::as_str),
+                    Some("2024-05-06 07:08:09"),
+                    "{id} expectedMetadata[{group}.{tag}]"
+                );
+            }
+        }
+    }
+
+    /// TIFF and WebP claim no IPTC and no text, and that silence is measured
+    /// rather than assumed: the pinned fixtures carry neither an IIM record nor
+    /// an XMP packet, so a claim would be unbacked. The positive control is the
+    /// JPEG fixture, which does carry an IIM record — without it, a scanner that
+    /// could not recognise a record would report "absent" for everything.
+    #[test]
+    fn tiff_and_webp_claim_no_iptc_and_no_text_because_their_fixtures_carry_none() {
+        let manifest = load_capabilities().expect("manifest should load");
+
+        assert!(
+            carries_iim_record(fixture_bytes("jpeg-48x32-iptc")),
+            "control: an IIM record must be recognisable in a file that has one"
+        );
+
+        for (format, id) in [("tiff", "tiff-48x32-exif"), ("webp", "webp-48x32-exif")] {
+            let entry = manifest
+                .capability_for_format(format)
+                .unwrap_or_else(|| panic!("{format} should be declared"));
+            for field in ["iptc", "text"] {
+                assert!(
+                    !entry.metadata_fields.contains_key(field),
+                    "{format} must stay silent about {field} while its fixture carries none"
+                );
+            }
+            assert_eq!(entry.pinned_fixtures, [id]);
+
+            let bytes = fixture_bytes(id);
+            assert!(
+                !carries_iim_record(bytes),
+                "{id} carries an IIM record, so {format} can claim `iptc: [embedded]`"
+            );
+            assert!(
+                !carries_xmp_marker(bytes),
+                "{id} carries an XMP packet, so {format} can claim `xmp: [embedded]`"
             );
         }
     }
@@ -1160,17 +1754,7 @@ mod tests {
         assert_validation_error(&[&entry]);
     }
 
-    #[test]
-    fn repository_manifest_records_png_embedded_xmp_as_excluded() {
-        let manifest = load_capabilities().expect("manifest should load");
-        let png = manifest
-            .capability_for_format("png")
-            .expect("png should be declared");
-
-        assert_eq!(png.unsupported_metadata_fields, ["xmp:embedded"]);
-    }
-
-    /// Every declared format claims sidecar XMP. `xmp.rs` resolves sidecars
+    /// Every declared format claims sidecar XMP. `xmp.rs` resolves a sidecar by
     /// without any format dispatch, so the claim is format-independent; the
     /// per-format scenarios are what keep it honest.
     #[test]
@@ -1242,13 +1826,16 @@ mod tests {
                 "pinned format must reference at least one fixture",
             ),
             (
-                "generated format referencing pinned fixtures",
+                // A generated format may pin a file that backs a claim its
+                // generator cannot produce — that is the jpeg and png case. What
+                // it may not do is claim another format's bytes as its evidence.
+                "generated format pinning another format's fixture",
                 vec![valid_fixture()],
                 valid_entry().replace(
                     r#""pinnedFixtures": []"#,
                     r#""pinnedFixtures": ["tiff-48x32-exif"]"#,
                 ),
-                "generated format must not reference pinned fixtures",
+                "pinned fixture tiff-48x32-exif carries .tif",
             ),
             (
                 "dangling pinned fixture id",
@@ -1404,6 +1991,46 @@ mod tests {
         let json = manifest_with_fixtures(&[&valid_fixture()], &[&pinned_entry()]);
 
         assert_valid(&json);
+    }
+
+    /// The other half of the rule: a `generated` format may pin a fixture of its
+    /// own extension, which is how a claim its generator cannot produce stays
+    /// backed (jpeg's IIM record, png's compressed `iTXt` packet). The
+    /// repository manifest is the positive control — it does exactly this for
+    /// both.
+    #[test]
+    fn a_generated_format_may_pin_a_fixture_of_its_own_extension() {
+        // The extension moves first: the id appears inside the path too, so
+        // replacing it first would leave a `.tif` path under a png entry.
+        let png_fixture = valid_fixture()
+            .replace(
+                "picasu-tiff-48x32-exif.tif",
+                "picasu-png-48x32-xmp-text.png",
+            )
+            .replace("tiff-48x32-exif", "png-48x32-xmp-text");
+        let entry = valid_entry().replace(
+            r#""pinnedFixtures": []"#,
+            r#""pinnedFixtures": ["png-48x32-xmp-text"]"#,
+        );
+        let json = manifest_with_fixtures(&[&png_fixture], &[&entry]);
+
+        assert_valid(&json);
+
+        let manifest = load_capabilities().expect("manifest should load");
+        for (format, fixture) in [("jpeg", "jpeg-48x32-iptc"), ("png", "png-48x32-xmp-text")] {
+            let entry = manifest
+                .capability_for_format(format)
+                .unwrap_or_else(|| panic!("{format} should be declared"));
+            assert_eq!(
+                entry.fixture_source, "generated",
+                "{format} stays generated"
+            );
+            assert_eq!(
+                entry.pinned_fixtures,
+                [fixture],
+                "{format} pins the fixture backing the claims its generator cannot produce"
+            );
+        }
     }
 
     #[test]

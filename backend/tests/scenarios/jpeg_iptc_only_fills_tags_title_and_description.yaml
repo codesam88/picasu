@@ -1,0 +1,72 @@
+name: jpeg iptc without any xmp packet still yields tags and description
+# The manifest claims `iptc: [embedded]` for JPEG. The proof that does not run
+# through the XMP family is a file whose only metadata is an IIM record, which is
+# what the checked-in fixture `jpeg-48x32-iptc` is: snapfab's tagged JPEG writes
+# both families, so this one is ImageMagick's pixels with an ExifTool-written IIM
+# record and no XMP packet at all (provenance and digest in
+# `utils/snapfab/capabilities.json`; the manifest test
+# `the_pinned_jpeg_fixture_carries_an_iim_record_and_no_xmp_packet` pins that the
+# file really carries no packet, and that the claim is the one this backs).
+#
+# What each assertion is for:
+#
+#   tags, description        the native fields of an image the IIM datasets fill
+#                            on their own: 2:25 `Keywords` and 2:120
+#                            `Caption-Abstract`. There is no XMP source in the
+#                            file and no sidecar, so each value can only have
+#                            come from the IIM record. (2:05 `ObjectName` maps to
+#                            `title`, which is a dir-album display override and
+#                            has no slot in the image payload.)
+#   rating: null             IIM has no rating dataset. Asserted so the file
+#                            cannot quietly gain an XMP packet later and still
+#                            pass.
+#   furtherMetadata.IPTC:*     the three datasets the app does not model
+#                              (2:80 By-line, 2:90 City, 2:116 CopyrightNotice)
+#                              land in the read-only bucket...
+#   ...IPTC:Keywords null      ...and the ones it consumed are not repeated there.
+#   ...XMP-dc:* null           no XMP family in the bucket either, which is the
+#                              absence the claim is about.
+#
+# The counterpart with both families present is `photo_tags_reflect_injected_metadata_b`
+# (a generated tagged JPEG), and the bucket split is pinned on the same split by
+# `metadata_detail_exposes_further_data`.
+given:
+  - fixture:
+      source: jpeg-48x32-iptc
+      destination: /e2e_jpeg_iptc/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.ext: jpg
+  - response.json.tags:
+      contains: e2e_jpeg_iptc_alpine
+  - response.json.tags:
+      contains: e2e_jpeg_iptc_winter
+  - response.json.description: "An IIM-only caption"
+  - response.json.rating: null
+  # The unmodelled datasets of the same record.
+  - response.json.furtherMetadata.IPTC:By-line: "A. Fixture"
+  - response.json.furtherMetadata.IPTC:City: Fixtureville
+  - response.json.furtherMetadata.IPTC:CopyrightNotice: "(c) 2024 picasu test fixtures"
+  # The consumed ones are not repeated, and neither is an XMP family that is not
+  # in the file.
+  - response.json.furtherMetadata.IPTC:Keywords: null
+  - response.json.furtherMetadata.IPTC:Caption-Abstract: null
+  - response.json.furtherMetadata.IPTC:ObjectName: null
+  - response.json.furtherMetadata.XMP-dc:Title: null
+  - response.json.furtherMetadata.XMP-dc:Subject: null
+  - response.json.furtherMetadata.XMP-dc:Description: null
+  - response.json.width: 48
+  - response.json.height: 32
+  - thumb_exists: $photo
+  - file_exists: e2e_jpeg_iptc/photo.jpg

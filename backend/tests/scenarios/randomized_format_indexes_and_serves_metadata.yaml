@@ -11,9 +11,15 @@ name: seeded random format indexes and serves its metadata
 #                        scenario never names a format itself.
 #   asset.xmp            a sidecar next to the file, in every format. Sidecar XMP
 #                        is the one metadata source every manifest format claims
-#                        (`xmp: [sidecar]`, with no format dispatch in
-#                        `process/xmp.rs`), so the tag assertion below holds for a
-#                        generated JPEG and for a probed MOV alike.
+#                        (`xmp: [sidecar]`), so the tag assertion below holds for
+#                        a generated JPEG and for a probed MOV alike. What makes
+#                        the claim format-independent is where the sidecar is
+#                        found, not what is in the image: `discover_sidecar` in
+#                        `process/xmp.rs` replaces the path's extension with
+#                        `xmp` and asks whether that file exists, so no format
+#                        is named and no byte of the image is inspected. The
+#                        packet inside it is parsed by ExifTool, like every
+#                        other container.
 #   ${ext}               the selected format's extension, bound by the harness.
 #                        Asserting `ext` ties the API response to the selection
 #                        without hard-coding a format.
