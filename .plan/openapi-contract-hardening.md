@@ -199,6 +199,65 @@ analyzer. Request-to-panic analysis remains a separate reachability task.
 
 ## Progress
 
+- 2026-09-27: Aligned the authentication policy with the implementation (Step 3).
+  `utils/openapi-sanity` gained a `guards` module and an `auth` module, and the CLI
+  now runs both checks and prints one merged report. A handler's parameters are
+  read for request guards: a bare or referenced `GuardX` is a direct guard Rocket
+  runs before the body, a `GuardResult<X>`/`Option<X>` is deferred and only as
+  strong as the body makes it — propagated with `?`, returned, matched, or read
+  through `is_ok`/`map_err`/`expect`. A wildcard binding (`let _ = auth;`) and a
+  binding the body never mentions are both reported against the parameter's line,
+  which is the shape `get-rows` and `get-scroll-bar` had before
+  `bug-get-rows-auth-guard-discarded.md` fixed them. `KNOWN_GUARDS` is the single
+  place a guard type enters the analyzer, and a test reads the backend's
+  `FromRequest` implementations to hold it to that claim in both directions.
+  Eight guards, not the seven the plan listed: `POST /post/renew-hash-token` is
+  guarded by `TimestampGuardModified` — a direct guard accepting an _expired_
+  bearer token, since issuing a fresh one is the point — so an operation already
+  in the shared-401 policy had no class to name. `GuardClass::ReadOnlyMode` is the
+  one guard answering 405, which is why the policy names classes instead of
+  counting guards.
+
+  `AUTH_POLICY` is a table with **one entry per documented operation** (61, one per
+  line in `utils/openapi-sanity/src/auth.rs`), keyed by `operationId`. Both
+  choices are deliberate and documented in the module: listing only the public
+  operations would leave the protected set implicit, so deleting a guard from a
+  protected handler would leave the policy untouched and the route open — the drift
+  the policy exists to catch; and a path key would make every route rename read as
+  a new operation (old entry stale, new one unlisted) even though authentication
+  did not change. A handler rename does change the id and fails loudly as a stale
+  entry instead. Six findings, each a stable `file:line: message`: a protected
+  operation with no observed guard, a handler declaring guards the policy does not
+  list, a guarded operation documenting no 401, a public operation documenting one,
+  an operation in no policy entry, and a policy entry no operation answers to —
+  plus the discarded binding from the source scan. A `security` requirement counts
+  as documenting the rejection alongside a `401` response, so the rule does not
+  have to be revisited when the document gains schemes.
+
+  The repository is clean on the first run: 61 operations, 0 findings. The
+  migration of `GUARDED_OPERATIONS` in `backend/src/tests/openapi_contract.rs` is
+  partial and deliberate. The two list-based 401 tests are gone, replaced by
+  `the_auth_policy_and_the_documented_unauthorized_responses_agree`, which reads
+  `AUTH_POLICY` instead of a second list and keeps `cargo test --lib` failing on
+  the same drift — verified by removing `(status = 401, response = Unauthorized)`
+  from `get_data` and watching it report `GET /get/get-data: the auth policy says
+it can answer 401 but it documents none`. The tag policy is _not_ migrated: the
+  new gate does not cover tags, and the plan forbids inferring security from them.
+  The `Unauthorized`-component checks and the mounted-route parity tests stay in the
+  backend regardless — the former is document-shaped, the latter is runtime-only.
+
+  Gated by 24 guard-detection tests, 15 auth tests over a new `unauthored/`
+  fixture tree that carries one instance of every auth failure mode (asserted rule
+  by rule and as a whole report), 4 mutation tests that break one thing in a
+  conforming copy and restore it — a guard removed, a `GuardResult` dropped, a
+  public operation unlisted — and the existing 14 CLI tests, one of which now
+  covers the merged report with a shared finding printed once. `the_repository_
+matches_its_own_policy` runs the policy over the real router, and
+  `the_policy_lists_every_documented_operation_and_nothing_else` pins the count.
+  `backend/openapi.json` and every `#[utoipa::path]` are unchanged; no inconsistency
+  was found in the current source. Step 4 (parameters and documentation) is
+  untouched.
+
 - 2026-09-27: Made `just openapi-check` the unified contract gate (Step 2).
   `utils/openapi-sanity` gained a binary, `openapi-sanity check`, and a
   `contract` module; `just openapi-check` is now two phases, the semantic one

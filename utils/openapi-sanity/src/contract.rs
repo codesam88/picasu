@@ -23,7 +23,7 @@ use crate::path::to_spec_path;
 use crate::scan_source;
 
 /// One operation declared by an `OpenAPI` document.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SpecOperation<'a> {
     /// Method, from the path item's key.
     pub method: HttpMethod,
@@ -31,6 +31,25 @@ pub struct SpecOperation<'a> {
     pub path: &'a str,
     /// The operation's `operationId`, when it declares one.
     pub operation_id: Option<&'a str>,
+    /// The response status codes the operation declares, ascending.
+    pub responses: Vec<u16>,
+    /// Whether the operation carries a non-empty `security` requirement.
+    pub secured: bool,
+}
+
+impl SpecOperation<'_> {
+    /// Whether the operation states that an unauthorized caller is answered
+    /// `401`, either by naming the response or by declaring a security
+    /// requirement.
+    ///
+    /// Both are accepted because they state the same thing at different levels:
+    /// a `security` entry says who may call the operation, a `401` response says
+    /// what happens when they may not. A document that uses neither leaves a
+    /// guarded operation with an undocumented rejection.
+    #[must_use]
+    pub fn documents_rejection(&self) -> bool {
+        self.responses.contains(&401) || self.secured
+    }
 }
 
 /// The operations of an `OpenAPI` document, sorted by path and then method.
@@ -63,6 +82,8 @@ pub fn spec_operations(document: &serde_json::Value) -> Vec<SpecOperation<'_>> {
                     method,
                     path,
                     operation_id: operation.get("operationId").and_then(|id| id.as_str()),
+                    responses: declared_statuses(operation),
+                    secured: declares_security(operation),
                 })
             }))
         })
@@ -70,6 +91,32 @@ pub fn spec_operations(document: &serde_json::Value) -> Vec<SpecOperation<'_>> {
         .collect();
     operations.sort_unstable();
     operations
+}
+
+/// The numeric response status codes an operation declares, ascending.
+///
+/// A key that is not a number — `default`, or a range such as `4XX` — is not a
+/// status code and is left out rather than read as one.
+fn declared_statuses(operation: &serde_json::Value) -> Vec<u16> {
+    let mut statuses: Vec<u16> = operation
+        .get("responses")
+        .and_then(serde_json::Value::as_object)
+        .into_iter()
+        .flat_map(|responses| responses.keys())
+        .filter_map(|status| status.parse().ok())
+        .collect();
+    statuses.sort_unstable();
+    statuses.dedup();
+    statuses
+}
+
+/// Whether an operation declares a security requirement, which is where a
+/// document states who may call it instead of naming the rejection status.
+fn declares_security(operation: &serde_json::Value) -> bool {
+    operation
+        .get("security")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|requirements| !requirements.is_empty())
 }
 
 /// Every way a set of router source files and an `OpenAPI` document disagree.
@@ -172,15 +219,15 @@ pub fn referenced_handler_files(units: &[SourceUnit<'_>]) -> BTreeSet<String> {
 
 /// A handler identity: the group a file belongs to, the module a `routes![]`
 /// entry qualifies it with, and its function name.
-type HandlerKey = (String, String, String);
+pub(crate) type HandlerKey = (String, String, String);
 
 /// A `(method, path)` pair, the identity an operation is compared by.
 type Operation = (HttpMethod, String);
 
 /// A route-declaring function, with the file it was read from.
-struct Declaration {
-    label: String,
-    handler: Handler,
+pub(crate) struct Declaration {
+    pub(crate) label: String,
+    pub(crate) handler: Handler,
 }
 
 /// One `routes![...]` entry, with the file and line it was registered at.
@@ -189,10 +236,50 @@ struct Declaration {
 /// of a run of equal keys is the handler's declaration and the rest are the
 /// duplicates — without depending on the order the files were read in.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct Registration {
-    key: HandlerKey,
-    label: String,
-    line: usize,
+pub(crate) struct Registration {
+    pub(crate) key: HandlerKey,
+    pub(crate) label: String,
+    pub(crate) line: usize,
+}
+
+/// The operation a handler's annotation declares for it.
+pub(crate) struct DeclaredOperation {
+    pub(crate) method: HttpMethod,
+    pub(crate) path: String,
+    /// Whether the annotation and the route attribute it sits on name the same
+    /// operation. A handler that disagrees with itself is already reported, so a
+    /// caller comparing it with the document does not restate the cause.
+    pub(crate) agrees_with_route: bool,
+}
+
+/// The operation a route-declaring function documents.
+///
+/// utoipa derives a path from the route when the annotation omits one, so the
+/// annotation wins where it speaks and the route fills the silence. The document
+/// is generated from the annotation, so the annotation is also what counts as the
+/// source declaration of the operation — including when it disagrees with the
+/// route, which is why a disagreeing handler still occupies its operation in the
+/// document instead of looking undeclared. `None` when neither the annotation nor
+/// the route names both a verb and a path.
+pub(crate) fn declared_operation(handler: &Handler) -> Option<DeclaredOperation> {
+    let route_path = handler.uri.as_deref().map(to_spec_path);
+    let annotated_path = handler.spec_path.as_deref();
+    // Only a disagreement is a disagreement: an annotation that names no path or
+    // no verb leaves the route to speak, and the route is then the declaration.
+    let same_path = match (route_path.as_deref(), annotated_path) {
+        (Some(route), Some(annotated)) => route == annotated,
+        _ => true,
+    };
+    let same_method = handler.method.is_none() || handler.method == handler.spec_method;
+
+    let method = handler.spec_method.or(handler.method)?;
+    let path = annotated_path.or(route_path.as_deref())?;
+
+    Some(DeclaredOperation {
+        method,
+        path: path.to_string(),
+        agrees_with_route: same_path && same_method,
+    })
 }
 
 /// The route-declaring functions and the `routes![]` entries of every unit, plus
@@ -200,8 +287,9 @@ struct Registration {
 ///
 /// Each file is parsed once for both views, which is what [`scan_source`]
 /// exists for, and a syntax error in a file is reported once instead of once per
-/// view.
-fn read_sources(
+/// view. Shared with [`crate::check_auth`], which reads the same declarations
+/// through the same parse.
+pub(crate) fn read_sources(
     units: &[SourceUnit<'_>],
     findings: &mut Vec<Finding>,
 ) -> (BTreeMap<HandlerKey, Declaration>, Vec<Registration>) {
@@ -272,11 +360,9 @@ fn check_registered(
     }
 
     let route_path = handler.uri.as_deref().map(to_spec_path);
-    let mut agrees_with_route = true;
     if let (Some(route), Some(annotated)) = (route_path.as_deref(), handler.spec_path.as_deref())
         && route != annotated
     {
-        agrees_with_route = false;
         findings.push(Finding::on_line(
             &declaration.label,
             handler.line,
@@ -289,7 +375,6 @@ fn check_registered(
     if let (Some(route), Some(annotated)) = (handler.method, handler.spec_method)
         && route != annotated
     {
-        agrees_with_route = false;
         findings.push(Finding::on_line(
             &declaration.label,
             handler.line,
@@ -301,36 +386,30 @@ fn check_registered(
         ));
     }
 
-    // utoipa derives a path from the route when the annotation omits one, so
-    // the annotation wins where it speaks and the route fills the silence. The
-    // document is generated from the annotation, so the annotation is also what
-    // counts as the source declaration of the operation — including when it
-    // disagrees with the route, which is why a disagreeing handler still
-    // occupies its operation in the document instead of looking undeclared.
-    let method = handler.spec_method.or(handler.method);
-    let path = handler.spec_path.as_deref().or(route_path.as_deref());
-    let (Some(method), Some(path)) = (method, path) else {
-        return;
-    };
-    if is_excluded(path, excluded_prefixes) {
-        return;
-    }
-
     // A declaration that disagrees with its own route is not reported against
     // the document: the document inherits the disagreement from the annotation,
     // so the finding above names the cause and a second one about the document
     // would only restate it.
-    if agrees_with_route && !documented.contains(&(method, path.to_string())) {
+    let Some(operation) = declared_operation(handler) else {
+        return;
+    };
+    if is_excluded(&operation.path, excluded_prefixes) {
+        return;
+    }
+    if operation.agrees_with_route
+        && !documented.contains(&(operation.method, operation.path.clone()))
+    {
         findings.push(Finding::on_line(
             &declaration.label,
             handler.line,
             format!(
-                "{identity}: {} {path} is declared in source but absent from the spec",
-                verb(method)
+                "{identity}: {} {} is declared in source but absent from the spec",
+                verb(operation.method),
+                operation.path
             ),
         ));
     }
-    declared.insert((method, path.to_string()));
+    declared.insert((operation.method, operation.path));
 }
 
 /// Spec operations that no scanned route declares.
@@ -383,18 +462,18 @@ fn check_operation_ids(spec_label: &str, spec: &[SpecOperation<'_>], findings: &
 }
 
 /// The rendered identity of a handler, as `routes![]` would qualify it.
-fn identity(key: &HandlerKey) -> String {
+pub(crate) fn identity(key: &HandlerKey) -> String {
     format!("{}::{}", key.1, key.2)
 }
 
 /// Whether an operation is deliberately outside the compared contract.
-fn is_excluded(path: &str, excluded_prefixes: &[&str]) -> bool {
+pub(crate) fn is_excluded(path: &str, excluded_prefixes: &[&str]) -> bool {
     excluded_prefixes
         .iter()
         .any(|prefix| path.starts_with(prefix))
 }
 
 /// A method as the spec and the diagnostics spell it.
-fn verb(method: HttpMethod) -> String {
+pub(crate) fn verb(method: HttpMethod) -> String {
     method.as_str().to_ascii_uppercase()
 }

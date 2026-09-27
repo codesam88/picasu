@@ -46,19 +46,33 @@
 //! from, shared with the build script so the two cannot disagree about which
 //! files make up the API, and [`referenced_handler_files`] tells a caller which
 //! further files it has to read to resolve the handlers those modules register.
+//!
+//! # Who may call an operation
+//!
+//! The two views say nothing about authentication, and that is the one property of
+//! a public API a consumer cannot read off the spec: an operation documenting a
+//! `401` and serving an anonymous caller is indistinguishable from one enforcing
+//! its guard. [`check_auth`] closes that gap against [`AUTH_POLICY`], a table with
+//! one entry per documented operation naming the guards its handler must declare
+//! or stating why the operation is deliberately open. [`GuardClass`] is the
+//! vocabulary, [`KNOWN_GUARDS`] the single place a guard type enters it.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+mod auth;
 mod contract;
 mod finding;
+mod guards;
 mod handlers;
 mod modules;
 mod path;
 mod routes;
 
+pub use auth::{AUTH_POLICY, AuthRule, Unauthenticated, check_auth};
 pub use contract::{SpecOperation, check_contract, referenced_handler_files, spec_operations};
 pub use finding::Finding;
+pub use guards::{Discard, Enforcement, GuardBinding, GuardClass, KNOWN_GUARDS};
 pub use handlers::{Handler, HandlerScan, HttpMethod};
 pub use modules::{SCANNED_MODULES, SourceUnit, handler_module_path};
 pub use path::to_spec_path;

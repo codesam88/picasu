@@ -7,22 +7,14 @@
 //! one finding per rule, no more and no fewer. That is what makes a neutered
 //! rule a test failure instead of a quieter gate.
 
-use std::fs;
-use std::path::{Path, PathBuf};
-
 use openapi_sanity::{
-    HttpMethod, SCANNED_MODULES, SourceUnit, check_contract, handler_module_path,
-    referenced_handler_files, spec_operations,
+    HttpMethod, SCANNED_MODULES, SourceUnit, handler_module_path, referenced_handler_files,
+    spec_operations,
 };
 
-/// The fixture router files, in a fixed order so the loaded unit set never
-/// depends on directory iteration. A fixture file missing from this list is
-/// simply not read.
-const FIXTURE_FILES: &[&str] = &["get/mod.rs", "get/data.rs", "get/page.rs", "get/probe.rs"];
+mod support;
 
-/// The prefix the public artifact omits on purpose, as the gate is run in the
-/// repository. The fixture probe lives under it.
-const TEST_PREFIX: &str = "/get/test/";
+use support::{Fixture, TEST_PREFIX};
 
 /// A router tree and document that agree: nothing to report.
 const CLEAN: &str = "clean";
@@ -371,77 +363,7 @@ fn a_handler_resolves_to_the_file_the_build_script_imports_from() {
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
-/// One fixture tree: its router files, its document, and the findings the gate
-/// reports for them.
-///
-/// The files are owned here because a [`SourceUnit`] borrows its label and
-/// contents; the tree has to outlive the units built from it.
-struct Fixture {
-    root: PathBuf,
-    files: Vec<(String, String, String)>,
-}
-
 impl Fixture {
-    /// Read the router files and the document of a named fixture tree.
-    fn load(tree: &str) -> Self {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests")
-            .join("fixtures")
-            .join(tree);
-        let files = FIXTURE_FILES
-            .iter()
-            .map(|relative| {
-                (
-                    root.join(relative).display().to_string(),
-                    (*relative).to_string(),
-                    read(&root.join(relative)),
-                )
-            })
-            .collect();
-
-        Self { root, files }
-    }
-
-    /// The same tree with the router files in reverse order.
-    fn reversed(mut self) -> Self {
-        self.files.reverse();
-        self
-    }
-
-    fn units(&self) -> Vec<SourceUnit<'_>> {
-        self.files
-            .iter()
-            .map(|(label, relative, source)| SourceUnit::for_relative_path(label, relative, source))
-            .collect()
-    }
-
-    /// The label the checks see for a fixture file.
-    fn label(&self, relative: &str) -> String {
-        self.root.join(relative).display().to_string()
-    }
-
-    fn read(&self, relative: &str) -> String {
-        read(&self.root.join(relative))
-    }
-
-    fn document(&self) -> serde_json::Value {
-        serde_json::from_str(&self.read("openapi.json"))
-            .unwrap_or_else(|error| panic!("fixture document is not valid JSON: {error}"))
-    }
-
-    /// Every finding of the gate for this tree, rendered as it is printed.
-    fn findings(&self, excluded: &[&str]) -> Vec<String> {
-        let units = self.units();
-        let document = self.document();
-        let spec = spec_operations(&document);
-        let label = self.label("openapi.json");
-
-        check_contract(&units, &label, &spec, excluded)
-            .iter()
-            .map(ToString::to_string)
-            .collect()
-    }
-
     /// Assert that the gate reports exactly `expected`, a complete rendered
     /// diagnostic with its file and line, so a rule that moves its anchor fails
     /// here rather than still matching on wording.
@@ -453,11 +375,6 @@ impl Fixture {
             "expected\n  {expected}\nfrom\n{reported:#?}"
         );
     }
-}
-
-fn read(path: &Path) -> String {
-    fs::read_to_string(path)
-        .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()))
 }
 
 /// Every finding of the gate for a named fixture tree.

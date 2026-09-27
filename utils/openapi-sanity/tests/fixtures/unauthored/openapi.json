@@ -8,7 +8,6 @@
     "/get/get-data": {
       "get": {
         "operationId": "get_data",
-        "summary": "Grid data",
         "responses": {
           "200": {
             "description": "Grid data"
@@ -32,12 +31,12 @@
         }
       }
     },
-    "/get/metadata/{asset_id}": {
+    "/get/get-scroll-bar": {
       "get": {
-        "operationId": "get_metadata",
+        "operationId": "get_scroll_bar",
         "responses": {
           "200": {
-            "description": "Metadata"
+            "description": "Scroll bar"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -45,19 +44,15 @@
         }
       }
     },
-    "/get/path-completion": {
+    "/get/get-tags": {
       "get": {
-        "operationId": "path_completion",
+        "operationId": "get_tags",
         "responses": {
           "200": {
-            "description": "Completions"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+            "description": "Tags"
           }
         }
-      },
-      "parameters": []
+      }
     },
     "/login": {
       "get": {
@@ -65,6 +60,29 @@
         "responses": {
           "200": {
             "description": "Login page"
+          }
+        }
+      }
+    },
+    "/setting": {
+      "get": {
+        "operationId": "setting",
+        "responses": {
+          "200": {
+            "description": "Settings page"
+          }
+        }
+      }
+    },
+    "/trashed": {
+      "get": {
+        "operationId": "trashed",
+        "responses": {
+          "200": {
+            "description": "Trash page"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }

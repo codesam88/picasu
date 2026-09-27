@@ -21,13 +21,15 @@ Neither input is the runtime route table, though, so two further checks close th
 loop. `backend/src/tests/openapi_contract.rs` compares the routes Rocket actually
 mounts against the operations in the public spec at runtime, and fails on an
 undocumented mounted route, a documented operation that is no longer mounted, a
-duplicate `operationId`, or a tag-taxonomy violation (an operation with no tag, a
-tag outside the known set, or `pages` on a data-API operation). The
-`openapi-sanity` CLI compares the annotated source with the committed document
-without compiling anything, and fails on the failures the runtime table cannot
-show: an annotation whose path or verb disagrees with the route attribute it sits
-on, a handler registered twice, or a committed document that no longer matches
-what the source declares.
+duplicate `operationId`, a tag-taxonomy violation (an operation with no tag, a
+tag outside the known set, or `pages` on a data-API operation), or a disagreement
+between the auth policy and the documented `401` responses. The `openapi-sanity`
+CLI compares the annotated source with the committed document without compiling
+anything, and fails on the failures the runtime table cannot show: an annotation
+whose path or verb disagrees with the route attribute it sits on, a handler
+registered twice, a committed document that no longer matches what the source
+declares, or a handler whose request guards do not match what the operation is
+supposed to require.
 
 The goal is an exact, auditable mapping between:
 
@@ -157,15 +159,22 @@ generator and the gate cannot disagree about which files make up the API — plu
 every file those modules' `routes![]` blocks name a handler in. It reports, one
 per line as `file:line: message`:
 
-| Finding                                                                          | What it means                                                           |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `registered in routes![] but the function carries no #[utoipa::path] annotation` | A mounted route with no operation of its own                            |
-| `the route serves X but its #[utoipa::path] declares Y`                          | The route URI and the annotated path disagree after normalization       |
-| `the route declares GET but its #[utoipa::path] declares POST`                   | The route attribute and the annotated verb disagree                     |
-| `GET X is declared in source but absent from the spec`                           | A handler the generator would register that the document does not carry |
-| `GET X is in the spec but no scanned route declares it`                          | A committed operation no scanned source backs                           |
-| `registered in routes![] more than once (first at file:line)`                    | A handler identity registered twice                                     |
-| `duplicate operationId \`id\` claimed by A, B`                                   | Two operations share an id, which merges their generated client methods |
+| Finding                                                                          | What it means                                                                       |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `registered in routes![] but the function carries no #[utoipa::path] annotation` | A mounted route with no operation of its own                                        |
+| `the route serves X but its #[utoipa::path] declares Y`                          | The route URI and the annotated path disagree after normalization                   |
+| `the route declares GET but its #[utoipa::path] declares POST`                   | The route attribute and the annotated verb disagree                                 |
+| `GET X is declared in source but absent from the spec`                           | A handler the generator would register that the document does not carry             |
+| `GET X is in the spec but no scanned route declares it`                          | A committed operation no scanned source backs                                       |
+| `registered in routes![] more than once (first at file:line)`                    | A handler identity registered twice                                                 |
+| `duplicate operationId \`id\` claimed by A, B`                                   | Two operations share an id, which merges their generated client methods             |
+| `the auth policy requires X but the handler declares no request guard`           | A guard removed from a protected handler, which is the change a consumer cannot see |
+| `the auth policy requires X but the handler declares Y`                          | A guard swapped for a weaker one, or a public route closed without a policy change  |
+| `the deferred guard X is bound to \`auth\` and never enforced`                   | A `GuardResult` the handler drops, so an unauthenticated caller is served           |
+| `METHOD PATH is guarded but documents no 401 response`                           | A rejection the contract does not describe                                          |
+| `METHOD PATH is a public operation but documents a 401`                          | A public exception that has quietly started rejecting callers                       |
+| `METHOD PATH is in no auth policy entry`                                         | A new operation nobody classified as guarded or open                                |
+| `auth policy entry \`id\` names an operation the document does not declare`      | A removed operation whose policy entry was left behind                              |
 
 Malformed input is reported rather than guessed at, on the same stream: an
 unparsable `routes![]` entry, a route attribute without a string-literal URI, and
@@ -175,6 +184,99 @@ A handler whose annotation disagrees with its own route attribute is reported
 once, locally, and is not also reported as document drift. The document is
 generated from the annotation, so it inherits the disagreement; a second finding
 would only restate the first.
+
+## Authentication policy
+
+An operation that documents a `401` and one that enforces a guard are
+indistinguishable in the document. `GET /get/get-rows` and
+`GET /get/get-scroll-bar` discarded their guard result with `let _ = auth;` and
+answered 200 to an anonymous caller (`.plan/bug-get-rows-auth-guard-discarded.md`)
+while the spec and the handler signature both looked correct. The gate therefore
+reads the guards a handler's parameters declare and holds them to an explicit
+policy.
+
+### Observed guards
+
+A parameter whose type is a known guard — matched on the last segment of its path,
+so `GuardAuth`, `guards::GuardAuth` and `crate::router::auth::GuardAuth` are one
+guard — is observed in one of two shapes:
+
+| Shape                                                     | Read as        | Why                                                                          |
+| --------------------------------------------------------- | -------------- | ---------------------------------------------------------------------------- |
+| `auth: GuardAuth`, `auth: &GuardAuth`                     | direct guard   | Rocket runs it before the body; a rejected request never reaches the handler |
+| `auth: GuardResult<GuardAuth>`, `auth: Option<GuardAuth>` | deferred guard | the outcome is handed to the body, so only the body can enforce it           |
+
+A deferred binding is enforced when the body propagates it with `?`, returns it,
+matches on it, or inspects it through a `Result`/`Option` method (`is_ok`,
+`map_err`, `expect`, …). A wildcard binding — `let _ = auth;` — is a discarded
+guard, and so is a binding the body never mentions. Both are reported against the
+parameter's line, since that is where the fix goes.
+
+The known-guard vocabulary is `openapi_sanity::KNOWN_GUARDS`, the single place a
+guard type enters the analyzer. It is a hand-written claim about the codebase, and
+`every_request_guard_in_the_backend_is_a_known_guard` reads the backend's
+`FromRequest` implementations to hold it to that: a guard the analyzer does not
+recognise is read as no guard at all, which the policy then reports as an
+unguarded route rather than passing silently.
+
+| Guard                    | Enforces                                                                         | Rejection |
+| ------------------------ | -------------------------------------------------------------------------------- | --------- |
+| `GuardAuth`              | the admin JWT cookie                                                             | 401       |
+| `GuardShare`             | a share token from the headers or query, falling back to the admin cookie        | 401       |
+| `GuardTimestamp`         | a bearer token whose `timestamp` claim equals the `timestamp` query parameter    | 401       |
+| `TimestampGuardModified` | the same token, accepted while expired, for the endpoints that issue a fresh one | 401       |
+| `GuardHash`              | a bearer token whose `hash` claim equals the serving id in the URL               | 401       |
+| `GuardHashOriginal`      | the same check against the token's `asset_id` claim                              | 401       |
+| `GuardUpload`            | a share allowed to upload, falling back to the admin cookie                      | 401       |
+| `GuardReadOnlyMode`      | the server's read-only flag                                                      | 405       |
+
+`GuardReadOnlyMode` is the one that answers 405, which is why the policy names
+guard classes rather than counting guards: a read-only route is a write route that
+is additionally closed while the server is read-only, and says nothing about
+authentication.
+
+### The policy table
+
+`openapi_sanity::AUTH_POLICY` has one entry per documented operation, in
+`utils/openapi-sanity/src/auth.rs`, and an operation with no entry is a finding:
+
+```rust
+AuthRule::guarded("get_data", &[GuardClass::Timestamp]),
+AuthRule::guarded("compressed_file", &[GuardClass::Share, GuardClass::Hash]),
+AuthRule::public("login"),
+AuthRule { operation_id: "unauthorized", guards: &[],
+           unauthenticated: Unauthenticated::LandingPage },
+```
+
+Three decisions are worth knowing when editing it:
+
+- **Every operation is listed, not only the public ones.** Listing the exceptions
+  and treating everything else as protected would leave the set of protected
+  operations implicit, so deleting a guard from a protected handler would leave
+  the policy untouched and the route open — the exact drift the policy exists to
+  catch. The cost is one line per added operation.
+- **Entries are keyed by `operationId`, not by `(method, path)`.** Authentication
+  does not change when a route moves, and a path key would make every rename look
+  like a new operation, with the old entry reported stale and the new one
+  unlisted. A handler rename does change the id, and fails loudly as a stale entry.
+- **A public entry states where a `401` comes from.** `Unauthenticated::Never` is
+  the default; `CheckedByHandler` is the login endpoint, which compares a password
+  and is how a caller obtains the token every other guard checks; `LandingPage` is
+  `GET /unauthorized`, whose own response body is a 401.
+
+Security is not inferred from subject tags. A tag is a documentation grouping, and
+`pages` on a route says nothing about whether the data behind it is public.
+
+### What the backend still checks
+
+`cargo test --lib openapi_contract` keeps the document half of this policy —
+`the_auth_policy_and_the_documented_unauthorized_responses_agree` — so the backend
+fails on the same drift without the CLI. It is weaker than the CLI check, because
+it can only read the generated document and not the handler signatures; that is why
+it shares `AUTH_POLICY` rather than keeping a second list. The two document-shaped
+checks the analyzer does not cover — the `Unauthorized` component is registered,
+and every 401 is a `$ref` to it rather than an inlined literal — stay in the
+backend. The mounted-route parity tests stay there too, for the reason above.
 
 ### The CLI
 
@@ -216,9 +318,24 @@ findings rather than a passing gate.
   every failure mode, and each rule is asserted as an exact diagnostic — file,
   line and message — plus one assertion over the whole report, so a rule that
   stopped reporting, or started reporting twice, is a test failure.
+- `tests/auth.rs` does the same for the auth policy: `unauthored/` carries one
+  instance of every auth failure mode, and the whole report is asserted, so a rule
+  that stopped reporting, or started reporting twice, is a test failure. It also
+  runs the policy over the real router and requires it to be clean today, and
+  checks that `AUTH_POLICY` has exactly one entry per documented operation.
+- `tests/guards.rs` covers the guard observation itself — direct and qualified
+  guard parameters, `Option<T>`, `GuardResult<T>` propagated, returned, matched
+  and inspected, and the two discarded shapes — and holds `KNOWN_GUARDS` against
+  the backend's actual `FromRequest` implementations.
+- `tests/mutations.rs` starts from a conforming tree, breaks one thing, and
+  requires the rule to appear: a guard removed from a protected handler, a
+  `GuardResult` dropped with `let _ = auth;`, a public operation dropped from the
+  policy. The mutations run over a copy in `target/`, and each restores to
+  silence.
 - `tests/cli.rs` covers what the library does not own: the argument handling, the
-  exit codes, one finding per line on stderr, and two runs printing the same
-  report. It also runs the gate over the real `backend/src/router` and
+  exit codes, one finding per line on stderr, the two checks merged into one
+  report with a shared finding printed once, and two runs printing the same report.
+  It also runs the gate over the real `backend/src/router` and
   `backend/openapi.json` and requires them to be clean today, so the gate cannot
   be neutered and stay green on the repository.
 
@@ -278,10 +395,14 @@ on `is_data_api_path` for the assumption that makes that derivation valid.
    route exactly; `just openapi-check` phase 1 fails on a mismatch. Set
    `tag = "..."` to the subject from the Tag conventions table — every operation
    must carry one, and the tag gate fails on a missing or unknown tag.
-3. Run `just openapi-gen` and `just docs-openapi` to regenerate the spec
+3. Add the operation to `AUTH_POLICY` in `utils/openapi-sanity/src/auth.rs`,
+   naming the guards its parameters declare or marking it public. The gate fails
+   on an operation in no policy entry, so this is part of adding the route.
+4. Run `just openapi-gen` and `just docs-openapi` to regenerate the spec
    artifact and the reference.
-4. Run `cargo test --lib openapi_contract` and `just openapi-check`.
-5. Commit the handler, its annotation, and the regenerated spec together.
+5. Run `cargo test --lib openapi_contract` and `just openapi-check`.
+6. Commit the handler, its annotation, its policy entry, and the regenerated spec
+   together.
 
 CI enforces steps 4 and 5: `just check` compares the source with the committed
 spec, diffs the spec artifact, and the parity tests fail on undocumented or
@@ -289,9 +410,10 @@ stale operations.
 
 ### Removing a route
 
-Delete the handler and its entry from `routes![]`. Run `just openapi-gen` and
-`just docs-openapi`. The route disappears from the spec automatically, and the
-parity test fails if the annotation was left behind.
+Delete the handler and its entry from `routes![]`, and its entry from
+`AUTH_POLICY`. Run `just openapi-gen` and `just docs-openapi`. The route disappears
+from the spec automatically, and the gate fails if the annotation or the policy
+entry was left behind.
 
 ### Changing a route's signature
 
@@ -366,12 +488,13 @@ gets two loud findings rather than a silently narrowed contract.
 
 ## Files
 
-| File                                    | Generator           | Role                                                                 |
-| --------------------------------------- | ------------------- | -------------------------------------------------------------------- |
-| `utils/openapi-sanity/src/`             | —                   | `syn`-based route/annotation scanner, path rules, source/spec checks |
-| `utils/openapi-sanity/src/main.rs`      | —                   | `openapi-sanity check` CLI (phase 1 of the gate)                     |
-| `backend/src/openapi.rs`                | `build.rs`          | ApiDoc struct with all routes (gitignored)                           |
-| `backend/openapi.json`                  | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                   |
-| `docs/openapi-reference.md`             | widdershins         | Human-readable API reference                                         |
-| `backend/src/tests/openapi_contract.rs` | —                   | Mounted-route / spec parity gate                                     |
-| `backend/build.rs`                      | —                   | Reads the router files, writes `openapi.rs`                          |
+| File                                    | Generator           | Role                                                                                |
+| --------------------------------------- | ------------------- | ----------------------------------------------------------------------------------- |
+| `utils/openapi-sanity/src/`             | —                   | `syn`-based route/annotation/guard scanner, path rules, source/spec and auth checks |
+| `utils/openapi-sanity/src/auth.rs`      | —                   | The auth policy table and its checks                                                |
+| `utils/openapi-sanity/src/main.rs`      | —                   | `openapi-sanity check` CLI (phase 1 of the gate)                                    |
+| `backend/src/openapi.rs`                | `build.rs`          | ApiDoc struct with all routes (gitignored)                                          |
+| `backend/openapi.json`                  | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                                  |
+| `docs/openapi-reference.md`             | widdershins         | Human-readable API reference                                                        |
+| `backend/src/tests/openapi_contract.rs` | —                   | Mounted-route / spec parity gate                                                    |
+| `backend/build.rs`                      | —                   | Reads the router files, writes `openapi.rs`                                         |
