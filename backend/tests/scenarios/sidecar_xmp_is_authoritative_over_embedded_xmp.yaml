@@ -1,0 +1,44 @@
+name: sidecar XMP is authoritative over the embedded XMP packet
+# Precedence pin, safe direction — the control for
+# `corrupt_xmp_sidecar_suppresses_embedded_xmp`.
+#
+# Same two files as that scenario, with a sidecar that parses. The JPEG still
+# carries a complete embedded packet holding `e2e_sidecar_embedded`; the sidecar
+# holds `e2e_sidecar_written`. Only the sidecar's keyword reaches the index.
+#
+# That is the established contract, and the reason for it is ownership rather
+# than quality: the sidecar is where the app writes metadata back
+# (`PUT /put/edit_tag` writes it there), so a sidecar must win or an edit would
+# be undone by the stale packet still inside the file. The trade-off is that the
+# embedded packet is unreachable whenever a sidecar exists at all; the negative
+# case above pins what that costs when the sidecar is damaged.
+given:
+  - photo: /e2e_sidecar_wins/photo.jpg
+    tags:
+      - e2e_sidecar_embedded
+  - raw_file: /e2e_sidecar_wins/photo.xmp
+    content: |
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_sidecar_written</rdf:li>
+      </rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+when:
+  - call: GET /get/index/status
+    then:
+      - response.status: 200
+  - call: GET /get/get-tags
+then:
+  - response.status: 200
+  - array_where:
+      where:
+        tag: e2e_sidecar_written
+      expect: present
+  - array_where:
+      where:
+        tag: e2e_sidecar_embedded
+      expect: absent

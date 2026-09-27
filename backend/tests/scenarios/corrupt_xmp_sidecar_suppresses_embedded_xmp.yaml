@@ -1,0 +1,53 @@
+name: a corrupt XMP sidecar suppresses the embedded XMP packet
+# Precedence pin, measured direction: sidecar wins even when the sidecar is
+# worthless.
+#
+# `extract_xmp_data_from_file` resolves the source once —
+# `discover_sidecar(path).unwrap_or_else(|| path)` — and reads *only* that file.
+# A sidecar that exists is authoritative whether or not it parses, so the packet
+# embedded in the JPEG is never consulted. The generated fixture carries a
+# complete, well-formed XMP packet with `e2e_corrupt_xmp_embedded` in its first
+# APP1 segment; the sidecar is truncated markup that yields no keyword at all.
+# Result: the asset indexes, but with no keywords from either source.
+#
+# This is the unsafe half of the precedence rule and it is pinned deliberately.
+# It is a documented consequence of "the sidecar is the write-back target, so it
+# is always authoritative when present" (the comment in `xmp.rs`), not an
+# endorsed outcome: a half-written or truncated sidecar silently hides metadata
+# the file itself still carries. Whether that should fall back to the embedded
+# packet is a product decision, and the plan requires one before the behaviour
+# changes — this test is the failing-test half of that decision, not a request
+# to change anything.
+#
+# The positive control is `sidecar_xmp_is_authoritative_over_embedded_xmp`: same
+# two files, readable sidecar, sidecar keyword present and embedded keyword
+# absent. Together they show the outcome comes from the sidecar's content
+# quality, not from the embedded packet being unreadable in the first place.
+#
+# Also asserted: a corrupt sidecar does not fail the index. The file is
+# readable, so the job is `completed` with no failures; only the keyword is lost.
+given:
+  - photo: /e2e_corrupt_xmp/photo.jpg
+    tags:
+      - e2e_corrupt_xmp_embedded
+  - raw_file: /e2e_corrupt_xmp/photo.xmp
+    content: |
+      <x:xmpmeta><rdf:RDF><dc:subject><rdf:Bag>
+      <rdf:li>e2e_corrupt_xmp_unclosed
+when:
+  - call: GET /get/index/status
+    then:
+      - response.status: 200
+  - call: GET /get/get-tags
+then:
+  - response.status: 200
+  # The well-formed embedded packet contributed nothing.
+  - array_where:
+      where:
+        tag: e2e_corrupt_xmp_embedded
+      expect: absent
+  # And the truncated sidecar contributed nothing either.
+  - array_where:
+      where:
+        tag: e2e_corrupt_xmp_unclosed
+      expect: absent

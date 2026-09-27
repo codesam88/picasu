@@ -1,0 +1,36 @@
+name: truncated video fails only its own index and leaves the job completed
+# Negative case: the pinned 48x32 MP4 fixture cut off after its first 200 bytes.
+#
+# The `ftyp` box is at offset 4 and is longer than 200 bytes, so the truncated
+# file keeps the signature the manifest declares for `mp4` and is matched. The
+# video pipeline then fails at the first ffprobe call
+# (`generate_exif_for_video`), `index_task` returns `Err`, and the album index
+# counts one failure while the sibling JPEG indexes normally.
+#
+# The same shape as `truncated_image_fails_only_its_own_index` for the video
+# branch: an undecodable file is one failed file, not a failed scan. The job
+# stays `completed` because not every matched file failed.
+#
+# This asserts the failure accounting, not the ffprobe diagnostic. A missing
+# ffprobe binary produces the same `failed: 1` for the same reason, so the
+# scenario does not claim to have exercised ffprobe; the tool's presence is
+# pinned separately by `video_metadata_requires_a_working_ffmpeg_and_ffprobe`.
+given:
+  - photo: /e2e_trunc_video/valid.jpg
+    tags:
+      - e2e_trunc_video_valid
+  - fixture:
+      source: mp4-48x32-ffprobe
+      destination: /e2e_trunc_video/clip.mp4
+  - truncate_file:
+      path: /e2e_trunc_video/clip.mp4
+      bytes: 200
+when:
+  - call: GET /get/index/status
+then:
+  - response.status: 200
+  - response.json.state: completed
+  - response.json.matched: 2
+  - response.json.processed: 1
+  - response.json.failed: 1
+  - file_exists: e2e_trunc_video/clip.mp4

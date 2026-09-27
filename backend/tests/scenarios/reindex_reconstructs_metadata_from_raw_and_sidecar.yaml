@@ -1,0 +1,80 @@
+name: reindex reconstructs metadata from the raw file plus its sidecar
+# The gate for this iteration: the stored metadata is a cache, and the cache is
+# not the source of truth.
+#
+# The sidecar is rewritten with a different keyword, exactly as an external
+# editor would, and the album is re-indexed. The keyword the first index stored
+# is replaced by the one now in the file, which can only happen if the tags were
+# re-read from the sidecar: `process_image_info` calls
+# `extract_xmp_data_from_file` on every index, and the sidecar is authoritative
+# when present. Nothing the indexer kept in the metadata table survives
+# untouched, because the sidecar's keyword is what the detail reports.
+#
+# The rest of the assertions come from the other source, the raw file: the JPEG
+# still decodes to its own dimensions, still reports its own extension, and
+# still carries an EXIF block. So the detail after a reindex is composed from
+# both inputs — keywords from the `.xmp` sidecar, geometry and EXIF from the
+# file's own bytes — and neither alone would satisfy this scenario.
+#
+# The embedded APP1 XMP packet is masked by the sidecar throughout; see
+# `sidecar_xmp_is_authoritative_over_embedded_xmp`.
+#
+# Deliberately no `POST /post/rebuild` here. Rebuild clears the identity tables
+# and repopulates them from the filesystem but does not re-run the metadata
+# pipeline, so it drops the metadata instead of reconstructing it; that is
+# measured and pinned separately in
+# `rebuild_reconstructs_identity_but_not_metadata`.
+given:
+  - photo: /e2e_reindex/photo.jpg
+    tags:
+      - e2e_reindex_embedded
+    id_as: $photo
+    asset_id_as: $asset_id
+  - raw_file: /e2e_reindex/photo.xmp
+    content: |
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_reindex_sidecar_v1</rdf:li>
+      </rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+when:
+  # Replace the sidecar's keyword.
+  - write_file: /e2e_reindex/photo.xmp
+    content: |
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_reindex_sidecar_v2</rdf:li>
+      </rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  # From the raw JPEG's own bytes.
+  - response.json.ext: jpg
+  - response.json.width: 2
+  - response.json.height: 2
+  - response.json.exifVec.Software: not_null
+  # From the sidecar as it stands now, not as it stood at the first index.
+  - response.json.tags:
+      contains: e2e_reindex_sidecar_v2
+  - thumb_exists: $photo

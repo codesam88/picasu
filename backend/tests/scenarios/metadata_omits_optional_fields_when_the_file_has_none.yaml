@@ -1,0 +1,35 @@
+name: metadata detail reports absent optional fields as null
+# "Missing optional fields" as the API presents them.
+#
+# The fixture is generated without `tags`, so snapfab writes no XMP packet and
+# no keyword, title, description, or rating: there is no metadata source to read
+# a value from. The contract is that the detail response is still 200 and still
+# complete in shape — the optional fields are present and `null` rather than
+# missing keys, and `tags` is an empty array. `xmp.rs` never invents a default,
+# it returns `XmpData::default()`.
+#
+# The parser-side half of the same contract is
+# `missing_fields_are_empty_or_none` in `process::xmp`; this is the wire shape,
+# which nothing else asserts.
+given:
+  - photo: /e2e_optional/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.rating: null
+  - response.json.description: null
+  - response.json.tags: []
+  # The required fields are unaffected: the file itself is intact.
+  - response.json.ext: jpg
+  - response.json.width: 2
+  - response.json.height: 2

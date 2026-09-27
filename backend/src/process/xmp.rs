@@ -324,6 +324,352 @@ mod tests {
         assert_eq!(data.title, None);
     }
 
+    // ── Malformed, truncated and corrupt input ──────────────────────────────
+    //
+    // The extractor is a byte scan, not a parser, so "malformed" cannot make it
+    // fail in the usual sense: there is no error to return. What it can do is
+    // read too much, read across a boundary, or panic on a bad offset. The
+    // tests below pin the actual contract — a damaged packet yields the fields
+    // that are still intact and nothing else — so the fallback stays explicit.
+
+    fn assert_is_empty(data: &XmpData) {
+        assert!(
+            data.tags.is_empty(),
+            "expected no tags, got {:?}",
+            data.tags
+        );
+        assert_eq!(data.description, None, "expected no description");
+        assert_eq!(data.rating, None, "expected no rating");
+        assert_eq!(data.title, None, "expected no title");
+    }
+
+    /// Malformed XML: unclosed elements, a closing tag with no opening tag, a
+    /// list item that is never closed, and non-numeric text where a rating
+    /// belongs. Every field falls back to its empty value; nothing panics.
+    ///
+    /// The unclosed `<dc:subject>` is the interesting one. `extract_bag_field`
+    /// requires both the opening and the closing marker and yields an empty set
+    /// if either is missing, rather than running to the end of the buffer — so a
+    /// truncated keyword list cannot swallow the rest of the packet.
+    #[test]
+    fn malformed_xml_yields_only_empty_values() {
+        let unclosed_subject = concat!(
+            "<x:xmpmeta><rdf:RDF><rdf:Description>",
+            "<dc:subject><rdf:Bag><rdf:li>unclosed_keyword",
+            "</rdf:Description></rdf:RDF></x:xmpmeta>"
+        );
+        assert_is_empty(&extract_xmp_data(unclosed_subject.as_bytes()));
+
+        let unclosed_list_item = concat!(
+            "<x:xmpmeta><rdf:RDF><rdf:Description>",
+            "<dc:subject><rdf:Bag><rdf:li>dangling",
+            "</rdf:Bag></dc:subject></rdf:Description></rdf:RDF></x:xmpmeta>"
+        );
+        assert_is_empty(&extract_xmp_data(unclosed_list_item.as_bytes()));
+
+        let orphan_close_tag = "<x:xmpmeta></rdf:li></dc:subject></dc:description></x:xmpmeta>";
+        assert_is_empty(&extract_xmp_data(orphan_close_tag.as_bytes()));
+
+        // Elements that are present but empty. A writer that emits
+        // `<dc:description></dc:description>` must not turn the description into
+        // an empty string, which the API would then have to distinguish from
+        // absent. (An empty `rdf:Alt` is a different case with a different
+        // answer — see
+        // `an_empty_alt_description_yields_the_elements_raw_markup`.)
+        let bare_empty_elements = "<dc:description></dc:description><dc:title></dc:title>";
+        assert_is_empty(&extract_xmp_data(bare_empty_elements.as_bytes()));
+
+        // A rating element that is present but is not a number is not a rating.
+        // `-1` ("rejected" in some tools) is deliberately excluded by
+        // `rating_out_of_range_is_none`; this is the non-numeric case.
+        let non_numeric_rating = concat!(
+            "<x:xmpmeta><rdf:RDF><rdf:Description>",
+            "<xmp:Rating>not-a-number</xmp:Rating>",
+            "</rdf:Description></rdf:RDF></x:xmpmeta>"
+        );
+        assert_is_empty(&extract_xmp_data(non_numeric_rating.as_bytes()));
+    }
+
+    /// A packet cut short yields the fields whose closing marker survived and
+    /// nothing more. The three cuts below are the ones that matter: inside the
+    /// opening tag, after the opening tag but before the close, and before the
+    /// rating's close tag.
+    #[test]
+    fn truncated_packet_yields_nothing_rather_than_partial_fields() {
+        let xmp = xmp_full(&["truncated_keyword"], "truncated description", 3);
+
+        // Cut inside `<dc:subject>`: the opening marker is incomplete, so no
+        // field is even located.
+        let inside_open_tag = xmp.find("<dc:subject>").expect("packet has the marker") + 4;
+        assert_is_empty(&extract_xmp_data(&xmp.as_bytes()[..inside_open_tag]));
+
+        // Cut after the opening marker but before the closing one: the keyword
+        // list is located and found unterminated, so it yields nothing instead
+        // of reading past the end of the buffer.
+        let after_open = xmp.find("</dc:subject>").expect("packet has the marker");
+        assert_is_empty(&extract_xmp_data(&xmp.as_bytes()[..after_open]));
+
+        // Cut before the rating's closing marker: `xmp:Rating` is present but
+        // has no value, so the rating is absent, not zero.
+        let before_rating_close = xmp.find("</xmp:Rating>").expect("packet has the marker");
+        let partial = extract_xmp_data(&xmp.as_bytes()[..before_rating_close]);
+        assert_eq!(
+            partial.rating, None,
+            "an unterminated rating is not a rating"
+        );
+        assert_eq!(
+            partial.description.as_deref(),
+            Some("truncated description")
+        );
+    }
+
+    /// An empty but well-formed `rdf:Alt` — a `dc:description` whose language
+    /// alternative has an empty `rdf:li` — is *not* read as an empty
+    /// description. `collect_rdf_li` drops empty list items, so the Alt path
+    /// finds nothing, and `extract_alt_text` then falls back to the element's raw
+    /// text content. That content is the markup itself, so the description comes
+    /// out as a literal XML string.
+    ///
+    /// Pinned because it is surprising enough to be worth a decision rather than
+    /// a quiet fix: the field the user sees in the metadata sidebar can be
+    /// `<rdf:Alt><rdf:li xml:lang="x-default"></rdf:li></rdf:Alt>`. Whether the
+    /// fallback should skip markup, or yield `None` for an empty Alt, is a
+    /// product decision; the plan requires one before this changes.
+    #[test]
+    fn an_empty_alt_description_yields_the_elements_raw_markup() {
+        let empty_alt = concat!(
+            "<dc:description><rdf:Alt>",
+            "<rdf:li xml:lang=\"x-default\"></rdf:li>",
+            "</rdf:Alt></dc:description>"
+        );
+        let data = extract_xmp_data(empty_alt.as_bytes());
+        assert_eq!(
+            data.description.as_deref(),
+            Some("<rdf:Alt><rdf:li xml:lang=\"x-default\"></rdf:li></rdf:Alt>")
+        );
+        // Only the description is affected; a packet without one is still empty.
+        assert!(data.tags.is_empty());
+        assert_eq!(data.rating, None);
+        assert_eq!(data.title, None);
+    }
+
+    /// Every prefix of a valid packet, parsed. Two properties, both load-bearing:
+    /// it does not panic on any cut point, and truncation can only *lose* data —
+    /// a prefix never yields a tag, description, rating, or title that the whole
+    /// packet does not have. The second property is what makes the first
+    /// meaningful: without it, "no panic" would also be satisfied by a parser
+    /// that invents values.
+    #[test]
+    fn every_prefix_of_a_packet_parses_to_a_subset_of_the_whole() {
+        let xmp = xmp_full(&["alpha", "beta"], "a description", 4);
+        let whole = extract_xmp_data(xmp.as_bytes());
+        assert_eq!(
+            whole.tags,
+            HashSet::from(["alpha".to_string(), "beta".to_string()])
+        );
+        assert_eq!(whole.description.as_deref(), Some("a description"));
+        assert_eq!(whole.rating, Some(4));
+        assert_eq!(whole.title, None);
+
+        for cut in 0..=xmp.len() {
+            let data = extract_xmp_data(&xmp.as_bytes()[..cut]);
+            assert!(
+                data.tags.is_subset(&whole.tags),
+                "prefix of {cut} bytes invented tags: {:?}",
+                data.tags
+            );
+            if let Some(description) = &data.description {
+                assert_eq!(
+                    Some(description.as_str()),
+                    whole.description.as_deref(),
+                    "prefix of {cut} bytes invented a description"
+                );
+            }
+            if let Some(rating) = data.rating {
+                assert_eq!(
+                    Some(rating),
+                    whole.rating,
+                    "prefix of {cut} bytes invented a rating"
+                );
+            }
+            if let Some(title) = &data.title {
+                assert_eq!(
+                    Some(title.as_str()),
+                    whole.title.as_deref(),
+                    "prefix of {cut} bytes invented a title"
+                );
+            }
+        }
+    }
+
+    /// Bytes that are not UTF-8 inside a located element. `from_utf8` fails, the
+    /// field falls back to empty, and the surrounding packet is unaffected.
+    /// A binary sidecar is the realistic source of this input.
+    #[test]
+    fn invalid_utf8_inside_an_element_yields_no_fields() {
+        let mut bytes = b"<dc:subject><rdf:Bag><rdf:li>".to_vec();
+        bytes.extend_from_slice(&[0xff, 0xfe, 0x80]);
+        bytes.extend_from_slice(b"</rdf:li></rdf:Bag></dc:subject>");
+
+        assert_is_empty(&extract_xmp_data(&bytes));
+    }
+
+    /// Only the first occurrence of a field is read. A real packet may repeat
+    /// an element (XMP allows it, and a file can carry more than one packet), so
+    /// this is a limitation worth writing down rather than discovering later: the
+    /// second `<dc:subject>` is invisible, and its keywords never reach the tag
+    /// index.
+    #[test]
+    fn only_the_first_occurrence_of_a_field_is_read() {
+        let two_packets = format!(
+            "{}{}",
+            xmp_packet_with_keywords(&["first_packet_keyword"]),
+            xmp_packet_with_keywords(&["second_packet_keyword"])
+        );
+        let data = extract_xmp_data(two_packets.as_bytes());
+        assert_eq!(
+            data.tags,
+            HashSet::from(["first_packet_keyword".to_string()])
+        );
+    }
+
+    // ── File-level resolution: sidecar precedence and read errors ──────────
+
+    /// A unique scratch directory for one test. The name carries the test name so
+    /// a leftover directory is traceable, and the process id keeps parallel test
+    /// threads from colliding.
+    fn scratch_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "picasu-xmp-test-{}-{}-{}",
+            std::process::id(),
+            name,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        dir
+    }
+
+    fn write_file(path: &Path, contents: &str) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create parent dir");
+        }
+        std::fs::write(path, contents).expect("write test file");
+    }
+
+    /// The sidecar wins over the file's own bytes, which is the documented
+    /// contract: the sidecar is the write-back target, so an authoritative
+    /// sidecar is what stops a stale embedded packet from undoing an edit.
+    #[test]
+    fn sidecar_takes_precedence_over_the_files_own_bytes() {
+        let dir = scratch_dir("precedence");
+        let photo = dir.join("photo.jpg");
+        write_file(
+            &photo,
+            &xmp_full(&["embedded_keyword"], "embedded description", 1),
+        );
+        write_file(
+            &dir.join("photo.xmp"),
+            &xmp_full(&["sidecar_keyword"], "sidecar description", 5),
+        );
+
+        let data = extract_xmp_data_from_file(&photo);
+        assert_eq!(data.tags, HashSet::from(["sidecar_keyword".to_string()]));
+        assert_eq!(data.description.as_deref(), Some("sidecar description"));
+        assert_eq!(data.rating, Some(5));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A sidecar that exists but is corrupt is still authoritative, so the
+    /// file's own good packet is not consulted and the result is empty.
+    ///
+    /// This is the fallback the plan asks to be measured rather than assumed, and
+    /// the measurement is unfavourable: a damaged sidecar silently hides metadata
+    /// the image still carries, with no error anywhere. Whether that should fall
+    /// back to the embedded packet is a product decision — this test records the
+    /// present behaviour so the decision has something to argue with, and it must
+    /// not be "fixed" without one.
+    #[test]
+    fn corrupt_sidecar_suppresses_a_readable_embedded_packet() {
+        let dir = scratch_dir("corrupt-sidecar");
+        let photo = dir.join("photo.jpg");
+        write_file(&photo, &xmp_full(&["embedded_keyword"], "embedded", 2));
+        // Truncated markup: the opening markers are there, the closing ones are
+        // not, so no field is located.
+        write_file(
+            &dir.join("photo.xmp"),
+            "<x:xmpmeta><rdf:RDF><dc:subject><rdf:Bag><rdf:li>sidecar_keyword",
+        );
+
+        let data = extract_xmp_data_from_file(&photo);
+        assert!(
+            data.tags.is_empty(),
+            "the corrupt sidecar is authoritative, so the embedded packet must not be read"
+        );
+        assert_eq!(data.description, None);
+        assert_eq!(data.rating, None);
+
+        // Not vacuous: the same bytes without the sidecar do yield the tag.
+        std::fs::remove_file(dir.join("photo.xmp")).expect("remove sidecar");
+        assert_eq!(
+            extract_xmp_data_from_file(&photo).tags,
+            HashSet::from(["embedded_keyword".to_string()])
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A sidecar that cannot be read falls back to `XmpData::default()` — the
+    /// documented read-error branch. A directory named `photo.xmp` is the
+    /// portable way to make `fs::read` fail: `read` on a directory is `EISDIR`
+    /// for every user, unlike a permission bit, which root ignores.
+    ///
+    /// The consequence is the same as for a corrupt sidecar and is pinned here
+    /// too: the readable file's own packet is not used as a fallback.
+    #[test]
+    fn unreadable_sidecar_yields_default_rather_than_the_files_own_packet() {
+        let dir = scratch_dir("unreadable-sidecar");
+        let photo = dir.join("photo.jpg");
+        write_file(&photo, &xmp_full(&["embedded_keyword"], "embedded", 2));
+        std::fs::create_dir(dir.join("photo.xmp")).expect("create directory as sidecar");
+
+        assert_eq!(discover_sidecar(&photo), Some(dir.join("photo.xmp")));
+        let data = extract_xmp_data_from_file(&photo);
+        assert!(data.tags.is_empty());
+        assert_eq!(data.description, None);
+        assert_eq!(data.rating, None);
+        assert_eq!(data.title, None);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// A missing file, and a file with no sidecar, both resolve to the file
+    /// itself; a path that does not exist at all yields the default. This is the
+    /// read-error branch again, reached the ordinary way — the indexer can call
+    /// this with a path that has since been deleted.
+    #[test]
+    fn a_missing_file_yields_default_and_a_sidecar_free_file_reads_its_own_bytes() {
+        let dir = scratch_dir("missing-file");
+
+        assert_eq!(discover_sidecar(&dir.join("absent.jpg")), None);
+        let absent = extract_xmp_data_from_file(&dir.join("absent.jpg"));
+        assert!(absent.tags.is_empty());
+        assert_eq!(absent.description, None);
+        assert_eq!(absent.rating, None);
+        assert_eq!(absent.title, None);
+
+        let photo = dir.join("photo.jpg");
+        write_file(&photo, &xmp_full(&["own_bytes_keyword"], "own", 3));
+        assert_eq!(discover_sidecar(&photo), None);
+        let data = extract_xmp_data_from_file(&photo);
+        assert_eq!(data.tags, HashSet::from(["own_bytes_keyword".to_string()]));
+        assert_eq!(data.rating, Some(3));
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     /// PNG bytes carrying an XMP packet in a `zTXt` chunk: chunk type,
     /// keyword, null separator, compression method, deflate payload. The rest
     /// of the stream is filler — the point is the shape of the metadata chunk,
