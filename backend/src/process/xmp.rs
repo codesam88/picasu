@@ -1,60 +1,68 @@
+//! Native-field extraction: `ExifTool` records → the app's own fields.
+//!
+//! The module is two layers, and the split is what makes the contract testable:
+//!
+//! * the **read layer** ([`native_metadata_for`], [`read_xmp_packet`]) answers
+//!   "which file do I read" — that is where the sidecar rule lives, because it
+//!   is a decision about file precedence, not about what a tag means;
+//! * the **mapping layer** ([`map_native_fields`]) answers "which value wins",
+//!   is pure, and is what the unit tests drive with recorded `ExifTool -j -G1`
+//!   payloads.
+//!
+//! Parsing is `ExifTool`'s job: it locates the container (`APP1`, `APP13`, PNG
+//! text chunks, `zTXt`/`iTXt` compression included) and this module only maps
+//! the groups it reports. No hand-written metadata parser lives here.
+
+use serde_json::Value;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-/// Metadata extracted from a file's XMP packet or sidecar.
-#[derive(Debug, Default)]
-pub struct XmpData {
+use crate::process::exif::read_metadata_record;
+
+/// The metadata groups `ExifTool` reports the app's fields from, as the
+/// family-1 (`-G1`) group names its output keys carry.
+///
+/// A family-1 group name follows the namespace, not the file: `dc:*` is always
+/// `XMP-dc`, the XMP basic namespace `xmp:*` is `XMP-xmp`, IIM records are
+/// `IPTC`, and a PNG text chunk is `PNG`. Measured on `ExifTool` 13.59 — a group
+/// also exists per used namespace (`XMP-x` for the `x:` prefix above the packet,
+/// `XMP-photoshop`, `XMP-microsoft`, …), which is why `xmp:Rating` and
+/// `XMP-microsoft:RatingPercent` are not interchangeable.
+const XMP_DC: &str = "XMP-dc";
+const XMP_XMP: &str = "XMP-xmp";
+const IPTC: &str = "IPTC";
+const PNG: &str = "PNG";
+
+/// `XMP-dc:Subject` — the `rdf:Bag` of keywords.
+const SUBJECT: &str = "Subject";
+/// `XMP-dc:Description` — the `rdf:Alt` caption.
+const DESCRIPTION: &str = "Description";
+/// `XMP-dc:Title`.
+const TITLE: &str = "Title";
+/// `XMP-xmp:Rating` — the only rating `ExifTool` reports; IPTC IIM has no
+/// rating dataset and a PNG text chunk has no concept of one.
+const RATING: &str = "Rating";
+/// `IPTC:Keywords` — IIM dataset 2:25, repeatable.
+const KEYWORDS: &str = "Keywords";
+/// `IPTC:Caption-Abstract` — IIM dataset 2:120, the caption.
+const CAPTION_ABSTRACT: &str = "Caption-Abstract";
+/// `IPTC:ObjectName` — IIM dataset 2:05, the editorial title. Not
+/// `IPTC:Headline` (2:105): see [`map_native_fields`].
+const OBJECT_NAME: &str = "ObjectName";
+
+/// The fields the app models natively, resolved for one asset.
+///
+/// Whatever else `ExifTool` reports is not this struct's business; the
+/// read-only "further data" bucket that collects it is a later change.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct NativeMetadata {
     pub tags: HashSet<String>,
     pub description: Option<String>,
-    /// 0–5 per XMP `xmp:Rating`; -1 ("rejected") in some tools is clamped to None.
+    /// 0–5 per `XMP-xmp:Rating`; a value outside the scale — including `-1`
+    /// ("rejected" in some tools) — is no rating.
     pub rating: Option<u8>,
-    /// `dc:title`. Used for the album display name override.
+    /// `XMP-dc:Title`. Used for the album display name override.
     pub title: Option<String>,
-}
-
-/// Extract XMP metadata from raw bytes (file contents or sidecar content).
-///
-/// Handles the fields the app manages:
-/// - `dc:subject`   → tags (`rdf:Bag` of `rdf:li`)
-/// - `dc:description` → description (`rdf:Alt` of `rdf:li`)
-/// - `xmp:Rating`   → rating (plain integer text node)
-/// - `dc:title`     → title (`rdf:Alt` of `rdf:li`)
-///
-/// # The scan is container-unaware
-///
-/// Nothing here parses a container. JPEG marker segments, PNG chunks, TIFF
-/// IFDs — no structure is walked; the only thing recognised is a literal
-/// `<element>…</element>` byte pair, and it is accepted anywhere in the input.
-/// Three consequences follow, and the capability manifest's
-/// `metadataFields.xmp` entries must be read in light of them:
-///
-/// 1. *Embedded* is a location, not a detection guarantee. A JPEG APP1 XMP
-///    packet is found because it happens to be stored verbatim in the file
-///    bytes. A packet serialized differently is not: compact XMP (namespace
-///    shorthand, RDF attribute syntax, a `dcterms:`-style prefix) has no
-///    literal `<dc:subject>`, so it yields no tags even though the file does
-///    carry XMP. Treat `jpeg.xmp: ["embedded"]` as "an XMP packet in the usual
-///    form is read", not "any XMP in a JPEG is read".
-/// 2. The converse also holds: any bytes containing those markers match,
-///    whether or not they are a well-formed packet inside the right segment.
-///    There is no APP1 or namespace check to keep a stray match honest.
-/// 3. Nothing is decompressed, so only plaintext survives. A PNG `zTXt`/`iTXt`
-///    chunk holding a deflate-compressed packet yields nothing.
-///
-/// PNG embedded XMP is not a supported contract (`capabilities.json` lists
-/// `xmp:embedded` under the PNG format's `unsupportedMetadataFields`) and
-/// `pinned_png_compressed_embedded_xmp_is_not_extracted` keeps it that way. An
-/// *uncompressed* PNG text chunk would be picked up by the byte scan, but that
-/// is an accident of the scan above and must not be read as PNG support.
-pub fn extract_xmp_data(bytes: &[u8]) -> XmpData {
-    XmpData {
-        tags: extract_bag_field(bytes, b"<dc:subject>", b"</dc:subject>"),
-        description: extract_alt_text(bytes, b"<dc:description>", b"</dc:description>"),
-        // Parse as i32 to handle negative values (e.g. -1 = "rejected"); clamp to None.
-        rating: extract_simple_integer(bytes, b"<xmp:Rating>", b"</xmp:Rating>")
-            .and_then(|v| u8::try_from(v).ok().filter(|&r| r <= 5)),
-        title: extract_alt_text(bytes, b"<dc:title>", b"</dc:title>"),
-    }
 }
 
 /// Return the `.xmp` sidecar path alongside `path` if it exists.
@@ -68,642 +76,959 @@ pub fn discover_sidecar(path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Read `path` (or its `.xmp` sidecar if one exists) and extract XMP metadata.
-/// Returns default empty data on read errors.
-pub fn extract_xmp_data_from_file(path: &Path) -> XmpData {
-    // Prefer sidecar over embedded: sidecar is the write-back target
-    // (Area 3) so it is always authoritative when present.
-    let source = discover_sidecar(path).unwrap_or_else(|| path.to_path_buf());
-    match std::fs::read(&source) {
-        Ok(bytes) => extract_xmp_data(&bytes),
-        Err(_) => XmpData::default(),
+/// Resolve the native fields of the image at `path`, from a record the caller
+/// has already read.
+///
+/// `image` is the image's own `ExifTool` record — normally the one
+/// [`crate::process::exif::read_metadata_record`] already read for the `exifVec`
+/// map, so that both consumers share one engine call. Sharing is why the record
+/// is a parameter and not read here: a second read of the same file would double
+/// the metadata cost of indexing an image, which is the dominant cost at library
+/// scale.
+///
+/// The sidecar is the exception, and the exception is one extra read: a sidecar
+/// is a second file, and its XMP replaces the image's own packet while the
+/// image's IPTC and text chunks keep filling what that packet left empty (see
+/// [`map_native_fields`]). Any failure to read is the documented non-fallible
+/// contract, as it is for `exifVec`: a file `ExifTool` cannot parse yields
+/// empty fields rather than an error, so a damaged image still indexes.
+pub fn native_metadata_for(path: &Path, image: Option<&Value>) -> NativeMetadata {
+    // A sidecar that exists is authoritative for the *XMP* fields whether or not
+    // it parses: the sidecar is where the app writes metadata back
+    // (`PUT /put/edit_tag`), so falling back to the packet still inside the
+    // image would undo the edit. Its presence is what takes the XMP source away
+    // — not its content, and not its readability.
+    let sidecar = discover_sidecar(path);
+    let sidecar_record = sidecar
+        .as_deref()
+        .and_then(|sidecar| read_metadata_record(sidecar).ok());
+    let xmp = match &sidecar_record {
+        Some(record) => XmpSource::Record(record),
+        // A sidecar that exists but yields no record — corrupt markup, or a
+        // read that failed — still takes the XMP source away from the image.
+        None if sidecar.is_some() => XmpSource::Unavailable,
+        None => image.map_or(XmpSource::Unavailable, XmpSource::Record),
+    };
+    map_native_fields(&xmp, image)
+}
+
+/// Resolve the native fields of a standalone XMP packet — a `.xmp` sidecar read
+/// as an asset in its own right, which is what a dir-album's `.albuminfo.xmp`
+/// is. Such a file carries no IPTC and no text chunks, so only its XMP counts.
+pub fn read_xmp_packet(path: &Path) -> NativeMetadata {
+    match read_metadata_record(path) {
+        Ok(record) => map_native_fields(&XmpSource::Record(&record), None),
+        Err(_) => NativeMetadata::default(),
     }
 }
 
-// ── Internals ─────────────────────────────────────────────────────────────────
-
-/// Extract all `<rdf:li>` text children of `element_open..element_close`.
-/// Used for `dc:subject` (Bag of keywords).
-fn extract_bag_field(bytes: &[u8], open: &[u8], close: &[u8]) -> HashSet<String> {
-    let mut result = HashSet::new();
-    let Some(open_pos) = find_subslice(bytes, open) else {
-        return result;
-    };
-    let inner_start = open_pos + open.len();
-    let Some(close_offset) = find_subslice(&bytes[inner_start..], close) else {
-        return result;
-    };
-    let inner = &bytes[inner_start..inner_start + close_offset];
-    let Ok(inner_text) = std::str::from_utf8(inner) else {
-        return result;
-    };
-    collect_rdf_li(inner_text, &mut result);
-    result
+/// The record the XMP-family fields are read from, or the fact that there is
+/// none.
+///
+/// Which file that record came from is the read layer's decision, made before
+/// the mapping runs; the mapping itself only sees a record or its absence. The
+/// absence is not the same as "no XMP anywhere": a sidecar that exists and
+/// yields nothing passes [`Unavailable`], not the image's own packet.
+enum XmpSource<'a> {
+    Record(&'a Value),
+    Unavailable,
 }
 
-/// Extract the first `<rdf:li>` text child of `element_open..element_close`.
-/// Used for `dc:description` (Alt-text with language alternatives).
-fn extract_alt_text(bytes: &[u8], open: &[u8], close: &[u8]) -> Option<String> {
-    let open_pos = find_subslice(bytes, open)?;
-    let inner_start = open_pos + open.len();
-    let close_offset = find_subslice(&bytes[inner_start..], close)?;
-    let inner = &bytes[inner_start..inner_start + close_offset];
-    let inner_text = std::str::from_utf8(inner).ok()?;
-
-    // Try rdf:Alt > rdf:li first
-    let mut items = HashSet::new();
-    collect_rdf_li(inner_text, &mut items);
-    if let Some(item) = items.into_iter().next() {
-        let trimmed = item.trim().to_owned();
-        if !trimmed.is_empty() {
-            return Some(trimmed);
+impl<'a> XmpSource<'a> {
+    fn record(&self) -> Option<&'a Value> {
+        match self {
+            Self::Record(record) => Some(record),
+            Self::Unavailable => None,
         }
     }
+}
 
-    // Fallback: plain text content (e.g. <dc:description>text</dc:description>)
-    let trimmed = inner_text.trim().to_owned();
-    if !trimmed.is_empty() {
-        return Some(trimmed);
+/// Map `ExifTool` records onto [`NativeMetadata`]. Pure: this is the function
+/// the unit tests drive with recorded payloads.
+///
+/// # The mapping
+///
+/// | field         | 1st                            | 2nd                                | 3rd               |
+/// | ------------- | ------------------------------ | ---------------------------------- | ----------------- |
+/// | `description` | `XMP-dc:Description`           | `IPTC:Caption-Abstract` (2:120)    | `PNG:Description` |
+/// | `title`       | `XMP-dc:Title`                 | `IPTC:ObjectName` (2:05)           | `PNG:Title`       |
+/// | `rating`      | `XMP-xmp:Rating`               | —                                  | —                 |
+/// | `tags`        | `XMP-dc:Subject` ∪ `IPTC:Keywords` (2:25) | —                     | —                 |
+///
+/// The scalars are **first non-empty wins**, in the order XMP → IPTC → text, so
+/// a file that carries the field twice in two families is described by the one
+/// the app would have written. A value that is present but blank does not count
+/// as supplied: an empty `rdf:Bag` or an empty `rdf:Alt` is what a writer emits
+/// when a field was cleared, and it must not shadow the family that still has
+/// the value.
+///
+/// `title` takes IIM 2:05 `ObjectName` rather than 2:105 `Headline` because
+/// 2:05 is the dataset the IPTC↔XMP mapping pairs with `dc:title` (2:105 pairs
+/// with `XMP-photoshop:Headline`, a different property), and because that is
+/// what `ExifTool`'s own MWG module pairs when it reconciles the two families;
+/// snapfab's JPEG writer agrees, putting its title in both `dc:title` and
+/// `ObjectName`.
+///
+/// `tags` is a **union** rather than a first-wins: `XMP-dc:Subject` and IIM 2:25
+/// `Keywords` are two writings of one concept, and a file that has been through
+/// two tools routinely carries the union of both. Ranking them would drop
+/// keywords the user can see in the other family. PNG text contributes no
+/// keywords, which is measured rather than assumed: `ExifTool` reports an
+/// arbitrary text chunk under its own keyword (`PNG:ZKeyword` for a `zTXt`
+/// chunk), and the PNG specification's registered text keywords — Title,
+/// Author, Description, Copyright, Creation Time, Software, Disclaimer, Warning,
+/// Source, Comment — contain no keyword concept. A writer that puts a keyword
+/// list in a `Keywords` text chunk gets one string back
+/// (`"alpha, beta"`), which cannot be split into tags without inventing a
+/// boundary, so it is left out of the index rather than guessed at.
+fn map_native_fields(xmp: &XmpSource<'_>, image: Option<&Value>) -> NativeMetadata {
+    let record = xmp.record();
+    NativeMetadata {
+        tags: keywords(record, image),
+        description: first_text(&[
+            field(record, XMP_DC, DESCRIPTION),
+            field(image, IPTC, CAPTION_ABSTRACT),
+            field(image, PNG, DESCRIPTION),
+        ]),
+        rating: raw_field(record, XMP_XMP, RATING).and_then(rating_from),
+        title: first_text(&[
+            field(record, XMP_DC, TITLE),
+            field(image, IPTC, OBJECT_NAME),
+            field(image, PNG, TITLE),
+        ]),
     }
-    None
 }
 
-/// Extract a plain integer from a simple text-node element.
-/// Used for `xmp:Rating`.
-fn extract_simple_integer(bytes: &[u8], open: &[u8], close: &[u8]) -> Option<i32> {
-    let open_pos = find_subslice(bytes, open)?;
-    let inner_start = open_pos + open.len();
-    let close_offset = find_subslice(&bytes[inner_start..], close)?;
-    let inner = &bytes[inner_start..inner_start + close_offset];
-    let text = std::str::from_utf8(inner).ok()?.trim();
-    text.parse::<i32>().ok()
+/// The keyword carriers, unioned. See [`map_native_fields`] for why this is the
+/// one field that is not first-wins.
+fn keywords(xmp: Option<&Value>, image: Option<&Value>) -> HashSet<String> {
+    let mut tags = HashSet::new();
+    tags.extend(keyword_items(raw_field(xmp, XMP_DC, SUBJECT)));
+    tags.extend(keyword_items(raw_field(image, IPTC, KEYWORDS)));
+    tags
 }
 
-/// Walk `<rdf:li ...>…</rdf:li>` entries in `text`, adding trimmed non-empty
-/// values to `out`.
-fn collect_rdf_li(text: &str, out: &mut HashSet<String>) {
-    let mut rest = text;
-    while let Some(li_start) = rest.find("<rdf:li") {
-        let from_li = &rest[li_start..];
-        let Some(tag_end) = from_li.find('>') else {
-            break;
-        };
-        let content = &from_li[tag_end + 1..];
-        let Some(li_end) = content.find("</rdf:li>") else {
-            break;
-        };
-        let value = content[..li_end].trim();
-        if !value.is_empty() {
-            out.insert(value.to_owned());
-        }
-        rest = &content[li_end + "</rdf:li>".len()..];
+/// The first supplied value, in the order given. A blank never reaches this:
+/// [`field`] drops it, so "present but empty" cannot shadow a lower family.
+fn first_text(candidates: &[Option<String>]) -> Option<String> {
+    candidates.iter().flatten().next().cloned()
+}
+
+/// Look one tag up in a record: `group` + `tag` in the `-G1` key space.
+fn raw_field<'a>(record: Option<&'a Value>, group: &str, tag: &str) -> Option<&'a Value> {
+    record?.get(format!("{group}:{tag}"))
+}
+
+/// One tag as text, trimmed, with blanks dropped so "present but empty" cannot
+/// be mistaken for a value.
+fn field(record: Option<&Value>, group: &str, tag: &str) -> Option<String> {
+    let text = raw_field(record, group, tag)?.as_str()?.trim();
+    (!text.is_empty()).then(|| text.to_owned())
+}
+
+/// The items of a list-valued tag, in the two shapes `ExifTool` reports one.
+///
+/// A list of more than one item is a JSON array; a list of exactly one is a
+/// bare string, because `ExifTool` only writes an array when there is more than
+/// one value (measured: `XMP-dc:Subject` is `["a", "b"]` for two keywords and
+/// `"a"` for one). Blank items are dropped — an empty `rdf:Bag` comes back as
+/// the empty string, not as an empty array.
+fn keyword_items(value: Option<&Value>) -> Vec<String> {
+    match value {
+        Some(Value::Array(items)) => items.iter().filter_map(keyword_item).collect(),
+        Some(single) => keyword_item(single).into_iter().collect(),
+        None => Vec::new(),
     }
 }
 
-/// Find the first occurrence of `needle` in `haystack` (raw byte scan).
-fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    if needle.is_empty() || haystack.len() < needle.len() {
+/// One keyword, trimmed, with blanks dropped — an empty `rdf:Bag` arrives as
+/// the empty string rather than as an empty list.
+fn keyword_item(value: &Value) -> Option<String> {
+    let text = value.as_str()?.trim();
+    (!text.is_empty()).then(|| text.to_owned())
+}
+
+/// Parse `XMP-xmp:Rating` into the app's 0–5 scale.
+///
+/// Measured shapes of the value on `ExifTool` 13.59: a packet holding an integer
+/// yields a JSON number (`4`), and a packet holding anything else yields that
+/// text as a string — `4 stars`, `3.5`, `not-a-number`, `""` — because the tag
+/// carries no print conversion of its own. A rating is therefore an integer in
+/// `0..=5`; `4 stars` is read as `4` (a unit some tools append), and `3.5`, a
+/// word, a blank and a negative (`-1` is "rejected" in some tools) are not
+/// ratings.
+fn rating_from(value: &Value) -> Option<u8> {
+    let text = match value {
+        Value::Number(number) => number.to_string(),
+        Value::String(text) => text.trim().to_owned(),
+        _ => return None,
+    };
+    let digits_end = text
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(text.len());
+    let (digits, rest) = text.split_at(digits_end);
+    if digits.is_empty() || !(rest.is_empty() || rest.starts_with(' ')) {
         return None;
     }
-    haystack.windows(needle.len()).position(|w| w == needle)
+    let rating: u8 = digits.parse().ok()?;
+    (rating <= 5).then_some(rating)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+    use std::path::Path;
 
-    fn xmp_full(keywords: &[&str], description: &str, rating: i32) -> String {
-        let items: String = keywords
-            .iter()
-            .map(|k| format!("<rdf:li>{k}</rdf:li>"))
-            .collect();
-        let desc_items = format!("<rdf:li xml:lang=\"x-default\">{description}</rdf:li>");
-        format!(
-            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
-<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
-<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/"
-                 xmlns:xmp="http://ns.adobe.com/xap/1.0/">
-<dc:subject><rdf:Bag>{items}</rdf:Bag></dc:subject>
-<dc:description><rdf:Alt>{desc_items}</rdf:Alt></dc:description>
-<xmp:Rating>{rating}</xmp:Rating>
-</rdf:Description>
-</rdf:RDF>
-</x:xmpmeta>"#
-        )
-    }
-
-    fn xmp_with_title(title: &str) -> String {
-        format!(
-            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
-<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
-<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
-<dc:title><rdf:Alt><rdf:li xml:lang="x-default">{title}</rdf:li></rdf:Alt></dc:title>
-</rdf:Description>
-</rdf:RDF>
-</x:xmpmeta>"#
-        )
-    }
-
-    fn xmp_packet_with_keywords(keywords: &[&str]) -> String {
-        let items: String = keywords
-            .iter()
-            .map(|k| format!("<rdf:li>{k}</rdf:li>"))
-            .collect();
-        format!(
-            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
-<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
-<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
-<dc:subject><rdf:Bag>{items}</rdf:Bag></dc:subject>
-</rdf:Description>
-</rdf:RDF>
-</x:xmpmeta>"#
-        )
-    }
-
-    #[test]
-    fn extracts_all_fields() {
-        let xmp = xmp_full(&["sunset", "travel"], "A beautiful sunset", 4);
-        let data = extract_xmp_data(xmp.as_bytes());
-        assert_eq!(
-            data.tags,
-            HashSet::from(["sunset".to_string(), "travel".to_string()])
-        );
-        assert_eq!(data.description.as_deref(), Some("A beautiful sunset"));
-        assert_eq!(data.rating, Some(4));
-    }
-
-    #[test]
-    fn rating_out_of_range_is_none() {
-        let xmp = xmp_full(&[], "", 6);
-        let data = extract_xmp_data(xmp.as_bytes());
-        assert_eq!(data.rating, None);
-    }
-
-    #[test]
-    fn missing_fields_are_empty_or_none() {
-        let xmp = xmp_packet_with_keywords(&["family"]);
-        let data = extract_xmp_data(xmp.as_bytes());
-        assert_eq!(data.tags, HashSet::from(["family".to_string()]));
-        assert_eq!(data.description, None);
-        assert_eq!(data.rating, None);
-    }
-
-    #[test]
-    fn extracts_keywords_from_dc_subject_bag() {
-        let xmp = xmp_packet_with_keywords(&["family", "vacation"]);
-        let data = extract_xmp_data(xmp.as_bytes());
-        assert_eq!(
-            data.tags,
-            HashSet::from(["family".to_string(), "vacation".to_string()])
-        );
-    }
-
-    #[test]
-    fn finds_packet_embedded_inside_arbitrary_container_bytes() {
-        let xmp = xmp_packet_with_keywords(&["sunset"]);
-        let mut bytes = b"\xff\xd8\xff\xe0JFIF garbage binary prefix".to_vec();
-        bytes.extend_from_slice(xmp.as_bytes());
-        bytes.extend_from_slice(b"more binary jpeg scan data\xff\xd9");
-        let data = extract_xmp_data(&bytes);
-        assert_eq!(data.tags, HashSet::from(["sunset".to_string()]));
-    }
-
-    #[test]
-    fn returns_empty_set_when_no_xmp_packet_present() {
-        let data = extract_xmp_data(b"\xff\xd8\xff plain jpeg, no xmp");
-        assert!(data.tags.is_empty());
-    }
-
-    #[test]
-    fn returns_empty_set_when_dc_subject_is_absent_or_empty() {
-        let xmp = xmp_packet_with_keywords(&[]);
-        let data = extract_xmp_data(xmp.as_bytes());
-        assert!(data.tags.is_empty());
-    }
-
-    #[test]
-    fn extracts_title() {
-        let xmp = xmp_with_title("My Album");
-        let data = extract_xmp_data(xmp.as_bytes());
-        assert_eq!(data.title.as_deref(), Some("My Album"));
-    }
-
-    #[test]
-    fn title_is_none_when_absent() {
-        let xmp = xmp_packet_with_keywords(&["family"]);
-        let data = extract_xmp_data(xmp.as_bytes());
-        assert_eq!(data.title, None);
-    }
-
-    /// PNG embedded XMP is not a supported contract, and the reason is pinned
-    /// here rather than left implicit: a PNG carries its XMP in a text chunk,
-    /// which may be deflate-compressed, and this extractor decompresses
-    /// nothing. A packet that is compressed is invisible; nothing about PNG
-    /// indexing may start depending on it.
-    #[test]
-    fn pinned_png_compressed_embedded_xmp_is_not_extracted() {
-        let xmp = xmp_packet_with_keywords(&["e2e_png_embedded"]);
-        // Guard against a vacuous fixture: the same packet in plaintext is
-        // readable, so only the compression can be hiding it.
-        assert_eq!(
-            extract_xmp_data(xmp.as_bytes()).tags,
-            HashSet::from(["e2e_png_embedded".to_string()])
-        );
-
-        let png = png_with_ztxt_chunk(b"XML:com.adobe.xmp", &zlib_fixed_huffman(xmp.as_bytes()));
-        assert!(
-            !png.windows(b"<dc:subject>".len())
-                .any(|w| w == b"<dc:subject>"),
-            "fixture must not leave the packet in plaintext"
-        );
-
-        let data = extract_xmp_data(&png);
-        assert_eq!(data.tags, HashSet::new());
-        assert_eq!(data.description, None);
-        assert_eq!(data.rating, None);
-        assert_eq!(data.title, None);
-    }
-
-    // ── Malformed, truncated and corrupt input ──────────────────────────────
+    // ── Recorded payloads ──────────────────────────────────────────────────
     //
-    // The extractor is a byte scan, not a parser, so "malformed" cannot make it
-    // fail in the usual sense: there is no error to return. What it can do is
-    // read too much, read across a boundary, or panic on a bad offset. The
-    // tests below pin the actual contract — a damaged packet yields the fields
-    // that are still intact and nothing else — so the fallback stays explicit.
+    // Every payload below is an `exiftool -j -G1` record as ExifTool 13.59
+    // reports it, trimmed to the groups the mapping reads. The comment on each
+    // names the file it was recorded from, so a future change in `ExifTool`'s
+    // output shows up as a failing shape test rather than as a silently
+    // different mapping.
 
-    fn assert_is_empty(data: &XmpData) {
-        assert!(
-            data.tags.is_empty(),
-            "expected no tags, got {:?}",
-            data.tags
-        );
-        assert_eq!(data.description, None, "expected no description");
-        assert_eq!(data.rating, None, "expected no rating");
-        assert_eq!(data.title, None, "expected no title");
+    /// `photo.xmp`, a sidecar in the form `xmp_write` produces.
+    fn recorded_sidecar() -> Value {
+        json!({
+            "SourceFile": "photo.xmp",
+            "ExifTool:ExifToolVersion": 13.59,
+            "File:FileType": "XMP",
+            "XMP-dc:Title": "Custom Title",
+            "XMP-dc:Subject": "hiking",
+            "XMP-dc:Description": "A trip",
+            "XMP-xmp:Rating": 5
+        })
     }
 
-    /// Malformed XML: unclosed elements, a closing tag with no opening tag, a
-    /// list item that is never closed, and non-numeric text where a rating
-    /// belongs. Every field falls back to its empty value; nothing panics.
-    ///
-    /// The unclosed `<dc:subject>` is the interesting one. `extract_bag_field`
-    /// requires both the opening and the closing marker and yields an empty set
-    /// if either is missing, rather than running to the end of the buffer — so a
-    /// truncated keyword list cannot swallow the rest of the packet.
-    #[test]
-    fn malformed_xml_yields_only_empty_values() {
-        let unclosed_subject = concat!(
-            "<x:xmpmeta><rdf:RDF><rdf:Description>",
-            "<dc:subject><rdf:Bag><rdf:li>unclosed_keyword",
-            "</rdf:Description></rdf:RDF></x:xmpmeta>"
-        );
-        assert_is_empty(&extract_xmp_data(unclosed_subject.as_bytes()));
-
-        let unclosed_list_item = concat!(
-            "<x:xmpmeta><rdf:RDF><rdf:Description>",
-            "<dc:subject><rdf:Bag><rdf:li>dangling",
-            "</rdf:Bag></dc:subject></rdf:Description></rdf:RDF></x:xmpmeta>"
-        );
-        assert_is_empty(&extract_xmp_data(unclosed_list_item.as_bytes()));
-
-        let orphan_close_tag = "<x:xmpmeta></rdf:li></dc:subject></dc:description></x:xmpmeta>";
-        assert_is_empty(&extract_xmp_data(orphan_close_tag.as_bytes()));
-
-        // Elements that are present but empty. A writer that emits
-        // `<dc:description></dc:description>` must not turn the description into
-        // an empty string, which the API would then have to distinguish from
-        // absent. (An empty `rdf:Alt` is a different case with a different
-        // answer — see
-        // `an_empty_alt_description_yields_the_elements_raw_markup`.)
-        let bare_empty_elements = "<dc:description></dc:description><dc:title></dc:title>";
-        assert_is_empty(&extract_xmp_data(bare_empty_elements.as_bytes()));
-
-        // A rating element that is present but is not a number is not a rating.
-        // `-1` ("rejected" in some tools) is deliberately excluded by
-        // `rating_out_of_range_is_none`; this is the non-numeric case.
-        let non_numeric_rating = concat!(
-            "<x:xmpmeta><rdf:RDF><rdf:Description>",
-            "<xmp:Rating>not-a-number</xmp:Rating>",
-            "</rdf:Description></rdf:RDF></x:xmpmeta>"
-        );
-        assert_is_empty(&extract_xmp_data(non_numeric_rating.as_bytes()));
+    /// `tagged.jpg`, a JPEG written by snapfab with `tags: [...]`: the XMP
+    /// packet and the IIM record in one file, carrying the same keyword set,
+    /// the same title and the same caption.
+    fn recorded_tagged_jpeg() -> Value {
+        json!({
+            "SourceFile": "tagged.jpg",
+            "File:FileType": "JPEG",
+            "XMP-dc:Subject": ["grouped_alpine", "grouped_winter", "landscape"],
+            "XMP-dc:Title": "Garden Bloom",
+            "XMP-dc:Description": "Colorful flowers in full bloom.",
+            "IFD0:ImageDescription": "grouped_alpine, grouped_winter [landscape]",
+            "IPTC:ObjectName": "Garden Bloom",
+            "IPTC:Keywords": ["grouped_alpine", "grouped_winter", "landscape"],
+            "IPTC:Caption-Abstract": "Colorful flowers in full bloom."
+        })
     }
 
-    /// A packet cut short yields the fields whose closing marker survived and
-    /// nothing more. The three cuts below are the ones that matter: inside the
-    /// opening tag, after the opening tag but before the close, and before the
-    /// rating's close tag.
+    /// `iptc.jpg`, a JPEG carrying an IIM record and no XMP packet at all
+    /// (written with `exiftool -IPTC:…`).
+    fn recorded_iptc_only() -> Value {
+        json!({
+            "SourceFile": "iptc.jpg",
+            "File:FileType": "JPEG",
+            "IPTC:ObjectName": "IPTC Object Name",
+            "IPTC:Headline": "IPTC Headline",
+            "IPTC:Keywords": ["a", "b"],
+            "IPTC:Caption-Abstract": "IPTC Caption",
+            "IPTC:ApplicationRecordVersion": 4
+        })
+    }
+
+    /// `alltext.png`, a PNG whose text chunks use keywords of their own — the
+    /// standard ones plus arbitrary ones ExifTool reports verbatim.
+    fn recorded_png_text_chunks() -> Value {
+        json!({
+            "SourceFile": "alltext.png",
+            "File:FileType": "PNG",
+            "PNG:Title": "The Title",
+            "PNG:Author": "An Author",
+            "PNG:Description": "A Description",
+            "PNG:Comment": "A Comment",
+            "PNG:Keywords": "alpha, beta",
+            "PNG:ZKeyword": "zlib text value",
+            "PNG:Rating": "4"
+        })
+    }
+
+    /// `corrupt.xmp`, a sidecar of truncated markup. `ExifTool` reports a
+    /// record with an `Error` and no metadata rather than failing the read.
+    fn recorded_corrupt_sidecar() -> Value {
+        json!({
+            "SourceFile": "corrupt.xmp",
+            "ExifTool:ExifToolVersion": 13.59,
+            "ExifTool:Error": "File format error"
+        })
+    }
+
+    // ── Mapping: scalars ───────────────────────────────────────────────────
+
+    /// A sidecar's XMP packet supplies every field, because it is the XMP
+    /// source and nothing else is needed.
     #[test]
-    fn truncated_packet_yields_nothing_rather_than_partial_fields() {
-        let xmp = xmp_full(&["truncated_keyword"], "truncated description", 3);
-
-        // Cut inside `<dc:subject>`: the opening marker is incomplete, so no
-        // field is even located.
-        let inside_open_tag = xmp.find("<dc:subject>").expect("packet has the marker") + 4;
-        assert_is_empty(&extract_xmp_data(&xmp.as_bytes()[..inside_open_tag]));
-
-        // Cut after the opening marker but before the closing one: the keyword
-        // list is located and found unterminated, so it yields nothing instead
-        // of reading past the end of the buffer.
-        let after_open = xmp.find("</dc:subject>").expect("packet has the marker");
-        assert_is_empty(&extract_xmp_data(&xmp.as_bytes()[..after_open]));
-
-        // Cut before the rating's closing marker: `xmp:Rating` is present but
-        // has no value, so the rating is absent, not zero.
-        let before_rating_close = xmp.find("</xmp:Rating>").expect("packet has the marker");
-        let partial = extract_xmp_data(&xmp.as_bytes()[..before_rating_close]);
+    fn a_sidecar_packet_fills_every_native_field() {
+        let data = map_native_fields(&XmpSource::Record(&recorded_sidecar()), None);
         assert_eq!(
-            partial.rating, None,
-            "an unterminated rating is not a rating"
-        );
-        assert_eq!(
-            partial.description.as_deref(),
-            Some("truncated description")
+            data,
+            NativeMetadata {
+                tags: HashSet::from(["hiking".to_string()]),
+                description: Some("A trip".to_string()),
+                rating: Some(5),
+                title: Some("Custom Title".to_string()),
+            }
         );
     }
 
-    /// An empty but well-formed `rdf:Alt` — a `dc:description` whose language
-    /// alternative has an empty `rdf:li` — is *not* read as an empty
-    /// description. `collect_rdf_li` drops empty list items, so the Alt path
-    /// finds nothing, and `extract_alt_text` then falls back to the element's raw
-    /// text content. That content is the markup itself, so the description comes
-    /// out as a literal XML string.
-    ///
-    /// Pinned because it is surprising enough to be worth a decision rather than
-    /// a quiet fix: the field the user sees in the metadata sidebar can be
-    /// `<rdf:Alt><rdf:li xml:lang="x-default"></rdf:li></rdf:Alt>`. Whether the
-    /// fallback should skip markup, or yield `None` for an empty Alt, is a
-    /// product decision; the plan requires one before this changes.
+    /// With no XMP source at all, an IIM record fills everything IIM carries —
+    /// which is not the rating: IPTC IIM has no rating dataset, so `rating` has
+    /// one source and no fallback.
     #[test]
-    fn an_empty_alt_description_yields_the_elements_raw_markup() {
-        let empty_alt = concat!(
-            "<dc:description><rdf:Alt>",
-            "<rdf:li xml:lang=\"x-default\"></rdf:li>",
-            "</rdf:Alt></dc:description>"
-        );
-        let data = extract_xmp_data(empty_alt.as_bytes());
-        assert_eq!(
-            data.description.as_deref(),
-            Some("<rdf:Alt><rdf:li xml:lang=\"x-default\"></rdf:li></rdf:Alt>")
-        );
-        // Only the description is affected; a packet without one is still empty.
-        assert!(data.tags.is_empty());
+    fn an_iptc_record_fills_what_iptc_carries() {
+        let data = map_native_fields(&XmpSource::Unavailable, Some(&recorded_iptc_only()));
+        assert_eq!(data.tags, HashSet::from(["a".to_string(), "b".to_string()]));
+        assert_eq!(data.description.as_deref(), Some("IPTC Caption"));
+        assert_eq!(data.title.as_deref(), Some("IPTC Object Name"));
         assert_eq!(data.rating, None);
-        assert_eq!(data.title, None);
     }
 
-    /// Every prefix of a valid packet, parsed. Two properties, both load-bearing:
-    /// it does not panic on any cut point, and truncation can only *lose* data —
-    /// a prefix never yields a tag, description, rating, or title that the whole
-    /// packet does not have. The second property is what makes the first
-    /// meaningful: without it, "no panic" would also be satisfied by a parser
-    /// that invents values.
+    /// PNG text chunks are the last resort, and they are reached only when
+    /// neither XMP nor IPTC supplied the field. They carry no rating: a text
+    /// chunk may be called anything, and `ExifTool` reports whatever keyword it
+    /// finds, so a chunk named `Rating` is not a rating the app may read.
     #[test]
-    fn every_prefix_of_a_packet_parses_to_a_subset_of_the_whole() {
-        let xmp = xmp_full(&["alpha", "beta"], "a description", 4);
-        let whole = extract_xmp_data(xmp.as_bytes());
+    fn png_text_chunks_fill_description_and_title_last() {
+        let data = map_native_fields(&XmpSource::Unavailable, Some(&recorded_png_text_chunks()));
+        assert_eq!(data.description.as_deref(), Some("A Description"));
+        assert_eq!(data.title.as_deref(), Some("The Title"));
+        assert_eq!(data.rating, None);
+    }
+
+    /// The precedence rule, both directions: when XMP supplies the field it
+    /// wins, and when it supplies a *different* value for the same field the
+    /// lower family is not consulted.
+    #[test]
+    fn xmp_supplies_a_field_in_preference_to_iptc_and_text() {
+        let mut image = recorded_iptc_only();
+        merge(&mut image, recorded_png_text_chunks());
+        let mut xmp = recorded_sidecar();
+        // The sidecar's own values, so the two families disagree on both fields.
+        merge(
+            &mut xmp,
+            json!({ "XMP-dc:Title": "Packet Title", "XMP-dc:Description": "Packet caption" }),
+        );
+
+        let data = map_native_fields(&XmpSource::Record(&xmp), Some(&image));
+        assert_eq!(data.title.as_deref(), Some("Packet Title"));
+        assert_eq!(data.description.as_deref(), Some("Packet caption"));
+    }
+
+    /// A value that is present but blank is not a supplied value: a writer
+    /// that cleared `dc:description` leaves an empty `rdf:Alt`, and the caption
+    /// the file still carries in IIM must survive it.
+    #[test]
+    fn a_blank_xmp_value_falls_through_to_iptc() {
+        let xmp = json!({ "XMP-dc:Title": "", "XMP-dc:Description": "   " });
+        let data = map_native_fields(&XmpSource::Record(&xmp), Some(&recorded_iptc_only()));
+        assert_eq!(data.title.as_deref(), Some("IPTC Object Name"));
+        assert_eq!(data.description.as_deref(), Some("IPTC Caption"));
+    }
+
+    /// IPTC outranks PNG text for the same reason XMP outranks IPTC: the higher
+    /// family is the one an edit in the app would have written.
+    #[test]
+    fn iptc_supplies_a_field_in_preference_to_png_text() {
+        let mut image = recorded_iptc_only();
+        merge(&mut image, recorded_png_text_chunks());
+        let data = map_native_fields(&XmpSource::Unavailable, Some(&image));
+        assert_eq!(data.title.as_deref(), Some("IPTC Object Name"));
+        assert_eq!(data.description.as_deref(), Some("IPTC Caption"));
+    }
+
+    // ── Mapping: tags ──────────────────────────────────────────────────────
+
+    /// Tags are the union of the two keyword families, not the first one found.
+    /// The fixture is one where the two disagree, which is what a file carried
+    /// through two tools looks like.
+    #[test]
+    fn tags_are_the_union_of_xmp_and_iptc() {
+        let xmp = json!({ "XMP-dc:Subject": ["from_xmp", "shared"] });
+        let image = json!({ "IPTC:Keywords": ["from_iptc", "shared"] });
+
+        let data = map_native_fields(&XmpSource::Record(&xmp), Some(&image));
         assert_eq!(
-            whole.tags,
+            data.tags,
+            HashSet::from([
+                "from_xmp".to_string(),
+                "from_iptc".to_string(),
+                "shared".to_string()
+            ])
+        );
+    }
+
+    /// A keyword both families carry is one tag, not two. It is the property
+    /// that makes the union a set of names rather than a concatenation.
+    #[test]
+    fn a_keyword_in_both_families_is_one_tag() {
+        let xmp = json!({ "XMP-dc:Subject": ["alpha", "beta"] });
+        let image = json!({ "IPTC:Keywords": ["alpha", "beta"] });
+
+        let data = map_native_fields(&XmpSource::Record(&xmp), Some(&image));
+        assert_eq!(
+            data.tags,
             HashSet::from(["alpha".to_string(), "beta".to_string()])
         );
-        assert_eq!(whole.description.as_deref(), Some("a description"));
-        assert_eq!(whole.rating, Some(4));
-        assert_eq!(whole.title, None);
-
-        for cut in 0..=xmp.len() {
-            let data = extract_xmp_data(&xmp.as_bytes()[..cut]);
-            assert!(
-                data.tags.is_subset(&whole.tags),
-                "prefix of {cut} bytes invented tags: {:?}",
-                data.tags
-            );
-            if let Some(description) = &data.description {
-                assert_eq!(
-                    Some(description.as_str()),
-                    whole.description.as_deref(),
-                    "prefix of {cut} bytes invented a description"
-                );
-            }
-            if let Some(rating) = data.rating {
-                assert_eq!(
-                    Some(rating),
-                    whole.rating,
-                    "prefix of {cut} bytes invented a rating"
-                );
-            }
-            if let Some(title) = &data.title {
-                assert_eq!(
-                    Some(title.as_str()),
-                    whole.title.as_deref(),
-                    "prefix of {cut} bytes invented a title"
-                );
-            }
-        }
     }
 
-    /// Bytes that are not UTF-8 inside a located element. `from_utf8` fails, the
-    /// field falls back to empty, and the surrounding packet is unaffected.
-    /// A binary sidecar is the realistic source of this input.
+    /// The fixture the tag scenarios are built on. snapfab writes the same
+    /// keywords, title and caption into both families, so each scalar resolves
+    /// to one value whichever family wins, the tag set is the union without
+    /// duplicates, and the rating stays empty because neither family carries
+    /// one.
     #[test]
-    fn invalid_utf8_inside_an_element_yields_no_fields() {
-        let mut bytes = b"<dc:subject><rdf:Bag><rdf:li>".to_vec();
-        bytes.extend_from_slice(&[0xff, 0xfe, 0x80]);
-        bytes.extend_from_slice(b"</rdf:li></rdf:Bag></dc:subject>");
+    fn a_file_carrying_both_families_resolves_to_one_value_per_field() {
+        let record = recorded_tagged_jpeg();
+        let data = map_native_fields(&XmpSource::Record(&record), Some(&record));
 
-        assert_is_empty(&extract_xmp_data(&bytes));
-    }
-
-    /// Only the first occurrence of a field is read. A real packet may repeat
-    /// an element (XMP allows it, and a file can carry more than one packet), so
-    /// this is a limitation worth writing down rather than discovering later: the
-    /// second `<dc:subject>` is invisible, and its keywords never reach the tag
-    /// index.
-    #[test]
-    fn only_the_first_occurrence_of_a_field_is_read() {
-        let two_packets = format!(
-            "{}{}",
-            xmp_packet_with_keywords(&["first_packet_keyword"]),
-            xmp_packet_with_keywords(&["second_packet_keyword"])
-        );
-        let data = extract_xmp_data(two_packets.as_bytes());
         assert_eq!(
             data.tags,
-            HashSet::from(["first_packet_keyword".to_string()])
+            HashSet::from([
+                "grouped_alpine".to_string(),
+                "grouped_winter".to_string(),
+                "landscape".to_string()
+            ])
         );
+        assert_eq!(
+            data.description.as_deref(),
+            Some("Colorful flowers in full bloom.")
+        );
+        assert_eq!(data.title.as_deref(), Some("Garden Bloom"));
+        assert_eq!(data.rating, None);
     }
 
-    // ── File-level resolution: sidecar precedence and read errors ──────────
-
-    /// A unique scratch directory for one test. The name carries the test name so
-    /// a leftover directory is traceable, and the process id keeps parallel test
-    /// threads from colliding.
-    fn scratch_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "picasu-xmp-test-{}-{}-{}",
-            std::process::id(),
-            name,
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_nanos())
-        ));
-        std::fs::create_dir_all(&dir).expect("create scratch dir");
-        dir
-    }
-
-    fn write_file(path: &Path, contents: &str) {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("create parent dir");
-        }
-        std::fs::write(path, contents).expect("write test file");
-    }
-
-    /// The sidecar wins over the file's own bytes, which is the documented
-    /// contract: the sidecar is the write-back target, so an authoritative
-    /// sidecar is what stops a stale embedded packet from undoing an edit.
+    /// A one-item list is a bare string in `ExifTool`'s output, and a tag with
+    /// one keyword is the common case — a file with a single keyword must not
+    /// lose it.
     #[test]
-    fn sidecar_takes_precedence_over_the_files_own_bytes() {
-        let dir = scratch_dir("precedence");
-        let photo = dir.join("photo.jpg");
-        write_file(
-            &photo,
-            &xmp_full(&["embedded_keyword"], "embedded description", 1),
-        );
-        write_file(
-            &dir.join("photo.xmp"),
-            &xmp_full(&["sidecar_keyword"], "sidecar description", 5),
-        );
+    fn a_single_valued_list_is_read_as_one_keyword() {
+        let xmp = json!({ "XMP-dc:Subject": "only_xmp" });
+        let image = json!({ "IPTC:Keywords": "only_iptc" });
 
-        let data = extract_xmp_data_from_file(&photo);
-        assert_eq!(data.tags, HashSet::from(["sidecar_keyword".to_string()]));
-        assert_eq!(data.description.as_deref(), Some("sidecar description"));
-        assert_eq!(data.rating, Some(5));
-
-        std::fs::remove_dir_all(&dir).ok();
+        let data = map_native_fields(&XmpSource::Record(&xmp), Some(&image));
+        assert_eq!(
+            data.tags,
+            HashSet::from(["only_xmp".to_string(), "only_iptc".to_string()])
+        );
     }
 
-    /// A sidecar that exists but is corrupt is still authoritative, so the
-    /// file's own good packet is not consulted and the result is empty.
-    ///
-    /// This is the fallback the plan asks to be measured rather than assumed, and
-    /// the measurement is unfavourable: a damaged sidecar silently hides metadata
-    /// the image still carries, with no error anywhere. Whether that should fall
-    /// back to the embedded packet is a product decision — this test records the
-    /// present behaviour so the decision has something to argue with, and it must
-    /// not be "fixed" without one.
+    /// An empty `rdf:Bag` arrives as the empty string rather than as an empty
+    /// array, and yields no tags either way.
     #[test]
-    fn corrupt_sidecar_suppresses_a_readable_embedded_packet() {
-        let dir = scratch_dir("corrupt-sidecar");
-        let photo = dir.join("photo.jpg");
-        write_file(&photo, &xmp_full(&["embedded_keyword"], "embedded", 2));
-        // Truncated markup: the opening markers are there, the closing ones are
-        // not, so no field is located.
-        write_file(
-            &dir.join("photo.xmp"),
-            "<x:xmpmeta><rdf:RDF><dc:subject><rdf:Bag><rdf:li>sidecar_keyword",
-        );
+    fn an_empty_keyword_list_yields_no_tags() {
+        let xmp = json!({ "XMP-dc:Subject": "" });
+        let image = json!({ "IPTC:Keywords": [] });
 
-        let data = extract_xmp_data_from_file(&photo);
+        let data = map_native_fields(&XmpSource::Record(&xmp), Some(&image));
+        assert!(data.tags.is_empty());
+    }
+
+    /// Measured, not assumed: a `Keywords` text chunk is one string
+    /// (`"alpha, beta"`), and splitting it on the comma would invent a boundary
+    /// the file does not state. PNG text therefore contributes no tags.
+    #[test]
+    fn png_text_chunks_contribute_no_tags() {
+        let data = map_native_fields(&XmpSource::Unavailable, Some(&recorded_png_text_chunks()));
         assert!(
             data.tags.is_empty(),
-            "the corrupt sidecar is authoritative, so the embedded packet must not be read"
+            "a PNG text chunk has no keyword concept: {tags:?}",
+            tags = data.tags
         );
-        assert_eq!(data.description, None);
-        assert_eq!(data.rating, None);
+    }
 
-        // Not vacuous: the same bytes without the sidecar do yield the tag.
-        std::fs::remove_file(dir.join("photo.xmp")).expect("remove sidecar");
+    // ── Mapping: rating ────────────────────────────────────────────────────
+
+    /// A rating is XMP's alone, and the number shape `ExifTool` prints for a
+    /// well-formed packet is the JSON number the app's scale expects.
+    #[test]
+    fn a_rating_is_read_from_xmp() {
+        let xmp = json!({ "XMP-xmp:Rating": 4 });
         assert_eq!(
-            extract_xmp_data_from_file(&photo).tags,
-            HashSet::from(["embedded_keyword".to_string()])
+            map_native_fields(&XmpSource::Record(&xmp), None).rating,
+            Some(4)
+        );
+        assert_eq!(
+            map_native_fields(&XmpSource::Record(&xmp), Some(&recorded_iptc_only())).rating,
+            Some(4)
+        );
+    }
+
+    /// A unit some tools append survives; everything that is not an integer in
+    /// range is not a rating, `-1` ("rejected") included.
+    #[test]
+    fn only_an_integer_in_range_is_a_rating() {
+        for (value, expected) in [
+            (json!(0), Some(0)),
+            (json!(5), Some(5)),
+            (json!("4 stars"), Some(4)),
+            (json!(" 3 "), Some(3)),
+            (json!(6), None),
+            (json!(-1), None),
+            (json!("-1"), None),
+            (json!(3.5), None),
+            (json!("not-a-number"), None),
+            (json!(""), None),
+        ] {
+            let record = json!({ "XMP-xmp:Rating": value.clone() });
+            assert_eq!(
+                map_native_fields(&XmpSource::Record(&record), None).rating,
+                expected,
+                "XMP-xmp:Rating {value} should map to {expected:?}"
+            );
+        }
+    }
+
+    // ── Mapping: absent and unreadable sources ─────────────────────────────
+
+    /// With no record at all, every field is empty. This is the path a
+    /// non-fallible caller lands on when `ExifTool` cannot read the file.
+    #[test]
+    fn no_records_yield_empty_metadata() {
+        let empty = NativeMetadata::default();
+        assert_eq!(map_native_fields(&XmpSource::Unavailable, None), empty);
+    }
+
+    /// A record with no metadata in it — what a corrupt sidecar reads as — is
+    /// not an error and not a fallback: the XMP fields are simply absent.
+    #[test]
+    fn a_corrupt_sidecar_record_yields_no_xmp_fields() {
+        let data = map_native_fields(
+            &XmpSource::Record(&recorded_corrupt_sidecar()),
+            None::<&Value>,
+        );
+        assert_eq!(data, NativeMetadata::default());
+    }
+
+    /// The sidecar rule this change settles (`.plan/exiftool-metadata-engine.md`
+    /// decision 6): a sidecar's existence replaces the **XMP source only**. A
+    /// corrupt sidecar therefore leaves the XMP fields empty *and* lets the
+    /// image's own IIM record fill them — which is the opposite of the old pin
+    /// that a corrupt sidecar suppresses everything the file carries.
+    #[test]
+    fn a_corrupt_sidecar_still_lets_the_images_iptc_fill() {
+        let data = map_native_fields(
+            &XmpSource::Record(&recorded_corrupt_sidecar()),
+            Some(&recorded_iptc_only()),
+        );
+        assert_eq!(data.tags, HashSet::from(["a".to_string(), "b".to_string()]));
+        assert_eq!(data.description.as_deref(), Some("IPTC Caption"));
+        assert_eq!(data.title.as_deref(), Some("IPTC Object Name"));
+    }
+
+    /// A record that has neither of the families yields empty rather than
+    /// erroring, so a damaged image still indexes.
+    #[test]
+    fn a_record_without_the_relevant_groups_yields_empty_metadata() {
+        let record = json!({ "File:FileType": "JPEG", "IFD0:Make": "Canon" });
+        assert_eq!(
+            map_native_fields(&XmpSource::Record(&record), Some(&record)),
+            NativeMetadata::default()
+        );
+    }
+
+    /// Merge one record's keys into another, so a fixture can carry two
+    /// families the way one file does.
+    fn merge(into: &mut Value, other: Value) {
+        match (into, other) {
+            (Value::Object(into), Value::Object(other)) => into.extend(other),
+            _ => panic!("recorded payloads are objects"),
+        }
+    }
+
+    // ── Read layer: files, through `ExifTool` ──────────────────────────────
+    //
+    // Everything above drives the mapping with recorded payloads. These tests
+    // go through the real reader, so they also pin that the payloads above are
+    // the shape the engine really produces.
+
+    /// A sidecar as `xmp_write` writes it: the packet the app edits through.
+    fn sidecar_packet(
+        tags: &[&str],
+        description: Option<&str>,
+        rating: Option<u8>,
+        title: Option<&str>,
+    ) -> String {
+        let mut out = String::from(
+            "<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n\
+             <x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n\
+             <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n\
+             <rdf:Description rdf:about=\"\"\n\
+             \x20   xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n\
+             \x20   xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\">\n",
+        );
+        if let Some(title) = title {
+            out.push_str(&format!(
+                "<dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">{title}</rdf:li></rdf:Alt></dc:title>\n"
+            ));
+        }
+        if !tags.is_empty() {
+            out.push_str("<dc:subject><rdf:Bag>\n");
+            for tag in tags {
+                out.push_str(&format!("  <rdf:li>{tag}</rdf:li>\n"));
+            }
+            out.push_str("</rdf:Bag></dc:subject>\n");
+        }
+        if let Some(description) = description {
+            out.push_str(&format!(
+                "<dc:description><rdf:Alt><rdf:li xml:lang=\"x-default\">{description}</rdf:li></rdf:Alt></dc:description>\n"
+            ));
+        }
+        if let Some(rating) = rating {
+            out.push_str(&format!("<xmp:Rating>{rating}</xmp:Rating>\n"));
+        }
+        out.push_str("</rdf:Description>\n</rdf:RDF>\n</x:xmpmeta>\n<?xpacket end=\"w\"?>\n");
+        out
+    }
+
+    /// A JPEG written by snapfab with `tags`, which puts the keywords in both
+    /// an XMP packet and an IIM record.
+    fn snapfab_jpeg(dir: &Path, name: &str, tags: &[&str]) -> std::path::PathBuf {
+        let photo = dir.join(name);
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(photo.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: Some(tags.iter().map(|tag| (*tag).to_string()).collect()),
+            exif_date: Some("2024:05:06 07:08:09".into()),
+            minimal: false,
+        }])
+        .expect("generate photo");
+        photo
+    }
+
+    /// The same, as a PNG — which carries no IIM record, so a PNG fixture can
+    /// isolate the XMP and text-chunk families.
+    fn snapfab_png(dir: &Path, name: &str) -> std::path::PathBuf {
+        let photo = dir.join(name);
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(photo.to_string_lossy().into_owned()),
+            format: Some("png".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate photo");
+        photo
+    }
+
+    /// The sidecar replaces the XMP source, and the image's IIM record still
+    /// fills in the union: the sidecar's keyword and the image's own are both
+    /// indexed, while the scalars come from the packet the app would have
+    /// written.
+    #[test]
+    fn a_sidecar_replaces_the_xmp_source_and_the_image_iptc_still_fills() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let photo = snapfab_jpeg(dir.path(), "photo.jpg", &["image_iptc_keyword"]);
+        std::fs::write(
+            dir.path().join("photo.xmp"),
+            sidecar_packet(
+                &["sidecar_xmp_keyword"],
+                Some("sidecar description"),
+                Some(4),
+                Some("sidecar title"),
+            ),
+        )
+        .expect("write sidecar");
+
+        let image = read_metadata_record(&photo).expect("read image");
+        let data = native_metadata_for(&photo, Some(&image));
+
+        assert!(data.tags.contains("sidecar_xmp_keyword"), "{:?}", data.tags);
+        assert!(
+            data.tags.contains("image_iptc_keyword"),
+            "the image's own IIM record still contributes: {:?}",
+            data.tags
+        );
+        assert_eq!(data.description.as_deref(), Some("sidecar description"));
+        assert_eq!(data.rating, Some(4));
+        assert_eq!(data.title.as_deref(), Some("sidecar title"));
+    }
+
+    /// The rewritten pin, at the read layer: a corrupt sidecar no longer
+    /// suppresses the whole file. It withholds the XMP fields (a sidecar that
+    /// exists is the XMP source), and the image's IIM record fills them from
+    /// its own metadata. See
+    /// `.plan/exiftool-metadata-engine.md` decision 6; the scenario
+    /// `corrupt_xmp_sidecar_suppresses_embedded_xmp` pins the same outcome
+    /// end-to-end.
+    #[test]
+    fn a_corrupt_sidecar_withholds_xmp_but_not_the_images_iptc() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let photo = snapfab_jpeg(dir.path(), "photo.jpg", &["image_iptc_keyword"]);
+        // Truncated markup: the opening tags are there, the closing ones are not.
+        std::fs::write(
+            dir.path().join("photo.xmp"),
+            "<x:xmpmeta><rdf:RDF><dc:subject><rdf:Bag><rdf:li>sidecar_keyword",
+        )
+        .expect("write corrupt sidecar");
+
+        let image = read_metadata_record(&photo).expect("read image");
+        let data = native_metadata_for(&photo, Some(&image));
+
+        assert!(
+            data.tags.contains("image_iptc_keyword"),
+            "the image's IIM record is not suppressed by the sidecar: {:?}",
+            data.tags
+        );
+        assert!(
+            !data.tags.contains("sidecar_keyword"),
+            "a corrupt packet contributes nothing: {:?}",
+            data.tags
+        );
+        // snapfab writes the same caption in both families, so this value is
+        // shared; what it pins is that the image's own record is still read.
+        assert!(data.description.is_some());
+    }
+
+    /// A sidecar that exists but cannot be read does not hand the XMP source
+    /// back to the image either — a directory named `photo.xmp` is the portable
+    /// way to make the read fail, unlike a permission bit, which root ignores.
+    /// The packet embedded in the PNG is therefore invisible, and the text
+    /// chunks — which the image keeps filling from — are what remains.
+    #[test]
+    fn an_unreadable_sidecar_keeps_the_embedded_packet_out() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let photo = png_with_text_chunks(
+            dir.path(),
+            "photo.png",
+            &[text_chunk(b"Description", b"from the text chunk")],
+            Some(embedded_xmp_packet()),
+        );
+        std::fs::create_dir(dir.path().join("photo.xmp")).expect("directory as sidecar");
+
+        let image = read_metadata_record(&photo).expect("read image");
+        let data = native_metadata_for(&photo, Some(&image));
+
+        assert_eq!(data.description.as_deref(), Some("from the text chunk"));
+        assert!(
+            !data.tags.contains("embedded_keyword"),
+            "the embedded packet is not the XMP source while a sidecar exists: {:?}",
+            data.tags
+        );
+    }
+
+    /// The reversed pin: a PNG carrying a **deflate-compressed** XMP packet in
+    /// an `iTXt` text chunk yields its keywords and caption. The retired byte
+    /// scan decompressed nothing, so this file carried no metadata as far as
+    /// the app was concerned and
+    /// `pinned_png_compressed_embedded_xmp_is_not_extracted` pinned that; the
+    /// engine swap makes the packet readable, so the contract is now the
+    /// positive one it should have been
+    /// (`.plan/exiftool-metadata-engine.md` decision 6).
+    ///
+    /// Not vacuous: the fixture is a real PNG whose packet is not in plaintext,
+    /// and the tags asserted are the two the packet carries.
+    #[test]
+    fn a_png_with_a_compressed_itxt_packet_yields_its_tags() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let photo = png_with_text_chunks(dir.path(), "photo.png", &[], Some(embedded_xmp_packet()));
+        let bytes = std::fs::read(&photo).expect("read png");
+        assert!(
+            !bytes
+                .windows(b"<dc:subject>".len())
+                .any(|window| window == b"<dc:subject>"),
+            "the fixture must not leave the packet in plaintext"
         );
 
-        std::fs::remove_dir_all(&dir).ok();
+        let image = read_metadata_record(&photo).expect("read png");
+        let data = native_metadata_for(&photo, Some(&image));
+
+        assert_eq!(
+            data.tags,
+            HashSet::from([
+                "embedded_keyword".to_string(),
+                "second_embedded_keyword".to_string()
+            ])
+        );
+        assert_eq!(data.description.as_deref(), Some("An embedded caption"));
     }
 
-    /// A sidecar that cannot be read falls back to `XmpData::default()` — the
-    /// documented read-error branch. A directory named `photo.xmp` is the
-    /// portable way to make `fs::read` fail: `read` on a directory is `EISDIR`
-    /// for every user, unlike a permission bit, which root ignores.
-    ///
-    /// The consequence is the same as for a corrupt sidecar and is pinned here
-    /// too: the readable file's own packet is not used as a fallback.
+    /// Without a sidecar, the image's own packet is the XMP source — the
+    /// ordinary path for an image that was never edited.
     #[test]
-    fn unreadable_sidecar_yields_default_rather_than_the_files_own_packet() {
-        let dir = scratch_dir("unreadable-sidecar");
-        let photo = dir.join("photo.jpg");
-        write_file(&photo, &xmp_full(&["embedded_keyword"], "embedded", 2));
-        std::fs::create_dir(dir.join("photo.xmp")).expect("create directory as sidecar");
+    fn a_file_without_a_sidecar_reads_its_own_packet() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let photo = snapfab_jpeg(dir.path(), "photo.jpg", &["own_keyword"]);
 
-        assert_eq!(discover_sidecar(&photo), Some(dir.join("photo.xmp")));
-        let data = extract_xmp_data_from_file(&photo);
-        assert!(data.tags.is_empty());
-        assert_eq!(data.description, None);
-        assert_eq!(data.rating, None);
-        assert_eq!(data.title, None);
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    /// A missing file, and a file with no sidecar, both resolve to the file
-    /// itself; a path that does not exist at all yields the default. This is the
-    /// read-error branch again, reached the ordinary way — the indexer can call
-    /// this with a path that has since been deleted.
-    #[test]
-    fn a_missing_file_yields_default_and_a_sidecar_free_file_reads_its_own_bytes() {
-        let dir = scratch_dir("missing-file");
-
-        assert_eq!(discover_sidecar(&dir.join("absent.jpg")), None);
-        let absent = extract_xmp_data_from_file(&dir.join("absent.jpg"));
-        assert!(absent.tags.is_empty());
-        assert_eq!(absent.description, None);
-        assert_eq!(absent.rating, None);
-        assert_eq!(absent.title, None);
-
-        let photo = dir.join("photo.jpg");
-        write_file(&photo, &xmp_full(&["own_bytes_keyword"], "own", 3));
         assert_eq!(discover_sidecar(&photo), None);
-        let data = extract_xmp_data_from_file(&photo);
-        assert_eq!(data.tags, HashSet::from(["own_bytes_keyword".to_string()]));
-        assert_eq!(data.rating, Some(3));
+        let image = read_metadata_record(&photo).expect("read image");
+        let data = native_metadata_for(&photo, Some(&image));
 
-        std::fs::remove_dir_all(&dir).ok();
+        assert!(data.tags.contains("own_keyword"), "{:?}", data.tags);
+        assert!(data.description.is_some());
     }
 
-    /// PNG bytes carrying an XMP packet in a `zTXt` chunk: chunk type,
-    /// keyword, null separator, compression method, deflate payload. The rest
-    /// of the stream is filler — the point is the shape of the metadata chunk,
-    /// not a decodable image.
-    fn png_with_ztxt_chunk(keyword: &[u8], payload: &[u8]) -> Vec<u8> {
-        let mut data = Vec::new();
-        data.extend_from_slice(b"zTXt");
-        data.extend_from_slice(keyword);
-        data.push(0x00); // keyword terminator
-        data.push(0x00); // compression method: deflate
-        data.extend_from_slice(payload);
+    /// PNG text chunks reach the fields when nothing else carries them. The
+    /// fixture has no XMP packet and no IIM record, so the description can only
+    /// have come from the text chunk.
+    #[test]
+    fn a_png_text_chunk_fills_the_description_on_its_own() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let photo = png_with_text_chunks(
+            dir.path(),
+            "photo.png",
+            &[
+                text_chunk(b"Description", b"A text description"),
+                text_chunk(b"Title", b"A text title"),
+            ],
+            None,
+        );
 
-        let mut chunk = Vec::new();
+        let image = read_metadata_record(&photo).expect("read image");
+        let data = native_metadata_for(&photo, Some(&image));
+
+        assert_eq!(data.description.as_deref(), Some("A text description"));
+        assert_eq!(data.title.as_deref(), Some("A text title"));
+        assert!(data.tags.is_empty());
+    }
+
+    /// A read that cannot happen at all is the non-fallible contract: empty
+    /// fields, no error. The indexer can reach this with a path that has been
+    /// deleted since it was listed.
+    #[test]
+    fn an_absent_file_yields_empty_metadata() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        assert_eq!(
+            native_metadata_for(&dir.path().join("absent.jpg"), None),
+            NativeMetadata::default()
+        );
+    }
+
+    /// A dir-album's `.albuminfo.xmp` is a packet read as an asset of its own:
+    /// no IIM, no text chunks, and the same field set as an image.
+    #[test]
+    fn a_standalone_packet_reads_its_own_xmp() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let packet = dir.path().join(".albuminfo.xmp");
+        std::fs::write(
+            &packet,
+            sidecar_packet(&["hiking"], Some("A trip"), Some(5), Some("Custom Title")),
+        )
+        .expect("write packet");
+
+        assert_eq!(
+            read_xmp_packet(&packet),
+            NativeMetadata {
+                tags: HashSet::from(["hiking".to_string()]),
+                description: Some("A trip".to_string()),
+                rating: Some(5),
+                title: Some("Custom Title".to_string()),
+            }
+        );
+        assert_eq!(
+            read_xmp_packet(&dir.path().join(".albuminfo-absent.xmp")),
+            NativeMetadata::default()
+        );
+    }
+
+    // ── PNG fixtures ───────────────────────────────────────────────────────
+    //
+    // Built here rather than pinned as files, because the contract under test
+    // is a *container* one: a deflate-compressed XMP packet inside a PNG text
+    // chunk, which the retired byte scan could not see at all. The image body
+    // is snapfab's, so the result is a file `ExifTool` parses as a PNG; the
+    // chunk carries its own CRC because a PNG chunk without one is malformed.
+
+    /// The XMP packet the compressed-chunk tests embed.
+    fn embedded_xmp_packet() -> &'static [u8] {
+        br#"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:subject><rdf:Bag><rdf:li>embedded_keyword</rdf:li><rdf:li>second_embedded_keyword</rdf:li></rdf:Bag></dc:subject><dc:description><rdf:Alt><rdf:li xml:lang="x-default">An embedded caption</rdf:li></rdf:Alt></dc:description></rdf:Description></rdf:RDF></x:xmpmeta>"#
+    }
+
+    /// A `tEXt` chunk: keyword, null separator, Latin-1 text.
+    fn text_chunk(keyword: &[u8], text: &[u8]) -> (&'static [u8], Vec<u8>) {
+        let mut data = keyword.to_vec();
+        data.push(0x00);
+        data.extend_from_slice(text);
+        (b"tEXt", data)
+    }
+
+    /// An `iTXt` chunk holding a *deflate-compressed* XMP packet, in the form
+    /// the PNG specification defines it: keyword, null, compression flag 1,
+    /// compression method 0, empty language tag, empty translated keyword, null,
+    /// then the compressed text.
+    fn compressed_xmp_chunk(packet: &[u8]) -> (&'static [u8], Vec<u8>) {
+        let mut data = Vec::from(&b"XML:com.adobe.xmp\0"[..]);
+        data.extend_from_slice(&[1, 0]);
+        data.push(0x00); // empty language tag
+        data.push(0x00); // empty translated keyword
+        data.extend_from_slice(&zlib_fixed_huffman(packet));
+        (b"iTXt", data)
+    }
+
+    /// Write a PNG with `chunks` inserted before the image data, optionally
+    /// carrying `xmp` as a compressed text chunk.
+    fn png_with_text_chunks(
+        dir: &Path,
+        name: &str,
+        chunks: &[(&'static [u8], Vec<u8>)],
+        xmp: Option<&[u8]>,
+    ) -> std::path::PathBuf {
+        let photo = snapfab_png(dir, name);
+        let bytes = std::fs::read(&photo).expect("read generated png");
+        let mut out = Vec::from(&bytes[..8]);
+        let mut at = 8;
+        while at + 8 <= bytes.len() {
+            let length = u32::from_be_bytes(bytes[at..at + 4].try_into().expect("4 bytes"));
+            let kind = &bytes[at + 4..at + 8];
+            if kind == b"IDAT" {
+                if let Some(packet) = xmp {
+                    let (chunk_type, data) = compressed_xmp_chunk(packet);
+                    out.extend_from_slice(&png_chunk(chunk_type, &data));
+                }
+                for (chunk_type, data) in chunks {
+                    out.extend_from_slice(&png_chunk(chunk_type, data));
+                }
+            }
+            out.extend_from_slice(&bytes[at..at + 12 + length as usize]);
+            at += 12 + length as usize;
+        }
+        std::fs::write(&photo, &out).expect("write png with chunks");
+        photo
+    }
+
+    /// One PNG chunk: length, type, data, CRC over type and data.
+    fn png_chunk(kind: &[u8], data: &[u8]) -> Vec<u8> {
+        let mut chunk = Vec::with_capacity(12 + data.len());
         chunk.extend_from_slice(
             &u32::try_from(data.len())
-                .expect("ztxt chunk too large")
+                .expect("chunk too large")
                 .to_be_bytes(),
         );
-        chunk.extend_from_slice(&data);
-        chunk.extend_from_slice(&[0, 0, 0, 0]); // crc, not read by anything below
+        chunk.extend_from_slice(kind);
+        chunk.extend_from_slice(data);
+        chunk.extend_from_slice(&crc32(kind, data).to_be_bytes());
+        chunk
+    }
 
-        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
-        png.extend_from_slice(&chunk);
-        png.extend_from_slice(b"trailing image data");
-        png
+    /// CRC-32 as PNG defines it (the reflected zlib polynomial, initial and
+    /// final value inverted), bitwise so no compression or checksum dependency
+    /// is pulled in for a test fixture.
+    fn crc32(kind: &[u8], data: &[u8]) -> u32 {
+        let mut crc = 0xffff_ffff_u32;
+        for byte in kind.iter().chain(data) {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                let mask = if crc & 1 == 0 { 0 } else { 0xedb8_8320 };
+                crc = (crc >> 1) ^ mask;
+            }
+        }
+        !crc
     }
 
     /// `data` as a zlib stream holding one fixed-Huffman DEFLATE block.
     ///
     /// Literals only: it does not shrink anything, but it is a genuine deflate
-    /// stream that any inflater accepts. A stored (uncompressed) block would
-    /// not do — the plaintext would survive in the fixture, and the test above
-    /// would then pass for the wrong reason. Cross-checked against
-    /// `zlib.decompress`; no compression dependency is wanted here.
+    /// stream that any inflater accepts, and the packet is not readable in the
+    /// file's bytes. Cross-checked against `zlib.decompress`; no compression
+    /// dependency is wanted here.
     fn zlib_fixed_huffman(data: &[u8]) -> Vec<u8> {
         // CMF 0x78 = deflate with a 32K window, FLG 0x01 makes the 16-bit
         // header a multiple of 31 as zlib requires.
@@ -756,8 +1081,8 @@ mod tests {
             }
         }
 
-        fn push(&mut self, bits: u32, len: u32) {
-            self.acc |= bits << self.pending;
+        fn push(&mut self, value: u32, len: u32) {
+            self.acc |= value << self.pending;
             self.pending += len;
             while self.pending >= 8 {
                 self.out.push((self.acc & 0xff) as u8);

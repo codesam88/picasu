@@ -7,8 +7,8 @@ use std::{cell::RefCell, collections::BTreeMap, path::Path, process::Command, sy
 
 /// The metadata engine for image EXIF. `ExifTool` is an external binary (pure
 /// Perl, invoked as a separate process like `ffprobe` below), and there is no
-/// in-process fallback: [`generate_exif_for_image`] is the only reader of image
-/// EXIF, so a missing binary empties every image's `exifVec`.
+/// in-process fallback: [`read_metadata_record`] is the only reader of image
+/// metadata, so a missing binary empties every image's `exifVec`.
 const EXIFTOOL: &str = "exiftool";
 
 /// Date format asked of `ExifTool` with `-d`, applied to every date-valued tag.
@@ -28,7 +28,7 @@ const SOURCE_FILE_KEY: &str = "SourceFile";
 /// Extra arguments appended to the `exiftool` crate's own `-json` on every read.
 ///
 /// * `-G1` asks for family-1 group names as `Group:Tag` key prefixes. It is what
-///   makes one read serve both consumers: [`generate_exif_for_image`] keeps the
+///   makes one read serve both consumers: [`exif_map_from_record`] keeps the
 ///   EXIF family, and the native-field mapping takes `XMP-*`, `IPTC` and `PNG`
 ///   from the same record instead of paying for a second `exiftool` call. The
 ///   uppercase spelling matters — lowercase `-g1` nests the groups as JSON
@@ -48,9 +48,10 @@ const READ_ARGS: &[&str] = &["-G1", "-d", EXIFTOOL_DATE_FORMAT];
 /// same call.
 pub(crate) type GroupedMetadata = BTreeMap<String, BTreeMap<String, String>>;
 
-/// Extract image EXIF with `ExifTool`. On any failure, returns an empty map.
+/// Project one `ExifTool` record down to the `exifVec` map: the EXIF family
+/// only, group prefixes stripped.
 ///
-/// The contract of the returned map, which is what the API exposes as `exifVec`:
+/// The contract of that map, which is what the API exposes as `exifVec`:
 ///
 /// * **Keys** are `ExifTool`'s EXIF-family tag names, unprefixed. The read is
 ///   *not* narrowed to the EXIF family (that is what makes it one call for
@@ -60,7 +61,7 @@ pub(crate) type GroupedMetadata = BTreeMap<String, BTreeMap<String, String>>;
 ///   `Model` and `Orientation` keep the names the previous in-process reader
 ///   used while XMP, IPTC, PNG-text, maker notes, container, file-system and
 ///   composite tags cannot leak in. Those belong to the native-field mapping
-///   (`process::xmp` and its successors), not to the EXIF map.
+///   (`process::xmp`), not to the EXIF map.
 /// * **Values** are `ExifTool`'s print-converted form, flattened to strings:
 ///   `1/3188` for `ExposureTime`, `Rotate 90 CW` for `Orientation`,
 ///   `Uncompressed` for `Compression`, `19.7` for a JSON number. This keeps the
@@ -70,22 +71,28 @@ pub(crate) type GroupedMetadata = BTreeMap<String, BTreeMap<String, String>>;
 ///   reader called them `DateTime` and `DateTimeDigitized`), and TIFF 0x0101 is
 ///   `ImageHeight` rather than `ImageLength`.
 ///
-/// Failures are the documented non-fallible contract rather than errors: a
-/// missing binary, an unreadable file, a damaged EXIF block and unparsable
-/// output all yield an empty map. That is what keeps a broken image from
-/// turning into a rejected asset; the API-level counterpart is
+/// A record that could not be read is the caller's to absorb: the indexer turns
+/// a failed read into an empty map, which is what keeps a broken image from
+/// turning into a rejected asset. The API-level counterpart is
 /// `corrupt_exif_in_decodable_image_yields_empty_exif_vec`.
-pub fn generate_exif_for_image(abstract_data: &AbstractData) -> BTreeMap<String, String> {
-    read_all_metadata(&abstract_data.source_path())
-        .map(|grouped| exif_map_from(&grouped))
-        .unwrap_or_default()
+pub(crate) fn exif_map_from_record(record: &Value) -> BTreeMap<String, String> {
+    exif_map_from(&group_by_family(record))
 }
 
-/// Read *every* metadata group `ExifTool` reports for `file_path`.
+/// The raw `-json` record for one file, before any grouping or flattening.
 ///
-/// One call per file, whatever the caller ends up using: the caller picks the
-/// groups it cares about out of the result. [`generate_exif_for_image`] is the
-/// EXIF projection of it.
+/// One call per file, whatever the caller ends up using: the caller projects
+/// the record it wants out of the result — [`exif_map_from_record`] for the
+/// `exifVec` map, `process::xmp` for the native fields.
+///
+/// The record is the currency rather than the [`GroupedMetadata`] projection
+/// because not every consumer wants that projection: the native-field mapping
+/// needs `XMP-dc:Subject` and `IPTC:Keywords` as *lists*, and grouping flattens
+/// a list into one `", "`-separated string, which would make a keyword
+/// containing a comma impossible to recover. It is also what keeps the read
+/// count at one per file: `exifVec` and the native fields are two projections
+/// of the same record, and a caller holding it derives both instead of paying
+/// for a second `ExifTool` call.
 ///
 /// # Errors
 ///
@@ -94,8 +101,8 @@ pub fn generate_exif_for_image(abstract_data: &AbstractData) -> BTreeMap<String,
 /// child broke, or the output was not a JSON record. A file `ExifTool` cannot
 /// parse is *not* an error here: it comes back as a record with no EXIF groups,
 /// which the callers render as an empty map.
-pub(crate) fn read_all_metadata(file_path: &Path) -> Result<GroupedMetadata> {
-    let record = SESSION.with(|slot| -> Result<Value> {
+pub(crate) fn read_metadata_record(file_path: &Path) -> Result<Value> {
+    SESSION.with(|slot| -> Result<Value> {
         let mut slot = slot.borrow_mut();
         // A session that could not be started is never cached, so a missing
         // binary is reported per read instead of latching as a dead session.
@@ -106,8 +113,7 @@ pub(crate) fn read_all_metadata(file_path: &Path) -> Result<GroupedMetadata> {
         session
             .read_retrying(file_path)
             .with_context(|| format!("failed to read metadata for {}", file_path.display()))
-    })?;
-    Ok(group_by_family(&record))
+    })
 }
 
 thread_local! {
@@ -473,8 +479,8 @@ fn check_exiftool_toolchain(resolved: &[(&str, Option<PathBuf>)]) -> Result<(), 
     Err(format!(
         "image metadata needs ExifTool on PATH, but {named} could not be found.\n\
          \n\
-         This is an external binary, not an optional extra: `exif.rs::generate_exif_for_image` \
-         is the only reader of image EXIF and it holds an `exiftool -stay_open` session open to \
+         This is an external binary, not an optional extra: `exif.rs::read_metadata_record` \
+         is the only reader of image metadata and it holds an `exiftool -stay_open` session open to \
          read the whole metadata map, exactly the way the video path asks `ffprobe`. Without it \
          no image EXIF can be read at all, so every `exifVec` would be empty and the scenarios \
          asserting an EXIF contract (`metadata_detail_returns_full_metadata`, the `png_`, `tiff_` \
@@ -503,14 +509,9 @@ fn resolve_exiftool_tools() -> Vec<(&'static str, Option<PathBuf>)> {
 mod tests {
     use super::{
         GroupedMetadata, PathBuf, Session, check_exiftool_toolchain, exif_group_rank,
-        exif_map_from, generate_exif_for_image, group_by_family, is_transport_failure,
-        json_value_to_string, read_all_metadata, resolve_exiftool_tools, tool_runs,
+        exif_map_from, exif_map_from_record, group_by_family, is_transport_failure,
+        json_value_to_string, read_metadata_record, resolve_exiftool_tools, tool_runs,
     };
-    use crate::model::abstract_data::AbstractData;
-    use crate::model::image::{ImageCombined, ImageMetadata};
-    use crate::model::object::{ObjectSchema, ObjectType};
-    use crate::model::response::FileEntry;
-    use arrayvec::ArrayString;
     use exiftool::ExifToolError;
     use serde_json::json;
     use std::{
@@ -520,19 +521,14 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    /// An `AbstractData` pointing at `path`, which is all
-    /// `generate_exif_for_image` reads. Built through the model rather than a
-    /// helper because the function takes the whole record.
-    fn record_for(path: &Path) -> AbstractData {
-        let mut record = AbstractData::Image(ImageCombined {
-            object: ObjectSchema::new(
-                ArrayString::from("exif-fallback-test").expect("hash fits"),
-                ObjectType::Image,
-            ),
-            metadata: ImageMetadata::new(0, 0, 0, "jpg".to_string()),
-        });
-        *record.path_mut().expect("image record has a path slot") = Some(FileEntry::new(path, 0));
-        record
+    /// The `exifVec` projection of `path` with the non-fallible contract the
+    /// indexer relies on: a read that fails is an empty map, never an error.
+    /// The projection is reached from the record the indexer already read, so a
+    /// path is all a test needs to state.
+    fn exif_vec_of(path: &Path) -> BTreeMap<String, String> {
+        read_metadata_record(path)
+            .map(|record| exif_map_from_record(&record))
+            .unwrap_or_default()
     }
 
     /// The documented non-fallible contract: a failure to read EXIF is not an
@@ -551,22 +547,22 @@ mod tests {
         let not_an_image = dir.path().join("notes.jpg");
         std::fs::write(&not_an_image, b"this is not an image at all").expect("write file");
         assert!(
-            generate_exif_for_image(&record_for(&not_an_image)).is_empty(),
+            exif_vec_of(&not_an_image).is_empty(),
             "a non-image must yield no EXIF"
         );
 
         // A JPEG header followed by nothing: the reader finds no EXIF segment.
         let stub = dir.path().join("stub.jpg");
         std::fs::write(&stub, [0xff, 0xd8, 0xff, 0xe0]).expect("write file");
-        assert!(generate_exif_for_image(&record_for(&stub)).is_empty());
+        assert!(exif_vec_of(&stub).is_empty());
 
         // A path that does not exist: ExifTool reports it cannot read the file
         // and exits non-zero, which the reader turns into an empty map.
         let missing = dir.path().join("absent.jpg");
-        assert!(generate_exif_for_image(&record_for(&missing)).is_empty());
+        assert!(exif_vec_of(&missing).is_empty());
 
         // An empty path, which is what a record with no `path` set produces.
-        assert!(generate_exif_for_image(&record_for(Path::new(""))).is_empty());
+        assert!(exif_vec_of(Path::new("")).is_empty());
     }
 
     /// A JPEG whose EXIF block cannot be parsed yields an empty map while the
@@ -602,7 +598,7 @@ mod tests {
         .expect("generate photo");
 
         // Control: the fixture really does carry a readable EXIF block.
-        let control = generate_exif_for_image(&record_for(&good));
+        let control = exif_vec_of(&good);
         assert!(
             control.contains_key("Software"),
             "fixture carries no EXIF, so the negative case below would be vacuous: {control:?}"
@@ -623,7 +619,7 @@ mod tests {
             "the patch must not change the file length"
         );
         assert!(
-            generate_exif_for_image(&record_for(&corrupt)).is_empty(),
+            exif_vec_of(&corrupt).is_empty(),
             "a corrupt EXIF block must yield no fields, not a partial map"
         );
     }
@@ -701,7 +697,7 @@ mod tests {
     /// `XResolution` is `72` and not `72 pixels per inch`.
     #[test]
     fn exif_vec_carries_exiftool_tag_names_and_printed_values() {
-        let exif = generate_exif_for_image(&record_for(&pinned_fixture("tiff-48x32-exif")));
+        let exif = exif_vec_of(&pinned_fixture("tiff-48x32-exif"));
 
         for (key, value) in [
             // 0x0131/0x9003/0x9004: the three date tags, in the dash-separated
@@ -769,7 +765,7 @@ mod tests {
         }])
         .expect("generate photo");
 
-        let exif = generate_exif_for_image(&record_for(&photo));
+        let exif = exif_vec_of(&photo);
         assert_eq!(
             exif.get("DateTimeOriginal").map(String::as_str),
             Some("2024-05-06 07:08:09"),
@@ -846,7 +842,7 @@ mod tests {
 
         let path = pinned_fixture("tiff-48x32-exif");
         let path = path.as_path();
-        let control = generate_exif_for_image(&record_for(path));
+        let control = exif_vec_of(path);
         assert!(
             !control.is_empty(),
             "control: the fixture must read as EXIF before anything is timed"
@@ -1189,7 +1185,7 @@ mod tests {
             ("tagged jpeg", tagged),
             ("not an image", not_an_image),
         ] {
-            let ours = generate_exif_for_image(&record_for(&path));
+            let ours = exif_vec_of(&path);
             let theirs = ungrouped_exif_read(&path);
 
             assert_eq!(
@@ -1299,7 +1295,9 @@ mod tests {
         }])
         .expect("generate photo");
 
-        let grouped = read_all_metadata(&photo).expect("a readable file is not an error");
+        let grouped = group_by_family(
+            &read_metadata_record(&photo).expect("a readable file is not an error"),
+        );
 
         for family in ["XMP", "IPTC"] {
             assert!(
@@ -1319,8 +1317,8 @@ mod tests {
 
     /// A missing binary has to stay a *named* failure, not a generic one.
     ///
-    /// `generate_exif_for_image` swallows the error into an empty map, so this
-    /// message is the only place the cause reaches an operator: it has to say
+    /// The indexer swallows a read error into an empty map, so this message is
+    /// the only place the cause reaches an operator: it has to say
     /// the binary is missing and how to install it, on top of whatever the
     /// `exiftool` crate reports underneath.
     #[test]

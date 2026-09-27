@@ -35,7 +35,18 @@ Address already in use` and one scenario fails on a port that was never
   failed runs also leave an orphaned `picasu` process behind. Probe the port
   before binding, retry on EADDRINUSE, or derive the port from the run id.
 
+- Body assertions in a **non-last** `call:`'s `then:` block are silently
+  ignored: `backend_api.rs` runs only `check_status_assertions` for inline
+  `then`, so `response.json.*` / `array_where` there never execute. Found
+  during `test-exif-xmp-handling` Iteration 5's successor plan when a worker's
+  first draft of two scenarios passed vacuously (and a union mutation escaped
+  both). `docs/scenario-dsl.md` documents neither the rule nor the last-call
+  requirement, and nothing enforces it. Needs: harness support or a hard
+  error, DSL docs, and an audit of existing scenarios for the pattern.
+
 ## Notes
 
 2026-09-26 — Recorded from the Iteration 5 report of test-exif-xmp-handling;
 each item has its measurement in that plan's Progress section.
+2026-09-27 — Added the silent non-last-`then` body-assertion rule from the
+exiftool-metadata-engine Iteration 2 report.

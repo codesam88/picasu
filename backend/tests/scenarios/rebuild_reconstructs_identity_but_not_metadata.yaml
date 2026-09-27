@@ -3,7 +3,7 @@ name: rebuild reconstructs asset identity from the filesystem but not the metada
 # ASSET_BY_PATH, ASSET_BY_ID and DUPE_INDEX and repopulates them from a
 # filesystem walk. What it does *not* do is re-run the metadata pipeline: it
 # computes a hash, reads the file size and mtime, and inserts an identity
-# record. Nothing calls `process_image_info` or `extract_xmp_data_from_file`.
+# record. Nothing calls `process_image_info` or `process::xmp`'s reader.
 #
 # Measured consequence, pinned here so it cannot change silently: after a
 # rebuild the asset is still addressable by path, but its detail is served from

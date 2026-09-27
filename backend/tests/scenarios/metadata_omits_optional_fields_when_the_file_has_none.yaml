@@ -6,11 +6,10 @@ name: metadata detail reports absent optional fields as null
 # a value from. The contract is that the detail response is still 200 and still
 # complete in shape — the optional fields are present and `null` rather than
 # missing keys, and `tags` is an empty array. `xmp.rs` never invents a default,
-# it returns `XmpData::default()`.
+# it returns `NativeMetadata::default()`.
 #
-# The parser-side half of the same contract is
-# `missing_fields_are_empty_or_none` in `process::xmp`; this is the wire shape,
-# which nothing else asserts.
+# The parser-side half of the same contract is `no_records_yield_empty_metadata`
+# in `process::xmp`; this is the wire shape, which nothing else asserts.
 given:
   - photo: /e2e_optional/photo.jpg
     id_as: $photo

@@ -1,31 +1,34 @@
-name: a corrupt XMP sidecar suppresses the embedded XMP packet
-# Precedence pin, measured direction: sidecar wins even when the sidecar is
-# worthless.
+name: a corrupt XMP sidecar suppresses the embedded XMP packet, not the file's IPTC
+# Sidecar precedence, rewritten for the contract settled in
+# `.plan/exiftool-metadata-engine.md` decision 6, which overturns the pin this
+# file originally carried.
 #
-# `extract_xmp_data_from_file` resolves the source once —
-# `discover_sidecar(path).unwrap_or_else(|| path)` — and reads *only* that file.
-# A sidecar that exists is authoritative whether or not it parses, so the packet
-# embedded in the JPEG is never consulted. The generated fixture carries a
-# complete, well-formed XMP packet with `e2e_corrupt_xmp_embedded` in its first
-# APP1 segment; the sidecar is truncated markup that yields no keyword at all.
-# Result: the asset indexes, but with no keywords from either source.
+# A sidecar's existence replaces the **XMP source only**. The sidecar here is
+# truncated markup, so no XMP field is filled from it — and the packet embedded
+# in the JPEG is not consulted in its place, because the sidecar is where the
+# app writes metadata back (`PUT /put/edit_tag`), so reading the stale embedded
+# packet would undo the edit.
 #
-# This is the unsafe half of the precedence rule and it is pinned deliberately.
-# It is a documented consequence of "the sidecar is the write-back target, so it
-# is always authoritative when present" (the comment in `xmp.rs`), not an
-# endorsed outcome: a half-written or truncated sidecar silently hides metadata
-# the file itself still carries. Whether that should fall back to the embedded
-# packet is a product decision, and the plan requires one before the behaviour
-# changes — this test is the failing-test half of that decision, not a request
-# to change anything.
+# The image's own IPTC record is a different source and still fills: snapfab's
+# JPEG writer puts `e2e_corrupt_xmp_embedded` in an XMP packet *and* in an IIM
+# record, so the keyword reaches the index through IIM 2:25 `Keywords` even
+# though the XMP source yielded nothing.
 #
-# The positive control is `sidecar_xmp_is_authoritative_over_embedded_xmp`: same
-# two files, readable sidecar, sidecar keyword present and embedded keyword
-# absent. Together they show the outcome comes from the sidecar's content
-# quality, not from the embedded packet being unreadable in the first place.
+# The withdrawn contract: this file used to assert
+# `e2e_corrupt_xmp_embedded: absent` under the rule that "a corrupt sidecar
+# suppresses everything the file carries". That was a consequence of the retired
+# byte scan, which resolved a single source — `discover_sidecar(path)` or else
+# the file — and read nothing else. The engine swap reads the image for its IPTC
+# and text chunks regardless, so the keyword is indexed and the assertion below
+# is `present`.
+#
+# The control is `sidecar_xmp_is_authoritative_over_embedded_xmp`: the same two
+# files with a readable sidecar, where the sidecar's own description is what
+# reaches the field.
 #
 # Also asserted: a corrupt sidecar does not fail the index. The file is
-# readable, so the job is `completed` with no failures; only the keyword is lost.
+# readable, so the job is `completed` with no failures; only the sidecar's own
+# keyword is lost.
 given:
   - photo: /e2e_corrupt_xmp/photo.jpg
     tags:
@@ -41,13 +44,15 @@ when:
   - call: GET /get/get-tags
 then:
   - response.status: 200
-  # The well-formed embedded packet contributed nothing.
-  - array_where:
-      where:
-        tag: e2e_corrupt_xmp_embedded
-      expect: absent
-  # And the truncated sidecar contributed nothing either.
+  # The XMP source is the corrupt sidecar, so nothing it holds is indexed.
   - array_where:
       where:
         tag: e2e_corrupt_xmp_unclosed
       expect: absent
+  # The image's own IPTC record is not part of the XMP source, so the keyword
+  # the file carries in IIM 2:25 `Keywords` is indexed. Before the engine swap
+  # this was `absent`; see the header.
+  - array_where:
+      where:
+        tag: e2e_corrupt_xmp_embedded
+      expect: present
