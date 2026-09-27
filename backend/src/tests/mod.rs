@@ -9,3 +9,6 @@ mod backend_api;
 
 #[cfg(test)]
 mod capabilities;
+
+#[cfg(test)]
+mod seeds;

@@ -42,22 +42,80 @@ Each entry in `given:` seeds state. Some forms may bind a result to
 Variables are interpolated as `${variable_name}` in string values across
 all verb blocks.
 
-| Form                | Description                                     | Available in |
-| ------------------- | ----------------------------------------------- | ------------ |
-| `empty: true`       | No-op; signals intent to start from clean state | API, UI      |
-| `dir_album: <path>` | Create a directory album on disk                | API, UI      |
-| `photo: <path>`     | Write a minimal JPEG to the image store         | API, UI      |
-| `remove: <path>`    | Remove a file from the image store              | API, UI      |
-| `config: { ... }`   | Set backend config via HTTP API                 | UI only      |
+| Form                   | Description                                     | Available in |
+| ---------------------- | ----------------------------------------------- | ------------ |
+| `empty: true`          | No-op; signals intent to start from clean state | API, UI      |
+| `dir_album: <path>`    | Create a directory album on disk                | API, UI      |
+| `photo: <path>`        | Write a minimal JPEG to the image store         | API, UI      |
+| `fixture: <object>`    | Copy a checked-in fixture into the image store  | API          |
+| `raw_file: <path>`     | Write UTF-8 text to a path                      | API, UI      |
+| `random_media: <path>` | Write the format the run's seed selected        | API          |
+| `remove: <path>`       | Remove a file from the image store              | API, UI      |
+| `config: { ... }`      | Set backend config via HTTP API                 | UI only      |
 
 Optional modifier fields:
 
-| Field                  | Applies to       | Description                               |
-| ---------------------- | ---------------- | ----------------------------------------- |
-| `id_as: <name>`        | dir_album, photo | Binds result to `${name}`                 |
-| `tags: [<tag>, ...]`   | photo            | Sets photo tags                           |
-| `exif_date: <string>`  | photo            | Sets `DateTimeOriginal`                   |
-| `color: [<r>,<g>,<b>]` | photo            | Sets pixel colour (decoded fixtures only) |
+| Field                  | Applies to                              | Description                               |
+| ---------------------- | --------------------------------------- | ----------------------------------------- |
+| `id_as: <name>`        | dir_album, photo, fixture, random_media | Binds result to `${name}`                 |
+| `asset_id_as: <name>`  | photo, fixture, random_media            | Binds the API identity to `${name}`       |
+| `tags: [<tag>, ...]`   | photo                                   | Sets photo tags                           |
+| `exif_date: <string>`  | photo                                   | Sets `DateTimeOriginal`                   |
+| `color: [<r>,<g>,<b>]` | photo                                   | Sets pixel colour (decoded fixtures only) |
+
+### `randomize:` (API only)
+
+Opt a scenario into seeded format selection. It then runs **once per seed** in
+the named set, and each pass materialises `random_media` in the format that seed
+resolves to. The seed randomises the _input_; the assertions stay the same for
+every seed, so they may only assert what holds for every eligible format.
+
+```yaml
+randomize:
+  seeds: ci # a set name from backend/tests/seeds.json; defaults to `ci`
+given:
+  - random_media: /e2e_rand_meta/asset # written as asset.<ext>, e.g. asset.tif
+    id_as: $photo
+    asset_id_as: $asset_id
+  - raw_file: /e2e_rand_meta/asset.xmp # sidecar XMP works for every format
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.ext: ${ext}
+  - file_exists: e2e_rand_meta/asset.${ext}
+```
+
+`random_media` binds three variables for the rest of the scenario: `${format}`
+(the selected format's name), `${ext}` (its canonical extension, which is
+appended to the path), and `${mime}` (its content type from the capability
+manifest, for an `upload` step's `content_type`).
+
+Selection is a filter over `utils/snapfab/capabilities.json`: only formats with
+a _verified fixture_ (generated or pinned) and no expected failure beyond `none`
+can be picked, so HEIF/HEIC and AVIF can never be selected. The format and its
+fixture are recorded per seed in `backend/tests/seeds.json` (`resolvesTo`), and
+a test fails if a recorded seed no longer resolves to the format recorded for it.
+
+| Source                       | Effect                                                 |
+| ---------------------------- | ------------------------------------------------------ |
+| scenario's `randomize.seeds` | The set that runs. Default `ci`.                       |
+| `PICASU_RANDOM_SEEDS=<set>`  | Run that set instead (e.g. `nightly`).                 |
+| `PICASU_RANDOM_SEEDS=1,5`    | Run exactly those seeds, to replay a reported failure. |
+
+Each pass prints its seed and resolved format, and a failure repeats them in the
+panic message:
+
+```
+[randomized] <scenario> run 3/6: seed=2 format=tiff ext=tif source=pinned fixture=tiff-48x32-exif
+```
 
 ### `config:` (UI only)
 
@@ -104,6 +162,10 @@ build time.
 
 `<json-path>` is a dot-separated path into the response JSON, e.g.
 `prefetch.locateTo` or `prefetch.timestamp`.
+
+`${var}` interpolation applies to `response.<json-path>` values and to
+`file_exists` / `file_absent` paths, so a randomized scenario can assert on the
+selected format's extension.
 
 ### Multi-step chains
 

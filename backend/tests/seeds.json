@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "note": "Fixed seed sets for the randomized API scenarios in backend/tests/scenarios. A scenario opts in with a top-level `randomize: {seeds: <set>}` block and runs once per seed in that set. The default set is `ci`; PICASU_RANDOM_SEEDS overrides it with a set name or a comma-separated seed list (used to replay one failure). `resolvesTo` is a golden table: it records the format each seed must select, so a change to the capability manifest or to the selector's mapping fails a test instead of silently re-pointing every recorded scenario at a different format. Re-derive it deliberately, and extend the `ci` set so a newly covered format is exercised on every pull request.",
+  "sets": {
+    "ci": {
+      "seeds": [0, 1, 2, 3, 5, 19],
+      "resolvesTo": [
+        { "seed": 0, "format": "mov" },
+        { "seed": 1, "format": "webp" },
+        { "seed": 2, "format": "tiff" },
+        { "seed": 3, "format": "png" },
+        { "seed": 5, "format": "mp4" },
+        { "seed": 19, "format": "jpeg" }
+      ]
+    },
+    "nightly": {
+      "seeds": [
+        0, 1, 2, 3, 5, 19, 20, 21, 22, 23, 25, 34, 35, 36, 38, 39, 40, 42
+      ],
+      "resolvesTo": [
+        { "seed": 0, "format": "mov" },
+        { "seed": 1, "format": "webp" },
+        { "seed": 2, "format": "tiff" },
+        { "seed": 3, "format": "png" },
+        { "seed": 5, "format": "mp4" },
+        { "seed": 19, "format": "jpeg" },
+        { "seed": 20, "format": "jpeg" },
+        { "seed": 21, "format": "mov" },
+        { "seed": 22, "format": "mp4" },
+        { "seed": 23, "format": "tiff" },
+        { "seed": 25, "format": "png" },
+        { "seed": 34, "format": "webp" },
+        { "seed": 35, "format": "png" },
+        { "seed": 36, "format": "webp" },
+        { "seed": 38, "format": "jpeg" },
+        { "seed": 39, "format": "mp4" },
+        { "seed": 40, "format": "tiff" },
+        { "seed": 42, "format": "mov" }
+      ]
+    }
+  }
+}
