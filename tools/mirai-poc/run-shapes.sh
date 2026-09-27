@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# Reproduce the plan step 4 shape matrix: the Rocket/Tokio handler shapes the
-# Picasu backend needs, measured on MIRAI 1.1.12.
+# Reproduce the plan step 4 and step 5 shape matrix: the Rocket/Tokio handler
+# shapes the Picasu backend needs, and the real get_rows / get_scroll_bar /
+# read_scrollbar / read_row bodies reduced to a crate without dependencies,
+# measured on MIRAI 1.1.12.
 #
 #   tools/mirai-poc/run-shapes.sh            every case
 #   tools/mirai-poc/run-shapes.sh spawn      only cases whose id contains "spawn"
+#   tools/mirai-poc/run-shapes.sh fixture-backend
 #
 # See ../README.md for the findings and the matrix. The script exits non-zero if
 # a case stops matching, so it doubles as the gate for those claims.
 #
-# Differences from ../run.sh, all of them forced by the fixtures having
+# Differences from ../run.sh, all of them forced by some fixture having
 # dependencies:
 #
-# - The dependency-free fixture gets a fresh target directory per case, because
+# - The dependency-free fixtures get a fresh target directory per case, because
 #   MIRAI is a rustc wrapper: if cargo considers the crate fresh it never invokes
 #   MIRAI and the run silently reports nothing.
 # - The two fixtures with dependencies share one target directory, because
@@ -27,11 +30,13 @@
 # - `time` and `encoding_rs` are pinned back to the newest versions that build on
 #   MIRAI's pinned compiler. Their current versions declare `rust-version = 1.88`
 #   and rocket 0.5.1 depends on both, so without this the fixture does not build
-#   at all. The pins are applied to the scratch copy only.
+#   at all. The pins are applied to the scratch copy only. `run-backend.sh` shows
+#   that the same pins are refused for the real backend, by version requirement
+#   rather than by MSRV.
 #
 # Requires: endorlabs/MIRAI v1.1.12 installed as `cargo-mirai`/`mirai`, the
 # nightly-2025-01-10 toolchain with the rustc-dev and rust-src components, and
-# network access for the first run (the fixtures have dependencies).
+# network access for the first run (two of the fixtures have dependencies).
 
 set -uo pipefail
 
@@ -115,6 +120,37 @@ cases=(
   "fixture-rocket|verify|r1_get_primitive_to_helper_unwrap|0||"
   "fixture-rocket|verify|r4_post_json_body_unwrap|0||"
   "fixture-rocket|verify|r6_get_async_spawn_blocking_helper|0||"
+  # Plan step 5: the real get_rows / get_scroll_bar / read_scrollbar / read_row
+  # bodies, dependency-free. The counts and messages are what the shape does,
+  # not what the plan hoped for; ../README.md explains each one. In particular
+  # b1/b6/b12/b13 are the negatives the plan's acceptance criterion asks about,
+  # and they assert the *absence* of the sink message rather than a count alone.
+  "fixture-backend|paranoid|*|22||"
+  "fixture-backend|verify|*|0||"
+  "fixture-backend|paranoid|b1_read_tree_snapshot_expect|0||result unwrap failed"
+  "fixture-backend|paranoid|b2_get_scroll_bar_prefix_expect|1|possible attempt to add with overflow|result unwrap failed"
+  "fixture-backend|paranoid|b3_read_scrollbar_prefix_expect|1|possible attempt to add with overflow|result unwrap failed"
+  "fixture-backend|paranoid|b4_get_scroll_bar_current|1|possible attempt to add with overflow|"
+  "fixture-backend|paranoid|b5_get_scroll_bar_prefix_unwrap|2|result unwrap failed|"
+  "fixture-backend|paranoid|b6_read_scrollbar_option_expect_prefix|0||"
+  "fixture-backend|paranoid|b7_get_width_height_prefix_index|1|possible index out of bounds|"
+  "fixture-backend|paranoid|b8_read_row_prefix_range|1|possible attempt to multiply with overflow|index out of bounds"
+  "fixture-backend|paranoid|b9_read_row_chunk_math|1|possible attempt to multiply with overflow|"
+  "fixture-backend|paranoid|b10_get_rows_sync_no_handoff|1|possible attempt to multiply with overflow|index out of bounds"
+  "fixture-backend|paranoid|b11_get_rows_sync_handoff|1|possible attempt to multiply with overflow|index out of bounds"
+  "fixture-backend|paranoid|b12_get_rows_full_shape|0||"
+  "fixture-backend|paranoid|b13_get_rows_async_concrete_sink|0||called \`Option::unwrap()\` on a \`None\` value"
+  "fixture-backend|paranoid|b14_get_scroll_bar_guard_discarded|1|possible attempt to add with overflow|"
+  "fixture-backend|paranoid|b15_get_scroll_bar_guard_propagated|1|possible attempt to add with overflow|"
+  "fixture-backend|paranoid|b16_local_result_expect|1|possible result unwrap failed|"
+  "fixture-backend|paranoid|b17_snapshot_err_without_loop|1|result unwrap failed|"
+  "fixture-backend|paranoid|b18_snapshot_err_with_loop|0||result unwrap failed"
+  "fixture-backend|verify|b1_read_tree_snapshot_expect|0||result unwrap failed"
+  "fixture-backend|verify|b5_get_scroll_bar_prefix_unwrap|0||"
+  "fixture-backend|verify|b7_get_width_height_prefix_index|0||"
+  "fixture-backend|verify|b12_get_rows_full_shape|0||"
+  "fixture-backend|verify|b14_get_scroll_bar_guard_discarded|0||"
+  "fixture-backend|verify|b15_get_scroll_bar_guard_propagated|0||"
 )
 
 # The first blocker of the rocket experiment, isolated. The fixture has two
@@ -143,10 +179,14 @@ printf 'MIRAI %s, toolchain %s (%s), scratch %s\n\n' \
 
 # Copy the fixtures out of the repository. They are never built in place.
 rm -rf "$work/fixture-handler" "$work/fixture-tokio" "$work/fixture-rocket" \
-  "$work/fixture-msrv" "$work/target" "$work/logs"
+  "$work/fixture-backend" "$work/fixture-msrv" "$work/target" "$work/logs"
+# A crashed rustc or MIRAI run leaves its TMPDIR behind, and this machine has a
+# per-user /tmp quota, so the leftovers are the disk-quota failure above waiting
+# to happen.
+rm -rf "$work"/.tmp*
 mkdir -p "$work/logs"
 cp -r "$here/fixture-handler" "$here/fixture-tokio" "$here/fixture-rocket" \
-  "$here/fixture-msrv" "$work/"
+  "$here/fixture-backend" "$here/fixture-msrv" "$work/"
 
 # The dependency fixtures need a lock file before `cargo update --precise` works.
 # Only the rocket fixture needs the pins; tokio has no MSRV-conflicting
@@ -194,7 +234,7 @@ run_mirai() {
   local flags="--diag=$level"
   [ "$func" != '*' ] && flags="$flags --single_func $func"
   local dir start end code
-  if [ "$fixture" = fixture-handler ]; then
+  if [ "$fixture" = fixture-handler ] || [ "$fixture" = fixture-backend ]; then
     dir="$work/target/$fixture-$level-$func"
     rm -rf "$dir"
   else

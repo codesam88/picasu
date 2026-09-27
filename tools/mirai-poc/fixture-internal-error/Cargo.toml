@@ -1,0 +1,14 @@
+[package]
+name = "mirai-poc-fixture-internal-error"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Its own workspace root, like every other fixture here: the repository root is a
+# cargo workspace and this crate is not a member of it.
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]

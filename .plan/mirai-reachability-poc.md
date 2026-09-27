@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: chore
 priority: high
 area: testing
@@ -52,7 +52,148 @@ PoC, not an immediate CI integration.
 - Commit only bounded, verified steps; do not commit generated databases or
   tool caches.
 
+## Outcome
+
+**Rejected as a backend gate.** MIRAI 1.1.12 is not adopted, not even as an
+advisory diagnostic. The evidence is in `tools/mirai-poc/README.md` and is
+reproducible with `run.sh`, `run-shapes.sh` and `run-backend.sh`.
+
+1. **The backend cannot be built by MIRAI's compiler.** The exact command a gate
+   would use, run on a copy of the workspace:
+
+   ```sh
+   cd <copy>/backend
+   CARGO_TARGET_DIR=<scratch> TMPDIR=<scratch> MIRAI_FLAGS=--diag=paranoid \
+     cargo +nightly-2025-01-10 mirai --lib
+   ```
+
+   It exits **101 after about 1 s**, before MIRAI runs, with
+
+   ```text
+   error: rustc 1.86.0-nightly is not supported by the following packages:
+     built@0.8.1 requires rustc 1.87
+     encoding_rs@0.8.40 requires rustc 1.88   (x3)
+     image@0.25.10 requires rustc 1.88.0
+     image_hasher@3.1.1 requires rustc 1.87.0
+     jsonwebtoken@11.1.0 requires rustc 1.88.0
+     redb@4.3.0 requires rustc 1.90          (x3)
+     time@0.3.55 requires rustc 1.88.0        (x2)
+     time-core@0.1.9 requires rustc 1.88.0    (x2)
+     time-macros@0.2.32 requires rustc 1.88.0 (x2)
+   ```
+
+   15 lines, 9 distinct packages.
+
+2. **The workaround is not a lock-file edit.** Of the nine pins that the pinned
+   nightly's MSRV would accept, **2 apply and 7 are refused by version
+   requirements** — four of them by `backend/Cargo.toml` itself
+   (`image = "^0.25.10"`, `image_hasher = "^3.1.1"`, `jsonwebtoken = "^11.0.0"`,
+   `redb = "^4.1"`), one by `cookie_store 0.22.1` (`time = "^0.3.47"`), and two as
+   a consequence of `time` staying at 0.3.55. `redb` is the hard one: every
+   release from 3.0.0 on needs rustc 1.89+, so the newest acceptable is 2.6.3, two
+   major versions down, with API changes in the backend.
+3. **It would not see the code anyway.** Every handler under
+   `backend/src/router/{get,put,post}` is `async fn` and no `async fn` body is
+   analyzed; `get_rows` also hands off to `spawn_blocking`, whose closure is never
+   analyzed. Step 5 adds a third blind spot: a value produced by a loop is lost,
+   so a helper that finds its `Err` by scanning a table is opaque.
+4. **The plan's acceptance criterion for step 5 is not met.**
+   `timestamp -> read_scrollbar -> expect` is **not detected** at `paranoid` or
+   `verify`, with the sink in isolation, while the same `Result` consumed with
+   `unwrap` and the same sink on a locally built `Result` are both reported. The
+   discarded-guard question is not answerable at any level: `let _ = auth;` and
+   `let _ = auth?;` produce identical output.
+5. **The gate mechanics do not close.** Diagnostics never change the exit code, so
+   a gate must scrape output; 16 of the 22 crate-wide diagnostics in the step 5
+   fixture are MIRAI's own model of `Enumerate::next` and of
+   `row_index * ROW_BATCH_NUMBER`, attributed by primary span to the analyzed
+   crate, so span filtering does not remove them; and a plain counted loop makes
+   MIRAI abort with a Z3 error — exit 101 with **zero** `[MIRAI]` lines, which a
+   scraping gate reads as clean.
+
+**Recommended follow-up:** keep the `syn` ratchet plus the targeted runtime tests
+as the mechanism, and carry two facts into the next candidate for
+request-input-to-panic reachability: an approach that analyzes function bodies
+rather than futures cannot see a single handler in this backend, and the same
+holds for a value produced by a loop. Judge the next tool on whether it enters
+coroutine bodies and loop-produced values, not on whether it finds `unwrap` in a
+fixture. MIRAI's strength on sync, non-handed-off shapes is real and documented
+in the PoC README; it does not transfer.
+
 ## Progress
+
+- 2026-09-27: Steps 5 and 6 executed. The real backend command was run and fails
+  in cargo before analysis; the pin cascade was measured; the reduced real bodies
+  were analyzed in `tools/mirai-poc/fixture-backend`; the decision above is
+  recorded. Status is `done`: the evaluation is complete and the outcome is a
+  rejection, so there is no integration work left in this plan. Nothing outside
+  `tools/mirai-poc/` and this file was changed, and the repository `Cargo.lock`,
+  toolchain and production code are untouched.
+
+  - **Step 5, the command and its first blocker.** `run-backend.sh` copies
+    `Cargo.toml`, `Cargo.lock`, `.cargo`, `backend/` and `utils/` out of the
+    repository and runs the command above in the copy. Exit **101**, **1.0 s**,
+    first line `error: rustc 1.86.0-nightly is not supported by the following packages:`.
+    The script asserts the exit code, the message and `redb` in the list, and
+    prints whether the repository `Cargo.lock` is unchanged (yes).
+  - **Step 5, how deep the blocker goes.** The nine MSRV pins and their results
+    are tabulated in the README. `cargo check --lib` after the two accepted pins
+    still exits 101 naming `redb` and `jsonwebtoken`. One correction to the
+    earlier progress note: the `icu_*` packages are in the root lock but **not in
+    the lib target's graph** (`cargo tree -p picasu --edges normal` has no `icu_*`
+    entry), so the earlier "18 of 480" is a figure for the lock and the figure
+    for the crate MIRAI would analyze is 9 distinct packages.
+  - **Step 5, the reduction.** `fixture-backend` holds the real bodies of
+    `get_rows`, `get_scroll_bar`, `read_scrollbar`, `read_row`,
+    `read_tree_snapshot` and `get_width_height` in the pre-fix revision
+    (`5083c5fb^`) and the current one, with no dependencies: 18 cases plus a
+    crate-wide run, 26 rows in `run-shapes.sh`. The README lists what the
+    reduction loses in full — Rocket's attribute and data plumbing, the `DashMap`
+    and redb stores, the row count (modeled as a `usize` parameter, because a
+    const length would let MIRAI prove every bounds check), the real
+    `spawn_blocking` worker, chrono, and the non-control-flow statements.
+    **The backend was not analyzed**; the reduction was, and the reduction is not
+    the optimistic case for the real helper, whose `Err` comes from a match on
+    redb's `TableError`.
+  - **The plan's step 5 acceptance criterion, answered.** `b1` puts the sink in
+    isolation — `read_tree_snapshot(timestamp).expect(..)` — and reports nothing
+    at `paranoid` or `verify`. `b5` (the same value with `Result::unwrap`) and
+    `b16` (the same sink on a `Result` the function builds itself) are both
+    reported, so the sink is modelled and the loss is upstream. `b17`/`b18` locate
+    it: the same store lookup written as an `if` is reported, and written as a
+    `for` loop it is silent. **MIRAI 1.1.12 loses a value produced by a loop**,
+    which is the shape of `read_tree_snapshot` and most of
+    `backend/src/storage`. This is a third blind spot next to `async` and
+    `spawn_blocking`, and it is new in this step.
+  - **The discarded guard, re-measured at the real shape.** `b14`
+    (`let _ = auth;`) and `b15` (`let _ = auth?;`) agree in every column at both
+    levels, so step 5's second question has the same answer as step 4's: not
+    answerable, because MIRAI has no notion of a request guard.
+  - **The `get_rows` ladder.** `b7` (index sink alone) 1, `b8`/`b9` (the real
+    `read_row` body) 1 — and it is `possible attempt to multiply with overflow`,
+    not the index, `b10`/`b11` (the handler without the coroutine) 1, `b12` (the
+    handler as written) 0, and `b13` (a _certain_ panic in the same position) 0.
+    So three mechanisms each independently hide this path, and the one that
+    survives `async` removal is a diagnostic about an unreachable overflow rather
+    than about the index.
+  - **Two new gate hazards, both reproducible.** `.iter().enumerate()` produces
+    `possible attempt to add with overflow` with the **primary span in the
+    analyzed crate**, so a `core`/`std` span filter keeps it; 18 of the 22
+    crate-wide diagnostics in the fixture are that artifact or the multiply one.
+    And `fixture-internal-error` — a counted loop with an accumulator — makes
+    MIRAI abort with `Error: Argument … has sort (_ BitVec 64) it does not match
+declaration (declare-fun bvxor …)`, exit 101, **zero** `[MIRAI]` lines, at
+    every level. A gate that scrapes `[MIRAI]` reads a crash as a clean run.
+  - **Cost.** `fixture-backend` is 0.3-1.4 s per case (median 0.68 s) over 26
+    cases, so the reduced analysis is cheap; the backend's own graph is never
+    built, so the `--crate_analysis_timeout` budget is never spent.
+  - **Not tested.** No measurement exists on the real backend source, because the
+    tool cannot compile it; everything about the real `read_scrollbar` and
+    `read_row` here is the reduction. Whether MIRAI's loop blindness also applies
+    to `for` over a `DashMap`/`redb` iterator was not measured — the reduction
+    iterates a slice, and both real iterators are dependencies MIRAI cannot
+    resolve, which can only add blindness, not remove it. MIRAI's own
+    `--call-graph` mode and a newer MIR fork were not evaluated.
 
 - 2026-09-26: Step 4 executed a second time against the real framework, since
   the first pass had inferred the tokio and Rocket behavior from stand-ins.
