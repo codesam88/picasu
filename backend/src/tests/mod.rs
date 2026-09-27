@@ -15,3 +15,6 @@ mod openapi_contract;
 
 #[cfg(test)]
 mod openapi_parity;
+
+#[cfg(test)]
+mod seeds;

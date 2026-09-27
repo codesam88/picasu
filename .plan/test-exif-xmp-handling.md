@@ -278,6 +278,48 @@ Randomization should complement, not replace, the deterministic matrix.
 
 ## Progress
 
+- 2026-09-27 — Iteration 6 done. Correction first: the Iteration 0 note above
+  claimed "manifest-driven randomized fixture selection" existed — it did not;
+  only format/extension lookup existed. The selector is now real:
+  `utils/snapfab/src/selection.rs` (`randomizable_formats` + `select(seed,
+manifest)`), deterministic by an eligible list sorted by format name plus a
+  hand-rolled splitmix64 mix — `SmallRng` was rejected because it is not
+  stable across crate versions and a recorded seed must keep resolving to the
+  same format when a dependency moves. Eligibility = manifest entry ∧ verified
+  fixture ∧ `expectedFailureClasses ⊆ {none}`; HEIF/AVIF exclusion is
+  structural (no encoder, no fixture → never eligible), backed by a second
+  backend-side check that every selectable format is in the upload/index
+  allowlist. Scenario opt-in is a top-level `randomize: {seeds: <set>}` block;
+  a `random_media: <stem>` given verb materializes the selection and binds
+  `${format}`/`${ext}`/`${mime}`; the selection is logged as a banner that
+  survives panics (`run 3/6: seed=2 format=tiff ... source=pinned
+fixture=tiff-48x32-exif`). Seed manifest `backend/tests/seeds.json`: `ci`
+  = 6 fixed seeds covering each of the 6 formats exactly once with a golden
+  `resolvesTo` table (a new format fails a test until a seed is added),
+  `nightly` = 18 seeds (superset, 3× per format), default `ci`,
+  `PICASU_RANDOM_SEEDS` overrides by set name or explicit list; no CI workflow
+  change needed. Three randomized scenarios pin format-independent flows
+  (index+metadata, upload+membership, delete+sidecar) across all 6 CI seeds —
+  assertions deliberately exclude format-specific values. The UI harness was
+  left unchanged after measurement: `executeGiven.ts` drives `snapfab batch`
+  whose format enum is jpeg|png only, so a TS mirror would randomize over 2 of
+  6 formats; cross-format UI coverage belongs to Iteration 7. Mutation checks:
+  26/26 killed. Open questions: (a) deleting a video orphans its `.jpg`
+  thumbnail — `AbstractData::Video::compressed_path()` returns the compressed
+  `.mp4`, not the thumbnail the video pipeline wrote, so `delete_data` never
+  removes it (image-only `thumb_absent` stays pinned; product decision:
+  should deleting a video drop its thumbnail?); (b) a synthetic manifest whose
+  heif entry carried a resolvable fixture would be selectable by snapfab alone
+  — the backend allowlist check is the layer that rejects it, noted as the
+  residual gap. Environment note: the shared `/tmp` 32 G tmpfs filled twice
+  during this plan's work (Iteration 4 and here), and a `git stash pop` under
+  quota pressure restored untracked files as 0 bytes (recovered from the
+  stash; digests verified). Workers should set
+  `TMPDIR=/home/codesam/.cache/picasu-scratch-tmp` when `/tmp` runs low. Gates:
+  `cargo test -p picasu` (379), `cargo test -p snapfab` (62),
+  `PICASU_RANDOM_SEEDS=nightly` randomized runs, `just backend-check`,
+  `just utils-check`, `just docs-check`, `just frontend-check`,
+  `just frontend-playwright` (36 passed), `just plan-lint` — all pass.
 - 2026-09-26 — Iteration 5 done. Negative-coverage inventory: empty file,
   truncated image, truncated video, corrupt EXIF in a decodable image, corrupt
   sidecar, and missing optional fields were all uncovered and now have

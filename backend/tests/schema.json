@@ -111,6 +111,26 @@
       "required": ["fixture"],
       "additionalProperties": false
     },
+    "givenRandomMedia": {
+      "description": "Materialise the format the run's seed selected, as `<path>.<ext>`. The extension comes from the capability manifest, and the bytes are generated (jpeg, png) or copied from the pinned fixture the manifest names (tiff, webp, mp4, mov). Requires a top-level `randomize` block. Binds `${format}`, `${ext}` and `${mime}` from the selection so assertions never hard-code a format.",
+      "type": "object",
+      "properties": {
+        "random_media": {
+          "description": "Path stem; the selected format's canonical extension is appended.",
+          "type": "string"
+        },
+        "id_as": {
+          "type": "string",
+          "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "asset_id_as": {
+          "type": "string",
+          "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
+        }
+      },
+      "required": ["random_media"],
+      "additionalProperties": false
+    },
     "givenDuplicateOf": {
       "description": "Byte-identical copy of a file already placed in the given phase.",
       "type": "object",
@@ -239,6 +259,9 @@
         },
         {
           "$ref": "#/definitions/givenFixture"
+        },
+        {
+          "$ref": "#/definitions/givenRandomMedia"
         },
         {
           "$ref": "#/definitions/givenDuplicateOf"
@@ -639,6 +662,17 @@
       "properties": {
         "name": {
           "type": "string"
+        },
+        "randomize": {
+          "description": "Opt into seeded format selection. The scenario then runs once per seed in the named set, each pass materialising `random_media` in the format that seed resolves to. `PICASU_RANDOM_SEEDS` overrides the set with a set name or a comma-separated seed list; unset, the scenario runs exactly its named set (the fixed `ci` set by default).",
+          "type": "object",
+          "properties": {
+            "seeds": {
+              "description": "A set name from backend/tests/seeds.json. Defaults to `ci`.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
         },
         "given": {
           "type": "array",
