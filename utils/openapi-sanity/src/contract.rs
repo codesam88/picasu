@@ -35,6 +35,9 @@ pub struct SpecOperation<'a> {
     pub responses: Vec<u16>,
     /// Whether the operation carries a non-empty `security` requirement.
     pub secured: bool,
+    /// The subject tags the operation declares, in document order. Empty when it
+    /// declares none, which [`crate::check_tags`] reports.
+    pub tags: Vec<&'a str>,
 }
 
 impl SpecOperation<'_> {
@@ -84,6 +87,7 @@ pub fn spec_operations(document: &serde_json::Value) -> Vec<SpecOperation<'_>> {
                     operation_id: operation.get("operationId").and_then(|id| id.as_str()),
                     responses: declared_statuses(operation),
                     secured: declares_security(operation),
+                    tags: declared_tags(operation),
                 })
             }))
         })
@@ -117,6 +121,21 @@ fn declares_security(operation: &serde_json::Value) -> bool {
         .get("security")
         .and_then(serde_json::Value::as_array)
         .is_some_and(|requirements| !requirements.is_empty())
+}
+
+/// The subject tags an operation declares, in document order.
+///
+/// An entry that is not a string names no subject, so it is left out rather than
+/// guessed at, and an operation whose `tags` is not an array at all is read as
+/// carrying none — which [`crate::check_tags`] reports. The document is generated
+/// from `tag = "..."` literals, so neither shape is reachable from the generator
+/// and reading them leniently costs nothing.
+fn declared_tags(operation: &serde_json::Value) -> Vec<&str> {
+    operation
+        .get("tags")
+        .and_then(serde_json::Value::as_array)
+        .map(|tags| tags.iter().filter_map(serde_json::Value::as_str).collect())
+        .unwrap_or_default()
 }
 
 /// Every way a set of router source files and an `OpenAPI` document disagree.

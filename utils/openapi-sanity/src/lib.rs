@@ -56,6 +56,14 @@
 //! one entry per documented operation naming the guards its handler must declare
 //! or stating why the operation is deliberately open. [`GuardClass`] is the
 //! vocabulary, [`KNOWN_GUARDS`] the single place a guard type enters it.
+//!
+//! # What the reference groups by
+//!
+//! [`check_tags`] holds the document to the subject taxonomy in [`KNOWN_TAGS`],
+//! and keeps the reserved `pages` tag on the SPA page routes and off everything
+//! else. A tag is a documentation grouping, so it says nothing about
+//! authentication — the two are separate policies, and neither is derived from
+//! the other.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -68,6 +76,7 @@ mod handlers;
 mod modules;
 mod path;
 mod routes;
+mod tags;
 
 pub use auth::{AUTH_POLICY, AuthRule, Unauthenticated, check_auth};
 pub use contract::{SpecOperation, check_contract, referenced_handler_files, spec_operations};
@@ -77,6 +86,7 @@ pub use handlers::{Handler, HandlerScan, HttpMethod};
 pub use modules::{SCANNED_MODULES, SourceUnit, handler_module_path};
 pub use path::to_spec_path;
 pub use routes::{HandlerRef, RouteScan};
+pub use tags::{KNOWN_TAGS, check_tags};
 
 /// Handler references and route facts found in one source file.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

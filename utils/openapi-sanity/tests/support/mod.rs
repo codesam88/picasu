@@ -1,9 +1,9 @@
 //! A fixture router tree and the findings the gate reports for it.
 //!
-//! Shared by `contract.rs` and `auth.rs`: both drive the same analyzer over the
-//! same trees, and a second loader would be a second thing to keep in step with
-//! the fixture layout. Each test binary uses a different part of it, so the module
-//! is not entirely reachable from either.
+//! Shared by `contract.rs`, `auth.rs` and `tags.rs`: they drive the same analyzer
+//! over the same trees, and a second loader would be a second thing to keep in step
+//! with the fixture layout. Each test binary uses a different part of it, so the
+//! module is not entirely reachable from any of them.
 
 #![allow(dead_code)]
 
@@ -11,7 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use openapi_sanity::{
-    AuthRule, GuardClass, SourceUnit, check_auth, check_contract, spec_operations,
+    AuthRule, GuardClass, SourceUnit, check_auth, check_contract, check_tags, spec_operations,
 };
 
 /// The prefix the public artifact omits on purpose, as the gate is run in the
@@ -138,6 +138,16 @@ impl Fixture {
             .collect()
     }
 
+    /// Every finding of the tag taxonomy gate for this tree, against the tree's
+    /// own `openapi.json`.
+    ///
+    /// Document-shaped like the auth gate's document half, so the router sources
+    /// are not read: a tag lives in the generated document, and the taxonomy is
+    /// about what the reference groups by.
+    pub fn tag_findings(&self, excluded: &[&str]) -> Vec<String> {
+        tag_findings_against(&self.root.join("openapi.json"), excluded)
+    }
+
     /// The label the checks see for a fixture file.
     pub fn label(&self, relative: &str) -> String {
         self.root.join(relative).display().to_string()
@@ -217,6 +227,19 @@ impl Materialised {
     pub fn replace(&self, relative: &str, source: &str) {
         fs::write(self.root.join(relative), source).expect("the fixture file is written");
     }
+}
+
+/// The tag findings of a document that is not a fixture's own — the committed
+/// artifact, or a tree a mutation rewrote — labelled as a caller would print it.
+pub fn tag_findings_against(spec: &Path, excluded: &[&str]) -> Vec<String> {
+    let document: serde_json::Value =
+        serde_json::from_str(&read(spec)).expect("the document is valid JSON");
+    let operations = spec_operations(&document);
+
+    check_tags(&spec.display().to_string(), &operations, excluded)
+        .iter()
+        .map(ToString::to_string)
+        .collect()
 }
 
 /// Every router file of a tree, as a path relative to it, sorted.

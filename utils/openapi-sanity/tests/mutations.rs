@@ -1,4 +1,4 @@
-//! What the auth rules do when the thing they watch is broken.
+//! What the rules do when the thing they watch is broken.
 //!
 //! The fixture tests pin a rule from a tree that is already drifted, which shows
 //! a rule reports but not that it is the *only* thing that reports it. These
@@ -22,6 +22,19 @@ const CLEAN: &str = "clean";
 
 /// The guard a mutation drops, as it appears in the fixture.
 const PROTECTED_GUARD: &str = "_auth: &GuardAuth";
+
+/// The subject a mutation adds, chosen because the taxonomy deliberately has no
+/// `metadata` — its operations belong to `assets`.
+const UNKNOWN_TAG: &str = "metadata";
+
+/// The data-API operation the tag mutations act on.
+const DATA_OPERATION: &str = "/get/get-data";
+
+/// The subject that operation carries in the fixture.
+const TIMELINE_TAG: &str = "timeline";
+
+/// The subject reserved for the SPA page routes.
+const PAGE_TAG: &str = "pages";
 
 #[test]
 fn removing_a_guard_from_a_protected_handler_fails() {
@@ -128,6 +141,102 @@ fn the_repository_policy_is_not_a_fixture_policy() {
     );
 }
 
+// ── The tag taxonomy ──────────────────────────────────────────────────────────
+
+/// A copy of the conforming tree with one tag changed in its document.
+///
+/// Every tag rule is measured against the same silent baseline, and each mutation
+/// changes exactly one tag, so a finding a neighbouring rule also makes shows up as
+/// an extra line in the exact expectation below.
+fn mutated_document(name: &str, change: impl FnOnce(&mut serde_json::Value)) -> Tree {
+    let tree = materialise(name);
+    assert_eq!(
+        tree.tag_findings(),
+        Vec::<String>::new(),
+        "the unmutated copy of the fixture is the baseline these mutations are \
+         measured against"
+    );
+    tree.change_document(change);
+    tree
+}
+
+#[test]
+fn dropping_a_tag_from_an_operation_fails() {
+    // What a `#[utoipa::path]` edit looks like after a regeneration: the
+    // annotation kept its path, its verb and its responses, and lost its subject.
+    let tree = mutated_document("untagged-operation", |document| {
+        let operation = document["paths"][DATA_OPERATION]["get"]
+            .as_object_mut()
+            .expect("a path item's operation is an object");
+        operation.remove("tags");
+    });
+
+    assert_eq!(
+        tree.tag_findings(),
+        vec![format!(
+            "{}/openapi.json: GET {DATA_OPERATION}: declares no tags",
+            tree.label()
+        )],
+        "an operation no subject can be read off is the drift the reference groups \
+         by nothing"
+    );
+    tree.restore(DATA_OPERATION, TIMELINE_TAG);
+}
+
+#[test]
+fn tagging_an_operation_outside_the_taxonomy_fails() {
+    let tree = mutated_document("unknown-tag", |document| {
+        document["paths"][DATA_OPERATION]["get"]["tags"] = serde_json::json!([UNKNOWN_TAG]);
+    });
+
+    assert_eq!(
+        tree.tag_findings(),
+        vec![format!(
+            "{}/openapi.json: GET {DATA_OPERATION}: unknown tag `{UNKNOWN_TAG}`",
+            tree.label()
+        )],
+        "a subject nobody reviewed is a reference group of one, and it groups under \
+         a name the documentation does not explain"
+    );
+    tree.restore(DATA_OPERATION, TIMELINE_TAG);
+}
+
+#[test]
+fn tagging_a_data_operation_pages_fails() {
+    // The mistake the reserved tag exists to catch: a data operation wearing the
+    // SPA page tag, which puts it in the same reference section as the shell.
+    let tree = mutated_document("data-operation-tagged-pages", |document| {
+        document["paths"][DATA_OPERATION]["get"]["tags"] = serde_json::json!([PAGE_TAG]);
+    });
+
+    assert_eq!(
+        tree.tag_findings(),
+        vec![format!(
+            "{}/openapi.json: GET {DATA_OPERATION}: data-API path carries the `pages` tag",
+            tree.label()
+        )]
+    );
+    tree.restore(DATA_OPERATION, TIMELINE_TAG);
+}
+
+#[test]
+fn a_page_operation_that_loses_its_pages_tag_fails() {
+    let tree = mutated_document("page-without-pages-tag", |document| {
+        document["paths"]["/login"]["get"]["tags"] = serde_json::json!(["auth"]);
+    });
+
+    assert_eq!(
+        tree.tag_findings(),
+        vec![format!(
+            "{}/openapi.json: GET /login: SPA page path must carry `pages`",
+            tree.label()
+        )],
+        "the other direction of the reserved tag: a page route grouped under a \
+         subject, which is how the shell ends up inside the data sections"
+    );
+    tree.restore("/login", PAGE_TAG);
+}
+
 // ── The mutated tree ──────────────────────────────────────────────────────────
 
 /// A writable copy of a fixture tree, plus the label its findings carry.
@@ -158,6 +267,43 @@ impl Tree {
             &[],
             policy,
         )
+    }
+
+    /// The tag gate's report for the tree's document, labelled as the tree's.
+    ///
+    /// Document-shaped, so the router sources are not read: the taxonomy is about
+    /// what the generated reference groups by, and a mutation edits the document a
+    /// regeneration would have written.
+    fn tag_findings(&self) -> Vec<String> {
+        support::tag_findings_against(&self.root.join("openapi.json"), &[])
+    }
+
+    /// Put an operation's subject back and require the tree to be silent again, so
+    /// a rule that fires for any reason at all fails here rather than passing on
+    /// the strength of the mutation's own finding.
+    fn restore(&self, path: &str, tag: &str) {
+        self.change_document(|document| {
+            document["paths"][path]["get"]["tags"] = serde_json::json!([tag]);
+        });
+        assert_eq!(
+            self.tag_findings(),
+            Vec::<String>::new(),
+            "{path} is conforming again, so the finding above has to be the mutation's"
+        );
+    }
+
+    /// Edit the tree's document in place, so a mutation can be applied and
+    /// reverted without string surgery on JSON.
+    fn change_document(&self, change: impl FnOnce(&mut serde_json::Value)) {
+        let path = self.root.join("openapi.json");
+        let mut document: serde_json::Value = serde_json::from_str(&support::read(&path))
+            .expect("the fixture document is valid JSON");
+        change(&mut document);
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&document).expect("the document serializes"),
+        )
+        .expect("the document is written");
     }
 }
 
