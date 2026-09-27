@@ -1,4 +1,5 @@
-//! Rocket route attributes and per-function `#[utoipa::path]` annotations.
+//! Rocket route attributes, per-function `#[utoipa::path]` annotations and the
+//! request guards a handler's parameters declare.
 
 use proc_macro2::{TokenStream, TokenTree};
 use syn::spanned::Spanned;
@@ -6,6 +7,7 @@ use syn::visit::{self, Visit};
 use syn::{Attribute, ItemFn, LitStr, Meta};
 
 use crate::finding::Finding;
+use crate::guards::{self, Discard, Enforcement, GuardBinding};
 
 /// HTTP method a Rocket route attribute declares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -84,6 +86,9 @@ pub struct Handler {
     /// verb anywhere among the annotation's top-level tokens, and it is what
     /// decides which operation the annotation is registered under.
     pub spec_method: Option<HttpMethod>,
+    /// The request guards the parameter list declares, in signature order. A
+    /// handler that declares none is reachable without any guard.
+    pub guards: Vec<GuardBinding>,
 }
 
 /// Route and annotation facts declared by the functions in a file.
@@ -124,7 +129,9 @@ impl<'ast> Visit<'ast> for Collector<'_> {
 ///
 /// Functions declaring neither a route nor an annotation are not part of the
 /// contract — helpers, guards and conversions — and are left out of the result
-/// rather than reported as missing an annotation.
+/// rather than reported as missing an annotation. Their parameters are still
+/// read, so a discarded guard is reported against the handler that owns it rather
+/// than against whatever route the helper feeds.
 fn describe(item: &ItemFn, label: &str, findings: &mut Vec<Finding>) -> Option<Handler> {
     let name = item.sig.ident.to_string();
     let mut method = None;
@@ -144,6 +151,9 @@ fn describe(item: &ItemFn, label: &str, findings: &mut Vec<Finding>) -> Option<H
         }
     }
 
+    let guards = guards::bindings(item);
+    report_discarded_guards(label, &name, &guards, findings);
+
     if method.is_none() && !annotated {
         return None;
     }
@@ -156,7 +166,41 @@ fn describe(item: &ItemFn, label: &str, findings: &mut Vec<Finding>) -> Option<H
         annotated,
         spec_path,
         spec_method,
+        guards,
     })
+}
+
+/// A deferred guard binding the handler body does not act on.
+///
+/// A local defect rather than a policy one: the binding is there, the guard
+/// exists, and the handler drops its failure, so the request proceeds as though
+/// it had been authorized. Reported from the scan rather than from the auth
+/// policy because it holds for any handler, listed in the route table or not.
+fn report_discarded_guards(
+    label: &str,
+    name: &str,
+    guards: &[GuardBinding],
+    findings: &mut Vec<Finding>,
+) {
+    for binding in guards {
+        let Enforcement::Discarded(discard) = binding.enforcement else {
+            continue;
+        };
+        let cause = match discard {
+            Discard::Dropped => format!("`let _ = {};` drops its failure", binding.parameter),
+            Discard::Unread => format!("`{}` is never read", binding.parameter),
+        };
+        findings.push(Finding::on_line(
+            label,
+            binding.line,
+            format!(
+                "{name}: the deferred guard {} is bound to `{}` and never enforced — \
+                 {cause}; propagate it with `?`, return it, or match on it",
+                binding.class.guard_name(),
+                binding.parameter
+            ),
+        ));
+    }
 }
 
 /// The method a Rocket route attribute declares, or `None` for any other

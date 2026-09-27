@@ -1,15 +1,17 @@
 //! `openapi-sanity check` — the source/spec half of `just openapi-check`.
 //!
-//! The gate answers one question: does the committed `OpenAPI` document describe
-//! the source that claims to produce it? The build script already warns about
-//! handlers without an annotation, and the backend contract tests compare the
-//! spec against Rocket's mounted route table at runtime; what is left between
-//! them is a comparison of the source itself, which needs no compiled artifact
-//! and can therefore run before every spec regeneration.
+//! The gate answers two questions: does the committed `OpenAPI` document describe
+//! the source that claims to produce it, and does every documented operation
+//! require the authentication the source actually performs. The build script
+//! already warns about handlers without an annotation, and the backend contract
+//! tests compare the spec against Rocket's mounted route table at runtime; what is
+//! left between them is a comparison of the source itself, which needs no compiled
+//! artifact and can therefore run before every spec regeneration.
 //!
 //! Everything here is I/O, formatting and exit codes. The rules live in
-//! [`openapi_sanity::check_contract`], so the build script, the tests and this
-//! binary cannot disagree about what counts as drift.
+//! [`openapi_sanity::check_contract`] and [`openapi_sanity::check_auth`], so the
+//! build script, the tests and this binary cannot disagree about what counts as
+//! drift.
 //!
 //! # Exit codes
 //!
@@ -29,7 +31,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use openapi_sanity::{
-    SCANNED_MODULES, SourceUnit, check_contract, referenced_handler_files, spec_operations,
+    AUTH_POLICY, SCANNED_MODULES, SourceUnit, check_auth, check_contract, referenced_handler_files,
+    spec_operations,
 };
 
 const USAGE: &str = "\
@@ -222,10 +225,18 @@ fn run(options: &Options) -> Result<Outcome, String> {
         .iter()
         .map(String::as_str)
         .collect();
-    let findings: Vec<String> = check_contract(&units, &label_for(&options.spec), &spec, &excluded)
-        .iter()
-        .map(ToString::to_string)
+    let label = label_for(&options.spec);
+
+    // Both checks read the same source through the same parse, so a diagnostic
+    // about an unparsable file is produced twice; identical lines are one
+    // problem and are printed once.
+    let mut findings: Vec<String> = check_contract(&units, &label, &spec, &excluded)
+        .into_iter()
+        .chain(check_auth(&units, &label, &spec, &excluded, AUTH_POLICY))
+        .map(|finding| finding.to_string())
         .collect();
+    findings.sort();
+    findings.dedup();
 
     Ok(if findings.is_empty() {
         let compared = spec

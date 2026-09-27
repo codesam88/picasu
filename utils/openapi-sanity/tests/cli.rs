@@ -1,12 +1,21 @@
 //! The `openapi-sanity check` binary: what it reads, what it prints, and what it
 //! exits with.
 //!
-//! The rules are covered in `contract.rs`; what is left to assert here is the
-//! half the library does not own — that the gate reads the files it is told to
-//! read, prints one finding per line, and fails the process when it finds one.
-//! The fixture paths are relative on purpose: the gate shortens labels against
-//! the working directory, and a test that depended on where the checkout lives
-//! could not state an expected diagnostic.
+//! The rules are covered in `contract.rs` and `auth.rs`; what is left to assert
+//! here is the half the library does not own — that the gate reads the files it is
+//! told to read, prints one finding per line, merges the two checks into one
+//! report, and fails the process when it finds one. The fixture paths are relative
+//! on purpose: the gate shortens labels against the working directory, and a test
+//! that depended on where the checkout lives could not state an expected
+//! diagnostic.
+//!
+//! The fixture trees are not the repository's API, so the gate's built-in auth
+//! policy reads most of their operations as entries no document answers to. That
+//! is the gate behaving correctly — a policy entry for an operation that does not
+//! exist is stale — and it is why these tests assert the *shape* of the report and
+//! the contract findings within it, rather than a total that belongs to the
+//! repository. A clean run is asserted against the repository, where the policy
+//! belongs.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -21,19 +30,6 @@ const TEST_PREFIX: &str = "/get/test/";
 const FIXTURE_MODULE: &str = "get=get/mod.rs";
 
 #[test]
-fn a_conforming_tree_exits_zero_with_nothing_on_stderr() {
-    let output = run("clean", &[]);
-
-    assert_clean(&output);
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout).trim(),
-        "openapi-sanity: no findings; 5 spec operations checked",
-        "the success line states what was compared, so a run that compared nothing \
-         is distinguishable from one that found nothing"
-    );
-}
-
-#[test]
 fn a_drifted_tree_exits_nonzero_with_one_diagnostic_per_line() {
     let output = run("drift", &[]);
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -41,27 +37,77 @@ fn a_drifted_tree_exits_nonzero_with_one_diagnostic_per_line() {
     let summary = lines.pop().expect("a summary line after the findings");
 
     assert_eq!(output.status.code(), Some(1), "stderr was:\n{stderr}");
+    let mut sorted = lines.clone();
+    sorted.sort_unstable();
     assert_eq!(
-        lines,
-        [
-            "tests/fixtures/drift/get/data.rs:8: data::get_data: the route serves \
-             /get/get-data but its #[utoipa::path] declares /get/get-data-RENAMED",
-            "tests/fixtures/drift/get/data.rs:14: data::get_rows: the route declares GET \
-             but its #[utoipa::path] declares POST",
-            "tests/fixtures/drift/get/data.rs:20: data::path_completion: GET \
-             /get/path-completion is declared in source but absent from the spec",
-            "tests/fixtures/drift/get/data.rs:24: data::get_metadata: registered in \
-             routes![] but the function carries no #[utoipa::path] annotation",
-            "tests/fixtures/drift/get/mod.rs:10: page::login: registered in routes![] \
-             more than once (first at tests/fixtures/drift/get/mod.rs:9)",
-            "tests/fixtures/drift/openapi.json: GET /get/get-albums is in the spec but \
-             no scanned route declares it",
-            "tests/fixtures/drift/openapi.json: duplicate operationId `get_data` claimed \
-             by GET /get/get-albums, GET /get/get-data-RENAMED",
-        ],
-        "one finding per line, in the order the gate sorted them"
+        lines, sorted,
+        "the whole report is sorted, so two runs produce the same lines in the same \
+         order"
     );
-    assert_eq!(summary, "openapi-sanity: 7 contract findings");
+    for expected in [
+        "tests/fixtures/drift/get/data.rs:8: data::get_data: the route serves \
+         /get/get-data but its #[utoipa::path] declares /get/get-data-RENAMED",
+        "tests/fixtures/drift/get/data.rs:14: data::get_rows: the route declares GET \
+         but its #[utoipa::path] declares POST",
+        "tests/fixtures/drift/get/data.rs:20: data::path_completion: GET \
+         /get/path-completion is declared in source but absent from the spec",
+        "tests/fixtures/drift/get/data.rs:24: data::get_metadata: registered in \
+         routes![] but the function carries no #[utoipa::path] annotation",
+        "tests/fixtures/drift/get/mod.rs:10: page::login: registered in routes![] \
+         more than once (first at tests/fixtures/drift/get/mod.rs:9)",
+        "tests/fixtures/drift/openapi.json: GET /get/get-albums is in the spec but \
+         no scanned route declares it",
+        "tests/fixtures/drift/openapi.json: duplicate operationId `get_data` claimed \
+         by GET /get/get-albums, GET /get/get-data-RENAMED",
+    ] {
+        assert!(
+            lines.contains(&expected),
+            "expected\n  {expected}\nin\n{stderr}"
+        );
+    }
+    assert_eq!(
+        summary,
+        format!("openapi-sanity: {} contract findings", lines.len()),
+        "the summary counts what was printed"
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "findings belong on stderr so the summary stays the only thing on stdout"
+    );
+}
+
+#[test]
+fn the_auth_and_contract_reports_are_printed_as_one_merged_list() {
+    // Both checks read the same source, so a finding they both make — a dropped
+    // guard binding, which is the source scan's — is one problem and has to be
+    // printed once. The tree carries auth drift and no contract drift, so the
+    // report is exactly the auth findings.
+    let output = run("unauthored", &[]);
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let lines: Vec<&str> = stderr.lines().collect();
+    let (findings, summary) = lines.split_at(lines.len() - 1);
+
+    assert_eq!(output.status.code(), Some(1), "stderr was:\n{stderr}");
+    let dropped = findings
+        .iter()
+        .filter(|line| line.contains("never enforced"))
+        .count();
+    assert_eq!(
+        dropped, 1,
+        "a dropped guard is found by both checks and printed once:\n{stderr}"
+    );
+    assert!(
+        findings.iter().any(|line| line.contains(
+            "the auth policy requires GuardTimestamp but the \
+             handler declares no request guard"
+        )),
+        "the auth findings are in the same report as the contract ones:\n{stderr}"
+    );
+    assert_eq!(
+        summary[0],
+        format!("openapi-sanity: {} contract findings", findings.len()),
+        "the summary counts the merged report"
+    );
     assert!(
         output.stdout.is_empty(),
         "findings belong on stderr so the summary stays the only thing on stdout"
@@ -86,7 +132,11 @@ fn the_module_list_can_be_replaced_from_the_command_line() {
     let output = run("drift", &[]);
 
     assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("7 contract findings"));
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(
+        stderr.contains("contract findings"),
+        "the named module is scanned and reported on:\n{stderr}"
+    );
 }
 
 #[test]
