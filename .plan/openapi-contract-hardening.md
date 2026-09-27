@@ -144,6 +144,59 @@ Low — consistency and polish:
       file, including 39 widdershins "backwards compatibility" boilerplate
       hits; consider `widdershins --summary` or trimming sample languages.
 
+## Shared OpenAPI Sanity Work
+
+This is the implementation plan for the first two mechanisms above, not a
+separate task. The existing `build.rs` route generator, OpenAPI contract tests
+and generated-artifact check should converge on one reusable source/spec
+analyzer while keeping runtime checks and endpoint behavior tests separate.
+
+### Step 1: Extract the source analyzer
+
+- Create a workspace crate at `utils/openapi-sanity/` containing the current
+  `syn` route discovery and canonical Rocket-to-OpenAPI path translation.
+- Make `build.rs`, backend contract tests and the CLI consume the same library;
+  remove the current `#[path]` duplication after the consumers are migrated.
+- Preserve byte-identical `backend/src/openapi.rs` and
+  `backend/openapi.json` output.
+- Keep malformed-source diagnostics deterministic and non-panicking.
+
+### Step 2: Make `openapi-check` the unified contract gate
+
+- Add a deterministic CLI semantic check for source/spec consistency:
+  missing function-local annotations, path/method mismatches, source/spec
+  operation drift, duplicate handler identities and duplicate operation IDs.
+- Make `just openapi-check` run the semantic check and then the generated
+  artifact diff. `just check` and CI require only this command.
+- Keep runtime mounted-route parity in backend integration tests; source
+  analysis cannot replace feature-aware runtime inspection.
+- Verify each failure mode with an injected mutation and restore it to green.
+
+### Step 3: Align authentication policy with implementation
+
+- Derive observed guard types from handler parameters, distinguishing direct
+  guards from deferred `GuardResult` guards.
+- Require protected operations to have an approved guard and matching OpenAPI
+  `401`/security policy.
+- Require deferred guard results to be propagated or inspected.
+- Keep public pages and intentional unauthenticated entry points as explicit
+  policy exceptions. Do not infer security from subject tags.
+- Migrate the existing tag and shared-401 test policy only after the new
+  library/CLI produces equivalent diagnostics.
+
+### Step 4: Add parameter and documentation consistency selectively
+
+Only add checks that have actionable source information:
+
+- OpenAPI path parameters match handler parameters;
+- optional query parameters match `Option<T>` shapes;
+- request-body declarations match `Json<T>` and upload inputs;
+- operation IDs remain stable across reviewed spec changes;
+- response schemas are referenced and not orphaned.
+
+Do not turn this into a second OpenAPI serializer or a general Rust taint
+analyzer. Request-to-panic analysis remains a separate reachability task.
+
 ## Progress
 
 - 2026-09-25: Tagged every public operation and gated the taxonomy (Medium
@@ -204,6 +257,12 @@ Low — consistency and polish:
   breaking-change detection (4), spec-driven contract smoke tests (5), plus the
   content tasks above. The markdown reference is still not drift-checked
   because `widdershins` is fetched over the network.
+- 2026-09-26: Consolidated the proposed `openapi-sanity` plan into this task.
+  `openapi-sanity` was an implementation name for the shared source/spec/auth
+  work, not an independent feature. The unified gate is `just openapi-check`:
+  semantic source/spec checks first, then generated-artifact diffing. Runtime
+  parity, endpoint scenarios, Markdown generation and request reachability
+  remain separate owners.
 - 2026-09-23: Rework-adjacent subset executed by the path-primary cleanup
   sweep (see `.plan/path-primary-cleanup.md`): test-only probes stripped from
   the public spec; `PUT /put/assign_album` given tag `albums`, a single-line
