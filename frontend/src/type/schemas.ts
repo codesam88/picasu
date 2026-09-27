@@ -38,6 +38,10 @@ const BaseObjectRaw = z.object({
   description: z.string().nullable().optional(),
   tags: z.array(z.string()).default([]),
   exifVec: z.record(z.string(), z.string()).default({}),
+  // Read-only bucket of metadata the app does not model, keyed `Group:Tag`
+  // (`IPTC:By-line`, `XMP-xmp:CreatorTool`). Absent on list rows (stripped with
+  // the rest of the metadata) and never sent for a video, so it defaults.
+  furtherMetadata: z.record(z.string(), z.string()).default({}),
   isTrashed: z.boolean().default(false),
   rating: z.number().int().min(0).max(5).nullable().optional().default(null),
   updateAt: z.number().default(0)
@@ -62,6 +66,7 @@ const ImageSchemaRaw = BaseObjectRaw.extend({
   size: data.size,
   tags: data.tags,
   exif: data.exifVec,
+  furtherMetadata: data.furtherMetadata,
   phash: data.phash,
   thumbhash: data.thumbhash,
   pending: data.pending,
@@ -93,6 +98,9 @@ const VideoSchemaRaw = BaseObjectRaw.extend({
   duration: data.duration,
   tags: data.tags,
   exif: data.exifVec,
+  // Always empty for a video: the backend fills the bucket from the ExifTool
+  // read on the image path only, a video's metadata comes from ffprobe.
+  furtherMetadata: data.furtherMetadata,
   thumbhash: data.thumbhash,
   pending: data.pending,
   album: data.album ?? null,

@@ -35,7 +35,14 @@ const SCHEMA_VERSION: u8 = 2;
 /// The table's on-disk name changed when `MetadataRecord` replaced
 /// `AbstractData` as the stored value, so rows written under the previous
 /// name are never decoded by this impl.
-const METADATA_SCHEMA_VERSION: u8 = 2;
+///
+/// Bumped to 3 when `ImagePayload` gained `further_metadata`. `MetadataRecord`
+/// is bitcode-encoded, so a row written by version 2 ends where the current
+/// `ImagePayload` expects its last field and decodes as `Err(EOF)` — without the
+/// bump that surfaces as a bare `Failed to decode MetadataRecord` panic instead
+/// of the [`rebuild_required`] message, which is the difference between an
+/// operator knowing to run `POST /post/rebuild` and not.
+const METADATA_SCHEMA_VERSION: u8 = 3;
 
 /// Abort decoding of a record this build cannot interpret, with instructions
 /// for the operator.

@@ -7,9 +7,10 @@ name: rebuild reconstructs asset identity from the filesystem but not the metada
 #
 # Measured consequence, pinned here so it cannot change silently: after a
 # rebuild the asset is still addressable by path, but its detail is served from
-# the default metadata payload — no dimensions, no EXIF, no keywords. The
-# identity cache is reconstructible from the filesystem; the metadata cache is
-# not reconstructible from raw plus sidecar by this route.
+# the default metadata payload — no dimensions, no EXIF, no keywords, no
+# further-metadata bucket. The identity cache is reconstructible from the
+# filesystem; the metadata cache is not reconstructible from raw plus sidecar
+# by this route.
 #
 # This is a recorded gap, not an endorsed contract. `reindex_reconstructs_
 # metadata_from_raw_and_sidecar` is the route that does reconstruct metadata,
@@ -26,6 +27,9 @@ given:
   - photo: /e2e_rebuild_gap/photo.jpg
     tags:
       - e2e_rebuild_gap_embedded
+    # A non-empty further-metadata bucket, so the gap below is observable for
+    # it too: rebuild drops every metadata field, and the bucket is one.
+    further_iptc: true
     id_as: $photo
   - raw_file: /e2e_rebuild_gap/photo.xmp
     content: |
@@ -79,3 +83,4 @@ then:
   - response.json.tags: []
   - response.json.rating: null
   - response.json.description: null
+  - response.json.furtherMetadata: {}

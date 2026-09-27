@@ -256,4 +256,57 @@ describe('databaseTimestampSchema', () => {
     expect('isArchived' in result.abstractData).toBe(false)
     expect(result.abstractData.id).toBe('abc123')
   })
+
+  // The detail route serves the read-only "further data" bucket, keyed
+  // `Group:Tag`; a list row never carries it. Both shapes have to survive the
+  // parser, because the sidebar reads the field off the same parsed object the
+  // list row was merged into.
+  test('further metadata survives parsing, and defaults to empty when absent', () => {
+    const base = {
+      type: 'image' as const,
+      id: 'abc123',
+      pending: false,
+      width: 100,
+      height: 100,
+      ext: 'jpg',
+      size: 1024,
+      tags: [],
+      exifVec: {},
+      rating: null,
+      updateAt: 0,
+      path: null
+    }
+    const withBucket = {
+      abstractData: {
+        ...base,
+        furtherMetadata: {
+          'IPTC:By-line': 'picasu fixture author',
+          'XMP-xmp:CreatorTool': 'snapfab 1.0'
+        }
+      },
+      timestamp: 1700000000000,
+      token: 'tok_123',
+      assetId: 'asset_abc'
+    }
+    const withoutBucket = {
+      abstractData: base,
+      timestamp: 1700000000000,
+      token: 'tok_123',
+      assetId: 'asset_abc'
+    }
+
+    const detail = databaseTimestampSchema.parse(withBucket)
+    const lean = databaseTimestampSchema.parse(withoutBucket)
+    expect(detail.abstractData.type).toBe('image')
+    expect(lean.abstractData.type).toBe('image')
+    if (detail.abstractData.type !== 'image' || lean.abstractData.type !== 'image') {
+      throw new Error('both payloads are images')
+    }
+
+    expect(detail.abstractData.furtherMetadata).toEqual({
+      'IPTC:By-line': 'picasu fixture author',
+      'XMP-xmp:CreatorTool': 'snapfab 1.0'
+    })
+    expect(lean.abstractData.furtherMetadata).toEqual({})
+  })
 })

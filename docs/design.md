@@ -81,6 +81,13 @@ and sidecars. Deleting a sidecar removes the overlay and exposes the raw
 metadata again; it does not delete metadata from the raw file. External raw
 changes are visible for every field not overridden by the sidecar.
 
+Metadata the app does not model is a category of its own, not a fallback:
+`furtherMetadata` on the detail response holds it as `Group:Tag` key/value
+pairs — read-only, with no edit path, because the app does not know what those
+fields mean well enough to write one back. The sidebar renders it as one
+section; which `ExifTool` groups reach it is documented on
+`process::xmp::map_further_fields`.
+
 Database updates and filesystem operations are not one atomic transaction. A
 journal records the intended filesystem operation and its progress; startup
 recovery and indexing rebuild or reconcile generated state from the repository.

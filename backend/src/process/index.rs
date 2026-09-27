@@ -7,7 +7,7 @@ use crate::process::misc::{
     fix_image_orientation, fix_image_width_height, fix_video_width_height, generate_dynamic_image,
     generate_image_width_height, generate_phash, generate_thumbhash,
 };
-use crate::process::xmp::native_metadata_for;
+use crate::process::xmp::{asset_metadata_for, native_metadata_for};
 
 /// Analyse the newly‑imported **image** and populate the `AbstractData` record.
 pub fn process_image_info(abstract_data: &mut AbstractData) -> Result<()> {
@@ -23,14 +23,19 @@ pub fn process_image_info(abstract_data: &mut AbstractData) -> Result<()> {
     }
 
     // Native fields: XMP from the sidecar when one exists, IPTC and PNG text
-    // from the image either way.
-    let native = native_metadata_for(&abstract_data.source_path(), record.as_ref().ok());
-    abstract_data.tag_mut().extend(native.tags);
+    // from the image either way. Plus the read-only further-data bucket for
+    // what neither projection consumed — the same two records, so it costs
+    // nothing beyond the map it fills.
+    let asset_metadata = asset_metadata_for(&abstract_data.source_path(), record.as_ref().ok());
+    abstract_data.tag_mut().extend(asset_metadata.native.tags);
     if abstract_data.description().is_none() {
-        abstract_data.set_description(native.description);
+        abstract_data.set_description(asset_metadata.native.description);
     }
     if abstract_data.rating().is_none() {
-        abstract_data.set_rating(native.rating);
+        abstract_data.set_rating(asset_metadata.native.rating);
+    }
+    if let Some(further) = abstract_data.further_metadata_mut() {
+        *further = asset_metadata.further;
     }
 
     // Decode image to DynamicImage
@@ -70,6 +75,11 @@ pub fn process_video_info(abstract_data: &mut AbstractData) -> Result<()> {
     // file otherwise. A separate `ExifTool` read from the ffprobe one above —
     // a video carries neither an IIM record nor PNG text, so the mapping sees
     // the XMP family alone.
+    //
+    // No further-data bucket here, and deliberately: a video's `exifVec` is
+    // ffprobe's, so a video's bucket would have to be derived from ffprobe's
+    // output too rather than from the `ExifTool` read above, and which of the
+    // two owns it is not decided. `process_image_info` fills the image's.
     let record = read_metadata_record(&abstract_data.source_path());
     let native = native_metadata_for(&abstract_data.source_path(), record.as_ref().ok());
     abstract_data.tag_mut().extend(native.tags);

@@ -1144,12 +1144,13 @@ fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) 
                         has_id_as = true;
                         let ph = format!("{trimmed}/.__picasu_ph__.jpg");
                         photo_specs.push(PhotoSpec {
-                            output: Some(data.join(&ph).to_string_lossy().to_string()),
+                            output: Some(data.join(&ph).to_string_lossy().into_owned()),
                             format: Some("jpeg".into()),
                             width: Some(4),
                             height: Some(4),
                             tags: None,
                             exif_date: None,
+                            further_iptc: None,
                             minimal: false,
                         });
                     }
@@ -1196,12 +1197,13 @@ fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) 
                     let destination = random_media_destination(item, selected);
                     match &selected.plan {
                         FixturePlan::Generate => photo_specs.push(PhotoSpec {
-                            output: Some(data.join(&destination).to_string_lossy().to_string()),
+                            output: Some(data.join(&destination).to_string_lossy().into_owned()),
                             format: Some(selected.format.clone()),
                             width: Some(RANDOM_MEDIA_WIDTH),
                             height: Some(RANDOM_MEDIA_HEIGHT),
                             tags: None,
                             exif_date: None,
+                            further_iptc: None,
                             minimal: false,
                         }),
                         FixturePlan::CopyFixture { id } => {
@@ -1240,12 +1242,21 @@ fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) 
                     let height = item["height"].as_u64().map_or(4, |h| h as u32);
 
                     photo_specs.push(PhotoSpec {
-                        output: Some(data.join(trimmed).to_string_lossy().to_string()),
+                        output: Some(data.join(trimmed).to_string_lossy().into_owned()),
                         format: Some(format),
                         width: Some(width),
                         height: Some(height),
                         tags: if has_tags { Some(tags) } else { None },
                         exif_date: exif_date.map(|d| d.to_string()),
+                        // `further_iptc: true` asks for the IIM datasets the
+                        // metadata engine surfaces in the read-only
+                        // "further data" bucket. Off by default, so a fixture
+                        // only carries them when its assertions need them.
+                        further_iptc: if item["further_iptc"].as_bool() == Some(true) {
+                            Some(true)
+                        } else {
+                            None
+                        },
                         minimal: false,
                     });
 

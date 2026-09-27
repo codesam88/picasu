@@ -244,6 +244,7 @@ mod tests {
                 height: Some(4),
                 tags: None,
                 exif_date: None,
+                further_iptc: None,
                 minimal: false,
             },
             snapfab::PhotoSpec {
@@ -253,6 +254,7 @@ mod tests {
                 height: Some(4),
                 tags: None,
                 exif_date: None,
+                further_iptc: None,
                 minimal: false,
             },
         ])
@@ -316,6 +318,7 @@ mod tests {
             height: Some(4),
             tags: None,
             exif_date: None,
+            further_iptc: None,
             minimal: false,
         }])
         .expect("generate photo");
@@ -430,6 +433,7 @@ mod tests {
             height: Some(4),
             tags: None,
             exif_date: None,
+            further_iptc: None,
             minimal: false,
         }])
         .unwrap();
@@ -486,6 +490,7 @@ mod tests {
             height: Some(4),
             tags: None,
             exif_date: None,
+            further_iptc: None,
             minimal: false,
         }])
         .unwrap();
@@ -525,6 +530,7 @@ mod tests {
             height: Some(4),
             tags: None,
             exif_date: None,
+            further_iptc: None,
             minimal: false,
         }])
         .unwrap();

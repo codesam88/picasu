@@ -55,6 +55,7 @@ interface PhotoManifestEntry {
   height?: number
   exif_date?: string
   tags?: string[]
+  further_iptc?: boolean
   minimal?: boolean
 }
 
@@ -167,6 +168,7 @@ export async function executeGiven(
         width?: number
         height?: number
         tags?: string[]
+        further_iptc?: boolean
         exif_date?: string
       }
       const qualified = qualifyPath(ph.photo, ns)
@@ -177,6 +179,7 @@ export async function executeGiven(
       if (ph.width) entry.width = ph.width
       if (ph.height) entry.height = ph.height
       if (ph.tags) entry.tags = ph.tags
+      if (ph.further_iptc) entry.further_iptc = ph.further_iptc
       if (ph.exif_date) entry.exif_date = ph.exif_date
       photoManifest.push(entry)
       seedEntries.push({ type: 'photo', qualifiedPath: qualified, id_as: ph.id_as })

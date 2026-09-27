@@ -17,6 +17,10 @@ export const GivenPhoto = z
     width: z.number().int().positive().optional(),
     height: z.number().int().positive().optional(),
     tags: z.array(z.string()).optional(),
+    // Ask snapfab for the IIM datasets the app does not model, so the fixture
+    // carries the read-only "further data" bucket. Needs `tags` and jpeg:
+    // snapfab writes the block only then.
+    further_iptc: z.boolean().optional(),
     exif_date: z.string().optional()
   })
   .strict()

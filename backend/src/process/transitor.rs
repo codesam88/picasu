@@ -181,9 +181,10 @@ pub fn lean_media_abstract_data(
 /// Strip share-hidden metadata fields from a response row.
 ///
 /// When `show_metadata` is false (a share that hides metadata), clears the
-/// album membership, tags, stored path, and EXIF so the filesystem path cannot
-/// leak through the shared view; tile rendering and locate rely on the
-/// row-level `asset_id`, not the stored path.
+/// album membership, tags, stored path, EXIF and the further-metadata bucket so
+/// neither the filesystem path nor the file's unmodelled metadata can leak
+/// through the shared view; tile rendering and locate rely on the row-level
+/// `asset_id`, not the stored path.
 pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metadata: bool) {
     match abstract_data {
         AbstractData::Image(img) => {
@@ -192,6 +193,7 @@ pub fn clear_abstract_data_metadata(abstract_data: &mut AbstractData, show_metad
                 img.object.tags.clear();
                 img.metadata.path = None;
                 img.metadata.exif_vec.clear();
+                img.metadata.further_metadata.clear();
             }
         }
         AbstractData::Video(vid) => {
@@ -288,6 +290,27 @@ mod tests {
         let mut data = img_with_path(false);
         clear_abstract_data_metadata(&mut data, false);
         assert!(data.path().is_none());
+    }
+
+    /// The further-metadata bucket is metadata too: `show_metadata: false` is a
+    /// share that hides what the file says about itself, and an IIM by-line or
+    /// an XMP credit is exactly that. Left in place it would be the one field
+    /// `GET /get/metadata/{assetId}` still served for a share that hid the
+    /// EXIF map beside it.
+    #[test]
+    fn clear_metadata_false_strips_further_metadata() {
+        let mut data = img_with_path(false);
+        data.further_metadata_mut()
+            .expect("an image has the bucket")
+            .insert("IPTC:By-line".to_string(), "Ada Lovelace".to_string());
+
+        clear_abstract_data_metadata(&mut data, false);
+        assert!(
+            data.further_metadata_mut()
+                .expect("an image has the bucket")
+                .is_empty(),
+            "a share that hides metadata must not receive the file's unmodelled metadata"
+        );
     }
 }
 
