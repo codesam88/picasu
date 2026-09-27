@@ -67,7 +67,7 @@ fn a_drifted_tree_exits_nonzero_with_one_diagnostic_per_line() {
     }
     assert_eq!(
         summary,
-        format!("openapi-sanity: {} contract findings", lines.len()),
+        format!("openapi-sanity: FAIL - {} contract findings", lines.len()),
         "the summary counts what was printed"
     );
     assert!(
@@ -105,7 +105,10 @@ fn the_auth_and_contract_reports_are_printed_as_one_merged_list() {
     );
     assert_eq!(
         summary[0],
-        format!("openapi-sanity: {} contract findings", findings.len()),
+        format!(
+            "openapi-sanity: FAIL - {} contract findings",
+            findings.len()
+        ),
         "the summary counts the merged report"
     );
     assert!(
@@ -139,7 +142,10 @@ fn the_tag_rules_are_part_of_the_same_report() {
     }
     assert_eq!(
         summary[0],
-        format!("openapi-sanity: {} contract findings", findings.len()),
+        format!(
+            "openapi-sanity: FAIL - {} contract findings",
+            findings.len()
+        ),
         "the summary counts the merged report"
     );
     assert!(
@@ -168,7 +174,7 @@ fn the_module_list_can_be_replaced_from_the_command_line() {
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     assert!(
-        stderr.contains("contract findings"),
+        stderr.contains("openapi-sanity: FAIL -"),
         "the named module is scanned and reported on:\n{stderr}"
     );
 }
@@ -274,7 +280,7 @@ fn the_repository_is_currently_clean() {
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
         format!(
-            "openapi-sanity: no findings; {} spec operations checked",
+            "openapi-sanity: PASS - {} spec operations checked, no findings",
             documented_operations(&repository)
         )
     );
@@ -343,12 +349,21 @@ fn assert_clean(output: &Output) {
         String::from_utf8_lossy(&output.stderr)
     );
     assert_eq!(output.status.code(), Some(0));
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("openapi-sanity: PASS -"),
+        "a clean run says so in one line on stdout, got:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
 }
 
 fn assert_unusable(output: &Output, expected: &str) {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert_eq!(output.status.code(), Some(2), "stderr was:\n{stderr}");
+    assert!(
+        stderr.contains("openapi-sanity: ERROR -"),
+        "an unusable input says so rather than passing silently:\n{stderr}"
+    );
     assert!(
         stderr.contains(expected),
         "expected `{expected}` in:\n{stderr}"

@@ -15,18 +15,24 @@
 //! [`openapi_sanity::check_auth`], so the build script, the tests and this binary
 //! cannot disagree about what counts as drift.
 //!
-//! # Exit codes
+//! # Exit codes and summary line
 //!
-//! | Code | Meaning                                                  |
-//! | ---- | -------------------------------------------------------- |
-//! | 0    | Nothing to report                                        |
-//! | 1    | At least one contract finding, one per line on stderr    |
-//! | 2    | The inputs could not be read: a missing file, a spec that is not JSON, a usage error |
+//! | Code | Meaning                                                  | Summary line |
+//! | ---- | -------------------------------------------------------- | ------------ |
+//! | 0    | Nothing to report                                        | `openapi-sanity: PASS - ...` on stdout |
+//! | 1    | At least one contract finding, one per line on stderr    | `openapi-sanity: FAIL - N contract findings` as the last stderr line |
+//! | 2    | The inputs could not be read: a missing file, a spec that is not JSON, a usage error | `openapi-sanity: ERROR - ...` on stderr |
 //!
-//! A failing gate prints one finding per line as `file:line: message`, and the
-//! lines are sorted, so two runs over the same tree produce byte-identical
-//! output. Nothing here reads the clock, the network or the environment beyond
-//! the working directory used to shorten paths in diagnostics.
+//! Every run reports exactly one of those three markers, so the verdict is
+//! readable in a log without counting lines: `PASS`, `FAIL` or `ERROR`, in
+//! plain ASCII. `PASS` is the whole of a successful run's stdout; `FAIL` is the
+//! last line of stderr, below the findings; `ERROR` names why the input was
+//! unusable, and the usage text follows it when the input was the arguments.
+//! A failing gate prints one finding per line as `file:line: message` above the
+//! `FAIL` line, and the lines are sorted, so two runs over the same tree
+//! produce byte-identical output. Nothing here reads the clock, the network or
+//! the environment beyond the working directory used to shorten paths in
+//! diagnostics.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -53,7 +59,7 @@ Options:
     --exclude-prefix <path> Operation path prefix that is deliberately outside
                             the public contract. Repeatable.
 
-Exit codes: 0 nothing to report, 1 contract findings, 2 unusable input.";
+Exit codes: 0 PASS (no findings), 1 FAIL (contract findings), 2 ERROR (unusable input).";
 
 /// Where the router sources live, relative to the repository root.
 const DEFAULT_ROUTER_ROOT: &str = "backend/src/router";
@@ -107,14 +113,20 @@ fn main() -> ExitCode {
         Ok(Invocation::Check(options)) => match run(&options) {
             Ok(outcome) => match outcome {
                 Outcome::Clean(operations) => {
-                    println!("openapi-sanity: no findings; {operations} spec operations checked");
+                    println!(
+                        "openapi-sanity: PASS - {operations} spec operations checked, \
+                         no findings"
+                    );
                     ExitCode::SUCCESS
                 }
                 Outcome::Findings(findings) => {
                     for finding in &findings {
                         eprintln!("{finding}");
                     }
-                    eprintln!("openapi-sanity: {} contract findings", findings.len());
+                    eprintln!(
+                        "openapi-sanity: FAIL - {} contract findings",
+                        findings.len()
+                    );
                     ExitCode::from(1)
                 }
             },
@@ -125,8 +137,11 @@ fn main() -> ExitCode {
 }
 
 /// Report an input the gate could not act on, as opposed to a contract finding.
+///
+/// The `ERROR` marker keeps the promise of the exit-code table: whichever way a
+/// run ends, its last line on stderr says which of the three it was.
 fn fail(error: impl std::fmt::Display) -> ExitCode {
-    eprintln!("openapi-sanity: {error}");
+    eprintln!("openapi-sanity: ERROR - {error}");
     ExitCode::from(EXIT_UNUSABLE)
 }
 
