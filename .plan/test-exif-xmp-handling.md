@@ -278,6 +278,40 @@ Randomization should complement, not replace, the deterministic matrix.
 
 ## Progress
 
+- 2026-09-26 — Iteration 4 done. Pinned MP4/MOV fixtures added (~1.5 KB each,
+  single H.264 frame, bitexact ffmpeg 8.0.1 command recorded verbatim in
+  `fixtures[].source`, regeneration reproduces the recorded SHA-256). The
+  manifest schema gained two constants — field `container` and source `probe` —
+  so mp4/mov claim exactly `container: [probe]` + `xmp: [sidecar]` with
+  `exif:embedded` and `xmp:embedded` unsupported; `exif` stays unclaimed
+  because the backend never runs kamadak-exif on video (the API's `exifVec`
+  for video is ffprobe output, stated in each fixture's `expectedMetadata`).
+  Six scenarios added: per-format positive with per-field source attribution
+  (ffprobe vs sidecar vs ffmpeg), two negative controls proving the container
+  supplies no XMP (both fixtures verified to carry no Adobe uuid box), and the
+  Iteration 1 deferral `upload_mp4_bytes_named_mov_*`. Missing-tool coverage
+  is a hard precondition test (`video_metadata_requires_a_working_ffmpeg_and_ffprobe`)
+  that fails with a diagnostic naming the missing binary — verified end-to-end
+  under `env -i PATH=/nonexistent`. Mutation checks: 68 killed / 4 survived,
+  the survivors documented as prose/redundant-by-construction.
+  **Deferral resolution contradicts the plan's premise:** mp4 bytes named
+  `.mov` are _accepted_, not rejected — `process/format.rs` shares extensions
+  within a container family (isobmff) and `validate_upload_content` never
+  enters the mismatch branch for family siblings. The scenario pins that
+  contract (200, stored as `.mov`, `TAG:major_brand=isom` surviving in
+  ffprobe output) plus a flag-off counterpart proving the flag is not what
+  permits it. Deciding whether family sharing should instead be narrowed is a
+  product decision left open. Other open items: no field×source cross-product
+  validation in the manifest schema (`container: [embedded]` would parse);
+  `VideoMetadata::duration` is never populated (`0.0`, with the real value in
+  `exifVec.duration`) — belongs to Iteration 5; `backend/tests/schema.json`
+  assertion-field pattern cannot express `exifVec.TAG:major_brand` and omits
+  `fixture`/`thumb_exists`; UUID-box XMP remains unclaimed (needs a fixture
+  that actually carries a uuid box); x264 regeneration is version-locked
+  (digest test flags drift). Gates: `cargo test -p picasu` (321),
+  `cargo test -p snapfab` (50), `just backend-check`, `just utils-check`,
+  `just docs-check`, `just plan-lint`, `cargo build --release --features
+embed-frontend --bin picasu` — all pass.
 - 2026-09-26 — Iteration 3 done. Pinned fixtures added under
   `utils/snapfab/fixtures/` (TIFF 48×32 synthetic, python3-stdlib construction;
   WebP 48×32 lossless VP8L + VP8X/EXIF mux, ImageMagick/libwebp output, layout

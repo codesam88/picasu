@@ -1,0 +1,65 @@
+name: mov ffprobe container metadata dimensions and thumbnail reach the metadata detail
+# Source attribution for every field asserted below, as in the mp4 counterpart:
+#
+#   exifVec.*                  ffprobe (`exif.rs::generate_exif_for_video`), NOT EXIF.
+#   width / height (top level) ffprobe, via `video.rs::video_width_height`.
+#   ext                         the extension of the stored file, not a probe result.
+#   thumbnail                   ffmpeg, frame 0, scaled to the fixture's 48x32.
+#
+# This scenario exists because the QuickTime writer produces a *different file*
+# from the ISO-BMFF one — a different `ftyp` major brand (`qt  ` vs `isom`) and a
+# different size — while ffprobe reports the same `format_name` for both. The
+# brand is therefore the only asserted field that distinguishes the fixtures, and
+# `ext: mov` is what distinguishes the stored record: ffprobe alone would not.
+# The fixture carries no EXIF and no XMP packet, so no `dc:subject` is asserted
+# from the container; the tags counterpart is `mov_sidecar_xmp_tags`.
+given:
+  - fixture:
+      source: mov-48x32-ffprobe
+      destination: /e2e_mov_meta/clip.mov
+    id_as: $photo
+    asset_id_as: $asset_id
+  - raw_file: /e2e_mov_meta/clip.xmp
+    content: |
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_mov_sidecar_harbour</rdf:li>
+      <rdf:li>e2e_mov_sidecar_granite</rdf:li>
+      </rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.ext: mov
+  - response.json.width: 48
+  - response.json.height: 32
+  - response.json.exifVec.format_name: "mov,mp4,m4a,3gp,3g2,mj2"
+  - response.json.exifVec.format_long_name: "QuickTime / MOV"
+  - response.json.exifVec.nb_streams: "1"
+  - response.json.exifVec.codec_name: h264
+  - response.json.exifVec.codec_type: video
+  - response.json.exifVec.codec_tag_string: avc1
+  - response.json.exifVec.pix_fmt: yuv420p
+  - response.json.exifVec.width: "48"
+  - response.json.exifVec.height: "32"
+  # Trailing spaces are part of the value: `qt  ` is the four-byte QuickTime brand.
+  - "response.json.exifVec.TAG:major_brand": "qt  "
+  - "response.json.exifVec.TAG:handler_name": VideoHandler
+  - response.json.tags:
+      contains: e2e_mov_sidecar_harbour
+  - response.json.tags:
+      contains: e2e_mov_sidecar_granite
+  - thumb_exists: $photo
+  - file_exists: e2e_mov_meta/clip.mov

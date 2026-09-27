@@ -80,14 +80,21 @@ exposed behaviour is preserved.
 
 **Given** materialises state via fixtures (`src/tests/fixtures/`): real
 JPEGs with embedded XMP/EXIF metadata, directory albums, config overrides.
-Formats snapfab cannot encode (TIFF, WebP) are placed from checked-in bytes
-instead: a `fixture` given step names an entry of the capability manifest
-(`utils/snapfab/capabilities.json`), whose recorded SHA-256 is verified against
-the file, so no binary payload is ever embedded in a scenario.
+Formats snapfab cannot encode (TIFF, WebP, MP4, MOV) are placed from
+checked-in bytes instead: a `fixture` given step names an entry of the capability
+manifest (`utils/snapfab/capabilities.json`), whose recorded SHA-256 is verified
+against the file, so no binary payload is ever embedded in a scenario.
 Fixtures are interface adapters — they translate abstract YAML declarations
 into HTTP calls and filesystem operations. When the backend's public API
 changes, only the fixtures change; the interpreter and the YAML scenarios
 remain untouched.
+
+The video scenarios (and every other video path) shell out to `ffmpeg` and
+`ffprobe`, which have no pure-Rust fallback.
+`process::video::tests::video_metadata_requires_a_working_ffmpeg_and_ffprobe`
+is a hard precondition rather than a skip: it resolves both binaries on `PATH`,
+runs them, and fails with a diagnostic naming the missing tool, what breaks, and
+how to install it, so a missing toolchain never passes as "video works".
 
 **When** dispatches HTTP calls through Rocket's `local::Client`.
 `capture` and `calc` blocks chain multi-call scenarios where one response

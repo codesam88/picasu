@@ -5,9 +5,14 @@ use std::sync::LazyLock;
 
 const SUPPORTED_SCHEMA_VERSION: u32 = 1;
 /// Fields the backend actually reads. A field outside this list is rejected so a
-/// typo cannot masquerade as a capability claim.
-const METADATA_FIELDS: &[&str] = &["exif", "xmp"];
-const METADATA_SOURCES: &[&str] = &["embedded", "sidecar"];
+/// typo cannot masquerade as a capability claim. `container` is the field for
+/// container/stream metadata that does not live in the file's bytes at all:
+/// for a video it is produced by `ffprobe`, which is a different contract from
+/// `exif` and `xmp` and is recorded as such (`source: "probe"`).
+const METADATA_FIELDS: &[&str] = &["exif", "xmp", "container"];
+/// `probe` marks a field the backend reads from an external tool rather than
+/// from the file itself. The other two are locations inside or beside the file.
+const METADATA_SOURCES: &[&str] = &["embedded", "sidecar", "probe"];
 const FAILURE_CLASSES: &[&str] = &[
     "none",
     "signature_mismatch",
@@ -378,7 +383,42 @@ mod tests {
                 "utils/snapfab/fixtures/webp/picasu-webp-48x32-exif.webp",
                 include_bytes!("../fixtures/webp/picasu-webp-48x32-exif.webp"),
             ),
+            (
+                "utils/snapfab/fixtures/mp4/picasu-mp4-48x32-ffprobe.mp4",
+                include_bytes!("../fixtures/mp4/picasu-mp4-48x32-ffprobe.mp4"),
+            ),
+            (
+                "utils/snapfab/fixtures/mov/picasu-mov-48x32-ffprobe.mov",
+                include_bytes!("../fixtures/mov/picasu-mov-48x32-ffprobe.mov"),
+            ),
         ]
+    }
+
+    /// Bytes of the fixture registered under `id`.
+    fn fixture_bytes(id: &str) -> &'static [u8] {
+        let manifest = load_capabilities().expect("manifest should load");
+        let path = &manifest
+            .fixture_by_id(id)
+            .unwrap_or_else(|| panic!("fixture {id} should be registered"))
+            .path;
+        embedded_fixtures()
+            .iter()
+            .find(|(candidate, _)| candidate == path)
+            .unwrap_or_else(|| panic!("fixture {id} is not embedded for inspection"))
+            .1
+    }
+
+    /// The `uuid` box header that carries an Adobe XMP packet in an ISO-BMFF
+    /// container: box type `uuid` followed by the extended-type UUID
+    /// `BE7ACFCB-97A9-42E8-9C71-999491E3AFAC` [ISO14496-12 4.3, Adobe XMP
+    /// spec 1.0 §2]. Written verbatim, no byte order conversion.
+    const ADOBE_XMP_UUID_BOX: &[u8] =
+        b"uuid\xbe\x7a\xcf\xcb\x97\xa9\x42\xe8\x9c\x71\x99\x94\x91\xe3\xaf\xac";
+
+    fn carries_adobe_xmp_uuid_box(bytes: &[u8]) -> bool {
+        bytes
+            .windows(ADOBE_XMP_UUID_BOX.len())
+            .any(|window| window == ADOBE_XMP_UUID_BOX)
     }
 
     /// SHA-256 (FIPS 180-4) over `input`, lowercase hex.
@@ -542,8 +582,12 @@ mod tests {
         assert_valid(&manifest_with(&[&valid_entry()]));
     }
 
+    /// The manifest lists exactly the formats this repository covers with a
+    /// verified fixture: four still images plus the two ISO-BMFF video
+    /// containers. A format may only enter this list together with its fixture,
+    /// so the list is the manifest's coverage boundary in both directions.
     #[test]
-    fn repository_manifest_declares_every_supported_still_image_format() {
+    fn repository_manifest_declares_every_covered_format() {
         let manifest = load_capabilities().expect("manifest should load");
 
         assert_eq!(manifest.schema_version, 1);
@@ -553,7 +597,7 @@ mod tests {
                 .iter()
                 .map(|entry| entry.format.as_str())
                 .collect::<Vec<_>>(),
-            ["jpeg", "png", "tiff", "webp"]
+            ["jpeg", "png", "tiff", "webp", "mp4", "mov"]
         );
     }
 
@@ -592,6 +636,8 @@ mod tests {
                 ("png", "generated"),
                 ("tiff", "pinned"),
                 ("webp", "pinned"),
+                ("mp4", "pinned"),
+                ("mov", "pinned"),
             ]
         );
     }
@@ -630,6 +676,188 @@ mod tests {
             assert_eq!(
                 pinned.expected_metadata.get("height").map(String::as_str),
                 Some("32")
+            );
+        }
+    }
+
+    /// The two video containers are covered by checked-in bytes produced by one
+    /// recorded ffmpeg invocation, and the manifest has to carry the
+    /// reproducibility record for them: the command, the tool version, the
+    /// ffprobe fields a reader must observe, and the one `ftyp` brand that
+    /// tells the two containers apart.
+    #[test]
+    fn repository_manifest_pins_a_deterministic_ffmpeg_video_fixture() {
+        let manifest = load_capabilities().expect("manifest should load");
+
+        for (format, fixture, major_brand) in [
+            ("mp4", "mp4-48x32-ffprobe", "isom"),
+            ("mov", "mov-48x32-ffprobe", "qt  "),
+        ] {
+            let entry = manifest
+                .capability_for_format(format)
+                .unwrap_or_else(|| panic!("{format} should be declared"));
+            assert_eq!(
+                entry.pinned_fixtures,
+                [fixture],
+                "{format} should be covered by the pinned {fixture} fixture"
+            );
+
+            let pinned = manifest
+                .fixture_by_id(fixture)
+                .unwrap_or_else(|| panic!("{fixture} should be registered"));
+            assert_eq!(
+                pinned.origin, "generated",
+                "{fixture} is ffmpeg output, neither hand-built nor upstream test data"
+            );
+            assert!(
+                pinned.source.contains("ffmpeg -nostdin"),
+                "{fixture} must record the generation command so the bytes can be \
+                 re-derived, got: {}",
+                pinned.source
+            );
+            assert!(
+                pinned.source.contains("+bitexact"),
+                "{fixture} must record the flags that pin the bytes, got: {}",
+                pinned.source
+            );
+            assert!(
+                pinned.version.contains("ffmpeg "),
+                "{fixture} must record the ffmpeg version that produced it, got: {}",
+                pinned.version
+            );
+            assert_eq!(pinned.intended_failure_class, "none");
+
+            for (key, value) in [
+                ("width", "48"),
+                ("height", "32"),
+                ("thumbnail", "generated"),
+                // ffprobe reports the whole ISO-BMFF group as one `format_name`
+                // for both fixtures; `TAG:major_brand` read from the `ftyp` box
+                // is the only field that separates them.
+                ("ffprobe.format_name", "mov,mp4,m4a,3gp,3g2,mj2"),
+                ("ffprobe.TAG:major_brand", major_brand),
+                ("ffprobe.codec_name", "h264"),
+                ("ffprobe.codec_type", "video"),
+                ("ffprobe.pix_fmt", "yuv420p"),
+            ] {
+                assert_eq!(
+                    pinned.expected_metadata.get(key).map(String::as_str),
+                    Some(value),
+                    "{fixture} expectedMetadata[{key}]"
+                );
+            }
+        }
+    }
+
+    /// Video metadata comes from ffprobe, and the manifest has to keep that
+    /// contract separate from a packet carried in the bytes. The pinned fixture
+    /// has no EXIF block the backend reads and no XMP packet, so neither may be
+    /// claimed; `container: [probe]` is the honest positive claim, and
+    /// `xmp: [sidecar]` holds because `xmp.rs` resolves sidecars with no format
+    /// dispatch at all.
+    #[test]
+    fn repository_manifest_separates_probed_container_metadata_from_embedded_xmp() {
+        let manifest = load_capabilities().expect("manifest should load");
+
+        for format in ["mp4", "mov"] {
+            let entry = manifest
+                .capability_for_format(format)
+                .unwrap_or_else(|| panic!("{format} should be declared"));
+
+            assert_eq!(
+                entry.metadata_fields.get("container").map(Vec::as_slice),
+                Some(&["probe".to_string()][..]),
+                "{format} metadata comes from ffprobe, not from bytes in the file"
+            );
+            assert!(
+                !entry.metadata_fields.contains_key("exif"),
+                "{format} has no EXIF block the backend reads; the exifVec the API \
+                 returns for a video is ffprobe output, not EXIF"
+            );
+            assert_eq!(
+                entry.metadata_fields.get("xmp").map(Vec::as_slice),
+                Some(&["sidecar".to_string()][..]),
+                "{format} sidecar XMP is read by xmp.rs, which dispatches on no format"
+            );
+            assert_eq!(
+                entry.unsupported_metadata_fields,
+                ["exif:embedded", "xmp:embedded"],
+                "{format}: UUID-box XMP stays unclaimed until a fixture carries one"
+            );
+        }
+    }
+
+    /// `xmp:embedded` is recorded as unsupported for mp4/mov, so the reason is
+    /// pinned against the checked-in bytes rather than left as prose. The
+    /// positive control keeps this from passing for the wrong reason: a scanner
+    /// that could never recognise a uuid box would also report "absent".
+    #[test]
+    fn pinned_video_fixtures_carry_no_embedded_xmp_packet() {
+        let mut with_uuid_box = ADOBE_XMP_UUID_BOX.to_vec();
+        with_uuid_box.extend_from_slice(
+            b"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF \
+              xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description \
+              xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:subject><rdf:Bag>\
+              <rdf:li>e2e</rdf:li></rdf:Bag></dc:subject></rdf:Description></rdf:RDF></x:xmpmeta>",
+        );
+        assert!(
+            carries_adobe_xmp_uuid_box(&with_uuid_box),
+            "positive control: the uuid-box header must be recognisable"
+        );
+
+        for id in ["mp4-48x32-ffprobe", "mov-48x32-ffprobe"] {
+            let bytes = fixture_bytes(id);
+            assert!(
+                !carries_adobe_xmp_uuid_box(bytes),
+                "{id} carries an Adobe XMP uuid box, so xmp:embedded would be claimable \
+                 and `xmp:embedded` must move out of unsupportedMetadataFields"
+            );
+            for marker in [b"<x:xmpmeta".as_slice(), b"<dc:subject>".as_slice()] {
+                assert!(
+                    !bytes.windows(marker.len()).any(|w| w == marker),
+                    "{id} carries the XMP marker {marker:?} verbatim"
+                );
+            }
+        }
+    }
+
+    /// The declared `contentSignature` of each video format is read back out of
+    /// its own fixture. Both signatures are the `ftyp` box header at offset 4
+    /// (box size occupies 0..4) plus the major brand that follows it, and the
+    /// brand is the only structural difference between the two files — so a
+    /// fixture swapped for the other container, or a signature that drifts from
+    /// the bytes, both fail here.
+    #[test]
+    fn video_content_signatures_match_the_brand_in_the_pinned_bytes() {
+        let manifest = load_capabilities().expect("manifest should load");
+
+        for (format, fixture, brand) in [
+            ("mp4", "mp4-48x32-ffprobe", b"isom".as_slice()),
+            ("mov", "mov-48x32-ffprobe", b"qt  ".as_slice()),
+        ] {
+            let signature = &manifest
+                .capability_for_format(format)
+                .unwrap_or_else(|| panic!("{format} should be declared"))
+                .content_signature;
+
+            assert_eq!(signature.offset, 4, "{format}: `ftyp` starts at byte 4");
+            assert_eq!(
+                signature.bytes().as_slice(),
+                [b"ftyp".as_slice(), brand].concat(),
+                "{format} contentSignature should be `ftyp` plus its major brand"
+            );
+
+            let bytes = fixture_bytes(fixture);
+            let at = signature.offset;
+            let expected = signature.bytes();
+            assert!(
+                bytes
+                    .get(at..at + expected.len())
+                    .is_some_and(|window| window == expected),
+                "{format} signature {} does not match the bytes of {fixture} at offset {at}: \
+                 found {:?}",
+                signature.bytes_hex,
+                bytes.get(at..at + expected.len())
             );
         }
     }
@@ -823,6 +1051,41 @@ mod tests {
             r#""expectedFailureClasses": ["none"]"#,
             r#""expectedFailureClasses": ["vibes"]"#,
         )]);
+        // `container`/`probe` are the vocabulary the video formats use for
+        // ffprobe-derived metadata. The field and the source are each closed
+        // lists, so a misspelling of either is rejected like any other value —
+        // `conatiner` and `inline` must not slip through as valid claims.
+        assert_validation_error(&[
+            &valid_entry().replace(r#"{"exif": ["embedded"]}"#, r#"{"conatiner": ["probe"]}"#)
+        ]);
+        assert_validation_error(&[
+            &valid_entry().replace(r#"{"exif": ["embedded"]}"#, r#"{"container": ["inline"]}"#)
+        ]);
+        assert_validation_error(&[
+            &valid_entry().replace(r#"{"exif": ["embedded"]}"#, r#"{"container": []}"#)
+        ]);
+    }
+
+    /// The probed-container claim and its exclusion are mutually exclusive, and
+    /// so is the same pair for the fields that already existed. A container
+    /// cannot be both read by ffprobe and unsupported.
+    #[test]
+    fn a_probed_container_field_cannot_be_both_supported_and_unsupported() {
+        let claiming = |unsupported: &str| {
+            valid_entry()
+                .replace(r#"{"exif": ["embedded"]}"#, r#"{"container": ["probe"]}"#)
+                .replace(
+                    r#""unsupportedMetadataFields": []"#,
+                    &format!(r#""unsupportedMetadataFields": {unsupported}"#),
+                )
+        };
+
+        // Positive control, and the proof that `container`/`probe` is itself an
+        // accepted vocabulary: without it the rejection below could be caused
+        // by the unrecognized pair rather than by the contradiction.
+        assert_valid(&manifest_with(&[&claiming("[]")]));
+
+        assert_validation_error(&[&claiming(r#"["container:probe"]"#)]);
     }
 
     #[test]
@@ -844,6 +1107,10 @@ mod tests {
             valid_entry().replace(
                 r#""metadataFields": {"exif": ["embedded"]}"#,
                 r#""metadataFields": {"xmop": ["embedded"]}"#,
+            ),
+            valid_entry().replace(
+                r#""metadataFields": {"exif": ["embedded"]}"#,
+                r#""metadataFields": {"container": ["guess"]}"#,
             ),
             valid_entry().replace(
                 r#""expectedFailureClasses": ["none"]"#,

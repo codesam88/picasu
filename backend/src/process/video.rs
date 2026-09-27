@@ -4,6 +4,47 @@ use crate::process::misc::small_width_height;
 use anyhow::{Context, Result};
 use log::{debug, info};
 
+/// External binaries the video paths shell out to. There is no pure-Rust
+/// fallback for any of them: `exif.rs::generate_exif_for_video` builds the
+/// metadata map with `ffprobe`, `generate_video_width_height` reads the stream
+/// dimensions with `ffprobe`, and `generate_thumbnail_for_video` extracts frame 0
+/// with `ffmpeg`. A video therefore cannot be indexed at all without them.
+#[cfg(test)]
+const VIDEO_TOOLS: &[&str] = &["ffmpeg", "ffprobe"];
+
+#[cfg(test)]
+use std::path::PathBuf;
+
+/// Locate `tool` as an executable file on `PATH`.
+///
+/// The result is only a claim that the file exists and carries the execute bit.
+/// Callers confirm the binary actually runs with [`tool_runs`], so a directory
+/// that shadows the tool on `PATH` is reported as a broken tool rather than as a
+/// missing one.
+#[cfg(test)]
+fn resolve_on_path(tool: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(tool))
+        .find(|candidate| is_executable_file(candidate))
+}
+
+#[cfg(test)]
+fn is_executable_file(candidate: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(candidate)
+        .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+}
+
+/// Run `path -version` and report whether the binary is usable.
+#[cfg(test)]
+fn tool_runs(path: &std::path::Path) -> bool {
+    std::process::Command::new(path)
+        .arg("-version")
+        .output()
+        .is_ok_and(|output| output.status.success())
+}
+
 /// Extract video width or height from ffprobe output
 pub fn video_width_height(info: &str, file_path: &str) -> Result<u32> {
     let output = std::process::Command::new("ffprobe")
@@ -172,4 +213,123 @@ pub fn generate_thumbnail_for_video(abstract_data: &AbstractData) -> Result<()> 
 
     info!("Generated video thumbnail: {thumbnail_path}");
     Ok(())
+}
+
+/// Check that every required video tool is present, or explain what is missing.
+///
+/// Deliberately a hard failure rather than a silent skip: a silently skipped
+/// video test suite reads as "video works" in a CI log, and every assertion
+/// below is a contract the plan requires to be checked. `resolved` is a slice of
+/// `(tool, path-on-PATH)` pairs so the message can be tested without removing a
+/// binary from the environment.
+#[cfg(test)]
+fn check_video_toolchain(resolved: &[(&str, Option<PathBuf>)]) -> Result<(), String> {
+    let missing = resolved
+        .iter()
+        .filter(|(_, path)| path.is_none())
+        .map(|(tool, _)| *tool)
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    let named = missing
+        .iter()
+        .map(|tool| format!("`{tool}`"))
+        .collect::<Vec<_>>()
+        .join(" and ");
+    Err(format!(
+        "video metadata needs ffmpeg and ffprobe on PATH, but {named} could not be found.\n\
+         \n\
+         These are external binaries, not optional extras: `exif.rs` builds a video's \
+         metadata map with `ffprobe`, `video.rs::generate_video_width_height` reads the \
+         stream dimensions with `ffprobe`, and `video.rs::generate_thumbnail_for_video` \
+         extracts frame 0 with `ffmpeg`. Without them no video can be indexed, so the \
+         scenarios asserting a video contract (the `mp4_*`, `mov_*` and \
+         `upload_mp4_*` scenarios) would fail with a decode error that hides the real \
+         cause.\n\
+         \n\
+         Install ffmpeg to fix this (Debian/Ubuntu: `apt-get install ffmpeg`; the picasu \
+         runtime Docker image already does) and re-run `cargo test -p picasu`."
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PathBuf, VIDEO_TOOLS, check_video_toolchain, resolve_on_path, tool_runs};
+
+    /// The precondition for every video scenario. This is the explicit
+    /// environment diagnostic the plan asks for: when a tool is missing it
+    /// fails, naming the binary and the consequence, instead of leaving the
+    /// scenarios to fail later with a decode error that hides the cause.
+    #[test]
+    fn video_metadata_requires_a_working_ffmpeg_and_ffprobe() {
+        let resolved = VIDEO_TOOLS
+            .iter()
+            .map(|tool| (*tool, resolve_on_path(tool)))
+            .collect::<Vec<(&str, Option<PathBuf>)>>();
+
+        if let Err(diagnostic) = check_video_toolchain(&resolved) {
+            panic!("{diagnostic}");
+        }
+
+        for (tool, path) in &resolved {
+            let path = path
+                .as_ref()
+                .expect("checked by check_video_toolchain above");
+            assert!(
+                tool_runs(path),
+                "`{tool}` resolved to {} on PATH but does not run (`{tool} -version` failed); \
+                 the video paths would fail with a spawn error instead of a usable decode",
+                path.display()
+            );
+        }
+    }
+
+    /// A complete toolchain is not an error, and a missing one names the tool
+    /// rather than the whole list — otherwise a reader cannot tell which binary
+    /// to install. Every assertion below quotes the backticked tool name or the
+    /// exact remedy text, because the message also mentions `ffmpeg` and
+    /// `ffprobe` in its prose: a substring check on the bare name would be
+    /// satisfied by the explanation instead of by the diagnosis.
+    #[test]
+    fn the_toolchain_diagnostic_names_only_the_missing_tool() {
+        let complete = [("ffmpeg", Some(PathBuf::from("/usr/bin/ffmpeg")))];
+        assert_eq!(check_video_toolchain(&complete), Ok(()));
+
+        let missing_ffprobe = check_video_toolchain(&[
+            ("ffmpeg", Some(PathBuf::from("/usr/bin/ffmpeg"))),
+            ("ffprobe", None),
+        ])
+        .expect_err("a missing ffprobe must be reported");
+
+        assert!(
+            missing_ffprobe.contains("`ffprobe` could not be found"),
+            "the diagnostic must name the missing tool: {missing_ffprobe}"
+        );
+        assert!(
+            !missing_ffprobe.contains("`ffmpeg` could not be found"),
+            "the diagnostic must not blame a tool that is present: {missing_ffprobe}"
+        );
+        // The diagnostic has to say what breaks, what to install, and how to
+        // re-run, or it is only a restatement of the failure.
+        for expected in [
+            "no video can be indexed",
+            "apt-get install ffmpeg",
+            "cargo test -p picasu",
+        ] {
+            assert!(
+                missing_ffprobe.contains(expected),
+                "the diagnostic should mention {expected:?}: {missing_ffprobe}"
+            );
+        }
+
+        // Both missing is reported once, naming both.
+        let nothing = check_video_toolchain(&[("ffmpeg", None), ("ffprobe", None)])
+            .expect_err("an empty toolchain must be reported");
+        assert!(
+            nothing.contains("`ffmpeg`") && nothing.contains("`ffprobe`"),
+            "both missing tools must be named: {nothing}"
+        );
+    }
 }

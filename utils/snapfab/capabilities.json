@@ -38,6 +38,58 @@
         "xmp": "sidecar only; the file carries no XMP chunk"
       },
       "intendedFailureClass": "none"
+    },
+    {
+      "id": "mp4-48x32-ffprobe",
+      "path": "utils/snapfab/fixtures/mp4/picasu-mp4-48x32-ffprobe.mp4",
+      "sha256": "24060c6a582dfc9c292a211c793ddf832c1848af4db027da81fde397fd411f6d",
+      "origin": "generated",
+      "source": "Generated for picasu, not taken from an upstream project. One 48x32 solid-colour frame at 1 fps from the lavfi `color` source, H.264 High profile in an ISO-BMFF file, no audio. Exact command, run from the repository root: `ffmpeg -nostdin -hide_banner -loglevel error -y -f lavfi -i color=c=0x204060:s=48x32:r=1:d=1 -frames:v 1 -c:v libx264 -preset veryfast -crf 30 -pix_fmt yuv420p -map_metadata -1 -fflags +bitexact -flags:v +bitexact -f mp4 utils/snapfab/fixtures/mp4/picasu-mp4-48x32-ffprobe.mp4`. The bytes are pinned by `-frames:v 1` (fixed content), `-map_metadata -1` (no inherited tags), and `-fflags +bitexact -flags:v +bitexact` (no creation_time, no encoder string); re-running the command reproduces the recorded SHA-256 exactly. ffmpeg's `-metadata` was deliberately NOT used: it writes iTunes-style `udta`/`ilst` tags, not the Adobe XMP `uuid` box, so the file carries no XMP packet at all. No Adobe XMP `uuid` box (`uuid` + BE7ACFCB-97A9-42E8-9C71-999491E3AFAC) and no XMP markup is present, which is why `xmp:embedded` is recorded as unsupported rather than unclaimed-and-assumed.",
+      "version": "picasu fixture revision 1; ffmpeg 8.0.1-3ubuntu2 (ffprobe 8.0.1-3ubuntu2) with libx264, Ubuntu build",
+      "license": "MIT (picasu repository LICENSE); no ffmpeg code is redistributed, only its output",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "ffprobe.format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "ffprobe.format_long_name": "QuickTime / MOV",
+        "ffprobe.nb_streams": "1",
+        "ffprobe.codec_name": "h264",
+        "ffprobe.codec_type": "video",
+        "ffprobe.codec_tag_string": "avc1",
+        "ffprobe.pix_fmt": "yuv420p",
+        "ffprobe.TAG:major_brand": "isom",
+        "ffprobe.TAG:handler_name": "VideoHandler",
+        "thumbnail": "generated",
+        "xmp": "sidecar only; the file carries no uuid-box XMP packet",
+        "exif": "none; the exifVec the API returns for a video is ffprobe output, not EXIF"
+      },
+      "intendedFailureClass": "none"
+    },
+    {
+      "id": "mov-48x32-ffprobe",
+      "path": "utils/snapfab/fixtures/mov/picasu-mov-48x32-ffprobe.mov",
+      "sha256": "3d8816480c10bc41cf14e966e782ab6de8bb7aadd8c681568ba858cbd77ee65f",
+      "origin": "generated",
+      "source": "Generated for picasu, not taken from an upstream project. The same 48x32 solid-colour frame as the mp4 fixture, muxed by the QuickTime writer instead of the ISO-BMFF one: identical command except `-f mov` and the output path. Exact command, run from the repository root: `ffmpeg -nostdin -hide_banner -loglevel error -y -f lavfi -i color=c=0x204060:s=48x32:r=1:d=1 -frames:v 1 -c:v libx264 -preset veryfast -crf 30 -pix_fmt yuv420p -map_metadata -1 -fflags +bitexact -flags:v +bitexact -f mov utils/snapfab/fixtures/mov/picasu-mov-48x32-ffprobe.mov`. Re-running reproduces the recorded SHA-256 exactly. The only structural difference from the mp4 fixture is the `ftyp` major brand (`qt  ` instead of `isom`); ffprobe reports the same `format_name` for both, so the brand read from the box is the only field that tells the two files apart. No Adobe XMP `uuid` box and no XMP markup is present.",
+      "version": "picasu fixture revision 1; ffmpeg 8.0.1-3ubuntu2 (ffprobe 8.0.1-3ubuntu2) with libx264, Ubuntu build",
+      "license": "MIT (picasu repository LICENSE); no ffmpeg code is redistributed, only its output",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "ffprobe.format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "ffprobe.format_long_name": "QuickTime / MOV",
+        "ffprobe.nb_streams": "1",
+        "ffprobe.codec_name": "h264",
+        "ffprobe.codec_type": "video",
+        "ffprobe.codec_tag_string": "avc1",
+        "ffprobe.pix_fmt": "yuv420p",
+        "ffprobe.TAG:major_brand": "qt  ",
+        "ffprobe.TAG:handler_name": "VideoHandler",
+        "thumbnail": "generated",
+        "xmp": "sidecar only; the file carries no uuid-box XMP packet",
+        "exif": "none; the exifVec the API returns for a video is ffprobe output, not EXIF"
+      },
+      "intendedFailureClass": "none"
     }
   ],
   "formats": [
@@ -108,6 +160,40 @@
       "expectedFailureClasses": ["none"],
       "fixtureSource": "pinned",
       "pinnedFixtures": ["webp-48x32-exif"]
+    },
+    {
+      "format": "mp4",
+      "extensions": ["mp4"],
+      "contentSignature": {
+        "offset": 4,
+        "bytesHex": "6674797069736f6d",
+        "mime": "video/mp4"
+      },
+      "metadataFields": {
+        "container": ["probe"],
+        "xmp": ["sidecar"]
+      },
+      "unsupportedMetadataFields": ["exif:embedded", "xmp:embedded"],
+      "expectedFailureClasses": ["none"],
+      "fixtureSource": "pinned",
+      "pinnedFixtures": ["mp4-48x32-ffprobe"]
+    },
+    {
+      "format": "mov",
+      "extensions": ["mov"],
+      "contentSignature": {
+        "offset": 4,
+        "bytesHex": "6674797071742020",
+        "mime": "video/quicktime"
+      },
+      "metadataFields": {
+        "container": ["probe"],
+        "xmp": ["sidecar"]
+      },
+      "unsupportedMetadataFields": ["exif:embedded", "xmp:embedded"],
+      "expectedFailureClasses": ["none"],
+      "fixtureSource": "pinned",
+      "pinnedFixtures": ["mov-48x32-ffprobe"]
     }
   ]
 }
