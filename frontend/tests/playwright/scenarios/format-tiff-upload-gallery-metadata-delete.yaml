@@ -1,0 +1,162 @@
+name: TIFF upload renders in the gallery, shows metadata, and deletes
+# TIFF/WebP capability group, end to end through the UI. The bytes come from
+# the pinned manifest fixture `tiff-48x32-exif`
+# (utils/snapfab/fixtures/tiff/), because snapfab cannot encode TIFF: the UI
+# harness `given` step otherwise only produces jpeg/png, which is why the
+# cross-format UI coverage needed a fixture source.
+#
+# What is asserted is UI-visible state only, never parser output: that the view
+# page picks the image display component for the row, that the sidepane prints
+# the stored filename including its `.tif` extension (the extension surviving
+# upload + index is what the format group is about), the decoded pixel
+# dimensions the sidepane renders, and the `Rotate Left` entry the photo menu
+# offers for an image row. The EXIF sub-IFD fields, the sidecar XMP tags, and the
+# thumbnail bytes on disk are asserted in the API layer
+# (tiff_metadata_exif_dimensions_thumbnail and its negative control).
+covers:
+  api:
+    - POST /upload
+    - PUT /put/edit_flags
+    - DELETE /delete/delete-data
+  ui:
+    - Info
+    - .desktop-small-image
+    - '#col-ref > img'
+    - '.v-list-item:has-text("Rotate Left")'
+    - picasu-tiff-48x32-exif.tif
+    - 48 × 32
+given:
+  # The empty-library state opens a "Database is empty, scan now or upload?"
+  # dialog over the navbar, so the upload button is unreachable until something
+  # is indexed. One seeded JPEG keeps the timeline non-empty, exactly as the
+  # upload-options scenarios do; it is a different format from the item under
+  # test, and the album grid below is how the two are told apart.
+  - photo: seed/img01.jpg
+  - source_file: 'picasu-tiff-48x32-exif.tif'
+    fixture: tiff-48x32-exif
+    id_as: $src_tiff
+steps:
+  # ── upload ──────────────────────────────────────────────────────────────
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.modal: closed
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  - when:
+      - upload.files:
+          trigger: icon/mdi-upload
+          files: ['${src_tiff}']
+    assert:
+      - ui.modal: open
+      - ui.text_visible: picasu-tiff-48x32-exif.tif
+
+  - when:
+      - click: button/Upload
+    assert:
+      - ui.toast:
+          type: success
+          contains: Files uploaded successfully
+      - ui.modal: closed
+
+  # ── gallery rendering: the uploaded tile joins the seeded one ───────────
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 2
+
+  # ── the item under test, on its own: the album the upload landed in ─────
+  # The timeline also holds the seed, and `click.first` would be a coin flip
+  # between them. An upload with no target album lands in the configured
+  # `uploadFolder` under the image path, which is a top-level album of its own,
+  # so that grid holds exactly the item under test and `click.first` is
+  # unambiguous.
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: Uploads
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  # ── metadata sidepane ───────────────────────────────────────────────────
+  - when:
+      - click.first: true
+    assert:
+      - ui.count: '#col-ref > img'
+        equals: 1
+
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.text_visible: Info
+      - ui.sidebar_visible: picasu-tiff-48x32-exif.tif
+      - ui.sidebar_visible: 48 × 32
+
+  # The photo menu offers `Rotate Left` only for an image row, so this entry is
+  # the row type rendered in the menu.
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+      - ui.count: '.v-list-item:has-text("Rotate Left")'
+        equals: 1
+
+  # ── deletion: soft delete removes the tile from the grid ────────────────
+  - when:
+      - click: option/Delete
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  # The seed was never trashed, so the single trash tile is the item under test.
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  # ── deletion: permanent delete empties the trash grid ───────────────────
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.text_visible: Info
+      - ui.sidebar_visible: picasu-tiff-48x32-exif.tif
+
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click: option/Permanently Delete
+    assert:
+      - ui.toast:
+          type: success
+          contains: Successfully deleted data
+
+  # The empty-state card is the wait that makes the count non-vacuous: it renders
+  # only once the view has loaded with zero rows, and `ui.count` with 0 also
+  # matches a grid that has not rendered yet, so a count on its own would pass
+  # whether or not the delete had happened.
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.text_visible: Deleted photos and videos appear here.
+      - ui.count: .desktop-small-image
+        equals: 0

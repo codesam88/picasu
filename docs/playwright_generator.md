@@ -186,13 +186,26 @@ time in the Playwright worker process.
 
 Maps `given:` entries to real backend calls:
 
-| YAML form         | Action                                            |
-| ----------------- | ------------------------------------------------- |
-| `empty: true`     | No-op                                             |
-| `dir_album: ...`  | Creates directory on disk under `IMAGE_HOME`      |
-| `photo: ...`      | Writes a minimal JPEG to `IMAGE_HOME`             |
-| `remove: ...`     | Deletes a file from `IMAGE_HOME`                  |
-| `config: { ... }` | Sets `readOnlyMode` and/or `password` via PUT API |
+| YAML form                            | Action                                                        |
+| ------------------------------------ | ------------------------------------------------------------- |
+| `empty: true`                        | No-op                                                         |
+| `dir_album: ...`                     | Creates directory on disk under `IMAGE_HOME`                  |
+| `photo: ...`                         | Writes a minimal JPEG to `IMAGE_HOME`                         |
+| `photo_raw: ...`                     | Writes a file to `IMAGE_HOME` without triggering an index     |
+| `source_file: ...`                   | Writes an upload source **outside** `IMAGE_HOME`              |
+| `source_file: ... { fixture: <id> }` | Same, from a pinned capability-manifest fixture               |
+| `remove: ...`                        | Deletes a file from `IMAGE_HOME`                              |
+| `move: { move, to }`                 | Renames a file after seeding, then re-checks the object route |
+| `config: { ... }`                    | Sets `readOnlyMode` and/or `password` via PUT API             |
+
+`source_file` items are written outside `IMAGE_HOME` on purpose: the scenario
+uploads them through the browser file chooser, so an indexed copy would put the
+item in the gallery before the upload step ran. Its `fixture` field names an
+entry of `utils/snapfab/capabilities.json` and is the binary-safe alternative to
+`format` for the formats `snapfab batch` cannot encode (TIFF, WebP, MP4, MOV);
+`pinnedFixtures.ts` verifies the recorded SHA-256 before writing the bytes and
+rejects a filename whose extension the pinned format does not declare. The two
+fields are mutually exclusive.
 
 Variables bound by `id_as` are stored in `GivenContext.vars` and
 interpolated as `${name}` in when-step strings.
@@ -200,6 +213,31 @@ interpolated as `${name}` in when-step strings.
 The function accepts an optional `CoverageTracer` — when provided, it
 wraps the `APIRequestContext` in a Proxy that records every HTTP call
 (method + path) made during seeding.
+
+### Pinned fixture placement (`pinnedFixtures.ts`)
+
+`copyPinnedFixture(id, destination)` resolves `id` against the capability
+manifest at `utils/snapfab/capabilities.json`, verifies the bytes against the
+manifest's recorded SHA-256, checks that the destination's extension is one the
+pinned format declares, then writes them. All three checks fail loudly with the
+remedy in the message: a scenario that named the wrong fixture would otherwise
+assert the wrong format and pass, and a truncated fixture would surface much
+later as an unexplained upload or decode failure.
+
+A format whose manifest entry declares `metadataFields.container: [probe]` is
+additionally gated on a working ffmpeg and ffprobe, resolved on `PATH`. The
+backend reads those formats by shelling out — ffprobe for the dimensions and
+metadata map, ffmpeg for the thumbnail — and neither has a pure-Rust fallback,
+so without them the upload is rejected and the scenario fails several steps
+later with "could not be decoded as an image or video", which reads as a
+product bug rather than a missing binary. This mirrors the backend's hard
+precondition (`process::video::tests::video_metadata_requires_a_working_ffmpeg_and_ffprobe`);
+it fails, it does not skip. Only the video formats are gated, so the image flows
+stay runnable without a video toolchain.
+
+This is the UI counterpart of the API generator's `fixture` given step; the
+manifest digest is already pinned by `cargo test -p snapfab`, but this harness
+reads the manifest file directly rather than through snapfab's loader.
 
 ### When interpreter (`interpreter.ts`, `executeWhen`)
 

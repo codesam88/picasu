@@ -5,7 +5,9 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 // frontend/tests/playwright/ → frontend/tests/ → frontend/ → repo root
-const REPO_ROOT = path.resolve(__dirname, '..', '..', '..')
+/// Repository root, the base the capability manifest's fixture paths are
+/// recorded against (see `pinnedFixtures.ts`).
+export const REPO_ROOT: string = path.resolve(__dirname, '..', '..', '..')
 
 /// Top-level directory for test run outputs (reports, artifacts, per-scenario backends).
 /// Override with `TEST_DIR` env var. Defaults to `.testruns/` under the repo root.
