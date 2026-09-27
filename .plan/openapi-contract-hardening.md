@@ -199,6 +199,24 @@ analyzer. Request-to-panic analysis remains a separate reachability task.
 
 ## Progress
 
+- 2026-09-27: Documented the tool and pinned its known issues (Step 6).
+  `utils/openapi-sanity/README.md` covers purpose, the failure class it exists
+  for, CLI and library usage, the three rule groups, how it is tested, and
+  limitations — including that the vocabulary (`SCANNED_MODULES`, `AUTH_POLICY`,
+  `KNOWN_GUARDS`, `KNOWN_TAGS`/`DATA_API_PREFIXES`) is picasu-specific and
+  compile-time rather than configuration, that source analysis cannot prove what
+  Rocket mounts, and that `cfg`/features, schemas, parameter agreement,
+  `operationId` stability and reachability are not checked. `tests/regressions.rs`
+  adds four incident-shaped tests where rule-level coverage existed but the
+  incident did not: the group-root one-line `routes![]` that lost both renewal
+  routes end to end, the sibling annotation credited versus unannotated
+  diagnostic, the `get_rows` discarded timestamp guard with a correct annotation
+  and document, and a crate-side assertion that every `SCANNED_MODULES` entry
+  names an existing file. Each asserts the exact finding and silence in the
+  conforming shape; neutering the discard rule fails the incident test. The
+  README is now in the `docs-check` prettier glob, and precommit runs
+  `docs-check` for staged `utils/**.md`.
+
 - 2026-09-27: Moved the tag taxonomy into the shared policy library (Step 4 of
   the earlier wording — the tag migration promised by Step 3's last bullet, not
   the parameter work the section is otherwise named for). `utils/openapi-sanity`
