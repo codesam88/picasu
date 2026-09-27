@@ -304,10 +304,12 @@ openapi-sanity help
                         contract; repeatable
 ```
 
-Exit codes: `0` nothing to report, `1` contract findings (one per line on
-stderr, summary on stderr as well), `2` unusable input — a missing module, an
-unreadable or non-JSON document, a document with no `paths` object, or a usage
-error.
+Every run ends in one of three markers: `openapi-sanity: PASS - ...` on stdout
+for a clean run (exit `0`), `openapi-sanity: FAIL - N contract findings` as the
+last line of stderr with the findings above it (exit `1`), or
+`openapi-sanity: ERROR - <why>` for unusable input (exit `2`), which covers a
+missing module, an unreadable or non-JSON document, a document with no `paths`
+object, or a usage error.
 
 The run is deterministic: no timestamps, no network, no environment beyond the
 working directory used to shorten labels, and findings sorted by file, line and

@@ -67,18 +67,21 @@ artifact, not the analysis: the public document strips the test-only probe surfa
 (`/get/test/`) while the handlers stay in the source, so a caller that forgets the
 exclusion sees the omission as findings rather than as a passing gate.
 
-### Exit codes
+### Exit codes and the summary line
 
-| Code | Meaning                                                                                                       |
-| ---- | ------------------------------------------------------------------------------------------------------------- |
-| 0    | Nothing to report                                                                                             |
-| 1    | At least one contract finding, one per line on stderr                                                         |
-| 2    | Unusable input: a missing file, a document that is not JSON, a document with no `paths` object, a usage error |
+Every run reports one marker, in plain ASCII, so the verdict is readable in a log
+without counting lines:
 
-A failing run prints one finding per line as `file:line: message`, sorted by file, line
-and message, with a summary on stderr. Nothing reads the clock, the network, or the
-environment beyond the working directory used to shorten labels, so two runs over one
-tree print byte-identical output.
+| Code | Meaning                                                                                                       | Marker                                                                                            |
+| ---- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 0    | Nothing to report                                                                                             | `openapi-sanity: PASS - 61 spec operations checked, no findings` (the whole of stdout)            |
+| 1    | At least one contract finding, one per line on stderr                                                         | `openapi-sanity: FAIL - N contract findings` (last line of stderr)                                |
+| 2    | Unusable input: a missing file, a document that is not JSON, a document with no `paths` object, a usage error | `openapi-sanity: ERROR - <why>` (stderr; the usage text follows when the arguments were at fault) |
+
+A failing run prints its findings above the `FAIL` line as `file:line: message`, sorted
+by file, line and message. Nothing reads the clock, the network, or the environment
+beyond the working directory used to shorten labels, so two runs over one tree print
+byte-identical output.
 
 ### As a library
 
