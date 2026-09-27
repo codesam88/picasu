@@ -2,7 +2,13 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use openapi_sanity::Finding;
+// The list of router files whose `routes![]` blocks are scanned lives in
+// `openapi-sanity`: the contract gate and its tests have to read the same
+// modules this script does, and a copy here would let the generator and the
+// gate disagree about which routes exist. A module missing from that list has
+// its routes mounted but undocumented, which the parity test in
+// `src/tests/openapi_contract.rs` reports.
+use openapi_sanity::{Finding, SCANNED_MODULES};
 
 /// A handler registered by a `routes![...]` block, with the group it was found in.
 #[derive(Clone)]
@@ -11,24 +17,6 @@ struct Route {
     module_path: String,
     handler: String,
 }
-
-/// Router files whose `routes![...]` blocks are scanned, as
-/// `(group prefix, path relative to src/router)`.
-///
-/// A module missing from this list has its routes mounted but undocumented, which
-/// the parity test in `src/tests/openapi_contract.rs` reports.
-const SCANNED_MODULES: &[(&str, &str)] = &[
-    ("get", "get/mod.rs"),
-    ("post", "post/mod.rs"),
-    ("put", "put/mod.rs"),
-    ("delete", "delete.rs"),
-    ("fairing", "fairing/mod.rs"),
-    // `auth.rs` mounts the token renewal routes through
-    // `generate_fairing_routes()`. It has to be scanned here as well,
-    // otherwise its annotated handlers never reach `paths(...)` and the
-    // routes are mounted but undocumented.
-    ("auth", "auth.rs"),
-];
 
 #[allow(clippy::cast_precision_loss)]
 fn main() {

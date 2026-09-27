@@ -119,9 +119,26 @@ openapi-gen:
     RUST_MIN_STACK=16777216 cargo run --package picasu -- --dump-openapi > backend/openapi.json
     @echo "wrote backend/openapi.json"
 
-# Fail when the checked-in public OpenAPI artifact is stale
+# Two phases, in order: `openapi-sanity` compares the annotated source with the
+# committed document, then `openapi-artifact` diffs the committed document
+# against a fresh generation. A dependency that fails stops the recipe, so
+# either phase failing fails this one with that phase's diagnostics on stderr.
+#
+# Fail when the API source and the checked-in public OpenAPI artifact disagree
 [group('utils')]
-openapi-check:
+openapi-check: openapi-sanity openapi-artifact
+
+# Source/spec contract analysis: annotations, routes and the committed document
+[private]
+openapi-sanity:
+    cargo run --quiet --package openapi-sanity -- check \
+        --router-root "{{justfile_directory()}}/backend/src/router" \
+        --spec "{{justfile_directory()}}/backend/openapi.json" \
+        --exclude-prefix /get/test/
+
+# Generated-artifact diff against the committed document
+[private]
+openapi-artifact:
     #!/usr/bin/env bash
     set -euo pipefail
     generated="$(mktemp)"

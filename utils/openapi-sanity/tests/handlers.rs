@@ -131,6 +131,89 @@ fn an_annotated_handler_reports_its_own_spec_path() {
 }
 
 #[test]
+fn an_annotated_handler_reports_its_own_annotation_verb() {
+    // The verb of the annotation decides which operation utoipa registers the
+    // handler under, so it is read separately from the route attribute: they are
+    // the same in every correct handler and disagree in exactly the case the
+    // contract gate has to notice.
+    let scan = scan_handlers(
+        "src/router/post/authenticate.rs",
+        r#"
+        #[utoipa::path(post, path = "/post/authenticate", tag = "auth")]
+        #[post("/post/authenticate", format = "json", data = "<data>")]
+        pub async fn authenticate(data: String) {}
+        "#,
+    );
+
+    let authenticate = handler(&scan, "authenticate");
+    assert_eq!(authenticate.spec_method, Some(HttpMethod::Post));
+    assert_eq!(authenticate.method, Some(HttpMethod::Post));
+    assert!(scan.findings.is_empty());
+}
+
+#[test]
+fn the_annotation_verb_is_found_wherever_it_sits() {
+    // utoipa takes the verb as a bare identifier among the annotation's
+    // top-level tokens, and an identifier that names no verb must not end the
+    // search — `params(..)` precedes the verb in a readable annotation.
+    let scan = scan_handlers(
+        "src/router/get/get_data.rs",
+        r#"
+        #[utoipa::path(
+            params(("path" = String, Path)),
+            get,
+            path = "/get/get-data",
+            responses((status = 200, description = "ok"))
+        )]
+        #[get("/get/get-data")]
+        pub async fn get_data() {}
+        "#,
+    );
+
+    assert_eq!(
+        handler(&scan, "get_data").spec_method,
+        Some(HttpMethod::Get)
+    );
+}
+
+#[test]
+fn a_verb_inside_a_nested_group_is_not_the_annotation_verb() {
+    // `responses(..)` and `params(..)` are token groups, so an identifier inside
+    // one cannot register the operation under a verb nobody declared.
+    let scan = scan_handlers(
+        "src/router/get/get_data.rs",
+        r#"
+        #[utoipa::path(
+            path = "/get/get-data",
+            responses((status = 200, description = "post")),
+            params(("delete" = String, Query))
+        )]
+        #[get("/get/get-data")]
+        pub async fn get_data() {}
+        "#,
+    );
+
+    let get_data = handler(&scan, "get_data");
+    assert!(get_data.annotated);
+    assert_eq!(get_data.spec_method, None);
+    assert_eq!(get_data.spec_path.as_deref(), Some("/get/get-data"));
+    assert!(scan.findings.is_empty());
+}
+
+#[test]
+fn an_unannotated_handler_declares_no_annotation_verb() {
+    let scan = scan_handlers(
+        "src/router/get/get_page.rs",
+        "#[get(\"/setting\")]\npub async fn setting() {}\n",
+    );
+
+    let setting = handler(&scan, "setting");
+    assert!(!setting.annotated);
+    assert_eq!(setting.spec_method, None);
+    assert_eq!(setting.spec_path, None);
+}
+
+#[test]
 fn an_annotation_is_not_credited_to_a_sibling_function() {
     // The two functions live in one file; only one of them is annotated. A
     // file-level "does this module mention utoipa::path" check would register
