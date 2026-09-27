@@ -118,6 +118,12 @@ Medium — bad patterns and type fidelity:
       (album-index, index-image, probe ops), breaking Parameters/Responses
       in-page links and duplicating description-as-anchor. Keep utoipa
       summaries single-line titles.
+- [ ] Revisit typed response schemas and `FileEntry`. `FileEntry` is registered
+      as a component schema but referenced by no operation, so the Step 4
+      orphan rule unregisters it; its doc comment says it is meant for the
+      wire through `metadata.path`. Decide in a dedicated review which
+      operations should expose typed response schemas and whether `FileEntry`
+      returns as a `$ref`. Raised 2026-09-27, deferred pending that review.
 - [x] Update `docs/openapi-generator.md`: 4 references to
       `docs/mdbook/src/openapi-reference.md` are stale; `justfile` writes
       `docs/openapi-reference.md`. Anything wiring a CI drift-check against
@@ -196,6 +202,39 @@ Only add checks that have actionable source information:
 
 Do not turn this into a second OpenAPI serializer or a general Rust taint
 analyzer. Request-to-panic analysis remains a separate reachability task.
+
+#### Design decision (2026-09-27): checker, not generation
+
+Reviewed and rejected auto-generating the structural half of `#[utoipa::path]`
+from the route attribute and signature (attribute macro, or build-time
+derivation merged at dump time): annotations keep prose regardless, the macro
+option couples to Rocket's expansion order and utoipa's argument grammar, and
+the plan's boundary favours verification. Step 4 is therefore a fifth rule
+group in the CLI, `check_params`, chained after `check_contract`,
+`check_tags` and `check_auth`:
+
+- **P1 — path parameters.** The placeholders in the spec path, the route's
+  `<segment>` names after `to_spec_path` normalization (`<_path..>` → `path`),
+  and the operation's declared `in: path` parameters must be the same set —
+  no undocumented segment, no declared parameter the route does not bind.
+- **P2 — query parameters.** The route's `?<a>&<b>` names and the operation's
+  declared `in: query` parameters must be the same set, and each parameter's
+  `required` flag must agree with `Option<T>` on the bound handler argument.
+- **P3 — request body.** A `data = "<x>"` argument exists iff the operation
+  declares `requestBody`; the declared schema must name the handler's data
+  type after unwrapping `Json<T>`/`Form<T>`. `request_body = Value` is a
+  finding when the handler takes a typed body; multipart inputs are satisfied
+  by a `multipart/form-data` content type.
+- **P4 — operation ids.** The spec's `operationId` must equal the handler
+  function name (utoipa's default; no annotation sets one today). Stability
+  across reviewed changes is mechanism 4's job, not this rule's.
+- **P5 — schemas.** No `$ref` to an undefined component schema, and no defined
+  schema that nothing references.
+
+The rules are expected to fire on the repository as it stands (10 operations
+without path parameters, 11 query parameters undocumented, `Value` bodies on
+typed handlers, `FileEntry` orphaned); those findings are fixed in the same
+change so the gate stays green.
 
 ## Progress
 
