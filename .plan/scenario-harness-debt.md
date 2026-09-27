@@ -27,6 +27,13 @@ either hides an assertion or forces a workaround.
 - `backend/tests/schema.json` documents the scenario vocabulary but nothing
   loads it. Either wire it to a test (needs a JSON-Schema dependency) or drop
   it; its description now says it is unenforced.
+- The Playwright backend port race: `paths.ts::createPaths()` draws
+  `30000 + random(30000)` when `WORKER_NUM` is unset, with no collision check,
+  so two workers starting backends concurrently can hit `binding failed:
+Address already in use` and one scenario fails on a port that was never
+  free. Observed once across full-suite runs (the run passed on retry);
+  failed runs also leave an orphaned `picasu` process behind. Probe the port
+  before binding, retry on EADDRINUSE, or derive the port from the run id.
 
 ## Notes
 

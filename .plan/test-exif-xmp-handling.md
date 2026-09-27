@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: medium
 area: testing
@@ -278,6 +278,24 @@ Randomization should complement, not replace, the deterministic matrix.
 
 ## Progress
 
+- 2026-09-27 — Plan complete (Iterations 0–7), `status: done`. Final gates
+  run on this commit: `just check` exit 0, `just test` exit 0 (backend 379 +
+  integration, snapfab 62, vitest 74, Playwright 39), `just plan-lint` clean.
+  Acceptance criteria: matrix formats (JPEG, PNG, TIFF, WebP, MP4, MOV) each
+  have a real-fixture scenario; misnamed/empty/truncated/random-byte/corrupt
+  cases have explicit pinned outcomes; HEIF/AVIF remain rejected with a
+  manifest test forbidding claims for them; MP4/MOV hard-fail with an
+  actionable toolchain diagnostic on both harnesses; randomized scenarios use
+  the recorded `ci` seed set against manifest-declared capabilities only.
+  Honest residual against criterion 1 as literally worded: the accepted video
+  extensions _outside_ the format matrix (gif, webm, mkv, avi, flv, wmv, mpeg)
+  have unit-level detection/allowlist coverage in `process/format.rs` but no
+  real-fixture metadata scenario — they were never in this plan's matrix, and
+  adding them would reuse the pinned-fixture and ffprobe machinery built here.
+  Two environment incidents during the plan are tracked in
+  `.plan/tmpfs-quota-test-runs.md` and `.plan/scenario-harness-debt.md` (the
+  latter also holds the Playwright random-port race seen once in the final
+  gate and confirmed flaky by an immediate green re-run).
 - 2026-09-27 — Iteration 7 done. Three UI smoke flows added —
   `format-jpeg-upload-gallery-metadata-delete`, `format-tiff-…`,
   `format-mp4-…` — each: upload via file chooser → gallery tile count →
