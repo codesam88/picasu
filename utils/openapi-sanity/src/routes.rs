@@ -13,6 +13,9 @@ pub struct HandlerRef {
     pub module_path: String,
     /// Bare handler name, e.g. `login`.
     pub handler: String,
+    /// 1-based line the entry starts on, so a finding about the registration
+    /// points at the `routes![...]` block rather than at the handler.
+    pub line: usize,
 }
 
 /// Handler references and diagnostics from the `routes![...]` blocks in a file.
@@ -66,7 +69,11 @@ impl Collector<'_> {
             let line = entry.line;
             let rendered = entry.tokens.to_string();
             match parse_entry(entry.tokens, self.group_prefix) {
-                Some(handler) => self.scan.handlers.push(handler),
+                Some((module_path, handler)) => self.scan.handlers.push(HandlerRef {
+                    module_path,
+                    handler,
+                    line,
+                }),
                 // A `routes![]` entry that is not a plain handler reference is
                 // reported rather than guessed at: turning it into a
                 // `__path_*` import would either break the build or, worse,
@@ -160,7 +167,7 @@ fn line_of(token: &TokenTree) -> Option<usize> {
 /// calls, literals, indexing and arithmetic. Unqualified entries resolve against
 /// `group_prefix`, so `routes![delete_data]` scanned for the `delete` group
 /// becomes `delete::delete_data`.
-fn parse_entry(tokens: TokenStream, group_prefix: &str) -> Option<HandlerRef> {
+fn parse_entry(tokens: TokenStream, group_prefix: &str) -> Option<(String, String)> {
     let mut segments: Vec<String> = Vec::new();
     let mut tokens = tokens.into_iter();
 
@@ -196,8 +203,5 @@ fn parse_entry(tokens: TokenStream, group_prefix: &str) -> Option<HandlerRef> {
         segments.join("::")
     };
 
-    Some(HandlerRef {
-        module_path,
-        handler,
-    })
+    Some((module_path, handler))
 }

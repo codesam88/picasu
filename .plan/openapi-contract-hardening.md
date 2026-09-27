@@ -199,6 +199,44 @@ analyzer. Request-to-panic analysis remains a separate reachability task.
 
 ## Progress
 
+- 2026-09-27: Made `just openapi-check` the unified contract gate (Step 2).
+  `utils/openapi-sanity` gained a binary, `openapi-sanity check`, and a
+  `contract` module; `just openapi-check` is now two phases, the semantic one
+  first — annotations vs. `backend/openapi.json` on source, no compiled backend
+  needed — then the existing generated-artifact diff, and a failing dependency
+  stops the recipe, so either phase fails nonzero with its own diagnostics
+  visible. `just check` and CI pick it up unchanged. Seven checks, each
+  reported as a stable `file:line: message` and sorted by file, line and
+  message: a registered handler with no `#[utoipa::path]`, a route URI and an
+  annotation path that disagree after `to_spec_path`, a route attribute and
+  annotation verb that disagree, a source operation the document omits, a
+  document operation no scanned source declares, a handler identity registered
+  twice, and a duplicate `operationId`. Two things the library did not have:
+  `Handler::spec_method` (the annotation's verb — utoipa takes it as a bare
+  identifier among the annotation's top-level tokens, and it decides which
+  operation the handler is registered under) and `HandlerRef::line` (so a
+  duplicate registration points at the `routes![]` entry, not at the handler).
+  `SCANNED_MODULES` moved from `build.rs` into the crate rather than being
+  forked, which surfaced a stale entry: `("fairing", "fairing/mod.rs")` has
+  listed a file that has not existed since c6e599a9 flattened
+  `router/fairing/*` into `router/auth.rs`, and the build script skipped it
+  silently. Removed, with `every_scanned_router_module_exists` added to
+  `backend/src/tests/route_scan.rs` so a dead entry cannot come back;
+  `openapi.rs` and `openapi.json` regenerate byte-identically. A handler whose
+  annotation disagrees with its own route is reported once, locally, and is not
+  also reported as document drift — the document inherits the disagreement from
+  the annotation, so a second finding would restate the first; the drift fixture
+  pins one finding per rule. The exclusion that keeps the test-only probes out
+  of the comparison is a `--exclude-prefix` argument rather than a constant in
+  the analyzer, because it describes the artifact and not the analysis;
+  `just openapi-check` passes `/get/test/`, and running without it is a test.
+  The repository is clean: 61 operations, 0 findings. Gated by 20 checks over
+  the `clean/` and `drift/` fixture trees in `utils/openapi-sanity/tests/`
+  (each rule as an exact diagnostic, plus the whole report), 14 CLI tests, and
+  one that runs the gate over the real `backend/src/router` and
+  `backend/openapi.json` so it cannot be neutered and stay green. Step 3
+  (auth policy) is untouched.
+
 - 2026-09-27: Extracted the source analyzer into `utils/openapi-sanity`
   (Step 1). The crate owns the `routes![]` scan, the per-function
   `#[utoipa::path]` attribution, Rocket route/URI discovery and the

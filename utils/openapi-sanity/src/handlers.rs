@@ -80,6 +80,10 @@ pub struct Handler {
     pub annotated: bool,
     /// The `path = "..."` literal of that annotation, when it declares one.
     pub spec_path: Option<String>,
+    /// The verb of that annotation, when it declares one. utoipa accepts the
+    /// verb anywhere among the annotation's top-level tokens, and it is what
+    /// decides which operation the annotation is registered under.
+    pub spec_method: Option<HttpMethod>,
 }
 
 /// Route and annotation facts declared by the functions in a file.
@@ -127,6 +131,7 @@ fn describe(item: &ItemFn, label: &str, findings: &mut Vec<Finding>) -> Option<H
     let mut uri = None;
     let mut annotated = false;
     let mut spec_path = None;
+    let mut spec_method = None;
 
     for attr in &item.attrs {
         if let Some(found) = route_method(attr) {
@@ -135,6 +140,7 @@ fn describe(item: &ItemFn, label: &str, findings: &mut Vec<Finding>) -> Option<H
         } else if is_utoipa_path(attr) {
             annotated = true;
             spec_path = utoipa_spec_path(attr);
+            spec_method = utoipa_spec_method(attr);
         }
     }
 
@@ -149,6 +155,7 @@ fn describe(item: &ItemFn, label: &str, findings: &mut Vec<Finding>) -> Option<H
         uri,
         annotated,
         spec_path,
+        spec_method,
     })
 }
 
@@ -236,6 +243,27 @@ fn utoipa_spec_path(attr: &Attribute) -> Option<String> {
     }
 
     None
+}
+
+/// The verb of a `#[utoipa::path]` attribute, read from its own top-level
+/// tokens.
+///
+/// utoipa takes the verb as a bare identifier that may sit anywhere in the
+/// attribute, and the first identifier that names a known verb is the one it
+/// registers the operation under. An identifier that names no verb is skipped
+/// rather than ending the search, so `#[utoipa::path(params(..), get, ..)]`
+/// still yields `Get`.
+fn utoipa_spec_method(attr: &Attribute) -> Option<HttpMethod> {
+    let Meta::List(list) = &attr.meta else {
+        return None;
+    };
+    list.tokens
+        .clone()
+        .into_iter()
+        .find_map(|token| match token {
+            TokenTree::Ident(ident) => HttpMethod::from_name(&ident.to_string()),
+            _ => None,
+        })
 }
 
 /// The value of a string-literal token, or `None` for any other token.

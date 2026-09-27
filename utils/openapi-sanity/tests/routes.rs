@@ -8,13 +8,30 @@
 //! were undocumented for as long as the single-line block in `router/auth.rs`
 //! existed.
 
-use openapi_sanity::{HandlerRef, scan_routes};
+use openapi_sanity::{HandlerRef, RouteScan, scan_routes};
 
-fn handler(module_path: &str, handler: &str) -> HandlerRef {
+/// A registered handler at the line its `routes![]` entry starts on, which is
+/// what a finding about the registration points at.
+fn handler(module_path: &str, handler: &str, line: usize) -> HandlerRef {
     HandlerRef {
         module_path: module_path.to_string(),
         handler: handler.to_string(),
+        line,
     }
+}
+
+/// The identities a scan registered, without the lines, for a comparison that is
+/// about *which* handlers a block registers rather than where.
+fn identities(scan: &RouteScan) -> Vec<(String, String)> {
+    scan.handlers
+        .iter()
+        .map(|entry| (entry.module_path.clone(), entry.handler.clone()))
+        .collect()
+}
+
+/// The lines a scan reported its entries on.
+fn lines(scan: &RouteScan) -> Vec<usize> {
+    scan.handlers.iter().map(|entry| entry.line).collect()
 }
 
 /// A `routes![...]` body inside a function, which is where Rocket route tables
@@ -37,8 +54,8 @@ fn single_line_block_registers_every_handler() {
     assert_eq!(
         scan.handlers,
         vec![
-            handler("auth", "renew_timestamp_token"),
-            handler("auth", "renew_hash_token")
+            handler("auth", "renew_timestamp_token", 2),
+            handler("auth", "renew_hash_token", 2)
         ]
     );
     assert!(scan.findings.is_empty());
@@ -50,7 +67,7 @@ fn a_block_at_item_position_is_scanned() {
     // same routes and must register the same handlers.
     let scan = scan_routes("src/router/delete.rs", "routes![delete_data];\n", "delete");
 
-    assert_eq!(scan.handlers, vec![handler("delete", "delete_data")]);
+    assert_eq!(scan.handlers, vec![handler("delete", "delete_data", 1)]);
     assert!(scan.findings.is_empty());
 }
 
@@ -65,9 +82,9 @@ fn multi_line_block_registers_every_handler() {
     assert_eq!(
         scan.handlers,
         vec![
-            handler("get_list", "get_tags"),
-            handler("get_list", "get_albums"),
-            handler("get_page", "login"),
+            handler("get_list", "get_tags", 3),
+            handler("get_list", "get_albums", 4),
+            handler("get_page", "login", 5),
         ]
     );
     assert!(scan.findings.is_empty());
@@ -81,13 +98,13 @@ fn layout_does_not_change_the_result() {
     let spaced = "routes![\n  a , b ,\n  c\n]\n";
 
     let expected = vec![
-        handler("get", "a"),
-        handler("get", "b"),
-        handler("get", "c"),
+        ("get".to_string(), "a".to_string()),
+        ("get".to_string(), "b".to_string()),
+        ("get".to_string(), "c".to_string()),
     ];
     for body in [one_line, multi_line, trailing_comma, spaced] {
         let scan = scan_routes("src/router/get/mod.rs", &in_function(body), "get");
-        assert_eq!(scan.handlers, expected, "body: {body}");
+        assert_eq!(identities(&scan), expected, "body: {body}");
         assert!(scan.findings.is_empty(), "body: {body}");
     }
 }
@@ -105,8 +122,8 @@ fn comments_and_blank_lines_are_ignored() {
     assert_eq!(
         scan.handlers,
         vec![
-            handler("get_data", "get_data"),
-            handler("get_page", "login")
+            handler("get_data", "get_data", 4),
+            handler("get_page", "login", 7)
         ]
     );
     assert!(scan.findings.is_empty());
@@ -123,9 +140,9 @@ fn every_block_in_a_file_is_scanned() {
     assert_eq!(
         scan.handlers,
         vec![
-            handler("post", "a"),
-            handler("post", "b"),
-            handler("post", "c")
+            handler("post", "a", 1),
+            handler("post", "b", 4),
+            handler("post", "c", 5)
         ]
     );
     assert!(scan.findings.is_empty());
@@ -143,9 +160,47 @@ fn nested_brackets_do_not_end_the_block_early() {
 
     assert_eq!(
         scan.handlers,
-        vec![handler("get", "first"), handler("get", "second")]
+        vec![handler("get", "first", 2), handler("get", "second", 2)]
     );
     assert_eq!(scan.findings.len(), 1, "the indexed entry is reported once");
+}
+
+#[test]
+fn an_entry_is_reported_at_the_line_it_starts_on() {
+    // A finding about a registration — a duplicate, a handler the build script
+    // would import — points at the `routes![]` block, not at the handler it
+    // names, which is the line the reader is looking at.
+    let scan = scan_routes(
+        "src/router/get/mod.rs",
+        "pub fn routes() {\n    routes![\n        first,\n        second,\n    ]\n}\n",
+        "get",
+    );
+
+    assert_eq!(lines(&scan), vec![3, 4]);
+}
+
+#[test]
+fn entries_after_a_comment_stay_on_their_own_line() {
+    // A comment is not a token, so the entry after one must not be reported on
+    // the comment's line.
+    let scan = scan_routes(
+        "src/router/get/mod.rs",
+        "pub fn routes() {\n    routes![\n        // the data API\n        first,\n\n        second,\n    ]\n}\n",
+        "get",
+    );
+
+    assert_eq!(lines(&scan), vec![4, 6]);
+}
+
+#[test]
+fn a_block_at_item_position_reports_its_own_line() {
+    let scan = scan_routes(
+        "src/router/delete.rs",
+        "\n\nroutes![delete_data];\n",
+        "delete",
+    );
+
+    assert_eq!(lines(&scan), vec![3]);
 }
 
 #[test]
@@ -159,7 +214,7 @@ fn malformed_entries_are_reported_not_guessed() {
         "get",
     );
 
-    assert_eq!(scan.handlers, vec![handler("get", "real_handler")]);
+    assert_eq!(scan.handlers, vec![handler("get", "real_handler", 1)]);
     assert_eq!(scan.findings.len(), 5, "got: {:?}", scan.findings);
     for finding in &scan.findings {
         assert_eq!(finding.file, "src/router/get/mod.rs");
@@ -210,6 +265,6 @@ fn a_qualified_routes_macro_is_still_scanned() {
         "get",
     );
 
-    assert_eq!(scan.handlers, vec![handler("get", "assets")]);
+    assert_eq!(scan.handlers, vec![handler("get", "assets", 2)]);
     assert!(scan.findings.is_empty());
 }

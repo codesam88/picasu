@@ -28,22 +28,39 @@
 //!
 //! # Diagnostics instead of failures
 //!
-//! Nothing here reads the filesystem, prints, or panics. A file label is passed
-//! in and copied into the findings it produces, a malformed `routes![]` entry is
-//! reported rather than guessed at, and a syntax error becomes a [`Finding`]
-//! with a file and line. What to do with a finding — a build warning, a gate
-//! failure, a CLI diagnostic — belongs to the caller.
+//! Nothing here reads the filesystem, prints, or panics — except
+//! [`spec_operations`], which rejects a document that is not a `paths` object,
+//! since a document that does not parse is a broken input rather than a
+//! contract with no operations. A file label is passed in and copied into the
+//! findings it produces, a malformed `routes![]` entry is reported rather than
+//! guessed at, and a syntax error becomes a [`Finding`] with a file and line.
+//! What to do with a finding — a build warning, a gate failure, a CLI
+//! diagnostic — belongs to the caller.
+//!
+//! # Comparing source with a spec
+//!
+//! [`check_contract`] is the one place that compares the two views with each
+//! other: a handler registered in `routes![]` against its own annotation, and
+//! the operations source declares against the operations an `OpenAPI` document
+//! lists. [`SCANNED_MODULES`] is the list of router files the contract is read
+//! from, shared with the build script so the two cannot disagree about which
+//! files make up the API, and [`referenced_handler_files`] tells a caller which
+//! further files it has to read to resolve the handlers those modules register.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+mod contract;
 mod finding;
 mod handlers;
+mod modules;
 mod path;
 mod routes;
 
+pub use contract::{SpecOperation, check_contract, referenced_handler_files, spec_operations};
 pub use finding::Finding;
 pub use handlers::{Handler, HandlerScan, HttpMethod};
+pub use modules::{SCANNED_MODULES, SourceUnit, handler_module_path};
 pub use path::to_spec_path;
 pub use routes::{HandlerRef, RouteScan};
 
