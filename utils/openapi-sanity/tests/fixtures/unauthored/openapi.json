@@ -8,6 +8,9 @@
     "/get/get-data": {
       "get": {
         "operationId": "get_data",
+        "tags": [
+          "timeline"
+        ],
         "responses": {
           "200": {
             "description": "Grid data"
@@ -21,6 +24,9 @@
     "/get/get-rows": {
       "get": {
         "operationId": "get_rows",
+        "tags": [
+          "timeline"
+        ],
         "responses": {
           "200": {
             "description": "Rows"
@@ -34,6 +40,9 @@
     "/get/get-scroll-bar": {
       "get": {
         "operationId": "get_scroll_bar",
+        "tags": [
+          "timeline"
+        ],
         "responses": {
           "200": {
             "description": "Scroll bar"
@@ -47,6 +56,9 @@
     "/get/get-tags": {
       "get": {
         "operationId": "get_tags",
+        "tags": [
+          "assets"
+        ],
         "responses": {
           "200": {
             "description": "Tags"
@@ -57,6 +69,9 @@
     "/login": {
       "get": {
         "operationId": "login",
+        "tags": [
+          "pages"
+        ],
         "responses": {
           "200": {
             "description": "Login page"
@@ -67,6 +82,9 @@
     "/setting": {
       "get": {
         "operationId": "setting",
+        "tags": [
+          "pages"
+        ],
         "responses": {
           "200": {
             "description": "Settings page"
@@ -77,6 +95,9 @@
     "/trashed": {
       "get": {
         "operationId": "trashed",
+        "tags": [
+          "pages"
+        ],
         "responses": {
           "200": {
             "description": "Trash page"

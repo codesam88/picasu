@@ -199,6 +199,65 @@ analyzer. Request-to-panic analysis remains a separate reachability task.
 
 ## Progress
 
+- 2026-09-27: Moved the tag taxonomy into the shared policy library (Step 4 of
+  the earlier wording — the tag migration promised by Step 3's last bullet, not
+  the parameter work the section is otherwise named for). `utils/openapi-sanity`
+  gained a `tags` module: `KNOWN_TAGS` is the single declaration of the vocabulary
+  and `check_tags` holds a document to it in four rules — an operation with no
+  tags, a tag outside the vocabulary, `pages` on a data-API path, and `pages`
+  missing from an SPA page path. `SpecOperation` carries `tags` so the rules read
+  the committed document the same way the auth rules do, and `openapi-sanity
+check` now merges the tag findings into the one report, so `just openapi-check`
+  phase 1 covers the taxonomy without compiling the backend. The rules are
+  independent, so an untagged page path is reported twice; that is deliberate,
+  since it is missing a tag _and_ missing the reserved one. The document-side
+  message shape is the auth rules' — `METHOD PATH: …` inside a `file:` label —
+  and the verb is upper-cased like every other diagnostic in the crate, where the
+  backend's own copy printed the raw JSON key.
+
+  The migration is a move, not a rewrite: the vocabulary, the four rules and the
+  `pages` placement logic are the ones `every_operation_carries_a_known_tag`
+  enforced, and equivalence was measured before anything was deleted. Three
+  mutations of the real router — `timeline` → an unknown `metadata`, the `tag`
+  line removed, and `timeline` → `pages` on `GET /get/get-data` — each regenerated
+  the artifact and were then run through the old backend test and the new CLI
+  rules. All three were caught by both, on the same tree, with the same rule
+  (`get /get/get-data: unknown tag \`metadata\``before,`GET /get/get-data:
+  unknown tag \`metadata\``after). The same three were re-run after the migration:`cargo test --lib`now reads`check_tags` and fails with the CLI's diagnostic, so
+  tag drift is not detectable only through the CLI.
+
+  The backend keeps the document half of it, the Step 3 pattern:
+  `the_public_operations_follow_the_shared_tag_taxonomy` runs `check_tags` over
+  the generated public spec, with `self_check_detects_tag_drift_in_the_public_spec`
+  proving the shared check still notices from where it is called. The six old
+  self-checks over hand-written JSON are gone — the equivalent coverage now lives
+  in the crate, where the rules are, over an `untagged/` fixture tree that carries
+  one instance of each failure mode. The mounted-route parity tests and the
+  `Unauthorized`-component tests are untouched: parity is runtime-only, and the
+  component tests are document shape the CLI does not duplicate.
+
+  The fixture documents gained the `tags` their annotations already declared —
+  the fixtures' sources were tagged all along and only their documents were not,
+  so the CLI's report over them would otherwise have changed for an unrelated
+  reason. `KNOWN_TAGS` is a hand-written claim in both directions now: besides the
+  gate, `the_repository_carries_the_tags_the_taxonomy_names` requires the subjects
+  the committed document uses and the subjects the vocabulary names to be the same
+  set, so a vocabulary entry with no operation cannot rot in place. One convention
+  is not a rule: "exactly one tag per operation" is held by
+  `the_repository_gives_every_operation_exactly_one_subject` rather than by a
+  check, because the four rules are about an absent, an unknown and a misplaced
+  tag and inventing a fifth was not part of a move.
+
+  Gated by 13 tests over the `clean/` and `untagged/` trees (each rule as an exact
+  diagnostic plus the whole report, the excluded prefix, the vocabulary itself, and
+  two over the committed document), 4 new mutation tests that break one tag in a
+  conforming copy and restore it, 1 new CLI test, and 1 new backend test. Every
+  rule, the excluded-prefix skip, the page/data classification, the sort and the
+  CLI wiring were each neutered in turn and failed a named test; both source files
+  were restored byte-identically afterwards. The repository is clean: 61
+  operations, 0 findings, and `backend/openapi.json` and every `#[utoipa::path]`
+  are unchanged. Step 5 (parameters and documentation) is untouched.
+
 - 2026-09-27: Aligned the authentication policy with the implementation (Step 3).
   `utils/openapi-sanity` gained a `guards` module and an `auth` module, and the CLI
   now runs both checks and prints one merged report. A handler's parameters are

@@ -7,22 +7,34 @@
   "paths": {
     "/get/get-albums": {
       "get": {
-        "operationId": "get_data"
+        "operationId": "get_data",
+        "tags": [
+          "timeline"
+        ]
       }
     },
     "/get/get-data-RENAMED": {
       "get": {
-        "operationId": "get_data"
+        "operationId": "get_data",
+        "tags": [
+          "timeline"
+        ]
       }
     },
     "/get/get-rows": {
       "post": {
-        "operationId": "get_rows"
+        "operationId": "get_rows",
+        "tags": [
+          "timeline"
+        ]
       }
     },
     "/login": {
       "get": {
-        "operationId": "login"
+        "operationId": "login",
+        "tags": [
+          "pages"
+        ]
       }
     }
   }

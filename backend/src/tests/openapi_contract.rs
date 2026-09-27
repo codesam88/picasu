@@ -14,7 +14,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::MutexGuard;
 
-use openapi_sanity::{AUTH_POLICY, AuthRule, to_spec_path};
+use openapi_sanity::{AUTH_POLICY, AuthRule, check_tags, to_spec_path};
 use rocket::http::Method;
 
 use crate::openapi_public::{is_test_only_path, public_json};
@@ -221,83 +221,73 @@ fn rocket_paths_normalize_to_spec_templates() {
 
 // ── Operation tags ────────────────────────────────────────────────────────────
 //
-// Every operation carries exactly one tag from a small taxonomy so the
-// generated reference groups by subject instead of by whichever handler was
-// annotated last. The taxonomy and its meaning are documented in
-// `docs/openapi-generator.md`; the comparison is a pure function so the
-// negative self-checks below can feed it drifted input.
+// Every operation carries exactly one tag from a small taxonomy so the generated
+// reference groups by subject instead of by whichever handler was annotated last.
+// The vocabulary and the rules live in `openapi_sanity` (`KNOWN_TAGS`,
+// `check_tags`), and `openapi-sanity check` runs them on the committed document.
+// What follows is the document half of that run, kept in the backend so
+// `cargo test --lib` fails on the same drift without the CLI. It reads the
+// *generated* public spec rather than the committed artifact, so an annotation
+// edit is reported before `just openapi-gen` has run, while the CLI reports what
+// the committed document says and phase 2 of the gate catches the two disagreeing.
 
-/// Every tag the taxonomy allows. Adding a tag is a deliberate one-line change
-/// here plus the matching row in `docs/openapi-generator.md`.
-const KNOWN_TAGS: &[&str] = &[
-    "albums", "assets", "auth", "config", "index", "pages", "serving", "timeline", "upload",
-];
+/// The label the shared checks print for the committed artifact.
+const PUBLIC_SPEC_LABEL: &str = "backend/openapi.json";
 
-/// Path shapes that identify data-API operations, as opposed to SPA HTML pages.
-const DATA_API_PREFIXES: &[&str] = &["/delete/", "/get/", "/object/", "/post/", "/put/"];
-
-/// Whether `path` is a data-API operation rather than an SPA page route.
+/// Every way an operation's tags violate the shared taxonomy, rendered as the
+/// shared check reports it.
 ///
-/// Derived from path shape because the spec alone does not say which file
-/// annotated an operation. Stated assumption: every public-spec operation that
-/// is *not* under one of these prefixes (or `POST /upload`) is one of the
-/// `router/get/get_page.rs` HTML routes. The two things that would break the
-/// assumption — the test-only probes and the `/assets` file server — are
-/// excluded from the public spec. If a data route were ever added outside
-/// these shapes, this function would classify it as a page and the tag gate
-/// would fail loudly instead of accepting the wrong grouping.
-fn is_data_api_path(path: &str) -> bool {
-    DATA_API_PREFIXES
+/// The rules, the vocabulary and the `pages` placement logic belong to
+/// `openapi_sanity::check_tags`; what the backend reads is the generated public
+/// spec rather than the committed document, which is the one view of the
+/// contract only this crate has.
+fn tag_violations(spec: &serde_json::Value) -> Vec<String> {
+    let operations = openapi_sanity::spec_operations(spec);
+
+    check_tags(PUBLIC_SPEC_LABEL, &operations, &[])
         .iter()
-        .any(|prefix| path.starts_with(prefix))
-        || path == "/upload"
+        .map(ToString::to_string)
+        .collect()
 }
 
-/// Report every way a spec's operation tags can violate the taxonomy: an
-/// operation with no tags, a tag outside [`KNOWN_TAGS`], a data-API path
-/// carrying `pages`, and a page path missing `pages`. Pure — it reads only the
-/// JSON it is given, so self-checks can feed it deliberately drifted input.
-fn tag_violations(spec: &serde_json::Value) -> String {
-    let mut violations = Vec::new();
-    for (path, item) in spec["paths"].as_object().expect("spec paths object") {
-        for (method, operation) in item.as_object().expect("path item object") {
-            let id = format!("{method} {path}");
-            let tags: Vec<&str> = operation["tags"]
-                .as_array()
-                .map(|entries| entries.iter().filter_map(|t| t.as_str()).collect())
-                .unwrap_or_default();
-            if tags.is_empty() {
-                violations.push(format!("{id}: declares no tags"));
-            }
-            for tag in &tags {
-                if !KNOWN_TAGS.contains(tag) {
-                    violations.push(format!("{id}: unknown tag `{tag}`"));
-                }
-            }
-            let data_api = is_data_api_path(path);
-            if data_api && tags.contains(&"pages") {
-                violations.push(format!("{id}: data-API path carries the `pages` tag"));
-            }
-            if !data_api && !tags.contains(&"pages") {
-                violations.push(format!("{id}: SPA page path must carry `pages`"));
-            }
-        }
-    }
-    violations.join("\n")
-}
-
-/// The taxonomy gate: every operation in the public spec is grouped by exactly
-/// the known tags, and `pages` sits on the SPA page routes and nowhere else.
+/// The taxonomy gate: every operation in the public spec is grouped by a tag from
+/// the shared vocabulary, and `pages` sits on the SPA page routes and nowhere
+/// else.
 #[test]
-fn every_operation_carries_a_known_tag() {
-    let report = tag_violations(&public_spec());
+fn the_public_operations_follow_the_shared_tag_taxonomy() {
+    assert_eq!(
+        tag_violations(&public_spec()),
+        Vec::<String>::new(),
+        "operation tags must follow the taxonomy in `docs/openapi-generator.md`. \
+         Fix: set `tag = \"...\"` in the handler's `#[utoipa::path]` annotation and \
+         run `just openapi-gen`."
+    );
+}
 
-    assert!(
-        report.is_empty(),
-        "operation tags violate the taxonomy (documented in \
-         docs/openapi-generator.md):\n{report}\n\
-         Fix: set `tag = \"...\"` in the handler's `#[utoipa::path]` annotation \
-         and run `just openapi-gen`.",
+/// The vocabulary is a hand-written claim, and the shared check is the only thing
+/// that holds the document to it here. A check that stopped comparing would leave
+/// this test passing over a document nothing was read from, so the taxonomy is
+/// required to notice a tag the annotation does not have.
+#[test]
+fn self_check_detects_tag_drift_in_the_public_spec() {
+    let mut retagged = public_spec();
+    retagged["paths"]["/get/get-data"]["get"]["tags"] = serde_json::json!(["pages"]);
+
+    assert_eq!(
+        tag_violations(&public_spec()),
+        Vec::<String>::new(),
+        "the unmutated document is the baseline this self-check is measured against"
+    );
+    let violations = tag_violations(&retagged);
+
+    assert_eq!(
+        violations,
+        vec![format!(
+            "{PUBLIC_SPEC_LABEL}: GET /get/get-data: data-API path carries the `pages` tag"
+        )],
+        "a data operation wearing the SPA page tag is the drift the reserved tag \
+         exists to catch, and it has to be reported where the vocabulary lives now: \
+         {violations:?}"
     );
 }
 
@@ -413,90 +403,6 @@ fn self_check_detects_a_method_mismatch() {
 
     assert!(undocumented_routes(&mounted, &documented).contains("POST /get/config"));
     assert!(stale_operations(&documented, &mounted).contains("GET /get/config"));
-}
-
-#[test]
-fn self_check_detects_an_untagged_operation() {
-    // What dropping `tag = "..."` from an annotation looks like: the operation
-    // serializes without a usable `tags` array.
-    let spec = serde_json::json!({
-        "paths": {
-            "/get/get-data": {"get": {"tags": ["timeline"]}},
-            "/put/edit_tag": {"put": {}}
-        }
-    });
-
-    let report = tag_violations(&spec);
-    assert!(
-        report.contains("put /put/edit_tag: declares no tags"),
-        "an operation with no tags must be reported, got: {report:?}"
-    );
-    assert!(
-        !report.contains("/get/get-data"),
-        "a conforming operation must not be reported, got: {report:?}"
-    );
-}
-
-#[test]
-fn self_check_detects_an_unknown_tag() {
-    // A tag outside the taxonomy: present, so the missing-tag rule cannot
-    // catch it, but not in `KNOWN_TAGS`.
-    let spec = serde_json::json!({
-        "paths": {"/put/edit_tag": {"put": {"tags": ["metadata"]}}}
-    });
-
-    let report = tag_violations(&spec);
-    assert!(
-        report.contains("put /put/edit_tag: unknown tag `metadata`"),
-        "a tag outside KNOWN_TAGS must be reported, got: {report:?}"
-    );
-}
-
-#[test]
-fn self_check_detects_a_data_api_path_tagged_pages() {
-    // The mistake this gate exists to prevent: a data-API operation wearing
-    // the SPA page tag, which randomizes the reference grouping again.
-    let spec = serde_json::json!({
-        "paths": {"/get/get-data": {"get": {"tags": ["pages"]}}}
-    });
-
-    let report = tag_violations(&spec);
-    assert!(
-        report.contains("get /get/get-data: data-API path carries the `pages` tag"),
-        "a data-API operation tagged `pages` must be reported, got: {report:?}"
-    );
-}
-
-#[test]
-fn self_check_detects_a_page_path_without_the_pages_tag() {
-    // The other direction of the `pages` rule: an SPA page route that lost
-    // (or never got) its tag must be reported too.
-    let spec = serde_json::json!({
-        "paths": {"/login": {"get": {"tags": ["auth"]}}}
-    });
-
-    let report = tag_violations(&spec);
-    assert!(
-        report.contains("get /login: SPA page path must carry `pages`"),
-        "an untagged-by-shape page operation must be reported, got: {report:?}"
-    );
-}
-
-#[test]
-fn self_check_accepts_a_conformant_tag_set() {
-    let spec = serde_json::json!({
-        "paths": {
-            "/get/get-data": {"get": {"tags": ["timeline"]}},
-            "/login": {"get": {"tags": ["pages"]}},
-            "/upload": {"post": {"tags": ["upload"]}}
-        }
-    });
-
-    assert_eq!(
-        tag_violations(&spec),
-        "",
-        "a spec that follows the taxonomy must report no violations"
-    );
 }
 
 // ── Shared 401 response component ─────────────────────────────────────────────

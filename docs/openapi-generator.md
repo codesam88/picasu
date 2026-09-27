@@ -28,8 +28,14 @@ CLI compares the annotated source with the committed document without compiling
 anything, and fails on the failures the runtime table cannot show: an annotation
 whose path or verb disagrees with the route attribute it sits on, a handler
 registered twice, a committed document that no longer matches what the source
-declares, or a handler whose request guards do not match what the operation is
-supposed to require.
+declares, an operation grouped under a subject outside the taxonomy, or a handler
+whose request guards do not match what the operation is supposed to require.
+
+The tag taxonomy and the auth policy are owned by `openapi-sanity` and enforced by
+the CLI; the backend tests run the same rules over the generated public spec, so
+`cargo test` fails on the same drift without the CLI. See [Tag
+conventions](#tag-conventions) and [Authentication
+policy](#authentication-policy).
 
 The goal is an exact, auditable mapping between:
 
@@ -115,11 +121,10 @@ The goal is an exact, auditable mapping between:
    `backend/`.
 
 5. **`openapi_contract` tests** (`cargo test --lib openapi_contract`) — compare
-   the mounted Rocket routes with the public spec, and enforce the tag
-   taxonomy below (every operation carries a known tag, `pages` sits on the
-   SPA page routes and on nothing else). Both sides of the comparison are
-   normalized with `openapi_sanity::to_spec_path`, the single path translation
-   the crate owns.
+   the mounted Rocket routes with the public spec, and run the shared tag and auth
+   policies over it (the taxonomy below, and which operations can answer `401`).
+   Both sides of the route comparison are normalized with
+   `openapi_sanity::to_spec_path`, the single path translation the crate owns.
 
 6. **`openapi-sanity` tests** (`cargo test -p openapi-sanity`) — cover the
    scanner itself: `routes![]` entries in every layout, per-function annotation
@@ -168,6 +173,10 @@ per line as `file:line: message`:
 | `GET X is in the spec but no scanned route declares it`                          | A committed operation no scanned source backs                                       |
 | `registered in routes![] more than once (first at file:line)`                    | A handler identity registered twice                                                 |
 | `duplicate operationId \`id\` claimed by A, B`                                   | Two operations share an id, which merges their generated client methods             |
+| `METHOD PATH: declares no tags`                                                  | An annotation that lost its `tag = "..."`                                           |
+| `METHOD PATH: unknown tag \`x\``                                                 | A subject nobody reviewed; the vocabulary is closed                                 |
+| `METHOD PATH: data-API path carries the \`pages\` tag`                           | A data operation grouped with the SPA shell                                         |
+| `METHOD PATH: SPA page path must carry \`pages\``                                | A page route grouped under a subject                                                |
 | `the auth policy requires X but the handler declares no request guard`           | A guard removed from a protected handler, which is the change a consumer cannot see |
 | `the auth policy requires X but the handler declares Y`                          | A guard swapped for a weaker one, or a public route closed without a policy change  |
 | `the deferred guard X is bound to \`auth\` and never enforced`                   | A `GuardResult` the handler drops, so an unauthenticated caller is served           |
@@ -323,6 +332,10 @@ findings rather than a passing gate.
   that stopped reporting, or started reporting twice, is a test failure. It also
   runs the policy over the real router and requires it to be clean today, and
   checks that `AUTH_POLICY` has exactly one entry per documented operation.
+- `tests/tags.rs` does the same for the taxonomy: `untagged/` carries one instance
+  of every tag failure mode, its report is asserted, and the committed document is
+  required to follow the vocabulary — including that the subjects it uses and the
+  subjects the vocabulary names are the same set, so neither side can drift alone.
 - `tests/guards.rs` covers the guard observation itself — direct and qualified
   guard parameters, `Option<T>`, `GuardResult<T>` propagated, returned, matched
   and inspected, and the two discarded shapes — and holds `KNOWN_GUARDS` against
@@ -330,10 +343,11 @@ findings rather than a passing gate.
 - `tests/mutations.rs` starts from a conforming tree, breaks one thing, and
   requires the rule to appear: a guard removed from a protected handler, a
   `GuardResult` dropped with `let _ = auth;`, a public operation dropped from the
-  policy. The mutations run over a copy in `target/`, and each restores to
-  silence.
+  policy, a tag removed from an operation, a tag outside the vocabulary, and
+  `pages` on a data operation or missing from a page one. The mutations run over a
+  copy in `target/`, and each restores to silence.
 - `tests/cli.rs` covers what the library does not own: the argument handling, the
-  exit codes, one finding per line on stderr, the two checks merged into one
+  exit codes, one finding per line on stderr, the three checks merged into one
   report with a shared finding printed once, and two runs printing the same report.
   It also runs the gate over the real `backend/src/router` and
   `backend/openapi.json` and requires them to be clean today, so the gate cannot
@@ -374,13 +388,46 @@ subject-oriented.
 | `upload`   | File upload                                                                         | `POST /upload`                     |
 | `pages`    | SPA HTML page routes served from `router/get/get_page.rs` (serve `index.html`)      | `GET /login`                       |
 
-`pages` is reserved: every SPA page route must carry it, and no data-API
-operation may. The gate is `every_operation_carries_a_known_tag` in
-`backend/src/tests/openapi_contract.rs`, whose `KNOWN_TAGS` constant must be
-extended by one line (along with a row here) when the taxonomy grows. The
-`pages` expectation is derived from path shape — data-API prefixes versus
-everything else — rather than a hardcoded list of page paths; see the comment
-on `is_data_api_path` for the assumption that makes that derivation valid.
+The vocabulary is `openapi_sanity::KNOWN_TAGS` in
+`utils/openapi-sanity/src/tags.rs` — a closed list, because a subject nobody
+thought about is a reference group of one. Adding a subject is a deliberate change
+to that line plus a row here; there is no per-operation exemption.
+
+### The rules
+
+`openapi_sanity::check_tags` holds the document to the vocabulary, in four rules:
+
+| Finding                                 | Drift it catches                                    |
+| --------------------------------------- | --------------------------------------------------- |
+| the operation declares no tags          | an annotation that lost its `tag = "..."`           |
+| unknown tag `x`                         | a subject added without a reviewed vocabulary entry |
+| a data-API path carries the `pages` tag | a data operation grouped with the SPA shell         |
+| an SPA page path must carry `pages`     | a page route grouped under a subject                |
+
+`pages` is reserved in both directions. The expectation is derived from path shape
+— the data-API prefixes `/delete/`, `/get/`, `/object/`, `/post/`, `/put/` and
+`/upload` versus everything else — rather than from a hardcoded list of page paths,
+because the document does not say which file annotated an operation; the assumption
+that makes the derivation valid, and what would break it, is documented on
+`is_data_api_path` in the crate. A data route added outside those shapes is
+classified as a page and the placement rule fails loudly, which is the intended
+outcome.
+
+The rules are independent, so an untagged page path is reported twice: it is
+missing a tag _and_ it is missing the reserved one. "Exactly one tag" is the
+convention rather than a rule — no check enforces the upper bound — and
+`the_repository_gives_every_operation_exactly_one_subject` holds the committed
+artifact to it.
+
+### Who runs them
+
+`openapi-sanity check` runs the rules over the committed `backend/openapi.json`, so
+`just check` and CI catch tag drift in the same run that catches a source/spec
+disagreement. `cargo test --lib openapi_contract` runs the same rules over the
+generated public spec, so `cargo test` fails on the same drift without the CLI. The
+two read different documents on purpose: the CLI says what is committed, the
+backend test says what the annotations currently produce, and phase 2 of the gate
+is what catches them disagreeing.
 
 ## Workflow
 
@@ -394,7 +441,8 @@ on `is_data_api_path` for the assumption that makes that derivation valid.
    and response types. The annotated `path` and verb must match the mounted
    route exactly; `just openapi-check` phase 1 fails on a mismatch. Set
    `tag = "..."` to the subject from the Tag conventions table — every operation
-   must carry one, and the tag gate fails on a missing or unknown tag.
+   must carry one, `pages` only on the SPA page routes, and the vocabulary is
+   closed, so a new subject is a reviewed change to `KNOWN_TAGS` and this table.
 3. Add the operation to `AUTH_POLICY` in `utils/openapi-sanity/src/auth.rs`,
    naming the guards its parameters declare or marking it public. The gate fails
    on an operation in no policy entry, so this is part of adding the route.
@@ -488,13 +536,14 @@ gets two loud findings rather than a silently narrowed contract.
 
 ## Files
 
-| File                                    | Generator           | Role                                                                                |
-| --------------------------------------- | ------------------- | ----------------------------------------------------------------------------------- |
-| `utils/openapi-sanity/src/`             | —                   | `syn`-based route/annotation/guard scanner, path rules, source/spec and auth checks |
-| `utils/openapi-sanity/src/auth.rs`      | —                   | The auth policy table and its checks                                                |
-| `utils/openapi-sanity/src/main.rs`      | —                   | `openapi-sanity check` CLI (phase 1 of the gate)                                    |
-| `backend/src/openapi.rs`                | `build.rs`          | ApiDoc struct with all routes (gitignored)                                          |
-| `backend/openapi.json`                  | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                                  |
-| `docs/openapi-reference.md`             | widdershins         | Human-readable API reference                                                        |
-| `backend/src/tests/openapi_contract.rs` | —                   | Mounted-route / spec parity gate                                                    |
-| `backend/build.rs`                      | —                   | Reads the router files, writes `openapi.rs`                                         |
+| File                                    | Generator           | Role                                                                                     |
+| --------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------- |
+| `utils/openapi-sanity/src/`             | —                   | `syn`-based route/annotation/guard scanner, path rules, source/spec, tag and auth checks |
+| `utils/openapi-sanity/src/auth.rs`      | —                   | The auth policy table and its checks                                                     |
+| `utils/openapi-sanity/src/tags.rs`      | —                   | The subject taxonomy and its checks                                                      |
+| `utils/openapi-sanity/src/main.rs`      | —                   | `openapi-sanity check` CLI (phase 1 of the gate)                                         |
+| `backend/src/openapi.rs`                | `build.rs`          | ApiDoc struct with all routes (gitignored)                                               |
+| `backend/openapi.json`                  | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                                       |
+| `docs/openapi-reference.md`             | widdershins         | Human-readable API reference                                                             |
+| `backend/src/tests/openapi_contract.rs` | —                   | Mounted-route / spec parity gate                                                         |
+| `backend/build.rs`                      | —                   | Reads the router files, writes `openapi.rs`                                              |

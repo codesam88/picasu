@@ -8,6 +8,9 @@
     "/get/get-data": {
       "get": {
         "operationId": "get_data",
+        "tags": [
+          "timeline"
+        ],
         "summary": "Grid data",
         "responses": {
           "200": {
@@ -22,6 +25,9 @@
     "/get/get-rows": {
       "get": {
         "operationId": "get_rows",
+        "tags": [
+          "timeline"
+        ],
         "responses": {
           "200": {
             "description": "Rows"
@@ -35,6 +41,9 @@
     "/get/metadata/{asset_id}": {
       "get": {
         "operationId": "get_metadata",
+        "tags": [
+          "assets"
+        ],
         "responses": {
           "200": {
             "description": "Metadata"
@@ -48,6 +57,9 @@
     "/get/path-completion": {
       "get": {
         "operationId": "path_completion",
+        "tags": [
+          "config"
+        ],
         "responses": {
           "200": {
             "description": "Completions"
@@ -62,6 +74,9 @@
     "/login": {
       "get": {
         "operationId": "login",
+        "tags": [
+          "pages"
+        ],
         "responses": {
           "200": {
             "description": "Login page"

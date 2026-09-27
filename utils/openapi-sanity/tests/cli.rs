@@ -1,19 +1,19 @@
 //! The `openapi-sanity check` binary: what it reads, what it prints, and what it
 //! exits with.
 //!
-//! The rules are covered in `contract.rs` and `auth.rs`; what is left to assert
-//! here is the half the library does not own — that the gate reads the files it is
-//! told to read, prints one finding per line, merges the two checks into one
-//! report, and fails the process when it finds one. The fixture paths are relative
-//! on purpose: the gate shortens labels against the working directory, and a test
-//! that depended on where the checkout lives could not state an expected
-//! diagnostic.
+//! The rules are covered in `contract.rs`, `auth.rs` and `tags.rs`; what is left
+//! to assert here is the half the library does not own — that the gate reads the
+//! files it is told to read, prints one finding per line, merges the checks into
+//! one report, and fails the process when it finds one. The fixture paths are
+//! relative on purpose: the gate shortens labels against the working directory,
+//! and a test that depended on where the checkout lives could not state an
+//! expected diagnostic.
 //!
 //! The fixture trees are not the repository's API, so the gate's built-in auth
 //! policy reads most of their operations as entries no document answers to. That
 //! is the gate behaving correctly — a policy entry for an operation that does not
 //! exist is stale — and it is why these tests assert the *shape* of the report and
-//! the contract findings within it, rather than a total that belongs to the
+//! the contract and tag findings within it, rather than a total that belongs to the
 //! repository. A clean run is asserted against the repository, where the policy
 //! belongs.
 
@@ -111,6 +111,40 @@ fn the_auth_and_contract_reports_are_printed_as_one_merged_list() {
     assert!(
         output.stdout.is_empty(),
         "findings belong on stderr so the summary stays the only thing on stdout"
+    );
+}
+
+#[test]
+fn the_tag_rules_are_part_of_the_same_report() {
+    // `just openapi-check` is the gate developers and CI run, so the taxonomy has
+    // to be in it and not only in `cargo test --lib`: a tag nobody reviewed would
+    // otherwise reach the generated reference through the cheapest gate there is.
+    let output = run("untagged", &[]);
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let lines: Vec<&str> = stderr.lines().collect();
+    let (findings, summary) = lines.split_at(lines.len() - 1);
+
+    assert_eq!(output.status.code(), Some(1), "stderr was:\n{stderr}");
+    for expected in [
+        "tests/fixtures/untagged/openapi.json: GET /get/edit-tag: unknown tag `metadata`",
+        "tests/fixtures/untagged/openapi.json: GET /get/get-albums: declares no tags",
+        "tests/fixtures/untagged/openapi.json: GET /get/get-data: data-API path carries \
+         the `pages` tag",
+        "tests/fixtures/untagged/openapi.json: GET /login: SPA page path must carry `pages`",
+    ] {
+        assert!(
+            findings.contains(&expected),
+            "expected\n  {expected}\nin\n{stderr}"
+        );
+    }
+    assert_eq!(
+        summary[0],
+        format!("openapi-sanity: {} contract findings", findings.len()),
+        "the summary counts the merged report"
+    );
+    assert!(
+        !stderr.contains("/setting"),
+        "an operation that follows the taxonomy is not reported by the CLI either:\n{stderr}"
     );
 }
 
