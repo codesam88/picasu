@@ -278,6 +278,29 @@ Randomization should complement, not replace, the deterministic matrix.
 
 ## Progress
 
+- 2026-09-27 — Three pins overturned by `.plan/exiftool-metadata-engine.md`
+  (ExifTool engine swap; decisions recorded there):
+  1. **PNG embedded XMP is now supported.** `pinned_png_compressed_embedded_xmp_is_not_extracted`
+     (byte-scan, no decompression) was replaced in that plan's Iteration 2 by
+     `a_png_with_a_compressed_itxt_packet_yields_its_tags` — a genuinely
+     compressed `iTXt` fixture extracted through the engine. The byte-scan
+     parser those tests guarded no longer exists.
+  2. **Sidecar precedence narrowed to the XMP source.**
+     `corrupt_sidecar_suppresses_a_readable_embedded_packet` and the scenario
+     `corrupt_xmp_sidecar_suppresses_embedded_xmp` asserted that a bad sidecar
+     suppresses _everything the file carries_; the new contract is "a sidecar
+     replaces the XMP source only — IPTC and PNG-text still fill native
+     fields". The scenario was rewritten (its embedded-keyword assertion is now
+     `present`, arriving via IIM 2:25) and the control
+     `sidecar_xmp_is_authoritative_over_embedded_xmp` gained a description
+     assertion to keep demonstrating authority.
+  3. **JPEG IPTC is read** (was "the backend has no IPTC reader"): IPTC IIM
+     2:25/2:120/2:05 now feed tags/description/title under the XMP > IPTC >
+     text precedence; the manifest claim flip lives in the new plan's
+     Iteration 4.
+     The Iteration 5 "empty `rdf:Alt` leaks raw markup" defect and the byte-scan
+     truncation/UTF-8 pins died with the parser and are documented as obsolete in
+     that plan's Iteration 2 report.
 - 2026-09-27 — Plan complete (Iterations 0–7), `status: done`. Final gates
   run on this commit: `just check` exit 0, `just test` exit 0 (backend 379 +
   integration, snapfab 62, vitest 74, Playwright 39), `just plan-lint` clean.

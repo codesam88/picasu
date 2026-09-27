@@ -199,6 +199,43 @@ backend-check`, `just utils-check`, `just docs-check`.
 
 ## Progress
 
+- 2026-09-27 — Iteration 2 done. `process::xmp` is now two layers: a read
+  layer (`native_metadata_for` / `read_xmp_packet`) owning the sidecar rule —
+  a sidecar's _existence_ takes the XMP source whether or not it parses, its
+  XMP replaces the image's packet while the image's IPTC/PNG-text keep filling
+  gaps — and a pure mapping layer (`map_native_fields`) unit-tested on
+  recorded ExifTool payloads. Measured contract: `description` ←
+  `XMP-dc:Description` → `IPTC:Caption-Abstract` (IIM 2:120) →
+  `PNG:Description`; `title` ← `XMP-dc:Title` → `IPTC:ObjectName` (IIM 2:05,
+  not Headline 2:105 — ExifTool's own MWG reconciler pairs it that way) →
+  `PNG:Title`; `rating` ← `XMP-xmp:Rating` only (arrives as JSON number or
+  `4 stars`-style string, leading-integer parse, 0..=5 kept); `tags` = union
+  of `XMP-dc:Subject` ∪ `IPTC:Keywords` (IIM 2:25); PNG text contributes no
+  tags (no standard keyword chunk — measured and pinned). One ExifTool read
+  per image now serves both `exifVec` and the native fields (the record is the
+  currency; `GroupedMetadata`'s array flattening would lose comma-containing
+  keywords); a sidecar is the only second read. `XmpData` renamed
+  `NativeMetadata`. The byte-scan parser is gone: 20 dead tests inventoried —
+  replacements are recorded-payload/file-based tests, scenario pins that stay
+  green, or documented obsolescence (no-panic sweep, first-occurrence rule,
+  empty-Alt leak cannot occur through ExifTool). Two scenarios flipped under
+  decision 6 and were rewritten with the withdrawn contract stated in their
+  headers; the three overturned pins of `test-exif-xmp-handling` are recorded
+  there. Ratified from the report: the worker's additive `exif.rs` change
+  (raw record as shared currency, `generate_exif_for_image` →
+  `exif_map_from_record`) — justified and flagged proactively; `exifVec`
+  byte-identical across all 395 pre-existing assertions. **Decision:** a
+  non-UTF-8 keyword inside a packet reads as ExifTool's lossy decode (the
+  `???`-style tag is indexed) — no app-side filtering heuristic; the engine's
+  output is authoritative, and the old drop-the-whole-field behavior died
+  with the scanner. Open: the scenario harness ignores body assertions in a
+  non-last `call:`'s `then:` (found because it made both rewritten scenarios
+  vacuous) — filed in `.plan/scenario-harness-debt.md`; video files now also
+  get a native-fields ExifTool read (sidecar XMP for video was already
+  claimed; embedded uuid XMP remains unclaimed until Iteration 4 measures
+  it). Gates: `cargo test -p picasu` 404 (401+3, 1 ignored), `-p snapfab` 62,
+  `just backend-check/utils-check/docs-check`, `cargo deny`, targeted
+  Playwright (4 format flows + 5 sidebar flows) — all pass.
 - 2026-09-27 — Iteration 1 done (two passes). Second pass adopted the
   `exiftool` crate as decided: one persistent `-stay_open` session per calling
   thread (`thread_local` inside `exif.rs`; the only caller is the rayon index

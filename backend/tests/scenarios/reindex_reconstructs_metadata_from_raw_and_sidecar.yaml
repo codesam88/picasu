@@ -5,10 +5,10 @@ name: reindex reconstructs metadata from the raw file plus its sidecar
 # The sidecar is rewritten with a different keyword, exactly as an external
 # editor would, and the album is re-indexed. The keyword the first index stored
 # is replaced by the one now in the file, which can only happen if the tags were
-# re-read from the sidecar: `process_image_info` calls
-# `extract_xmp_data_from_file` on every index, and the sidecar is authoritative
-# when present. Nothing the indexer kept in the metadata table survives
-# untouched, because the sidecar's keyword is what the detail reports.
+# re-read from the sidecar: `process_image_info` resolves the native fields
+# through `process::xmp` on every index, and the sidecar is the XMP source when
+# present. Nothing the indexer kept in the metadata table survives untouched,
+# because the sidecar's keyword is what the detail reports.
 #
 # The rest of the assertions come from the other source, the raw file: the JPEG
 # still decodes to its own dimensions, still reports its own extension, and
