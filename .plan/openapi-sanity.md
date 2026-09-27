@@ -17,7 +17,9 @@ consistency. It owns facts that are currently split between `build.rs`,
 - whether documented auth policy matches the actual handler guard shape.
 
 It is not a runtime behavior test, a generated-artifact diff, or a general Rust
-taint analyzer. Those remain separate mechanisms.
+taint analyzer. Those remain separate mechanisms. `just openapi-check` is the
+single public-contract command and will run both the semantic sanity checks and
+the generated-artifact diff.
 
 ## Current Ownership
 
@@ -27,7 +29,7 @@ them:
 | Responsibility                      | Existing owner                          | Future owner                             |
 | ----------------------------------- | --------------------------------------- | ---------------------------------------- |
 | Generate `openapi.rs`               | `backend/build.rs`                      | `build.rs` using the shared library      |
-| Generated artifact freshness        | `just openapi-check`                    | unchanged                                |
+| Generated artifact freshness        | `just openapi-check`                    | one subcheck of `openapi-check`          |
 | Runtime mounted-route parity        | `backend/src/tests/openapi_contract.rs` | backend integration test                 |
 | Endpoint auth behavior              | API scenarios/tests                     | unchanged                                |
 | Source route/annotation consistency | build warnings + AST tests              | `openapi-sanity`                         |
@@ -82,7 +84,9 @@ Acceptance:
 
 ### Step 2: Add source/spec CLI validation
 
-- Add `openapi-sanity-check` as a deterministic CLI command.
+- Add the analyzer as a deterministic CLI command, but invoke it through
+  `just openapi-check`; contributors should not need to remember a second
+  public-contract command.
 - Read source through the shared analyzer and parse the public OpenAPI artifact.
 - Report stable file/line diagnostics for:
   - missing function-local annotations;
@@ -91,8 +95,10 @@ Acceptance:
   - source operations absent from the spec;
   - spec operations without a source declaration;
   - duplicate handler identities and duplicate operation IDs.
-- Add `just openapi-sanity-check` and run it from `just check`.
-- Keep `just openapi-check` as the separate generated-artifact diff.
+- Make `just openapi-check` run the semantic analyzer and then the generated
+  artifact diff, with nonzero status on either failure.
+- Keep `just check` and CI wired to `openapi-check`; do not add a second
+  independently required contract command.
 
 Acceptance:
 
@@ -170,7 +176,7 @@ reimplementation in `openapi-sanity`.
 
 ### Step 6: Documentation and maintenance
 
-- Document the crate and `just openapi-sanity-check` in
+- Document the crate and the semantic phase of `just openapi-check` in
   `docs/openapi-generator.md`.
 - Document the distinction between source checks, generated-artifact checks,
   runtime parity and endpoint behavior tests.
@@ -196,8 +202,9 @@ reimplementation in `openapi-sanity`.
 - One shared implementation owns source route discovery and Rocket-to-OpenAPI
   path normalization.
 - `build.rs`, backend tests and the CLI consume the same library.
-- `just check` runs the semantic source/spec/auth gate.
-- `just openapi-check` separately gates the generated artifact.
+- `just openapi-check` is the single semantic and generated-artifact contract
+  gate.
+- `just check` and CI run that gate without requiring a second contract command.
 - Runtime parity and endpoint behavior tests remain separate and meaningful.
 - A documented guarded route cannot drift into an unguarded handler or vice
   versa without a failing diagnostic.
