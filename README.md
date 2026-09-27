@@ -52,8 +52,9 @@ First-time setup on a fresh clone:
 just setup-dev    # install tooling + enable pre-commit hook
 ```
 
-`setup-dev` runs `install-dev` (cargo tools + npm deps) and enables the
-`.githooks/pre-commit` hook via `git config core.hooksPath .githooks`.
+`setup-dev` runs `install-dev` (cargo tools + npm deps + the pinned ExifTool
+release in `~/.local`, the external binary that reads image EXIF) and enables
+the `.githooks/pre-commit` hook via `git config core.hooksPath .githooks`.
 The hook runs format + lint + typecheck on staged changes before every commit.
 On `main` it also runs the full test suite.
 

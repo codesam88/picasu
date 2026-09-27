@@ -3,9 +3,14 @@ name: tiff exif dimensions thumbnail and sidecar xmp reach the metadata detail
 # with `xmp:embedded` excluded. This pins the whole positive half of that
 # contract on the pinned fixture `tiff-48x32-exif` (see utils/snapfab/fixtures/
 # and its manifest entry): the decoded dimensions are the fixture's 48x32, EXIF is
-# read out of the file itself (IFD0 `DateTime` plus the Exif sub-IFD
-# `DateTimeOriginal`, which the backend reports from the same IFD number), the
-# sidecar XMP packet supplies the tags, and a thumbnail is written to disk.
+# read out of the file itself (IFD0 tag 0x0131 plus the Exif sub-IFD's
+# `DateTimeOriginal`, which ExifTool reports from that sub-IFD), the sidecar XMP
+# packet supplies the tags, and a thumbnail is written to disk.
+#
+# EXIF 0x0131 is the field ExifTool names `ModifyDate`; the retired in-process
+# reader called the same tag `DateTime`, and `DateTime` is now EXIF 0x0132, which
+# this fixture does not carry. That is why the key is `ModifyDate` and the
+# previous reader's key would be absent.
 # The negative control is `tiff_without_xmp_source_has_no_tags`, and the PNG
 # counterpart of this path is `png_metadata_exif_dimensions_thumbnail`.
 given:
@@ -40,7 +45,7 @@ then:
   - response.json.ext: tif
   - response.json.width: 48
   - response.json.height: 32
-  - response.json.exifVec.DateTime: "2024-05-06 07:08:09"
+  - response.json.exifVec.ModifyDate: "2024-05-06 07:08:09"
   - response.json.exifVec.DateTimeOriginal: "2024-05-06 07:08:09"
   - response.json.tags:
       contains: e2e_tiff_sidecar_alpine

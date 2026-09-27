@@ -196,9 +196,70 @@ setup-dev: install-dev
 install-plan:
     cargo install --git https://github.com/tedsamhain/tablethat --rev df81155
 
+# Pinned ExifTool distribution for local development installs.
+#
+# ExifTool is the image metadata engine (`process::exif`), an external binary
+# with no in-process fallback. The distribution is pure Perl and unpacks without
+# root, so a dev machine installs it into `~/.local`; CI and the runtime Docker
+# image use the distro package instead (`libimage-exiftool-perl`), see
+# `.github/workflows/ci.yml` and `./Dockerfile`.
+#
+# The version and its checksum move together: upstream publishes both at
+# https://exiftool.org/checksums-<version>.txt, and the archive is fetched from
+# the SourceForge mirror that exiftool.org's own download links point at.
+exiftool_version := "13.59"
+exiftool_sha256 := "668ea3acececb7235fbd0f4900e72d5f12c9b07e5c778fd36cb1e9b5828fd65a"
+
+# Install ExifTool into ~/.local (idempotent, no root)
+[group('global')]
+install-exiftool:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version="{{ exiftool_version }}"
+    prefix="$HOME/.local/opt/Image-ExifTool-$version"
+    link="$HOME/.local/bin/exiftool"
+
+    # Already installed: the pinned prefix runs the pinned version and the PATH
+    # entry points at it. Re-running this recipe is then a no-op.
+    if [ -x "$prefix/exiftool" ] \
+        && [ "$("$prefix/exiftool" -ver 2>/dev/null || true)" = "$version" ] \
+        && [ -L "$link" ] \
+        && [ "$(readlink -f "$link")" = "$prefix/exiftool" ]; then
+        echo "✓ exiftool $version already installed — $link"
+        exit 0
+    fi
+
+    mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
+    workdir="$(mktemp -d)"
+    trap 'rm -rf "$workdir"' EXIT
+    archive="$workdir/Image-ExifTool-$version.tar.gz"
+    echo "→ downloading Image-ExifTool-$version"
+    curl -fsSL -o "$archive" \
+        "https://downloads.sourceforge.net/project/exiftool/Image-ExifTool-$version.tar.gz"
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual="$(sha256sum "$archive" | cut -d' ' -f1)"
+    else
+        actual="$(shasum -a 256 "$archive" | cut -d' ' -f1)"
+    fi
+    if [ "$actual" != "{{ exiftool_sha256 }}" ]; then
+        echo "checksum mismatch for Image-ExifTool-$version.tar.gz" >&2
+        echo "  expected {{ exiftool_sha256 }}" >&2
+        echo "  actual   $actual" >&2
+        exit 1
+    fi
+
+    echo "→ unpacking into $prefix"
+    rm -rf "$prefix"
+    tar -xzf "$archive" -C "$HOME/.local/opt"
+    ln -sfn "$prefix/exiftool" "$link"
+    "$link" -ver | grep -qx "$version" \
+        || { echo "installed exiftool reports an unexpected version" >&2; exit 1; }
+    echo "✓ exiftool $version installed — $link"
+
 # Install dev tools
 [group('global')]
-install-dev: install-plan
+install-dev: install-plan install-exiftool
     cargo install sccache
     cargo install cargo-deny
     npm ci --prefix frontend

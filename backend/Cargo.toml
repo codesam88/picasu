@@ -24,6 +24,7 @@ chrono = "0.4.44"
 crossbeam-queue = "0.3.12"
 dashmap = { version = "6.1.0", features = ["rayon"] }
 env_logger = { version = "0.11.10", features = ["humantime", "color"] }
+exiftool = "0.3.1"
 envy = "0.4.2"
 filetime = "0.2.29"
 futures = "0.3.32"
@@ -31,7 +32,6 @@ figment = { version = "0.10", features = ["json", "toml"] }
 image = "0.25.10"
 image_hasher = "3.1.1"
 jsonwebtoken = { version = "11.0.0", default-features = false, features = ["aws_lc_rs"] }
-kamadak-exif = "0.6.1"
 log = { version = "0.4.29", features = ["kv"] }
 mini_executor = "2.0.3"
 notify = "8.2.0"
