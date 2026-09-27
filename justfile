@@ -93,23 +93,23 @@ frontend-build-maybe:
 frontend-audit:
     cd frontend && npm audit --omit=dev
 
-# ── Utils (snapfab) ──────────────────────────────────────────────────────────────
+# ── Utils (snapfab, openapi-sanity) ────────────────────────────────────────────
 
 # cargo fmt on utils/ crates
 [group('utils')]
 utils-format:
-    cargo fmt -p snapfab -p paste
+    cargo fmt -p snapfab -p paste -p openapi-sanity
 
 # cargo fmt --check + cargo clippy on utils/ crates
 [group('utils')]
 utils-check:
-    cargo fmt --check -p snapfab -p paste
-    cargo clippy -p snapfab -p paste -- -D warnings -A clippy::unwrap_used
+    cargo fmt --check -p snapfab -p paste -p openapi-sanity
+    cargo clippy -p snapfab -p paste -p openapi-sanity -- -D warnings -A clippy::unwrap_used
 
 # cargo test on utils/ crates
 [group('utils')]
 utils-test:
-    cargo test -p snapfab
+    cargo test -p snapfab -p openapi-sanity
 
 # ── Tooling ─────────────────────────────────────────────────────────────────────
 

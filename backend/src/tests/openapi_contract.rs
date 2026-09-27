@@ -14,18 +14,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::MutexGuard;
 
+use openapi_sanity::to_spec_path;
 use rocket::http::Method;
 
 use crate::openapi_public::{is_test_only_path, public_json};
 use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, build_test_rocket};
-
-// The shared Rocket→OpenAPI path translation, also used by `build.rs` for
-// the annotation path check. The rules and why they exist are documented in
-// `build/route_path.rs`; do not restate or reimplement them here.
-#[path = "../../build/route_path.rs"]
-mod route_path;
-
-use route_path::to_spec_path;
 
 /// A mounted route or a documented operation, as a comparable identity.
 type Operation = (Method, String);
@@ -64,25 +57,17 @@ fn spec_operations() -> HashSet<Operation> {
     operations
 }
 
-/// A path the documented contract deliberately does not cover, method aside:
-/// the test-only probes stripped from the public spec, and the static file
-/// server for the built frontend, which serves bytes rather than API
-/// operations. Shared with the source-level translation test in
-/// `tests/route_path.rs`, which derives declarations from the router sources
-/// and has no method information.
-pub(super) fn is_outside_contract_path(path: &str) -> bool {
-    is_test_only_path(path) || path.starts_with("/assets")
-}
-
 /// Mounted routes that are deliberately absent from the documented contract.
 fn is_outside_contract(operation: &Operation) -> bool {
     let (method, path) = operation;
-    // Test-only probes are out of contract regardless of method; the shared
-    // path predicate below narrows the file-server case to its GET mount.
+    // Test-only probes: mounted in every build, enabled only by the test
+    // bootstrap, and stripped from the public spec on purpose.
     if is_test_only_path(path) {
         return true;
     }
-    *method == Method::Get && is_outside_contract_path(path)
+    // Static file server for the built frontend. It serves bytes, not API
+    // operations, so it carries no OpenAPI operation.
+    *method == Method::Get && path.starts_with("/assets")
 }
 
 /// Mounted routes that are in scope of the contract but not documented.
@@ -208,6 +193,30 @@ fn contract_exclusions_match_mounted_routes() {
             operation.1
         );
     }
+}
+
+/// The Rocket-to-`OpenAPI` path translation is owned by `openapi-sanity`, which
+/// unit-tests it. What is asserted here is that both this test and the mounted
+/// route comparison above run on that shared implementation: a local copy would
+/// be free to drift, and a route that stopped matching its own documentation
+/// would go unnoticed.
+#[test]
+fn rocket_paths_normalize_to_spec_templates() {
+    assert_eq!(
+        to_spec_path("/get/metadata/<asset_id>"),
+        "/get/metadata/{asset_id}"
+    );
+    assert_eq!(
+        to_spec_path("/albums/view/<_path..>"),
+        "/albums/view/{path}"
+    );
+    assert_eq!(
+        to_spec_path("/object/compressed/<file_path..>"),
+        "/object/compressed/{file_path}"
+    );
+    // Query parameters are documented per parameter, not in the path.
+    assert_eq!(to_spec_path("/get/prefetch?<locate>"), "/get/prefetch");
+    assert_eq!(to_spec_path("/upload"), "/upload");
 }
 
 // ── Operation tags ────────────────────────────────────────────────────────────
