@@ -247,6 +247,20 @@ impl AbstractData {
         }
     }
 
+    /// Mutable access to the read-only bucket of metadata the app does not
+    /// model, keyed `Group:Tag`.
+    ///
+    /// `None` for videos and albums: the field is an image's, because the
+    /// bucket is filled from the `ExifTool` read on the image path, and a
+    /// video's metadata comes from `ffprobe`. Reads go through the field itself
+    /// (`ImageMetadata::further_metadata`) — the indexer is the only writer.
+    pub fn further_metadata_mut(&mut self) -> Option<&mut BTreeMap<String, String>> {
+        match self {
+            AbstractData::Image(img) => Some(&mut img.metadata.further_metadata),
+            AbstractData::Video(_) | AbstractData::Album(_) => None,
+        }
+    }
+
     /// Get the asset's file entry. `None` for albums and for media
     /// records whose path has been pruned (file gone).
     pub fn path(&self) -> Option<&FileEntry> {

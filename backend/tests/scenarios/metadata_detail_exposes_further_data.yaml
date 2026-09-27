@@ -1,0 +1,70 @@
+name: metadata detail exposes unmodelled metadata as a read-only further bucket
+# `.plan/exiftool-metadata-engine.md` decision 3: what `ExifTool` reports and
+# the app does not model is surfaced as simple key/value pairs, displayed
+# read-only. This scenario pins that bucket end-to-end, from a fixture through
+# the indexer to `GET /get/metadata/{assetId}`.
+#
+# The fixture writes an IIM record with three datasets the native mapping does
+# not read (By-line 2:80, City 2:90, CopyrightNotice 2:116) next to the three
+# it does (Keywords 2:25, Caption-Abstract 2:120, ObjectName 2:05), so one
+# file exercises both halves of the split: the same writer, the same record,
+# one set of keys in the bucket and the other in the fields the app owns.
+#
+# Bucket keys keep their `Group:Tag` prefix, so a key says which family it came
+# from and two families cannot collide on one name. The natively consumed
+# datasets must not be in it: they are already in `tags` / `description` /
+# `exifVec`, and a key in two places would have two values with no rule for
+# which one the user is looking at.
+#
+# The bucket is also not the whole record. ExifTool adds a `File:`, a `System:`
+# and an `ExifTool:` group to every file it reads, the container has its own
+# `JFIF:` parameters, and `Composite:` holds values derived from tags that are
+# already present. Those are asserted absent below; the measured split and the
+# reason for each exclusion are documented on
+# `process::xmp::map_further_fields`.
+given:
+  - photo: /e2e_further/photo.jpg
+    tags:
+      - e2e_further_tag
+    further_iptc: true
+    exif_date: "2025:04:05 06:07:08"
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  # The IIM datasets the app does not model, keyed with the group prefix.
+  - response.json.furtherMetadata.IPTC:By-line: picasu fixture author
+  - response.json.furtherMetadata.IPTC:City: fixtureville
+  - response.json.furtherMetadata.IPTC:CopyrightNotice: (c) 2024 picasu test fixtures
+  # The IIM datasets the native mapping consumed are not repeated in it.
+  - response.json.furtherMetadata.IPTC:Keywords: null
+  - response.json.furtherMetadata.IPTC:Caption-Abstract: null
+  - response.json.furtherMetadata.IPTC:ObjectName: null
+  # Nor the XMP ones, which the same mapping consumed for title/description/tags.
+  - response.json.furtherMetadata.XMP-dc:Title: null
+  - response.json.furtherMetadata.XMP-dc:Description: null
+  - response.json.furtherMetadata.XMP-dc:Subject: null
+  # Nor anything that is not the file's own written metadata: the container
+  # facts, the read-time trivia, the tool's own version, the values derived
+  # from tags already shown, and the JPEG container's JFIF parameters.
+  - response.json.furtherMetadata.IFD0:Make: null
+  - response.json.furtherMetadata.JFIF:JFIFVersion: null
+  - response.json.furtherMetadata.File:MIMEType: null
+  - response.json.furtherMetadata.System:FileSize: null
+  - response.json.furtherMetadata.ExifTool:ExifToolVersion: null
+  - response.json.furtherMetadata.Composite:ImageSize: null
+  # The native mapping still owns what it owned: keywords in `tags`, the EXIF
+  # family in `exifVec`. Neither moved into the bucket.
+  - response.json.tags:
+      contains: e2e_further_tag
+  - response.json.exifVec.Software: not_null
+  - file_exists: e2e_further/photo.jpg

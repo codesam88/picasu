@@ -176,9 +176,28 @@ pub struct PhotoSpec {
     pub exif_date: Option<String>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
+    /// Write the IIM datasets the app does not model (see
+    /// [`FURTHER_IPTC_BY_LINE`]) next to the three it does, so a fixture can
+    /// carry the metadata engine's read-only "further data" bucket. Off by
+    /// default: a stock tagged JPEG writes only the natively consumed
+    /// Keywords / ObjectName / Caption and therefore leaves that bucket empty.
+    #[serde(default)]
+    pub further_iptc: Option<bool>,
     #[serde(default)]
     pub minimal: bool,
 }
+
+/// The IIM datasets a tagged JPEG writes in addition to the natively consumed
+/// three, with the values scenarios assert. Fixed strings, not random ones, so
+/// a scenario can name them: the point of these datasets is that they are
+/// stable metadata, not that they vary per image.
+///
+/// * 2:80 `By-line` — the photographer's name
+/// * 2:90 `City` — the place
+/// * 2:116 `CopyrightNotice` — the rights statement
+pub const FURTHER_IPTC_BY_LINE: &str = "picasu fixture author";
+pub const FURTHER_IPTC_CITY: &str = "fixtureville";
+pub const FURTHER_IPTC_COPYRIGHT: &str = "(c) 2024 picasu test fixtures";
 
 pub fn generate_photo(
     spec: &PhotoSpec,
@@ -299,6 +318,14 @@ pub fn generate_photo(
         iptc.set_tag(iptc::IPTCTag::Caption, description);
         for kw in &all_keywords {
             iptc.set_tag(iptc::IPTCTag::Keywords, kw);
+        }
+        // Datasets the app does not model, for the "further data" bucket. They
+        // go into the same IIM record as the three above, so a fixture carrying
+        // them exercises both halves of that split.
+        if spec.further_iptc == Some(true) {
+            iptc.set_tag(iptc::IPTCTag::ByLine, FURTHER_IPTC_BY_LINE);
+            iptc.set_tag(iptc::IPTCTag::City, FURTHER_IPTC_CITY);
+            iptc.set_tag(iptc::IPTCTag::CopyrightNotice, FURTHER_IPTC_COPYRIGHT);
         }
         let updated = iptc.write_to_buffer(&bytes).expect("iptc write_to_buffer");
         // Workaround: strip the extra pad byte the crate inserts after
@@ -1287,6 +1314,7 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
                     height: None,
                     exif_date: None,
                     tags: None,
+                    further_iptc: None,
                     minimal,
                 };
                 let mode = generate_photo_file(&spec, &path, &mut rng, &mut stats, &enabled)
@@ -1363,6 +1391,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: None,
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();
@@ -1379,6 +1408,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: None,
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();
@@ -1398,6 +1428,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: None,
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();
@@ -1416,6 +1447,7 @@ mod tests {
             height: Some(4),
             exif_date: Some("2024:06:19 12:00:00".into()),
             tags: None,
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();
@@ -1438,6 +1470,7 @@ mod tests {
             height: Some(4),
             exif_date: Some("2024:06:19 12:00:00".into()),
             tags: None,
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();
@@ -1510,6 +1543,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(vec!["tag1".into(), "tag2".into()]),
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();
@@ -1530,6 +1564,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(vec!["kw1".into(), "kw2".into()]),
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();
@@ -1555,6 +1590,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(vec!["x".into()]),
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();
@@ -1578,6 +1614,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(tags),
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();
@@ -1611,6 +1648,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: None,
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();
@@ -1633,6 +1671,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(vec![]),
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();
@@ -1655,6 +1694,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(vec!["kw".into()]),
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();
@@ -1668,6 +1708,83 @@ mod tests {
         );
     }
 
+    /// `further_iptc` adds the IIM datasets the app's native mapping does not
+    /// read, so a fixture can carry the "further data" bucket the metadata
+    /// engine surfaces. Without it a tagged JPEG writes only Keywords (2:25),
+    /// ObjectName (2:05) and Caption (2:120) — all three consumed natively — and
+    /// the bucket stays empty.
+    ///
+    /// Asserted on the dataset markers (`0x1C 0x02 <dataset>`) and on the
+    /// values, because both have to survive the IIM write: a value that is not
+    /// in the bytes cannot be in the record `ExifTool` reads back.
+    #[test]
+    fn test_iptc_further_datasets_written_only_when_asked_for() {
+        let further = PhotoSpec {
+            output: None,
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            exif_date: None,
+            tags: Some(vec!["kw".into()]),
+            further_iptc: Some(true),
+            minimal: false,
+        };
+        let stock = PhotoSpec {
+            further_iptc: None,
+            ..further.clone()
+        };
+
+        let mut rng = test_rng();
+        let mut stats = PerfCounter::new();
+        let (with_further, _mode) = generate_photo(&further, &mut rng, &mut stats, ACTIVE_MODES);
+        let (without, _mode) = generate_photo(&stock, &mut rng, &mut stats, ACTIVE_MODES);
+
+        // IIM dataset numbers are the marker byte: 2:80 By-line, 2:90 City,
+        // 2:116 CopyrightNotice.
+        for (dataset, marker) in [(0x50u8, "by-line"), (0x5A, "city"), (0x74, "copyright")] {
+            let tag = [0x1C, 0x02, dataset];
+            assert!(
+                with_further.windows(3).any(|w| w == tag),
+                "IIM 2:{dataset} ({marker}) not written: {marker}"
+            );
+            assert!(
+                !without.windows(3).any(|w| w == tag),
+                "IIM 2:{dataset} ({marker}) written without `further_iptc`: a stock \
+                 fixture must carry only the natively consumed datasets"
+            );
+        }
+        for value in [
+            FURTHER_IPTC_BY_LINE,
+            FURTHER_IPTC_CITY,
+            FURTHER_IPTC_COPYRIGHT,
+        ] {
+            assert!(
+                with_further
+                    .windows(value.len())
+                    .any(|w| w == value.as_bytes()),
+                "further IIM value {value:?} not written"
+            );
+            assert!(
+                !without.windows(value.len()).any(|w| w == value.as_bytes()),
+                "further IIM value {value:?} written without `further_iptc`"
+            );
+        }
+
+        // The datasets the native mapping consumes are still there: the gate
+        // adds to the record, it does not replace it.
+        for (dataset, what) in [
+            (0x19u8, "keywords"),
+            (0x05, "object name"),
+            (0x78, "caption"),
+        ] {
+            let tag = [0x1C, 0x02, dataset];
+            assert!(
+                with_further.windows(3).any(|w| w == tag),
+                "IIM {what} missing alongside the further datasets"
+            );
+        }
+    }
+
     #[test]
     fn test_iptc_pad_byte_removed() {
         let spec = PhotoSpec {
@@ -1677,6 +1794,7 @@ mod tests {
             height: Some(4),
             exif_date: None,
             tags: Some(vec!["p".into()]),
+            further_iptc: None,
             minimal: false,
         };
         let mut rng = test_rng();

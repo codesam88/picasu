@@ -2,10 +2,17 @@ name: metadata only loaded on detail (lean list rows)
 # Phase 14 list-row strip: a tagged photo with EXIF and a seeded description
 # must NOT carry tags / EXIF / description on the get-data list payload.
 # Those fields are served only by GET /get/metadata/{assetId} (detail/sidebar).
+#
+# `furtherMetadata` — the read-only bucket of metadata the app does not model —
+# is stripped on the same contract as the other three, and the fixture is asked
+# for a non-empty one (`further_iptc: true`) so the strip is observable rather
+# than vacuous: a fixture without unmodelled metadata would report `{}` whether
+# the field were stripped or simply never filled.
 given:
   - photo: /e2e_meta/photo.jpg
     tags:
       - e2e_meta_tag
+    further_iptc: true
     exif_date: "2025:03:01 12:00:00"
     id_as: $photo
     asset_id_as: $asset_id
@@ -39,4 +46,5 @@ then:
   - response.json.[0].abstractData.tags: []
   - response.json.[0].abstractData.exifVec: {}
   - response.json.[0].abstractData.description: null
+  - response.json.[0].abstractData.furtherMetadata: {}
   - file_exists: e2e_meta/photo.jpg

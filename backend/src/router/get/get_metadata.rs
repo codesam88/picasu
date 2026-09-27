@@ -20,6 +20,13 @@ use crate::router::{AppResult, GuardResult};
 /// `AbstractData` view here on demand. The wire shape is unchanged:
 /// identity fields come from the record, metadata fields from the payload.
 ///
+/// The response carries the `exifVec` map and, for images, `furtherMetadata` —
+/// the read-only bucket of metadata the app does not model, keyed `Group:Tag`
+/// (`IPTC:By-line`, `XMP-xmp:CreatorTool`). The bucket is the one field here
+/// with no edit path in the API: nothing reads it into an app field and nothing
+/// writes it back. Which keys reach it, and which `ExifTool` groups are excluded
+/// from it, is documented on `process::xmp::map_further_fields`.
+///
 /// Auth and share parity follow `get-data`: a `GuardTimestamp` bearer token
 /// (prefetch token) is required, and when the token resolves to a share with
 /// `show_metadata: false` the metadata fields are cleared before responding so
@@ -28,7 +35,11 @@ use crate::router::{AppResult, GuardResult};
         get,
         path = "/get/metadata/{asset_id}",
         responses(
-            (status = 200, description = "Full metadata record for the asset"),
+            (
+                status = 200,
+                description = "Full metadata record for the asset: `exifVec` and the read-only \
+                              `furtherMetadata` bucket, alongside the app's own fields"
+            ),
             (status = 404, description = "Unknown asset_id"),
         )
     )

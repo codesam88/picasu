@@ -20,6 +20,7 @@ describe('dataStore', () => {
         size: 1024,
         tags: [],
         exif: {},
+        furtherMetadata: {},
         phash: [],
         thumbhash: null,
         pending: false,
@@ -80,6 +81,7 @@ describe('dataStore', () => {
         size: 1024,
         tags: [],
         exif: {},
+        furtherMetadata: {},
         phash: [],
         thumbhash: null,
         pending: false,
@@ -118,6 +120,7 @@ describe('dataStore', () => {
         size: 1024,
         tags: [],
         exif: {},
+        furtherMetadata: {},
         phash: [],
         thumbhash: null,
         pending: false,
@@ -157,6 +160,7 @@ describe('dataStore', () => {
       // Lean list row: no tags/exif/description/rating/flags yet.
       tags: [] as string[],
       exif: {} as Record<string, string>,
+      furtherMetadata: {} as Record<string, string>,
       phash: [] as number[],
       thumbhash: null as number[] | null,
       pending: false,
@@ -185,6 +189,7 @@ describe('dataStore', () => {
       size: 1024,
       tags: ['sunset', 'nature'],
       exif: { Make: 'Apple' },
+      furtherMetadata: { 'IPTC:By-line': 'picasu fixture author' },
       phash: [9, 9],
       thumbhash: null,
       pending: false,
@@ -212,6 +217,10 @@ describe('dataStore', () => {
       if (row.type !== 'image') return
       expect(row.tags).toEqual(['sunset', 'nature'])
       expect(row.exif).toEqual({ Make: 'Apple' })
+      // The read-only bucket is a detail field like the rest: the lean row
+      // carries an empty one and the merge replaces it, or the sidebar would
+      // keep showing the list's empty map after the detail fetch resolved.
+      expect(row.furtherMetadata).toEqual({ 'IPTC:By-line': 'picasu fixture author' })
       expect(row.description).toBe('server description')
       expect(row.rating).toBe(4)
       // The favorite/archived flags were removed from the payload entirely.

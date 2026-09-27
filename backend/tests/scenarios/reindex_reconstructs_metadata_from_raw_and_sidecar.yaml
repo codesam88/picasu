@@ -28,6 +28,10 @@ given:
   - photo: /e2e_reindex/photo.jpg
     tags:
       - e2e_reindex_embedded
+    # Unmodelled IIM datasets alongside the keywords: the bucket is metadata
+    # too, so reindex has to re-derive it from the raw file's own bytes rather
+    # than leave whatever the first index stored.
+    further_iptc: true
     id_as: $photo
     asset_id_as: $asset_id
   - raw_file: /e2e_reindex/photo.xmp
@@ -74,6 +78,9 @@ then:
   - response.json.width: 2
   - response.json.height: 2
   - response.json.exifVec.Software: not_null
+  # The further-metadata bucket, re-read from the file's own IIM record.
+  - response.json.furtherMetadata.IPTC:By-line: picasu fixture author
+  - response.json.furtherMetadata.IPTC:City: fixtureville
   # From the sidecar as it stands now, not as it stood at the first index.
   - response.json.tags:
       contains: e2e_reindex_sidecar_v2

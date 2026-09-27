@@ -593,6 +593,7 @@ mod tests {
             height: Some(4),
             tags: Some(vec!["exif_fallback_control".into()]),
             exif_date: Some("2023:07:15 10:00:00".into()),
+            further_iptc: None,
             minimal: false,
         }])
         .expect("generate photo");
@@ -761,6 +762,7 @@ mod tests {
                 "engine_boundary_winter".into(),
             ]),
             exif_date: Some("2024:05:06 07:08:09".into()),
+            further_iptc: None,
             minimal: false,
         }])
         .expect("generate photo");
@@ -1172,6 +1174,7 @@ mod tests {
             height: Some(4),
             tags: Some(vec!["parity_alpine".into(), "parity_winter".into()]),
             exif_date: Some("2024:05:06 07:08:09".into()),
+            further_iptc: None,
             minimal: false,
         }])
         .expect("generate photo");
@@ -1291,6 +1294,7 @@ mod tests {
             height: Some(4),
             tags: Some(vec!["grouped_alpine".into(), "grouped_winter".into()]),
             exif_date: Some("2024:05:06 07:08:09".into()),
+            further_iptc: None,
             minimal: false,
         }])
         .expect("generate photo");

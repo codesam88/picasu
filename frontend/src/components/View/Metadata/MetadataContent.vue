@@ -70,6 +70,7 @@
         />
         <v-divider></v-divider>
         <ItemTag v-if="showMetadata" :tags="abstractData.tags" />
+        <ItemFurtherMetadata v-if="showMetadata" :database="abstractData" :compact="compact" />
         <ItemAlbum
           v-if="route.meta.baseName !== 'share'"
           :isolation-id="props.isolationId"
@@ -102,6 +103,7 @@ import ItemSize from './ItemSize.vue'
 import ItemPath from './ItemPath.vue'
 import ItemDate from './ItemDate.vue'
 import ItemTag from './ItemTag.vue'
+import ItemFurtherMetadata from './ItemFurtherMetadata.vue'
 import ItemAlbum from './ItemAlbum.vue'
 import ItemTitle from './ItemTitle.vue'
 import ItemCount from './ItemCount.vue'

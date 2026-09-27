@@ -44,6 +44,7 @@ export const useDataStore = (isolationId: IsolationId) =>
         }
         data.tags = detail.tags
         data.exif = detail.exif
+        data.furtherMetadata = detail.furtherMetadata
         data.description = detail.description
         data.rating = detail.rating
         data.updateAt = detail.updateAt

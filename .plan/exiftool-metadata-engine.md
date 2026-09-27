@@ -199,6 +199,41 @@ backend-check`, `just utils-check`, `just docs-check`.
 
 ## Progress
 
+- 2026-09-27 — Iteration 3 done. The read-only bucket ships as
+  `furtherMetadata` (Rust `further_metadata`, sidebar section "Further
+  metadata"): an image-persisted `BTreeMap` keyed `Group:Tag` whose split is
+  documented on `process::xmp::map_further_fields` — in: `XMP-*` (all
+  namespaces), `IPTC`/`IPTC2`/`IPTC3`, `PNG` text chunks, minus the keys the
+  native mapping consumed (a `NATIVE_KEYS` complement, so nothing appears
+  twice); out: the EXIF family (already `exifVec`), `File:`/`System:`/
+  `ExifTool:` read-time trivia, `Composite:` (measured duplicates of shown
+  values), `JFIF:`, maker notes, ICC matrices, the PNG container's own
+  properties; `Photoshop:` excluded on judgement and recorded as the next
+  candidate. Fixture: snapfab's JPEG IPTC writer gained a gated
+  `further_iptc: true` (IIM 2:80 By-line, 2:90 City, 2:116 CopyrightNotice) so
+  one file exercises both halves of the split. Surface: detail route +
+  utoipa description (the schema types `abstractData` as an opaque object, so
+  the field cannot appear as a schema property — an OpenAPI-contract
+  hardening item), lean-list strip extended, rebuild/reindex semantics pinned
+  to match `exif_vec`, and `show_metadata: false` now clears the bucket too
+  (share privacy — without it the detail route leaked unmodelled metadata).
+  Frontend: `ItemFurtherMetadata.vue` read-only rows, typed schemas, store
+  merge + vitest, Playwright `image-further-metadata-sidebar` (asserts zero
+  edit affordances). **Migration consequence:** `METADATA_SCHEMA_VERSION` 2→3
+  (bitcode field addition decodes as EOF) — existing libraries get the
+  actionable `rebuild_required` message and need `POST /post/rebuild` after
+  this build; `docs/database.md` updated. Carry-overs recorded: (a)
+  `IPTC2`/`IPTC3` records bypass Iteration 2's native mapping (version-2/3
+  IIM captions land in the bucket instead of `description`/`tags`) — fix in
+  Iteration 4's mapping pass; (b) `value_text` duplicates
+  `process::exif::json_value_to_string` (private) — hoist in Iteration 5;
+  (c) share-mode (`show_metadata: false`) has only a unit test, no Playwright
+  scenario. Gates: `cargo test -p picasu` 413 (+3 integration, 1 ignored),
+  `-p snapfab` 63, `just backend-check/utils-check/frontend-check/docs-check`,
+  `cargo deny`, full `just frontend-playwright` **40/40** (note: the recipe
+  hardcodes the default `target/debug/picasu`; under the relocated
+  `CARGO_TARGET_DIR` it needs `PICASU_BINARY=<cache>/debug/picasu`, same as
+  Iteration 1's report).
 - 2026-09-27 — Iteration 2 done. `process::xmp` is now two layers: a read
   layer (`native_metadata_for` / `read_xmp_packet`) owning the sidecar rule —
   a sidecar's _existence_ takes the XMP source whether or not it parses, its

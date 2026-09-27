@@ -95,6 +95,7 @@ fn place_photo(image_home: &Path, relative: &str) {
         height: Some(4),
         tags: None,
         exif_date: None,
+        further_iptc: None,
         minimal: false,
     }])
     .expect("generate test photo");

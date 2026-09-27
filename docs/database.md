@@ -293,14 +293,17 @@ bitcode encodes the discriminant in the lowest 2 bits of the first byte
 3, which is invalid — so no legitimately encoded record can start with
 `0xFF`.
 
-Current schema versions: **1** (`SCHEMA_VERSION` for `AbstractData`, which is
-no longer written to disk, and `METADATA_SCHEMA_VERSION` for
-`MetadataRecord`), both in `ser_de.rs`. The structs in `backend/src/model/`
-are the current schema. The tree/query snapshot stores (`ReducedData`,
-`Prefetch`) do not embed `AbstractData`, so layout changes to the wire/view
-type do not affect them; the previous `metadata` table's rows are unreachable
-because `METADATA_TABLE` now uses the `asset_metadata` on-disk name (a clean
-rebuild repopulates it — there is no migration).
+Current schema versions: **2** (`SCHEMA_VERSION` for `AbstractData`, which is
+no longer written to disk) and **3** (`METADATA_SCHEMA_VERSION` for
+`MetadataRecord`), both in `ser_de.rs`. Version 3 is `ImagePayload` with
+`further_metadata`; rows written under version 2 decode to `Err(EOF)` and are
+rejected by the version byte, so they need `POST /post/rebuild`.
+The structs in `backend/src/model/` are the current schema. The tree/query
+snapshot stores (`ReducedData`, `Prefetch`) do not embed `AbstractData`, so
+layout changes to the wire/view type do not affect them; the previous
+`metadata` table's rows are unreachable because `METADATA_TABLE` now uses the
+`asset_metadata` on-disk name (a clean rebuild repopulates it — there is no
+migration).
 
 ### Decode policy
 

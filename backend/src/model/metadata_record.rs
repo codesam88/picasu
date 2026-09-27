@@ -49,6 +49,11 @@ pub struct ImagePayload {
     pub height: u32,
     pub phash: Option<Vec<u8>>,
     pub exif_vec: BTreeMap<String, String>,
+    /// The read-only bucket of metadata the app does not model. Stored with
+    /// the payload exactly as `exif_vec` is: it is derived from the file by the
+    /// indexer, so it is dropped by a rebuild and re-derived by a reindex, and
+    /// it is served only by the detail route.
+    pub further_metadata: BTreeMap<String, String>,
 }
 
 /// Metadata-only payload for video assets.
@@ -120,6 +125,7 @@ pub fn to_metadata_record(data: &AbstractData) -> MetadataRecord {
             height: img.metadata.height,
             phash: img.metadata.phash.clone(),
             exif_vec: img.metadata.exif_vec.clone(),
+            further_metadata: img.metadata.further_metadata.clone(),
         }),
         AbstractData::Video(vid) => MetadataRecord::Video(VideoPayload {
             tags: vid.object.tags.clone(),
@@ -215,6 +221,9 @@ pub fn compose_abstract_data(record: &AssetRecord, meta: Option<&MetadataRecord>
                 metadata.height = payload.height;
                 metadata.phash.clone_from(&payload.phash);
                 metadata.exif_vec.clone_from(&payload.exif_vec);
+                metadata
+                    .further_metadata
+                    .clone_from(&payload.further_metadata);
             }
             metadata.album = record.album_id;
             metadata.path = Some(file_entry);

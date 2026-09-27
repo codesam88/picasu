@@ -1,0 +1,93 @@
+name: further metadata is a read-only category in the sidebar
+# The bucket of metadata the app does not model (`furtherMetadata` in
+# `GET /get/metadata/{assetId}`) is displayed in the metadata sidebar as a
+# category of key/value pairs and nothing else: there is no control that edits
+# one, which is what distinguishes it from the rating, the tags and the
+# description around it.
+#
+# `further_iptc: true` asks the fixture for the IIM datasets the native mapping
+# does not read, so the section has something to render. A stock fixture writes
+# only Keywords/Caption-Abstract/ObjectName, all three consumed natively, and
+# would leave the section out entirely.
+covers:
+  # `GET /get/metadata/{asset_id}` is exercised here too, by the sidebar's
+  # detail fetch, but the coverage tracer matches `covers.api` against the
+  # concrete path the browser requested, so a templated entry can never match.
+  # The route's contract is pinned by the API scenario
+  # `metadata_detail_exposes_further_data`.
+  api:
+    - POST /post/authenticate
+    - PUT /put/config/password
+    - POST /post/index/album
+    - GET /get/index/status
+  ui:
+    - Further metadata
+    - IPTC:By-line
+    - picasu fixture author
+given:
+  - config:
+      password: e2e_test_pwd
+
+  - dir_album: gallery/further
+
+  - photo: gallery/further/img01.jpg
+    tags: [further, gallery]
+    further_iptc: true
+
+steps:
+  - when:
+      - navigate: /login
+      - fill: textbox/Password
+        value: e2e_test_pwd
+      - click: button/Login
+    assert:
+      - ui.route: /timeline
+
+  - when:
+      - navigate: /config
+      - click: button/Scan Now
+      - wait.ms: 3000
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: gallery
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.text: further
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.first: true
+    assert:
+      - ui.visible: main/
+
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.text_visible: Info
+      # The category is there and names itself...
+      - ui.text_visible: Further metadata
+      # ...it renders the grouped keys the API reports, prefix and all...
+      - ui.text_visible: IPTC:By-line
+      - ui.text_visible: IPTC:City
+      - ui.text_visible: IPTC:CopyrightNotice
+      # ...with their values...
+      - ui.text_visible: picasu fixture author
+      - ui.text_visible: fixtureville
+      # ...it renders one row per pair...
+      - ui.count: '#further-metadata .further-metadata-pair'
+        equals: 3
+      # ...and no control that could change one. The rating and the description
+      # around it are editable; this category is not, and it holds no input, no
+      # button and no link at all.
+      - ui.count: '#further-metadata input, #further-metadata textarea, #further-metadata button, #further-metadata a'
+        equals: 0

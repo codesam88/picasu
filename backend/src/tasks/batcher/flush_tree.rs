@@ -367,6 +367,7 @@ mod tests {
             height: Some(side),
             tags: None,
             exif_date: None,
+            further_iptc: None,
             minimal: false,
         }])
         .expect("generate jpeg");

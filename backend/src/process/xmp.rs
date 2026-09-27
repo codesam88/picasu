@@ -2,19 +2,20 @@
 //!
 //! The module is two layers, and the split is what makes the contract testable:
 //!
-//! * the **read layer** ([`native_metadata_for`], [`read_xmp_packet`]) answers
-//!   "which file do I read" — that is where the sidecar rule lives, because it
-//!   is a decision about file precedence, not about what a tag means;
-//! * the **mapping layer** ([`map_native_fields`]) answers "which value wins",
-//!   is pure, and is what the unit tests drive with recorded `ExifTool -j -G1`
-//!   payloads.
+//! * the **read layer** ([`asset_metadata_for`], [`native_metadata_for`],
+//!   [`read_xmp_packet`]) answers "which file do I read" — that is where the
+//!   sidecar rule lives, because it is a decision about file precedence, not
+//!   about what a tag means;
+//! * the **mapping layer** ([`map_native_fields`], [`map_further_fields`])
+//!   answers "which value wins" and "what is left over", are pure, and are what
+//!   the unit tests drive with recorded `ExifTool -j -G1` payloads.
 //!
 //! Parsing is `ExifTool`'s job: it locates the container (`APP1`, `APP13`, PNG
 //! text chunks, `zTXt`/`iTXt` compression included) and this module only maps
 //! the groups it reports. No hand-written metadata parser lives here.
 
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::process::exif::read_metadata_record;
@@ -52,8 +53,9 @@ const OBJECT_NAME: &str = "ObjectName";
 
 /// The fields the app models natively, resolved for one asset.
 ///
-/// Whatever else `ExifTool` reports is not this struct's business; the
-/// read-only "further data" bucket that collects it is a later change.
+/// Whatever else `ExifTool` reports is not this struct's business; it is the
+/// read-only "further data" bucket that collects it, which travels beside this
+/// one as [`AssetMetadata::further`].
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct NativeMetadata {
     pub tags: HashSet<String>,
@@ -63,6 +65,16 @@ pub struct NativeMetadata {
     pub rating: Option<u8>,
     /// `XMP-dc:Title`. Used for the album display name override.
     pub title: Option<String>,
+}
+
+/// One asset's metadata as the app reads it: the fields the app models
+/// natively, plus the read-only bucket of everything else `ExifTool` reported.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct AssetMetadata {
+    /// What the app models: the values it stores, edits and searches by.
+    pub native: NativeMetadata,
+    /// What it does not model, keyed `Group:Tag` — see [`map_further_fields`].
+    pub further: BTreeMap<String, String>,
 }
 
 /// Return the `.xmp` sidecar path alongside `path` if it exists.
@@ -76,8 +88,8 @@ pub fn discover_sidecar(path: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Resolve the native fields of the image at `path`, from a record the caller
-/// has already read.
+/// Resolve the whole of one asset's metadata, from a record the caller has
+/// already read: the natively modelled fields and the further-data bucket.
 ///
 /// `image` is the image's own `ExifTool` record — normally the one
 /// [`crate::process::exif::read_metadata_record`] already read for the `exifVec`
@@ -88,11 +100,11 @@ pub fn discover_sidecar(path: &Path) -> Option<PathBuf> {
 ///
 /// The sidecar is the exception, and the exception is one extra read: a sidecar
 /// is a second file, and its XMP replaces the image's own packet while the
-/// image's IPTC and text chunks keep filling what that packet left empty (see
+/// image's IIM and text chunks keep filling what that packet left empty (see
 /// [`map_native_fields`]). Any failure to read is the documented non-fallible
 /// contract, as it is for `exifVec`: a file `ExifTool` cannot parse yields
 /// empty fields rather than an error, so a damaged image still indexes.
-pub fn native_metadata_for(path: &Path, image: Option<&Value>) -> NativeMetadata {
+pub fn asset_metadata_for(path: &Path, image: Option<&Value>) -> AssetMetadata {
     // A sidecar that exists is authoritative for the *XMP* fields whether or not
     // it parses: the sidecar is where the app writes metadata back
     // (`PUT /put/edit_tag`), so falling back to the packet still inside the
@@ -109,7 +121,18 @@ pub fn native_metadata_for(path: &Path, image: Option<&Value>) -> NativeMetadata
         None if sidecar.is_some() => XmpSource::Unavailable,
         None => image.map_or(XmpSource::Unavailable, XmpSource::Record),
     };
-    map_native_fields(&xmp, image)
+    map_asset_metadata(&xmp, image)
+}
+
+/// The natively modelled fields of the image at `path`, without the
+/// further-data bucket.
+///
+/// `process_video_info` is the caller: a video's `exifVec` comes from `ffprobe`,
+/// and which source would own a video's further-data bucket is a later decision,
+/// so the video path stays on this narrower read for now. The image path uses
+/// [`asset_metadata_for`] and stores both halves.
+pub fn native_metadata_for(path: &Path, image: Option<&Value>) -> NativeMetadata {
+    asset_metadata_for(path, image).native
 }
 
 /// Resolve the native fields of a standalone XMP packet — a `.xmp` sidecar read
@@ -196,6 +219,247 @@ fn map_native_fields(xmp: &XmpSource<'_>, image: Option<&Value>) -> NativeMetada
             field(image, IPTC, OBJECT_NAME),
             field(image, PNG, TITLE),
         ]),
+    }
+}
+
+/// Map the two projections of the records the read layer resolved: what the app
+/// models, and what it does not. Pure — this and the two functions it calls are
+/// what the unit tests drive.
+fn map_asset_metadata(xmp: &XmpSource<'_>, image: Option<&Value>) -> AssetMetadata {
+    AssetMetadata {
+        native: map_native_fields(xmp, image),
+        further: map_further_fields(xmp, image),
+    }
+}
+
+/// Map the read-only **further data** bucket: every key the native mapping did
+/// not consume, keyed `Group:Tag`.
+///
+/// `.plan/exiftool-metadata-engine.md` decision 3: everything `ExifTool` returns
+/// that the app does not model is surfaced as simple key/value pairs, read-only.
+/// The bucket is the API's `furtherMetadata` and the sidebar renders it as a
+/// category; nothing edits it, because the app does not know what any of these
+/// fields mean well enough to write one back.
+///
+/// # The split, and why each side is where it is
+///
+/// **In** — the three source families a writing tool puts human-readable values
+/// into, minus what [`map_native_fields`] consumed:
+///
+/// * `XMP-*`, every namespace. The same family the native fields come from, so
+///   the two are the same kind of thing: `XMP-xmp:CreatorTool`,
+///   `XMP-photoshop:Credit`, `XMP-x:XMPToolkit` (which a writer stamps into the
+///   packet, as it does its own EXIF `Software` tag). The namespace matters and
+///   is kept: `xmp:Rating` and `XMP-microsoft:RatingPercent` are different
+///   properties, and dropping the namespace would collide them.
+/// * `IPTC`, `IPTC2`, `IPTC3` — the IIM record. `ExifTool` files the same IIM
+///   datasets under different group names depending on the record version they
+///   came from (measured on its own corpus: `IPTC` for the record a JPEG carries,
+///   `IPTC2` for a version-2 record, `IPTC3` for a version-3 one). The native
+///   mapping reads `IPTC:` alone, so a version-2 record's caption is *not* in
+///   `description` — and its keys belong here rather than nowhere. That gap in
+///   the native mapping is Iteration 2's to close, not this one's to paper over:
+///   the bucket is the complement of what was consumed, not a second path to the
+///   same fields.
+/// * `PNG`, the text chunks. See the exclusion below for the other half of that
+///   group.
+///
+/// **Out** — everything else, each for a reason measured rather than assumed:
+///
+/// * the EXIF family (`IFD*`, `ExifIFD`, `InteropIFD`, `GPS`, `SubIFD*`) is
+///   already the `exifVec` map, key for key. A key in two maps would have two
+///   values and no rule for which one the user reads.
+/// * `File:`, `System:` and `ExifTool:` are facts about the read, not about the
+///   metadata: `FileSize`, `MIMEType`, `FileName`, `Directory`, the access and
+///   modify timestamps — which would make the sidebar's content change whenever
+///   the file is touched, and show the moment it was indexed — and
+///   `ExifToolVersion`, which is a fact about the reader. `exifVec` already
+///   excludes them for the same reason.
+/// * `Composite:` holds values `ExifTool` *derived* from tags that are already
+///   reported. Measured on a snapfab JPEG: `Composite:Aperture` 10.7 restates
+///   `ExifIFD:FNumber` 10.7, `Composite:ShutterSpeed` `1/888` restates
+///   `ExifIFD:ExposureTime` `1/888`, and `Composite:ImageSize` `2x2` restates
+///   the dimensions the app models natively as `width`/`height`. The bucket is
+///   for what a photographer or a tool wrote into the file; showing a computed
+///   value beside its own source would be a second, differently-formatted
+///   answer to a question the sidebar already answers.
+/// * `JFIF`/`JFXX` are the JPEG container's own parameters (`JFIFVersion`,
+///   `ResolutionUnit`, `XResolution`, `YResolution`) and a thumbnail blob, in
+///   the same category as `File:`: container facts, not written metadata.
+/// * the maker-note groups (`Canon`, `Nikon`, `Olympus`, …) are a vendor's
+///   private re-reading of the EXIF directories, plus binary blobs. Same
+///   duplication as the EXIF family, with worse legibility.
+/// * `ICC_Profile`/`ICC-header`/… are a colour profile's internals — measured
+///   40+ entries per file of matrix and TRC numbers, half of them
+///   `(Binary data 2060 bytes, use -b option to extract)`. A payload, not
+///   key/value metadata.
+/// * `Photoshop:` (the image resource block) is the one group this measurement
+///   left out on judgement rather than on category. It is written metadata —
+///   `WriterName`, `ReaderName`, `URL`, `CopyrightFlag` — but it is an editing
+///   tool's record of its own session rather than a metadata standard the app
+///   or its native mapping reads, and 13 of the 21 entries `ExifTool` reports for
+///   a Photoshop-edited JPEG are print/resolution settings. Recorded here as the
+///   next candidate; widening the include list later is additive, and a
+///   reindex is what fills a bucket for files indexed before.
+///
+/// # Two rules that keep the complement exact
+///
+/// * A key [`map_native_fields`] consumed is never repeated here, whatever
+///   family it is in. [`NATIVE_KEYS`] is the single list of those keys, built
+///   from the same group and tag constants the native mapping reads, so
+///   renaming a constant cannot desynchronise the two.
+/// * The XMP family is read from the XMP source record and the IIM and text
+///   chunks from the image's own, exactly as the native fields are. A sidecar
+///   therefore masks the image's own XMP packet here too, instead of
+///   resurrecting the fields an edit replaced.
+fn map_further_fields(xmp: &XmpSource<'_>, image: Option<&Value>) -> BTreeMap<String, String> {
+    let mut further = BTreeMap::new();
+    collect_further_from(xmp.record(), is_xmp_family, &mut further);
+    collect_further_from(image, is_written_metadata_family, &mut further);
+    further
+}
+
+/// Add every key of `record` whose family-1 group `wanted` accepts, and whose
+/// key the native mapping or [`PNG_CONTAINER_PROPERTIES`] has not claimed, to
+/// `further` under its own `Group:Tag` name.
+///
+/// The prefix is kept in the key rather than stripped as `exifVec` strips the
+/// EXIF family's: the bucket deliberately holds more than one family, and
+/// `Description` is a legitimate key name in both XMP and IIM. A key that says
+/// where it came from cannot collide with one that does not, and the sidebar can
+/// show the provenance instead of guessing at it.
+fn collect_further_from(
+    record: Option<&Value>,
+    wanted: fn(&str) -> bool,
+    further: &mut BTreeMap<String, String>,
+) {
+    let Some(Value::Object(entries)) = record else {
+        return;
+    };
+    for (key, value) in entries {
+        let Some((group, tag)) = key.split_once(':') else {
+            continue;
+        };
+        if !wanted(group) || is_native_key(group, tag) || is_png_container_property(group, tag) {
+            continue;
+        }
+        // A blank is dropped, on the same rule the native mapping applies to a
+        // cleared `rdf:Alt` or `rdf:Bag`: `ExifTool` reports "no value" as
+        // `null` in one tag and as the empty string in another (`ExifIFD:
+        // UserComment` is the common one), and a bucket is a list of rows to
+        // read, where a row with nothing in it is noise.
+        match value_text(value) {
+            Some(text) if !text.trim().is_empty() => {
+                further.insert(key.clone(), text);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Every `(group, tag)` pair [`map_native_fields`] reads, as the bucket's
+/// exclusion list.
+///
+/// Stated from the same group and tag constants the native mapping uses rather
+/// than from literals, so a renamed constant moves the exclusion with it and a
+/// newly consumed key that is not added here shows up as the same key in both
+/// places — which
+/// `no_native_key_is_repeated_in_the_bucket` and the API-level scenario
+/// `metadata_detail_exposes_further_data` both fail on.
+const NATIVE_KEYS: &[(&str, &str)] = &[
+    // description
+    (XMP_DC, DESCRIPTION),
+    (IPTC, CAPTION_ABSTRACT),
+    (PNG, DESCRIPTION),
+    // title
+    (XMP_DC, TITLE),
+    (IPTC, OBJECT_NAME),
+    (PNG, TITLE),
+    // rating
+    (XMP_XMP, RATING),
+    // tags
+    (XMP_DC, SUBJECT),
+    (IPTC, KEYWORDS),
+];
+
+/// The XMP family, matched by shape: one group per used namespace, plus a bare
+/// `XMP` for a packet written in the XMP namespace itself.
+fn is_xmp_family(group: &str) -> bool {
+    group == "XMP" || group.starts_with("XMP-")
+}
+
+/// The IIM record — under whichever record version `ExifTool` files it — and the
+/// PNG text chunks, which share a group with the container's own properties.
+fn is_written_metadata_family(group: &str) -> bool {
+    matches!(group, IPTC | "IPTC2" | "IPTC3" | PNG)
+}
+
+/// Whether the native mapping already owns this key.
+fn is_native_key(group: &str, tag: &str) -> bool {
+    NATIVE_KEYS.contains(&(group, tag))
+}
+
+/// The PNG container's own image properties, which `ExifTool` reports in the
+/// same `PNG` group as the text chunks: the IHDR fields and the two rendering
+/// chunks it names them for.
+///
+/// Measured on `ExifTool` 13.59 — the seven first entries are what every PNG
+/// reports, the last two what `PNG.png` and `PGF.pgf` in `ExifTool`'s own corpus
+/// add. They are excluded because they are the picture rather than the file's
+/// metadata, and because `PNG:ImageWidth`/`ImageHeight` would be a second and a
+/// third copy of the `width`/`height` the app already models natively.
+///
+/// The list is measured rather than exhaustive: a PNG variant `ExifTool` describes
+/// with a property outside it would show that property in the bucket. That is
+/// the cheaper error here — an extra visible row — than the alternative, an
+/// allowlist of the PNG specification's registered text keywords, which would
+/// silently drop every text chunk written under a keyword of the writer's own
+/// choosing (`PNG:ZKeyword` for a `zTXt` chunk is a real one).
+const PNG_CONTAINER_PROPERTIES: &[&str] = &[
+    "ImageWidth",
+    "ImageHeight",
+    "BitDepth",
+    "ColorType",
+    "Compression",
+    "Filter",
+    "Interlace",
+    "BackgroundColor",
+    "SRGBRendering",
+];
+
+fn is_png_container_property(group: &str, tag: &str) -> bool {
+    group == PNG && PNG_CONTAINER_PROPERTIES.contains(&tag)
+}
+
+/// Flatten one `ExifTool` JSON value into the display string the bucket holds.
+///
+/// The same shapes and the same join as `process::exif`'s `exifVec` projection,
+/// which is the other place the app prints a record: `ExifTool` is not uniformly
+/// typed, a print-converted value arrives as a string, an integer or a float as
+/// a number, and a list-valued tag as an array. `null` means "no value" and is
+/// dropped rather than stored as the text `null`; a multi-valued tag becomes one
+/// `", "`-joined string because the bucket is `String -> String` and a
+/// `XMP-dc:Subject` list is *not* a tag list here — the tag list was consumed
+/// natively and this key is only here when it is not.
+///
+/// This duplicates `process::exif::json_value_to_string` rather than sharing it
+/// because that function is private to its module. The two must agree: a value
+/// that `exifVec` prints one way and the bucket another would be the same
+/// metadata rendered two ways in one sidebar.
+fn value_text(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text.clone()),
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(flag) => Some(flag.to_string()),
+        Value::Array(items) => Some(
+            items
+                .iter()
+                .filter_map(value_text)
+                .collect::<Vec<_>>()
+                .join(", "),
+        ),
+        Value::Null => None,
+        Value::Object(_) => Some(value.to_string()),
     }
 }
 
@@ -583,6 +847,305 @@ mod tests {
         }
     }
 
+    // ── Mapping: the further-data bucket ────────────────────────────────────
+
+    /// Every group a `-G1` read reports that is not the file's own written
+    /// metadata, plus the two families the native mapping reads. Recorded from
+    /// the ExifTool 13.59 outputs named on each key's line in the test below.
+    fn recorded_kitchen_sink() -> Value {
+        json!({
+            // Container facts, the read-time trivia, the tool's own version,
+            // the container parameters, the derived values, the EXIF family,
+            // and a vendor's private block.
+            "File:FileType": "JPEG",
+            "File:MIMEType": "image/jpeg",
+            "File:ImageWidth": 2,
+            "System:FileName": "kitchen-sink.jpg",
+            "System:FileSize": "1602 bytes",
+            "System:FileModifyDate": "2026-09-27 20:09:55",
+            "ExifTool:ExifToolVersion": 13.59,
+            "JFIF:JFIFVersion": 1.02,
+            "JFIF:XResolution": 1,
+            "Composite:Aperture": 10.7,
+            "Composite:ImageSize": "2x2",
+            "IFD0:Make": "Nikon",
+            "ExifIFD:DateTimeOriginal": "2024-05-06 07:08:09",
+            "MakerNotes:Macro": 0,
+            // Every key the native mapping consumes.
+            "XMP-dc:Title": "Garden Bloom",
+            "XMP-dc:Description": "Colorful flowers in full bloom.",
+            "XMP-dc:Subject": ["alpine", "winter"],
+            "XMP-xmp:Rating": 5,
+            "IPTC:ObjectName": "Garden Bloom",
+            "IPTC:Caption-Abstract": "Colorful flowers in full bloom.",
+            "IPTC:Keywords": ["alpine", "winter"],
+            "PNG:Title": "A Title",
+            "PNG:Description": "A Description",
+            // Everything else in the three source families.
+            "XMP-xmp:CreatorTool": "snapfab 1.0",
+            "XMP-x:XMPToolkit": "Image::ExifTool 13.59",
+            "XMP-photoshop:Credit": "picasu test suite",
+            "IPTC:By-line": "Ada Lovelace",
+            "IPTC:City": "London",
+            "IPTC:ApplicationRecordVersion": 4,
+            "IPTC2:Caption-Abstract": "legacy record version",
+            "IPTC3:Keywords": "jambalaya",
+            "PNG:Comment": "A Comment",
+            "PNG:ZKeyword": "zlib text value"
+        })
+    }
+
+    /// The bucket is the exact complement of the native mapping, with the
+    /// `Group:Tag` prefix kept so a key says which family it came from.
+    ///
+    /// The control comes first: all nine native keys must really be in the
+    /// record and really be consumed, or the "complement" would hold vacuously.
+    #[test]
+    fn the_bucket_is_the_complement_of_the_native_keys_with_the_prefix_kept() {
+        let record = recorded_kitchen_sink();
+        let native = map_native_fields(&XmpSource::Record(&record), Some(&record));
+
+        // Control: the native mapping owns these, and they are all in the record.
+        assert_eq!(native.title.as_deref(), Some("Garden Bloom"));
+        assert_eq!(
+            native.description.as_deref(),
+            Some("Colorful flowers in full bloom.")
+        );
+        assert_eq!(native.rating, Some(5));
+        assert_eq!(
+            native.tags,
+            HashSet::from(["alpine".to_string(), "winter".to_string()])
+        );
+        for key in NATIVE_KEYS {
+            let prefixed = format!("{}:{}", key.0, key.1);
+            assert!(
+                record.get(&prefixed).is_some(),
+                "control: {prefixed} is not in the record, so excluding it proves nothing"
+            );
+        }
+
+        let bucket = map_further_fields(&XmpSource::Record(&record), Some(&record));
+        assert_eq!(
+            bucket,
+            BTreeMap::from([
+                ("IPTC:ApplicationRecordVersion".to_string(), "4".to_string()),
+                ("IPTC:By-line".to_string(), "Ada Lovelace".to_string()),
+                ("IPTC:City".to_string(), "London".to_string()),
+                (
+                    "IPTC2:Caption-Abstract".to_string(),
+                    "legacy record version".to_string()
+                ),
+                ("IPTC3:Keywords".to_string(), "jambalaya".to_string()),
+                ("PNG:Comment".to_string(), "A Comment".to_string()),
+                ("PNG:ZKeyword".to_string(), "zlib text value".to_string()),
+                (
+                    "XMP-photoshop:Credit".to_string(),
+                    "picasu test suite".to_string()
+                ),
+                (
+                    "XMP-x:XMPToolkit".to_string(),
+                    "Image::ExifTool 13.59".to_string()
+                ),
+                ("XMP-xmp:CreatorTool".to_string(), "snapfab 1.0".to_string()),
+            ]),
+            "the bucket is every source-family key the native mapping left, and nothing else"
+        );
+    }
+
+    /// A key the native mapping consumed cannot appear in the bucket, whatever
+    /// family it is in: the value would then exist in two places with no rule
+    /// for which one the user is reading.
+    #[test]
+    fn no_native_key_is_repeated_in_the_bucket() {
+        let record = recorded_kitchen_sink();
+        let bucket = map_further_fields(&XmpSource::Record(&record), Some(&record));
+
+        for (group, tag) in NATIVE_KEYS {
+            let prefixed = format!("{group}:{tag}");
+            assert!(
+                !bucket.contains_key(&prefixed),
+                "{prefixed} is consumed by the native mapping and must not be in the bucket: {bucket:?}"
+            );
+        }
+        // The same key name in another IIM record version is a different key,
+        // and the native mapping does not read it (Iteration 2 reads `IPTC:`
+        // only), so it stays in the bucket. Pinned because the two records
+        // hold the same dataset and a name-only exclusion would drop it.
+        assert_eq!(
+            bucket.get("IPTC2:Caption-Abstract").map(String::as_str),
+            Some("legacy record version")
+        );
+        assert_eq!(
+            bucket.get("IPTC3:Keywords").map(String::as_str),
+            Some("jambalaya")
+        );
+    }
+
+    /// The groups that are not the file's own written metadata: the container
+    /// (`File:`, `JFIF:`), the read-time trivia (`System:`), the reader's own
+    /// version (`ExifTool:`), the values derived from tags already shown
+    /// (`Composite:`), the EXIF family (already `exifVec`) and the vendor
+    /// blocks (a private re-reading of EXIF).
+    #[test]
+    fn groups_that_are_not_written_metadata_stay_out_of_the_bucket() {
+        let record = recorded_kitchen_sink();
+        let bucket = map_further_fields(&XmpSource::Record(&record), Some(&record));
+
+        for group in [
+            "IFD0",
+            "ExifIFD",
+            "File",
+            "System",
+            "ExifTool",
+            "JFIF",
+            "Composite",
+            "MakerNotes",
+        ] {
+            let leaked: Vec<&String> = bucket
+                .keys()
+                .filter(|key| key.starts_with(&format!("{group}:")))
+                .collect();
+            assert!(
+                leaked.is_empty(),
+                "{group}: must stay out of the bucket, found {leaked:?}"
+            );
+        }
+    }
+
+    /// The PNG text chunks are metadata and the PNG container's own image
+    /// properties are not: ExifTool reports both in the same `PNG` group, and
+    /// the app models width and height natively — a `PNG:ImageWidth` in the
+    /// bucket would be a third copy of the same number.
+    #[test]
+    fn the_png_container_properties_are_not_metadata_but_its_text_chunks_are() {
+        let record = json!({
+            "PNG:ImageWidth": 16,
+            "PNG:ImageHeight": 16,
+            "PNG:BitDepth": 8,
+            "PNG:ColorType": "Grayscale",
+            "PNG:Compression": "Deflate/Inflate",
+            "PNG:Filter": "Adaptive",
+            "PNG:Interlace": "Noninterlaced",
+            "PNG:BackgroundColor": 0,
+            "PNG:SRGBRendering": "Perceptual",
+            "PNG:Title": "The Title",
+            "PNG:Description": "A Description",
+            "PNG:Comment": "A Comment",
+            "PNG:ZKeyword": "zlib text value"
+        });
+        let bucket = map_further_fields(&XmpSource::Unavailable, Some(&record));
+
+        assert_eq!(
+            bucket,
+            BTreeMap::from([
+                ("PNG:Comment".to_string(), "A Comment".to_string()),
+                ("PNG:ZKeyword".to_string(), "zlib text value".to_string()),
+            ]),
+            "the two natively consumed chunks are excluded and the container's own \
+             image properties are not metadata: {bucket:?}"
+        );
+    }
+
+    /// The bucket follows the sidecar for the XMP family, exactly as the native
+    /// fields do: with a sidecar present, the packet inside the image is masked,
+    /// so a key of the image's own XMP packet must not reach the bucket while
+    /// the image's IIM record still contributes to it.
+    #[test]
+    fn the_bucket_reads_xmp_from_the_sidecar_when_one_exists() {
+        let sidecar = json!({
+            "XMP-dc:Title": "Custom Title",
+            "XMP-xmp:CreatorTool": "snapfab 1.0"
+        });
+        let image = recorded_iptc_only();
+        let bucket = map_further_fields(&XmpSource::Record(&sidecar), Some(&image));
+
+        assert_eq!(
+            bucket.get("XMP-xmp:CreatorTool").map(String::as_str),
+            Some("snapfab 1.0"),
+            "the sidecar's XMP is the XMP source: {bucket:?}"
+        );
+        for masked in ["XMP-dc:Title", "XMP-dc:Description", "XMP-dc:Subject"] {
+            assert!(
+                !bucket.contains_key(masked),
+                "{masked} is not in the sidecar, so the image's masked packet cannot \
+                 contribute it: {bucket:?}"
+            );
+        }
+        assert_eq!(
+            bucket.get("IPTC:Headline").map(String::as_str),
+            Some("IPTC Headline"),
+            "the image's IIM record is not masked by the sidecar: {bucket:?}"
+        );
+    }
+
+    /// Every value is a display string, as `exifVec`'s are: a JSON number, a
+    /// boolean and a list all have to flatten into one string, because the
+    /// bucket is `String -> String` and the sidebar prints it as text. The
+    /// keys are deliberately ones the native mapping does not consume — a
+    /// natively consumed key never reaches the bucket whatever shape its value
+    /// has, which is [`no_native_key_is_repeated_in_the_bucket`]'s subject.
+    #[test]
+    fn bucket_values_are_flattened_to_display_strings() {
+        let xmp = json!({
+            "XMP-pdf:Producer": 4,
+            "XMP-xmpRights:Marked": true,
+            "XMP-photoshop:Credit": ["a", "b"]
+        });
+        let image = json!({ "IPTC:Urgency": 2, "IPTC:By-line": "" });
+        let bucket = map_further_fields(&XmpSource::Record(&xmp), Some(&image));
+
+        assert_eq!(
+            bucket.get("XMP-pdf:Producer").map(String::as_str),
+            Some("4"),
+            "a JSON number is not a string: {bucket:?}"
+        );
+        assert_eq!(bucket.get("IPTC:Urgency").map(String::as_str), Some("2"));
+        assert_eq!(
+            bucket.get("XMP-xmpRights:Marked").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            bucket.get("XMP-photoshop:Credit").map(String::as_str),
+            Some("a, b"),
+            "a list is one entry per value, joined as `exifVec` joins one: {bucket:?}"
+        );
+        assert!(
+            !bucket.contains_key("IPTC:By-line"),
+            "a valueless tag is absent, not the empty string: {bucket:?}"
+        );
+    }
+
+    /// The same rule for a value that is only whitespace, which is what an
+    /// emptied `lang-alt` arrives as.
+    #[test]
+    fn a_blank_bucket_value_is_absent_rather_than_an_empty_row() {
+        let image = json!({ "IPTC:By-line": "   ", "IPTC:City": "fixtureville" });
+        let bucket = map_further_fields(&XmpSource::Unavailable, Some(&image));
+
+        assert!(
+            !bucket.contains_key("IPTC:By-line"),
+            "a blank is not a value: {bucket:?}"
+        );
+        assert_eq!(
+            bucket.get("IPTC:City").map(String::as_str),
+            Some("fixtureville")
+        );
+    }
+
+    /// No record, no bucket — the path a non-fallible caller lands on when
+    /// `ExifTool` cannot read the file, and the shape the API reports as `{}`.
+    #[test]
+    fn no_record_yields_an_empty_bucket() {
+        assert!(map_further_fields(&XmpSource::Unavailable, None).is_empty());
+        // A record with nothing but the excluded groups is the same outcome.
+        let record = json!({
+            "File:FileType": "JPEG",
+            "System:FileName": "bare.jpg",
+            "IFD0:Make": "Canon"
+        });
+        assert!(map_further_fields(&XmpSource::Record(&record), Some(&record)).is_empty());
+    }
+
     // ── Mapping: absent and unreadable sources ─────────────────────────────
 
     /// With no record at all, every field is empty. This is the path a
@@ -685,6 +1248,75 @@ mod tests {
         out
     }
 
+    /// The bucket on a real file, through the real reader: the split holds
+    /// against what `ExifTool` actually reports for a JPEG, not only against a
+    /// recorded payload. The fixture is asked for the unmodelled IIM datasets
+    /// (`further_iptc`), and the bucket must be exactly those three — the
+    /// keywords, title and caption it shares with the native mapping are not in
+    /// it, and neither is the EXIF family, the JFIF parameters, the container
+    /// facts or the derived `Composite:` values.
+    #[test]
+    fn a_generated_jpeg_lands_only_its_unmodelled_iptc_datasets_in_the_bucket() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let photo = snapfab_further_jpeg(dir.path(), "further.jpg", &["bucket_keyword"]);
+
+        let image = read_metadata_record(&photo).expect("read image");
+        let data = asset_metadata_for(&photo, Some(&image));
+
+        // Control: the natively consumed half of the same IIM record is filled.
+        // snapfab adds the render mode's name to the keywords, so the set holds
+        // the spec keyword plus one more whose name depends on the rng.
+        assert!(
+            data.native.tags.contains("bucket_keyword"),
+            "control: the fixture's keyword must be indexed: {:?}",
+            data.native.tags
+        );
+        assert!(data.native.description.is_some());
+        assert!(data.native.title.is_some());
+
+        assert_eq!(
+            data.further,
+            BTreeMap::from([
+                (
+                    "IPTC:By-line".to_string(),
+                    snapfab::FURTHER_IPTC_BY_LINE.to_string()
+                ),
+                (
+                    "IPTC:City".to_string(),
+                    snapfab::FURTHER_IPTC_CITY.to_string()
+                ),
+                (
+                    "IPTC:CopyrightNotice".to_string(),
+                    snapfab::FURTHER_IPTC_COPYRIGHT.to_string()
+                ),
+            ]),
+            "the bucket is the three unmodelled datasets and nothing else: {:?}",
+            data.further
+        );
+    }
+
+    /// The same JPEG without `further_iptc` has no bucket at all: every IIM
+    /// dataset it writes is one the native mapping consumed. Without this the
+    /// test above could not tell "the split works" from "snapfab wrote more".
+    #[test]
+    fn a_stock_generated_jpeg_leaves_the_bucket_empty() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let photo = snapfab_jpeg(dir.path(), "stock.jpg", &["bucket_keyword"]);
+
+        let image = read_metadata_record(&photo).expect("read image");
+        let data = asset_metadata_for(&photo, Some(&image));
+
+        assert!(
+            !data.native.tags.is_empty(),
+            "control: the fixture is tagged"
+        );
+        assert!(
+            data.further.is_empty(),
+            "a fixture writing only Keywords/ObjectName/Caption has nothing further to report: {:?}",
+            data.further
+        );
+    }
+
     /// A JPEG written by snapfab with `tags`, which puts the keywords in both
     /// an XMP packet and an IIM record.
     fn snapfab_jpeg(dir: &Path, name: &str, tags: &[&str]) -> std::path::PathBuf {
@@ -696,6 +1328,27 @@ mod tests {
             height: Some(4),
             tags: Some(tags.iter().map(|tag| (*tag).to_string()).collect()),
             exif_date: Some("2024:05:06 07:08:09".into()),
+            further_iptc: None,
+            minimal: false,
+        }])
+        .expect("generate photo");
+        photo
+    }
+
+    /// A JPEG written by snapfab with `tags` and `further_iptc`, so its IIM
+    /// record holds the three datasets the native mapping consumes *and* three
+    /// it does not. This is the shape the API-level scenario
+    /// `metadata_detail_exposes_further_data` drives.
+    fn snapfab_further_jpeg(dir: &Path, name: &str, tags: &[&str]) -> std::path::PathBuf {
+        let photo = dir.join(name);
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(photo.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: Some(tags.iter().map(|tag| (*tag).to_string()).collect()),
+            exif_date: Some("2024:05:06 07:08:09".into()),
+            further_iptc: Some(true),
             minimal: false,
         }])
         .expect("generate photo");
@@ -713,6 +1366,7 @@ mod tests {
             height: Some(4),
             tags: None,
             exif_date: None,
+            further_iptc: None,
             minimal: false,
         }])
         .expect("generate photo");
