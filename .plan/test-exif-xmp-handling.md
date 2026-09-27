@@ -278,6 +278,33 @@ Randomization should complement, not replace, the deterministic matrix.
 
 ## Progress
 
+- 2026-09-27 — Iteration 7 done. Three UI smoke flows added —
+  `format-jpeg-upload-gallery-metadata-delete`, `format-tiff-…`,
+  `format-mp4-…` — each: upload via file chooser → gallery tile count →
+  sidepane (stored path + decoded dimensions) → soft delete → permanent delete
+  → empty-state confirmation. Assertions are UI-visible state only (dialog/toast
+  text, tile counts, row-type via the Rotate Left menu entry, sidebar path and
+  `ItemSize`); no parser output, no HEIF/AVIF. The frontend `given` step could
+  not place TIFF/WebP/MP4/MOV at all (`snapfab batch` encodes jpeg|png only),
+  so `source_file` gained an optional `fixture: <manifest-id>` (mutually
+  exclusive with `format`) backed by `pinnedFixtures.ts`, which verifies the
+  manifest SHA-256 before copying, requires a declared extension, and hard-fails
+  with an install diagnostic when a `container: [probe]` fixture is placed
+  without ffmpeg/ffprobe. One flake source found and removed
+  (`#col-ref > video` is bimodal against the transcode race; replaced with the
+  menu-gated row-type probe), and one vacuity defect found by mutation: a
+  `ui.count equals 0` after `navigate:` passes before the grid renders — the
+  empty-state card text is now the wait. The same vacuity exists in the
+  pre-existing `delete-photo-permanently.yaml`, and that scenario also carries
+  a permanent coverage warning from a `PUT /edit_flags` path typo (should be
+  `/put/edit_flags`); both left untouched as separate changes. Open: the
+  upload path rewrites a `.jpg` extension to `.jpeg` (unverified whether
+  intended — no API-layer pin found), and the video-delete thumbnail orphan
+  (Iteration 6 question (a)) now also shows as a backend log line
+  `Failed to delete thumbnail …/compressed/….jpg` during the MP4 flow. Gates:
+  `just frontend-playwright` 39 passed (was 36), `just frontend-check`,
+  `just docs-check`, `just plan-lint` — all pass; backend untouched
+  (`git status backend/ utils/` empty, `capabilities.json` byte-identical).
 - 2026-09-27 — Iteration 6 done. Correction first: the Iteration 0 note above
   claimed "manifest-driven randomized fixture selection" existed — it did not;
   only format/extension lookup existed. The selector is now real:

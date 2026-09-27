@@ -5,6 +5,7 @@ import { createHash, createHmac } from 'crypto'
 import { GivenItem } from './types'
 import type { APIRequestContext } from '@playwright/test'
 import { type WorkerPaths } from './paths'
+import { copyPinnedFixture } from './pinnedFixtures'
 import { CoverageTracer } from './tracer'
 
 let authToken: string | null = null
@@ -279,6 +280,7 @@ export async function executeGiven(
     if ('source_file' in item && item.source_file) {
       const sf = item as {
         source_file: string
+        fixture?: string
         format?: string
         width?: number
         height?: number
@@ -288,11 +290,16 @@ export async function executeGiven(
       // scenario uploads it through the browser file chooser instead.
       const sourceDir = path.join(overridePaths.DIR, 'source')
       const sourcePath = path.join(sourceDir, sf.source_file)
-      const entry: PhotoManifestEntry = { output: sourcePath }
-      if (sf.format) entry.format = sf.format
-      if (sf.width) entry.width = sf.width
-      if (sf.height) entry.height = sf.height
-      photoManifest.push(entry)
+      if (sf.fixture) {
+        // Pinned manifest bytes, for the formats `snapfab batch` cannot encode.
+        copyPinnedFixture(sf.fixture, sourcePath)
+      } else {
+        const entry: PhotoManifestEntry = { output: sourcePath }
+        if (sf.format) entry.format = sf.format
+        if (sf.width) entry.width = sf.width
+        if (sf.height) entry.height = sf.height
+        photoManifest.push(entry)
+      }
       if (sf.id_as) result.vars[sf.id_as] = sourcePath
     }
   }

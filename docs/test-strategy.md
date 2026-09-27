@@ -130,12 +130,12 @@ Each pass logs `[randomized] <scenario> run i/n: seed=… format=… ext=…
 source=…`, and a failure repeats that line in the panic message, because
 `cargo test` captures the scenario's own stdout.
 
-The UI harness does not consume the selector: its `given` step can only
-generate JPEG and PNG (`executeGiven.ts` shells out to `snapfab batch`,
-whose `format` is a `jpeg | png` enum), so four of the six eligible
-formats cannot be placed there at all. Cross-format UI coverage is the
-plan's next iteration, not a second implementation of the selector in
-TypeScript.
+The UI harness does not consume the selector, and is not a second
+implementation of it in TypeScript. It can place all six formats, but by a
+different route: JPEG and PNG come from `snapfab batch` (whose `format` is a
+`jpeg | png` enum), while the other four are named by a `source_file` given
+item's `fixture` field, which copies the checked-in bytes of a capability
+manifest entry (see the UI scenario generator below). Selection stays in Rust.
 
 ### UI scenario generator
 
@@ -148,11 +148,32 @@ serves `dist/` directly; Vite's dev server is not used).
 Same given/when/assert structure as the API generator, and the **given** step
 seeds state through the same backend HTTP API (`executeGiven.ts`).
 
+**Given** seeds state through the backend HTTP API, plus the filesystem. The
+formats `snapfab batch` cannot encode are placed from checked-in bytes instead:
+a `source_file` item takes a `fixture: <id>` naming an entry of the capability
+manifest (`utils/snapfab/capabilities.json`), whose recorded SHA-256 is
+verified before the bytes are written and whose declared extensions must match
+the uploaded filename. This mirrors the API generator's `fixture` given step
+(`pinnedFixtures.ts`); the destination differs because the UI flow uploads the
+file through the browser file chooser, so the bytes must sit outside
+`IMAGE_HOME` or the item would be indexed before the scenario uploads it. The
+manifest's recorded SHA-256 is verified, the filename's extension must be one
+the pinned format declares, and a video fixture additionally requires a working
+ffmpeg/ffprobe — it fails with that diagnostic rather than letting the upload
+be rejected later with "could not be decoded as an image or video". No binary
+payload is ever embedded in a scenario, and `fixture` and `format` are mutually
+exclusive.
+
 **When** maps YAML verbs to Playwright page actions: `navigate` →
-`page.goto()`, `click` → `getByRole().click()`, etc.
+`page.goto()`, `click` → `getByRole().click()`, `upload.files` →
+`filechooser.setFiles()`, etc.
 
 **Assert** maps to Playwright `expect` assertions: `ui.visible`,
-`ui.hidden`, `ui.text`+`contains`, `ui.route`.
+`ui.hidden`, `ui.text`+`contains`, `ui.route`, `ui.count`,
+`ui.sidebar_visible`. `ui.count` is the verb for grid tiles; an absence
+assertion (`equals: 0`) is only meaningful next to a positive wait for the
+same view to load, because a count of 0 also matches a grid that has not
+rendered yet.
 
 The Playwright JSON reporter emits structured per-scenario results
 (pass/fail, duration, error details, screenshot paths) designed for
