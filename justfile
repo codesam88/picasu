@@ -194,15 +194,15 @@ docs-build: docs-openapi
 docs-serve:
     python3 -m http.server 3637 -d target/docs/book
 
-# Format markdown files (README, docs, .plan)
+# Format markdown files (README, docs, .plan, utils)
 [group('docs')]
 docs-format:
-    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md'
+    cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md' '../utils/**/*.md'
 
-# Check markdown formatting (docs, .plan)
+# Check markdown formatting (docs, .plan, utils)
 [group('docs')]
 docs-check:
-    cd frontend && npx --no-install prettier --check --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md'
+    cd frontend && npx --no-install prettier --check --no-error-on-unmatched-pattern '../*.md' '../docs/**/*.md' '../.plan/**/*.md' '../utils/**/*.md'
 
 # ── Global ─────────────────────────────────────────────────────────────────────
 
@@ -303,7 +303,7 @@ precommit:
     if echo "$changed" | grep -q '^utils/'; then
         just utils-check
     fi
-    if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$)'; then
+    if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$|utils/.*\.md$)'; then
         just plan-lint
         just docs-check
     fi

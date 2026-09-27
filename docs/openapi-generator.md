@@ -289,6 +289,9 @@ backend. The mounted-route parity tests stay there too, for the reason above.
 
 ### The CLI
 
+The crate behind the CLI, its library API and its limitations are documented in
+[`utils/openapi-sanity/README.md`](../utils/openapi-sanity/README.md).
+
 ```
 openapi-sanity check [options]
 openapi-sanity help
@@ -536,14 +539,14 @@ gets two loud findings rather than a silently narrowed contract.
 
 ## Files
 
-| File                                    | Generator           | Role                                                                                     |
-| --------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------- |
-| `utils/openapi-sanity/src/`             | —                   | `syn`-based route/annotation/guard scanner, path rules, source/spec, tag and auth checks |
-| `utils/openapi-sanity/src/auth.rs`      | —                   | The auth policy table and its checks                                                     |
-| `utils/openapi-sanity/src/tags.rs`      | —                   | The subject taxonomy and its checks                                                      |
-| `utils/openapi-sanity/src/main.rs`      | —                   | `openapi-sanity check` CLI (phase 1 of the gate)                                         |
-| `backend/src/openapi.rs`                | `build.rs`          | ApiDoc struct with all routes (gitignored)                                               |
-| `backend/openapi.json`                  | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                                       |
-| `docs/openapi-reference.md`             | widdershins         | Human-readable API reference                                                             |
-| `backend/src/tests/openapi_contract.rs` | —                   | Mounted-route / spec parity gate                                                         |
-| `backend/build.rs`                      | —                   | Reads the router files, writes `openapi.rs`                                              |
+| File                                                         | Generator           | Role                                                                                     |
+| ------------------------------------------------------------ | ------------------- | ---------------------------------------------------------------------------------------- |
+| [`utils/openapi-sanity/`](../utils/openapi-sanity/README.md) | —                   | `syn`-based route/annotation/guard scanner, path rules, source/spec, tag and auth checks |
+| `utils/openapi-sanity/src/auth.rs`                           | —                   | The auth policy table and its checks                                                     |
+| `utils/openapi-sanity/src/tags.rs`                           | —                   | The subject taxonomy and its checks                                                      |
+| `utils/openapi-sanity/src/main.rs`                           | —                   | `openapi-sanity check` CLI (phase 1 of the gate)                                         |
+| `backend/src/openapi.rs`                                     | `build.rs`          | ApiDoc struct with all routes (gitignored)                                               |
+| `backend/openapi.json`                                       | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                                       |
+| `docs/openapi-reference.md`                                  | widdershins         | Human-readable API reference                                                             |
+| `backend/src/tests/openapi_contract.rs`                      | —                   | Mounted-route / spec parity gate                                                         |
+| `backend/build.rs`                                           | —                   | Reads the router files, writes `openapi.rs`                                              |
