@@ -11,6 +11,11 @@
 #   tools/mirai-poc/run.sh            run every case and check the expectations
 #   MIRAI_POC_WORK=/tmp/x run.sh      use a different scratch directory
 #
+# TMPDIR is pointed at the scratch directory for the same reason as in
+# run-shapes.sh: rustc and MIRAI both write temporary files under the system temp
+# directory, and a small quota there turns into `Disk quota exceeded` failures
+# that look like analysis results.
+#
 # Requires: endorlabs/MIRAI v1.1.12 installed as `cargo-mirai`/`mirai`, and the
 # nightly-2025-01-10 toolchain with the rustc-dev and rust-src components.
 
@@ -78,7 +83,8 @@ run_mirai() {
   local start end code
   start=$(date +%s%N)
   ( cd "$work/$fixture" \
-    && CARGO_TARGET_DIR="$dir" MIRAI_FLAGS="$flags" cargo "+$toolchain" mirai --lib ) \
+    && CARGO_TARGET_DIR="$dir" TMPDIR="$work" MIRAI_FLAGS="$flags" \
+       cargo "+$toolchain" mirai --lib ) \
     >"$log" 2>&1
   code=$?
   end=$(date +%s%N)

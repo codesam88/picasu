@@ -54,6 +54,118 @@ PoC, not an immediate CI integration.
 
 ## Progress
 
+- 2026-09-26: Step 4 executed a second time against the real framework, since
+  the first pass had inferred the tokio and Rocket behavior from stand-ins.
+  Fixtures, the reproducible matrix and the findings are in `tools/mirai-poc/`;
+  `tools/mirai-poc/run-shapes.sh` re-checks all 64 rows and exits non-zero on a
+  mismatch. Status stays `in-progress`: step 5 (backend subset) and step 6
+  (integration decision) are untouched.
+
+  - **Gate mechanics.** `run-shapes.sh` asserts the exit code and the diagnostic
+    count as separate columns, because phase 1 showed they are independent: all
+    62 analysis rows exit 0, including the 32 that have findings, and the exit
+    code is asserted rather than assumed. The other 2 rows assert the failure
+    and the fix for the MSRV blocker. A third column, `LIVE`, asserts from `MIRAI_LOG=info`
+    that MIRAI really re-analyzed the selected function, because a fresh cargo
+    fingerprint otherwise produces an empty, successful, convincing run. Each
+    MIRAI run also redirects `TMPDIR` at the scratch directory: rustc and MIRAI's
+    summary store write temporary files under the system temp directory, and this
+    machine's per-user `/tmp` quota surfaces as `Disk quota exceeded` or as an
+    internal panic in `SummaryCache::create_summary_store_if_needed` with
+    exit 101. `run.sh` had the same latent problem and now does the same.
+  - **Route parameter: yes, unconstrained input.** A query primitive reaching a
+    private helper and `Option::unwrap` is reported at `--diag=paranoid` as
+    ``possible called `Option::unwrap()` on a `None` value``, with the helper as a
+    related location (`h1`, and `r1` with Rocket's real `#[get]` in the path). The
+    `TREE_SNAPSHOT.read_row(..)` singleton-method form, a request-derived divisor
+    (`possible attempt to divide by zero`) and a request-derived index are
+    reported the same way. At `--diag=verify` none of these appear, because a
+    parameter is unconstrained and a possible panic is not a proof: a whole-crate
+    `verify` run has 3 diagnostics, all of them certain panics.
+  - **`spawn_blocking`: no, and the dead end is locatable.** With the real
+    `tokio 1.53.1`, `unwrap`/`expect`/index sinks inside the closure, and a sink
+    in a helper the closure calls, produce 0 diagnostics in the fixture and 23
+    in total (`k1`-`k4`). `MIRAI_LOG=debug` shows MIRAI entering 228 bodies from
+    the handler through `tokio::task::blocking::spawn_blocking` down to
+    `blocking::pool::spawn_thread`, where the exact blocker is
+    `the called function did not resolve to an implementation with a MIR body` at
+    `tokio-1.53.1/src/runtime/blocking/pool.rs:463:55`, the
+    `std::thread::Builder::new()` call that would create the worker thread. The
+    closure is carried as a value the whole way and never called. The phase-1
+    `thread::spawn` result is the same wall one level deeper. The discriminating
+    pair is `h14`/`h15`: the same `FnOnce` hand-off defined in the analyzed crate
+    **is** followed and the sink **is** reported, so the limitation is not
+    closures, `move`, or the generic hand-off.
+  - **Body shape: yes.** Rocket's `Json<T>` works under a real `#[post]`: a field
+    read through `Deref` and a field used as an index are both reported (`r4`,
+    `r5`), and `into_inner()` through a helper is reported in the stand-in (`h6`).
+  - **Guard: not detectable, at any level.** `let _ = auth;` and `let _ = auth?;`
+    are indistinguishable: the discarded/propagated pairs (`h10`/`h11` and
+    `h19`/`h20`) agree in every column at both diagnostic levels, including when
+    the sink behind the guard is a _certain_ panic. A discarded guard does not
+    even cost a diagnostic, and unlike `spawn_blocking` the `?` neither produces
+    an `incomplete analysis` warning nor suppresses the sink behind it. MIRAI has
+    no notion of a request guard, so this is ordinary unused code, and step 5's
+    "was the timestamp guard propagated" question is not answerable by MIRAI.
+  - **`async` is a hard blind spot, and it is the largest one.** A certain panic
+    on a locally constructed `None` inside an `async fn` is silent at `verify` and
+    at `paranoid` (`h24`), while the same panic in a called closure is reported as
+    certain (`h23`) and an uncalled closure is silent (`h22`). An `async fn` body
+    is a coroutine body, entered only by polling a future, which MIRAI never
+    does; MIRAI selects the function (`analyzing selected function ...`) and then
+    evaluates nothing in it. `get_rows` is `pub async fn`, and so is every handler
+    under `backend/src/router/{get,put,post}`.
+  - **One phase-1 reading corrected.** `Option::expect` is still invisible
+    (`h2`), but `Result::expect` is not (`h21`, `r3`): only
+    `option::expect_failed` has an `assume_unreachable!()` contract, and
+    `Result::expect` falls back to `result::unwrap_failed`, which panics. Since
+    `TreeSnapshot::read_scrollbar` returns a `Result`, the `expect` that step 5
+    looks for is visible, which widens what step 5 can ask.
+  - **First blocker of the Rocket experiment, and its reduction.** rocket 0.5.1
+    has a non-optional dependency on `time` and pulls in `encoding_rs`; their
+    current versions declare `rust-version = 1.88` and MIRAI's pinned compiler is
+    `rustc 1.86.0-nightly`, so `cargo` refuses to build the graph. Note that
+    `cargo generate-lockfile` only annotates the resolution and exits 0; the hard
+    error comes from compiling. The root `Cargo.lock` pins those same versions
+    (`time 0.3.55`, `time-core 0.1.9`, `time-macros 0.2.32`, `encoding_rs
+0.8.40`), so **the backend's own resolved dependency set cannot be compiled by
+    MIRAI's pinned compiler** and a backend experiment must first pin
+    `time 0.3.45`, `time-core 0.1.7`, `time-macros 0.2.25`, `encoding_rs 0.8.35`.
+    `tools/mirai-poc/fixture-msrv/` is the reduction: two dependencies and one
+    empty function, where `cargo check --lib` exits 101 without the pins and 0
+    with them. Both halves are gated rows. The same check over the whole root
+    lock is worse: reading `rust-version` from the local crates.io index cache,
+    **18 of 480 registry packages require rustc newer than 1.86**, including
+    `redb 4.3.0` (1.90), `image 0.25.10` (1.88), `jsonwebtoken 11.1.0` (1.88)
+    and the `icu_*` stack (1.88), and 141 more have no declared `rust-version`,
+    so 18 is a lower bound. That is index metadata rather than a build, so a
+    `cargo build` on the pinned nightly is what would confirm it, but
+    `nightly-2025-01-10` is a long way behind the backend's dependency graph and
+    `redb` would need a major-version downgrade rather than a patch pin. A
+    backend experiment is therefore either a real pinning project or a narrower
+    crate that avoids `redb`, `image` and `jsonwebtoken`.
+  - **Cost.** Per case: the dependency-free fixture is 0.33-0.90 s (median
+    0.39 s); `fixture-rocket` is 0.59-0.90 s per handler, with the crate-wide row
+    between 33 s and 51 s across runs because it also builds the 163-package
+    rocket graph through the MIRAI driver (391 MB of target dir; `cargo-mirai` puts
+    `--cfg mirai -Z always_encode_mir` in `RUSTFLAGS` for the whole graph). In
+    `fixture-tokio` the split is the finding: a case that calls `spawn_blocking`
+    costs 13-16 s and reports nothing, every other case 0.3 s. Whether the backend
+    fits a nightly lane is untested: 483 packages in the root lock, 20.9k lines
+    across 107 files, 64 routes, and MIRAI's own `--crate_analysis_timeout`
+    default of 240 s. A whole-crate run is one invocation; per-handler
+    `--single_func` runs would re-analyze the crate per handler, and would not
+    reach the async bodies in any case.
+  - **Not tested.** The whole-crate run on the rocket fixture emits one
+    `incomplete analysis ...` diagnostic per registered route, at the
+    `#[get(..)]` attribute line inside the generated `into_route` function, and
+    analyzes 21 entry points (7 handlers, 7 generated `into_route` methods, the
+    guard's `from_request`, two storage methods, serde-generated methods, the
+    `TREE_SNAPSHOT` initializer). Whether that noise scales to 64 routes is
+    unknown. A dependency fixture run also puts 12 of 23 diagnostics inside
+    tokio's own source, so a span filter has to decide about dependency spans,
+    not just `core`/`std`.
+
 - 2026-09-26: Steps 1 to 4 executed. Evidence, fixtures and a re-runnable
   matrix are in `tools/mirai-poc/`; `tools/mirai-poc/run.sh` re-checks every
   claim below and exits non-zero on a mismatch. Status stays `in-progress`:

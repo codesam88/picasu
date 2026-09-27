@@ -1,0 +1,23 @@
+[package]
+name = "mirai-poc-fixture-msrv"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# See ../fixture-handler/Cargo.toml for why this table is here.
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+# The two crates whose current versions make the rocket fixture unbuildable on
+# MIRAI's pinned compiler. Nothing else is here on purpose: this is the smallest
+# fixture that reproduces the first blocker of the rocket experiment, without
+# rocket, without a route, and without a single line of analysis.
+#
+# `time` is a non-optional dependency of rocket 0.5.1, and `encoding_rs` is
+# pulled in by `rocket_http`, so a crate that depends on rocket cannot avoid
+# both.
+[dependencies]
+time = "0.3"
+encoding_rs = "0.8"

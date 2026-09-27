@@ -1,0 +1,21 @@
+[package]
+name = "mirai-poc-fixture-rocket"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# See ../fixture-handler/Cargo.toml for why this table is here.
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# The versions the backend resolves to (root Cargo.lock), so the fixture routes
+# through the same framework code. `time` and `encoding_rs` are *not* pinned
+# here: they are pinned by `run-shapes.sh` in the scratch copy, because the
+# newest versions of both declare `rust-version = 1.88` and MIRAI's pinned
+# compiler is 1.86. See ../README.md.
+rocket = { version = "=0.5.1", features = ["json"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+tokio = { version = "=1.53.1", default-features = false, features = ["rt"] }

@@ -32,3 +32,8 @@ backend/src/openapi.rs
 # backend/openapi.json is intentionally NOT ignored: it is the checked-in public
 # API contract that `just openapi-check` diffs against a fresh generation.
 
+# MIRAI PoC fixtures resolve their dependencies in the scratch copy that
+# run.sh / run-shapes.sh create outside the repository. A lock file here means
+# someone ran cargo inside the tree by hand; it is not part of the PoC.
+/tools/mirai-poc/*/Cargo.lock
+

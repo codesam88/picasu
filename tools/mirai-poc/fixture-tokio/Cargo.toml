@@ -1,0 +1,17 @@
+[package]
+name = "mirai-poc-fixture-tokio"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# See ../fixture-handler/Cargo.toml for why this table is here.
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# The version the backend resolves to (root Cargo.lock), and the minimum feature
+# set that provides `tokio::task::spawn_blocking`, so the fixture does not pull
+# in the whole runtime the backend asks for.
+tokio = { version = "=1.53.1", default-features = false, features = ["rt"] }

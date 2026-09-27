@@ -1,0 +1,17 @@
+[package]
+name = "mirai-poc-fixture-handler"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# The repository root is a cargo workspace, and this crate is not a member of it.
+# The empty table makes the fixture its own workspace root so that a stray
+# `cargo` invocation inside the repository works instead of failing. `run-shapes.sh`
+# still copies the fixture out of tree, so no lock file or target directory is
+# ever created in the repository.
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
