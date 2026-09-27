@@ -20,7 +20,10 @@ based on filesystem updates. This results in a few desirable features:
 
 1. Build from Source (Linux)
 
-See [docs/linux.md](docs/linux.md).
+See [docs/linux.md](docs/linux.md). `ffmpeg`/`ffprobe` (video features) and
+ExifTool (image metadata) are installed separately and are required: a release
+tarball from the GitHub releases page ships the `picasu` binary alone, with no
+third-party binary bundled.
 
 2. Docker
 

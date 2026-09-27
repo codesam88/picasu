@@ -45,25 +45,17 @@ jobs:
         working-directory: ./backend
         run: cargo build --release --features "embed-frontend auto-open-browser"
 
+      # The tarball ships the `picasu` binary and nothing else. ffmpeg/ffprobe
+      # (video) and ExifTool (image metadata) are external tools the operator
+      # installs from their distribution — see docs/linux.md — so no third-party
+      # binary is downloaded, vendored, or verified here.
       - name: Prepare Release Package
         run: |
-          echo "Downloading FFmpeg static build..."
-          wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
-
-          tar -xf ffmpeg-release-amd64-static.tar.xz
-
-          mkdir -p final_package/picasu-linux/bin
+          mkdir -p final_package/picasu-linux
 
           cp backend/target/release/picasu final_package/picasu-linux/
 
-          cp ffmpeg-*-amd64-static/ffmpeg final_package/picasu-linux/bin/
-          cp ffmpeg-*-amd64-static/ffprobe final_package/picasu-linux/bin/
-
           chmod +x final_package/picasu-linux/picasu
-          chmod +x final_package/picasu-linux/bin/ffmpeg
-          chmod +x final_package/picasu-linux/bin/ffprobe
-
-          ./final_package/picasu-linux/bin/ffmpeg -version | head -n 1
 
       - name: Create Tarball
         run: |

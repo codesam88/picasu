@@ -95,6 +95,45 @@ No operation may report success until its required filesystem changes are
 durable, and a partial operation must remain visible for repair rather than
 silently deleting user files.
 
+#### Metadata extraction pipeline
+
+Image metadata is read by exactly one engine, `ExifTool`, run as an external
+process. No in-process metadata reader is left — the EXIF-only Rust crate and
+the hand-rolled XMP byte scan are gone — and no hand-written metadata parser
+may come back: `ExifTool` locates the container (`APP1`, `APP13`, PNG text
+chunks, `zTXt`/`iTXt` compression included) and the backend's job is to decide
+which file to read, invoke the tool, and map what it reports. Video keeps the
+separate `ffprobe`/`ffmpeg` path.
+
+`ExifTool` is pure Perl and its startup costs an order of magnitude more than
+the read it performs, so the engine runs as a persistent `-stay_open` session,
+one per calling thread. That count is bounded by the index worker pool, because
+the indexer is the only caller. A session whose child dies is replaced and the
+read retried once; a session that cannot be started at all is never cached, so
+a missing binary is reported on every read instead of latching as a dead
+session. A failed read is absorbed into an empty map — a damaged image must
+still index — so each of those failures is logged with the install remedy, and
+the toolchain's presence is a test precondition rather than a silent skip.
+
+**One read per file.** The single grouped record (`-G1`, so every tag arrives
+under its family, with a fixed date format) is the currency, and it is projected
+three ways: the `exifVec` map keeps the EXIF family alone, the natively modelled
+fields take the XMP, IIM and text families, and the read-only bucket is the
+complement of that second projection. Reading a file twice would double the
+metadata cost of indexing it, which at library scale is the dominant cost.
+
+A sidecar is the only second read, because it is a second file. Its
+_existence_ takes the XMP source away from the image whether or not it parses:
+the sidecar is where the app writes metadata back, so falling back to the
+packet still inside the image would undo the edit. Its XMP replaces the image's
+own packet, while the image's IPTC and text chunks keep filling what that
+packet left empty. A value that is present but blank does not count as supplied,
+so a cleared field cannot shadow a family that still carries it.
+
+Within the native fields the first non-empty value wins in the order
+**XMP > IPTC IIM > PNG text**; the per-field order and the keyword union are
+documented on `process::xmp::map_native_fields`.
+
 #### Identity and serving invariants
 
 An `assetId` identifies one physical indexed file and is used for asset

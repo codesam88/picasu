@@ -32,3 +32,7 @@ picasu-data/
 backend/src/openapi.rs
 backend/openapi.json
 
+
+# Fixture generator scripts are plain python; never commit their caches.
+__pycache__/
+*.pyc

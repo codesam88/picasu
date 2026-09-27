@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use crate::process::exif::read_metadata_record;
+use crate::process::exif::{json_value_to_string, read_metadata_record};
 
 /// The metadata groups `ExifTool` reports the app's fields from, as the
 /// family-1 (`-G1`) group names its output keys carry.
@@ -372,8 +372,12 @@ fn collect_further_from(
         // cleared `rdf:Alt` or `rdf:Bag`: `ExifTool` reports "no value" as
         // `null` in one tag and as the empty string in another (`ExifIFD:
         // UserComment` is the common one), and a bucket is a list of rows to
-        // read, where a row with nothing in it is noise.
-        match value_text(value) {
+        // read, where a row with nothing in it is noise. The flattening itself is
+        // `exifVec`'s, shared on purpose — see `json_value_to_string`; a list
+        // arrives `", "`-joined because the bucket is `String -> String` and a
+        // `XMP-dc:Subject` list is not a tag list here (the tag list was already
+        // consumed natively, so this key only exists when it is not).
+        match json_value_to_string(value) {
             Some(text) if !text.trim().is_empty() => {
                 further.insert(key.clone(), text);
             }
@@ -469,38 +473,6 @@ const PNG_CONTAINER_PROPERTIES: &[&str] = &[
 
 fn is_png_container_property(group: &str, tag: &str) -> bool {
     group == PNG && PNG_CONTAINER_PROPERTIES.contains(&tag)
-}
-
-/// Flatten one `ExifTool` JSON value into the display string the bucket holds.
-///
-/// The same shapes and the same join as `process::exif`'s `exifVec` projection,
-/// which is the other place the app prints a record: `ExifTool` is not uniformly
-/// typed, a print-converted value arrives as a string, an integer or a float as
-/// a number, and a list-valued tag as an array. `null` means "no value" and is
-/// dropped rather than stored as the text `null`; a multi-valued tag becomes one
-/// `", "`-joined string because the bucket is `String -> String` and a
-/// `XMP-dc:Subject` list is *not* a tag list here — the tag list was consumed
-/// natively and this key is only here when it is not.
-///
-/// This duplicates `process::exif::json_value_to_string` rather than sharing it
-/// because that function is private to its module. The two must agree: a value
-/// that `exifVec` prints one way and the bucket another would be the same
-/// metadata rendered two ways in one sidebar.
-fn value_text(value: &Value) -> Option<String> {
-    match value {
-        Value::String(text) => Some(text.clone()),
-        Value::Number(number) => Some(number.to_string()),
-        Value::Bool(flag) => Some(flag.to_string()),
-        Value::Array(items) => Some(
-            items
-                .iter()
-                .filter_map(value_text)
-                .collect::<Vec<_>>()
-                .join(", "),
-        ),
-        Value::Null => None,
-        Value::Object(_) => Some(value.to_string()),
-    }
 }
 
 /// The keyword carriers, unioned. See [`map_native_fields`] for why this is the

@@ -16,7 +16,8 @@ This will create a folder called `./picasu`.
 
 Make sure the following software is installed on your system:
 
-- **ffmpeg**: Install via your system's package manager. For Ubuntu, use APT:
+- **ffmpeg / ffprobe**: required for the video features (dimensions, metadata,
+  thumbnails). Install via your system's package manager. For Ubuntu, use APT:
 
   ```bash
   sudo apt update && sudo apt install -y ffmpeg
@@ -24,8 +25,8 @@ Make sure the following software is installed on your system:
 
   For other Linux distributions, use the appropriate package manager (e.g., `dnf`, `yum`, `pacman`) and find the corresponding package name for installation.
 
-- **ExifTool**: the image metadata engine, also an external binary. For Ubuntu,
-  use APT:
+- **ExifTool**: the image metadata engine, also an external binary, and required
+  for image metadata. For Ubuntu, use APT:
 
   ```bash
   sudo apt install -y libimage-exiftool-perl
@@ -34,6 +35,13 @@ Make sure the following software is installed on your system:
   Or, without root, install the pinned pure-Perl distribution from the repository
   root with `just install-exiftool` (unpacks into `~/.local` and symlinks
   `~/.local/bin/exiftool`).
+
+Both are prerequisites of a running Picasu, not optional extras: without
+`ffprobe` a video has no dimensions or metadata, and ExifTool is the only image
+metadata reader, so without it every image reports no metadata at all. Neither
+tool is bundled with Picasu — a release tarball from the GitHub releases page
+contains the `picasu` binary alone, so install both the same way on a downloaded
+build as when building from source.
 
 - **Rust**: Install Rust using the official installer:
 

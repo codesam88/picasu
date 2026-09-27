@@ -82,7 +82,10 @@ EXIF uses TIFF IFD chains. Each IFD contains tagged entries:
 
 - **JPEG**: APP13 marker (`0xFF 0xED`) containing Photoshop 3.0 Image Resource Block (IRB) with resource ID `0x0404`
 - **TIFF**: Tag `0x83BB` (IPTC/NAA)
-- Not supported in PNG
+- **PNG**: no standard location. `ExifTool` writes a non-standard IIM record
+  into a text chunk (warning: `Creating non-standard IPTC in PNG`) and reads it
+  back, so such a file is readable — but Picasu claims no IIM support for PNG, so
+  it is not a guaranteed input.
 
 ### Organisation
 
@@ -216,7 +219,13 @@ XMP uses RDF/XML. Multiple schemas coexist in a single packet:
 
 ## 5. Cross-Format Field Mapping
 
-When multiple systems carry the same semantic field, they should agree. Below is the canonical mapping for the backend.
+When multiple systems carry the same semantic field, they should agree. Below is
+the canonical mapping between the standards — the reference for what a value in
+one family corresponds to in another, not a description of what the backend
+consumes. The shipped mapping is narrower: the app models tags, description,
+title and rating, in the order given under
+[Reading priority](#reading-priority) below, and every other field listed here
+arrives unmodelled in the read-only `furtherMetadata` bucket.
 
 ### Title
 
@@ -322,9 +331,21 @@ When multiple systems carry the same semantic field, they should agree. Below is
 
 ### Reading priority
 
-For any given file, we first check EXIF and IPTC. Any existing XMP
-header fields will override corresponding EXIF/IPTC fields. And an XMP sidecar file
-will in turn override those.
+One engine reads a file: `ExifTool`, invoked once per file, and its grouped
+record is projected into the `exifVec` map (EXIF family), the natively modelled
+fields, and the read-only further-data bucket. The order the app applies to the
+values it models is:
+
+1. the XMP family, which a paired sidecar supplies when one exists (a sidecar's
+   existence takes the XMP source, whether or not it parses),
+2. IPTC IIM from the image,
+3. PNG text chunks from the image.
+
+First non-empty wins; a value that is present but blank does not count, so a
+cleared field never shadows a lower family. Tags are the one exception and are
+the union of `XMP-dc:Subject` and IIM 2:25 `Keywords`. The exact per-field order
+and the rules behind it are documented on `process::xmp::map_native_fields`; the
+pipeline itself is in `docs/design.md`.
 
 Whenever metadata is changed via the API/frontend, the backend will
 create/update a corresponding sidecar XMP file. In addition, we may add an
@@ -332,39 +353,57 @@ option to directly write the metadata back to the original images (IPTC/XMP only
 
 ### Implementation notes
 
-- **EXIF dates** use format `YYYY:MM:DD HH:MM:SS` (with colons in the date portion).
-- **XMP dates** use ISO 8601 (`YYYY-MM-DDTHH:MM:SS[±HH:MM]`). Normalise to a common internal representation.
-- **IPTC dates** use `YYYYMMDD` (no time component). Combine with `TimeCreated` if available.
+The formats below are how the values are written in the file. What the backend
+does with them: it stores what `ExifTool` reports, and normalises exactly one
+timestamp — the `DateTimeOriginal` sort key, parsed as `%Y-%m-%d %H:%M:%S`.
+Nothing else is converted.
+
+- **EXIF dates** are asked of `ExifTool` as `%Y-%m-%d %H:%M:%S` (dash-separated,
+  via `-d`); `ExifTool`'s own default `YYYY:MM:DD HH:MM:SS` is not used.
+  Date-only tags (`GPSDateStamp`) are not reformatted and keep `YYYY:MM:DD`.
+- **XMP dates** use ISO 8601 (`YYYY-MM-DDTHH:MM:SS[±HH:MM]`) on disk; the backend
+  does not normalise them.
+- **IPTC dates** use `YYYYMMDD` (no time component) on disk; the backend does not
+  combine them with `TimeCreated`.
 - **IPTC IIM** max lengths are historic; XMP has no such limit for the same semantic field.
 - **Keywords**: deduplicate across XMP and IPTC sources. Case-insensitive deduplication is recommended.
 - **LangAlt** fields (XMP `dc:title`, `dc:description`): prefer `x-default` variant, fall back to first available language.
 - **Sidecar discovery**: for file `path/to/photo.ext`, check for `path/to/photo.xmp`. This follows Adobe/Lightroom convention.
 
-### Rust crate references
+### Crate and tool references
 
-| Task                         | Crate          | Notes                                                                 |
-| ---------------------------- | -------------- | --------------------------------------------------------------------- |
-| Read EXIF                    | `kamadak-exif` | Pure Rust, supports JPEG/TIFF/PNG                                     |
-| Read/write EXIF              | `little_exif`  | Used by test-image generator                                          |
-| Read/write XMP               | `xmpkit`       | Pure Rust, supports the full XMP data model                           |
-| Read/write XMP (lightweight) | `xmp-writer`   | Write-only, good for generating XMP                                   |
-| Read IPTC IIM                | `iptc`         | Pure Rust, supports JPEG                                              |
-| General metadata             | `rexiv2`       | GObject/Exiv2 wrapper, reads EXIF+IPTC+XMP; requires system libgexiv2 |
+| Task                       | What is used                    | Notes                                                           |
+| -------------------------- | ------------------------------- | --------------------------------------------------------------- |
+| Read EXIF, XMP, IPTC, text | `exiftool` crate + `-stay_open` | The only image metadata reader; the binary is the actual engine |
+| Write IPTC IIM             | `iptc`                          | `utils/snapfab` test-image writer, not the backend              |
+| Write EXIF                 | `little_exif`                   | `utils/snapfab` test-image writer, not the backend              |
+| Read video metadata        | `ffprobe`                       | External binary, video only                                     |
+| Video thumbnails           | `ffmpeg`                        | External binary, video only                                     |
 
-### exiv2 tag reference (for debugging)
+There is no in-process metadata reader: no EXIF crate, no XMP byte scan, no
+IPTC parser in the backend. The external tools are prerequisites, see
+[linux.md](linux.md).
 
+### exiftool reference (for debugging)
+
+The commands the backend's read is built from — the group names they produce are
+the ones the code looks up:
+
+```bash
+exiftool -j -G1 -d '%Y-%m-%d %H:%M:%S' image.jpg   # one grouped record, the read the app makes
+exiftool -a -G1 image.jpg                          # all metadata, human readable, family-1 groups
+exiftool -j -G1 -n image.jpg                       # raw values, no print conversion
+exiftool -j -G1 -IPTC:all image.jpg                # one family only
+exiftool -ps image.jpg                             # sidecar of an image
+exiftool -ver                                      # version the app depends on
 ```
-exiv2 -pa image.jpg          # all metadata
-exiv2 -pi image.jpg          # IPTC only
-exiv2 -px image.jpg          # XMP only
-exiv2 -pe image.jpg          # EXIF only
-exiv2 -ps image.jpg          # XMP sidecar preview
-```
 
-### Key exiv2 group prefixes
+### Key exiftool group prefixes (`-G1`)
 
-| Group   | Covers                         |
-| ------- | ------------------------------ |
-| `Exif.` | EXIF tags                      |
-| `Iptc.` | IPTC IIM tags                  |
-| `Xmp.`  | XMP tags (many sub-namespaces) |
+| Group                | Covers                                           |
+| -------------------- | ------------------------------------------------ |
+| `IFD0`, `ExifIFD`, … | EXIF tags, one group per directory               |
+| `IPTC`, `IPTC2`, …   | IPTC IIM records, one group per record           |
+| `XMP-dc`, `XMP-xmp`  | XMP tags, one group per namespace                |
+| `PNG`                | PNG text chunks                                  |
+| `Composite`, `File`  | Values ExifTool derived, or facts about the read |
