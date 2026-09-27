@@ -1,0 +1,40 @@
+name: truncated image fails only its own index and leaves the job completed
+# Negative case: a real JPEG cut off after its first 100 bytes.
+#
+# The truncation keeps the SOI signature (`ffd8ff`), so unlike the empty file it
+# *is* matched and really is handed to the decoder. The decode then fails inside
+# `process_image_info` → `generate_dynamic_image`, `index_task` returns `Err`,
+# and the album index counts a failure. That is the contract: an undecodable
+# file is one failed file, not a failed scan.
+#
+# The job state stays `completed` because `did_every_matched_file_fail` is false
+# — the sibling JPEG indexed. The corollary, and the case worth watching, is that
+# a library where *every* matched file is undecodable reports `state: "failed"`.
+# That state is not asserted here because the harness's `wait_for_album_index`
+# treats it as a panic rather than a result; see the iteration report.
+#
+# No asset record survives the failure: `index_task` returns before the
+# `FlushTreeTask` insert that publishes the record, so the half-built record is
+# never visible. `unindexable_media_leaves_no_asset_record` asserts that.
+#
+# The truncated bytes are derived from the file the `photo` step generated, so
+# the case needs no second checked-in blob.
+given:
+  - photo: /e2e_trunc_image/valid.jpg
+    tags:
+      - e2e_trunc_valid
+  - photo: /e2e_trunc_image/truncated.jpg
+    tags:
+      - e2e_trunc_embedded
+  - truncate_file:
+      path: /e2e_trunc_image/truncated.jpg
+      bytes: 100
+when:
+  - call: GET /get/index/status
+then:
+  - response.status: 200
+  - response.json.state: completed
+  - response.json.matched: 2
+  - response.json.processed: 1
+  - response.json.failed: 1
+  - file_exists: e2e_trunc_image/truncated.jpg

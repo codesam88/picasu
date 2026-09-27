@@ -278,6 +278,44 @@ Randomization should complement, not replace, the deterministic matrix.
 
 ## Progress
 
+- 2026-09-26 — Iteration 5 done. Negative-coverage inventory: empty file,
+  truncated image, truncated video, corrupt EXIF in a decodable image, corrupt
+  sidecar, and missing optional fields were all uncovered and now have
+  scenarios; random-bytes, misnamed, and unidentifiable-content items were
+  already covered in Iterations 1/4 and were not duplicated. Binary damage is
+  produced by two new harness transforms (`truncate_file`, `patch_file` in
+  `backend_api.rs`) applied after fixtures are placed and before the scan —
+  chosen over pinned corrupt blobs because a generated format cannot reference
+  pinned fixtures under the manifest rules, and derived bytes keep the digest
+  chain single-sourced. Unit layer: 9 new `xmp.rs` tests (malformed XML,
+  truncated packets with an every-prefix no-panic sweep, sidecar precedence
+  measured in all four combinations) and 2 `exif.rs` tests; production code
+  untouched — the whole diff in those files is inside `#[cfg(test)]`. Reindex
+  gate satisfied: `reindex_reconstructs_metadata_from_raw_and_sidecar.yaml`
+  proves tags re-derive from a rewritten sidecar while geometry/EXIF re-derive
+  from raw bytes. Mutation checks: 42 scenario mutations (40 killed, 2
+  documented boundary survivors) + 12 production mutations (9 killed, 3
+  documented). `backend/tests/schema.json` vocabulary/pattern corrected and
+  its description now states it is unenforced. Findings recorded as open
+  decisions: (1) a corrupt or unreadable sidecar silently suppresses a good
+  embedded packet — pinned at unit and API level, fallback would be a
+  precedence change needing this plan's decision; (2) an empty `rdf:Alt`
+  description leaks the element's raw markup into the description field; (3)
+  an index where every matched file fails reports `state: failed`, which the
+  harness panics on, so that outcome is not scenario-assertable — decide
+  whether undecodable-but-matching files should be skipped like unrecognized
+  ones; (4) `POST /post/rebuild` reconstructs identity but never re-runs the
+  metadata pipeline (`width: 0`, `exifVec: {}`, `tags: []` after rebuild),
+  pinned by `rebuild_reconstructs_identity_but_not_metadata.yaml`; (5)
+  `VideoMetadata::duration` is never populated (pinned by
+  `video_duration_field_is_never_populated.yaml`); (6) `asset_id_as` on a
+  `photo` given item is ignored unless `id_as` is also set — established
+  two-key convention kept, one-line fix deferred; (7) `serve_image_ok` is a
+  dead assertion — `image_serving_survives_album_move_v.yaml` currently asserts
+  nothing on its final step; (8) `schema.json` remains unenforced. Gates:
+  `cargo test -p picasu` (344), `cargo test -p snapfab` (50), `just
+backend-check`, `just utils-check`, `just docs-check`, `just plan-lint`,
+  prettier on `schema.json` — all pass.
 - 2026-09-26 — Iteration 4 done. Pinned MP4/MOV fixtures added (~1.5 KB each,
   single H.264 frame, bitexact ffmpeg 8.0.1 command recorded verbatim in
   `fixtures[].source`, regeneration reproduces the recorded SHA-256). The

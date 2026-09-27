@@ -1,0 +1,81 @@
+name: rebuild reconstructs asset identity from the filesystem but not the metadata
+# `POST /post/rebuild` runs `rebuild_from_filesystem`, which clears
+# ASSET_BY_PATH, ASSET_BY_ID and DUPE_INDEX and repopulates them from a
+# filesystem walk. What it does *not* do is re-run the metadata pipeline: it
+# computes a hash, reads the file size and mtime, and inserts an identity
+# record. Nothing calls `process_image_info` or `extract_xmp_data_from_file`.
+#
+# Measured consequence, pinned here so it cannot change silently: after a
+# rebuild the asset is still addressable by path, but its detail is served from
+# the default metadata payload — no dimensions, no EXIF, no keywords. The
+# identity cache is reconstructible from the filesystem; the metadata cache is
+# not reconstructible from raw plus sidecar by this route.
+#
+# This is a recorded gap, not an endorsed contract. `reindex_reconstructs_
+# metadata_from_raw_and_sidecar` is the route that does reconstruct metadata,
+# and it works because the indexer re-reads the bytes. Whether a rebuild should
+# also re-derive metadata — or should refuse to run, or should warn that it
+# leaves every asset without metadata — is a product decision, and the plan
+# requires that decision before the behaviour changes. This test exists so the
+# decision has a red test to argue with.
+#
+# Do not read `rebuild_populates_asset_tables.yaml` as contradicting this: that
+# scenario asserts only that the asset is discoverable and servable, which is
+# exactly the part that does work.
+given:
+  - photo: /e2e_rebuild_gap/photo.jpg
+    tags:
+      - e2e_rebuild_gap_embedded
+    id_as: $photo
+  - raw_file: /e2e_rebuild_gap/photo.xmp
+    content: |
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_rebuild_gap_sidecar</rdf:li>
+      </rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+when:
+  - call: POST /post/rebuild
+    then:
+      - response.status: 200
+  # Rediscover by path: the rebuild reissues identity from the filesystem, so
+  # the scenario must not depend on an id issued by the first index.
+  - call: POST /get/prefetch
+    body:
+      Path: "${data_path}/e2e_rebuild_gap/photo.jpg"
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+    then:
+      - response.status: 200
+  # A path locate resolves to exactly this one asset, so the row is at 0.
+  - call: GET /get/get-data?timestamp=${ts}&start=0&end=1
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+    capture:
+      asset: response.[0].assetId
+  - call: POST /get/prefetch?locate=${asset}
+    capture:
+      token2: response.token
+      ts2: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset}?timestamp=${ts2}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token2}"
+then:
+  - response.status: 200
+  # Identity is back: the record exists, is an image, and knows its extension.
+  - response.json.type: image
+  - response.json.ext: jpg
+  # Metadata is not: every field is at its default, not merely zeroed.
+  - response.json.width: 0
+  - response.json.height: 0
+  - response.json.exifVec: {}
+  - response.json.tags: []
+  - response.json.rating: null
+  - response.json.description: null

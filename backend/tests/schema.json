@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "API Scenario DSL Schema",
-  "description": "Validates API scenario YAML files in tests/scenarios/ and tests/scenarios/selftest/.",
+  "description": "Documents API scenario YAML files in tests/scenarios/ and tests/scenarios/selftest/. No test loads this file: it is editor/CI-facing documentation of the vocabulary backend/src/tests/backend_api.rs accepts, and drift here is invisible to cargo test. Keep it in step with the interpreter.",
   "$ref": "#/definitions/apiScenario",
   "definitions": {
     "givenDirAlbum": {
@@ -15,9 +15,7 @@
           "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
         }
       },
-      "required": [
-        "dir_album"
-      ],
+      "required": ["dir_album"],
       "additionalProperties": false
     },
     "givenPhoto": {
@@ -49,18 +47,137 @@
           "minItems": 3,
           "maxItems": 3
         },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "asset_id_as": {
+          "type": "string",
+          "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
         "format": {
           "type": "string",
-          "enum": [
-            "jpeg",
-            "png"
-          ],
+          "enum": ["jpeg", "png"],
           "default": "jpeg"
         }
       },
-      "required": [
-        "photo"
-      ],
+      "required": ["photo"],
+      "additionalProperties": false
+    },
+    "givenRawFile": {
+      "description": "Write UTF-8 text to a path. Binary content must use `fixture` or one of the byte transforms.",
+      "type": "object",
+      "properties": {
+        "raw_file": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "required": ["raw_file"],
+      "additionalProperties": false
+    },
+    "givenFixture": {
+      "description": "Copy a capability-manifest fixture (digest-verified by snapfab's tests) into IMAGE_HOME.",
+      "type": "object",
+      "properties": {
+        "fixture": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "destination": {
+              "type": "string"
+            }
+          },
+          "required": ["source", "destination"],
+          "additionalProperties": false
+        },
+        "id_as": {
+          "type": "string",
+          "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "asset_id_as": {
+          "type": "string",
+          "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
+        }
+      },
+      "required": ["fixture"],
+      "additionalProperties": false
+    },
+    "givenDuplicateOf": {
+      "description": "Byte-identical copy of a file already placed in the given phase.",
+      "type": "object",
+      "properties": {
+        "duplicate_of": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "destination": {
+              "type": "string"
+            }
+          },
+          "required": ["source", "destination"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["duplicate_of"],
+      "additionalProperties": false
+    },
+    "givenTruncateFile": {
+      "description": "Keep only the first `bytes` bytes of a file the given phase already created. Applied after photo generation and before the scan, so the indexer sees the truncated bytes.",
+      "type": "object",
+      "properties": {
+        "truncate_file": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": ["path", "bytes"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["truncate_file"],
+      "additionalProperties": false
+    },
+    "givenPatchFile": {
+      "description": "Replace the first occurrence of find_hex with replace_hex, in place. Applied after photo generation and before the scan. Find and replace must be the same length and the pattern must be present, so a corruption cannot be a silent no-op.",
+      "type": "object",
+      "properties": {
+        "patch_file": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "find_hex": {
+              "type": "string",
+              "pattern": "^([0-9a-fA-F]{2})+$"
+            },
+            "replace_hex": {
+              "type": "string",
+              "pattern": "^([0-9a-fA-F]{2})+$"
+            }
+          },
+          "required": ["path", "find_hex", "replace_hex"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["patch_file"],
       "additionalProperties": false
     },
     "givenRemove": {
@@ -70,9 +187,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "remove"
-      ],
+      "required": ["remove"],
       "additionalProperties": false
     },
     "givenEmpty": {
@@ -83,9 +198,7 @@
           "const": true
         }
       },
-      "required": [
-        "empty"
-      ],
+      "required": ["empty"],
       "additionalProperties": false
     },
     "givenConfig": {
@@ -110,9 +223,7 @@
           "additionalProperties": false
         }
       },
-      "required": [
-        "config"
-      ],
+      "required": ["config"],
       "additionalProperties": false
     },
     "givenItem": {
@@ -122,6 +233,21 @@
         },
         {
           "$ref": "#/definitions/givenPhoto"
+        },
+        {
+          "$ref": "#/definitions/givenRawFile"
+        },
+        {
+          "$ref": "#/definitions/givenFixture"
+        },
+        {
+          "$ref": "#/definitions/givenDuplicateOf"
+        },
+        {
+          "$ref": "#/definitions/givenTruncateFile"
+        },
+        {
+          "$ref": "#/definitions/givenPatchFile"
         },
         {
           "$ref": "#/definitions/givenEmpty"
@@ -143,6 +269,16 @@
         },
         "body": {
           "type": "object"
+        },
+        "raw_body": {
+          "description": "Request body as a literal string; wins over `body`.",
+          "type": "string"
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "auth": {
           "type": "boolean",
@@ -166,11 +302,22 @@
         },
         "then": {
           "type": "array"
+        },
+        "id_as": {
+          "description": "Resolve the asset's content hash by discover_path after this call.",
+          "type": "string",
+          "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "asset_id_as": {
+          "description": "Resolve the asset_id by discover_path after this call.",
+          "type": "string",
+          "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "discover_path": {
+          "type": "string"
         }
       },
-      "required": [
-        "call"
-      ],
+      "required": ["call"],
       "additionalProperties": false
     },
     "apiUpload": {
@@ -190,10 +337,7 @@
             },
             "on_conflict": {
               "type": "string",
-              "enum": [
-                "rename",
-                "skip"
-              ]
+              "enum": ["rename", "skip"]
             },
             "auto_rename": {
               "type": "boolean"
@@ -208,9 +352,7 @@
               "type": "string"
             }
           },
-          "required": [
-            "file"
-          ],
+          "required": ["file"],
           "additionalProperties": false
         },
         "then": {
@@ -224,9 +366,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "upload"
-      ],
+      "required": ["upload"],
       "additionalProperties": false
     },
     "apiThenResponseStatus": {
@@ -238,9 +378,7 @@
           "maximum": 599
         }
       },
-      "required": [
-        "response.status"
-      ],
+      "required": ["response.status"],
       "additionalProperties": false
     },
     "apiThenResponseStatusNot": {
@@ -252,15 +390,14 @@
           "maximum": 599
         }
       },
-      "required": [
-        "response.status_not"
-      ],
+      "required": ["response.status_not"],
       "additionalProperties": false
     },
     "apiThenResponseField": {
+      "description": "One `response.json.<path>` equality assertion. The path allows `:` and `-` inside segments because ffprobe-derived video exifVec keys are literally named e.g. `TAG:major_brand` and `TAG:compatible_brands`.",
       "type": "object",
       "patternProperties": {
-        "^response\\.[a-zA-Z_][a-zA-Z0-9_.]*$": {
+        "^response\\.[a-zA-Z_][a-zA-Z0-9_.:-]*$": {
           "oneOf": [
             {
               "type": "string"
@@ -273,6 +410,12 @@
             },
             {
               "type": "null"
+            },
+            {
+              "type": "object"
+            },
+            {
+              "type": "array"
             }
           ]
         }
@@ -288,9 +431,7 @@
           "type": "object"
         }
       },
-      "required": [
-        "array_min_counts"
-      ],
+      "required": ["array_min_counts"],
       "additionalProperties": false
     },
     "apiThenArrayWhere": {
@@ -300,9 +441,7 @@
           "type": "object"
         }
       },
-      "required": [
-        "array_where"
-      ],
+      "required": ["array_where"],
       "additionalProperties": false
     },
     "apiThenCompare": {
@@ -312,9 +451,7 @@
           "type": "object"
         }
       },
-      "required": [
-        "compare"
-      ],
+      "required": ["compare"],
       "additionalProperties": false
     },
     "apiThenFileExists": {
@@ -324,9 +461,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "file_exists"
-      ],
+      "required": ["file_exists"],
       "additionalProperties": false
     },
     "apiThenFileAbsent": {
@@ -336,9 +471,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "file_absent"
-      ],
+      "required": ["file_absent"],
       "additionalProperties": false
     },
     "apiThenServeImageOk": {
@@ -348,9 +481,40 @@
           "type": "string"
         }
       },
-      "required": [
-        "serve_image_ok"
-      ],
+      "required": ["serve_image_ok"],
+      "additionalProperties": false
+    },
+    "apiThenThumb": {
+      "type": "object",
+      "properties": {
+        "thumb_exists": {
+          "description": "Hash variable whose generated thumbnail must exist."
+        },
+        "thumb_absent": {
+          "description": "Hash variable whose generated thumbnail must not exist."
+        }
+      },
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false
+    },
+    "apiThenFileText": {
+      "description": "Substring assertion on a text file in IMAGE_HOME.",
+      "type": "object",
+      "properties": {
+        "file.contains": {
+          "type": "string"
+        },
+        "file.not_contains": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": ["text"],
+      "minProperties": 2,
+      "maxProperties": 2,
       "additionalProperties": false
     },
     "apiThenItem": {
@@ -380,12 +544,30 @@
           "$ref": "#/definitions/apiThenFileAbsent"
         },
         {
+          "$ref": "#/definitions/apiThenFileText"
+        },
+        {
+          "$ref": "#/definitions/apiThenThumb"
+        },
+        {
           "$ref": "#/definitions/apiThenServeImageOk"
         },
         {
           "$ref": "#/definitions/apiThenResponseHeader"
         }
       ]
+    },
+    "apiWaitIndex": {
+      "description": "Block until the running album index finishes, then probe GET /get/index/status.",
+      "type": "object",
+      "properties": {
+        "wait_index": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": ["wait_index"],
+      "additionalProperties": false
     },
     "whenItem": {
       "oneOf": [
@@ -400,6 +582,9 @@
         },
         {
           "$ref": "#/definitions/apiMintTimestampToken"
+        },
+        {
+          "$ref": "#/definitions/givenDuplicateOf"
         },
         {
           "$ref": "#/definitions/apiWaitIndex"
@@ -484,11 +669,7 @@
           "minItems": 1
         }
       },
-      "required": [
-        "name",
-        "when",
-        "then"
-      ],
+      "required": ["name", "when", "then"],
       "additionalProperties": false
     },
     "apiWriteFile": {
@@ -501,10 +682,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "write_file",
-        "content"
-      ],
+      "required": ["write_file", "content"],
       "additionalProperties": false
     },
     "apiThenResponseHeader": {

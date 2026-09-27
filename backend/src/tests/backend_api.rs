@@ -614,6 +614,129 @@ fn place_pinned_fixture(item: &Value, image_home: &Path) {
         .unwrap_or_else(|e| panic!("write fixture {id} to {destination}: {e}"));
 }
 
+// ── Deterministic byte transforms on an already-placed file ──
+
+/// A `truncate_file` given item: keep only the first `keep` bytes of `path`.
+struct TruncateFile {
+    path: String,
+    keep: usize,
+}
+
+/// A `patch_file` given item: replace the first occurrence of `find` with
+/// `replace`, in place, so the file keeps its length.
+struct PatchFile {
+    path: String,
+    find: Vec<u8>,
+    replace: Vec<u8>,
+}
+
+fn parse_truncate_file(item: &Value) -> TruncateFile {
+    let path = item["truncate_file"]["path"]
+        .as_str()
+        .unwrap_or_else(|| panic!("truncate_file.path is required"))
+        .trim_start_matches('/')
+        .to_string();
+    let keep = item["truncate_file"]["bytes"]
+        .as_u64()
+        .unwrap_or_else(|| panic!("truncate_file.bytes is required: {path}"));
+    TruncateFile {
+        path,
+        keep: usize::try_from(keep).expect("truncate_file.bytes must fit in usize"),
+    }
+}
+
+fn parse_patch_file(item: &Value) -> PatchFile {
+    let path = item["patch_file"]["path"]
+        .as_str()
+        .unwrap_or_else(|| panic!("patch_file.path is required"))
+        .trim_start_matches('/')
+        .to_string();
+    let find_hex = item["patch_file"]["find_hex"]
+        .as_str()
+        .unwrap_or_else(|| panic!("patch_file.find_hex is required: {path}"));
+    let replace_hex = item["patch_file"]["replace_hex"]
+        .as_str()
+        .unwrap_or_else(|| panic!("patch_file.replace_hex is required: {path}"));
+    PatchFile {
+        find: hex_bytes(find_hex, "patch_file.find_hex"),
+        replace: hex_bytes(replace_hex, "patch_file.replace_hex"),
+        path,
+    }
+}
+
+fn hex_bytes(hex: &str, what: &str) -> Vec<u8> {
+    let hex = hex.trim();
+    assert!(
+        hex.len().is_multiple_of(2),
+        "{what} needs an even number of hex digits, got {hex:?}"
+    );
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| {
+            u8::from_str_radix(&hex[i..i + 2], 16)
+                .unwrap_or_else(|_| panic!("{what} is not hex: {:?}", &hex[i..i + 2]))
+        })
+        .collect()
+}
+
+/// Apply the scenario's byte transforms to files the `given` phase already
+/// wrote or generated.
+///
+/// `raw_file` writes UTF-8 text and `fixture`/`photo` copy or encode whole,
+/// decodable files, so neither can express a *damaged* binary: a truncated
+/// JPEG, a truncated video, a JPEG whose EXIF block no longer parses. Those
+/// cases are derived here instead of checked in as a second blob, so the
+/// damaged bytes still descend from a source whose SHA-256 the manifest
+/// verifies — a new fixture file would be a second artifact to keep in sync
+/// and could drift from the good one it was cut from.
+///
+/// The transforms run after `generate_batch` and after the `duplicate_of`
+/// copies, and before the scan, so the indexer sees the damaged bytes during
+/// its first pass rather than as a later change.
+fn apply_file_transforms(data: &Path, truncations: &[TruncateFile], patches: &[PatchFile]) {
+    for truncation in truncations {
+        let path = data.join(&truncation.path);
+        let bytes = std::fs::read(&path)
+            .unwrap_or_else(|e| panic!("truncate_file: read {}: {e}", truncation.path));
+        assert!(
+            truncation.keep < bytes.len(),
+            "truncate_file: {} is already {} bytes, so keeping {} would be a no-op",
+            truncation.path,
+            bytes.len(),
+            truncation.keep
+        );
+        std::fs::write(&path, &bytes[..truncation.keep])
+            .unwrap_or_else(|e| panic!("truncate_file: write {}: {e}", truncation.path));
+    }
+
+    for patch in patches {
+        let path = data.join(&patch.path);
+        let mut bytes =
+            std::fs::read(&path).unwrap_or_else(|e| panic!("patch_file: read {}: {e}", patch.path));
+        assert_eq!(
+            patch.find.len(),
+            patch.replace.len(),
+            "patch_file: {} must not change the file length: {} find bytes vs {} replace bytes",
+            patch.path,
+            patch.find.len(),
+            patch.replace.len()
+        );
+        let at = bytes
+            .windows(patch.find.len())
+            .position(|window| window == patch.find)
+            .unwrap_or_else(|| {
+                panic!(
+                    "patch_file: {} does not contain the find pattern, so the \
+                     corruption would be a silent no-op",
+                    patch.path
+                )
+            });
+        bytes[at..at + patch.find.len()].copy_from_slice(&patch.replace);
+        std::fs::write(&path, &bytes)
+            .unwrap_or_else(|e| panic!("patch_file: write {}: {e}", patch.path));
+    }
+}
+
 // ── Dispatch a when item to call or upload ──
 
 fn dispatch_when_item<'c>(
@@ -828,6 +951,10 @@ fn interpret_scenario(scenario: &Value) {
             // duplicate fixture files.  Processed after photo generation so the
             // source file exists on disk.
             let mut duplicate_of_pairs: Vec<(String, String)> = Vec::new();
+            // Byte transforms (truncation, in-place patch) applied after the
+            // files they target exist and before the scan.
+            let mut truncations: Vec<TruncateFile> = Vec::new();
+            let mut patches: Vec<PatchFile> = Vec::new();
 
             for item in items {
                 if let Some(dir) = item["dir_album"].as_str() {
@@ -940,6 +1067,10 @@ fn interpret_scenario(scenario: &Value) {
                         .trim_start_matches('/')
                         .to_string();
                     duplicate_of_pairs.push((src, dst));
+                } else if item.get("truncate_file").is_some() {
+                    truncations.push(parse_truncate_file(item));
+                } else if item.get("patch_file").is_some() {
+                    patches.push(parse_patch_file(item));
                 }
             }
 
@@ -964,6 +1095,10 @@ fn interpret_scenario(scenario: &Value) {
                 std::fs::copy(&src_path, &dst_path)
                     .unwrap_or_else(|e| panic!("duplicate_of copy {src_rel} -> {dst_rel}: {e}"));
             }
+
+            // Damage the files the transforms target only now that every photo,
+            // fixture and duplicate exists on disk.
+            apply_file_transforms(&data, &truncations, &patches);
 
             if has_scan_items {
                 let client = make_client();
