@@ -332,9 +332,11 @@ rests on:
   dropped rather than replaced: the walk reports additions at analysis time and
   `--check-openapi` reports what ships.
 
-The items in this step reduce to these, in this order: **I6** first, because its
-decisions (the list's name, how exclusions are represented, how feature gating
-and the test-only facility are expressed) shape I3, I2 and I1; then **I3** (the
+The items in this step reduce to these, in this order: the **probe-registration
+gate** (`.plan/get-test-registry-cfg-gate.md`) first, because it removes
+`/get/test/` from the surfaces I3 and I2 shape; then **I6**'s decisions, which
+are recorded (the list's name, how exclusions are represented, how feature
+gating and the test-only facility are expressed); then **I3** (the
 backend-owned vocabulary, because `--check-openapi` reads it); then **I2**
 (runtime parity, which is where route-set completeness is proven); then **I1**
 (the CLI's walk, the list's move and rename, the guard deletions); then the
@@ -543,7 +545,10 @@ settled answers rather than making them mid-flight.
 
 Acceptance: all four outcomes are recorded here before I3, I2 or I1 start, and
 any that turns out to be work rather than a decision is scheduled as its own
-item.
+item. **Outcomes recorded 2026-09-28, revised after review** — in the progress
+log: decision 1 is `ROUTE_FILES`, decision 2 dropped the reason-tagged enum
+for hardcoded prefixes, decision 4 adopted the registration gate; the gate went
+to `.plan/get-test-registry-cfg-gate.md` and runs first, before I3.
 
 Ordering: I6 → I3 → I2 → I1 → I4. I6 runs first because I3, I2 and I1 implement
 its decisions; re-deciding mid-flight would rework two items. I3 lands next
@@ -807,6 +812,65 @@ first instinct that the invariant framing ruled out.
   committed document, which is the point.
 
 ## Progress
+
+- 2026-09-28: **I6 outcomes — the four decisions, recorded before I3, I2 or I1
+  start** (investigation over the tree, per I6's acceptance; decisions 1, 2 and
+  4 revised after the user's review):
+
+  1. **The list's name: `ROUTE_FILES`.** Names what it holds — the router
+     files generation's selection picks — with the tuple shape and values
+     unchanged. Its doc comment loses the sharing rationale and the contract
+     claim (the CLI's walk covers additions; I3's policy owns contract
+     membership) and gains I1's build-error-on-unreadable-entry rule; the
+     `auth.rs` paragraph stays. No identifier collision anywhere.
+  2. **Exclusions: hardcoded prefixes, no reason-tag machinery** (revised after
+     review: the reason-tagged enum weighed below was dropped — with decision 4
+     adopted, it would govern a single prefix). What remains: `/assets`,
+     hardcoded in one backend const read by the parity filter and I2's drop
+     rule and passed to the `justfile` recipe as `--exclude-prefix`, pinned to
+     the const by I3's set-equality test; and `/get/test/`, which survives
+     only as the spec-side strip (single consumer in `openapi_public`, as
+     today) plus the in-crate parity filter, because decision 4 removes it
+     from every other surface. Annotation markers lose: the excluded surfaces
+     carry no annotation (the `FileServer` mount, the unannotated `assets`
+     handler) and the mounted side reads Rocket routes, not utoipa.
+     Structural identification — Rocket names `FileServer` routes — is at
+     most a supplementary assertion inside I2, not the definition.
+  3. **Feature markers: the documented spelling stays.**
+     `extensions(x("picasu_feature" = "..."))` on the annotation, serializing
+     as `x-picasu-feature`, written by the annotation author — never stamped
+     by `build.rs`, which cannot evaluate cfg at a mount site. The pin test is
+     I2's: every marker value in the committed spec must be a declared
+     feature in `backend/Cargo.toml`, fixture-backed beside I2's negative test
+     (vacuous until a first marker exists). No current surface gains a
+     marker: `/assets` is not an operation — it is feature-gated already, but
+     _something_ always mounts there and the asymmetric rule only excuses
+     spec-only operations, never mounted-without-spec, so feature gating
+     cannot remove it from I2's drop rule; page routes mount under both
+     configs; `auto-open-browser` gates no routes. Latent work, scheduled
+     only if such a route lands: generation support for a cfg-gated annotated
+     handler — generation emits `__path_*` imports without evaluating cfg, so
+     the working pattern today is gating the mount, not the handler (the one
+     precedent is `builder.rs`'s cfg-gated `routes![assets]` block).
+  4. **The `/get/test/` probes: gate their registration with `#[cfg(test)]`**
+     (revised after review: the earlier "policy entry now, gate as backlog"
+     split is gone — the gate is part of this effort). `probe_record` and
+     `probe_dupe_group` are annotated, registered unconditionally in
+     `generate_get_routes()` and inert outside tests (the flag returns false →
+     404). The registration moves behind `#[cfg(test)]` — handlers and
+     annotations stay compiled, so generation, the probe contract tests and
+     the strip are unchanged (`routes!` takes paths only, so this is a cfg'd
+     extension of the route list, not an attribute on an entry). Consequences:
+     no `/get/test/` entry in I2's drop rule (absent from every non-test route
+     table), no `--exclude-prefix /get/test/` for the CLI (I1's walk skips
+     `#[cfg(test)]` items), and the shipped behavior stays 404 either way —
+     present-but-inert becomes absent. Scheduled as its own item,
+     `.plan/get-test-registry-cfg-gate.md`, which runs **first**, before I3
+     and I2 build anything on top of it.
+
+  The recipe-pins test is confirmed straightforward: one recipe, one
+  repeatable flag, set-equality against the backend const, with precedent for
+  backend tests reading repo files.
 
 - 2026-09-28: Revised the architecture with the user after `6a897bfe`,
   replacing its walk-dropped, leaf-crate answer. Settled shape: the
