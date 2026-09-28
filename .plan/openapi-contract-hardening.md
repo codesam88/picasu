@@ -57,9 +57,15 @@ The mechanisms below are the means of enforcing those two halves:
    mounts — are backend intent: declared once and read by both the generator and
    this check, never a hand-written string inside a test.
 3. **OpenAPI structural linting.** Enforce project rules for operation IDs,
-   tags, summaries, descriptions, request schemas, success/error responses,
-   security requirements, path/query parameters, and named schemas. This
-   should catch incomplete annotations even when an operation is present.
+   tags, summaries, descriptions, request schemas, security requirements,
+   path/query parameters, and named schemas. This should catch incomplete
+   annotations even when an operation is present. **Partial, deliberately
+   marked:** among responses only the 401 contract is checked — no rule requires
+   a success response, and none checks status families against what a guard can
+   produce. Among parameters, names, sets and `required` are checked but types
+   are not. So the response and parameter-type halves of this mechanism rest on
+   reviewing the artifact diff, not on an enforced rule; I4 and I5 close the
+   parameter side, and the status-family rule is a decision still to take.
 4. **Breaking-change detection.** Diff the generated spec against the latest
    released baseline and classify removed operations, narrowed schemas,
    newly-required fields, enum changes, response changes, and security changes
@@ -284,10 +290,20 @@ change so the gate stays green.
 ### Step 5: Review findings to investigate
 
 A review of the branch on 2026-09-28 probed the gate for drift it would not
-report, and the artifact and the source for claims that no longer hold. Every
-item below is a pointer: confirm it against the code and the artifact first, and
-fix it if it does. The evidence recorded is what the probe saw, and the fix is
-the direction to take rather than a decision already made.
+report, and the artifact and the source for claims that no longer hold. The
+evidence recorded is what the probe saw, and each item was a pointer to confirm
+against the code before acting on it. The items were recorded before the design
+was settled, so several have since been decided: each finding below now carries a
+pointer to the implementation item that owns it, or states that it is unowned.
+Findings marked **→ I1**–**→ I5** are covered; **Partly done** is covered in part;
+**Unowned** is a design decision the invariant does not require, still open.
+
+The findings fall into two tiers, and the split matters for what is worth doing
+first. The route-set findings ask whether the gate can _see_ the routes at all — a
+gate that cannot see a route enforces nothing, so they are the load-bearing ones.
+The operation-detail findings ask whether the checks it does run are _sound_; two
+of them give a wrong answer where a skipped check would be honest, which is the
+failure mode that erodes trust in a gate.
 
 #### Implementation plan
 
@@ -361,9 +377,52 @@ disagree about what is in the contract. Exclusions remain for genuinely non-API
 surfaces only — static file mounts, test-only probes — not for feature-gated APIs,
 which I1/I2's asymmetric rule handles without one.
 
-Ordering: I1 → I2 → I3. I2 depends on I1 (a complete spec is what "all production
-routes are documented" is measured against). I3 is independent but should land
-with I2, since both read the same policy.
+**I4 — Compare parameter and body types, not just names.** P1–P3 check names,
+sets and `required`, so a query parameter declared `type: string` against a
+handler taking `i64` passes, and `PRIMITIVE_TYPES` already maps JSON primitives
+to Rust spellings for bodies. Do this one deliberately rather than by adding to
+the table:
+
+- Read the override representation first. This repository sets
+  `#[schema(value_type = String)]` on enum variants, so a declared type and the
+  Rust type legitimately differ; a rule that ignores the override
+  false-positives on every such field. Establish the actual set of overrides in
+  use and decide the comparison from it, rather than assuming the mapping is
+  identity-plus-primitives.
+- Decide what an unreadable type means for each direction, and be explicit that
+  "cannot read" is not "matches" — the same reasoning as I5, applied to types.
+- Fixtures for the divergence cases, not only the matching ones: a
+  `value_type` override, a `Vec<T>`, an `Option<T>`, and a bare primitive.
+
+Sizing note: this is design work, not a lookup-table addition, and the override
+set should be measured before the rule is written. If the override surface turns
+out to be broader than the enum-variant case, narrowing to a documented
+supported subset beats a rule that is right about most routes and noisy on the
+rest.
+
+**I5 — Fix the two analyzer rules that give a wrong answer instead of no
+answer.** Both currently misreport rather than staying silent, which is the
+worse failure: a check that cries wolf is a check people learn to skip.
+
+- `body_drift` (`utils/openapi-sanity/src/params.rs`) substitutes the string
+  `a type this analyzer cannot name` for an unnamed argument and then compares it
+  like a name, so it can only ever mismatch. `body_type` in
+  `handlers.rs` returns no name for a tuple, a slice or a reference. Make the body
+  rule skip what it cannot read, as the query rule already does. Confirm with a
+  fixture first.
+- The `required` rule is vacuous for a parameter it cannot bind to a plain
+  argument: `plain_argument` matches `ArgKind::Plain` by name, so a struct-bound
+  parameter, or a guard sharing the parameter's name, gets neither check nor note.
+  Confirm whether any current route is in that shape, then either resolve the
+  struct's fields or state the limit in the rule's documentation. Silently not
+  checking is the part to fix either way.
+
+Ordering: I1 → I2 → I3, then I4 and I5. I2 depends on I1 (a complete spec is what
+"all production routes are documented" is measured against). I3 is independent but
+should land with I2, since both read the same policy. I4 and I5 touch only
+`params.rs` and `handlers.rs` — not discovery, not the runtime check — so they
+depend on none of I1–I3 and can be done in parallel with that chain rather than
+queued behind it.
 
 #### Ordered by the invariant, not by severity
 
@@ -410,7 +469,7 @@ served spec has to be _complete_ before parity can mean anything.
       `#[cfg(test)]` items, or the gate reads its own test suite as API (all four
       `routes![]` occurrences under `backend/src/tests/` are in doc comments).
       Scope the walk to the backend source, not `router/`: a route table outside
-      `router/` is equally invisible today.
+      `router/` is equally invisible today. **→ I1.**
 - [ ] Retire `SCANNED_MODULES` once the walk exists. It conflates two questions —
       which files exist, which is derivable by walking, and what is part of the
       contract, which is a decision. The decision survives as a path-based
@@ -421,7 +480,7 @@ served spec has to be _complete_ before parity can mean anything.
       which hardcodes the same five names and so detects removals and not
       additions. The walk belongs in the crate as one function, shared by
       `build.rs` and the CLI, so the generator and the gate cannot disagree about
-      what the API's files are.
+      what the API's files are. **→ I1.**
 - [ ] Express exclusions as declared backend intent, read by both sides. Settle
       what a route discovered only by the source scan means for a feature-gated
       or `cfg(test)` mount. `builder.rs:135` is
@@ -432,7 +491,7 @@ served spec has to be _complete_ before parity can mean anything.
       "not a route table" rather than a file path. Today this invariant is
       _manually overridden_ by hand-written strings in `is_outside_contract`; the
       walk turns that into a first-class, shared policy rather than a test-local
-      string.
+      string. **→ I3.**
 - [ ] Feature-gated routes: one canonical spec, feature-dependent operations
       marked. A single `openapi.json` describes every route any build can expose —
       the union across features, not one build's slice — and an operation that
@@ -450,7 +509,7 @@ served spec has to be _complete_ before parity can mean anything.
       feature-gating is awkward under it today and why `/assets` needed a
       hand-written exclusion; the asymmetry removes the need for that exclusion
       for feature-gated APIs, leaving exclusions only for genuinely
-      non-API surfaces (static file mounts, test-only probes).
+      non-API surfaces (static file mounts, test-only probes). **→ I1, I2.**
 - [ ] Prove route-set parity behind a `--check-openapi` flag, in the product
       build. The only mechanism that can prove the route-set half is Rocket's real
       mount table, and only a real build has it correctly: `build_rocket()` is
@@ -482,7 +541,7 @@ served spec has to be _complete_ before parity can mean anything.
       and deriving them from one another would make them agree by construction and
       stop being evidence. Once this lands, the two `openapi_contract.rs` parity
       tests retire down to their negative self-checks — the load-bearing assertion
-      moves out of the test harness.
+      moves out of the test harness. **→ I2.**
 
 **Operation detail — static only.** Runtime knows nothing about these; they exist
 only in the annotations, so they can only be checked against the handler source.
@@ -496,25 +555,28 @@ checked detail at all.
       `utils/openapi-sanity/src/handlers.rs` returns no name for a tuple, a slice
       or a reference. The query rule skips the same situation deliberately.
       Confirm with a fixture, then make the body rule skip what it cannot read.
+      **→ I5.**
 - [ ] Parameter types are never compared. P1–P3 check names, sets and `required`,
       so a query parameter declared `type: string` while the handler takes `i64`
       passes, and `PRIMITIVE_TYPES` already maps JSON primitives to Rust
       spellings for bodies. Read the override representation first: this
       repository sets `#[schema(value_type = String)]` on enum variants, so a
       declared type and the Rust type legitimately differ and a naive rule would
-      false-positive on every such field.
+      false-positive on every such field. **→ I4.**
 - [ ] Mechanism 3 is partial and the strategy list does not say so. Only the 401
       contract is checked among responses: no rule requires an operation to
       declare a success response, or checks status families against what a guard
       can produce — the 20 `GuardReadOnlyMode` routes answer 405 and, as the 401
       task records, one of them declares it. Mark the mechanism partial in the
       strategy section, then decide whether a status-family rule belongs in this
-      tool or in the backend contract test.
+      tool or in the backend contract test. **Partly done** — the strategy section
+      now states the mechanism's limits; the status-family rule is still undecided.
 - [ ] The `required` rule is vacuous for a parameter it cannot bind to a plain
       argument: `plain_argument` matches `ArgKind::Plain` by name, so a
       struct-bound parameter, or a guard that shares the parameter's name, gets
       no check and no note. Confirm whether any current route is in that shape,
       then resolve the struct's fields or state the limit in the rule's docs.
+      **→ I5.**
 - [ ] `build_script_scans_with_the_shared_analyzer`
       (`backend/src/tests/route_scan.rs`) asserts that `build.rs` contains the
       strings `openapi_sanity::scan_routes` and `openapi_sanity::scan_handlers`.
@@ -522,6 +584,7 @@ checked detail at all.
       a build script that adds a second, private scanner beside it. Replace it
       with a behavioural assertion — generating a spec from a fixture tree
       through the entry point `build.rs` uses is the cheapest. Low effort.
+      **→ I1.**
 - [ ] `AUTH_POLICY` is repository-specific but lives in the crate
       (`utils/openapi-sanity/src/auth.rs`). Against any other router tree the
       checker emits one "auth policy entry … names an operation the document does
@@ -529,14 +592,16 @@ checked detail at all.
       Decide whether the crate is single-repository, which the crate docs and the
       README should then say, or whether the policy becomes a file the repository
       owns and the checker loads; either way report the unclassified remainder as
-      one summary instead of one line per entry.
+      one summary instead of one line per entry. **Unowned** — no implementation
+      item; it is a design decision, not work the invariant requires.
 - [ ] `/get/test/` is written out where it must agree across three places:
       `openapi_public::TEST_ONLY_PATH_PREFIX`, the `--exclude-prefix` argument of
       the `openapi-sanity` recipe in the `justfile`, and the prefix each test
       passes. A second test-only prefix added to only some of them is either
       stripped from the artifact and still gated, or gated and published. Add a
       test that reads the recipe and asserts it matches the Rust constant. Low
-      effort.
+      effort. **→ I3**, which supersedes the test: one policy definition read by
+      all three sites removes the duplication rather than policing it.
 
 #### Considered and rejected
 
@@ -570,6 +635,24 @@ first instinct that the invariant framing ruled out.
   walk derives the set from the source tree instead.
 
 ## Progress
+
+- 2026-09-28: Gave the operation-detail findings an owner. I1–I3 covered only
+  the route-set half of the invariant; the four detail findings had no
+  implementation item, so the plan claimed coverage it did not schedule. Added
+  **I4** (compare parameter and body types) and **I5** (fix the two rules that
+  answer wrongly rather than staying silent), both independent of I1–I3 since
+  they touch only `params.rs` and `handlers.rs`, so they can run in parallel with
+  the walk chain rather than queued behind it. Marked mechanism 3 partial in the
+  strategy list: among responses only the 401 contract is checked, and among
+  parameters only names, sets and `required`. Noted that I4 is design work, not a
+  table addition — the `value_type` overrides on enum variants mean a naive rule
+  false-positives on every such field, so the override surface should be measured
+  before the rule is written, and a documented supported subset may beat a rule
+  that is right about most routes and noisy on the rest. Every finding now points
+  at its owning item, or is marked unowned: `AUTH_POLICY` staying in the crate is
+  a design decision the invariant does not require, and remains open. The status
+  family rule (405 against the 20 `GuardReadOnlyMode` routes, one of which
+  declares it) is still undecided and is not covered by I4 or I5.
 
 - 2026-09-28: Consolidated Step 5 and documented the flow. Added an
   **Implementation plan** reducing the step to three ordered pieces — I1 walk the
