@@ -1,4 +1,11 @@
 name: Upload declaring image/png but containing JPEG bytes is rejected
+# The path in the last assertion is IMAGE_HOME-relative on purpose:
+# `file_absent` joins the string onto `image_home` after stripping a leading
+# `/`, so a `${data_path}`-prefixed path used to resolve under
+# `<image_home>/<absolute path>/…` — a directory that cannot exist, which made
+# the assertion pass whatever the handler did. The harness now rejects such a
+# path outright; the spellings here and in `upload_undecodable_removed.yaml`
+# are the ones that check the file really is gone.
 given:
   - dir_album: /e2e_up_misnamed_png/target
     id_as: $album
@@ -14,4 +21,4 @@ then:
   - response.status: 400
   - response.json.kind: "InvalidInput"
   - response.json.message: "Uploaded file \"photo.png\" contains jpg content, but the declared type is png"
-  - file_absent: "${data_path}/e2e_up_misnamed_png/target/photo.png"
+  - file_absent: e2e_up_misnamed_png/target/photo.png

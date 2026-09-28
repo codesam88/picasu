@@ -1,0 +1,22 @@
+name: asset_id_as alone binds the API identity
+# `asset_id_as` is its own binding, not a modifier on `id_as`: a scenario that
+# only needs the API identity must not have to bind a content hash it never
+# uses. The discovery pass is gated by one flag the given loop sets, and that
+# flag used to be set from `id_as` alone — so a `photo` item carrying only
+# `asset_id_as` left the pass unrun and `${asset_id}` interpolated to empty.
+#
+# Nothing else in this `given` binds an `id_as`, because any item that did
+# would set the flag by itself and mask the defect: the photo alone has to
+# decide whether the pass runs. The probe then answers for the id that was
+# bound, which is what makes the empty interpolation observable (an empty id is
+# not a route, so the call is a 404 rather than a 200 about some other asset).
+given:
+  - photo: /e2e_aid_only/photo.jpg
+    asset_id_as: $asset_id
+when:
+  - call: GET /get/test/record/${asset_id}
+then:
+  - response.status: 200
+  - response.json.assetId: "${asset_id}"
+  # And it is *this* asset, not some other one the library happens to contain.
+  - response.json.path.file: "${data_path}/e2e_aid_only/photo.jpg"

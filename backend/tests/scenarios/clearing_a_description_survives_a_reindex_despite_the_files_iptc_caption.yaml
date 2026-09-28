@@ -72,6 +72,17 @@ when:
       </rdf:Description>
       </rdf:RDF>
       </x:xmpmeta>
+  # The sidecar arrived after the index, so the record in the tree still
+  # describes the file as it was: read synchronously, `/get/metadata` would
+  # answer with the pre-write snapshot and this control would assert nothing
+  # about sidecar reading at all. Re-index, the way
+  # `watcher_sidecar_change_triggers_reindex` does after the same `write_file`.
+  - wait_index: true
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
   - call: POST /get/prefetch?locate=${asset_id}
     capture:
       token1: response.token
