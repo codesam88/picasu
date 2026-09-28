@@ -1,8 +1,8 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
 use crate::process::sanitize::sanitize_tag;
+use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
 use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
-use crate::process::xmp_write::write_sidecar_for;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
@@ -12,8 +12,6 @@ use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
-use arrayvec::ArrayString;
-use log::warn;
 use rocket::serde::{Deserialize, Serialize, json::Json};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -49,7 +47,7 @@ pub async fn edit_tag(
         let tree_snapshot = open_tree_snapshot_table(json_data.timestamp)
             .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
 
-        let mut data_to_store: Vec<(ArrayString<64>, AbstractData)> = Vec::new();
+        let mut edited: Vec<EditedItem> = Vec::new();
 
         for &index in &json_data.index_array {
             let asset_id = index_to_asset_id(&tree_snapshot, index).or_raise(|| {
@@ -77,18 +75,20 @@ pub async fn edit_tag(
                     tags.remove(&sanitize_tag(tag));
                 }
 
-                if let Err(e) = write_sidecar_for(&abstract_data) {
-                    warn!("Failed to write XMP sidecar: {e}");
-                }
-                data_to_store.push((asset_id, abstract_data));
+                edited.push(EditedItem {
+                    asset_id,
+                    data: abstract_data,
+                });
             }
         }
 
-        // Store the metadata-only payloads; identity fields are not written.
-        for (asset_id, data) in &data_to_store {
+        // Sidecars first, payloads second: an edit whose sidecar did not land
+        // is not an edit, so it must not reach the cache.
+        commit_metadata_edits(&edited, |asset_id, data: &AbstractData| {
+            // Store the metadata-only payloads; identity fields are not written.
             store_metadata_record(asset_id, data, None)
-                .or_raise(|| (ErrorKind::Database, "Failed to store metadata"))?;
-        }
+                .or_raise(|| (ErrorKind::Database, "Failed to store metadata"))
+        })?;
 
         // Return TagInfo
         crate::storage::cache::TreeSnapshot::read_tags().map_err(AppError::from)

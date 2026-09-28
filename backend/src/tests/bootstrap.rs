@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, RwLock};
 
 use redb::ReadableTable;
@@ -104,10 +104,48 @@ pub fn write_config(updates: &serde_json::Value) {
 /// state — causing non-deterministic failures.
 pub static TEST_SERIAL_GUARD: Mutex<()> = Mutex::new(());
 
+/// Paths whose permissions a scenario changed through the `chmod` verb, so
+/// [`reset_backend_state`] can put them back.
+///
+/// The reset removes the whole image tree with `remove_dir_all`, which cannot
+/// unlink a file inside a directory the process may not write. A scenario that
+/// panics while one of its directories is read-only would therefore fail every
+/// scenario after it with a permission error in the harness rather than with
+/// its own, so the undo belongs to the reset and not to the scenario's happy
+/// path.
+static MUTED_PATHS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+/// Remember that a scenario changed `path`'s permissions, so the next
+/// [`reset_backend_state`] restores them.
+pub fn remember_path_mode(path: &Path) {
+    MUTED_PATHS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(path.to_path_buf());
+}
+
+/// Give every remembered path a mode that reads and writes again: a directory
+/// has to stay traversable for the wipe to reach into it, and a file has to be
+/// readable, which is what the scenario that muted it needed it not to be.
+fn restore_path_modes() {
+    let mut muted = MUTED_PATHS.lock().unwrap_or_else(|e| e.into_inner());
+    for path in muted.drain(..) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = if path.is_dir() { 0o700 } else { 0o600 };
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode));
+        }
+        #[cfg(not(unix))]
+        let _ = path;
+    }
+}
+
 /// Reset all shared backend state between scenario tests.
 /// This prevents data contamination across serialized scenarios
 /// by clearing the database, caches, filesystem, and config mutations.
 pub fn reset_backend_state() {
+    restore_path_modes();
     // Clear in-memory caches.
     TREE_SNAPSHOT.in_memory.clear();
     TREE.in_memory.write().expect("TREE in_memory lock").clear();

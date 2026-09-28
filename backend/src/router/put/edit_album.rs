@@ -3,7 +3,7 @@ use crate::model::abstract_data::AbstractData;
 use crate::model::album::AlbumCombined;
 use crate::model::asset::{AssetKind, AssetRecord};
 use crate::model::metadata_record::{compose_abstract_data, to_metadata_record};
-use crate::process::xmp_write::write_sidecar_for;
+use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardShare;
@@ -15,16 +15,21 @@ use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
 use arrayvec::ArrayString;
-use log::warn;
 use redb::ReadableTable;
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
 
 /// Read-modify-write a single album's metadata payload: fetch it composed
 /// with its identity `AssetRecord` (for `dir_path`/`id`/trash), apply
-/// `mutate`, write its `.albuminfo.xmp` sidecar (best-effort — logged, not
-/// fatal), and commit. Shared by every single-field album edit endpoint
-/// below. Identity fields are never written from the composed view.
+/// `mutate`, write its `.albuminfo.xmp` sidecar, and commit. Shared by every
+/// single-field album edit endpoint below. Identity fields are never written
+/// from the composed view.
+///
+/// The sidecar is written before the payload and inside the same transaction:
+/// a failed write returns before the row is inserted and before the commit, so
+/// the album's cache is left as it was. An album has the same
+/// cache-must-not-claim-an-unwritten-edit obligation as a photo
+/// (`process::sidecar_edit`).
 fn update_album(
     album_id: ArrayString<64>,
     mutate: impl FnOnce(&mut AlbumCombined),
@@ -68,13 +73,16 @@ fn update_album(
 
         mutate(&mut album);
 
-        let abstract_data = AbstractData::Album(album);
-        if let Err(e) = write_sidecar_for(&abstract_data) {
-            warn!("Failed to write XMP sidecar: {e}");
-        }
-        metadata_table
-            .insert(&*album_id, to_metadata_record(&abstract_data))
-            .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;
+        let edited = [EditedItem {
+            asset_id: album_id,
+            data: AbstractData::Album(album),
+        }];
+        commit_metadata_edits(&edited, |album_id, data: &AbstractData| {
+            metadata_table
+                .insert(&**album_id, to_metadata_record(data))
+                .map(|_previous| ())
+                .or_raise(|| (ErrorKind::Database, "Failed to update album"))
+        })?;
     }
     txn.commit()
         .or_raise(|| (ErrorKind::Database, "Failed to commit transaction"))?;
