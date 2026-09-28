@@ -151,7 +151,7 @@ route as mounted-but-undocumented if it ships anyway.
    scanner itself: `routes![]` entries in every layout, per-function annotation
    attribution, Rocket route attributes and their URIs, and the diagnostics for
    malformed input. A `routes![]` block in a file outside the generation list is
-   the CLI walk's finding, not a list-coverage test's.
+   the CLI walk's finding at analysis time rather than a test's.
 
 7. **`--check-openapi` tests** — a fixture-tree negative test proving the
    asymmetric parity rule: a mounted-but-undocumented route fails, a feature-gated

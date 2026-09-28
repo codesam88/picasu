@@ -11,7 +11,7 @@ Audit of `docs/openapi-reference.md` (widdershins output) against
 `backend/openapi.json`, the utoipa annotations, and the actual Rocket routes.
 Route coverage itself is complete (apparent gaps were parser artifacts of
 multi-line attributes and Rocket `{x..}` segments); the problems are in the
-contract content, organization, and rendering. No work started yet.
+contract content, organization, and rendering.
 
 ## Problem and Hardening Strategy
 
@@ -97,7 +97,7 @@ High — contract wrong or materially incomplete:
       gitignored and `backend/src/openapi.rs` did not exist (build.rs
       generates it), so the claim could only have come from a stale artifact
       — most plausibly the known-stale `docs/openapi-reference.md`, which had
-      no occurrence. The coverage test it asked for exists: `check_contract`'s
+      no occurrence. The check for that omission class exists: `check_contract`'s
       "declared in source but absent from the spec" finding and
       `backend/src/tests/openapi_contract.rs`.
 - [x] Document `401` on guarded operations: only 2/65 ops currently declare
@@ -312,9 +312,8 @@ failure mode that erodes trust in a gate.
 #### Implementation plan
 
 The architecture these items build was settled with the user on 2026-09-28,
-superseding `6a897bfe`, which recorded a different answer (walk dropped, shared
-leaf crate). That note stays below as history; this section is current. Three
-positions it rests on:
+superseding `6a897bfe`'s walk-dropped, leaf-crate answer. Three positions it
+rests on:
 
 - **The backend owns production truth.** The generation file list lives in
   `build.rs` alone and is renamed to state its role; the exclusion policy const
@@ -809,8 +808,8 @@ first instinct that the invariant framing ruled out.
 
 ## Progress
 
-- 2026-09-28: Revised the architecture with the user after `6a897bfe`; that
-  note below stays as history — this one supersedes it. Settled shape: the
+- 2026-09-28: Revised the architecture with the user after `6a897bfe`,
+  replacing its walk-dropped, leaf-crate answer. Settled shape: the
   **backend owns production truth** (the generation list moves into `build.rs`
   and is renamed to state its role; the exclusion policy const and
   `to_spec_path` move into backend code; `--check-openapi` is the load-bearing
@@ -836,23 +835,6 @@ first instinct that the invariant framing ruled out.
   shipped table. Sequence is now I6 → I3 → I2 → I1 → I4; I5 is done.
   `docs/openapi-generator.md` corrected in the same change where it had
   followed the superseded shape (shared list, coverage test, walk rejection).
-
-- 2026-09-28: Dropped I1's source walk and settled the CLI/backend split. The
-  detail checks — parameter names, body types, tags, auth guards — stay with the
-  `openapi-sanity` CLI's `syn` analysis, list-driven over `SCANNED_MODULES`; the
-  backend takes no `syn` dependency, so the shared vocabulary `--check-openapi`
-  needs (`to_spec_path` and the exclusion policy) moves to a syn-free leaf crate
-  under I3. The walk was reconsidered against the runtime check and dropped:
-  generation is list-driven, so a list miss cannot reach the spec and fails
-  `--check-openapi` as mounted-but-undocumented when it ships, and detail
-  coverage equals spec coverage — completeness is proven at runtime rather than
-  derived from the tree. Residual gaps recorded in I1: an unmounted route table
-  and a route behind a non-shipped feature stay invisible until they ship, where
-  I2 catches both. The list's removals-not-additions weakness is closed by a
-  coverage test in `route_scan.rs` (allowlisting `builder.rs`), which also takes
-  `build_script_scans_with_the_shared_analyzer`'s replacement; `--router-root`
-  and `--module` stay. Sequence is now I3 → I2 → I4; I5 is done. Docs reverted
-  to the maintained-list shape.
 
 - 2026-09-28: Gave the operation-detail findings an owner. I1–I3 covered only
   the route-set half of the invariant; the four detail findings had no
@@ -924,7 +906,7 @@ first instinct that the invariant framing ruled out.
   checker its no-compiled-artifact property and make the external tool the
   authority on what the backend registers. The static scan and Rocket's runtime
   route table stay as two independent derivations whose agreement is the
-  evidence, and the walk replaces the list.
+  evidence.
 
 - 2026-09-28: Reviewed the branch against the goal it states — routes annotated
   and documented, authentication tracked, inputs and outputs described — and
@@ -945,7 +927,7 @@ first instinct that the invariant framing ruled out.
   paths, and has been in `openapi.json` since its first commit — at writing
   time there was no committed spec (gitignored) and no `openapi.rs`
   (build.rs-generated), so the claim came from a stale artifact, and the
-  coverage test it asked for now exists. Refreshed the other task bodies with
+  check it asked for now exists. Refreshed the other task bodies with
   current measurements: 205 description-less reference rows / 36 of 45
   schemas; `PrefetchReturn.resolvedShareOpt` carries `oneOf: [null, …]` in the
   artifact while the reference still renders `any`/`{}`; six operations (not
