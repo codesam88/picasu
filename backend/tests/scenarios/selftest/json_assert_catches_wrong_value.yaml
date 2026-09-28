@@ -1,8 +1,17 @@
 name: json field assert catches wrong value
+# The assertion must compare against a path that RESOLVES — an unresolvable
+# path (e.g. `.length` on an array body) panics on a Null mismatch for any
+# expected value, which would make this selftest pass without ever catching a
+# wrong value. A dir album gives the array one element, and `album_name` is the
+# dir-derived title, so the comparison below is a genuine value mismatch.
 given:
-  - empty: true
+  - dir_album: /selftest_json_field
 when:
   - call: GET /get/get-albums
 then:
   - response.status: 200
-  - response.json.length: 999
+  # Root-indexed paths use the `response.json.[0]` dot form — a bare
+  # `response.json[0]` does not even dispatch as a body assertion (the schema
+  # rejects it too), which is exactly the vacuity this selftest exists to rule
+  # out for value mismatches.
+  - response.json.[0].album_name: 999

@@ -12,3 +12,6 @@ mod capabilities;
 
 #[cfg(test)]
 mod seeds;
+
+#[cfg(test)]
+mod scenario_schema;

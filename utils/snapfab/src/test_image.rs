@@ -1311,6 +1311,133 @@ fn assert_wrote(stdout: &[u8], path: &Path) {
     }
 }
 
+/// One file a `snapfab library` run wrote, with what the CLI logs about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LibraryFile {
+    name: String,
+    /// The label column: the render mode that drew the pixels, or `pinned` for
+    /// bytes copied out of the manifest. A copied file has no render mode, and
+    /// saying so is the difference between "this format was drawn" and "these
+    /// bytes came from a fixture" when a run is read after the fact.
+    label: String,
+    /// The fixture id the bytes came from, when they were copied.
+    fixture: Option<String>,
+}
+
+/// The repository root, for resolving the manifest's repository-relative fixture
+/// paths.
+///
+/// `snapfab` is an in-repository tool (`publish = false`), and
+/// `capabilities::validate_manifest` rejects any fixture path outside
+/// `utils/snapfab/fixtures/`, so the checkout that compiled this binary is the
+/// checkout those paths are meant to resolve against.
+fn repository_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .unwrap_or_else(|| {
+            panic!(
+                "snapfab lives two directories below the repository root: {}",
+                env!("CARGO_MANIFEST_DIR")
+            )
+        })
+        .to_path_buf()
+}
+
+/// Write the checked-in bytes a `pinned` format is covered by to `target`.
+///
+/// The selector only admits a `pinned` format whose fixture id resolves in the
+/// manifest, so the lookup below is the same check `selection` already made; it
+/// stays as a panic rather than a `Result` because a manifest that changed under
+/// a compiled binary is a programming error, not a run-time condition.
+fn write_pinned_fixture(fixture_id: &str, target: &Path) {
+    let manifest = crate::capabilities::capabilities();
+    let entry = manifest
+        .fixture_by_id(fixture_id)
+        .unwrap_or_else(|| panic!("fixture id `{fixture_id}` is not declared in the manifest"));
+    let source = repository_root().join(&entry.path);
+    let bytes = std::fs::read(&source)
+        .unwrap_or_else(|e| panic!("read fixture {fixture_id} from {}: {e}", source.display()));
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)
+            .unwrap_or_else(|e| panic!("create dir for fixture {fixture_id}: {e}"));
+    }
+    std::fs::write(target, &bytes)
+        .unwrap_or_else(|e| panic!("write fixture {fixture_id} to {}: {e}", target.display()));
+}
+
+/// Materialise a `snapfab library` run into `dir`.
+///
+/// The draw comes from `selection::randomizable_formats` — the same population
+/// the seeded scenario path uses — and the selected format's `FixturePlan`
+/// decides how its bytes are produced:
+///
+/// * `Generate` — snapfab encodes the format, as it always did here;
+/// * `CopyFixture` — the manifest's checked-in bytes are copied, because the
+///   format has no encoder. Sampling the manifest's *declared* formats instead
+///   (what this did) reaches those pinned formats and then hands them to the
+///   encoder, which panics on the first `webp` it draws — and `randomizable_formats`
+///   alone would not have helped, because it lists the pinned formats too.
+///
+/// `seed` stays the only randomness knob, as `--seed` documents: one seeded
+/// `SmallRng` draws the format and the pixels, in that order, exactly as before.
+/// `select` is not used here because it resolves a *recorded* per-scenario seed
+/// to a single format; a library run is a stream of draws from one seed, and
+/// feeding the image index to `select` would make `--seed` stop affecting which
+/// formats appear.
+fn generate_library(
+    dir: &Path,
+    count: u32,
+    rng: &mut SmallRng,
+    stats: &mut PerfCounter,
+    enabled_modes: &[RenderMode],
+    minimal: bool,
+) -> Vec<LibraryFile> {
+    let manifest = crate::capabilities::capabilities();
+    let formats = crate::selection::randomizable_formats(manifest);
+    assert!(
+        !formats.is_empty(),
+        "no manifest format is eligible for randomized selection"
+    );
+
+    let mut written = Vec::with_capacity(count as usize);
+    for i in 0..count {
+        let idx = rng.sample(Uniform::new(0u32, formats.len() as u32).unwrap()) as usize;
+        let selected = &formats[idx];
+        let filename = format!("photo_{:04}.{}", i + 1, selected.extension);
+        let path = dir.join(&filename);
+
+        let (label, fixture) = match &selected.plan {
+            crate::selection::FixturePlan::Generate => {
+                let spec = PhotoSpec {
+                    output: None,
+                    format: Some(selected.format.clone()),
+                    width: None,
+                    height: None,
+                    exif_date: None,
+                    tags: None,
+                    further_iptc: None,
+                    minimal,
+                };
+                let mode = generate_photo_file(&spec, &path, rng, stats, enabled_modes)
+                    .expect("write library image");
+                (MODE_NAMES[mode as usize].to_owned(), None)
+            }
+            crate::selection::FixturePlan::CopyFixture { id } => {
+                write_pinned_fixture(id, &path);
+                ("pinned".to_owned(), Some(id.clone()))
+            }
+        };
+
+        written.push(LibraryFile {
+            name: filename,
+            label,
+            fixture,
+        });
+    }
+    written
+}
+
 pub fn run_cli(args: impl Iterator<Item = String>) {
     use clap::Parser;
 
@@ -1449,37 +1576,12 @@ pub fn run_cli(args: impl Iterator<Item = String>) {
             let mut rng = SmallRng::seed_from_u64(seed);
             let mut stats = PerfCounter::new();
             let enabled = enabled(&generators);
-            let manifest = crate::capabilities::capabilities();
-            let formats = manifest
-                .formats
-                .iter()
-                .map(|entry| entry.format.as_str())
-                .collect::<Vec<_>>();
 
-            for i in 0..count {
-                let idx: usize =
-                    rng.sample(Uniform::new(0u32, formats.len() as u32).unwrap()) as usize;
-                let fmt = formats[idx];
-                let ext = manifest
-                    .capability_for_format(fmt)
-                    .and_then(|entry| entry.extensions.first())
-                    .expect("manifest format must have an extension");
-                let filename = format!("photo_{:04}.{}", i + 1, ext);
-                let path = dir.join(&filename);
-
-                let spec = PhotoSpec {
-                    output: None,
-                    format: Some(fmt.into()),
-                    width: None,
-                    height: None,
-                    exif_date: None,
-                    tags: None,
-                    further_iptc: None,
-                    minimal,
-                };
-                let mode = generate_photo_file(&spec, &path, &mut rng, &mut stats, &enabled)
-                    .expect("write image");
-                eprintln!("{:12} {}", MODE_NAMES[mode as usize], filename);
+            for file in generate_library(&dir, count, &mut rng, &mut stats, &enabled, minimal) {
+                match &file.fixture {
+                    Some(id) => eprintln!("{:12} {} (pinned fixture {id})", file.label, file.name),
+                    None => eprintln!("{:12} {}", file.label, file.name),
+                }
             }
             stats.report();
             eprintln!("Generated {} images in {}", count, dir.display());
@@ -1757,6 +1859,130 @@ mod tests {
         let mut rng = test_rng();
         let mut stats = PerfCounter::new();
         generate_photo(&spec, &mut rng, &mut stats, ACTIVE_MODES);
+    }
+
+    /// Drive the real `snapfab library` CLI arm once per seed and report what it
+    /// wrote. Nothing about the draw is stubbed: this is the path a developer
+    /// types, so a draw the CLI cannot materialise shows up as a panic here
+    /// rather than as a failure only in someone's terminal.
+    ///
+    /// Returns `(file name, bytes)` for every file the run produced, sorted by
+    /// name so the caller sees a stable order.
+    fn run_library_cli(seed: u64, count: u32) -> Vec<(String, Vec<u8>)> {
+        let dir = tempfile::tempdir().expect("library output dir");
+        let dir = dir.path().to_string_lossy().into_owned();
+        run_cli(
+            [
+                "snapfab",
+                "library",
+                "--dir",
+                &dir,
+                "--count",
+                &count.to_string(),
+                "--seed",
+                &seed.to_string(),
+                "--minimal",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        );
+
+        let mut produced: Vec<(String, Vec<u8>)> = std::fs::read_dir(&dir)
+            .expect("library dir is readable")
+            .map(|entry| {
+                let entry = entry.expect("library dir entry");
+                let bytes = std::fs::read(entry.path()).expect("library file is readable");
+                (entry.file_name().to_string_lossy().into_owned(), bytes)
+            })
+            .collect();
+        produced.sort_by(|left, right| left.0.cmp(&right.0));
+        produced
+    }
+
+    /// The library path must materialise **every** randomizable draw, not just
+    /// the ones snapfab can encode. Four of the manifest's six formats are
+    /// `pinned` — `pinnedFixtures`, not an encoder — and the selector lists them
+    /// as randomizable precisely because a harness can materialize them by
+    /// copying the fixture. A `library` run that drew `webp` before this fix
+    /// died with `manifest format 'webp' is not generatable by snapfab`.
+    #[test]
+    fn the_library_path_materialises_every_randomizable_draw() {
+        for seed in 0..24u64 {
+            let produced = run_library_cli(seed, 6);
+            assert_eq!(
+                produced.len(),
+                6,
+                "seed {seed} wrote {} files, not 6",
+                produced.len()
+            );
+            for (name, bytes) in &produced {
+                assert!(!bytes.is_empty(), "seed {seed} wrote an empty {name}");
+            }
+        }
+    }
+
+    /// The same draws, checked for what they are rather than only that they
+    /// exist: each file's extension must be one the manifest declares, and its
+    /// bytes must carry that format's recorded content signature at the
+    /// recorded offset. A path that satisfied the test above by writing the
+    /// *right number of empty or mislabelled* files would not pass here, and
+    /// neither would one that wrote a `.mp4` file full of JPEG bytes.
+    #[test]
+    fn a_library_draw_carries_the_manifests_content_signature() {
+        let manifest = crate::capabilities::capabilities();
+
+        for seed in 0..24u64 {
+            for (name, bytes) in run_library_cli(seed, 6) {
+                let extension = name
+                    .rsplit_once('.')
+                    .map(|(_, ext)| ext)
+                    .unwrap_or_else(|| panic!("seed {seed} wrote {name}, which has no extension"));
+                let capability = manifest
+                    .capability_for_extension(extension)
+                    .unwrap_or_else(|| panic!("seed {seed} wrote {name}, whose extension the manifest does not declare"));
+                let signature = capability.content_signature.bytes();
+                let observed = bytes
+                    .get(capability.content_signature.offset..)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "seed {seed} wrote {name}, shorter than the signature offset of {}",
+                            capability.format
+                        )
+                    });
+                assert!(
+                    observed.starts_with(&signature),
+                    "seed {seed} wrote {name} without the content signature of {} at offset {}",
+                    capability.format,
+                    capability.content_signature.offset
+                );
+            }
+        }
+    }
+
+    /// The population the library path draws from is the selector's *randomizable*
+    /// set, so a run reaches `tiff`, `webp`, `mp4` and `mov` as well as `jpeg`
+    /// and `png`. This is the assertion that keeps a fix honest: narrowing the
+    /// draw to the formats snapfab happens to encode would also stop the panic,
+    /// and would silently drop four formats of coverage this test would not
+    /// otherwise notice.
+    #[test]
+    fn a_library_draw_reaches_every_randomizable_format() {
+        let manifest = crate::capabilities::capabilities();
+        let mut reachable: Vec<String> = run_library_cli(0, 64)
+            .into_iter()
+            .filter_map(|(name, _)| name.rsplit_once('.').map(|(_, ext)| ext.to_owned()))
+            .collect();
+        reachable.sort();
+        reachable.dedup();
+
+        let expected: Vec<String> = crate::selection::randomizable_formats(manifest)
+            .into_iter()
+            .map(|format| format.extension)
+            .collect();
+        assert_eq!(
+            reachable, expected,
+            "a library run must reach every randomizable format's extension"
+        );
     }
 
     #[test]

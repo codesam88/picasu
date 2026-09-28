@@ -75,6 +75,32 @@ fn interpolate_value(val: &Value, vars: &HashMap<String, String>) -> Value {
 
 // ── JSON path navigation ──
 
+/// [`navigate_json`], but a path that does not resolve comes back as `None`
+/// rather than as `Value::Null`.
+///
+/// The two are different questions — "is the key there?" and "what does it
+/// hold?" — and `serde_json` answers both with the same `Value::Null`, so the
+/// `absent` assertion cannot be written on top of `navigate_json`: a payload
+/// carrying an explicit `null` would satisfy it. Everything else is deliberately
+/// the same, index segments included, so the two functions cannot drift into
+/// disagreeing about what a path means. An index that does not exist stays the
+/// hard error `navigate_json` reports: `absent` is about a *key*, and a missing
+/// array element inside an array that does exist is a typo worth stopping on.
+fn resolve_json<'a>(root: &'a Value, field_path: &str) -> Option<&'a Value> {
+    let mut current = root;
+    for seg in field_path.split('.') {
+        if seg.starts_with('[') && seg.ends_with(']') {
+            let idx: usize = seg[1..seg.len() - 1]
+                .parse()
+                .unwrap_or_else(|_| panic!("invalid array index: {seg}"));
+            current = &current[idx];
+        } else {
+            current = current.get(seg)?;
+        }
+    }
+    Some(current)
+}
+
 fn navigate_json<'a>(root: &'a Value, field_path: &str) -> &'a Value {
     let mut current = root;
     for seg in field_path.split('.') {
@@ -155,6 +181,34 @@ fn assert_json_compare(root: &Value, key: &str, val: &Value, vars: &HashMap<Stri
             ">" => assert!(actual > expected, "{key}: {actual} is not > {expected}"),
             ">=" => assert!(actual >= expected, "{key}: {actual} is not >= {expected}"),
             other => panic!("compare: unknown operator '{other}'"),
+        }
+    }
+}
+
+/// The `response.<path> absent` form: the dot-path must not resolve.
+///
+/// This is the only way to pin that a payload has *no* such key. Asserting the
+/// key's value is `null` passes for a payload that omits it, and — because
+/// `navigate_json` yields `Value::Null` for a key that is not there — it also
+/// passes for a key that is not there at all, which is the same claim for two
+/// different payloads. `resolve_json` is what tells them apart, so an explicit
+/// `null` fails here: the key is present, and the assertion is about the key.
+///
+/// `absent` is a form marker, not a value: it is never interpolated, so a
+/// scenario cannot accidentally compare a field against the literal string
+/// `absent` and have that read as a pass. `not_null` is the same kind of marker
+/// and carries the same trade-off — a response that really does carry the string
+/// `"absent"` cannot be asserted with this form.
+fn assert_json_absent(root: &Value, key: &str) {
+    let field_path = key.strip_prefix("response.json.").unwrap_or(key);
+    match resolve_json(root, field_path) {
+        None => {}
+        Some(Value::Null) => panic!(
+            "{key} is present and explicitly null: `absent` requires the key to be missing \
+             from the response, and null is not absent"
+        ),
+        Some(value) => {
+            panic!("{key} is present as {value}, but `absent` requires it to be missing")
         }
     }
 }
@@ -300,6 +354,8 @@ fn check_body_assertions(body_bytes: &[u8], then_items: &[Value], vars: &HashMap
                         let field_path = key.strip_prefix("response.json.").unwrap_or(key);
                         let actual = navigate_json(&parsed, field_path);
                         assert!(!actual.is_null(), "{key}: expected not null, got null");
+                    } else if val.as_str() == Some("absent") {
+                        assert_json_absent(&parsed, key);
                     } else {
                         assert_json_field(&parsed, key, val, vars);
                     }
@@ -1777,8 +1833,8 @@ include!(concat!(env!("OUT_DIR"), "/scenarios.rs"));
 #[cfg(test)]
 mod tests {
     use super::{
-        RANDOM_MEDIA_HEIGHT, RANDOM_MEDIA_WIDTH, banner_panic_message, parse_randomize,
-        parse_wait_index, planned_runs, random_media_destination, seed_banner,
+        RANDOM_MEDIA_HEIGHT, RANDOM_MEDIA_WIDTH, banner_panic_message, check_body_assertions,
+        parse_randomize, parse_wait_index, planned_runs, random_media_destination, seed_banner,
     };
     use crate::tests::fixtures::IndexExpect;
     use crate::tests::seeds::{DEFAULT_SET, seed_manifest};
@@ -2060,6 +2116,126 @@ mod tests {
             generated,
             ["jpeg", "png"],
             "the generated formats are the ones rendered at the harness default"
+        );
+    }
+
+    /// Run the body assertions of a `then:` list against a literal JSON body and
+    /// report the panic message, so a unit test can assert on *why* an assertion
+    /// failed. `None` means every assertion passed.
+    fn body_assertion_failure(body: &str, then: &serde_json::Value) -> Option<String> {
+        let vars = std::collections::HashMap::new();
+        let failure = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            check_body_assertions(body.as_bytes(), std::slice::from_ref(then), &vars);
+        }));
+        failure.err().map(|payload| {
+            payload
+                .downcast_ref::<String>()
+                .cloned()
+                .unwrap_or_else(|| {
+                    payload
+                        .downcast_ref::<&str>()
+                        .map(|text| (*text).to_owned())
+                        .unwrap_or_default()
+                })
+        })
+    }
+
+    /// The documented `response.<path> absent` form: it passes when the
+    /// dot-path does not resolve. Before the branch existed, the value fell
+    /// through to the equality assertion, which compared `Value::Null` against
+    /// the string `absent` — so the one case the form exists for, "this key is
+    /// not in the payload", failed, and nothing could be pinned with it.
+    #[test]
+    fn an_absent_path_passes_only_when_the_key_does_not_resolve() {
+        let body = r#"{"ext":"jpg","exifVec":{"width":"48"},"tags":[]}"#;
+
+        for path in [
+            "response.json.furtherMetadata",
+            "response.json.furtherMetadata.inner",
+            "response.json.tags[0].nope",
+            "response.json.ext.deeper",
+        ] {
+            assert_eq!(
+                body_assertion_failure(body, &serde_json::json!({ path: "absent" })),
+                None,
+                "{path} does not resolve in {body}, so `absent` must pass"
+            );
+        }
+    }
+
+    /// `absent` and `null` are different claims, and a payload that carries an
+    /// explicit `null` has *not* satisfied `absent`. `serde_json` answers "key
+    /// missing" and "key present, value null" with the same `Value::Null`, so an
+    /// implementation that reused `navigate_json` could not tell them apart —
+    /// which is the limitation the old `furtherMetadata: null` pin was written
+    /// around. Each case gets its own message so a red run says which one it hit.
+    #[test]
+    fn an_explicit_null_is_not_absent() {
+        let present_null = r#"{"rating":null,"description":null}"#;
+
+        let explicit_null = body_assertion_failure(
+            present_null,
+            &serde_json::json!({"response.json.rating": "absent"}),
+        )
+        .expect("an explicit null must not satisfy `absent`");
+        assert!(
+            explicit_null.contains("null"),
+            "the message must say the key is present and null, got: {explicit_null}"
+        );
+
+        let present = body_assertion_failure(
+            r#"{"rating":3}"#,
+            &serde_json::json!({"response.json.rating": "absent"}),
+        )
+        .expect("a present value must not satisfy `absent`");
+        assert!(
+            present.contains("present") && !present.contains("explicitly null"),
+            "a non-null value must be reported as present, got: {present}"
+        );
+
+        // The distinction itself, on the two payloads the whole form is about.
+        assert_eq!(
+            body_assertion_failure("{}", &serde_json::json!({"response.json.rating": "absent"})),
+            None,
+            "a missing key is absent"
+        );
+        assert!(
+            body_assertion_failure(
+                present_null,
+                &serde_json::json!({"response.json.rating": "absent"})
+            )
+            .is_some(),
+            "a key carrying an explicit null is present, not absent"
+        );
+    }
+
+    /// The `absent` value is a form marker, not data: it is never interpolated
+    /// and never compared, so a `${var}` in a sibling assertion cannot change
+    /// what `absent` means. This is the same contract `not_null` has.
+    #[test]
+    fn absent_is_a_form_marker_rather_than_a_compared_value() {
+        let body = r#"{"ext":"jpg"}"#;
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("ext".to_owned(), "png".to_owned());
+
+        let passed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            check_body_assertions(
+                body.as_bytes(),
+                &[serde_json::json!({"response.json.absent": "absent"})],
+                &vars,
+            );
+        }));
+        assert!(
+            passed.is_ok(),
+            "`absent` must not compare against an interpolated value"
+        );
+
+        // The sibling interpolation still works, so the marker is scoped to its
+        // own assertion rather than swallowing the block.
+        assert!(
+            body_assertion_failure(body, &serde_json::json!({"response.json.ext": "${ext}"}))
+                .is_some(),
+            "a sibling assertion is still interpolated and still compared"
         );
     }
 }

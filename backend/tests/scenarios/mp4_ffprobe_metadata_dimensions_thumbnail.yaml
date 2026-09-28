@@ -76,16 +76,12 @@ then:
   - "response.json.exifVec.TAG:major_brand": isom
   - "response.json.exifVec.TAG:handler_name": VideoHandler
   # Decision pin for the absent further-data bucket (rationale in the header).
-  # `VideoMetadata` has no `further_metadata` field, so the key is absent from
-  # the response and the harness's `navigate_json` yields null for it.
-  #
-  # This is a characterization, not a red-before: it passes on the unmutated
-  # backend, and red-before does not apply — there is no version of the product
-  # this is meant to catch *retroactively*, only a future one. It also cannot
-  # distinguish an absent key from an explicit null, because `navigate_json`
-  # returns `Value::Null` for both. What it does pin is the value: give a video
-  # a bucket — any entries, or even an empty map — and this fails loudly.
-  - response.json.furtherMetadata: null
+  # `VideoMetadata` has no `further_metadata` field, so the key is not in the
+  # response at all — which is what `absent` asserts, and is the honest spelling:
+  # the previous `: null` could not tell a missing key from an explicit null.
+  # Give a video a bucket — any entries, or even an empty map — and this fails
+  # loudly, on the value *and* on the key being present at all.
+  - response.json.furtherMetadata: absent
   - response.json.tags:
       contains: e2e_mp4_sidecar_alpine
   - response.json.tags:
