@@ -1,9 +1,9 @@
 //! A fixture router tree and the findings the gate reports for it.
 //!
-//! Shared by `contract.rs`, `auth.rs` and `tags.rs`: they drive the same analyzer
-//! over the same trees, and a second loader would be a second thing to keep in step
-//! with the fixture layout. Each test binary uses a different part of it, so the
-//! module is not entirely reachable from any of them.
+//! Shared by `contract.rs`, `auth.rs`, `tags.rs` and `params.rs`: they drive the
+//! same analyzer over the same trees, and a second loader would be a second thing
+//! to keep in step with the fixture layout. Each test binary uses a different part
+//! of it, so the module is not entirely reachable from any of them.
 
 #![allow(dead_code)]
 
@@ -11,7 +11,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use openapi_sanity::{
-    AuthRule, GuardClass, SourceUnit, check_auth, check_contract, check_tags, spec_operations,
+    AuthRule, GuardClass, SourceUnit, check_auth, check_contract, check_params, check_tags,
+    spec_operations,
 };
 
 /// The prefix the public artifact omits on purpose, as the gate is run in the
@@ -148,6 +149,15 @@ impl Fixture {
         tag_findings_against(&self.root.join("openapi.json"), excluded)
     }
 
+    /// Every finding of the parameter gate for this tree, against the tree's own
+    /// `openapi.json`.
+    ///
+    /// P1–P4 read the source and the document together, and P5 reads the
+    /// document's components, so both are needed and both are in scope here.
+    pub fn param_findings(&self, excluded: &[&str]) -> Vec<String> {
+        param_findings_against(&self.root.join("openapi.json"), &self.units(), excluded)
+    }
+
     /// The label the checks see for a fixture file.
     pub fn label(&self, relative: &str) -> String {
         self.root.join(relative).display().to_string()
@@ -240,6 +250,44 @@ pub fn tag_findings_against(spec: &Path, excluded: &[&str]) -> Vec<String> {
         .iter()
         .map(ToString::to_string)
         .collect()
+}
+
+/// The parameter findings of a document that is not a fixture's own — the
+/// committed artifact, or a tree a mutation rewrote — against a set of sources.
+pub fn param_findings_against(
+    spec: &Path,
+    units: &[SourceUnit<'_>],
+    excluded: &[&str],
+) -> Vec<String> {
+    let document: serde_json::Value =
+        serde_json::from_str(&read(spec)).expect("the document is valid JSON");
+
+    check_params(units, &spec.display().to_string(), &document, excluded)
+        .iter()
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// Write a tree of router files and a document into a directory of its own, and
+/// read it back as a [`Fixture`].
+///
+/// For a test that needs a shape no checked-in fixture carries: the gate cannot
+/// reach its own source snippets, and a tree is the only way to drive it end to
+/// end over a specific set of handlers. The checked-in fixtures stay the
+/// baseline the other tests measure against.
+pub fn write_tree(name: &str, files: &[(&str, &str)], document: &str) -> Fixture {
+    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let _ = std::fs::remove_dir_all(&root);
+
+    for (relative, source) in files {
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().expect("a tree file has a parent"))
+            .expect("the parent directory is created");
+        std::fs::write(&path, source).expect("a tree file is written");
+    }
+    std::fs::write(root.join("openapi.json"), document).expect("the document is written");
+
+    Fixture::in_directory(&root)
 }
 
 /// Every router file of a tree, as a path relative to it, sorted.

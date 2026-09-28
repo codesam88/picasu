@@ -15,13 +15,15 @@ pub async fn get_data(guard_timestamp: GuardResult<GuardTimestamp>) {
 pub async fn get_rows(_auth: &GuardAuth) {}
 
 // The route URI carries a query part, which is documented per parameter rather
-// than in the path. The two only agree once normalized. The guard is named by its
-// path, as a handler reaching into another module would.
+// than in the path. The two only agree once normalized, and the `Option` is what
+// makes the documented parameter optional. The guard is named by its path, as a
+// handler reaching into another module would.
 #[utoipa::path(get, path = "/get/path-completion", tag = "config")]
 #[get("/get/path-completion?<path>")]
-pub async fn path_completion(_auth: crate::router::auth::GuardAuth) {}
+pub async fn path_completion(_auth: crate::router::auth::GuardAuth, path: Option<String>) {}
 
-// A Rocket segment declaration against an OpenAPI path template.
+// A Rocket segment declaration against an OpenAPI path template, bound to the
+// argument of the same name.
 #[utoipa::path(get, path = "/get/metadata/{asset_id}", tag = "assets")]
 #[get("/get/metadata/<asset_id>")]
-pub async fn get_metadata(_auth: GuardAuth) {}
+pub async fn get_metadata(_auth: GuardAuth, asset_id: &str) {}
