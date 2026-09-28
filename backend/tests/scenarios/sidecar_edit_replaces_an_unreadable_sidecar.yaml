@@ -1,0 +1,55 @@
+name: a sidecar that cannot be parsed is replaced, and the edit still lands
+# A sidecar whose packet does not parse. `ExifTool` refuses to write to it and
+# leaves the file byte-identical, which is measured: bytes it cannot make sense
+# of and a packet cut off part-way are both refusals, and both come back
+# untouched.
+#
+# The pinned contract is what happens next. The unreadable bytes are not
+# recoverable either way — the app's own reader gets nothing out of them — and
+# keeping them would be worse than replacing them: the API would report the edit
+# as saved, the next reindex would read nothing from the sidecar, and the edit
+# would silently revert. So the write falls back to a packet carrying the managed
+# set, and the operator gets an error log saying the file was not readable
+# metadata.
+#
+# The alternative — report the write as failed and keep the bytes — is `exif.rs`'s
+# `Rejected` outcome taken as an error instead of as a decision. It is rejected
+# here for the reason above: the cache would then hold an edit that is in no file
+# at all. Which of the two an operator would rather have is a product question
+# this scenario does not settle; it only fixes the behaviour so it is not
+# accidental.
+given:
+  - photo: /e2e_rmw_broken/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+  # An `rdf:Bag` that is never closed: the packet does not parse, so there is no
+  # packet to write into.
+  - raw_file: /e2e_rmw_broken/photo.xmp
+    content: |
+      <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/">
+        <dc:subject><rdf:Bag>
+        <rdf:li>e2e_doomed_tag</rdf:li>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+      <?xpacket end="w"?>
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  - call: PUT /put/edit_tag
+    raw_body: '{"indexArray":[${idx}],"addTagsArray":["e2e_after_broken"],"removeTagsArray":[],"timestamp":${ts}}'
+then:
+  - response.status: 200
+  - file_exists: /e2e_rmw_broken/photo.xmp
+  # The managed set is in the file afterwards, which is the point: the edit the
+  # API acknowledged is in a packet that parses.
+  - file.contains: /e2e_rmw_broken/photo.xmp
+    text: e2e_after_broken
+  # And the unreadable content is not still sitting in there.
+  - file.not_contains: /e2e_rmw_broken/photo.xmp
+    text: e2e_doomed_tag
