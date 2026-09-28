@@ -20,6 +20,18 @@ name: mp4 ffprobe container metadata dimensions and thumbnail reach the metadata
 # `ftyp` box by ffprobe — is the field that tells them apart, and it is what
 # proves the bytes under test really are MP4 rather than QuickTime.
 # Negative control: `mp4_without_xmp_source_has_no_tags`.
+#
+# There is deliberately no furtherMetadata attribution line, because a video has
+# no further-data bucket. Decided, not deferred: a video's `exifVec` above is
+# ffprobe's *whole* output — format, streams and tags flattened into one map — so
+# a bucket could only be carved back out of it, putting one read-only surface in
+# two sections with nothing reading the difference. The image path is the case
+# that needs the bucket: its `exifVec` is the EXIF family alone, which is what
+# leaves anything over for one. Decision recorded in
+# `process::xmp::native_metadata_for`, `process::index::process_video_info` and
+# `ImageMetadata::further_metadata`; the open question and its resolution are in
+# `.plan/test-exif-xmp-handling.md` -> "Additional Known Scope Gaps". Revisit
+# only if video extraction is ever split the way the image path's is.
 given:
   - fixture:
       source: mp4-48x32-ffprobe
@@ -63,6 +75,17 @@ then:
   - response.json.exifVec.height: "32"
   - "response.json.exifVec.TAG:major_brand": isom
   - "response.json.exifVec.TAG:handler_name": VideoHandler
+  # Decision pin for the absent further-data bucket (rationale in the header).
+  # `VideoMetadata` has no `further_metadata` field, so the key is absent from
+  # the response and the harness's `navigate_json` yields null for it.
+  #
+  # This is a characterization, not a red-before: it passes on the unmutated
+  # backend, and red-before does not apply — there is no version of the product
+  # this is meant to catch *retroactively*, only a future one. It also cannot
+  # distinguish an absent key from an explicit null, because `navigate_json`
+  # returns `Value::Null` for both. What it does pin is the value: give a video
+  # a bucket — any entries, or even an empty map — and this fails loudly.
+  - response.json.furtherMetadata: null
   - response.json.tags:
       contains: e2e_mp4_sidecar_alpine
   - response.json.tags:

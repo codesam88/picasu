@@ -227,6 +227,15 @@ title and rating, in the order given under
 [Reading priority](#reading-priority) below, and every other field listed here
 arrives unmodelled in the read-only `furtherMetadata` bucket.
 
+The bucket is image-only. A video has none, by decision: a video's `exifVec` is
+`ffprobe`'s entire output — format, streams and tags flattened into one map — so
+a bucket would only re-partition that single read-only surface into two, with
+nothing reading the difference. An image's `exifVec` is the EXIF family alone,
+which is what leaves anything over for a bucket in the first place. Everything
+below is therefore image-side reading; a video's metadata is read by a different
+engine entirely (`exif.rs::generate_exif_for_video`) and is not described in this
+document.
+
 ### Title
 
 | Source   | Path                      | Notes              |

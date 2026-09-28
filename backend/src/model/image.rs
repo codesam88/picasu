@@ -36,8 +36,11 @@ pub struct ImageMetadata {
     /// write one back, so there is no edit path for them. See
     /// `process::xmp::map_further_fields` for which keys land here and why.
     ///
-    /// Filled on the image path only — a video's `exifVec` comes from
-    /// `ffprobe`, and which source would own a video's bucket is undecided.
+    /// Filled on the image path only, by decision (`.plan/
+    /// test-exif-xmp-handling.md`, "Additional Known Scope Gaps"): a video's
+    /// `exifVec` is ffprobe's whole output, so a video bucket would only
+    /// re-partition one read-only surface into two. See
+    /// `process::xmp::native_metadata_for`.
     pub further_metadata: BTreeMap<String, String>,
     /// The record's single source path and its timestamps. `None` means the
     /// path was pruned (file gone / stale sweep); path-primary records hold

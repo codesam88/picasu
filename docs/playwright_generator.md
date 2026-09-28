@@ -115,11 +115,11 @@ are consolidated to the shared run directory:
 
 ### Configuration
 
-| Variable     | Effect                                                                                |
-| ------------ | ------------------------------------------------------------------------------------- |
-| `TEST_DIR`   | Top-level directory for all test outputs (default: `.testruns/` under repo root)      |
-| `WORKER_NUM` | Deterministic worker index (port = `30000 + N*2`, path = `{TEST_DIR}/playwright-{N}`) |
-| `CI`         | When set, enables Playwright retries (`retries: 2`) and `forbidOnly`                  |
+| Variable     | Effect                                                                                              |
+| ------------ | --------------------------------------------------------------------------------------------------- |
+| `TEST_DIR`   | Top-level directory for all test outputs (default: `.testruns/` under repo root)                    |
+| `WORKER_NUM` | Deterministic worker index (first port candidate `30000 + N*2`, path = `{TEST_DIR}/playwright-{N}`) |
+| `CI`         | When set, enables Playwright retries (`retries: 2`) and `forbidOnly`                                |
 
 ## Components
 
@@ -315,6 +315,19 @@ set. The `page` fixture is overridden to set `baseURL` to the scenario's
 backend, so all `page.goto('/login')` calls resolve to the right
 instance.
 
+The launcher owns the child's whole life. `stop()` asks for `SIGTERM` and
+escalates to `SIGKILL` after a grace period, because a backend can survive
+`SIGTERM` — one whose bind failed stays up with no listener, and one caught
+mid-shutdown has been observed alive with its listener already closed. A
+startup failure (`startBackend` rejecting) reaps the child itself, because
+no handle reaches the caller to do it. On top of that, every child is tracked
+in a live set and `SIGKILL`ed from the worker's `exit`, `beforeExit` and
+signal handlers: measured, a worker killed outright — CI cancel, an OOM kill,
+a runner force-kill — never reaches the fixture teardown, and its backend is
+reparented to init and goes on serving its port. A `SIGKILL` aimed at the
+worker itself is the one case nothing in the worker can answer, which is why
+the port probe matters: it keeps such a survivor from reaching the next run.
+
 ### Paths (`paths.ts`)
 
 - **`TEST_DIR`** — shared top-level directory for all test-run outputs.
@@ -323,20 +336,31 @@ instance.
 - **`createPaths()` factory** — called per-scenario to generate fresh,
   isolated paths for each backend instance. Uses `{TEST_DIR}/playwright-<id>/`.
   When `WORKER_NUM` is set, `id` is the worker number for deterministic
-  paths and ports (`30000 + N*2`). Otherwise a random 6-char hex string.
+  paths, and the first port candidate is the worker's `30000 + N*2`.
+  Otherwise a random 6-char hex string. Async: the port is probed before it is
+  handed back.
+- **Port probe** — every candidate is bound and released (`isPortFree`) before
+  it is returned, and a collision is redrawn, bounded by
+  `BACKEND_PORT_PROBE_ATTEMPTS`; exhausting them is a clear error naming the
+  rejected ports. The backend binds the wildcard address, so the probe does
+  too. This is a check, not a reservation — the port is free again by the time
+  the backend binds it — so it narrows the window a collision can happen in
+  rather than removing it. `paths.test.ts` covers the probe and the redraw.
 
-| Export / Function | Source                                             |
-| ----------------- | -------------------------------------------------- |
-| `TEST_DIR`        | `process.env.TEST_DIR` or `{REPO_ROOT}/.testruns/` |
-| `createPaths()`   | `{TEST_DIR}/playwright-{WORKER_NUM\|random}/`      |
-| `ADMIN_PASSWORD`  | Always `e2e_test_pwd`                              |
+| Export / Function           | Source                                             |
+| --------------------------- | -------------------------------------------------- |
+| `TEST_DIR`                  | `process.env.TEST_DIR` or `{REPO_ROOT}/.testruns/` |
+| `createPaths()`             | `{TEST_DIR}/playwright-{WORKER_NUM\|random}/`      |
+| `isPortFree(port)`          | bind-test on the wildcard address                  |
+| `findFreePort(draw, probe)` | redraw on collision, bounded attempts              |
+| `ADMIN_PASSWORD`            | Always `e2e_test_pwd`                              |
 
 ## Isolation model
 
 | Concern          | Mechanism                                                  |
 | ---------------- | ---------------------------------------------------------- |
 | Data directory   | Unique per-scenario `playwright-{id}` under `TEST_DIR`     |
-| Backend port     | Unique per-scenario instance (random 30000–59999)          |
+| Backend port     | Probed free per-scenario instance (30000–59999)            |
 | Auth token       | Reset before each scenario (`resetAuthToken()`)            |
 | Parallel workers | Each scenario starts its own backend (fullyParallel: true) |
 | Path control     | `TEST_DIR` / `WORKER_NUM` env vars                         |

@@ -93,6 +93,16 @@ fields mean well enough to write one back. The sidebar renders it as one
 section; which `ExifTool` groups reach it is documented on
 `process::xmp::map_further_fields`.
 
+The bucket is image-only, by decision. A video's `exifVec` is already the whole
+of what the engine knows about it — `ffprobe`'s format, streams and tags
+flattened into one map — so a video bucket could only re-partition that one
+read-only surface across two sections, with no consumer for the split. The image
+case is the one that needs it: an image's `exifVec` holds the EXIF family alone,
+which is what leaves anything over for a bucket. The alternative — deriving a
+video's bucket from the same `ffprobe` output — is not a different data source,
+only a different cut of the same one. Revisit if video extraction is ever split
+the way the image path's is.
+
 Database updates and filesystem operations are not one atomic transaction. A
 journal records the intended filesystem operation and its progress; startup
 recovery and indexing rebuild or reconcile generated state from the repository.

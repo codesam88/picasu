@@ -154,10 +154,16 @@ pub fn process_video_info(abstract_data: &mut AbstractData) -> Result<()> {
     // a video carries neither an IIM record nor PNG text, so the mapping sees
     // the XMP family alone.
     //
-    // No further-data bucket here, and deliberately: a video's `exifVec` is
-    // ffprobe's, so a video's bucket would have to be derived from ffprobe's
-    // output too rather than from the `ExifTool` read above, and which of the
-    // two owns it is not decided. `process_image_info` fills the image's.
+    // No further-data bucket for a video, by decision (`.plan/
+    // test-exif-xmp-handling.md`, "Additional Known Scope Gaps"). `exifVec`
+    // above is already ffprobe's whole output — format, streams and tags
+    // flattened into one map — so a video's bucket could only be carved back
+    // out of it, putting one read-only surface in two sections with nothing
+    // reading the difference. That is not the image path's situation, and the
+    // image path is the one that has the bucket: its `exifVec` is the EXIF
+    // family alone, which is what leaves something over for a bucket.
+    // `process_image_info` fills the image's. Revisit if video extraction is
+    // ever split the way the image path's is.
     let record = read_image_metadata(abstract_data)?;
     let native = native_metadata_for(&abstract_data.source_path(), record.as_ref());
     abstract_data.tag_mut().extend(native.tags);
