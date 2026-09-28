@@ -53,9 +53,12 @@ The mechanisms below are the means of enforcing those two halves:
    routes with the operations in the public spec. Fail on undocumented routes,
    stale spec operations, duplicate operation IDs, and accidental exposure of
    test-only or internal routes. This is the only mechanism that can _prove_ the
-   route-set half, so it runs against the server's real route table rather than inferring one from source. Its exclusions — test-only prefixes and static
-   mounts — are backend intent: declared once and read by both the generator and
-   this check, never a hand-written string inside a test.
+   route-set half, so it runs against the server's real route table rather than
+   inferring one from source. Its exclusions — test-only prefixes and static
+   mounts — are backend intent: declared once in backend code and read by the
+   generator and this check directly, with the source-side CLI receiving them as
+   arguments pinned to the same declaration by a test (I3), never a hand-written
+   string inside a test.
 3. **OpenAPI structural linting.** Enforce project rules for operation IDs,
    tags, summaries, descriptions, request schemas, security requirements,
    path/query parameters, and named schemas. This should catch incomplete
@@ -265,7 +268,7 @@ group in the CLI, `check_params`, chained after `check_contract`,
 `check_tags` and `check_auth`:
 
 - **P1 — path parameters.** The placeholders in the spec path, the route's
-  `<segment>` names after `to_spec_path` normalization (`<_path..>` → `path`),
+  `<segment>` names once normalized to template spelling (`<_path..>` → `path`),
   and the operation's declared `in: path` parameters must be the same set —
   no undocumented segment, no declared parameter the route does not bind.
 - **P2 — query parameters.** The route's `?<a>&<b>` names and the operation's
@@ -295,8 +298,9 @@ evidence recorded is what the probe saw, and each item was a pointer to confirm
 against the code before acting on it. The items were recorded before the design
 was settled, so several have since been decided: each finding below now carries a
 pointer to the implementation item that owns it, or states that it is unowned.
-Findings marked **→ I1**–**→ I5** are covered; **Partly done** is covered in part;
-**Unowned** is a design decision the invariant does not require, still open.
+Findings marked **→ I1**–**→ I6** are covered by a scheduled item; **Partly
+done** is covered in part; **Unowned** is a design decision the invariant does
+not require, still open.
 
 The findings fall into two tiers, and the split matters for what is worth doing
 first. The route-set findings ask whether the gate can _see_ the routes at all — a
@@ -307,45 +311,77 @@ failure mode that erodes trust in a gate.
 
 #### Implementation plan
 
-The items in this step reduce to three pieces of work, in this order. Each one is
-a prerequisite for the next: the walk makes the generated spec complete, the
-complete spec is what the parity check has something to compare against, and the
-exclusion policy is what both sides read.
+The architecture these items build was settled with the user on 2026-09-28,
+superseding `6a897bfe`, which recorded a different answer (walk dropped, shared
+leaf crate). That note stays below as history; this section is current. Three
+positions it rests on:
 
-**I1 — Complete the generated spec by walking the backend source (retire
-`SCANNED_MODULES`).** The crate already does the hard part: `scan_routes` and
-`scan_handlers` take a `syn::File` and know nothing about which file it is. Only
-the _file selection_ is a hardcoded list today. So:
+- **The backend owns production truth.** The generation file list lives in
+  `build.rs` alone and is renamed to state its role; the exclusion policy const
+  and the `to_spec_path` translation live in backend code; and
+  `--check-openapi` is the load-bearing route-set gate.
+- **The `openapi-sanity` CLI is an auxiliary linter.** No compiled artifact, no
+  file list, no backend dependency: it walks the project source itself and
+  checks what it finds against the committed spec in both directions, plus the
+  detail rules (parameters, tags, auth, operation ids, duplicates). It receives
+  exclusion prefixes as arguments.
+- **Nothing new is shared.** The leaf-crate direction (`utils/openapi-contract`)
+  is withdrawn; each side keeps its own functions (`to_spec_path` is the
+  backend's, the CLI keeps name-level readers), and the only edges left between
+  the two are `build.rs`'s build-dependency and the tests' dev-dependency on
+  the analyzer's scan functions and rule groups. The list-policing tests are
+  dropped rather than replaced: the walk reports additions at analysis time and
+  `--check-openapi` reports what ships.
 
-- Add a crate-level walk, e.g. `discover_sources(app_root) -> Vec<SourceUnit>`,
-  that recurses every `.rs` file under `backend/src`, skipping the `tests/` tree
-  and any `#[cfg(test)]` item. The `syn` visitor already ignores doc comments, so
-  the `routes![]` occurrences under `src/tests/` are not a hazard; skipping
-  `tests/` is belt-and-braces.
-- Generalize `group_and_module` (`modules.rs:93`) from its one-directory-level
-  `split_once('/')` to arbitrary module depth, and re-key `SourceUnit` and
-  `handler_module_path` off the **application-root-relative** path instead of the
-  router-relative one, so a `routes![]` outside `router/` resolves too. This is
-  the only genuinely new parsing logic; the resolution rule has never been
-  exercised past one level because no nested `routes![a::b::c]` exists today, so
-  it needs its own fixture.
-- Point `build.rs` (`collect_all_routes`, currently iterating `SCANNED_MODULES`)
-  and the CLI (`main.rs`) at the shared walk, and delete the constant.
-- Delete the `backend/src/tests/route_scan.rs` guards that exist only to police
-  the list, including `scanned_router_modules_cover_every_mounted_group` (its
-  fixed five names detect removals, not additions — the walk is what closes that).
-- Replace the source-text assertion `build_script_scans_with_the_shared_analyzer`
-  with a behavioural one: generate a spec from a fixture tree through the same
-  entry point `build.rs` uses.
-- Retire the `--module` and `--router-root` CLI flags (the walk replaces file
-  selection) and update the surfaces that name them: the `justfile`
-  `openapi-sanity` recipe (still passes `--router-root`), the crate README's
-  option table and `SCANNED_MODULES` reference, and `docs/openapi-generator.md`.
-  The doc is written to the post-walk shape; the code flags change with I1.
+The items in this step reduce to these, in this order: **I6** first, because its
+decisions (the list's name, how exclusions are represented, how feature gating
+and the test-only facility are expressed) shape I3, I2 and I1; then **I3** (the
+backend-owned vocabulary, because `--check-openapi` reads it); then **I2**
+(runtime parity, which is where route-set completeness is proven); then **I1**
+(the CLI's walk, the list's move and rename, the guard deletions); then the
+independent detail item **I4**. I5 is done.
 
-Acceptance: a `routes![]` block in a file no one listed — a new
-`src/api/v2.rs`, say — is picked up by both the generator and the CLI, and a
-feature-gated registration is either reported or explicitly excluded per I3.
+**I1 — The CLI walks the source; the list becomes the build script's and is
+renamed.** (Revived 2026-09-28: `6a897bfe` dropped the walk; the settled
+architecture adopts it in the CLI half, where it does not touch generation.)
+Three changes in one item:
+
+- **The CLI stops reading `SCANNED_MODULES`.** `openapi-sanity check` walks
+  `--source-root` — default `backend/src`, replacing `--router-root` and
+  `--module` — skipping the `tests/` tree and `#[cfg(test)]` items, and reports
+  bidirectionally against the committed spec: a walked route the spec does not
+  carry, and a spec operation no walked source declares. Module resolution is
+  generalized from "relative to `router/`" to application-root-relative, so
+  tables outside that directory resolve — `builder.rs`'s `routes![assets]`
+  among them. Exclusion prefixes are matched against a walked registration
+  before its annotation and detail requirements: `/assets` is outside the
+  contract by prefix, and the walk now sees the handler that mounts it.
+  `handler_files`/`referenced_handler_files` — the reference-following that
+  stood in for a walk — go with the list-driven input.
+- **The list moves to `backend/build.rs` and is renamed.** Generation stays
+  list-driven and is its only remaining consumer; `SCANNED_MODULES` states
+  neither the consumer nor the job, so the name is chosen in I6. The crate's
+  re-export and every reader of it outside the build script go (`main.rs`'s
+  default module list, the entry checks in `tests/contract.rs` and
+  `tests/regressions.rs`). An unreadable listed file fails the build instead
+  of being skipped (`collect_all_routes`'s `continue`), which is what the
+  deleted existence test was standing in for.
+- **The list-policing tests are deleted, not replaced — no coverage test.**
+  The three guards in `backend/src/tests/route_scan.rs` hardcode the five
+  names and detect removals, not additions; the walk reports an unlisted
+  `routes![]` at analysis time, and `--check-openapi` reports it as
+  mounted-but-undocumented if it ships. `build_script_scans_with_the_shared_analyzer`
+  goes too: its concern — generation running a private analysis beside the
+  shared one — is caught when the walk's two directions compare the document
+  generation produced against the source the walk reads. With all four gone
+  the file has nothing left and goes with them.
+
+Acceptance: the sixth-module probe from the route-set finding below produces a
+CLI finding; the walk over `backend/src` reports nothing today with `/assets`
+and `/get/test/` excluded by flag; no file outside `build.rs` names the list;
+`just check` (which runs `just openapi-check`) stays green. Surfaces that
+change with it: `main.rs` flags and USAGE, the `justfile`'s `openapi-sanity`
+recipe, `utils/openapi-sanity/README.md`, and `docs/openapi-generator.md`.
 
 **I2 — Prove route-set parity behind `--check-openapi`.** A new mode on the
 binary, a sibling of `--dump-openapi`:
@@ -355,11 +391,12 @@ binary, a sibling of `--dump-openapi`:
   spec from disk rather than the compiled-in one — that is the published claim,
   and reading it is what makes the check a gate on the artifact.
 - Build the real `build_rocket()` (not `build_test_rocket()`), read `.routes()`,
-  normalize both sides with the shared `to_spec_path`, and apply the asymmetric
-  rule: every mounted route must be in the spec (hard fail); a spec operation not
-  mounted in this build is excused only if it is feature-gated and that feature is
-  disabled here; an ungated spec-only operation is drift. Read this build's
-  enabled features via `cfg!(feature = ...)`.
+  normalize both sides with `to_spec_path` (moved into the backend under I3),
+  drop what the policy declares outside the contract (I6, I3), and apply the
+  asymmetric rule: every mounted route must be in the spec (hard fail); a spec
+  operation not mounted in this build is excused only if it is feature-gated
+  and that feature is disabled here; an ungated spec-only operation is drift.
+  Read this build's enabled features via `cfg!(feature = ...)`.
 - Exit non-zero on drift with a per-route report; the spec-dependency stays in the
   repo, not in the server's boot.
 - Run it in the release gate and the commit hook, pinned to the shipped feature
@@ -368,14 +405,59 @@ binary, a sibling of `--dump-openapi`:
   `openapi_contract.rs` parity tests to self-checks; the load-bearing assertion
   moves here.
 
-**I3 — Express exclusions as one policy both sides read.** The `is_outside_contract`
+Surfaces: `docs/openapi-generator.md`'s `--check-openapi` section gains what the
+bullets above add — the policy exclusions applied before the comparison, and the
+parity tests' retirement to self-checks.
+
+**I3 — The backend owns the path translation and the exclusion policy; the CLI
+drops its redundant path rule.** (Rewritten 2026-09-28: the leaf-crate shape of
+`6a897bfe` is withdrawn — one function and one const did not justify a crate,
+and the CLI's use of the function goes away entirely.) The `is_outside_contract`
 strings in `openapi_contract.rs:61` and the `--exclude-prefix` argument in the
-`justfile` both name the same exceptions. Put them in one backend-owned place (a
-const or a small policy file) that the generator, the CLI invocation, and the
-`--check-openapi` comparison all consume, so the generator and the gate cannot
-disagree about what is in the contract. Exclusions remain for genuinely non-API
-surfaces only — static file mounts, test-only probes — not for feature-gated APIs,
-which I1/I2's asymmetric rule handles without one.
+`justfile` both name the same exceptions, and `--check-openapi` needs the same
+answer. So:
+
+- **`to_spec_path` moves into backend code**, with its tests
+  (`utils/openapi-sanity/tests/paths.rs` and the duplicated cases at
+  `backend/src/tests/openapi_contract.rs:206-219`). Its consumers are backend:
+  `--check-openapi` (I2) and the route-table tests; `build.rs` takes paths from
+  the annotations and never translates one. The analyzer's re-export, its two
+  uses in `contract.rs`, and the intra-doc references in `lib.rs`, `handlers.rs`
+  and `path.rs` go with it, as do the "one implementation, shared" comment in
+  `backend/Cargo.toml` and the crate's README paragraph on the translation.
+- **The CLI's route-attr↔annotation path rule is dropped** (`contract.rs:608`,
+  "the route serves X but its #[utoipa::path] declares Y"). Verified redundant:
+  every path disagreement converges on a finding elsewhere — mounted-but-absent
+  from the spec at `--check-openapi` (the load-bearing direction), "declared in
+  source but absent from the spec" on the annotation side, and the route's own
+  registration checks. The comparison it made is also the last whole-path
+  translation in the CLI, so dropping it is what lets the translation leave the
+  crate. The pathless-annotation fallback in `declared_operation`
+  (`contract.rs:511`, `annotated_path.or(route_path)`) is verified dormant —
+  every annotation in the repository names its path — and then removed with it,
+  together with the route-path half of `agrees_with_route`; the method
+  comparison (`contract.rs:621`) stays, since it needs no translation. The CLI
+  keeps its name-level readers (`route_segments`, `route_query_bindings`,
+  `spec_placeholders`): they compare names rather than translated paths and
+  have no second copy to drift from. The convergence argument is recorded in
+  the change so the rule is not re-proposed.
+- **The exclusion policy is one const in backend code**, in the shape I6
+  settles. `openapi_public`'s strip, `is_outside_contract`, `--check-openapi`,
+  and the `justfile`'s `--exclude-prefix` values all derive from it — the
+  recipe stops naming prefixes of its own and instead passes every prefix the
+  policy names (adding `/assets`, a no-op until I1's walk meets that surface),
+  pinned by a test that reads the recipe and asserts its arguments are exactly
+  the policy's. The CLI still takes `--exclude-prefix` as arguments — it has no
+  backend dependency — which is why the pin exists.
+
+Acceptance: no backend consumer names an exclusion string; the recipe-pins test
+fails when a prefix is added to either side alone; `to_spec_path`'s tests pass
+from their new home; the CLI has no `to_spec_path` import, and its fixtures for
+the dropped path rule are re-scoped to the findings that replace it;
+`cargo test -p openapi-sanity`, `cargo test --lib openapi_contract` and
+`just openapi-check` are green. Surfaces beyond the code: the rule's row in
+`docs/openapi-generator.md`'s findings table, its `to_spec_path` attribution,
+and the `--exclude-prefix` paragraph.
 
 **I4 — Compare parameter and body types, not just names.** P1–P3 check names,
 sets and `required`, so a query parameter declared `type: string` against a
@@ -401,8 +483,11 @@ supported subset beats a rule that is right about most routes and noisy on the
 rest.
 
 **I5 — Fix the two analyzer rules that give a wrong answer instead of no
-answer.** Both currently misreport rather than staying silent, which is the
-worse failure: a check that cries wolf is a check people learn to skip.
+answer.** (Done 2026-09-28: skip-the-unreadable fixtures for both shapes, the
+two doc statements, a repository pin test over `backend/src/router`, and the
+README/docs limitations paragraphs; committed `ba757233`.) Both rules had
+misreported rather than staying silent, which is the worse failure: a check that
+cries wolf is a check people learn to skip.
 
 - `body_drift` (`utils/openapi-sanity/src/params.rs`) substitutes the string
   `a type this analyzer cannot name` for an unnamed argument and then compares it
@@ -417,12 +502,63 @@ worse failure: a check that cries wolf is a check people learn to skip.
   struct's fields or state the limit in the rule's documentation. Silently not
   checking is the part to fix either way.
 
-Ordering: I1 → I2 → I3, then I4 and I5. I2 depends on I1 (a complete spec is what
-"all production routes are documented" is measured against). I3 is independent but
-should land with I2, since both read the same policy. I4 and I5 touch only
-`params.rs` and `handlers.rs` — not discovery, not the runtime check — so they
-depend on none of I1–I3 and can be done in parallel with that chain rather than
-queued behind it.
+**I6 — Revisit four representations before anything implements them.**
+(Added 2026-09-28 at the user's request.) These are decisions, not code: each
+one is an investigation whose outcome is recorded in this plan's progress log
+and surfaced for review before I3 starts, so the implementing items build on
+settled answers rather than making them mid-flight.
+
+- **The list's name.** `SCANNED_MODULES` names the analyzer's old reading of
+  it; its one surviving job is generation's file selection inside `build.rs`.
+  Pick a name that states that role and restate the doc comment now that three
+  consumers are one.
+- **Exclusion representation.** Hardcoded prefix strings matched with
+  `starts_with` encode no reason: `/get/test/` does not say _why_ it is out of
+  contract, a coincidental prefix match silently exempts an unrelated surface,
+  and every consumer re-implements the match (`is_test_only_path`,
+  `is_outside_contract`, the CLI's argument handling). Weigh the alternatives —
+  reason-tagged entries (`TestOnly`, `StaticMount`) that consumers match by
+  reason and render to prefixes where a prefix is all they have; a marker on
+  the route or annotation itself (utoipa `extensions(...)`), which makes the
+  property belong to the surface rather than to a path string; structural
+  identification (a `FileServer` mount is recognizable as such from the runtime
+  table) — with the cost of moving each consumer, and pick one. What must
+  survive: one definition, a reason visible at the declaration, and no consumer
+  matching a string the policy does not name.
+- **Feature gating.** The asymmetric rule is settled; its mechanics are not.
+  The docs tell authors to write `extensions(x("picasu_feature" = "..."))`, yet
+  no operation carries a marker today (`embed-frontend` gates only the static
+  `assets` mount), so the first real gated operation will be the first test of
+  whether the spelling, a pin tying marked operations to the features the
+  release ships, whole gated `routes![]` blocks (annotated handlers unmounted
+  in some builds) and the `cfg!`-read side inside `--check-openapi` line up.
+  Decide the marker's spelling and owner, whether the pin test is I2's, and
+  which of this repository's surfaces should be gated at all.
+- **`/get/test/` is a test-only facility, not a path.** The prefix is spelled
+  in three places because nothing says what the probes _are_. Establish how
+  they are declared and registered (`router/get/get_test_probe.rs`, registered
+  from `router/get/mod.rs`, stripped by `openapi_public`) and whether a `cfg`
+  gate removes them from the shipped route table — if it does, the runtime gate
+  needs no exclusion for them at all and the strip's scope changes with it.
+  The answer feeds the exclusion representation above and I3's policy const.
+
+Acceptance: all four outcomes are recorded here before I3, I2 or I1 start, and
+any that turns out to be work rather than a decision is scheduled as its own
+item.
+
+Ordering: I6 → I3 → I2 → I1 → I4. I6 runs first because I3, I2 and I1 implement
+its decisions; re-deciding mid-flight would rework two items. I3 lands next
+because both the CLI's default exclusions and `--check-openapi` read what it
+moves. Its path-rule drop converges on `--check-openapi` as the load-bearing
+reporter, so between I3 and I2 a route-attr path disagreement is unreported —
+a window the sequence accepts because both land in this effort. I2 is where
+route-set completeness is proven. I1 changes the CLI's input, flags and
+documentation and deletes the guards, so it runs after I2 has made completeness
+provable rather than asserted, and after I3 has the justfile passing the full
+policy. I4 touches only `params.rs` and `contract.rs` — not discovery, not the
+runtime check — so it depends on none of I6/I3/I2/I1 and runs last only because
+they edit `contract.rs` too and one worker at a time keeps the diff reviewable.
+I5 is done (2026-09-28).
 
 #### Ordered by the invariant, not by severity
 
@@ -448,14 +584,17 @@ Two derivations of the route table, deliberately kept independent:
 
 The CLI does not take a route inventory from the server, and neither derivation
 becomes the other's authority: they are different methods, and their agreement is
-the evidence. What is wrong today is not the method but the file list — the
-static side parses only `SCANNED_MODULES`, so its coverage is asserted rather
-than derived. The implementation plan above fixes that, and the findings below
-are the same work seen from the review's angle.
+the evidence. After I1 the static side walks the whole source tree, so its
+coverage is derived rather than asserted; generation stays list-driven on a list
+the build script owns alone, so a list miss cannot reach the spec — the walk
+reports the declarations the document lacks at analysis time, and
+`--check-openapi` reports the mount as mounted-but-undocumented if it ships
+anyway. The findings below are the same work seen from the review's angle.
 
 **Route set — provable at runtime.** These close the half of the invariant that
-can actually be proven, and the first is the precondition for all of them: the
-served spec has to be _complete_ before parity can mean anything.
+can actually be proven. Completeness of the served spec is not a precondition
+imported from elsewhere: the mounted-⊆-spec direction _is_ the completeness
+check, and an incomplete spec fails it.
 
 - [ ] Make the generated spec complete: walk the application root. Only the
       five modules in `SCANNED_MODULES` are parsed, so a `routes![...]` block
@@ -464,23 +603,24 @@ served spec has to be _complete_ before parity can mean anything.
       produced no finding about it. The gap is the file list, not the analysis:
       `scan_routes` is a `syn` visitor that matches `routes!` by its last path
       segment and walks function bodies, so it would report `builder.rs:135` on
-      the first file it was handed. Walk the application root and parse every
-      file with the visitors that already exist — skip the `tests/` tree and
-      `#[cfg(test)]` items, or the gate reads its own test suite as API (all four
-      `routes![]` occurrences under `backend/src/tests/` are in doc comments).
-      Scope the walk to the backend source, not `router/`: a route table outside
-      `router/` is equally invisible today. **→ I1.**
+      the first file it was handed. **Adopted** (2026-09-28): the CLI now takes
+      exactly the walk's prescription — parse every file under `--source-root`,
+      skip `tests/` and `#[cfg(test)]`, resolve modules application-root-relative —
+      so the probe's sixth module produces a finding at analysis time, and
+      `--check-openapi` still fails the same route at mount time if it ships
+      regardless (→ I2). **→ I1, I2.**
 - [ ] Retire `SCANNED_MODULES` once the walk exists. It conflates two questions —
       which files exist, which is derivable by walking, and what is part of the
-      contract, which is a decision. The decision survives as a path-based
-      exclusion (`--exclude-prefix`, and whatever the static-route policy makes
-      of `/assets`) read by both the build script and the CLI. Removing it also
-      removes the two guards in `backend/src/tests/route_scan.rs` that exist only
-      to police it, including `scanned_router_modules_cover_every_mounted_group`,
-      which hardcodes the same five names and so detects removals and not
-      additions. The walk belongs in the crate as one function, shared by
-      `build.rs` and the CLI, so the generator and the gate cannot disagree about
-      what the API's files are. **→ I1.**
+      contract, which is a decision. **Resolved by splitting the consumers:** the
+      walk exists (I1), but generation stays list-driven, so the list survives as
+      generation's file selection — moved into `build.rs`, its only reader, and
+      renamed to state that role (the name is I6's). The contract half of the
+      conflation moves to I3's policy (its representation is I6's), and the part
+      that made the list dangerous — the guards in
+      `backend/src/tests/route_scan.rs`, which hardcode the same five names and
+      so detect removals and not additions — is deleted rather than replaced: the
+      walk detects additions directly, `--check-openapi` detects what ships.
+      **→ I6, I3, I1.**
 - [ ] Express exclusions as declared backend intent, read by both sides. Settle
       what a route discovered only by the source scan means for a feature-gated
       or `cfg(test)` mount. `builder.rs:135` is
@@ -489,9 +629,13 @@ served spec has to be _complete_ before parity can mean anything.
       source scan and the runtime comparison see different things for `/assets`
       by construction, and any exclusion has to express "behind a feature" and
       "not a route table" rather than a file path. Today this invariant is
-      _manually overridden_ by hand-written strings in `is_outside_contract`; the
-      walk turns that into a first-class, shared policy rather than a test-local
-      string. **→ I3.**
+      _manually overridden_ by hand-written strings in `is_outside_contract`; I3
+      turns that into one backend-owned const every consumer reads, and I6
+      settles what its entries are — a hardcoded prefix string encodes no reason,
+      matches by coincidence, and reads differently in each consumer
+      (`is_test_only_path`, `is_outside_contract`, the justfile argument), so
+      reason-tagged entries or a marker on the surface itself are the candidates
+      to weigh. **→ I6, I3.**
 - [ ] Feature-gated routes: one canonical spec, feature-dependent operations
       marked. A single `openapi.json` describes every route any build can expose —
       the union across features, not one build's slice — and an operation that
@@ -509,7 +653,13 @@ served spec has to be _complete_ before parity can mean anything.
       feature-gating is awkward under it today and why `/assets` needed a
       hand-written exclusion; the asymmetry removes the need for that exclusion
       for feature-gated APIs, leaving exclusions only for genuinely
-      non-API surfaces (static file mounts, test-only probes). **→ I1, I2.**
+      non-API surfaces (static file mounts, test-only probes). The rule is
+      settled but its mechanics are I6's: the marker's spelling (utoipa
+      `extensions(...)` vs a raw `x-picasu-feature`), a pin tying marked
+      operations to the features the release ships, whole gated `routes![]`
+      blocks, and which surfaces here should be gated at all — no operation
+      carries a marker today, so the first real one exercises an untested path.
+      **→ I2, I6.**
 - [ ] Prove route-set parity behind a `--check-openapi` flag, in the product
       build. The only mechanism that can prove the route-set half is Rocket's real
       mount table, and only a real build has it correctly: `build_rocket()` is
@@ -545,8 +695,10 @@ served spec has to be _complete_ before parity can mean anything.
 
 **Operation detail — static only.** Runtime knows nothing about these; they exist
 only in the annotations, so they can only be checked against the handler source.
-The walk above is a precondition here too — a route in an unscanned file has no
-checked detail at all.
+After I1 no coverage assumption remains on either side: the CLI walks the whole
+source, so an operation the document carries is checked against the source that
+declares it, and a declaration the document lacks is itself a finding — while
+I2 still fails any route that ships undocumented anyway.
 
 - [ ] A body type the analyzer cannot name is reported as drift instead of
       skipped. `body_drift` (`utils/openapi-sanity/src/params.rs`) substitutes
@@ -584,7 +736,9 @@ checked detail at all.
       a build script that adds a second, private scanner beside it. Replace it
       with a behavioural assertion — generating a spec from a fixture tree
       through the entry point `build.rs` uses is the cheapest. Low effort.
-      **→ I1.**
+      **→ I1** (deleted with `route_scan.rs` instead: the behavioural check is
+      the walk's two directions — a generator that scans differently produces a
+      document the walk does not match, and reports it).
 - [ ] `AUTH_POLICY` is repository-specific but lives in the crate
       (`utils/openapi-sanity/src/auth.rs`). Against any other router tree the
       checker emits one "auth policy entry … names an operation the document does
@@ -600,8 +754,12 @@ checked detail at all.
       passes. A second test-only prefix added to only some of them is either
       stripped from the artifact and still gated, or gated and published. Add a
       test that reads the recipe and asserts it matches the Rust constant. Low
-      effort. **→ I3**, which supersedes the test: one policy definition read by
-      all three sites removes the duplication rather than policing it.
+      effort. **→ I6, I3.** I6 asks what the surface _is_ — a test-only facility
+      declared as such (a `cfg` gate that keeps the probes out of the shipped
+      table, a marker, a reason-tagged policy entry) rather than a path string
+      spelled three ways — which may shrink where the exclusion has to reach at
+      all; I3 then puts the one definition in backend code, and the recipe-pins
+      test this finding asked for is how the justfile stays honest to it.
 
 #### Considered and rejected
 
@@ -632,9 +790,69 @@ first instinct that the invariant framing ruled out.
   Rejected: it just relocates the hardcoded list — it still asserts which files are
   the API rather than deriving it, and a `routes![]` block not yet wired into a
   mount would be invisible to the generator but visible to the runtime check. The
-  walk derives the set from the source tree instead.
+  maintained list plus `--check-openapi` backstops it instead: an unlisted route
+  table that ships fails the runtime check as undocumented.
+- **Walking the source tree to derive _generation's_ file selection (retire
+  `SCANNED_MODULES` from the generator).** Rejected 2026-09-28: generation is
+  list-driven by decision, so a missed file cannot reach the spec and
+  `--check-openapi` fails it as mounted-but-undocumented when it ships —
+  completeness of the shipped route set is proven at runtime, not asserted at
+  generation time — and walking on every build adds file discovery to the hot
+  path for a question the list answers directly. The same walk in the _CLI_ was
+  first rejected in `6a897bfe` and then adopted (I1): what that rejection read
+  as the walk's costs — the module-resolution re-key, the `routes![assets]`
+  finding, flag/README/justfile/doc churn — are costs of the CLI's input
+  changing, which I1 pays anyway, and the `routes![assets]` finding resolves
+  through the exclusion policy rather than forcing any item's hand. The CLI's
+  walk and the generator's list are then independent derivations meeting at the
+  committed document, which is the point.
 
 ## Progress
+
+- 2026-09-28: Revised the architecture with the user after `6a897bfe`; that
+  note below stays as history — this one supersedes it. Settled shape: the
+  **backend owns production truth** (the generation list moves into `build.rs`
+  and is renamed to state its role; the exclusion policy const and
+  `to_spec_path` move into backend code; `--check-openapi` is the load-bearing
+  route-set gate), and the **`openapi-sanity` CLI becomes an auxiliary linter**
+  — no compiled artifact, no file list, no backend dependency: it walks the
+  whole source tree (`--source-root` replaces `--router-root`/`--module`) and
+  compares both directions against the committed spec. The CLI drops the
+  route-attr↔annotation path rule as redundant — every path disagreement
+  converges on a finding at `--check-openapi`, with the "declared but absent"
+  and registration findings covering the rest — and verifies the pathless-annotation
+  fallback dormant before removing it; the method rule and the name-level
+  parameter readers stay. The leaf crate (`utils/openapi-contract`) and its pin
+  test are withdrawn: one function plus one const did not justify a crate, and
+  the CLI's use of the function disappears instead of being shared. The
+  list-policing tests are deleted rather than replaced — no coverage test: the
+  walk detects additions and `--check-openapi` the mounts, and `build.rs` fails
+  on an unreadable listed file in place of the existence test. Added **I6**,
+  which runs first: settle the list's name, the exclusion representation
+  (hardcoded prefix strings encode no reason and match by coincidence), the
+  feature-marker mechanics (spelling, pin, gated `routes![]` blocks, which
+  surfaces gate at all), and what `/get/test/` _is_ — a test-only facility
+  rather than a path spelled three ways, possibly `cfg`-gated out of the
+  shipped table. Sequence is now I6 → I3 → I2 → I1 → I4; I5 is done.
+  `docs/openapi-generator.md` corrected in the same change where it had
+  followed the superseded shape (shared list, coverage test, walk rejection).
+
+- 2026-09-28: Dropped I1's source walk and settled the CLI/backend split. The
+  detail checks — parameter names, body types, tags, auth guards — stay with the
+  `openapi-sanity` CLI's `syn` analysis, list-driven over `SCANNED_MODULES`; the
+  backend takes no `syn` dependency, so the shared vocabulary `--check-openapi`
+  needs (`to_spec_path` and the exclusion policy) moves to a syn-free leaf crate
+  under I3. The walk was reconsidered against the runtime check and dropped:
+  generation is list-driven, so a list miss cannot reach the spec and fails
+  `--check-openapi` as mounted-but-undocumented when it ships, and detail
+  coverage equals spec coverage — completeness is proven at runtime rather than
+  derived from the tree. Residual gaps recorded in I1: an unmounted route table
+  and a route behind a non-shipped feature stay invisible until they ship, where
+  I2 catches both. The list's removals-not-additions weakness is closed by a
+  coverage test in `route_scan.rs` (allowlisting `builder.rs`), which also takes
+  `build_script_scans_with_the_shared_analyzer`'s replacement; `--router-root`
+  and `--module` stay. Sequence is now I3 → I2 → I4; I5 is done. Docs reverted
+  to the maintained-list shape.
 
 - 2026-09-28: Gave the operation-detail findings an owner. I1–I3 covered only
   the route-set half of the invariant; the four detail findings had no
