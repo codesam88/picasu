@@ -1,0 +1,76 @@
+name: a failed tag edit rolls back the sidecars it had already written
+# A multi-item edit is a batch on the filesystem, and the batch is only as
+# atomic as the request makes it: the first item's sidecar is written before the
+# second item's write is even attempted, so a failure on the second one leaves
+# the first one's file describing an edit the cache never received. That is the
+# same divergence as the single-item case, reached one step earlier, and it is
+# what the rollback exists for.
+#
+# The two photos are in directories of their own so only the second is
+# read-only: the first is the one whose sidecar has to be put back.
+given:
+  - photo: /e2e_ro_batch/first/first.jpg
+    id_as: $first
+    asset_id_as: $first_id
+  - raw_file: /e2e_ro_batch/first/first.xmp
+    content: |
+      <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+        xmlns:dc="http://purl.org/dc/elements/1.1/"
+        xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+        <dc:subject><rdf:Bag><rdf:li>e2e_batch_seed_tag</rdf:li></rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+      <?xpacket end="w"?>
+  - photo: /e2e_ro_batch/second/second.jpg
+    id_as: $second
+    asset_id_as: $second_id
+when:
+  # One index per photo, from two prefetches of the same unfiltered tree. Both
+  # snapshots hold the same items in the same order — only `locate` differs —
+  # so the second one carries the index of the first photo too.
+  - call: POST /get/prefetch?locate=${first_id}
+    capture:
+      idx_first: response.prefetch.locateTo
+  - call: POST /get/prefetch?locate=${second_id}
+    capture:
+      ts: response.prefetch.timestamp
+      idx_second: response.prefetch.locateTo
+  - chmod:
+      path: /e2e_ro_batch/second
+      octal: "0500"
+  - call: PUT /put/edit_tag
+    raw_body: '{"indexArray":[${idx_first},${idx_second}],"addTagsArray":["e2e_batch_added"],"removeTagsArray":["e2e_batch_seed_tag"],"timestamp":${ts}}'
+    then:
+      - response.status: 500
+  - chmod:
+      path: /e2e_ro_batch/second
+      octal: "0755"
+  - call: POST /get/prefetch?locate=${first_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+    then:
+      - response.status: 200
+  - call: GET /get/metadata/${first_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  # The first photo's edit was written to its sidecar and then taken back: the
+  # cache never saw it, so neither must the file.
+  - response.json.tags:
+      contains: e2e_batch_seed_tag
+  - response.json.tags:
+      not_contains: e2e_batch_added
+  - file.contains: /e2e_ro_batch/first/first.xmp
+    text: e2e_batch_seed_tag
+  - file.not_contains: /e2e_ro_batch/first/first.xmp
+    text: e2e_batch_added
+  # And the item that failed left no file behind: a rejected write is not a
+  # half-written one.
+  - file_absent: /e2e_ro_batch/second/second.xmp

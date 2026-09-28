@@ -4,7 +4,7 @@ use crate::process::sanitize::is_valid_xml_char;
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// The sidecar a dir-album's metadata lives in, inside the album's own
 /// directory. Fixed rather than derived, so an album has exactly one name for
@@ -71,39 +71,46 @@ enum TitleEdit<'a> {
 /// test). The price is that `ExifTool` re-serialises a packet it edits, so the
 /// sidecar is not byte-stable across edits — only its properties are.
 ///
-/// Sidecar write failures are returned to the caller; callers should log and
-/// treat them as non-fatal.
+/// Sidecar write failures are returned to the caller. A caller that is
+/// persisting the edited metadata must not store it anyway:
+/// `process::sidecar_edit` is that caller, and it fails the edit instead.
 pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
-    if let AbstractData::Album(album) = abstract_data {
-        let sidecar = Path::new(&album.metadata.dir_path).join(ALBUM_SIDECAR);
-        return write_managed_fields(
-            &sidecar,
-            &ManagedFields {
-                tags: abstract_data.tag(),
-                description: abstract_data.description(),
-                rating: abstract_data.rating(),
-                title: TitleEdit::Set(album.metadata.custom_title.as_deref().unwrap_or_default()),
-            },
-        )
-        .map(|_report| ());
-    }
-
-    let Some(file_entry) = abstract_data.path() else {
+    let Some(sidecar) = sidecar_path(abstract_data) else {
         return Ok(());
     };
-    let sidecar = Path::new(&file_entry.file).with_extension("xmp");
+    let title = match abstract_data {
+        AbstractData::Album(album) => {
+            TitleEdit::Set(album.metadata.custom_title.as_deref().unwrap_or_default())
+        }
+        // A photo's title is not a field the app edits, so it is neither
+        // written nor cleared.
+        _ => TitleEdit::Unmanaged,
+    };
     write_managed_fields(
         &sidecar,
         &ManagedFields {
             tags: abstract_data.tag(),
             description: abstract_data.description(),
             rating: abstract_data.rating(),
-            // A photo's title is not a field the app edits, so it is neither
-            // written nor cleared.
-            title: TitleEdit::Unmanaged,
+            title,
         },
     )
     .map(|_report| ())
+}
+
+/// The file [`write_sidecar_for`] writes for `abstract_data`, or `None` for an
+/// item that has nowhere on disk to write one.
+///
+/// Public because the *same* derivation has to be known by a caller that has to
+/// undo the write: `process::sidecar_edit` reads the file before writing it so
+/// a failed batch can put it back, and a path derived twice is a path that can
+/// drift.
+pub fn sidecar_path(abstract_data: &AbstractData) -> Option<PathBuf> {
+    if let AbstractData::Album(album) = abstract_data {
+        return Some(Path::new(&album.metadata.dir_path).join(ALBUM_SIDECAR));
+    }
+    let file_entry = abstract_data.path()?;
+    Some(Path::new(&file_entry.file).with_extension("xmp"))
 }
 
 /// The tag each managed property is written under.
@@ -294,17 +301,26 @@ fn overwrite_with_managed_packet(sidecar: &Path, fields: &ManagedFields<'_>) -> 
 }
 
 fn write_sidecar_content(sidecar: &Path, content: &str) -> io::Result<()> {
-    let parent = sidecar.parent().unwrap_or(Path::new("."));
+    write_bytes_atomically(sidecar, content.as_bytes())
+}
+
+/// Put `bytes` at `target` through a sibling temporary file and one rename, so
+/// a failure part-way leaves the previous file whole.
+///
+/// The same mechanism [`overwrite_with_managed_packet`] and therefore
+/// `ExifTool` use, and the reason a caller that has to *undo* a write can use
+/// it to put a file back: a truncate-and-write would leave a sidecar empty if
+/// the process died or the disk filled between the two, which on the source of
+/// truth is worse than not rolling back at all.
+pub(crate) fn write_bytes_atomically(target: &Path, bytes: &[u8]) -> io::Result<()> {
+    let parent = target.parent().unwrap_or(Path::new("."));
     let tmp_name = format!(
         ".{}.tmp",
-        sidecar
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("xmp")
+        target.file_name().and_then(|n| n.to_str()).unwrap_or("xmp")
     );
     let tmp = parent.join(tmp_name);
-    std::fs::write(&tmp, content.as_bytes())?;
-    std::fs::rename(&tmp, sidecar)
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, target)
 }
 
 fn format_xmp_packet(

@@ -409,6 +409,29 @@ Relevant code: `backend/src/process/exif.rs` and
 
 ## Follow-up Status
 
+2026-09-28 — **Sidecar/cache divergence fixed.** All four edit endpoints
+(tag/description/rating/album) now go through one request-level transaction,
+`process::sidecar_edit::commit_metadata_edits`: capture each sidecar's bytes →
+write all sidecars → on any write _or read_ failure roll back the already
+written ones (bytes restored, created files removed) and return `ErrorKind::IO`
+(500) without storing anything → store payloads only after every sidecar
+landed. The failing item itself is not restored (temp+rename left it
+untouched); a store failure after successful writes deliberately leaves
+sidecar-ahead-of-cache, which reindex converges — the other direction was the
+silent lie. Review round found and fixed a real bug: a capture (backup-read)
+failure propagated without rollback, letting earlier writes survive a failed
+request — now pinned by unit + scenario tests (`...rolls_back_the_batch`)
+and mutation-checked (rollback removed → both die). Harness gained a
+generalized `chmod: {path, octal}` when-verb (file or dir, mode restored even
+on scenario panic via `remember_path_mode`/`restore_path_modes`) and a `not_contains` JSON assertion
+needed to say "cache unchanged" about a removal. Residuals: the frontend does
+not roll back its optimistic tag update on a 5xx (display-only, converges on
+refresh — follow-up); OpenAPI `responses(...)` still does not enumerate the
+reachable 500 (`.plan/openapi-contract-hardening.md`); concurrent edits of one
+asset can interleave (documented in the module header); chmod-based tests need
+a non-root runner (CI and this machine are). Gates: `cargo test -p picasu`
+465 (+6 unit, +6 scenarios, 2 ignored), snapfab 75, `just backend-check`,
+`cargo deny`, `just docs-check`.
 2026-09-28 — **Unmanaged-sidecar preservation implemented.** `write_sidecar_for`
 is now a read-modify-write through ExifTool (`exif::write_xmp_properties`,
 sharing the reader's thread-local `-stay_open` session): only the managed

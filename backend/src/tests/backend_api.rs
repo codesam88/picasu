@@ -116,6 +116,26 @@ fn assert_json_contains(root: &Value, key: &str, val: &Value, vars: &HashMap<Str
     );
 }
 
+/// The absence counterpart of [`assert_json_contains`], and the only way to
+/// say "the cache is unchanged" about an edit that *removes* a value: asserting
+/// that the old value is still there would pass for a cache that stored both
+/// the removal and the addition.
+fn assert_json_not_contains(root: &Value, key: &str, val: &Value, vars: &HashMap<String, String>) {
+    let field_path = key.strip_prefix("response.json.").unwrap_or(key);
+    let arr = navigate_json(root, field_path)
+        .as_array()
+        .unwrap_or_else(|| panic!("{key} must be an array"));
+    let absent = val
+        .as_object()
+        .and_then(|o| o.get("not_contains"))
+        .expect("{key}: expected {{not_contains: ...}}");
+    let expected_val = interpolate_value(absent, vars);
+    assert!(
+        !arr.contains(&expected_val),
+        "{key} contains {expected_val}, which it must not"
+    );
+}
+
 fn assert_json_compare(root: &Value, key: &str, val: &Value, vars: &HashMap<String, String>) {
     let field_path = key.strip_prefix("response.json.").unwrap_or(key);
     let actual = navigate_json(root, field_path);
@@ -262,7 +282,13 @@ fn check_body_assertions(body_bytes: &[u8], then_items: &[Value], vars: &HashMap
         if let Some(obj) = item.as_object() {
             for (key, val) in obj {
                 if key.starts_with("response.json.") {
-                    if val.as_object().and_then(|o| o.get("contains")).is_some() {
+                    if val
+                        .as_object()
+                        .and_then(|o| o.get("not_contains"))
+                        .is_some()
+                    {
+                        assert_json_not_contains(&parsed, key, val, vars);
+                    } else if val.as_object().and_then(|o| o.get("contains")).is_some() {
                         assert_json_contains(&parsed, key, val, vars);
                     } else if val
                         .as_object()
@@ -789,6 +815,47 @@ fn random_media_destination(item: &Value, selected: &RandomizableFormat) -> Stri
 
 // ── Deterministic byte transforms on an already-placed file ──
 
+/// Change a placed file's or directory's POSIX permissions, for the scenarios
+/// that need a filesystem to refuse a read or a write.
+///
+/// `{path, octal}`, IMAGE_HOME-relative, `octal` in the `chmod` spelling
+/// (`"0500"`, `"0200"`). A directory is the way to stop a sidecar write; a
+/// single file is the way to stop a sidecar *read* while its directory stays
+/// writable, which is a different failure on a different side of the same
+/// request. Both depend on the test process not being root, which is what the
+/// runner and CI are — a root run would silently make these scenarios assert
+/// nothing — so the path is remembered through
+/// [`crate::tests::bootstrap::remember_path_mode`] and the harness puts it back
+/// even when a scenario panics.
+#[cfg(unix)]
+fn set_path_mode(item: &Value, data: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let spec = &item["chmod"];
+    let rel = spec["path"]
+        .as_str()
+        .unwrap_or_else(|| panic!("chmod.path is required, got: {item}"))
+        .trim_start_matches('/')
+        .to_string();
+    let octal = spec["octal"]
+        .as_str()
+        .unwrap_or_else(|| panic!("chmod.octal is required for {rel}"))
+        .trim_start_matches("0o")
+        .to_string();
+    let mode = u32::from_str_radix(&octal, 8)
+        .unwrap_or_else(|e| panic!("chmod.octal {octal:?} is not octal: {e}"));
+    let path = data.join(&rel);
+    assert!(path.exists(), "chmod: {} does not exist", path.display());
+    crate::tests::bootstrap::remember_path_mode(&path);
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode))
+        .unwrap_or_else(|e| panic!("chmod: mode {octal} on {}: {e}", path.display()));
+}
+
+#[cfg(not(unix))]
+fn set_path_mode(_item: &Value, _data: &Path) {
+    panic!("the chmod verb changes POSIX permissions, which this platform has no equivalent for");
+}
+
 /// A `truncate_file` given item: keep only the first `keep` bytes of `path`.
 struct TruncateFile {
     path: String,
@@ -927,6 +994,15 @@ fn dispatch_when_item<'c>(
     }
     if item.get("upload").is_some() {
         execute_upload(item, vars, client)
+    } else if item.get("chmod").is_some() {
+        // Change the permissions of a path the given phase placed, so a
+        // scenario can watch the server meet a filesystem that refuses a read
+        // or a write.
+        set_path_mode(item, &test_image_home());
+        // Return a status-200 probe response so this branches cleanly in the
+        // `when` flow like any other call/upload verb.
+        let cookie = auth_cookie(client);
+        client.get("/get/index/status").cookie(cookie).dispatch()
     } else if item.get("write_file").is_some() {
         // Overwrite a file's bytes AFTER it has been indexed, so a scenario can
         // exercise genuine verify paths (e.g. content-change verify-mismatch).

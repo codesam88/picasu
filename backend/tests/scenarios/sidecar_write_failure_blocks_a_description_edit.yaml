@@ -1,0 +1,59 @@
+name: a description edit whose sidecar cannot be written leaves the cache alone
+# The description half of the same contract as
+# `a_tag_edit_whose_sidecar_cannot_be_written_leaves_the_cache_alone`, on the
+# other single-field endpoint that writes a sidecar.
+#
+# A description is the field most likely to be edited where the sidecar cannot
+# follow — a read-only mount, a photo directory the server may read but not
+# write — and the one whose divergence is most confusing afterwards, because
+# the user sees their text in the UI and again in the file after the next
+# reindex, having never been told the first time did not land.
+given:
+  - photo: /e2e_ro_desc/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+  - raw_file: /e2e_ro_desc/photo.xmp
+    content: |
+      <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+        xmlns:dc="http://purl.org/dc/elements/1.1/"
+        xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+        <dc:description><rdf:Alt><rdf:li xml:lang="x-default">e2e_seed_description</rdf:li></rdf:Alt></dc:description>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+      <?xpacket end="w"?>
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  - chmod:
+      path: /e2e_ro_desc
+      octal: "0500"
+  - call: PUT /put/set_user_defined_description
+    raw_body: '{"index":${idx},"description":"e2e_new_description","timestamp":${ts}}'
+    then:
+      - response.status: 500
+  - chmod:
+      path: /e2e_ro_desc
+      octal: "0755"
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+    then:
+      - response.status: 200
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.description: e2e_seed_description
+  - file.contains: /e2e_ro_desc/photo.xmp
+    text: e2e_seed_description
+  - file.not_contains: /e2e_ro_desc/photo.xmp
+    text: e2e_new_description

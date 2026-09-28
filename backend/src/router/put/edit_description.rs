@@ -1,7 +1,7 @@
 use crate::openapi_components::Unauthorized;
 use crate::process::sanitize::sanitize_text;
+use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
 use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
-use crate::process::xmp_write::write_sidecar_for;
 use crate::storage::db::open_tree_snapshot_table;
 
 use crate::error::{AppError, ErrorKind, ResultExt};
@@ -12,7 +12,6 @@ use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 use anyhow::Result;
-use log::warn;
 use rocket::serde::{Deserialize, json::Json};
 use serde::Serialize;
 
@@ -73,12 +72,16 @@ pub async fn set_user_defined_description(
                 .map(sanitize_text);
             abstract_data.set_description(description);
 
-            if let Err(e) = write_sidecar_for(&abstract_data) {
-                warn!("Failed to write XMP sidecar: {e}");
-            }
-
-            store_metadata_record(&asset_id, &abstract_data, None)
-                .or_raise(|| (ErrorKind::Database, "Failed to store metadata"))?;
+            // Sidecar first, payload second: a description that reached only
+            // the cache would be reverted by the next reindex, silently.
+            let edited = [EditedItem {
+                asset_id,
+                data: abstract_data,
+            }];
+            commit_metadata_edits(&edited, |asset_id, data| {
+                store_metadata_record(asset_id, data, None)
+                    .or_raise(|| (ErrorKind::Database, "Failed to store metadata"))
+            })?;
         }
 
         Ok(())

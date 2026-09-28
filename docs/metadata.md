@@ -390,6 +390,34 @@ content is gone and nothing reports it, because there is no signal to tell that
 apart from editing a real packet. The result is still a readable packet holding
 the managed set; the operator is simply not told.
 
+### When the sidecar write fails
+
+The sidecar is the source of truth and the metadata table is a cache of it, so a
+sidecar that could not be written is an edit that did not happen — and the cache
+must not be told it did. A failed write therefore **fails the request** (HTTP
+500, `IO`), for `/put/edit_tag`, `/put/set_user_defined_description`,
+`/put/edit_rating` and `/put/set_album_title` alike, and nothing is stored. The
+practical cases are a directory the server may read but not write, a full disk,
+and a sidecar that cannot be read before it is overwritten.
+
+A tag or rating request can carry several assets, and the writes happen one by
+one, so a failure on a later asset would leave the earlier ones' sidecars holding
+edits the cache never received. The sidecars are therefore read before they are
+written, and a failure puts back every one this request had already written: a
+sidecar that existed is restored byte for byte, and a sidecar the request
+created is removed. A sidecar that cannot be **read** — write-only, or a
+directory where the file should be — is a failure of the same kind and at the
+same point: the request is refused, because a write that cannot be undone is not
+one this contract can make. If such a rollback itself fails — the directory is
+the reason the request is failing — it is logged at error level and left for the
+next reindex, which is the only thing that can reconcile a file that is ahead of
+the cache.
+
+The opposite imbalance is not corrected. If a payload fails to store after its
+sidecar was written, the request fails and the file is left holding an edit the
+cache does not have; the next reindex reads the file and adopts it, so the edit
+survives and nothing is lost.
+
 ### Implementation notes
 
 The formats below are how the values are written in the file. What the backend
