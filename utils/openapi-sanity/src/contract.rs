@@ -5,8 +5,13 @@
 //! existing pipeline. The build script only asks whether a registered handler
 //! carries an annotation, and the backend contract tests compare Rocket's
 //! *runtime* route table with the spec — but an annotation can sit on a route
-//! attribute and still describe a different path or a different verb. The route
-//! is mounted, the spec documents something else, and every other check passes.
+//! attribute and still declare a verb the route does not serve. The route is
+//! mounted, the spec documents something else, and every other check passes.
+//!
+//! The path half of that local comparison is gone: every path disagreement
+//! converges on a finding elsewhere (recorded at the deletion site in
+//! `check_registered`'s body), and dropping it is what left this crate with no
+//! Rocket-to-OpenAPI path translation to maintain.
 //!
 //! The comparison is done on source so it needs no compiled artifact and stays
 //! cheap enough to run on every `just openapi-check`. What it cannot answer —
@@ -19,7 +24,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::finding::Finding;
 use crate::handlers::{Handler, HttpMethod};
 use crate::modules::{SourceUnit, handler_module_path};
-use crate::path::to_spec_path;
 use crate::scan_source;
 
 /// One operation declared by an `OpenAPI` document.
@@ -492,39 +496,34 @@ pub(crate) struct Registration {
 pub(crate) struct DeclaredOperation {
     pub(crate) method: HttpMethod,
     pub(crate) path: String,
-    /// Whether the annotation and the route attribute it sits on name the same
-    /// operation. A handler that disagrees with itself is already reported, so a
-    /// caller comparing it with the document does not restate the cause.
+    /// Whether the annotation and the route attribute it sits on declare the
+    /// same method. A handler that disagrees with itself is already reported, so
+    /// a caller comparing it with the document does not restate the cause. Path
+    /// agreement is not part of it: the route-attr↔annotation path rule was
+    /// dropped as redundant, and every path disagreement now converges on a
+    /// finding elsewhere (see the note at that rule's deletion site).
     pub(crate) agrees_with_route: bool,
 }
 
 /// The operation a route-declaring function documents.
 ///
-/// utoipa derives a path from the route when the annotation omits one, so the
-/// annotation wins where it speaks and the route fills the silence. The document
-/// is generated from the annotation, so the annotation is also what counts as the
+/// The document is generated from the annotation, so the annotation is the
 /// source declaration of the operation — including when it disagrees with the
-/// route, which is why a disagreeing handler still occupies its operation in the
-/// document instead of looking undeclared. `None` when neither the annotation nor
-/// the route names both a verb and a path.
+/// route, which is why a disagreeing handler still occupies its operation in
+/// the document instead of looking undeclared. The route's URI is not a
+/// fallback: every annotation in the repository names its `path`, and the
+/// route-path half of `agrees_with_route` went with the dropped path rule, so
+/// this crate translates no Rocket URI. `None` when the annotation names no
+/// path, or neither the annotation nor the route names a verb.
 pub(crate) fn declared_operation(handler: &Handler) -> Option<DeclaredOperation> {
-    let route_path = handler.uri.as_deref().map(to_spec_path);
-    let annotated_path = handler.spec_path.as_deref();
-    // Only a disagreement is a disagreement: an annotation that names no path or
-    // no verb leaves the route to speak, and the route is then the declaration.
-    let same_path = match (route_path.as_deref(), annotated_path) {
-        (Some(route), Some(annotated)) => route == annotated,
-        _ => true,
-    };
+    let annotated_path = handler.spec_path.as_deref()?;
     let same_method = handler.method.is_none() || handler.method == handler.spec_method;
-
     let method = handler.spec_method.or(handler.method)?;
-    let path = annotated_path.or(route_path.as_deref())?;
 
     Some(DeclaredOperation {
         method,
-        path: path.to_string(),
-        agrees_with_route: same_path && same_method,
+        path: annotated_path.to_string(),
+        agrees_with_route: same_method,
     })
 }
 
@@ -605,19 +604,16 @@ fn check_registered(
         return;
     }
 
-    let route_path = handler.uri.as_deref().map(to_spec_path);
-    if let (Some(route), Some(annotated)) = (route_path.as_deref(), handler.spec_path.as_deref())
-        && route != annotated
-    {
-        findings.push(Finding::on_line(
-            &declaration.label,
-            handler.line,
-            format!(
-                "{identity}: the route serves {route} but its #[utoipa::path] declares \
-                 {annotated}"
-            ),
-        ));
-    }
+    // The route-attr↔annotation path comparison that used to be here is
+    // redundant, not merely dropped: every path disagreement converges on a
+    // finding elsewhere. The mounted route's own path missing from the document
+    // surfaces at `--check-openapi` as mounted-but-absent from the spec (the
+    // load-bearing direction), the annotation's path missing from it is the
+    // "declared in source but absent from the spec" finding below, and a handler
+    // registered under a path no route serves is the route's own registration
+    // checks. That comparison was also the last whole-path Rocket-to-OpenAPI
+    // translation in this crate, which is what allowed the translation to leave
+    // it. The method comparison stays: it needs no translation.
     if let (Some(route), Some(annotated)) = (handler.method, handler.spec_method)
         && route != annotated
     {

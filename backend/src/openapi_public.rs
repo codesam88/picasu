@@ -10,14 +10,34 @@
 
 use crate::openapi::generate_json;
 
-/// Path prefix of the test-only probe endpoints. Shared with the mounted-route
-/// parity test so a probe cannot be documented in one place and hidden in the
-/// other.
+/// Path prefix of the test-only probe endpoints, and the strip's matcher.
+///
+/// It is also the first entry of [`CONTRACT_EXCLUSION_PREFIXES`], which is what
+/// keeps the strip aligned with the contract policy without widening it: the
+/// strip below removes exactly this prefix (and the schemas only it reaches),
+/// so a contract exclusion that is not a stripped surface cannot start removing
+/// published paths.
 pub const TEST_ONLY_PATH_PREFIX: &str = "/get/test/";
+
+/// Path prefixes deliberately outside the published contract — the one backend
+/// definition every consumer derives from: the mounted-route parity filter
+/// (`is_outside_contract`), the `justfile` recipe's `--exclude-prefix` values
+/// (held to it by a test that reads the recipe), and `--check-openapi`'s drop
+/// rule when it lands.
+///
+/// `TEST_ONLY_PATH_PREFIX` is registered only in test builds and stripped from
+/// the public artifact. `/assets` is the static file mount for the frontend: it
+/// serves bytes, not API operations, so it carries no `OpenAPI` operation for
+/// the document to omit.
+pub const CONTRACT_EXCLUSION_PREFIXES: [&str; 2] = [TEST_ONLY_PATH_PREFIX, "/assets"];
 
 /// Whether a path belongs to the test-only probe surface, which is registered
 /// only in test builds (`#[cfg(test)]` in `generate_get_routes`) and enabled
 /// by the test bootstrap.
+///
+/// The strip's predicate: it matches the test-only entry of the contract
+/// policy ([`CONTRACT_EXCLUSION_PREFIXES`]) and nothing else, by construction —
+/// `/assets` is outside the contract but never appears in the document.
 #[must_use]
 pub fn is_test_only_path(path: &str) -> bool {
     path.starts_with(TEST_ONLY_PATH_PREFIX)

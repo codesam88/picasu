@@ -11,8 +11,11 @@ matches the source that produced it, and the build script only asks whether a
 registered handler carries an annotation at all. Between those two facts there is a
 class of drift nothing in the pipeline could see:
 
-- an annotation whose `path` or verb disagrees with the route attribute it sits on —
-  the route is mounted and served normally, the document describes something else;
+- an annotation whose verb disagrees with the route attribute it sits on — the route
+  is mounted and served normally, the document describes something else. A path
+  disagreement needs no rule of its own: the annotation's path absent from the
+  document is the "declared in source but absent from the spec" finding below, and
+  the route's own path absent from it is the backend's mounted-route comparison;
 - a `#[utoipa::path]` on a sibling function in the same file being read as this
   function's own, which registers a route under another operation's metadata;
 - a `GuardResult` the handler drops, so the operation documents a `401` and serves an
@@ -40,11 +43,13 @@ The semantic phase is:
 openapi-sanity check \
     --router-root backend/src/router \
     --spec backend/openapi.json \
-    --exclude-prefix /get/test/
+    --exclude-prefix /get/test/ \
+    --exclude-prefix /assets
 ```
 
 run from the repository root; the recipe passes absolute paths, and the first two flags
-are the defaults, so `openapi-sanity check --exclude-prefix /get/test/` is equivalent.
+are the defaults, so `openapi-sanity check --exclude-prefix /get/test/ --exclude-prefix
+/assets` is equivalent.
 The second phase is `openapi-artifact`, which regenerates the document and diffs it
 against the committed one. `just check` includes `openapi-check`, so CI runs it
 (`.github/workflows/ci.yml`, the `just check` step), and `.githooks/pre-commit` runs it for
@@ -62,10 +67,14 @@ any commit that touches `backend/`. The pipeline as a whole is documented in
 
 `--module` and `--exclude-prefix` are repeatable. `--module` **replaces** the built-in
 module list, which is how the gate is pointed at something other than the repository.
-`--exclude-prefix` is a parameter rather than a constant because it describes the
-artifact, not the analysis: the public document strips the test-only probe surface
-(`/get/test/`) while the handlers stay in the source, so a caller that forgets the
-exclusion sees the omission as findings rather than as a passing gate.
+`--exclude-prefix` stays a parameter because the analyzer has no backend dependency: it
+describes the artifact, not the analysis — the public document strips the test-only
+probe surface (`/get/test/`) while the handlers stay in the source, and `/assets`
+serves the frontend's files rather than API operations. The list itself lives once,
+in the backend's `CONTRACT_EXCLUSION_PREFIXES` (`backend/src/openapi_public.rs`), and a
+test there reads the `justfile` recipe to hold its `--exclude-prefix` values to that
+constant, so a caller that forgets an exclusion sees the omission as findings rather
+than as a passing gate.
 
 ### Exit codes and the summary line
 
@@ -112,7 +121,7 @@ let units = vec![SourceUnit::for_relative_path(
     &source,
 )];
 let spec = spec_operations(&document);
-for finding in check_contract(&units, "backend/openapi.json", &spec, &["/get/test/"]) {
+for finding in check_contract(&units, "backend/openapi.json", &spec, &["/get/test/", "/assets"]) {
     eprintln!("{finding}");
 }
 ```
@@ -125,12 +134,11 @@ files itself.
 
 ### The source/spec contract — `check_contract`
 
-Seven rules, each reported as a `file:line: message`:
+Six rules, each reported as a `file:line: message`:
 
 | Finding                                                                          | Drift it catches                                         |
 | -------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `registered in routes![] but the function carries no #[utoipa::path] annotation` | A mounted route with no operation of its own             |
-| `the route serves X but its #[utoipa::path] declares Y`                          | Route URI and annotated path disagree                    |
 | `the route declares GET but its #[utoipa::path] declares POST`                   | Route attribute and annotated verb disagree              |
 | `METHOD PATH is declared in source but absent from the spec`                     | A registered handler the document does not carry         |
 | `METHOD PATH is in the spec but no scanned route declares it`                    | A committed operation no scanned source backs            |
@@ -209,12 +217,13 @@ Five rule groups over each operation's inputs, each reported the same way:
 | `component schema X is defined but nothing references it`                                                                          | An orphaned schema (`FileEntry` shipped as one)                 |
 
 The rules compare sets, names and flags, not schema types: a `timestamp` declared
-as `string` would not be reported. Placeholders are compared after the same
-`to_spec_path` normalization the contract rules use, so `<_path..>` and `{path}`
-are one name, and a query parameter's `required` flag is checked against
-`Option<T>` on the bound argument. A `Form<T>` body is satisfied by a
-`multipart/form-data` content type; naming the schema under any other media type
-is a finding, because the media type is how a caller knows to send the fields.
+as `string` would not be reported. Placeholders are compared as names — the route's
+`<_path..>` and the document's `{path}` are one `path` once each side is read for
+what it spells — so no whole-path translation is involved, and a query parameter's
+`required` flag is checked against `Option<T>` on the bound argument. A `Form<T>` body
+is satisfied by a `multipart/form-data` content type; naming the schema under any other
+media type is a finding, because the media type is how a caller knows to send the
+fields.
 Two inputs are skipped where the source cannot name them at all — an unnamed body
 type and a query parameter no plain argument binds — and both are listed under
 [Limitations](#what-is-not-checked).
@@ -227,8 +236,9 @@ type and a query parameter no plain argument binds — and both are listed under
   is reported on, malformed entries), `handlers.rs` (route attributes, per-function
   `#[utoipa::path]` attribution, nested token groups), `guards.rs` (direct vs deferred
   bindings, every enforcement shape, both discard shapes, and `KNOWN_GUARDS` held
-  against the backend's actual `FromRequest` implementations), `paths.rs` (the
-  Rocket-to-OpenAPI translation).
+  against the backend's actual `FromRequest` implementations). The
+  Rocket-to-OpenAPI translation lives with the backend comparison that uses it, so
+  its cases run under `cargo test --lib openapi_contract` instead.
 - **Fixture trees** under `tests/fixtures/{clean,drift,unauthored,untagged}`. `clean`
   reports nothing; each of the other three carries one instance of every failure mode of
   its check, and the whole report is asserted as an exact list — file, line and message —
@@ -253,13 +263,13 @@ type and a query parameter no plain argument binds — and both are listed under
 The analyzer is generic; the vocabulary it checks against is not. For a backend other
 than picasu:
 
-| Constant                                                  | What it holds                                                                                                | How a consumer changes it                                            |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| `SCANNED_MODULES` (`modules.rs`)                          | Picasu's router files that carry route tables                                                                | Edit the constant — **not** a CLI input                              |
-| `AUTH_POLICY` (`auth.rs`)                                 | All 61 picasu `operationId`s with their guard classes                                                        | Edit the constant — **not** a CLI input                              |
-| `KNOWN_GUARDS` (`guards.rs`)                              | Picasu's guard types, matched on the last path segment                                                       | Edit the constant and the `GuardClass` mapping — **not** a CLI input |
-| `KNOWN_TAGS`, `DATA_API_PREFIXES`, `PAGE_TAG` (`tags.rs`) | Picasu's subject taxonomy, the path shapes that identify data routes, and the tag reserved for the SPA shell | Edit the constants — **not** a CLI input                             |
-| `--exclude-prefix /get/test/`                             | Picasu's test-only probe surface, passed by `just openapi-check`                                             | Pass your own — this one _is_ a CLI input                            |
+| Constant                                                  | What it holds                                                                                                                                         | How a consumer changes it                                            |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `SCANNED_MODULES` (`modules.rs`)                          | Picasu's router files that carry route tables                                                                                                         | Edit the constant — **not** a CLI input                              |
+| `AUTH_POLICY` (`auth.rs`)                                 | All 61 picasu `operationId`s with their guard classes                                                                                                 | Edit the constant — **not** a CLI input                              |
+| `KNOWN_GUARDS` (`guards.rs`)                              | Picasu's guard types, matched on the last path segment                                                                                                | Edit the constant and the `GuardClass` mapping — **not** a CLI input |
+| `KNOWN_TAGS`, `DATA_API_PREFIXES`, `PAGE_TAG` (`tags.rs`) | Picasu's subject taxonomy, the path shapes that identify data routes, and the tag reserved for the SPA shell                                          | Edit the constants — **not** a CLI input                             |
+| `--exclude-prefix /get/test/ --exclude-prefix /assets`    | Picasu's test-only probe surface and static file mount, passed by `just openapi-check`, held to the backend's `CONTRACT_EXCLUSION_PREFIXES` by a test | Pass your own — this one _is_ a CLI input                            |
 
 The first four rows are compile-time constants, not configuration: a consumer with a
 different backend edits the source. `--exclude-prefix` and `--module` are the only
@@ -299,8 +309,10 @@ macros are not expanded beyond what the visitor reads as tokens. Consequences:
 - a `routes![]` entry is recognised as a macro whose last path segment is `routes`, and
   its entries must be plain `ident` or `path::ident` — anything else is reported rather
   than resolved;
-- `to_spec_path` is a text translation, and it is the single one in the repository so
-  the gate and the runtime comparison cannot drift apart.
+- whole-path translation is not done here at all: `to_spec_path` lives in the backend
+  (`backend/src/spec_path.rs`), beside the comparisons that use it, and the rules in
+  this crate compare segment and placeholder _names_, which need no translation — so
+  there is no second copy to drift from.
 
 ### What is not checked
 

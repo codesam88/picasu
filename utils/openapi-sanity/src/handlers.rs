@@ -75,8 +75,11 @@ pub struct Handler {
     /// Method from this function's own Rocket route attribute.
     pub method: Option<HttpMethod>,
     /// URI from this function's own Rocket route attribute, verbatim — Rocket
-    /// form, including `<param..>` segments and any query string. Use
-    /// [`crate::to_spec_path`] to compare it with a documented path.
+    /// form, including `<param..>` segments and any query string. The
+    /// name-level readers ([`crate::route_segments`],
+    /// [`crate::route_query_bindings`]) read it without translating; the
+    /// Rocket-to-OpenAPI path translation itself lives in the backend, whose
+    /// comparisons need it.
     pub uri: Option<String>,
     /// Whether this function carries a `#[utoipa::path]` annotation.
     pub annotated: bool,

@@ -813,6 +813,45 @@ first instinct that the invariant framing ruled out.
 
 ## Progress
 
+- 2026-09-28: **I3 landed.** `to_spec_path` moved to `backend/src/spec_path.rs`
+  (non-test code, so I2's `--check-openapi` can read it), with
+  `utils/openapi-sanity/tests/paths.rs` deleted and its cases merged into the
+  `rocket_paths_normalize_to_spec_templates` case in `openapi_contract.rs`. The
+  analyzer's re-export, both `contract.rs` call sites and the intra-doc
+  references in `lib.rs` / `handlers.rs` / `path.rs` are gone; `grep` finds
+  `to_spec_path` backend-side only.
+
+  The pathless-annotation fallback was verified dormant first: all 63
+  `#[utoipa::path(` attributes under `backend/src` declare `path = "..."`, so
+  `annotated_path.or(route_path)` could not reach the route path. The
+  route-attr↔annotation path rule, the route-path half of `agrees_with_route` and
+  that fallback are removed; the convergence argument is recorded at the
+  deletion site. The method rule and the name-level readers stay. Fixtures
+  re-scoped onto the finding that now owns each case: the drift tree's renamed
+  path is reported as "declared in source but absent from the spec", its spec
+  entry moved to `/get/rows` so `get_rows` now carries the duplicate
+  `operationId`, and `params.rs`'s disagreeing-handler case asserts that owning
+  finding by message.
+
+  The exclusion policy is one const, `CONTRACT_EXCLUSION_PREFIXES` in
+  `openapi_public` — `[TEST_ONLY_PATH_PREFIX, "/assets"]`.
+  `is_outside_contract` derives from it, the recipe gains
+  `--exclude-prefix /assets`, and
+  `the_justfile_recipe_pins_the_contract_exclusion_policy` reads the `justfile`
+  and asserts set-equality with the const — verified to fail in both directions,
+  naming the side that is missing what. The strip still matches
+  `is_test_only_path` alone, so it cannot start dropping `/assets`. Note the
+  window I6 decision 4 opened: `/get/test/` leaves the recipe when I1's walk
+  skips `cfg(test)` items, and this test is what forces the removal.
+
+  Green: `cargo test -p openapi-sanity` (all suites),
+  `cargo test --lib openapi_contract` (20), `just test` (320 backend lib tests
+  plus every integration suite), `just openapi-check` (61 operations, no
+  findings; `openapi.json` matches), `just utils-check`, `just backend-check`,
+  `just plan-lint`, `just docs-check`, and `just check` in full. The eight
+  `frontend-playwright` UI-scenario failures in `just test` reproduce unchanged
+  on a clean `HEAD` and are unrelated to this item.
+
 - 2026-09-28: **I6 outcomes — the four decisions, recorded before I3, I2 or I1
   start** (investigation over the tree, per I6's acceptance; decisions 1, 2 and
   4 revised after the user's review):

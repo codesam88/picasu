@@ -1,8 +1,8 @@
 use rocket::get;
 
-// Drift: the annotation documents a path the route does not serve. The spec has
-// the renamed path, as it would after a regeneration, so the disagreement is
-// reported once instead of also as spec drift.
+// Drift: the annotation documents a path the route does not serve, and the
+// document carries neither, so the disagreement is reported on the annotation
+// side — its path absent from the spec; the route's is `--check-openapi`'s.
 #[utoipa::path(get, path = "/get/get-data-RENAMED", tag = "timeline")]
 #[get("/get/get-data")]
 pub async fn get_data() {}

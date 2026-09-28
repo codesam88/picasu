@@ -1113,26 +1113,37 @@ fn an_untyped_schema_and_a_primitive_are_distinguishable_from_a_named_one() {
 
 #[test]
 fn a_handler_whose_annotation_disagrees_with_its_route_is_left_to_the_contract_check() {
-    // The document inherits the renamed path from the annotation, so its
-    // placeholders describe a route the handler does not serve. P1 reporting that
-    // again would restate `check_contract`'s local finding in a second vocabulary,
-    // and P4 would compare an id against a document describing the rename.
+    // The route serves `/write/albums` while the annotation declares
+    // `/write/renamed`, and the document carries neither: the path rule is gone,
+    // so the disagreement converges on the annotation's path being absent from
+    // the document — `check_contract`'s finding — and on `--check-openapi`'s
+    // mounted-but-absent once the document is regenerated from the annotation.
+    // P1 reporting the same handler would restate that in a second vocabulary,
+    // and P4 would compare an id against a document that declares nothing.
     let tree = one_handler_tree(
         "params-annotation-disagrees",
         ROUTE_WITH_RENAMED_ANNOTATION,
-        RENAMED_DOCUMENT,
+        r#"{
+  "openapi": "3.1.0",
+  "paths": {}
+}
+"#,
     );
 
     assert_eq!(
         tree.param_findings(&[]),
         Vec::<String>::new(),
-        "the disagreement is one finding of its own, and it belongs to the path and \
-         method rules"
+        "the disagreement has one owner, and it is not the parameter rules"
     );
+    let contract = tree.findings(&[]);
     assert_eq!(
-        tree.findings(&[]).len(),
+        contract.len(),
         1,
-        "`check_contract` is the rule that names it"
+        "`check_contract` is the rule that names it: {contract:#?}"
+    );
+    assert!(
+        contract[0].contains("GET /write/renamed is declared in source but absent from the spec"),
+        "what it names is the annotation's path missing from the document: {contract:#?}"
     );
 }
 
@@ -1437,20 +1448,6 @@ const DOCUMENT_WITH_OPTIONAL_QUERY: &str = r#"{
         "parameters": [
           { "in": "query", "name": "since", "required": false, "schema": { "type": "integer" } }
         ],
-        "responses": { "200": { "description": "Albums" } }
-      }
-    }
-  }
-}
-"#;
-
-const RENAMED_DOCUMENT: &str = r#"{
-  "openapi": "3.1.0",
-  "paths": {
-    "/write/renamed": {
-      "get": {
-        "operationId": "get_album",
-        "tags": ["albums"],
         "responses": { "200": { "description": "Albums" } }
       }
     }

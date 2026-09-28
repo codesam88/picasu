@@ -134,7 +134,8 @@ openapi-sanity:
     cargo run --quiet --package openapi-sanity -- check \
         --router-root "{{justfile_directory()}}/backend/src/router" \
         --spec "{{justfile_directory()}}/backend/openapi.json" \
-        --exclude-prefix /get/test/
+        --exclude-prefix /get/test/ \
+        --exclude-prefix /assets
 
 # Generated-artifact diff against the committed document
 [private]

@@ -1,7 +1,8 @@
-//! The one Rocket-to-OpenAPI path translation in the repository.
+//! Reading the names of a Rocket URI's parameters and of an `OpenAPI` path
+//! template.
 //!
 //! A Rocket URI and an `OpenAPI` path template name the same value three ways, and
-//! every consumer of this module needs a different one:
+//! every consumer of this module needs one of them:
 //!
 //! | spelling | shape | who needs it |
 //! | --- | --- | --- |
@@ -9,39 +10,13 @@
 //! | template name | `path`, `asset_id` | a documented path and the `<segment>` names a route serves |
 //! | path template | `/albums/view/{path}` | the committed document |
 //!
-//! All three are read from one scan of the URI, so a route's segments, the
-//! document's placeholders and the handler's arguments cannot disagree about a
-//! name the analyzer only half understands. What is *not* here is a rule: this
-//! module translates, and [`crate::check_params`] decides whether two spellings
-//! of the same name ought to be the same value.
-
-/// Rewrite a Rocket route URI to `OpenAPI` path-template form.
-///
-/// Rocket declares segments as `<name>` / `<name..>`; `OpenAPI` uses `{name}`.
-/// A
-/// leading underscore in a Rocket segment name (`<_path..>`, used to avoid a
-/// clash with the handler name) has no `OpenAPI` counterpart and is dropped.
-/// The
-/// query part is dropped because it is documented per parameter, not in the
-/// path.
-///
-/// Mounted-route parity compares a runtime route table against a generated
-/// document, so both sides have to agree on this translation. It lives here so
-/// that a second, drifting copy cannot be introduced by a new consumer.
-#[must_use]
-pub fn to_spec_path(uri: &str) -> String {
-    let path = path_of(uri);
-    let scan = scan(path);
-    let mut out = String::with_capacity(path.len());
-    for segment in &scan.segments {
-        out.push_str(segment.prefix);
-        out.push('{');
-        out.push_str(segment.template);
-        out.push('}');
-    }
-    out.push_str(scan.trailing);
-    out
-}
+//! The readers below cover the first two spellings off one scan of the URI, so a
+//! route's segments, the document's placeholders and the handler's arguments
+//! cannot disagree about a name the analyzer only half understands. What is
+//! *not* here is a rule or the translation between the spellings: this module
+//! reads names, [`crate::check_params`] decides whether two spellings of the
+//! same name ought to be the same value, and the Rocket-to-OpenAPI path
+//! translation lives in the backend, whose comparisons need it.
 
 /// The names a Rocket URI's `<segment>` declarations bind parameters by, in the
 /// order they appear.
@@ -53,14 +28,13 @@ pub fn to_spec_path(uri: &str) -> String {
 #[must_use]
 pub fn route_bindings(uri: &str) -> Vec<String> {
     scan(path_of(uri))
-        .segments
         .iter()
         .map(|segment| segment.binding.to_string())
         .collect()
 }
 
-/// The names a Rocket URI's `<segment>` declarations have once
-/// [`to_spec_path`] has rewritten them, in the order they appear.
+/// The names a Rocket URI's `<segment>` declarations spell as template names,
+/// in the order they appear.
 ///
 /// What a path template's `{name}` placeholders ought to be, read off the route
 /// rather than off the document, so the two halves of the comparison cannot
@@ -68,7 +42,6 @@ pub fn route_bindings(uri: &str) -> Vec<String> {
 #[must_use]
 pub fn route_segments(uri: &str) -> Vec<String> {
     scan(path_of(uri))
-        .segments
         .iter()
         .map(|segment| segment.template.to_string())
         .collect()
@@ -89,7 +62,6 @@ pub fn route_query_bindings(uri: &str) -> Vec<String> {
         .split('&')
         .flat_map(|part| {
             scan(part)
-                .segments
                 .iter()
                 .map(|segment| segment.binding.to_string())
                 .collect::<Vec<_>>()
@@ -101,9 +73,8 @@ pub fn route_query_bindings(uri: &str) -> Vec<String> {
 /// they appear.
 ///
 /// The document-side counterpart of [`route_segments`]. A template is not a
-/// Rocket URI and is not run through [`to_spec_path`]: reading `{name}` out of
-/// the committed document is what tells a placeholder the route does not serve
-/// from one it does.
+/// Rocket URI: reading `{name}` out of the committed document is what tells a
+/// placeholder the route does not serve from one it does.
 #[must_use]
 pub fn spec_placeholders(path: &str) -> Vec<String> {
     let mut names = Vec::new();
@@ -131,54 +102,34 @@ fn path_of(uri: &str) -> &str {
 
 /// One `<segment>` declaration and the two spellings of its name.
 struct Segment<'a> {
-    /// Literal path text before this declaration.
-    prefix: &'a str,
     /// The name Rocket binds a parameter by.
     binding: &'a str,
     /// The name a path template spells the same value as.
     template: &'a str,
 }
 
-/// The declarations of one URI part, plus the text following the last complete
-/// one.
-struct Scan<'a> {
-    segments: Vec<Segment<'a>>,
-    /// The text after the last complete `<...>` declaration, which is the whole
-    /// input when there is none. A malformed URI with an unterminated `<` is
-    /// passed through verbatim rather than silently dropped, so a malformed URI
-    /// stays visible in the comparison.
-    trailing: &'a str,
-}
-
-/// Read every complete `<segment>` declaration of a URI part.
+/// Read every complete `<segment>` declaration of a URI part, in order.
 ///
-/// Shared by the three readers above: a route's binding names, its template names
-/// and the path [`to_spec_path`] builds all come from this one walk, so a change
-/// to what counts as a declaration cannot reach one of them alone.
-fn scan(path: &str) -> Scan<'_> {
+/// Shared by the three readers above: a route's binding names and its template
+/// names all come from this one walk, so a change to what counts as a
+/// declaration cannot reach one of them alone.
+fn scan(path: &str) -> Vec<Segment<'_>> {
     let mut segments = Vec::new();
     let mut rest = path;
     while let Some(start) = rest.find('<') {
         let after = &rest[start + 1..];
         let Some(end) = after.find('>') else {
-            // The whole of the remainder, literal prefix before the `<` included:
-            // a malformed URI is passed through verbatim rather than dropped up to
-            // the point it broke.
-            return Scan {
-                segments,
-                trailing: rest,
-            };
+            // A malformed URI with an unterminated `<` declares nothing further:
+            // the complete declarations found so far are kept rather than the
+            // remainder being guessed at.
+            break;
         };
         let binding = after[..end].trim_end_matches('.');
         segments.push(Segment {
-            prefix: &rest[..start],
             binding,
             template: binding.trim_start_matches('_'),
         });
         rest = &after[end + 1..];
     }
-    Scan {
-        segments,
-        trailing: rest,
-    }
+    segments
 }

@@ -376,9 +376,13 @@ the report reviewable in a diff.
 
 `--exclude-prefix` is where the backend's deliberate exceptions live. The public
 artifact strips the test-only probe surface (`/get/test/`) while the handlers stay
-in the source, so `just openapi-check` passes `--exclude-prefix /get/test/`. The
-rule is a CLI argument rather than a constant in the analyzer because it belongs
-to whoever owns the artifact; a caller that forgets it sees the omission as two
+in the source, and `/assets` is the static file mount rather than an API surface,
+so `just openapi-check` passes both. They stay CLI arguments rather than constants
+in the analyzer because it has no backend dependency: the list itself is declared
+once, in `CONTRACT_EXCLUSION_PREFIXES` (`backend/src/openapi_public.rs`), and a
+`openapi_contract` test reads the recipe and asserts its `--exclude-prefix` values
+are exactly that list — a prefix added to either side alone fails the test, naming
+what each side is missing. A caller that forgets an exclusion sees the omission as
 findings rather than a passing gate.
 
 ### Testing the gate
@@ -509,7 +513,7 @@ picasu --check-openapi [<path-to-spec>]   # default: backend/openapi.json
 
 It reads the **committed** spec (the published claim, not the compiled-in copy),
 builds the real `build_rocket()`, reads `.routes()`, normalizes both sides with
-the shared `to_spec_path`, and compares them under an **asymmetric** rule:
+the backend's `to_spec_path`, and compares them under an **asymmetric** rule:
 
 - **Mounted ⊆ spec** — every route the running product registers must be in the
   spec. A hard failure. This is the direction that cannot be argued with.

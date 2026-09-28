@@ -3,9 +3,9 @@
 //!
 //! Every rule is checked from a *conforming* baseline. A rule that stopped
 //! reporting would leave the clean fixture passing and the drift fixture
-//! silently shorter, so the drift fixture is also asserted as a whole: exactly
-//! one finding per rule, no more and no fewer. That is what makes a neutered
-//! rule a test failure instead of a quieter gate.
+//! silently shorter, so the drift fixture is also asserted as a whole: every
+//! failure it carries is reported exactly once, no more and no fewer. That is
+//! what makes a neutered rule a test failure instead of a quieter gate.
 
 use openapi_sanity::{
     HttpMethod, SCANNED_MODULES, SourceUnit, handler_module_path, referenced_handler_files,
@@ -98,12 +98,18 @@ fn reports_a_registered_handler_without_an_annotation() {
 }
 
 #[test]
-fn reports_a_path_that_disagrees_with_its_route() {
+fn reports_a_path_that_disagrees_with_its_route_on_the_annotation_side() {
+    // The route serves `/get/get-data` while the annotation declares
+    // `/get/get-data-RENAMED`. The route-attr↔annotation path rule is gone: the
+    // disagreement converges on the annotation's path being absent from the
+    // document, and that is the finding that reports it here. The other
+    // direction — the mounted path the document lacks — is `--check-openapi`'s
+    // mounted-but-absent finding.
     let fixture = Fixture::load(DRIFT);
 
     fixture.assert_reports(&format!(
-        "{}:8: data::get_data: the route serves /get/get-data but its #[utoipa::path] \
-         declares /get/get-data-RENAMED",
+        "{}:8: data::get_data: GET /get/get-data-RENAMED is declared in source but \
+         absent from the spec",
         fixture.label("get/data.rs")
     ));
 }
@@ -156,7 +162,7 @@ fn reports_duplicate_operation_ids() {
 
     fixture.assert_reports(&format!(
         "{}: duplicate operationId `get_data` claimed by GET /get/get-albums, \
-         GET /get/get-data-RENAMED",
+         POST /get/get-rows",
         fixture.label("openapi.json")
     ));
 }
@@ -180,36 +186,35 @@ fn a_handler_registered_twice_is_still_checked_once() {
 }
 
 #[test]
-fn a_declaration_that_disagrees_with_its_route_is_not_also_reported_as_spec_drift() {
+fn a_method_disagreement_is_reported_once_and_not_as_spec_drift() {
     // The document is generated from the annotation, so a handler whose
-    // annotation and route attribute disagree inherits the disagreement. One
-    // cause, one finding: the local one names the fix, and the two operations
-    // such a handler owns stay accounted for on the document side.
+    // annotation and route attribute disagree about the verb inherits the
+    // disagreement. One cause, one finding: the local one names the fix, and
+    // the operation the handler owns stays accounted for on the document side.
+    // A *path* disagreement is the other case: it is now reported as the
+    // annotation's path being absent from the spec, asserted above.
     let fixture = Fixture::load(DRIFT);
     let reported = fixture.findings(&[TEST_PREFIX]);
-    let renamed = "/get/get-data-RENAMED";
     let rows = "/get/get-rows";
 
-    for (operation, described) in [(renamed, "get_data"), (rows, "get_rows")] {
-        let on_the_source_side = reported.iter().filter(|finding| {
-            finding.contains(described) && finding.contains("#[utoipa::path] declares")
-        });
-        assert_eq!(
-            on_the_source_side.count(),
-            1,
-            "the disagreement about {operation} is reported once, locally: {reported:#?}"
-        );
-        assert!(
-            !reported
-                .iter()
-                .any(|finding| finding.contains(operation) && finding.contains("the spec")),
-            "{operation} must not also be reported as document drift: {reported:#?}"
-        );
-    }
+    let on_the_source_side = reported.iter().filter(|finding| {
+        finding.contains("get_rows") && finding.contains("#[utoipa::path] declares")
+    });
+    assert_eq!(
+        on_the_source_side.count(),
+        1,
+        "the verb disagreement is reported once, locally: {reported:#?}"
+    );
+    assert!(
+        !reported
+            .iter()
+            .any(|finding| finding.contains(rows) && finding.contains("the spec")),
+        "{rows} must not also be reported as document drift: {reported:#?}"
+    );
 }
 
 #[test]
-fn the_drift_tree_reports_exactly_one_finding_per_rule() {
+fn the_drift_tree_reports_every_failure_exactly_once() {
     let fixture = Fixture::load(DRIFT);
     let data = fixture.label("get/data.rs");
     let route_table = fixture.label("get/mod.rs");
@@ -219,8 +224,8 @@ fn the_drift_tree_reports_exactly_one_finding_per_rule() {
         fixture.findings(&[TEST_PREFIX]),
         vec![
             format!(
-                "{data}:8: data::get_data: the route serves /get/get-data but its \
-                 #[utoipa::path] declares /get/get-data-RENAMED"
+                "{data}:8: data::get_data: GET /get/get-data-RENAMED is declared in \
+                 source but absent from the spec"
             ),
             format!(
                 "{data}:14: data::get_rows: the route declares GET but its #[utoipa::path] \
@@ -244,11 +249,11 @@ fn the_drift_tree_reports_exactly_one_finding_per_rule() {
             ),
             format!(
                 "{document}: duplicate operationId `get_data` claimed by \
-                 GET /get/get-albums, GET /get/get-data-RENAMED"
+                 GET /get/get-albums, POST /get/get-rows"
             ),
         ],
-        "each rule must report exactly once, and the report must stay sorted by \
-         file, line and message"
+        "each failure the fixture carries must be reported exactly once, and the \
+         report must stay sorted by file, line and message"
     );
 }
 

@@ -23,8 +23,7 @@
 //! [`scan_routes`] and [`scan_handlers`] parse it for one of them. Results are
 //! plain owned types ([`RouteScan`], [`HandlerScan`], [`SourceScan`]) — no `syn`
 //! type is part of the surface, so the parser can be replaced without touching a
-//! caller. [`to_spec_path`] is the single Rocket-to-OpenAPI path translation,
-//! shared by every consumer that compares a mounted route with the spec.
+//! caller.
 //!
 //! # Diagnostics instead of failures
 //!
@@ -99,9 +98,7 @@ pub use guards::{Discard, Enforcement, GuardBinding, GuardClass, KNOWN_GUARDS};
 pub use handlers::{ArgKind, Handler, HandlerArg, HandlerScan, HttpMethod};
 pub use modules::{SCANNED_MODULES, SourceUnit, handler_module_path};
 pub use params::check_params;
-pub use path::{
-    route_bindings, route_query_bindings, route_segments, spec_placeholders, to_spec_path,
-};
+pub use path::{route_bindings, route_query_bindings, route_segments, spec_placeholders};
 pub use routes::{HandlerRef, RouteScan};
 pub use tags::{KNOWN_TAGS, check_tags};
 

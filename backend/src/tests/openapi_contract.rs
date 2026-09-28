@@ -8,16 +8,18 @@
 //! test failure. These tests compare the two views of the API directly.
 //!
 //! Anything intentionally outside the documented contract is listed in
-//! [`is_outside_contract`] with a reason, so adding an undocumented route is a
-//! deliberate, reviewable act rather than an omission.
+//! [`crate::openapi_public::CONTRACT_EXCLUSION_PREFIXES`] with a reason, so
+//! adding an undocumented route is a deliberate, reviewable act rather than an
+//! omission.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::MutexGuard;
 
-use openapi_sanity::{AUTH_POLICY, AuthRule, check_tags, to_spec_path};
+use openapi_sanity::{AUTH_POLICY, AuthRule, check_tags};
 use rocket::http::Method;
 
-use crate::openapi_public::{is_test_only_path, public_json};
+use crate::openapi_public::{CONTRACT_EXCLUSION_PREFIXES, public_json};
+use crate::spec_path::to_spec_path;
 use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, build_test_rocket};
 
 /// A mounted route or a documented operation, as a comparable identity.
@@ -57,17 +59,14 @@ fn spec_operations() -> HashSet<Operation> {
     operations
 }
 
-/// Mounted routes that are deliberately absent from the documented contract.
+/// Mounted routes that are deliberately absent from the documented contract:
+/// exactly the prefixes [`CONTRACT_EXCLUSION_PREFIXES`] names, whatever the
+/// method — the const carries the reason for each entry.
 fn is_outside_contract(operation: &Operation) -> bool {
-    let (method, path) = operation;
-    // Test-only probes: registered only in test builds, enabled by the test
-    // bootstrap, and stripped from the public spec on purpose.
-    if is_test_only_path(path) {
-        return true;
-    }
-    // Static file server for the built frontend. It serves bytes, not API
-    // operations, so it carries no OpenAPI operation.
-    *method == Method::Get && path.starts_with("/assets")
+    let (_, path) = operation;
+    CONTRACT_EXCLUSION_PREFIXES
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
 }
 
 /// Mounted routes that are in scope of the contract but not documented.
@@ -188,35 +187,120 @@ fn contract_exclusions_match_mounted_routes() {
         assert!(
             !documented.contains(&operation),
             "{} {} is excluded from the contract but documented in the public \
-             spec; remove it from `is_outside_contract`",
+             spec; remove it from `CONTRACT_EXCLUSION_PREFIXES`",
             operation.0,
             operation.1
         );
     }
 }
 
-/// The Rocket-to-`OpenAPI` path translation is owned by `openapi-sanity`, which
-/// unit-tests it. What is asserted here is that both this test and the mounted
-/// route comparison above run on that shared implementation: a local copy would
-/// be free to drift, and a route that stopped matching its own documentation
-/// would go unnoticed.
+/// The `justfile` recipe and [`CONTRACT_EXCLUSION_PREFIXES`] are one list seen
+/// from two sides: the CLI has no backend dependency and takes
+/// `--exclude-prefix` as arguments, so nothing but this pin keeps the recipe
+/// naming exactly the prefixes the policy declares. Add a prefix to either side
+/// alone and the run fails, naming what each side is missing.
+#[test]
+fn the_justfile_recipe_pins_the_contract_exclusion_policy() {
+    let justfile = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../justfile"),
+    )
+    .unwrap_or_else(|error| panic!("the repository justfile must be readable: {error}"));
+
+    let recipe: HashSet<&str> = recipe_prefixes(&justfile, "openapi-sanity");
+    let policy: HashSet<&str> = CONTRACT_EXCLUSION_PREFIXES.into_iter().collect();
+    let mut missing_from_recipe: Vec<&str> = policy.difference(&recipe).copied().collect();
+    let mut missing_from_policy: Vec<&str> = recipe.difference(&policy).copied().collect();
+    missing_from_recipe.sort_unstable();
+    missing_from_policy.sort_unstable();
+
+    assert!(
+        missing_from_recipe.is_empty() && missing_from_policy.is_empty(),
+        "the `openapi-sanity` recipe and CONTRACT_EXCLUSION_PREFIXES must name the \
+         same `--exclude-prefix` values:\n  in the policy but not the recipe: \
+         {missing_from_recipe:?}\n  in the recipe but not the policy: \
+         {missing_from_policy:?}"
+    );
+}
+
+/// The `--exclude-prefix` values the named recipe passes.
+///
+/// The body of a just recipe is its indented lines, up to the next top-level
+/// line, so this reads the recipe the way `just` does rather than matching
+/// anywhere in the file.
+fn recipe_prefixes<'a>(justfile: &'a str, name: &str) -> HashSet<&'a str> {
+    let header = format!("\n{name}:");
+    let start = justfile
+        .find(&header)
+        .unwrap_or_else(|| panic!("the justfile declares a `{name}` recipe"))
+        + header.len();
+    let mut body = Vec::new();
+    for line in justfile[start..].lines().skip(1) {
+        if line.is_empty() || !line.starts_with([' ', '\t']) {
+            break;
+        }
+        body.push(line);
+    }
+
+    const FLAG: &str = "--exclude-prefix";
+    let mut prefixes = HashSet::new();
+    for line in body {
+        let mut rest = line;
+        while let Some(index) = rest.find(FLAG) {
+            let after = &rest[index + FLAG.len()..];
+            let value = after
+                .trim_start()
+                .split_whitespace()
+                .next()
+                .unwrap_or_else(|| panic!("`{FLAG}` must be followed by a value"));
+            prefixes.insert(value.trim_matches('"'));
+            rest = after;
+        }
+    }
+    prefixes
+}
+
+/// The Rocket-to-`OpenAPI` path translation is owned by this crate
+/// (`crate::spec_path`), and the mounted-route comparison above runs on the
+/// same function: a second copy would be free to drift, and a route that
+/// stopped matching its own documentation would go unnoticed. These cases pin
+/// the whole mapping — segment declarations, underscores, dots, the query part
+/// and malformed input.
 #[test]
 fn rocket_paths_normalize_to_spec_templates() {
+    // Named segments become placeholders.
     assert_eq!(
         to_spec_path("/get/metadata/<asset_id>"),
         "/get/metadata/{asset_id}"
     );
-    assert_eq!(
-        to_spec_path("/albums/view/<_path..>"),
-        "/albums/view/{path}"
-    );
+    // A zero-or-more segment drops the dots.
     assert_eq!(
         to_spec_path("/object/compressed/<file_path..>"),
         "/object/compressed/{file_path}"
     );
+    // `<_path..>` exists to avoid a clash with the handler name; OpenAPI has no
+    // counterpart for the underscore.
+    assert_eq!(
+        to_spec_path("/albums/view/<_path..>"),
+        "/albums/view/{path}"
+    );
+    assert_eq!(to_spec_path("/assets/<_file..>"), "/assets/{file}");
+    assert_eq!(
+        to_spec_path("/albums/view/<_path..>/photos/<index>/raw"),
+        "/albums/view/{path}/photos/{index}/raw"
+    );
     // Query parameters are documented per parameter, not in the path.
     assert_eq!(to_spec_path("/get/prefetch?<locate>"), "/get/prefetch");
+    assert_eq!(
+        to_spec_path("/upload?<auto_rename>&<on_conflict>"),
+        "/upload"
+    );
+    // A path without parameters is unchanged.
     assert_eq!(to_spec_path("/upload"), "/upload");
+    assert_eq!(to_spec_path("/login"), "/login");
+    assert_eq!(to_spec_path(""), "");
+    // Not a segment declaration: the remainder is passed through rather than
+    // silently dropped, so a malformed URI is visible in the comparison.
+    assert_eq!(to_spec_path("/get/<broken"), "/get/<broken");
 }
 
 // ── Operation tags ────────────────────────────────────────────────────────────

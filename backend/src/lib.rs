@@ -17,6 +17,7 @@ pub mod openapi_components;
 pub mod openapi_public;
 mod process;
 mod router;
+pub mod spec_path;
 mod storage;
 mod tasks;
 mod workflow;

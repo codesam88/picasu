@@ -177,8 +177,10 @@ fn check_handler(
         return;
     };
     if !operation.agrees_with_route {
-        // The annotation already disagrees with the route, so the document's
-        // placeholders describe a route this handler does not serve.
+        // The annotation and the route disagree about the method, so the
+        // operation the document carries is not the one this handler serves;
+        // the verb disagreement is `check_contract`'s finding and comparing the
+        // document against it would restate the cause.
         return;
     }
     if is_excluded(&operation.path, excluded_prefixes) {
