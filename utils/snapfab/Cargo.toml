@@ -20,5 +20,5 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png"]
 rand = "0.10"
 clap = { version = "4", features = ["derive"] }
 rayon = "1"
-little_exif = "0.6"
-iptc = "0.3"
+exiftool = "0.3.1"
+tempfile = "3"

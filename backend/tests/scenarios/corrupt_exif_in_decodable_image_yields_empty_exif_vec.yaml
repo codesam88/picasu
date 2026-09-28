@@ -1,16 +1,26 @@
 name: corrupt EXIF inside a decodable image yields an empty exifVec and nothing else changes
 # Negative case: metadata corruption *inside* an otherwise decodable image.
 #
-# The patch replaces the TIFF byte-order marker that follows the JPEG `Exif\0\0`
-# header (`II*\0` → `XY*\0`) without changing the file length, so the JPEG
+# The patch replaces the TIFF byte-order word that follows the JPEG `Exif\0\0`
+# header (`MM\0*` → `XY\0*`) without changing the file length, so the JPEG
 # structure — segments, quantisation tables, scan data — is untouched and the
 # image still decodes.
 #
+# Which byte order the fixture carries is the generator's business, not this
+# scenario's: a TIFF block may start with `II*\0` or `MM\0*`, ExifTool writes
+# `MM\0*`, and a file from a camera is either. The `find_hex` below is
+# therefore the header as the generator actually writes it, and what the
+# scenario tests is the *word* — corrupting the byte-order marker itself,
+# whichever it is. `process::exif`'s
+# `a_corrupt_exif_block_yields_an_empty_map_while_the_image_stays_valid`
+# discovers the marker in the bytes and covers both orders, so a change of
+# writer is caught there rather than here.
+#
 # The damaged byte-order marker is load-bearing: it is damage ExifTool cannot
 # work around. Measured with exiftool 13.59, corrupting the *IFD offset* instead
-# (the patch this scenario used to apply, `II*\0` → `II*\xff`) still yields every
-# tag, because the directory is located by scanning when the offset is wrong, so
-# that patch no longer produced an empty `exifVec` — it produced a full one. An
+# (which shares the last two bytes of a big-endian byte-order word) still yields
+# every tag, because the directory is located by scanning when the offset is
+# wrong, so that patch produces a full `exifVec` rather than an empty one. An
 # invalid byte-order marker has no fallback: the engine reports
 # `Malformed APP1 EXIF segment` and extracts nothing.
 #
@@ -34,8 +44,10 @@ given:
     asset_id_as: $asset_id
   - patch_file:
       path: /e2e_corrupt_exif/photo.jpg
-      find_hex: "45786966000049492a00"
-      replace_hex: "45786966000058592a00"
+      # `Exif\0\0` then the big-endian byte-order word `MM\0*`, with the two
+      # marker letters replaced by `XY` — same length, same segment, unreadable.
+      find_hex: "4578696600004d4d002a"
+      replace_hex: "4578696600005859002a"
 when:
   - call: POST /get/prefetch?locate=${asset_id}
     capture:

@@ -586,24 +586,21 @@ mod tests {
     }
 
     /// A JPEG whose EXIF block cannot be parsed yields an empty map while the
-    /// rest of the file stays a decodable image. The TIFF byte-order marker that
+    /// rest of the file stays a decodable image. The TIFF byte-order word that
     /// follows the `Exif\0\0` header is corrupted in place, so the segment
     /// length and everything after it are untouched.
     ///
     /// The damage has to be one ExifTool cannot work around. It recovers from a
-    /// damaged *IFD offset* — patching the last byte of `II*\0` (measured with
-    /// exiftool 13.59) still yields every tag, because the directory is found by
-    /// scanning — so a corrupted offset would fill this map rather than empty
-    /// it. An invalid byte-order marker has no such fallback: ExifTool reports
-    /// `Malformed APP1 EXIF segment` and extracts nothing.
+    /// damaged *IFD offset* — patching the last byte of the byte-order word
+    /// (measured with exiftool 13.59) still yields every tag, because the
+    /// directory is found by scanning — so a corrupted offset would fill this map
+    /// rather than empty it. An invalid byte-order marker has no such fallback:
+    /// ExifTool reports `Malformed APP1 EXIF segment` and extracts nothing.
     ///
     /// The unpatched control is asserted first, so a fixture that carries no
     /// EXIF in the first place cannot make this test pass for the wrong reason.
     #[test]
     fn a_corrupt_exif_block_yields_an_empty_map_while_the_image_stays_valid() {
-        const TIFF_HEADER: &[u8] = b"Exif\0\0II*\0";
-        const CORRUPT_TIFF_HEADER: &[u8] = b"Exif\0\0XY*\0";
-
         let dir = tempfile::tempdir().expect("temp dir");
         let good = dir.path().join("good.jpg");
         snapfab::generate_batch(&[snapfab::PhotoSpec {
@@ -627,11 +624,7 @@ mod tests {
 
         let corrupt = dir.path().join("corrupt.jpg");
         let mut bytes = std::fs::read(&good).expect("read photo");
-        let at = bytes
-            .windows(TIFF_HEADER.len())
-            .position(|window| window == TIFF_HEADER)
-            .expect("fixture carries a little-endian Exif header");
-        bytes[at..at + TIFF_HEADER.len()].copy_from_slice(CORRUPT_TIFF_HEADER);
+        corrupt_exif_byte_order(&mut bytes);
         std::fs::write(&corrupt, &bytes).expect("write photo");
 
         assert_eq!(
@@ -642,6 +635,105 @@ mod tests {
         assert!(
             exif_vec_of(&corrupt).is_empty(),
             "a corrupt EXIF block must yield no fields, not a partial map"
+        );
+    }
+
+    /// The JPEG EXIF header, the six bytes `Exif\0\0` an APP1 segment's EXIF
+    /// payload starts with.
+    const EXIF_HEADER: &[u8] = b"Exif\0\0";
+
+    /// The two byte-order words a TIFF block may start with, and the invalid
+    /// word that replaces whichever one a file carries.
+    const BYTE_ORDERS: [(&[u8], &[u8]); 2] = [(b"II*\0", b"XY*\0"), (b"MM\0*", b"XY\0*")];
+
+    /// Replace the TIFF byte-order word of `jpeg`'s EXIF block with an invalid
+    /// one, leaving the file length unchanged.
+    ///
+    /// Which of `II*\0` or `MM\0*` a block starts with is the fixture *writer's*
+    /// business, not this test's: `little_exif` wrote little-endian, ExifTool
+    /// writes big-endian, and a file from a camera will be either. Pinning one
+    /// of them made this test a statement about snapfab's writer rather than
+    /// about the reader, so the marker is discovered and whichever it is gets
+    /// damaged.
+    ///
+    /// Only the two marker letters are replaced, and the corrupted word is one
+    /// ExifTool has no fallback for. Patching the trailing `0` instead — the
+    /// IFD offset, which for a big-endian block shares the word — leaves every
+    /// tag readable, because the directory is then found by scanning.
+    fn corrupt_exif_byte_order(jpeg: &mut [u8]) {
+        let at = jpeg
+            .windows(EXIF_HEADER.len())
+            .position(|window| window == EXIF_HEADER)
+            .expect("the fixture carries an Exif\\0\\0 header");
+        let word_at = at + EXIF_HEADER.len();
+        let word = jpeg
+            .get(word_at..word_at + 4)
+            .expect("the EXIF header is followed by a byte-order word");
+        let (_, corrupt) = BYTE_ORDERS
+            .iter()
+            .find(|(valid, _)| *valid == word)
+            .unwrap_or_else(|| panic!("the EXIF block starts with an unknown byte order {word:?}"));
+        jpeg[word_at..word_at + 4].copy_from_slice(corrupt);
+    }
+
+    /// The corruption above is the one that empties the map, and it has to be
+    /// the *byte-order* word: ExifTool recovers from a damaged IFD offset by
+    /// scanning for the directory, so a test that patched the wrong four bytes
+    /// would read every tag and pass the wrong way round.
+    #[test]
+    fn the_corrupt_exif_damage_is_load_bearing() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let good = dir.path().join("good.jpg");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(good.to_string_lossy().into_owned()),
+            format: Some("jpeg".into()),
+            width: Some(4),
+            height: Some(4),
+            tags: Some(vec!["load_bearing".into()]),
+            exif_date: Some("2023:07:15 10:00:00".into()),
+            further_iptc: None,
+            minimal: false,
+        }])
+        .expect("generate photo");
+
+        let control = std::fs::read(&good).expect("read photo");
+        assert!(
+            !exif_vec_of(&good).is_empty(),
+            "the fixture must carry a readable EXIF block, or the comparison below is vacuous"
+        );
+
+        // The byte order this fixture happens to carry, damaged: nothing survives.
+        let mut damaged = control.clone();
+        corrupt_exif_byte_order(&mut damaged);
+        assert_eq!(
+            damaged.len(),
+            control.len(),
+            "the patch must not change the length"
+        );
+        let empty = dir.path().join("damaged.jpg");
+        std::fs::write(&empty, &damaged).expect("write photo");
+        assert!(
+            exif_vec_of(&empty).is_empty(),
+            "an invalid byte-order word must cost every EXIF field"
+        );
+
+        // The last byte of the same word, which for a big-endian block is the
+        // high byte of the IFD offset: ExifTool scans past it and reports every
+        // tag, so a mutation that patched these bytes instead would leave this
+        // map full and prove nothing.
+        let word_at = control
+            .windows(EXIF_HEADER.len())
+            .position(|window| window == EXIF_HEADER)
+            .expect("the fixture carries an Exif\\0\\0 header")
+            + EXIF_HEADER.len();
+        let mut offset_damaged = control.clone();
+        offset_damaged[word_at + 3] ^= 0xFF;
+        let recoverable = dir.path().join("offset-damaged.jpg");
+        std::fs::write(&recoverable, &offset_damaged).expect("write photo");
+        assert!(
+            !exif_vec_of(&recoverable).is_empty(),
+            "a damaged IFD offset is recoverable, which is why the byte-order word is \
+             what the corruption test damages"
         );
     }
 

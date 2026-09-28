@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: full-stack
@@ -244,6 +244,51 @@ backend-check`, `just utils-check`, `just docs-check`.
 
 ## Progress
 
+- 2026-09-28 — Iteration 6 done, plan closed. snapfab now writes fixture
+  metadata through ExifTool (decision 7): `PhotoSpec`'s surface is unchanged,
+  the internals map to one `-stay_open` call per file over a `thread_local`
+  session (a process-global `LazyLock` was measured and rejected — statics
+  never drop, leaking one Perl child per invocation). Guards cover ExifTool's
+  silent-failure shapes: empty/newline values refused up front, and
+  `assert_wrote` panics unless ExifTool reports exactly one image updated.
+  Writers retired: `little_exif` (incl. the hand-spliced PNG `eXIf` + CRC
+  table), the `iptc` crate (+ pad-byte fix), `build_xmp_app1`/`splice_segment`
+  — 13 packages left `Cargo.lock`, `cargo deny` warning-free after the stale
+  `quick-xml` ignores were dropped. **Measurement corrections to the plan:**
+  PNG `tEXt` _is_ writable (the Iteration 6 section's known-negative list was
+  wrong; `-PNG:Comment=` etc. produce `tEXt`, switching to `iTXt` only for
+  non-Latin-1); attribute-form XMP is produced by neither the tag API nor any
+  flag, though a raw `-XMP<=file` import passes bytes through verbatim — and
+  the next XMP tag-write re-serializes to element form, so it is a
+  pass-through, not a write snapfab has a field for (decision 7 holds, with
+  that precision); compressed PNG `iTXt` negative reconfirmed
+  (`-compress`/`-Compressed`/`TextChunkType` all rejected or inert). Review
+  round: the swap initially left 4 backend tests + 1 Playwright assertion red
+  in files outside the worker's ownership — fixed as requested with the
+  contract made writer-agnostic rather than re-pinned: `exif.rs` discovers
+  whichever byte-order word the file carries (with a new load-bearing
+  companion test proving the corruption empties the map while IFD-offset
+  damage recovers), the corrupt-EXIF scenario re-hexed to `MM\0*` with a
+  measured red→green and an offset-damage mutation, and the two writer stamps
+  ExifTool adds (`IPTC:ApplicationRecordVersion`, `XMP-x:XMPToolkit`) are now
+  _expected_ in the further bucket — keys asserted, version strings
+  deliberately not (13.50 vs 13.59). Docs swept (`metadata.md` writer table,
+  `test-strategy.md` write precondition, `paste-shim/README.md`). Left as
+  debt: the `snapfab` CLI samples `manifest.formats` instead of the selector
+  and panics on pinned draws — filed in `.plan/scenario-harness-debt.md`.
+  Gates: `cargo test -p picasu` 419 + 3 integration (0 failed, 1 ignored),
+  `cargo test -p snapfab` 75, `just check`, full `just test` (vitest 75,
+  Playwright 40), `cargo deny check` — all pass; pinned fixtures byte-identical
+  (digest tests green).
+- 2026-09-28 — **Plan closed, `status: done`.** Final acceptance check:
+  JPEG EXIF/XMP/IPTC and PNG EXIF/embedded-XMP/text each proven end-to-end by
+  a scenario (compact/attribute syntax amended out per decision 7, measured
+  above); native precedence and the read-only further bucket live in API +
+  sidebar; `kamadak-exif`, the byte-scan parser, and snapfab's hand-rolled
+  writers are all gone from the tree; ExifTool absence fails with an
+  actionable diagnostic in dev/CI/Docker (and is logged at error level in
+  production reads); `just check` and `just test` pass. Release tarballs ship
+  the `picasu` binary alone with both tools documented as prerequisites.
 - 2026-09-27 — Iteration 4 done. Manifest vocabulary gained `iptc` and `text`
   plus a `FIELD_SOURCES` cross-product table (a field may only be claimed from
   a source it can live in — closes `container: [embedded]`, the open question

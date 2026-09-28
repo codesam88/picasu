@@ -7,8 +7,10 @@ name: further metadata is a read-only category in the sidebar
 #
 # `further_iptc: true` asks the fixture for the IIM datasets the native mapping
 # does not read, so the section has something to render. A stock fixture writes
-# only Keywords/Caption-Abstract/ObjectName, all three consumed natively, and
-# would leave the section out entirely.
+# only Keywords/Caption-Abstract/ObjectName — all three consumed natively — and
+# would leave nothing but the writing tool's own two stamps in the section, which
+# the API scenario `metadata_detail_exposes_further_data` covers from the other
+# side.
 covers:
   # `GET /get/metadata/{asset_id}` is exercised here too, by the sidebar's
   # detail fetch, but the coverage tracer matches `covers.api` against the
@@ -83,9 +85,19 @@ steps:
       # ...with their values...
       - ui.text_visible: picasu fixture author
       - ui.text_visible: fixtureville
+      # The section holds the three datasets `further_iptc` asked for plus the
+      # two stamps the writing tool puts in the file it produces: the IIM record
+      # version (IIM 2:00) and the XMP toolkit name. Both are the writer's
+      # identity rather than anything the scenario asked for, and
+      # `process::xmp::map_further_fields` files them in the bucket on purpose.
+      # So the count is 5, not 3. The *keys* are asserted, not the toolkit's
+      # value: `XMP-x:XMPToolkit` carries the ExifTool version, which differs
+      # between the dev machine, CI and the Docker image, and a version is not a
+      # contract this scenario can state.
+      - ui.text_visible: IPTC:ApplicationRecordVersion
       # ...it renders one row per pair...
       - ui.count: '#further-metadata .further-metadata-pair'
-        equals: 3
+        equals: 5
       # ...and no control that could change one. The rating and the description
       # around it are editable; this category is not, and it holds no input, no
       # button and no link at all.

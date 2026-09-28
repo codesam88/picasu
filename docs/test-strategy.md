@@ -101,12 +101,17 @@ is a hard precondition rather than a skip: it resolves both binaries on `PATH`,
 runs them, and fails with a diagnostic naming the missing tool, what breaks, and
 how to install it, so a missing toolchain never passes as "video works".
 
-The same holds for `exiftool`, which reads image metadata
-(`process::exif::read_metadata_record`).
+The same holds for `exiftool`, which both reads and writes image metadata
+(`process::exif::read_metadata_record`, and `test_image::write_metadata` in the
+`utils/snapfab` fixture generator).
 `process::exif::tests::image_metadata_requires_a_working_exiftool` is the same
 kind of precondition: the indexer absorbs a failed read into an empty map, so a
 missing ExifTool would empty every `exifVec` and let the EXIF scenarios pass
-without ever reading metadata. Dev machines install the pinned pure-Perl distribution with
+without ever reading metadata. `snapfab`'s
+`test_image::tests::metadata_writing_requires_a_working_exiftool` is the write
+side of the same rule, for the same reason: without the binary every generated
+fixture is a bare pixel buffer and the scenarios asserting on its metadata pass
+vacuously. Dev machines install the pinned pure-Perl distribution with
 `just install-exiftool` (no root, into `~/.local`); CI and the runtime Docker
 image install `libimage-exiftool-perl`.
 

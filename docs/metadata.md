@@ -375,10 +375,16 @@ Nothing else is converted.
 | Task                       | What is used                    | Notes                                                           |
 | -------------------------- | ------------------------------- | --------------------------------------------------------------- |
 | Read EXIF, XMP, IPTC, text | `exiftool` crate + `-stay_open` | The only image metadata reader; the binary is the actual engine |
-| Write IPTC IIM             | `iptc`                          | `utils/snapfab` test-image writer, not the backend              |
-| Write EXIF                 | `little_exif`                   | `utils/snapfab` test-image writer, not the backend              |
+| Write EXIF, XMP, IPTC      | `exiftool` crate + `-stay_open` | `utils/snapfab` test-image writer, not the backend              |
 | Read video metadata        | `ffprobe`                       | External binary, video only                                     |
 | Video thumbnails           | `ffmpeg`                        | External binary, video only                                     |
+
+The same binary is both the reader and the writer, so a generated fixture is
+readable by the engine that reads it by construction. What `exiftool` cannot
+_write_ — attribute-form (compact) XMP, a compressed PNG `iTXt` — is out of
+scope rather than a gap; both were measured, and the compressed `iTXt` PNG
+fixture that is checked in predates the decision and stands as proof of the
+reader's integration with a real-world encoding.
 
 There is no in-process metadata reader: no EXIF crate, no XMP byte scan, no
 IPTC parser in the backend. The external tools are prerequisites, see
