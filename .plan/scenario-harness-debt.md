@@ -50,9 +50,20 @@ Address already in use` and one scenario fails on a port that was never
   run that draws a pinned format. Pre-existing at `94b8fc0d`; the seeded
   scenario path is unaffected (it uses the selector correctly).
 
+- `file_absent`/`file_exists` accept a `${data_path}`-prefixed (absolute) path:
+  the path is joined onto `image_home` after stripping the leading `/`, so it
+  resolves under `<image_home>/<absolute path>/…`, can never exist, and the
+  assertion passes regardless of the handler under test. Found 2026-09-28 by
+  the Gap 5 upload work when a mutation failed to kill a scenario written that
+  way; `upload_unindexable_removed.yaml`'s `file_absent` is vacuous today.
+  Needs a harness guard (reject absolute/`${var}`-joined paths) plus a fix to
+  that scenario.
+
 ## Notes
 
 2026-09-26 — Recorded from the Iteration 5 report of test-exif-xmp-handling;
 each item has its measurement in that plan's Progress section.
+2026-09-28 — Added the vacuous `file_absent`/`file_exists` path defect from
+the Gap 5 upload-diagnosis work.
 2026-09-27 — Added the silent non-last-`then` body-assertion rule from the
 exiftool-metadata-engine Iteration 2 report.

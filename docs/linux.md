@@ -38,10 +38,13 @@ Make sure the following software is installed on your system:
 
 Both are prerequisites of a running Picasu, not optional extras: without
 `ffprobe` a video has no dimensions or metadata, and ExifTool is the only image
-metadata reader, so without it every image reports no metadata at all. Neither
-tool is bundled with Picasu — a release tarball from the GitHub releases page
-contains the `picasu` binary alone, so install both the same way on a downloaded
-build as when building from source.
+metadata reader, so without it no image can be indexed at all — a missing or
+unrunnable `exiftool` fails each image's metadata read with this remedy attached
+rather than storing the image with an empty `exifVec`, which would be
+indistinguishable from a photo that carries no metadata. Neither tool is bundled
+with Picasu — a release tarball from the GitHub releases page contains the
+`picasu` binary alone, so install both the same way on a downloaded build as when
+building from source.
 
 - **Rust**: Install Rust using the official installer:
 
