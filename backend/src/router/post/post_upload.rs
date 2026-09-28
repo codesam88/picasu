@@ -263,30 +263,144 @@ pub async fn upload(
             // references it. Only a content-decode failure guarantees that,
             // so check before deleting — otherwise the file would be removed
             // while a committed index record still points at it.
-            if record_exists_for(Path::new(&final_path), relative_src) {
-                error!("Uploaded file was indexed but the pipeline failed: {index_error}");
-                return Err(AppError::new(
-                    ErrorKind::Internal,
-                    "Upload failed during indexing",
-                ));
+            let outcome = classify_index_failure(
+                &index_error,
+                record_exists_for(Path::new(&final_path), relative_src),
+            );
+            error!(
+                "upload of {final_path} did not index: {} ({index_error:#})",
+                outcome.kind.diagnosis()
+            );
+            if outcome.remove_file {
+                // The upload has not succeeded, and the user gets this error
+                // directly in the upload response, so the never-indexed file
+                // is removed as part of the failed upload action. Files are
+                // never deleted after a successful upload — only by an
+                // explicit user deletion action.
+                if let Err(remove_error) = std::fs::remove_file(&final_path) {
+                    error!("Failed to remove unindexable upload {final_path}: {remove_error}");
+                }
             }
-            // The upload has not succeeded, and the user gets this error
-            // directly in the upload response, so the never-indexed file
-            // is removed as part of the failed upload action. Files are
-            // never deleted after a successful upload — only by an
-            // explicit user deletion action.
-            error!("Uploaded file could not be decoded as an image or video: {index_error}");
-            if let Err(remove_error) = std::fs::remove_file(&final_path) {
-                error!("Failed to remove unindexable upload {final_path}: {remove_error}");
-            }
-            return Err(AppError::new(
-                ErrorKind::InvalidInput,
-                "Uploaded file could not be decoded as an image or video",
-            ));
+            return Err(outcome.kind.into_app_error());
         }
     }
 
     Ok(())
+}
+
+/// What the server concluded about an upload whose file did not index, and what
+/// it does about the file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct UploadIndexOutcome {
+    kind: UploadIndexFailure,
+    /// Whether the file may be deleted.
+    ///
+    /// The invariant this carries: **a file in the library that no index record
+    /// references is never left behind by a failed upload**, and a file a record
+    /// does reference is never deleted. It answers a question about what the
+    /// library holds, so it is decided by the record alone and is deliberately
+    /// independent of the diagnosis — which is why it travels as a field rather
+    /// than as an arm of [`UploadIndexFailure`]. The two used to be decided in
+    /// two places, and that left the removal predicate unpinned: a test could
+    /// only restate it. Deciding both here means one line, covered by
+    /// `every_combination_has_a_diagnosis_and_a_removal`.
+    remove_file: bool,
+}
+
+/// Why an uploaded file did not end up indexed, and what the client is told.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UploadIndexFailure {
+    /// The metadata toolchain could not be read: no `exiftool`, no session, or
+    /// a child that keeps dying. Nothing was learned about the bytes, so this is
+    /// the server's fault and the response says how to fix it.
+    ToolchainUnavailable,
+    /// An index record references the path, so the file stays on disk: removing
+    /// it would leave a committed record pointing at nothing.
+    AlreadyIndexed,
+    /// Nothing references the file and the bytes are the reason.
+    Undecodable,
+}
+
+/// Decide what a failed index means for an upload: the diagnosis, and whether
+/// the file may be removed.
+///
+/// Pure, and taking the error as an argument rather than reaching for process
+/// state, so the decision is testable without a running server and without
+/// breaking `exiftool` on the machine running the test. The error is the real
+/// `anyhow` chain the index task returned, not a summary: the classification
+/// looks for the engine's own error inside it, and a summary would have lost
+/// exactly the part that matters. That is also why this cannot be a
+/// resolve-the-binary-on-`PATH` check — a live child that keeps dying is a
+/// toolchain failure while `exiftool` sits on `PATH`, and a resolve would report
+/// that as an undecodable upload.
+///
+/// A toolchain failure outranks the record check for the diagnosis: whoever
+/// indexed the path, the deployment is what is broken, and the operator is the
+/// one who has to act on it. The record still decides the removal.
+fn classify_index_failure(index_error: &anyhow::Error, record_exists: bool) -> UploadIndexOutcome {
+    let kind = if crate::process::exif::is_toolchain_failure(index_error) {
+        UploadIndexFailure::ToolchainUnavailable
+    } else if record_exists {
+        UploadIndexFailure::AlreadyIndexed
+    } else {
+        UploadIndexFailure::Undecodable
+    };
+    UploadIndexOutcome {
+        kind,
+        remove_file: !record_exists,
+    }
+}
+
+impl UploadIndexFailure {
+    /// The one-line conclusion the log records alongside the error chain.
+    fn diagnosis(self) -> &'static str {
+        match self {
+            UploadIndexFailure::ToolchainUnavailable => {
+                "the metadata toolchain could not be read, so the file's metadata is unknown"
+            }
+            UploadIndexFailure::AlreadyIndexed => {
+                "the file was indexed but the pipeline failed, so it was kept"
+            }
+            UploadIndexFailure::Undecodable => {
+                "nothing references the file, so it was removed as unindexable"
+            }
+        }
+    }
+
+    /// The response the client gets.
+    ///
+    /// Both pre-existing messages are reproduced byte for byte. They are the
+    /// contract the upload scenarios assert and the frontend's error toast shows,
+    /// and a rewording here would break both for no gain.
+    fn into_app_error(self) -> AppError {
+        match self {
+            // 500, not 400: the client's bytes were never the problem, and a
+            // client-error status tells them retrying or changing the file is the
+            // fix when it is not. The message is the same sentence the log and
+            // the index failure carry, so the operator is told the same thing
+            // whichever they read.
+            //
+            // The file is still removed when nothing references it, exactly as
+            // for a decode failure. The invariant is "no unindexed file is left
+            // in the library", and a deployment fault is no reason to break it:
+            // the client is told explicitly, so nothing about the upload is
+            // ambiguous, and the bytes are still wherever the client keeps them.
+            // Keeping the file instead would put an unindexed file in the
+            // library that a later scan would then index — with the same empty
+            // metadata this change exists to prevent.
+            UploadIndexFailure::ToolchainUnavailable => AppError::new(
+                ErrorKind::Internal,
+                crate::process::exif::toolchain_diagnostic(),
+            ),
+            UploadIndexFailure::AlreadyIndexed => {
+                AppError::new(ErrorKind::Internal, "Upload failed during indexing")
+            }
+            UploadIndexFailure::Undecodable => AppError::new(
+                ErrorKind::InvalidInput,
+                "Uploaded file could not be decoded as an image or video",
+            ),
+        }
+    }
 }
 
 /// Validates every file in the batch before any file is written.
@@ -597,6 +711,229 @@ mod tests {
     fn disabled_ignores_client_value_and_uses_now() {
         assert_eq!(resolve_upload_timestamp_at(0, false, NOW_MS), NOW_MS);
         assert_eq!(resolve_upload_timestamp_at(u64::MAX, false, NOW_MS), NOW_MS);
+    }
+}
+
+#[cfg(test)]
+mod index_failure_tests {
+    use super::{AppError, ErrorKind, UploadIndexFailure, classify_index_failure};
+    use crate::process::exif::is_toolchain_failure;
+    use exiftool::ExifToolError;
+
+    /// The index error a missing `exiftool` produces on the upload path, with
+    /// the same context layers the real one stacks.
+    ///
+    /// Outermost first, as `format!("{err:#}")` renders it: the index task's
+    /// context, the read's file context, the remedy, then the engine's own typed
+    /// error. Built by hand rather than produced by the pipeline because the
+    /// pipeline runs on an index worker thread, which a thread-local test cannot
+    /// reach — the shape of the chain is what the classification consumes, and
+    /// that is reproduced exactly.
+    fn toolchain_index_error() -> anyhow::Error {
+        let engine =
+            ExifToolError::ExifToolNotFound(std::io::Error::from(std::io::ErrorKind::NotFound));
+        anyhow::Error::new(engine)
+            .context(crate::process::exif::toolchain_diagnostic())
+            .context("failed to read metadata for /library/uploads/photo.jpeg")
+            .context(
+                "failed to process image metadata pipeline. Hash: abcd, Path: uploads/photo.jpeg",
+            )
+    }
+
+    /// The remedy an operator has to be given, checked as substrings because the
+    /// wording is documentation and the *presence* is the contract.
+    fn assert_names_the_remedy(message: &str) {
+        for expected in [
+            "exiftool",
+            "just install-exiftool",
+            "apt-get install libimage-exiftool-perl",
+        ] {
+            assert!(
+                message.contains(expected),
+                "a toolchain failure must be actionable, and has to mention {expected:?}: \
+                 {message}"
+            );
+        }
+    }
+
+    /// A deployment whose `exiftool` cannot start is a server fault, not a client
+    /// one, and the response has to say so with the remedy in it.
+    ///
+    /// This is the whole point of the classification reaching the HTTP boundary.
+    /// The bytes were fine — the client uploaded a decodable JPEG — so answering
+    /// 400 "could not be decoded as an image or video" blamed the client for the
+    /// server's broken install and gave the operator nothing to act on.
+    ///
+    /// The error is built with the same context layers the real path stacks, so
+    /// the classification is exercised over the chain a caller actually receives
+    /// rather than over a bare engine error.
+    #[test]
+    fn a_toolchain_failure_is_a_500_carrying_the_remedy() {
+        let index_error = toolchain_index_error();
+        // Control: this is the failure the classification is supposed to
+        // recognise, so a test that "passes" because the error was never
+        // toolchain-shaped is caught here.
+        assert!(
+            is_toolchain_failure(&index_error),
+            "control: the error under test must be toolchain-classified: {index_error:#}"
+        );
+
+        let response: AppError = classify_index_failure(&index_error, false)
+            .kind
+            .into_app_error();
+
+        assert_eq!(
+            response.kind,
+            ErrorKind::Internal,
+            "a broken deployment is the server's fault, so it must not be reported as bad input"
+        );
+        assert_eq!(
+            response.http_status(),
+            rocket::http::Status::InternalServerError,
+            "and the kind has to actually reach the client as a 500"
+        );
+        assert_names_the_remedy(&response.message);
+        assert!(
+            !response.message.contains("could not be decoded"),
+            "the decode diagnosis is wrong here and must not be sent: {}",
+            response.message
+        );
+    }
+
+    /// Undecodable bytes on a healthy deployment keep the exact response they
+    /// have always had: 400, the same sentence, and the same file removal. This
+    /// is the branch the upload scenarios and the frontend's error toast depend
+    /// on, and the toolchain case must not have moved it.
+    #[test]
+    fn an_undecodable_file_stays_a_400_with_the_original_message() {
+        let index_error = anyhow::Error::new(ExifToolError::ExifToolProcess {
+            message: "Error: Malformed APP1 EXIF segment".to_string(),
+            std_err: "Error: Malformed APP1 EXIF segment".to_string(),
+            command_args: "-json -G1 broken.jpg".to_string(),
+        })
+        .context("failed to decode image into DynamicImage");
+        assert!(
+            !is_toolchain_failure(&index_error),
+            "control: a file ExifTool rejected is not a deployment problem"
+        );
+
+        let response = classify_index_failure(&index_error, false)
+            .kind
+            .into_app_error();
+
+        assert_eq!(response.kind, ErrorKind::InvalidInput);
+        assert_eq!(
+            response.http_status(),
+            rocket::http::Status::BadRequest,
+            "the client's own file is a client error"
+        );
+        assert_eq!(
+            response.message, "Uploaded file could not be decoded as an image or video",
+            "the message is the contract the scenarios and the frontend toast assert"
+        );
+    }
+
+    /// A record that already references the file keeps its own 500 when the
+    /// cause is the bytes, and that is the one case where a failure must not
+    /// remove anything.
+    #[test]
+    fn an_existing_record_keeps_its_own_500_for_a_decode_failure() {
+        let decode_failure = anyhow::Error::msg("failed to decode image into DynamicImage");
+        let response = classify_index_failure(&decode_failure, true)
+            .kind
+            .into_app_error();
+        assert_eq!(response.kind, ErrorKind::Internal);
+        assert_eq!(response.message, "Upload failed during indexing");
+    }
+
+    /// A toolchain failure outranks the record for the *diagnosis*, so the
+    /// operator gets the remedy even when something else already indexed the
+    /// path. The file still stays: removal is the handler's `!record_exists`
+    /// condition, which this test pins by asserting the record case is not
+    /// reported as an unindexed upload.
+    #[test]
+    fn a_toolchain_failure_outranks_the_record_for_the_diagnosis_only() {
+        let outcome = classify_index_failure(&toolchain_index_error(), true);
+        assert_eq!(
+            outcome.kind,
+            UploadIndexFailure::ToolchainUnavailable,
+            "the deployment is what is broken, whoever indexed the path"
+        );
+        assert_names_the_remedy(&outcome.kind.into_app_error().message);
+        assert!(
+            !outcome.remove_file,
+            "a record still points at the file, so the toolchain fault must not delete it"
+        );
+    }
+
+    /// The classification is a total function of its two inputs, so every
+    /// combination is pinned here rather than only the ones the tests above
+    /// happen to produce, together with the removal the handler pairs it with.
+    /// The pair is the actual contract: a diagnosis without knowing whether the
+    /// file is deleted is not what a caller acts on.
+    #[test]
+    fn every_combination_has_a_diagnosis_and_a_removal() {
+        for (label, index_error, record_exists, expected) in [
+            (
+                "toolchain, no record",
+                toolchain_index_error(),
+                false,
+                (
+                    UploadIndexFailure::ToolchainUnavailable,
+                    ErrorKind::Internal,
+                    // nothing references it, so the never-indexed file is removed
+                    true,
+                ),
+            ),
+            (
+                "toolchain, record",
+                toolchain_index_error(),
+                true,
+                (
+                    UploadIndexFailure::ToolchainUnavailable,
+                    ErrorKind::Internal,
+                    // a record points at it, so it must stay
+                    false,
+                ),
+            ),
+            (
+                "decode, no record",
+                anyhow::Error::msg("failed to decode image into DynamicImage"),
+                false,
+                (
+                    UploadIndexFailure::Undecodable,
+                    ErrorKind::InvalidInput,
+                    true,
+                ),
+            ),
+            (
+                "decode, record",
+                anyhow::Error::msg("failed to decode image into DynamicImage"),
+                true,
+                (
+                    UploadIndexFailure::AlreadyIndexed,
+                    ErrorKind::Internal,
+                    false,
+                ),
+            ),
+        ] {
+            let outcome = classify_index_failure(&index_error, record_exists);
+            assert_eq!(outcome.kind, expected.0, "{label}: wrong diagnosis");
+            assert_eq!(
+                outcome.kind.into_app_error().kind,
+                expected.1,
+                "{label}: wrong status"
+            );
+            assert_eq!(
+                outcome.remove_file, expected.2,
+                "{label}: the file must be removed exactly when nothing references it, \
+                 whichever failure produced it"
+            );
+            assert!(
+                !outcome.kind.diagnosis().is_empty(),
+                "{label} must produce a log conclusion"
+            );
+        }
     }
 }
 

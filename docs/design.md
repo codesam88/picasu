@@ -116,9 +116,48 @@ one per calling thread. That count is bounded by the index worker pool, because
 the indexer is the only caller. A session whose child dies is replaced and the
 read retried once; a session that cannot be started at all is never cached, so
 a missing binary is reported on every read instead of latching as a dead
-session. A failed read is absorbed into an empty map — a damaged image must
-still index — so each of those failures is logged with the install remedy, and
-the toolchain's presence is a test precondition rather than a silent skip.
+session.
+
+**A broken toolchain fails the file; a damaged file does not.** A read that
+failed _about the file_ — `ExifTool` rejected it, or produced output the
+backend could not parse — is absorbed into empty metadata and the asset indexes,
+because a damaged image is still a photo. A read that failed _about the
+toolchain_ — the binary is missing or unrunnable, the session could not start,
+or the child died and the restart did not help — is **propagated**, carrying the
+install remedy, and the file does not index. The two were the same stored state
+before this split, and that is the whole problem: an empty `exifVec` cannot
+distinguish a deployment with no `exiftool` from a library of photos that carry
+no metadata, so a broken install silently emptied every asset while indexing
+reported success.
+
+The remedy is part of the contract, not a log nicety. The same failure is
+reachable from a log line, an upload response, an album scan's `failed` counter
+and a rebuild's per-file diagnostics, and each caller already has a per-file
+failure path to report it through, so no new API surface was added.
+
+The upload is where the distinction has to become a status code. `POST
+/post/upload` runs the same pipeline synchronously and answers the client, so it
+classifies too: a toolchain failure is a **500** carrying the install remedy, and
+undecodable bytes stay a **400** with the message they have always had. The
+response is decided from the index error's chain, not from a resolve of
+`exiftool` on `PATH` — a child that keeps dying is a toolchain failure with the
+binary present, and a resolve would call it an undecodable upload. The uploaded
+file is removed in both cases, which keeps the invariant that a failed upload
+leaves no unindexed file behind; the client is told explicitly either way, so
+nothing about the upload is ambiguous, and leaving the file would only hand the
+next scan an unindexed asset to index.
+
+The split is a table over the `exiftool` crate's error variants, and it follows
+one question: did the engine fail, or did this file? `ExifToolNotFound` and
+every transport failure (a dead or unreadable child — `Io`, `StderrDisconnected`,
+`ProcessTerminated`, a poisoned session lock, the crate's
+"terminated unexpectedly" message) are the deployment; `ExifToolProcess` for a
+file it refused, `FileNotFound`, and the JSON/UTF-8/format decode failures are
+the file. `Io` is the one that looks ambiguous and is not: the backend never
+opens the file itself, so an `Io` on the read path can only be the child's
+pipes. The toolchain's presence remains a test precondition rather than a silent
+skip, so a suite that cannot read metadata at all fails at the precondition
+instead of exercising the rest of the suite against empty maps.
 
 **One read per file.** The single grouped record (`-G1`, so every tag arrives
 under its family, with a fixed date format) is the currency, and it is projected

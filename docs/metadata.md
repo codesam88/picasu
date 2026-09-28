@@ -364,6 +364,50 @@ the union of `XMP-dc:Subject` and IIM 2:25 `Keywords`.
 The exact per-field order and the rules behind both regimes are documented on
 `process::xmp::map_native_fields`; the pipeline itself is in `docs/design.md`.
 
+#### A file with no readable metadata, and a server with no `exiftool`
+
+These produce the same `exifVec: {}` in different runs, and only one of them is
+a fact about the file, so the backend keeps them apart.
+
+**The file's own metadata could not be read.** `ExifTool` ran and the file did
+not yield anything it could use: a malformed EXIF block, a truncated container,
+an empty file, random bytes, an unreadable sidecar. `exifVec` is empty, the
+natively modelled fields are empty, and the asset indexes anyway — the image is
+real and worth having, and the alternative is that one damaged file is a rejected
+upload. This is the contract `corrupt_exif_in_decodable_image_yields_empty_exif_vec`
+pins at the API level.
+
+Note what usually _is not_ an error here: ExifTool 13.59 reports a file it
+cannot parse inside the JSON record (`ExifTool:Error` / `ExifTool:Warning`) and
+still exits with a parseable record, so a damaged file normally arrives as a
+**successful** read of a record carrying no EXIF-family group. The empty map is
+the projection of that record, not an absorbed error.
+
+**The toolchain could not be read.** `exiftool` is missing or unrunnable, its
+`-stay_open` session cannot start, or the child died and the restart did not
+help. Nothing was learned about the file, and the next file fails the same way,
+so this **fails the file** instead: the metadata pipeline returns an error
+carrying the install remedy, and the existing per-file failure paths report it —
+the index task logs and fails, an album scan counts the file in its `failed`
+counter (and reports `state: failed` when every file failed), a rebuild counts
+it in `metadataFailed` with the remedy as the per-file diagnostic. No asset is
+stored with an empty `exifVec` it did not actually read.
+
+On the upload path the two are told apart at the HTTP boundary too, because
+`POST /post/upload` runs the same pipeline: a toolchain failure is a **500**
+carrying the install remedy, while undecodable bytes stay a **400** with
+"Uploaded file could not be decoded as an image or video". The file is removed in
+both cases, so a failed upload never leaves an unindexed file behind. The
+decision is on `router::post::post_upload::classify_index_failure`, and it reads
+the index error's chain rather than resolving `exiftool` on `PATH` — a child that
+keeps dying is a toolchain failure while the binary is present, and a resolve
+would report that as an undecodable upload.
+
+The boundary is a table over the `exiftool` crate's error variants and follows
+one question — did the engine fail, or did this file? It is documented on
+`process::exif::is_toolchain_variant`, and the split in the pipeline on
+`process::index::read_image_metadata`.
+
 The further-data bucket is not part of this choice. It reads the XMP family from
 the sidecar when there is one and the IIM and text chunks from the image either
 way — it reports what the file carries, and the managed fields' override rule is

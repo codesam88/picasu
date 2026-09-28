@@ -11,7 +11,9 @@ use std::{
 /// The metadata engine for image EXIF. `ExifTool` is an external binary (pure
 /// Perl, invoked as a separate process like `ffprobe` below), and there is no
 /// in-process fallback: [`read_metadata_record`] is the only reader of image
-/// metadata, so a missing binary empties every image's `exifVec`.
+/// metadata. A file whose metadata cannot be read yields an empty `exifVec` and
+/// still indexes; a **toolchain** that cannot be read at all does not, and
+/// leaves the pipeline as an error — see [`is_toolchain_failure`].
 const EXIFTOOL: &str = "exiftool";
 
 /// Date format asked of `ExifTool` with `-d`, applied to every date-valued tag.
@@ -75,9 +77,10 @@ pub(crate) type GroupedMetadata = BTreeMap<String, BTreeMap<String, String>>;
 ///   `ImageHeight` rather than `ImageLength`.
 ///
 /// A record that could not be read is the caller's to absorb: the indexer turns
-/// a failed read into an empty map, which is what keeps a broken image from
-/// turning into a rejected asset. The API-level counterpart is
-/// `corrupt_exif_in_decodable_image_yields_empty_exif_vec`.
+/// a read that failed *about the file* into an empty map, which is what keeps a
+/// broken image from turning into a rejected asset. The API-level counterpart is
+/// `corrupt_exif_in_decodable_image_yields_empty_exif_vec`. A read that failed
+/// about the **toolchain** is not absorbed — see [`is_toolchain_failure`].
 pub(crate) fn exif_map_from_record(record: &Value) -> BTreeMap<String, String> {
     exif_map_from(&group_by_family(record))
 }
@@ -101,10 +104,26 @@ pub(crate) fn exif_map_from_record(record: &Value) -> BTreeMap<String, String> {
 ///
 /// `Err` means the read did not happen — no session could be started (a missing
 /// or unrunnable binary, named in the context), the transport to the persistent
-/// child broke, or the output was not a JSON record. A file `ExifTool` cannot
-/// parse is *not* an error here: it comes back as a record with no EXIF groups,
-/// which the callers render as an empty map.
+/// child broke, or the output was not a JSON record. Whether the caller must
+/// propagate that is [`is_toolchain_failure`]'s question; a file `ExifTool`
+/// cannot parse is not an error here at all — it comes back as a record with no
+/// EXIF groups, which the callers render as an empty map.
 pub(crate) fn read_metadata_record(file_path: &Path) -> Result<Value> {
+    read_with_the_engine(file_path)
+        .with_context(|| format!("failed to read metadata for {}", file_path.display()))
+}
+
+/// One read through this thread's session, with no error policy applied.
+///
+/// Split from [`read_metadata_record`] so the file context and the engine's own
+/// error stay separable — the remedy attaches to one and not the other — and so
+/// the test seam has one place to stand in for the engine.
+fn read_with_the_engine(file_path: &Path) -> Result<Value> {
+    #[cfg(test)]
+    if let Some(injected) = INJECTED_READ.with(|slot| slot.borrow_mut().take()) {
+        return injected.map_err(engine_failure);
+    }
+
     SESSION.with(|slot| -> Result<Value> {
         let mut slot = slot.borrow_mut();
         // A session that could not be started is never cached, so a missing
@@ -113,9 +132,7 @@ pub(crate) fn read_metadata_record(file_path: &Path) -> Result<Value> {
             *slot = Some(Session::start()?);
         }
         let session = slot.as_mut().expect("session installed just above");
-        session
-            .read_retrying(file_path)
-            .with_context(|| format!("failed to read metadata for {}", file_path.display()))
+        session.read_retrying(file_path)
     })
 }
 
@@ -239,6 +256,81 @@ thread_local! {
     /// exits; there is no cross-thread sharing and no global state to reset
     /// between tests.
     static SESSION: RefCell<Option<Session>> = const { RefCell::new(None) };
+
+    /// The executable [`Session::start`] spawns from, overridden per thread by
+    /// [`with_read_seam`]. `None` is the production state and resolves to
+    /// [`EXIFTOOL`].
+    ///
+    /// Thread-local for the same reason [`SESSION`] is: taking `exiftool` off
+    /// the process-wide `PATH` would break every other test in the binary, since
+    /// `PATH` is global and the suite runs in parallel.
+    #[cfg(test)]
+    static EXECUTABLE_OVERRIDE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+
+    /// A read outcome returned in place of the engine's own, set per thread by
+    /// [`with_read_seam`] and consumed by the first read on that thread.
+    ///
+    /// This is the half of the seam a real file cannot provide. ExifTool 13.59
+    /// reports a file it cannot parse *inside* the JSON record
+    /// (`ExifTool:Error` / `ExifTool:Warning`) and still exits with a parseable
+    /// record, so a damaged file is answered with `Ok` and no EXIF groups
+    /// rather than with an error. A toolchain failure is the class a live file
+    /// does produce, and a chosen variant is the only way to pin what the
+    /// pipeline does with the *other* side of the classification.
+    #[cfg(test)]
+    static INJECTED_READ: RefCell<Option<Result<Value, ExifToolError>>> =
+        const { RefCell::new(None) };
+}
+
+/// What a test makes the read layer do instead of talking to the engine.
+///
+/// A `#[cfg(test)]` seam on the read boundary, for the two failures a real
+/// library cannot produce on demand: a deployment whose `exiftool` cannot start,
+/// and a chosen error variant. Taking `exiftool` off the process-wide `PATH`
+/// would be the obvious alternative and is unusable — `PATH` is global, the
+/// suite runs in parallel, and every other `exiftool` test would start failing.
+#[cfg(test)]
+pub(crate) enum ReadSeam {
+    /// Start the session from this executable instead of [`EXIFTOOL`], so a
+    /// spawn failure is a real `ExifToolNotFound` from the real code path.
+    Executable(PathBuf),
+    /// Answer the next read with this outcome instead of running the engine.
+    Injected(Result<Value, ExifToolError>),
+}
+
+/// Run `body` with the read layer redirected by `seam`, then restore it.
+///
+/// The override is thread-local and covers one `#[test]`, which runs on its own
+/// thread; the session is dropped on the way out so a session started under the
+/// seam cannot outlive it. A panic in `body` still leaves the thread's override
+/// installed, which costs nothing: the thread is the test's own and ends with it.
+#[cfg(test)]
+pub(crate) fn with_read_seam<T>(seam: ReadSeam, body: impl FnOnce() -> T) -> T {
+    match seam {
+        ReadSeam::Executable(executable) => {
+            EXECUTABLE_OVERRIDE.with(|slot| *slot.borrow_mut() = Some(executable));
+        }
+        ReadSeam::Injected(outcome) => {
+            INJECTED_READ.with(|slot| *slot.borrow_mut() = Some(outcome));
+        }
+    }
+    let out = body();
+    EXECUTABLE_OVERRIDE.with(|slot| *slot.borrow_mut() = None);
+    INJECTED_READ.with(|slot| *slot.borrow_mut() = None);
+    SESSION.with(|slot| *slot.borrow_mut() = None);
+    out
+}
+
+/// The executable a session on this thread is spawned from.
+///
+/// [`EXIFTOOL`] in production, whatever [`with_read_seam`] installed for a test
+/// run on the same thread.
+fn executable_for_this_thread() -> PathBuf {
+    #[cfg(test)]
+    if let Some(override_path) = EXECUTABLE_OVERRIDE.with(|slot| slot.borrow().clone()) {
+        return override_path;
+    }
+    PathBuf::from(EXIFTOOL)
 }
 
 /// A running `exiftool -stay_open` child plus the one read that has to survive
@@ -248,9 +340,9 @@ struct Session {
 }
 
 impl Session {
-    /// Spawn the persistent child, resolving [`EXIFTOOL`] on `PATH`.
+    /// Spawn the persistent child, resolving it on `PATH` for this thread.
     fn start() -> Result<Self> {
-        Self::start_at(Path::new(EXIFTOOL))
+        Self::start_at(&executable_for_this_thread())
     }
 
     /// Spawn the persistent child from `executable`, attaching the install
@@ -258,24 +350,22 @@ impl Session {
     ///
     /// A binary that is missing or not runnable is reported as
     /// `ExifToolNotFound` carrying the OS error underneath, which is what makes
-    /// the cause nameable in [`start_context`]; taking the path as an argument
-    /// rather than hardcoding it is what lets a test observe that error without
-    /// taking `exiftool` off the process-wide `PATH` for every other test.
+    /// the cause nameable in [`toolchain_diagnostic`]; taking the path as an
+    /// argument rather than hardcoding it is what lets a test observe that error
+    /// without taking `exiftool` off the process-wide `PATH` for every other
+    /// test.
     ///
-    /// A failure is also logged. The indexer absorbs a read error into an empty
-    /// map, so a server whose `exiftool` is missing serves images with empty
-    /// metadata and says nothing — the log line is the only place an operator
-    /// sees the cause. It fires per *session creation*, not per call, and a
-    /// session that fails to start is never cached (see [`read_metadata_record`]),
-    /// so with the binary missing it repeats once per failing read — that is
-    /// deliberate. The one-line-per-image repetition is the intended signal: it
-    /// is the count of metadata reads that returned nothing, and a single
-    /// deduplicated warning would be scrolled away by the very indexing log it
-    /// is meant to explain.
+    /// A failure is also logged, because the read layer is not the only thing
+    /// that starts a session and the log is where an operator meets the cause
+    /// outside an indexing response. Since the pipeline now propagates a
+    /// toolchain failure, the log is no longer the only signal — it fires per
+    /// *session creation* rather than per file, and a session that fails to
+    /// start is never cached (see [`read_metadata_record`]), so with the binary
+    /// missing it repeats once per failing read.
     fn start_at(executable: &Path) -> Result<Self> {
         ExifTool::with_executable(executable)
             .map(|tool| Session { tool })
-            .with_context(start_context)
+            .map_err(engine_failure)
             .inspect_err(|err| {
                 log::error!("image metadata is unavailable: {err:#}");
             })
@@ -294,11 +384,16 @@ impl Session {
     /// `ExifTool` rejects, unparsable output — is reported as it is, since
     /// restarting would only pay the Perl startup cost to reach the same
     /// answer.
+    ///
+    /// The retry's failure is the one that reaches a caller, and it goes through
+    /// [`engine_failure`] like every other engine error, so a child that dies
+    /// again — or a binary that has since been removed — arrives with the
+    /// install remedy attached rather than as a bare pipe error.
     fn read_retrying(&mut self, file_path: &Path) -> Result<Value> {
         match self.read(file_path) {
             Err(err) if is_transport_failure(&err) => {
                 *self = Session::start()?;
-                Ok(self.read(file_path)?)
+                self.read(file_path).map_err(engine_failure)
             }
             other => Ok(other?),
         }
@@ -523,30 +618,141 @@ fn staged_value_path(target: &Path, index: usize) -> PathBuf {
 /// unreadable, and so whether retrying on a fresh child can help.
 fn is_transport_failure(err: &ExifToolError) -> bool {
     match err {
-        // Every way the crate can say the child is gone rather than the file
+        // Every way the crate can say the session is gone rather than the file
         // being unreadable: writing to or reading from a dead child's pipes, a
-        // stderr reader that ended with the child, and the documented
-        // `ProcessTerminated` — which the crate never actually constructs, so the
-        // end-of-stream error it reports instead is matched on its message too.
+        // stderr reader that ended with the child, a mutex the crate's own lock
+        // left poisoned (a fresh session has a fresh one), and the documented
+        // `ProcessTerminated` — which the crate never actually constructs, so
+        // the end-of-stream error it reports instead is matched on its message
+        // too.
         ExifToolError::Io(_)
         | ExifToolError::StderrDisconnected
-        | ExifToolError::ProcessTerminated => true,
-        ExifToolError::ExifToolProcess { message, .. } => {
-            message.contains("terminated unexpectedly")
-        }
+        | ExifToolError::ProcessTerminated
+        | ExifToolError::MutexPoison(_) => true,
+        ExifToolError::ExifToolProcess { message, .. } => reports_a_dead_child(message),
         _ => false,
     }
 }
 
-/// The install remedy [`read_metadata_record`] attaches to a session that could
-/// not be started, and the text the failure is logged with. Without a working
-/// `exiftool` the reader is non-fallible, so the failure surfaces as an empty
-/// `exifVec` on every image rather than as an error, and these two places are
-/// the only ones the cause is visible in.
-fn start_context() -> String {
+/// The message the `exiftool` crate reports for a child that exited while a
+/// read was in flight, which is how a dead child actually reaches a caller
+/// despite the variant it documents for it never being constructed.
+fn reports_a_dead_child(message: &str) -> bool {
+    message.contains("terminated unexpectedly")
+}
+
+/// Whether an engine failure is about the **toolchain** rather than about the
+/// file that was being read — the classification every caller branches on.
+///
+/// This is the whole of the missing-`exiftool` contract, and the distinction is
+/// the difference between a deployment that is broken and a file that is. Before
+/// it existed the two were the same stored state, `exifVec: {}` on an image
+/// nobody had read any metadata from, and the only difference was a log line.
+///
+/// ## The table
+///
+/// **Toolchain** — nothing about this file was learned, and the same failure
+/// will happen for the next one:
+///
+/// * `ExifToolNotFound` — the binary is missing or not runnable. This is the
+///   case the plan named, and the one that used to be invisible.
+/// * every [`is_transport_failure`] — the session could not carry the exchange.
+///   This is where `Io` lands, and the measurement settles it: the read path is
+///   `json` → `json_batch` → `json_execute` → `execute_raw`, and `Io` is
+///   constructed in exactly three places in it — the argument writes to the
+///   child's stdin, the flush after them, and the read from its stdout. `ExifTool`
+///   opens the file itself, in its own process, and reports anything wrong with
+///   it on stderr or inside the record, so an `Io` from this path cannot be
+///   about the file's contents or its permissions. It is the pipes.
+///
+/// **File** — the engine ran and this file is the reason, so the file is the
+/// only thing that loses:
+///
+/// * `ExifToolProcess` — `ExifTool` put an `Error:` line on stderr, i.e. it
+///   read the exchange and rejected the file. The dead-child message of the same
+///   variant is the exception above, matched on [`reports_a_dead_child`].
+/// * `FileNotFound` — the path was not there for the child to open, which is a
+///   per-file condition: a file deleted between the scan and the read, or a
+///   record whose path was never set.
+/// * `Json`, `Utf8`, `UnexpectedFormat` — output the engine produced and this
+///   code could not read. They are problems *about the answer*, not about the
+///   toolchain's health, and `ExifTool` 13.59 in particular answers a file it
+///   cannot parse by putting `ExifTool:Error` inside a parseable record rather
+///   than on stderr — measured, so most of this arm is reached only by output
+///   outside that shape.
+/// * `Deserialization`, `TagNotFound`, `TagDeserialization` — the typed-read
+///   variants. `read_metadata_record` uses none of those crate methods, so these
+///   are unreachable from the read path today; they are grouped with the file
+///   failures because that is the safer direction for a variant this code has
+///   never seen — a per-file empty map rather than a library-wide indexing
+///   failure — and the catch-all in [`is_transport_failure`] is the same bet.
+fn is_toolchain_variant(err: &ExifToolError) -> bool {
+    match err {
+        ExifToolError::ExifToolNotFound(_) => true,
+        other => is_transport_failure(other),
+    }
+}
+
+/// Whether a read error is about the toolchain, as [`is_toolchain_variant`]
+/// answers it for one [`ExifToolError`].
+///
+/// The chain is walked because the crate's error is the innermost of several:
+/// [`read_metadata_record`] puts the file on the outside and [`engine_failure`]
+/// puts the remedy between, so a caller that only inspected the outermost cause
+/// would classify every failure as a fact about the file. Downcasting is what
+/// makes the lookup work — the crate's error is a typed `#[source]`, and anyhow
+/// preserves it through both context layers.
+pub(crate) fn is_toolchain_failure(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<ExifToolError>()
+            .is_some_and(is_toolchain_variant)
+    })
+}
+
+/// The error one engine failure becomes, with the install remedy attached when
+/// the failure is about the toolchain.
+///
+/// One function, so no path can produce a toolchain failure without a remedy:
+/// the session start, the retried read and the test seam all come through it,
+/// and there is one wording to keep current rather than one per call site.
+fn engine_failure(err: ExifToolError) -> anyhow::Error {
+    let is_toolchain = is_toolchain_variant(&err);
+    let err = anyhow::Error::new(err);
+    if is_toolchain {
+        err.context(toolchain_diagnostic())
+    } else {
+        err
+    }
+}
+
+/// The install remedy, and the text every toolchain-classified failure is
+/// logged or returned with.
+///
+/// It is the actionable half of the contract: a propagated failure is only
+/// better than a swallowed one if the reader of the message can tell whether to
+/// install a binary, and the same failure is reachable from a log line, an
+/// upload response, an album-scan counter and a rebuild's per-file diagnostics.
+const INSTALL_REMEDY: &str =
+    "install it with `just install-exiftool` (or `apt-get install libimage-exiftool-perl`)";
+
+/// The operator-facing sentence for a toolchain failure: what is wrong, and what
+/// to do about it.
+///
+/// `pub(crate)` because it is two answers to one question, not a log string. It
+/// is the context [`engine_failure`] attaches to a propagated failure, and it is
+/// what an HTTP response says when a request fails for this reason — the upload
+/// handler returns it verbatim. One wording for both is the point: an operator
+/// who reads the upload response and an operator who reads the log are told the
+/// same thing, and a reworded remedy exists in exactly one place.
+///
+/// It carries no path, no hash and no crate-internal detail, because it is safe
+/// to hand to a client. The specific file and the crate's own error stay in the
+/// server log, where [`read_metadata_record`] puts them.
+pub(crate) fn toolchain_diagnostic() -> String {
     format!(
-        "failed to start {EXIFTOOL} in -stay_open mode; install it with \
-         `just install-exiftool` (or `apt-get install libimage-exiftool-perl`)"
+        "image metadata is unavailable: {EXIFTOOL} could not be started, or its -stay_open \
+         session could not serve a read after a restart; {INSTALL_REMEDY} and index again"
     )
 }
 
@@ -791,11 +997,13 @@ fn tool_runs(path: &std::path::Path) -> bool {
 
 /// Check that the ExifTool toolchain is present, or explain what is missing.
 ///
-/// Deliberately a hard failure rather than a silent skip: `generate_exif_for_image`
-/// is non-fallible, so a missing ExifTool turns every image's `exifVec` into
-/// `{}` and the suite goes green on assertions it never really checked.
-/// `resolved` is a slice of `(tool, path-on-PATH)` pairs so the message can be
-/// tested without removing a binary from the environment.
+/// Deliberately a hard failure rather than a silent skip. The pipeline now
+/// propagates a toolchain failure, so a missing ExifTool does not store empty
+/// `exifVec`s — but it does fail most of the suite, and a precondition that
+/// explains itself is a better first failure than a screen of metadata
+/// assertions failing on empty maps. `resolved` is a slice of `(tool,
+/// path-on-PATH)` pairs so the message can be tested without removing a binary
+/// from the environment.
 #[cfg(test)]
 fn check_exiftool_toolchain(resolved: &[(&str, Option<PathBuf>)]) -> Result<(), String> {
     let missing = resolved
@@ -841,17 +1049,81 @@ fn resolve_exiftool_tools() -> Vec<(&'static str, Option<PathBuf>)> {
     vec![(EXIFTOOL, resolve_on_path(EXIFTOOL))]
 }
 
+/// Absolute path of a fixture pinned in the capability manifest, so a test
+/// reads the same bytes the manifest's SHA-256 check covers and the scenarios
+/// copy. Module level because the read layer, the pipeline and a rebuild all
+/// need the same fixtures.
+#[cfg(test)]
+pub(crate) fn pinned_fixture_path(id: &str) -> PathBuf {
+    let entry = snapfab::capabilities::capabilities()
+        .fixture_by_id(id)
+        .unwrap_or_else(|| panic!("fixture `{id}` should be registered in the manifest"));
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the backend manifest dir has a parent: the repository root")
+        .join(&entry.path)
+}
+
+/// The JPEG EXIF header, the six bytes `Exif\0\0` an APP1 segment's EXIF
+/// payload starts with.
+#[cfg(test)]
+const EXIF_HEADER: &[u8] = b"Exif\0\0";
+
+/// The two byte-order words a TIFF block may start with, and the invalid word
+/// that replaces whichever one a file carries.
+#[cfg(test)]
+const BYTE_ORDERS: [(&[u8], &[u8]); 2] = [(b"II*\0", b"XY*\0"), (b"MM\0*", b"XY\0*")];
+
+/// Replace the TIFF byte-order word of `jpeg`'s EXIF block with an invalid one,
+/// leaving the file length unchanged.
+///
+/// A file this has been applied to is the "damaged metadata inside an otherwise
+/// decodable image" case: `ExifTool` reports `Malformed APP1 EXIF segment` and
+/// extracts nothing, while the pixel data the rest of the pipeline decodes is
+/// untouched. It lives at module level rather than in one test module because
+/// the read layer, the pipeline and a rebuild all need the same fixture, and
+/// three copies of a byte-level corruption is three chances to write the wrong
+/// one.
+///
+/// Which of `II*\0` or `MM\0*` a block starts with is the fixture *writer's*
+/// business, not the caller's: `little_exif` wrote little-endian, ExifTool
+/// writes big-endian, and a file from a camera will be either, so the marker is
+/// discovered and whichever it is gets damaged. Only the two marker letters are
+/// replaced, and the corrupted word is one `ExifTool` has no fallback for:
+/// patching the trailing `0` instead — the IFD offset, which for a big-endian
+/// block shares the word — leaves every tag readable, because the directory is
+/// then found by scanning.
+#[cfg(test)]
+pub(crate) fn corrupt_exif_byte_order(jpeg: &mut [u8]) {
+    let at = jpeg
+        .windows(EXIF_HEADER.len())
+        .position(|window| window == EXIF_HEADER)
+        .expect("the fixture carries an Exif\\0\\0 header");
+    let word_at = at + EXIF_HEADER.len();
+    let word = jpeg
+        .get(word_at..word_at + 4)
+        .expect("the EXIF header is followed by a byte-order word");
+    let (_, corrupt) = BYTE_ORDERS
+        .iter()
+        .find(|(valid, _)| *valid == word)
+        .unwrap_or_else(|| panic!("the EXIF block starts with an unknown byte order {word:?}"));
+    jpeg[word_at..word_at + 4].copy_from_slice(corrupt);
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        GroupedMetadata, PathBuf, Session, WRITE_REFUSED, XmpAssignment, XmpWriteOutcome,
-        check_exiftool_toolchain, classify_write, exif_group_rank, exif_map_from,
-        exif_map_from_record, group_by_family, is_transport_failure, json_value_to_string,
-        read_metadata_record, resolve_exiftool_tools, staged_value_path, tool_runs,
-        write_xmp_properties,
+        GroupedMetadata, PathBuf, ReadSeam, Session, WRITE_REFUSED, XmpAssignment, XmpWriteOutcome,
+        check_exiftool_toolchain, classify_write, corrupt_exif_byte_order, engine_failure,
+        exif_group_rank, exif_map_from, exif_map_from_record, group_by_family,
+        is_toolchain_failure, is_toolchain_variant, is_transport_failure, json_value_to_string,
+        pinned_fixture_path as pinned_fixture, read_metadata_record, resolve_exiftool_tools,
+        staged_value_path, tool_runs, with_read_seam, write_xmp_properties,
     };
     use exiftool::ExifToolError;
     use serde_json::json;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
     use std::{
         collections::BTreeMap,
         path::Path,
@@ -1390,41 +1662,7 @@ mod tests {
 
     /// The JPEG EXIF header, the six bytes `Exif\0\0` an APP1 segment's EXIF
     /// payload starts with.
-    const EXIF_HEADER: &[u8] = b"Exif\0\0";
-
-    /// The two byte-order words a TIFF block may start with, and the invalid
-    /// word that replaces whichever one a file carries.
-    const BYTE_ORDERS: [(&[u8], &[u8]); 2] = [(b"II*\0", b"XY*\0"), (b"MM\0*", b"XY\0*")];
-
-    /// Replace the TIFF byte-order word of `jpeg`'s EXIF block with an invalid
-    /// one, leaving the file length unchanged.
-    ///
-    /// Which of `II*\0` or `MM\0*` a block starts with is the fixture *writer's*
-    /// business, not this test's: `little_exif` wrote little-endian, ExifTool
-    /// writes big-endian, and a file from a camera will be either. Pinning one
-    /// of them made this test a statement about snapfab's writer rather than
-    /// about the reader, so the marker is discovered and whichever it is gets
-    /// damaged.
-    ///
-    /// Only the two marker letters are replaced, and the corrupted word is one
-    /// ExifTool has no fallback for. Patching the trailing `0` instead — the
-    /// IFD offset, which for a big-endian block shares the word — leaves every
-    /// tag readable, because the directory is then found by scanning.
-    fn corrupt_exif_byte_order(jpeg: &mut [u8]) {
-        let at = jpeg
-            .windows(EXIF_HEADER.len())
-            .position(|window| window == EXIF_HEADER)
-            .expect("the fixture carries an Exif\\0\\0 header");
-        let word_at = at + EXIF_HEADER.len();
-        let word = jpeg
-            .get(word_at..word_at + 4)
-            .expect("the EXIF header is followed by a byte-order word");
-        let (_, corrupt) = BYTE_ORDERS
-            .iter()
-            .find(|(valid, _)| *valid == word)
-            .unwrap_or_else(|| panic!("the EXIF block starts with an unknown byte order {word:?}"));
-        jpeg[word_at..word_at + 4].copy_from_slice(corrupt);
-    }
+    const EXIF_HEADER: &[u8] = super::EXIF_HEADER;
 
     /// The corruption above is the one that empties the map, and it has to be
     /// the *byte-order* word: ExifTool recovers from a damaged IFD offset by
@@ -1488,9 +1726,10 @@ mod tests {
     }
 
     /// The precondition for every EXIF scenario, and the counterpart of
-    /// `process::video`'s ffmpeg check. It has to be a hard failure: the reader
-    /// is non-fallible, so a missing ExifTool empties every `exifVec` and the
-    /// suite reports success on assertions that were never really exercised.
+    /// `process::video`'s ffmpeg check. It stays a hard failure: the pipeline
+    /// propagates a toolchain failure, so a missing ExifTool turns a suite full
+    /// of metadata assertions into a screen of indexing errors, and the
+    /// precondition turns that into one message that says what to install.
     #[test]
     fn image_metadata_requires_a_working_exiftool() {
         let resolved = resolve_exiftool_tools();
@@ -1807,19 +2046,6 @@ mod tests {
         );
     }
 
-    /// Absolute path of a fixture pinned in the capability manifest, so the test
-    /// reads the same bytes the manifest's SHA-256 check covers and the
-    /// scenarios copy.
-    fn pinned_fixture(id: &str) -> PathBuf {
-        let entry = snapfab::capabilities::capabilities()
-            .fixture_by_id(id)
-            .unwrap_or_else(|| panic!("fixture `{id}` should be registered in the manifest"));
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("the backend manifest dir has a parent: the repository root")
-            .join(&entry.path)
-    }
-
     /// Which family-1 group names count as EXIF.
     ///
     /// The read is not narrowed to the EXIF family — it is one `-G1` read for
@@ -2097,13 +2323,17 @@ mod tests {
     /// failure a retry can actually fix.
     #[test]
     fn only_transport_failures_are_worth_a_restart() {
-        // A dead child's pipes: `Io`, a disconnected stderr reader, and the
-        // documented-but-never-constructed `ProcessTerminated`.
+        // A dead child's pipes: `Io`, a disconnected stderr reader, a mutex the
+        // crate's own lock left poisoned, and the documented-but-never-constructed
+        // `ProcessTerminated`.
         assert!(is_transport_failure(&ExifToolError::Io(
             std::io::Error::from(std::io::ErrorKind::BrokenPipe)
         )));
         assert!(is_transport_failure(&ExifToolError::StderrDisconnected));
         assert!(is_transport_failure(&ExifToolError::ProcessTerminated));
+        assert!(is_transport_failure(&ExifToolError::MutexPoison(
+            "session lock poisoned".to_string()
+        )));
         // The error the crate actually returns for a child that exits mid-read.
         assert!(is_transport_failure(&ExifToolError::ExifToolProcess {
             message: "Process terminated unexpectedly.".to_string(),
@@ -2132,6 +2362,216 @@ mod tests {
             assert!(
                 !is_transport_failure(&err),
                 "{err} is about the file, not the child, so a restart cannot change it"
+            );
+        }
+    }
+
+    /// The classification the whole missing-`exiftool` contract rests on, as a
+    /// table over every variant the crate can produce.
+    ///
+    /// Two things are asserted per variant rather than one: which side of the
+    /// split it falls on, and — for the toolchain side — that a failure carrying
+    /// it names the install remedy. The second assertion is not decoration: a
+    /// propagated failure only helps an operator if the message tells them what
+    /// to do, and the remedy is the entire actionable content of the change.
+    ///
+    /// Every variant is listed rather than sampled, including the ones the read
+    /// path cannot currently construct, because a variant added to the crate in a
+    /// dependency bump has to land in one arm or the other deliberately — the
+    /// default arm of [`is_toolchain_variant`] is a bet about a variant this
+    /// code has never seen, and this test is what keeps that bet visible.
+    #[test]
+    fn every_engine_failure_is_classified_and_a_toolchain_failure_names_the_remedy() {
+        for (label, err) in [
+            // ── toolchain: the deployment, not the file ────────────────────
+            (
+                "ExifToolNotFound",
+                ExifToolError::ExifToolNotFound(std::io::Error::from(std::io::ErrorKind::NotFound)),
+            ),
+            (
+                "Io(BrokenPipe)",
+                ExifToolError::Io(std::io::Error::from(std::io::ErrorKind::BrokenPipe)),
+            ),
+            ("StderrDisconnected", ExifToolError::StderrDisconnected),
+            ("ProcessTerminated", ExifToolError::ProcessTerminated),
+            (
+                "MutexPoison",
+                ExifToolError::MutexPoison("session lock poisoned".to_string()),
+            ),
+            (
+                "ExifToolProcess(terminated unexpectedly)",
+                ExifToolError::ExifToolProcess {
+                    message: "Process terminated unexpectedly.".to_string(),
+                    std_err: String::new(),
+                    command_args: "-json -G1".to_string(),
+                },
+            ),
+        ] {
+            assert!(
+                is_toolchain_variant(&err),
+                "{label} is about the toolchain, so a caller must propagate it rather than store \
+                 an asset with no metadata"
+            );
+            let rendered = format!("{:#}", engine_failure(err));
+            for expected in [
+                "exiftool",
+                "just install-exiftool",
+                "apt-get install libimage-exiftool-perl",
+            ] {
+                assert!(
+                    rendered.contains(expected),
+                    "{label} must arrive with a remedy, and has to mention {expected:?}: {rendered}"
+                );
+            }
+        }
+
+        for (label, err) in [
+            // ── file: the engine ran, and this file is the reason ────────────
+            (
+                "ExifToolProcess(Error: Malformed APP1 EXIF segment)",
+                ExifToolError::ExifToolProcess {
+                    message: "Error: Malformed APP1 EXIF segment".to_string(),
+                    std_err: "Error: Malformed APP1 EXIF segment".to_string(),
+                    command_args: "-json -G1 broken.jpg".to_string(),
+                },
+            ),
+            (
+                "FileNotFound",
+                ExifToolError::FileNotFound {
+                    path: PathBuf::from("/library/absent.jpg"),
+                    command_args: "-json -G1 /library/absent.jpg".to_string(),
+                },
+            ),
+            (
+                "Json",
+                ExifToolError::Json(serde_json::from_str::<serde_json::Value>("{").unwrap_err()),
+            ),
+            (
+                "Utf8",
+                ExifToolError::Utf8(String::from_utf8(vec![0xff]).expect_err("invalid UTF-8")),
+            ),
+            (
+                "UnexpectedFormat",
+                ExifToolError::UnexpectedFormat {
+                    path: String::new(),
+                    command_args: "-json -G1".to_string(),
+                },
+            ),
+            (
+                "Deserialization",
+                ExifToolError::Deserialization {
+                    path: String::new(),
+                    source: serde_json::from_str::<serde_json::Value>("{").unwrap_err(),
+                },
+            ),
+            (
+                "TagNotFound",
+                ExifToolError::TagNotFound {
+                    path: PathBuf::from("/library/photo.jpg"),
+                    tag: "NoSuchTag".to_string(),
+                },
+            ),
+            (
+                "TagDeserialization",
+                ExifToolError::TagDeserialization {
+                    path: PathBuf::from("/library/photo.jpg"),
+                    tag: "NoSuchTag".to_string(),
+                    error: serde_json::from_str::<serde_json::Value>("{").unwrap_err(),
+                },
+            ),
+        ] {
+            assert!(
+                !is_toolchain_variant(&err),
+                "{label} is about this file, so the file loses its metadata and nothing else"
+            );
+            let rendered = format!("{:#}", engine_failure(err));
+            assert!(
+                !rendered.contains("install-exiftool"),
+                "{label} is not an installation problem, so it must not send an operator to \
+                 install a binary they already have: {rendered}"
+            );
+        }
+    }
+
+    /// The classification has to survive the context layers, because the caller
+    /// sees the outermost error and cannot reach the crate's error itself.
+    ///
+    /// This is the shape a real failure arrives in: the file on the outside from
+    /// `read_metadata_record`, the remedy in the middle, the crate's typed error
+    /// at the bottom. A predicate that only inspected the top would classify every
+    /// toolchain failure as a per-file one and the whole change would be inert.
+    #[test]
+    fn a_toolchain_failure_is_recognised_through_the_context_layers() {
+        let toolchain = with_read_seam(
+            ReadSeam::Executable(PathBuf::from("/nonexistent/picasu-no-such-exiftool")),
+            || read_metadata_record(&PathBuf::from("/library/photo.jpg")).unwrap_err(),
+        );
+        assert!(
+            is_toolchain_failure(&toolchain),
+            "a session that cannot start is a toolchain failure: {toolchain:#}"
+        );
+
+        // The file-shaped failure, through the same layers, is not.
+        let file_shaped = with_read_seam(
+            ReadSeam::Injected(Err(ExifToolError::ExifToolProcess {
+                message: "Error: Malformed APP1 EXIF segment".to_string(),
+                std_err: "Error: Malformed APP1 EXIF segment".to_string(),
+                command_args: "-json -G1 broken.jpg".to_string(),
+            })),
+            || read_metadata_record(&PathBuf::from("/library/broken.jpg")).unwrap_err(),
+        );
+        assert!(
+            !is_toolchain_failure(&file_shaped),
+            "a file ExifTool rejected is not a deployment problem: {file_shaped:#}"
+        );
+    }
+
+    /// A child that dies and stays dead is the second toolchain failure, and it
+    /// is the one the read layer has to decorate: `read_retrying` restarts the
+    /// child once, and if the replacement dies too the failure is what a caller
+    /// sees. So this asserts the remedy survives the whole retry path, not only
+    /// the session-start one.
+    ///
+    /// The dead child is a stub script rather than a SIGKILL. The crate writes
+    /// the read into the child's stdin and waits for its `{ready}` marker on
+    /// stdout, so a child that exits without writing one is indistinguishable
+    /// from a killed `exiftool` — and unlike a kill, it happens on the *retried*
+    /// read too, which a same-thread test cannot otherwise arrange (the restart
+    /// happens inside the call being made).
+    #[cfg(unix)]
+    #[test]
+    fn a_child_that_dies_on_both_attempts_propagates_with_the_remedy() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let stub = dir.path().join("exiftool-that-exits");
+        std::fs::write(&stub, "#!/bin/sh\nexit 0\n").expect("write the stub");
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755))
+            .expect("make the stub executable");
+
+        let err = with_read_seam(ReadSeam::Executable(stub), || {
+            read_metadata_record(&pinned_fixture("tiff-48x32-exif"))
+                .expect_err("a child that exits without answering cannot serve the read")
+        });
+
+        assert!(
+            is_toolchain_failure(&err),
+            "an engine whose child will not stay up is a deployment problem: {err:#}"
+        );
+        assert!(
+            err.chain()
+                .find_map(|cause| cause.downcast_ref::<ExifToolError>())
+                .is_some_and(is_transport_failure),
+            "and the crate's own error must be the transport one, not a file rejection: {err:#}"
+        );
+        let rendered = format!("{err:#}");
+        for expected in [
+            "exiftool",
+            "just install-exiftool",
+            "apt-get install libimage-exiftool-perl",
+        ] {
+            assert!(
+                rendered.contains(expected),
+                "the retried read's failure has to be actionable too, and has to mention \
+                 {expected:?}: {rendered}"
             );
         }
     }
@@ -2181,12 +2621,12 @@ mod tests {
         );
     }
 
-    /// A missing binary has to stay a *named* failure, not a generic one.
-    ///
-    /// The indexer swallows a read error into an empty map, so this message is
-    /// the only place the cause reaches an operator: it has to say
-    /// the binary is missing and how to install it, on top of whatever the
-    /// `exiftool` crate reports underneath.
+    /// A missing binary has to stay a *named* failure, not a generic one, and it
+    /// has to stay typed: the pipeline decides between "this deployment is
+    /// broken" and "this file is unreadable" by downcasting, so an error that
+    /// arrived as a plain string would silently downgrade a library-wide failure
+    /// to a per-file one. The rendered message is the operator half of the same
+    /// contract and is asserted for the remedy.
     #[test]
     fn a_missing_binary_is_reported_with_the_install_remedy() {
         let Err(err) = Session::start_at(Path::new("/nonexistent/picasu-no-such-exiftool")) else {

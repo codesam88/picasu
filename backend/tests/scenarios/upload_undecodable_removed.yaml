@@ -1,0 +1,47 @@
+name: an upload that cannot be decoded is a 400 and the file is removed
+# The upload path's index-failure branch, which nothing else pins:
+# `upload_bad_content_type` and `upload_unindexable_removed` both fail in
+# `validate_upload_batch` *before* anything is written, so they never reach
+# `index_image` at all. This is the branch where the file is written and the
+# metadata pipeline then rejects it.
+#
+# The truncation keeps the SOI signature (`ffd8ff`), so `infer` identifies the
+# bytes as a JPEG and the pre-flight validation passes — that is what makes this
+# an index failure rather than a validation failure. The decode then fails
+# inside `process_image_info` → `generate_dynamic_image`, and the bytes are
+# entirely the client's fault, so the response stays 400 with the original
+# sentence.
+#
+# The status and the message are the pair that distinguishes this from a broken
+# metadata toolchain: that one is a 500 carrying the install remedy, and it
+# costs this file the same way. See `a_toolchain_failure_is_a_500_carrying_the_remedy`
+# for the other side of the split.
+#
+# The stored name is `photo.jpeg` even though the upload claimed `photo.jpg`:
+# the extension comes from the request's `Content-Type`, never from the client's
+# filename. Asserting it is the point — a file that stayed on disk under any name
+# would mean the removal invariant broke.
+#
+# The path is IMAGE_HOME-relative on purpose. `file_absent` joins the string onto
+# `image_home` after stripping a leading `/`, so a `${data_path}`-prefixed path
+# resolves to a directory that cannot exist and the assertion passes whatever the
+# handler did. `upload_unindexable_removed.yaml` spells it that way; this one does
+# not, and mutation-checking it (never remove the file) fails it.
+given:
+  - dir_album: /e2e_up_undecodable/target
+    id_as: $album
+  - photo: /e2e_up_undecodable/src/truncated.jpg
+  - truncate_file:
+      path: /e2e_up_undecodable/src/truncated.jpg
+      bytes: 100
+when:
+  - upload:
+      file: /e2e_up_undecodable/src/truncated.jpg
+      filename: photo.jpg
+      target_album: "${album}"
+      on_conflict: rename
+then:
+  - response.status: 400
+  - response.json.kind: "InvalidInput"
+  - response.json.message: "Uploaded file could not be decoded as an image or video"
+  - file_absent: e2e_up_undecodable/target/photo.jpeg

@@ -803,6 +803,33 @@ mod tests {
             .collect()
     }
 
+    /// A directory under the shared `image_home`, removed when the test ends
+    /// whether it passed or not.
+    ///
+    /// Every rebuild test walks the whole of `image_home` and asserts on counts,
+    /// so the tests are also asserting that the one before it cleaned up. A
+    /// panic that skipped the cleanup would fail the next dozen of them with a
+    /// count mismatch, hiding the failure that actually happened.
+    struct AlbumDir(PathBuf);
+
+    impl AlbumDir {
+        fn under_image_home(name: &str) -> Self {
+            let path = test_image_home().join(name);
+            fs::create_dir_all(&path).unwrap_or_else(|e| panic!("create {}: {e}", path.display()));
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for AlbumDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
     fn make_jpeg(dir: &Path, name: &str) -> PathBuf {
         snapfab::generate_batch(&[snapfab::PhotoSpec {
             output: Some(dir.join(name).to_string_lossy().into()),
@@ -1053,5 +1080,136 @@ mod tests {
 
         clear_all_tables();
         fs::remove_dir_all(&album_dir).unwrap();
+    }
+
+    /// A toolchain failure is not a fact about the file being walked, so it must
+    /// not be reported as one. Before the pipeline propagated it, a rebuild
+    /// against a deployment without a usable `exiftool` stored a default payload
+    /// for every file — `exifVec: {}`, no tags, no dimensions — and answered
+    /// `metadataIndexed` as a success. That is the failure this counts instead:
+    /// identity is still issued for the file, the pipeline error is recorded as
+    /// a metadata failure, and the diagnostic names the remedy, so an operator
+    /// reading the rebuild response knows the library was not re-derived.
+    #[test]
+    fn a_toolchain_failure_is_counted_as_a_metadata_failure_with_the_remedy() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        ensure_asset_tables();
+        clear_all_tables();
+
+        let image_home = test_image_home();
+        let album_dir = AlbumDir::under_image_home("rebuild_toolchain_failure");
+        let photo = make_jpeg(album_dir.path(), "photo.jpg");
+
+        let stats = crate::process::exif::with_read_seam(
+            crate::process::exif::ReadSeam::Executable(PathBuf::from(
+                "/nonexistent/picasu-no-such-exiftool",
+            )),
+            || rebuild_from_filesystem(&image_home).expect("the walk itself must not abort"),
+        );
+
+        assert_eq!(
+            stats.media_created, 1,
+            "the identity walk is independent of the pipeline"
+        );
+        assert_eq!(
+            stats.metadata_indexed, 0,
+            "nothing was derived, so a rebuild reporting success here is the silent-empty bug"
+        );
+        assert_eq!(stats.metadata_failed, 1, "the toolchain failure is counted");
+        assert!(!stats.metadata_failures_truncated);
+
+        let failure = &stats.metadata_failures[0];
+        assert_eq!(failure.path, photo.to_string_lossy());
+        for expected in [
+            "exiftool",
+            "just install-exiftool",
+            "apt-get install libimage-exiftool-perl",
+        ] {
+            assert!(
+                failure.error.contains(expected),
+                "the per-file diagnostic has to be actionable, and has to mention {expected:?}: \
+                 {}",
+                failure.error
+            );
+        }
+
+        let asset_id = asset_store::get_asset_id_by_path(&photo.to_string_lossy())
+            .expect("lookup path")
+            .expect("the walk issued identity for the file");
+        assert!(
+            crate::process::transitor::load_metadata_record(asset_id.as_str())
+                .expect("read stored metadata")
+                .is_none(),
+            "a pipeline that never ran must not leave a default payload behind"
+        );
+
+        clear_all_tables();
+    }
+
+    /// The other side of the same classification: a file whose own metadata
+    /// `ExifTool` will not parse costs nothing. The rebuild stores the asset
+    /// with the empty `exifVec` it derived and reports it as indexed, because
+    /// that is the truth about the file rather than a gap in the rebuild.
+    #[test]
+    fn a_file_exiftool_rejects_is_rebuilt_with_empty_metadata() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        ensure_asset_tables();
+        clear_all_tables();
+
+        let image_home = test_image_home();
+        let album_dir = AlbumDir::under_image_home("rebuild_soft_metadata_failure");
+        let good = make_jpeg(album_dir.path(), "good.jpg");
+        // A decodable image whose EXIF block cannot be parsed. A read error is
+        // injected for the file itself, because ExifTool 13.59 answers a
+        // malformed EXIF segment with a *successful* read of a record with no
+        // EXIF groups rather than with an error.
+        let mut bytes = fs::read(&good).expect("read the generated jpeg");
+        crate::process::exif::corrupt_exif_byte_order(&mut bytes);
+        let damaged = album_dir.path().join("damaged.jpg");
+        fs::write(&damaged, &bytes).expect("write the damaged jpeg");
+
+        let stats = crate::process::exif::with_read_seam(
+            crate::process::exif::ReadSeam::Injected(Err(
+                exiftool::ExifToolError::ExifToolProcess {
+                    message: "Error: Malformed APP1 EXIF segment".to_string(),
+                    std_err: "Error: Malformed APP1 EXIF segment".to_string(),
+                    command_args: "-json -G1 damaged.jpg".to_string(),
+                },
+            )),
+            || rebuild_from_filesystem(&image_home).expect("rebuild"),
+        );
+
+        assert_eq!(
+            stats.metadata_failed, 0,
+            "a bad file is not a rebuild failure"
+        );
+        assert_eq!(
+            stats.metadata_indexed, 2,
+            "both files are assets worth having, with whatever the file yielded"
+        );
+
+        let asset_id = asset_store::get_asset_id_by_path(&damaged.to_string_lossy())
+            .expect("lookup path")
+            .expect("the damaged file was indexed");
+        let payload = crate::process::transitor::load_metadata_record(asset_id.as_str())
+            .expect("read stored metadata")
+            .expect("the damaged file has a real payload, not a missing one");
+        let crate::model::metadata_record::MetadataRecord::Image(payload) = &payload else {
+            panic!("a rebuilt .jpg is an image payload")
+        };
+        assert_eq!(
+            payload.exif_vec.len(),
+            0,
+            "and its exifVec is the empty map the failed read produced"
+        );
+        assert_eq!(
+            (payload.width, payload.height),
+            (8, 8),
+            "while the rest of the pipeline still decoded the image"
+        );
+
+        clear_all_tables();
     }
 }

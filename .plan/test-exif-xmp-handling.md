@@ -409,6 +409,35 @@ Relevant code: `backend/src/process/exif.rs` and
 
 ## Follow-up Status
 
+2026-09-28 — **Toolchain vs malformed metadata separated (decision: hard
+failure for toolchain).** All 12 `exiftool`-crate error variants are classified
+by `process::exif::is_toolchain_variant`: HARD (propagates — index fails,
+upload 500s, rebuild counts `metadataFailed` with the remedy, album scan
+reaches its `failed` state, watcher logs) = binary missing, pipe `Io`
+(measured: on the read path `Io` can only be stdin/stdout — ExifTool opens
+files in its own process), stderr disconnect, dead child, `MutexPoison`
+(also lets a poisoned _write_ session restart — accepted); SOFT (file keeps
+indexing with empty metadata, unchanged) = process-rejection, `FileNotFound`,
+JSON/UTF-8. Key measurement: ExifTool 13.59 reports most damaged files _inside_
+the JSON with exit 0, so the SOFT classification arm is mostly unreachable on
+this engine version and is pinned by injected variants + real corrupt
+fixtures. Upload diagnosis fixed in the same gap: `classify_index_failure`
+(a pure fn over the real error chain, which does reach the handler) maps
+toolchain failures to **500 + the shared install remedy** (previously 400
+"could not be decoded" — a misdiagnosis), while the decode branch keeps its
+byte-identical 400 and file removal (invariant: a failed upload leaves no
+unindexed file — recorded choice); the previously unpinned decode branch got
+`upload_undecodable_removed.yaml`. Residuals: `POST /post/index/image` stays
+fire-and-forget (log + status counters only); the remedy is returned to the
+client deliberately (self-hosted, no paths/hashes leaked); `AlreadyIndexed`
+outcome is unit-pinned only (needs a concurrent scan); a **new harness defect**
+found — `file_absent`/`file_exists` accept `${data_path}`-prefixed paths that
+resolve under image_home and pass vacuously (makes
+`upload_unindexable_removed.yaml`'s assertion dead) → folded into Gap 6.
+Mutations: classification swap (10 kills), remedy dropped (several), removal
+predicate moved (scenario), upload branch swap (4+1). Gates: `cargo test -p
+picasu` 487 (2 ignored), snapfab 75, `just backend-check`, `cargo deny`,
+`just docs-check`.
 2026-09-28 — **Sidecar override semantics implemented (amends decision 6 of
 `.plan/exiftool-metadata-engine.md`).** `XmpSource` now carries provenance —
 `Sidecar(Option<record>)` vs `Image(Option<record>)` — and a sidecar's
