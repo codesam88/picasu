@@ -24,9 +24,9 @@ name: an upload that cannot be decoded is a 400 and the file is removed
 #
 # The path is IMAGE_HOME-relative on purpose. `file_absent` joins the string onto
 # `image_home` after stripping a leading `/`, so a `${data_path}`-prefixed path
-# resolves to a directory that cannot exist and the assertion passes whatever the
-# handler did. `upload_unindexable_removed.yaml` spells it that way; this one does
-# not, and mutation-checking it (never remove the file) fails it.
+# would resolve to a directory that cannot exist and the assertion would pass
+# whatever the handler did; the harness now rejects such a path outright.
+# Mutation-checking this one (never remove the file) fails it.
 given:
   - dir_album: /e2e_up_undecodable/target
     id_as: $album

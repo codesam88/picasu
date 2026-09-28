@@ -1,0 +1,40 @@
+name: an album whose every matched file is undecodable reports a failed index
+# The counterpart of `truncated_image_fails_only_its_own_index`: there the
+# undecodable file is a sibling of a good one, so the job finishes `completed`
+# with one failure. `did_every_matched_file_fail` is what turns the same
+# failure into a `failed` job — matched > 0, processed == 0, failed >= matched —
+# and this is the only shape that reaches it.
+#
+# That state used to be unreachable from a scenario: `wait_for_album_index`
+# panicked on `failed`, so the harness crashed before any assertion could be
+# made about it, and the truncated bytes could not be produced in `when` at all
+# (`write_file` writes UTF-8 text, and a text file matches no media signature,
+# so it is skipped before it is ever matched). `wait_index: {expect: failed}`
+# plus a `when:` `truncate_file` is what makes the outcome assertable.
+#
+# `truncate_file` keeps the first 100 bytes, so the file still carries the JPEG
+# SOI the classification reads: it is matched, handed to the decoder, and the
+# decode fails — one failed file and nothing processed.
+given:
+  - photo: /e2e_fail_index/photo.jpg
+when:
+  - truncate_file:
+      path: /e2e_fail_index/photo.jpg
+      bytes: 100
+  # The watcher reacts to the truncation on its own schedule; drain it before
+  # asking for a scan of our own.
+  - wait_index: true
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_fail_index"}'
+    then:
+      - response.status: 202
+  - wait_index:
+      expect: failed
+then:
+  - response.status: 200
+  - response.json.state: failed
+  - response.json.matched: 1
+  - response.json.processed: 0
+  - response.json.failed: 1
+  # A failed index is a verdict on the file, not a cleanup: the bytes stay.
+  - file_exists: e2e_fail_index/photo.jpg

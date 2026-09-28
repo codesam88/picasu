@@ -151,14 +151,17 @@ build time.
 
 ### `assert:` — assertions (one or more)
 
-| Form                            | Assertion                     |
-| ------------------------------- | ----------------------------- |
-| `response.status: <code>`       | HTTP status code              |
-| `response.<json-path>: <value>` | JSON body field matches value |
-| `response.<json-path> exists`   | JSON body field is present    |
-| `response.<json-path> absent`   | JSON body field is absent     |
-| `file_exists: <path>`           | File exists on disk           |
-| `file_absent: <path>`           | File does not exist on disk   |
+| Form                             | Assertion                      |
+| -------------------------------- | ------------------------------ |
+| `response.status: <code>`        | HTTP status code               |
+| `response.status_not: <code>`    | HTTP status is not this code   |
+| `response.<json-path>: <value>`  | JSON body field matches value  |
+| `response.<json-path> absent`    | JSON body field is absent      |
+| `file_exists: <path>`            | File exists on disk            |
+| `file_absent: <path>`            | File does not exist on disk    |
+| `serve_image_ok: $<hash>`        | The compressed image serves    |
+| `thumb_exists: $<hash>`          | The generated thumbnail exists |
+| `file.contains: <path>` + `text` | File's text contains `text`    |
 
 `<json-path>` is a dot-separated path into the response JSON, e.g.
 `prefetch.locateTo` or `prefetch.timestamp`.
@@ -166,6 +169,18 @@ build time.
 `${var}` interpolation applies to `response.<json-path>` values and to
 `file_exists` / `file_absent` paths, so a randomized scenario can assert on the
 selected format's extension.
+
+`file_exists`, `file_absent` and `file.contains` take an **IMAGE_HOME-relative**
+path with an optional leading `/`. A path that interpolates to an _absolute_ one
+(typically `${data_path}/…`) is rejected: joined onto IMAGE_HOME it would
+resolve to a location that cannot exist, which makes `file_absent` pass and
+`file_exists` meaningless.
+
+`serve_image_ok: $<hash>` fetches
+`GET /object/compressed/<hash[0:2]>/<hash>.jpg` — the route the frontend uses —
+and requires 200, an `image/jpeg` content type and JPEG bytes. The variable is
+the content hash `id_as` binds; token issuance for that route is covered by
+`token_hash_compressed_serving.yaml`.
 
 ### Multi-step chains
 
@@ -175,9 +190,10 @@ Use multiple scenarios or a multi-step `when:` block:
 when:
   - call: PUT /put/assign_album
     body: { assetId: "${photo}", albumId: "${album}" }
-    capture: response
+    then:
+      - response.status: 200
+      - response.json.outcome: moved
   - call: GET /get/get-albums
-    auth: true
 ```
 
 ### Minting a timestamp token (`mint_timestamp_token`)
@@ -208,6 +224,38 @@ request targets so expiry, not a claim mismatch, is the rejection reason);
 `exp_offset` is seconds relative to now (`300`, the app default, when
 omitted). A mint produces no HTTP response, so it cannot be the last item
 of `when:` — nothing for `then:` to assert against.
+
+A `call:` that is **not** the last one asserts its own inline `then:` block, and
+every form in it runs — status, `response.json.*`, `array_min_counts`,
+`array_where`, `compare`, `file_*`, `serve_image_ok`. The last call is asserted
+by the scenario's top-level `then:`. An inline `then:` is evaluated before the
+same call's `capture` and `calc` feed the variables, so it cannot depend on a
+value the response it asserts produced.
+
+A `call:` may also bind a discovered identity with `id_as` (content hash) or
+`asset_id_as` (API asset id), both resolved by the following `discover_path` —
+and each works on its own; `asset_id_as` does not require `id_as`.
+
+### `when:` verbs that change state
+
+Beyond `call:` and `upload:`, a step may act on the filesystem. Each returns a
+`GET /get/index/status` probe, and each runs against IMAGE_HOME-relative paths
+with an optional leading `/`:
+
+| Verb                                  | Effect                                                           |
+| ------------------------------------- | ---------------------------------------------------------------- |
+| `wait_index: true`                    | Block until the running album index settles (default: completed) |
+| `wait_index: {expect: failed}`        | Block until it settles in the `failed` state                     |
+| `write_file: <path>` + `content`      | Write UTF-8 text to a path                                       |
+| `truncate_file: {path, bytes}`        | Keep only the first `bytes` bytes of a file                      |
+| `duplicate_of: {source, destination}` | Copy a file's bytes                                              |
+| `chmod: {path, mode}`                 | Change a path's POSIX permissions                                |
+
+`wait_index: {expect: failed}` is how a scenario observes an album index whose
+every matched file failed: that state used to be a harness panic. `truncate_file`
+is the way to get there — `write_file` writes UTF-8 text, which matches no media
+signature and is therefore skipped before a file is ever matched, so only a
+truncated real file can be _matched_ and then fail.
 
 ### Escape-hatch policy (API)
 

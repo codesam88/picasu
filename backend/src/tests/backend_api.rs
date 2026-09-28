@@ -319,25 +319,155 @@ fn check_body_assertions(body_bytes: &[u8], then_items: &[Value], vars: &HashMap
     }
 }
 
+/// Resolve a `file_exists` / `file_absent` / `file.contains` path against
+/// `IMAGE_HOME`.
+///
+/// The documented form is `IMAGE_HOME`-relative with an optional leading `/`,
+/// which is stripped before the join. Stripping a leading `/` is also what an
+/// *absolute* path looks like once interpolated, so a `${var}` that yields one
+/// (`${data_path}`) used to resolve under `<image_home>/<absolute path>/…`:
+/// such a path can never exist, so `file_absent` passed no matter what the
+/// handler under test did, and `file_exists` could only ever fail. An absolute
+/// result is rejected here rather than silently resolving to a location that
+/// means nothing.
+fn image_home_path(
+    raw: &str,
+    assertion: &str,
+    data: &Path,
+    vars: &HashMap<String, String>,
+) -> PathBuf {
+    let resolved = interpolate(raw.trim_start_matches('/'), vars);
+    assert!(
+        !Path::new(&resolved).is_absolute(),
+        "{assertion} path must be IMAGE_HOME-relative, but `{raw}` interpolates to the \
+         absolute path {resolved}: joined onto IMAGE_HOME it would resolve to \
+         <IMAGE_HOME>{resolved}, which can never exist and would pass vacuously"
+    );
+    data.join(&resolved)
+}
+
+/// The one asset id in the content hash's dupe group, read through the
+/// test-only probe the `dup_*` scenarios already use.
+///
+/// [`assert_serves_image`] needs it only to fill the second claim of the token
+/// it mints; the compressed route authorizes on the hash alone. Resolving it
+/// through the probe rather than requiring the scenario to bind `asset_id_as`
+/// keeps `serve_image_ok` usable with a bare `id_as`, and an empty group means
+/// the asset is not indexed, which is a failure the assertion should report.
+fn dupe_group_asset_id(client: &Client, hash: &str) -> String {
+    let response = client
+        .get(format!("/get/test/dupe-group/{hash}"))
+        .cookie(auth_cookie(client))
+        .dispatch();
+    assert_eq!(
+        response.status(),
+        Status::Ok,
+        "dupe-group probe for {hash}: expected 200"
+    );
+    let body: Value = serde_json::from_slice(&response.into_bytes().expect("dupe-group body"))
+        .expect("dupe-group JSON");
+    body.as_array()
+        .and_then(|members| members.first())
+        .and_then(|member| member["assetId"].as_str())
+        .map_or_else(
+            || {
+                panic!(
+                    "serve_image_ok: no indexed asset has content hash {hash}, so there is \
+                     nothing to serve"
+                )
+            },
+            ToOwned::to_owned,
+        )
+}
+
+/// Assert the app still serves the compressed thumbnail for a content hash.
+///
+/// "Serving" is the route the frontend fetches:
+/// `GET /object/compressed/<hash[0..2]>/<hash>.jpg`, authorized by the admin
+/// cookie (`GuardShare`) and by a `ClaimsHash` bearer token whose `hash` claim
+/// has to equal the hash in the path (`GuardHash`). The harness mints that
+/// token instead of walking prefetch/get-data for it, because a scenario
+/// binding a bare `id_as` has a hash and no asset id to look the asset up by,
+/// and token issuance is what `token_hash_compressed_serving.yaml` covers.
+///
+/// Status alone is not enough: a handler can answer 200 with an error page. The
+/// content type and the JPEG magic are therefore part of the assertion.
+fn assert_serves_image(client: &Client, photo_var: &str, vars: &HashMap<String, String>) {
+    let resolved = interpolate(photo_var, vars);
+    let hash = match resolved.strip_prefix('$') {
+        Some(name) => vars
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| panic!("serve_image_ok: unknown variable {name}")),
+        None => resolved,
+    };
+    assert_eq!(
+        hash.len(),
+        64,
+        "serve_image_ok: {hash:?} is not a 64-character content hash"
+    );
+    let asset_id: arrayvec::ArrayString<64> = dupe_group_asset_id(client, &hash)
+        .parse()
+        .expect("serve_image_ok: asset_id must fit an ArrayString<64>");
+    let hash_claim: arrayvec::ArrayString<64> = hash.parse().expect("content hash");
+    let token = crate::router::auth::ClaimsHash::new(
+        hash_claim,
+        asset_id,
+        chrono::Utc::now().timestamp_millis(),
+        false,
+    )
+    .encode();
+
+    let response = client
+        .get(format!("/object/compressed/{}/{hash}.jpg", &hash[..2]))
+        .cookie(auth_cookie(client))
+        .header(rocket::http::Header::new(
+            "Authorization",
+            format!("Bearer {token}"),
+        ))
+        .dispatch();
+
+    assert_eq!(
+        response.status(),
+        Status::Ok,
+        "serve_image_ok {hash}: the compressed route must answer 200"
+    );
+    let content_type = response
+        .content_type()
+        .map(|value| value.to_string())
+        .unwrap_or_default();
+    let bytes = response
+        .into_bytes()
+        .expect("serve_image_ok: response body");
+    assert!(
+        !bytes.is_empty(),
+        "serve_image_ok {hash}: the response carries no bytes"
+    );
+    assert_eq!(
+        content_type.split(';').next().unwrap_or_default().trim(),
+        "image/jpeg",
+        "serve_image_ok {hash}: expected an image/jpeg content type, got {content_type:?}"
+    );
+    assert_eq!(
+        &bytes[..2],
+        b"\xff\xd8",
+        "serve_image_ok {hash}: the served bytes are not a JPEG"
+    );
+}
+
 fn check_file_and_serve_assertions(
     then_items: &[Value],
     data: &Path,
     vars: &HashMap<String, String>,
+    client: &Client,
 ) {
     for item in then_items {
         if let Some(file_path) = item["file_exists"].as_str() {
-            let trimmed = interpolate(file_path, vars)
-                .trim_start_matches('/')
-                .to_string();
-            assert!(data.join(&trimmed).exists(), "file should exist: {trimmed}");
+            let path = image_home_path(file_path, "file_exists", data, vars);
+            assert!(path.exists(), "file should exist: {}", path.display());
         } else if let Some(file_path) = item["file_absent"].as_str() {
-            let trimmed = interpolate(file_path, vars)
-                .trim_start_matches('/')
-                .to_string();
-            assert!(
-                !data.join(&trimmed).exists(),
-                "file should be absent: {trimmed}"
-            );
+            let path = image_home_path(file_path, "file_absent", data, vars);
+            assert!(!path.exists(), "file should be absent: {}", path.display());
         } else if let Some(photo_var) = item["thumb_absent"].as_str() {
             let bare = photo_var.trim_start_matches('$');
             let hash = vars
@@ -368,27 +498,33 @@ fn check_file_and_serve_assertions(
                 "thumbnail should exist: {}",
                 thumb.display()
             );
+        } else if let Some(photo_var) = item["serve_image_ok"].as_str() {
+            assert_serves_image(client, photo_var, vars);
         } else if let Some(file_path) = item["file.contains"].as_str() {
-            let trimmed = file_path.trim_start_matches('/');
+            let path = image_home_path(file_path, "file.contains", data, vars);
             let text = item["text"]
                 .as_str()
                 .unwrap_or_else(|| panic!("file.contains: missing 'text' field"));
-            let content = std::fs::read_to_string(data.join(trimmed))
-                .unwrap_or_else(|e| panic!("file.contains: failed to read {trimmed}: {e}"));
+            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!("file.contains: failed to read {}: {e}", path.display())
+            });
             assert!(
                 content.contains(text),
-                "file.contains: {trimmed} does not contain {text:?}.\nFile content:\n{content}"
+                "file.contains: {} does not contain {text:?}.\nFile content:\n{content}",
+                path.display()
             );
         } else if let Some(file_path) = item["file.not_contains"].as_str() {
-            let trimmed = file_path.trim_start_matches('/');
+            let path = image_home_path(file_path, "file.not_contains", data, vars);
             let text = item["text"]
                 .as_str()
                 .unwrap_or_else(|| panic!("file.not_contains: missing 'text' field"));
-            let content = std::fs::read_to_string(data.join(trimmed))
-                .unwrap_or_else(|e| panic!("file.not_contains: failed to read {trimmed}: {e}"));
+            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!("file.not_contains: failed to read {}: {e}", path.display())
+            });
             assert!(
                 !content.contains(text),
-                "file.not_contains: {trimmed} unexpectedly contains {text:?}.\nFile content:\n{content}"
+                "file.not_contains: {} unexpectedly contains {text:?}.\nFile content:\n{content}",
+                path.display()
             );
         }
     }
@@ -931,8 +1067,9 @@ fn hex_bytes(hex: &str, what: &str) -> Vec<u8> {
 /// and could drift from the good one it was cut from.
 ///
 /// The transforms run after `generate_batch` and after the `duplicate_of`
-/// copies, and before the scan, so the indexer sees the damaged bytes during
-/// its first pass rather than as a later change.
+/// copies, and before the given phase's scan, so the indexer sees the damaged
+/// bytes during its first pass rather than as a later change. A `when:`
+/// `truncate_file` step reuses this to damage a file that is already indexed.
 fn apply_file_transforms(data: &Path, truncations: &[TruncateFile], patches: &[PatchFile]) {
     for truncation in truncations {
         let path = data.join(&truncation.path);
@@ -977,6 +1114,43 @@ fn apply_file_transforms(data: &Path, truncations: &[TruncateFile], patches: &[P
     }
 }
 
+/// Read a `when:` step's `wait_index` expectation.
+///
+/// `wait_index: true` — and the explicit `wait_index: {expect: completed}` — both
+/// mean the default: wait for a scan that completes. `failed` is the one
+/// distinct expectation, and it is spelled out rather than implied by a missing
+/// key, so a scenario that asserts a failed scan says so in the file.
+fn parse_wait_index(item: &Value) -> Option<IndexExpect> {
+    match item.get("wait_index")? {
+        Value::Bool(true) => Some(IndexExpect::Completed),
+        Value::Bool(false) => None,
+        Value::String(state) => Some(parse_expected_index_state(state)),
+        Value::Object(block) => Some(parse_expected_index_state(
+            block
+                .get("expect")
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| {
+                    panic!("wait_index object needs `expect: completed` or `expect: failed`")
+                }),
+        )),
+        other => panic!(
+            "wait_index: {other} is not `true`, `false`, \"completed\", \"failed\", or an \
+             object with `expect`"
+        ),
+    }
+}
+
+fn parse_expected_index_state(state: &str) -> IndexExpect {
+    match state {
+        "completed" => IndexExpect::Completed,
+        "failed" => IndexExpect::Failed,
+        other => panic!(
+            "wait_index: unknown expected index state {other:?}; expected \"completed\" or \
+             \"failed\""
+        ),
+    }
+}
+
 // ── Dispatch a when item to call or upload ──
 
 fn dispatch_when_item<'c>(
@@ -984,11 +1158,8 @@ fn dispatch_when_item<'c>(
     vars: &HashMap<String, String>,
     client: &'c Client,
 ) -> rocket::local::blocking::LocalResponse<'c> {
-    if item
-        .get("wait_index")
-        .is_some_and(|v| v.as_bool() == Some(true))
-    {
-        wait_for_album_index(client, 30000);
+    if let Some(expect) = parse_wait_index(item) {
+        wait_for_album_index(client, 30000, expect);
         let cookie = auth_cookie(client);
         return client.get("/get/index/status").cookie(cookie).dispatch();
     }
@@ -1001,6 +1172,21 @@ fn dispatch_when_item<'c>(
         set_path_mode(item, &test_image_home());
         // Return a status-200 probe response so this branches cleanly in the
         // `when` flow like any other call/upload verb.
+        let cookie = auth_cookie(client);
+        client.get("/get/index/status").cookie(cookie).dispatch()
+    } else if item.get("truncate_file").is_some() {
+        // Cut a file the given phase indexed down to its first `bytes`, with
+        // the given-block transform's semantics. `write_file` cannot express
+        // this: it writes UTF-8 text, so its content can never carry a media
+        // signature, and a file whose bytes match no signature is skipped
+        // before it is matched instead of failing. A scenario needs to reach
+        // "matched, then undecodable" in `when` to observe an album index
+        // whose every matched file failed.
+        let truncation = parse_truncate_file(item);
+        let home = test_image_home();
+        apply_file_transforms(&home, std::slice::from_ref(&truncation), &[]);
+        // Return a status-200 probe response so this branches cleanly in the
+        // `when` flow like any other call/upload/write verb.
         let cookie = auth_cookie(client);
         client.get("/get/index/status").cookie(cookie).dispatch()
     } else if item.get("write_file").is_some() {
@@ -1147,6 +1333,12 @@ fn process_mint_timestamp_token(call: &Value, vars: &mut HashMap<String, String>
 
 // ── Check if a then item has JSON assertion keys ──
 
+/// Whether any item in a `then:` block reads the response body, so the caller
+/// knows it has to consume the response before `capture` can read it too.
+fn then_needs_body(then_items: &[Value]) -> bool {
+    then_items.iter().any(has_json_assertions)
+}
+
 fn has_json_assertions(item: &Value) -> bool {
     item.as_object().is_some_and(|m| {
         m.keys().any(|k| {
@@ -1289,7 +1481,12 @@ fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) 
                 } else if let Some(photo) = item["photo"].as_str() {
                     let trimmed = photo.trim_start_matches('/');
 
-                    if item.get("id_as").is_some() {
+                    // Either binding is a reason to run the discovery pass:
+                    // `has_id_as` gates the whole pass, so keying it off
+                    // `id_as` alone silently dropped a scenario that asked only
+                    // for `asset_id_as` — the variable then interpolated to
+                    // empty.
+                    if item.get("id_as").is_some() || item.get("asset_id_as").is_some() {
                         has_id_as = true;
                     }
 
@@ -1415,7 +1612,7 @@ fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) 
                     .body(serde_json::json!({"album": "/"}).to_string())
                     .dispatch();
                 assert_eq!(_scan_resp.status(), Status::Accepted, "scan trigger");
-                wait_for_album_index(&client, 30000);
+                wait_for_album_index(&client, 30000, IndexExpect::Completed);
 
                 for rp in &remove_files {
                     std::fs::remove_file(&data.join(rp)).expect("remove file");
@@ -1504,26 +1701,50 @@ fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) 
 
             let is_last = i == calls.len() - 1;
 
-            if is_last {
-                let has_json = then_items.iter().any(has_json_assertions);
-                check_status_assertions(&resp, then_items, &vars);
-                if has_json {
-                    let body = resp.into_bytes().expect("response body");
-                    check_body_assertions(&body, then_items, &vars);
-                }
-                check_file_and_serve_assertions(then_items, &data, &vars);
+            // The last call is asserted by the scenario's top-level `then:`
+            // block; every other call by the `then:` block inside the call
+            // itself. Either way the block is *this* response's, so every
+            // assertion form in it runs: a `response.json.*` or `file_exists`
+            // written under a call that is not the last one describes that
+            // call's own response, and skipping it would leave the assertion
+            // parsed and never executed.
+            let call_then: &[Value] = if is_last {
+                then_items
+            } else if let Some(then) = call.get("then") {
+                // A `then:` that is not a list of assertions would be read and
+                // dropped, which is the same silence this branch exists to
+                // remove one level up.
+                then.as_array()
+                    .unwrap_or_else(|| panic!("when call `then:` must be a list, got {then}"))
+                    .as_slice()
             } else {
-                if let Some(call_then) = call.get("then").and_then(|v| v.as_array()) {
-                    check_status_assertions(&resp, call_then, &vars);
+                &[]
+            };
+
+            let has_capture = call
+                .get("capture")
+                .and_then(|c| c.as_object())
+                .is_some_and(|c| !c.is_empty());
+
+            check_status_assertions(&resp, call_then, &vars);
+            // A `then:` block is asserted before this call's `capture` and
+            // `calc` feed the variables, so an assertion cannot depend on a
+            // value the response it is asserting produced. It fails loudly
+            // (an empty interpolation never equals the field) rather than
+            // passing vacuously.
+            let body = (then_needs_body(call_then) || has_capture)
+                .then(|| resp.into_bytes().expect("response body"));
+            if let Some(body) = body.as_deref() {
+                if then_needs_body(call_then) {
+                    check_body_assertions(body, call_then, &vars);
                 }
-                if call
-                    .get("capture")
-                    .and_then(|c| c.as_object())
-                    .is_some_and(|c| !c.is_empty())
-                {
-                    let body = resp.into_bytes().expect("response body");
-                    process_capture(call, &body, &mut vars);
+                if has_capture {
+                    process_capture(call, body, &mut vars);
                 }
+            }
+            check_file_and_serve_assertions(call_then, &data, &vars, client);
+
+            if !is_last {
                 process_calc(call, &mut vars);
                 if let Some(id_as) = call.get("id_as").and_then(|v| v.as_str()) {
                     let bare = id_as.trim_start_matches('$');
@@ -1553,12 +1774,11 @@ fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) 
         let client = make_client();
         let resp = dispatch_when_item(when, &vars, &client);
         check_status_assertions(&resp, then_items, &vars);
-        let has_json = then_items.iter().any(has_json_assertions);
-        if has_json {
+        if then_needs_body(then_items) {
             let body = resp.into_bytes().expect("response body");
             check_body_assertions(&body, then_items, &vars);
         }
-        check_file_and_serve_assertions(then_items, &data, &vars);
+        check_file_and_serve_assertions(then_items, &data, &vars, &client);
     }
 
     if has_config_item {
@@ -1620,14 +1840,56 @@ include!(concat!(env!("OUT_DIR"), "/scenarios.rs"));
 mod tests {
     use super::{
         RANDOM_MEDIA_HEIGHT, RANDOM_MEDIA_WIDTH, banner_panic_message, parse_randomize,
-        planned_runs, random_media_destination, seed_banner,
+        parse_wait_index, planned_runs, random_media_destination, seed_banner,
     };
+    use crate::tests::fixtures::IndexExpect;
     use crate::tests::seeds::{DEFAULT_SET, seed_manifest};
     use snapfab::capabilities;
     use snapfab::selection::{FixturePlan, RandomizableFormat, randomizable_formats, select};
 
     fn scenario(value: serde_json::Value) -> serde_json::Value {
         value
+    }
+
+    /// The `wait_index` expectation the step declares. `true` is the default the
+    /// existing scenarios use, and `failed` has to be *spelled* — an
+    /// unrecognised spelling is an error, not a fallback to the default, or a
+    /// scenario could ask for a failed index and quietly wait for a completed
+    /// one.
+    #[test]
+    fn wait_index_reads_the_state_the_step_expects() {
+        let expect = |value: serde_json::Value| {
+            parse_wait_index(&scenario(serde_json::json!({ "wait_index": value })))
+        };
+
+        for completed in [
+            serde_json::json!(true),
+            serde_json::json!("completed"),
+            serde_json::json!({ "expect": "completed" }),
+        ] {
+            assert_eq!(expect(completed), Some(IndexExpect::Completed));
+        }
+        for failed in [
+            serde_json::json!("failed"),
+            serde_json::json!({ "expect": "failed" }),
+        ] {
+            assert_eq!(expect(failed), Some(IndexExpect::Failed));
+        }
+
+        // A step without the verb is not a wait, and neither is a disabled one.
+        assert_eq!(parse_wait_index(&scenario(serde_json::json!({}))), None);
+        assert_eq!(expect(serde_json::json!(false)), None);
+
+        for rejected in [
+            serde_json::json!("finished"),
+            serde_json::json!({ "state": "failed" }),
+            serde_json::json!(7),
+        ] {
+            assert!(
+                std::panic::catch_unwind(|| expect(rejected.clone())).is_err(),
+                "{rejected} should be rejected rather than defaulting to `completed`"
+            );
+        }
     }
 
     /// A scenario without a `randomize:` block is a deterministic one: it runs

@@ -13,13 +13,19 @@ when:
     then:
       - response.status: 202
   - wait_index: true
-  # Verify it's locatable before delete.
+  # Verify it's locatable before delete. `locateTo` is the asset's position in
+  # the query snapshot, not a fixed 0 — the snapshot also carries the album
+  # records the given phase created — so the control asserts that locate
+  # produced an index at all. `null` (what the deleted asset has to return
+  # below) is not an integer, so the compare fails on it.
   - call: POST /get/prefetch?locate=${asset_id}
     capture:
       ts: response.prefetch.timestamp
     then:
       - response.status: 200
-      - response.json.prefetch.locateTo: 0
+      - compare:
+          response.json.prefetch.locateTo:
+            ">=": 0
   # Delete the asset by asset_id.
   - call: DELETE /delete/delete-data
     raw_body: '{"assetIds":["${asset_id}"],"timestamp":${ts}}'

@@ -409,6 +409,26 @@ Relevant code: `backend/src/process/exif.rs` and
 
 ## Follow-up Status
 
+2026-09-28 — **Harness assertion integrity fixed (Gap 6a; five of the eight
+`.plan/scenario-harness-debt.md` items).** Every `call:`'s inline `then:` now
+runs status _and_ body _and_ file/serve assertions (non-list `then` is a hard
+error), enabling 15 previously-dead assertions across 13 scenarios: 13 were
+correct-and-passing, 2 were flawed YAML (missing sync point after a `write_file`;
+`locateTo` is a snapshot position, not a constant) — none hid a product
+failure. `serve_image_ok` implemented (compressed route, 200 + content type +
+magic bytes, harness-minted hash token); the scenario passed once wired —
+serving was never broken — and a product mutation makes it die. `wait_index`
+gained `failed`/`{expect: …}` so failure states are assertable, pinned
+end-to-end by `album_index_failed_when_every_matched_file_fails.yaml` (which
+needed `truncate_file` as a `when` verb). `file_exists`/`file_absent`/`file.*`
+now reject absolute interpolated paths with a diagnostic (two affected
+scenarios corrected; the `upload_unindexable_removed` assertion was dead).
+`asset_id_as` without `id_as` fixed and pinned (first draft masked by a
+sibling `id_as` — caught and reworked). Selftests + mutations for each;
+`docs/scenario-dsl.md` documents the now-enforced rules. Debt file annotated:
+5 fixed, 3 open (schema.json enforcement, Playwright port race → Gap 6b,
+snapfab CLI selector bug). Gates: `cargo test -p picasu` 493 (2 ignored),
+snapfab 75, `just backend-check`, `cargo deny`, `just docs-check`.
 2026-09-28 — **Toolchain vs malformed metadata separated (decision: hard
 failure for toolchain).** All 12 `exiftool`-crate error variants are classified
 by `process::exif::is_toolchain_variant`: HARD (propagates — index fails,
