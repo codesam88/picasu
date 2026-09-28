@@ -1110,73 +1110,25 @@ fn the_report_does_not_depend_on_the_order_the_files_were_read_in() {
 
 // ── The repository's own document ─────────────────────────────────────────────
 
-/// The state the rules were measured against. This test is a record of what the
-/// checker found, not a gate: the findings are the ones Step 4 of
-/// `.plan/openapi-contract-hardening.md` expects on the repository as it stands,
-/// and they are fixed in the change that wires `check_params` into the CLI.
-/// Pinning the exact lines here would make this rule group fail `cargo test` for
-/// drift the plan already records, so what is asserted is the count per rule and
-/// the total: that is what says the rules compare what the plan said they do.
+/// The repository's own document, as the CLI will see it once `check_params` is
+/// wired in: every registered handler's path, query and body declarations agree
+/// with `backend/openapi.json`, and every component schema is referenced. The
+/// counts Step 4 recorded on the repository (10 undocumented path parameters, 11
+/// undocumented query parameters, three `Value`/`Form` bodies, one orphaned
+/// schema) were fixed in the change that produced this document; what is asserted
+/// now is that they stay fixed, with the rendered findings as the failure
+/// message. The rules' sensitivity to each of those failure classes is pinned by
+/// the fixture tests above — this test pins the repository staying conformant.
 #[test]
-fn the_rules_find_what_the_plan_predicted_on_the_repository() {
+fn the_repository_declares_every_parameter_and_references_every_schema() {
     let repository = repository_root();
     let artifact = repository.join("backend").join("openapi.json");
     let router = Fixture::in_directory(&repository.join("backend").join("src").join("router"));
     let reported = param_findings_against(&artifact, &router.units(), &[REPOSITORY_PREFIX]);
 
-    let count = |rule: &str| reported.iter().filter(|f| mentions(f, rule)).count();
-    for (rule, expected, why) in [
-        (
-            "the route binds path parameter",
-            10,
-            "10 operations without path parameters",
-        ),
-        (
-            "the route binds query parameter",
-            11,
-            "11 query parameters undocumented",
-        ),
-        (
-            "the route binds its body to",
-            1,
-            "`Value` bodies on typed handlers",
-        ),
-        (
-            "`Form` body",
-            2,
-            "two multipart handlers declare an untyped JSON body",
-        ),
-        ("nothing references it", 1, "`FileEntry` orphaned"),
-    ] {
-        assert_eq!(count(rule), expected, "{why}: {reported:#?}");
-    }
-
-    // The two rules the plan expects to be quiet, and the two it says nothing
-    // about, so a regression names which rule moved. Each fragment is one only the
-    // quiet rule's own message can carry — the undocumented-parameter findings
-    // spell the same situation the other way round.
-    for (rule, expected) in [
-        ("operationId", 0),
-        ("$ref` to the component schema", 0),
-        ("but the route binds no such segment", 0),
-        ("the operation declares query parameter", 0),
-        ("cannot be optional", 0),
-    ] {
-        assert_eq!(count(rule), expected, "{rule} is quiet: {reported:#?}");
-    }
-
-    // `check_params` sorts by file, numeric line and message; a plain sort of the
-    // rendered strings interleaves the lines of one file (`:193:` before `:61:`),
-    // so the count after deduplication is what asserts one finding per line, not
-    // the order the two are listed in.
-    let mut unique = reported.clone();
-    unique.sort();
-    unique.dedup();
-    assert_eq!(
-        unique.len(),
-        reported.len(),
-        "{} findings, one per line and none twice: {reported:#?}",
-        reported.len()
+    assert!(
+        reported.is_empty(),
+        "the committed document drifted from the route source:\n{reported:#?}"
     );
 }
 

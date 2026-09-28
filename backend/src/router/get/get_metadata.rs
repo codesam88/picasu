@@ -29,6 +29,10 @@ use crate::router::{AppResult, GuardResult};
         get,
         path = "/get/metadata/{asset_id}",
         tag = "assets",
+        params(
+            ("asset_id" = String, Path, description = "Asset identifier"),
+            ("timestamp" = i64, Query, description = "Snapshot timestamp (Unix epoch milliseconds) the page belongs to"),
+        ),
         responses(
             (status = 200, description = "Full metadata record for the asset"),
             (status = 404, description = "Unknown asset_id"),

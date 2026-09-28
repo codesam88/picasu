@@ -22,8 +22,14 @@ pub fn is_test_only_path(path: &str) -> bool {
     path.starts_with(TEST_ONLY_PATH_PREFIX)
 }
 
-/// Remove test-only probe endpoints (`/get/test/...`) and their schemas from
-/// a serialized `OpenAPI` document.
+/// Remove test-only probe endpoints (`/get/test/...`) and the component
+/// schemas only they reach from a serialized `OpenAPI` document.
+///
+/// `FileEntry` leaves with them because `TestRecordProbe.path` is what
+/// registers it: once the probe schemas are gone, no public operation
+/// references it, and `openapi-sanity`'s orphan rule fails a component that
+/// is defined but never `$ref`ed. When a production operation starts
+/// returning `FileEntry`, drop it from this list so its `$ref` resolves.
 pub fn strip_test_only_endpoints(spec: &mut serde_json::Value) {
     if let Some(paths) = spec.get_mut("paths").and_then(|p| p.as_object_mut()) {
         paths.retain(|key, _| !is_test_only_path(key));
@@ -33,7 +39,12 @@ pub fn strip_test_only_endpoints(spec: &mut serde_json::Value) {
         .and_then(|c| c.get_mut("schemas"))
         .and_then(|s| s.as_object_mut())
     {
-        schemas.retain(|key, _| key != "TestRecordProbe" && key != "DupeGroupMember");
+        schemas.retain(|key, _| {
+            !matches!(
+                key.as_str(),
+                "TestRecordProbe" | "DupeGroupMember" | "FileEntry"
+            )
+        });
     }
 }
 
@@ -74,6 +85,7 @@ mod tests {
                 "schemas": {
                     "TestRecordProbe": {"type": "object"},
                     "DupeGroupMember": {"type": "object"},
+                    "FileEntry": {"type": "object"},
                     "AssignAlbumData": {"type": "object"}
                 }
             }
@@ -89,6 +101,7 @@ mod tests {
         let schemas = spec["components"]["schemas"].as_object().expect("schemas");
         assert!(!schemas.contains_key("TestRecordProbe"));
         assert!(!schemas.contains_key("DupeGroupMember"));
+        assert!(!schemas.contains_key("FileEntry"));
         assert!(schemas.contains_key("AssignAlbumData"));
     }
 
@@ -106,6 +119,10 @@ mod tests {
         assert!(
             !json.contains("DupeGroupMember"),
             "test schema leaked into the public spec"
+        );
+        assert!(
+            !json.contains("FileEntry"),
+            "probe-only FileEntry schema leaked into the public spec"
         );
         assert!(
             json.contains("/put/assign_album"),

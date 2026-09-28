@@ -278,7 +278,10 @@ fn execute_prefetch_logic(
         post,
         path = "/get/prefetch",
         tag = "timeline",
-        request_body = serde_json::Value,
+        params(
+            ("locate" = Option<String>, Query, description = "Asset id whose index in the page to return"),
+        ),
+        request_body = Expression,
         responses(
             (status = 200, description = "Prefetch result", body = PrefetchReturn),
             (status = 400, description = "Invalid input"),

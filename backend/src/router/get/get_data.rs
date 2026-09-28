@@ -50,6 +50,11 @@ fn map_snapshot_read_error(err: SnapshotReadError) -> AppError {
         get,
         path = "/get/get-data",
         tag = "timeline",
+        params(
+            ("timestamp" = i64, Query, description = "Snapshot timestamp (Unix epoch milliseconds) of the page"),
+            ("start" = usize, Query, description = "First row of the range"),
+            ("end" = usize, Query, description = "End of the row range"),
+        ),
         responses(
             (status = 200, description = "Data by timestamp range", body = Vec<DataBaseTimestampReturn>),
             (status = 400, description = "Invalid input"),
@@ -182,6 +187,10 @@ pub async fn get_data(
         get,
         path = "/get/get-rows",
         tag = "timeline",
+        params(
+            ("index" = usize, Query, description = "Row page to fetch"),
+            ("timestamp" = i64, Query, description = "Snapshot timestamp (Unix epoch milliseconds) of the page"),
+        ),
         responses(
             (status = 200, description = "Row data", body = Row),
             (status = 400, description = "Invalid input"),
@@ -213,6 +222,9 @@ pub async fn get_rows(
         get,
         path = "/get/get-scroll-bar",
         tag = "timeline",
+        params(
+            ("timestamp" = i64, Query, description = "Snapshot timestamp (Unix epoch milliseconds) of the page"),
+        ),
         responses(
             (status = 200, description = "Scroll bar data", body = Vec<ScrollBarData>),
             (status = 400, description = "Invalid input"),

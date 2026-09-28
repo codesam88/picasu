@@ -6,6 +6,16 @@
       }
     },
     "schemas": {
+      "AlbumFilterValue": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
       "AlbumIndexState": {
         "enum": [
           "idle",
@@ -535,32 +545,180 @@
         ],
         "type": "object"
       },
-      "FileEntry": {
-        "description": "The asset's file entry: the single source path and its timestamps,\nassembled from the identity `AssetRecord` at composition time. A view\ntype for the wire — never stored (the metadata payload holds no path;\n`AssetRecord` owns the identity, including the trash flag).",
-        "properties": {
-          "file": {
+      "Expression": {
+        "description": "A filter expression as the prefetch endpoint accepts it: `Or`/`And`/`Not`\nnest, the leaf variants filter on tags, extensions, paths, albums or state.",
+        "oneOf": [
+          {
+            "properties": {
+              "Or": {
+                "items": {
+                  "$ref": "#/components/schemas/Expression"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "Or"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "And": {
+                "items": {
+                  "$ref": "#/components/schemas/Expression"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "And"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "Not": {
+                "$ref": "#/components/schemas/Expression"
+              }
+            },
+            "required": [
+              "Not"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "Tag": {
+                "$ref": "#/components/schemas/FilterValue"
+              }
+            },
+            "required": [
+              "Tag"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "ExtType": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "ExtType"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "Ext": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "Ext"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "Model": {
+                "$ref": "#/components/schemas/FilterValue"
+              }
+            },
+            "required": [
+              "Model"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "Make": {
+                "$ref": "#/components/schemas/FilterValue"
+              }
+            },
+            "required": [
+              "Make"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "Path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "Path"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "Album": {
+                "$ref": "#/components/schemas/AlbumFilterValue"
+              }
+            },
+            "required": [
+              "Album"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "RootAlbum": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "RootAlbum"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "Any": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "Any"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "ParentAlbum": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "ParentAlbum"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "Trashed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "Trashed"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "FilterValue": {
+        "oneOf": [
+          {
             "type": "string"
           },
-          "isTrashed": {
-            "description": "Trash flag for the asset's file entry. The record is visible in the\ngallery while the path is live and in the trash view while it is\ntrashed; a missing path (`path: None`) matches neither view. A newly\ndiscovered path is always live.",
+          {
             "type": "boolean"
-          },
-          "modified": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "scanTime": {
-            "format": "int64",
-            "type": "integer"
           }
-        },
-        "required": [
-          "file",
-          "modified",
-          "scanTime",
-          "isTrashed"
-        ],
-        "type": "object"
+        ]
       },
       "FsCompletion": {
         "properties": {
@@ -772,6 +930,23 @@
           "mediaCreated",
           "unsupportedSkipped",
           "hashErrors"
+        ],
+        "type": "object"
+      },
+      "RegenerateThumbnailForm": {
+        "properties": {
+          "asset_id": {
+            "description": "Asset ID of the image to regenerate thumbnail for",
+            "type": "string"
+          },
+          "frame": {
+            "description": "Frame file to use for thumbnail generation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_id",
+          "frame"
         ],
         "type": "object"
       },
@@ -1031,6 +1206,32 @@
           }
         },
         "type": "object"
+      },
+      "UploadForm": {
+        "description": "Data structure representing the multipart form for file uploads.",
+        "properties": {
+          "files": {
+            "description": "Sequential list of uploaded files.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "last_modified": {
+            "description": "Timestamps (Unix epoch in milliseconds) corresponding to each file by index.",
+            "items": {
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "files",
+          "last_modified"
+        ],
+        "type": "object"
       }
     }
   },
@@ -1074,6 +1275,17 @@
     "/albums/view/{path}": {
       "get": {
         "operationId": "albums_view",
+        "parameters": [
+          {
+            "description": "Album view path the SPA route renders",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
@@ -1221,6 +1433,38 @@
       "get": {
         "description": "Phase 14 lean read path: media rows are built from the snapshot's\n`ReducedData` plus the lean `ASSET_BY_ID` record — no per-row\n`METADATA_TABLE` (payload) read, and no tags/EXIF/description on the\npayload (those are served by `GET /get/metadata/{assetId}`).\nAlbum rows still read `METADATA_TABLE` because tiles need their stored\ntitle/cover/counts, composed with the album's `AssetRecord`.",
         "operationId": "get_data",
+        "parameters": [
+          {
+            "description": "Snapshot timestamp (Unix epoch milliseconds) of the page",
+            "in": "query",
+            "name": "timestamp",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "First row of the range",
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "End of the row range",
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1270,6 +1514,28 @@
     "/get/get-rows": {
       "get": {
         "operationId": "get_rows",
+        "parameters": [
+          {
+            "description": "Row page to fetch",
+            "in": "query",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Snapshot timestamp (Unix epoch milliseconds) of the page",
+            "in": "query",
+            "name": "timestamp",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1296,6 +1562,18 @@
     "/get/get-scroll-bar": {
       "get": {
         "operationId": "get_scroll_bar",
+        "parameters": [
+          {
+            "description": "Snapshot timestamp (Unix epoch milliseconds) of the page",
+            "in": "query",
+            "name": "timestamp",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1381,6 +1659,27 @@
       "get": {
         "description": "This is the detail-side counterpart of `get-data`: list rows only carry\nlean identity fields (tags / EXIF / description / rating are stripped in\nPhase 14), so the sidebar, detail view, and edit prefill fetch the full\n`AbstractData` view here on demand. The wire shape is unchanged:\nidentity fields come from the record, metadata fields from the payload.\n\nAuth and share parity follow `get-data`: a `GuardTimestamp` bearer token\n(prefetch token) is required, and when the token resolves to a share with\n`show_metadata: false` the metadata fields are cleared before responding so\na share that hides metadata cannot leak it through this route.",
         "operationId": "get_metadata",
+        "parameters": [
+          {
+            "description": "Asset identifier",
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Snapshot timestamp (Unix epoch milliseconds) the page belongs to",
+            "in": "query",
+            "name": "timestamp",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Full metadata record for the asset"
@@ -1401,6 +1700,17 @@
     "/get/path-completion": {
       "get": {
         "operationId": "get_fs_completion",
+        "parameters": [
+          {
+            "description": "Directory prefix to complete; empty lists the roots",
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1427,10 +1737,23 @@
     "/get/prefetch": {
       "post": {
         "operationId": "prefetch",
+        "parameters": [
+          {
+            "description": "Asset id whose index in the page to return",
+            "in": "query",
+            "name": "locate",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": {}
+              "schema": {
+                "$ref": "#/components/schemas/Expression"
+              }
             }
           },
           "required": true
@@ -1487,6 +1810,17 @@
     "/object/compressed/{file_path}": {
       "get": {
         "operationId": "compressed_file",
+        "parameters": [
+          {
+            "description": "Path of the resized file, relative to the asset root",
+            "in": "path",
+            "name": "file_path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Compressed file"
@@ -1506,6 +1840,17 @@
     "/object/imported/{file_path}": {
       "get": {
         "operationId": "imported_file",
+        "parameters": [
+          {
+            "description": "Path of the original file, relative to the asset root",
+            "in": "path",
+            "name": "file_path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Imported original file"
@@ -2097,8 +2442,10 @@
         "operationId": "regenerate_thumbnail_with_frame",
         "requestBody": {
           "content": {
-            "application/json": {
-              "schema": {}
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/RegenerateThumbnailForm"
+              }
             }
           },
           "required": true
@@ -2293,6 +2640,17 @@
     "/share/{path}": {
       "get": {
         "operationId": "share",
+        "parameters": [
+          {
+            "description": "Share view path the SPA route renders",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
@@ -2332,6 +2690,17 @@
     "/timeline/view/{path}": {
       "get": {
         "operationId": "timeline_view",
+        "parameters": [
+          {
+            "description": "Timeline view path the SPA route renders",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
@@ -2358,6 +2727,17 @@
     "/trashed/view/{path}": {
       "get": {
         "operationId": "trashed_view",
+        "parameters": [
+          {
+            "description": "Trash view path the SPA route renders",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
@@ -2386,6 +2766,24 @@
         "operationId": "upload",
         "parameters": [
           {
+            "description": "Album the upload is presigned to; the files land in it",
+            "in": "query",
+            "name": "presigned_album_id_opt",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "How to handle an existing filename: rename (default) or skip",
+            "in": "query",
+            "name": "on_conflict",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "description": "When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error.",
             "in": "query",
             "name": "auto_rename",
@@ -2397,8 +2795,10 @@
         ],
         "requestBody": {
           "content": {
-            "application/json": {
-              "schema": {}
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadForm"
+              }
             }
           },
           "required": true
@@ -2435,6 +2835,17 @@
     "/videos/view/{path}": {
       "get": {
         "operationId": "videos_view",
+        "parameters": [
+          {
+            "description": "Video view path the SPA route renders",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
@@ -2448,6 +2859,17 @@
     "/{dynamic_album_id}": {
       "get": {
         "operationId": "album_page",
+        "parameters": [
+          {
+            "description": "Album page identifier (album-… or another SPA route)",
+            "in": "path",
+            "name": "dynamic_album_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
@@ -2464,6 +2886,17 @@
     "/{path}": {
       "get": {
         "operationId": "spa_fallback",
+        "parameters": [
+          {
+            "description": "Route path the SPA fallback serves",
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA fallback — serves index.html for Vue Router routes"

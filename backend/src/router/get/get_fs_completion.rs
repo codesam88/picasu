@@ -36,6 +36,9 @@ fn absolutize(p: &Path) -> PathBuf {
         get,
         path = "/get/path-completion",
         tag = "config",
+        params(
+            ("path" = Option<String>, Query, description = "Directory prefix to complete; empty lists the roots"),
+        ),
         responses(
             (status = 200, description = "Filesystem path completion", body = FsCompletion),
             (status = 400, description = "Invalid input"),
