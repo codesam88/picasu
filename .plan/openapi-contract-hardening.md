@@ -25,18 +25,37 @@ than the complete public contract. The generated OpenAPI document also did
 not prevent drift: route registration, annotations, generated paths, and
 public-spec filtering are separate sources of truth.
 
-The first five hardening mechanisms should be established as recurring CI
-checks and treated as a single API review gate:
+The goal is one invariant, and every mechanism below serves it: **the generated
+OpenAPI content must match what the backend implements at runtime.** The checks
+are the means of enforcing it, not the product. The invariant has two halves
+that are verifiable by different means, and keeping them distinct is what makes
+the enforcement honest:
+
+- **The route set** — every mounted `(method, path)` is in the public spec, and
+  every ungated spec operation is mounted. Rocket's route table is the authority
+  here, so this half is _provable_ at runtime, not merely reviewed. The
+  converse is stated asymmetrically because a build may expose only part of the
+  spec: a spec operation absent from a build is expected when it is
+  feature-gated and that feature is off, and drift otherwise.
+- **Operation detail** — the parameters, bodies, responses and auth on each
+  operation. Runtime knows nothing about these; they exist only in the
+  `#[utoipa::path]` annotations, so this half is only ever _statically
+  derivable_, against the handler source.
+
+The mechanisms below are the means of enforcing those two halves:
 
 1. **Checked-in generated public spec.** Generate the normalized public
    `openapi.json` in CI and compare it with the reviewed repository artifact.
    Any route, parameter, schema, response, security, or documentation change
-   must appear in the diff and receive normal code review.
+   must appear in the diff and receive normal code review. (Enforces the static
+   half, and keeps the served spec's source-of-record honest.)
 2. **Mounted-route/spec parity.** Compare the actual mounted `(method, path)`
    routes with the operations in the public spec. Fail on undocumented routes,
    stale spec operations, duplicate operation IDs, and accidental exposure of
-   test-only or internal routes. Prefer an explicit route inventory or runtime
-   route metadata over regex-only source discovery.
+   test-only or internal routes. This is the only mechanism that can _prove_ the
+   route-set half, so it runs against the server's real route table rather than inferring one from source. Its exclusions — test-only prefixes and static
+   mounts — are backend intent: declared once and read by both the generator and
+   this check, never a hand-written string inside a test.
 3. **OpenAPI structural linting.** Enforce project rules for operation IDs,
    tags, summaries, descriptions, request schemas, success/error responses,
    security requirements, path/query parameters, and named schemas. This
@@ -268,28 +287,208 @@ A review of the branch on 2026-09-28 probed the gate for drift it would not
 report, and the artifact and the source for claims that no longer hold. Every
 item below is a pointer: confirm it against the code and the artifact first, and
 fix it if it does. The evidence recorded is what the probe saw, and the fix is
-the direction to take rather than a decision already made. The three-way gate
-itself — source scan against the committed artifact, and Rocket's mounted route
-table against the served one — held up under the probe, as did every `[x]` task
-in this plan except the one closed above.
+the direction to take rather than a decision already made.
 
-High:
+#### Implementation plan
 
-- [ ] A route table outside `SCANNED_MODULES` is invisible to the source gate.
-      The list (`utils/openapi-sanity/src/modules.rs`) names five modules and no
-      rule fails when a `routes![...]` block exists elsewhere under `router/`: a
-      probe tree whose sixth module mounted an annotated but undocumented
-      `/secret?<token>` handler produced no finding about it. `/assets/<file..>`
-      (`backend/src/router/builder.rs`) is already such a route, held out of the
-      contract by the hand-written exclusion in
-      `backend/src/tests/openapi_contract.rs` and by the open static-route-policy
-      task below — which also contradicts this plan's opening note that route
-      coverage was already complete. The runtime test `every_mounted_route_is_documented`
-      catches the case, but only at `cargo test` time and only for routes Rocket
-      actually mounts, and the guard in `backend/src/tests/route_scan.rs`
-      hardcodes the same five names, so it detects removals and not additions.
-      Investigate deriving the scanned list from the `mount()` calls in
-      `router/builder.rs`, or failing on any route table no scanned module holds.
+The items in this step reduce to three pieces of work, in this order. Each one is
+a prerequisite for the next: the walk makes the generated spec complete, the
+complete spec is what the parity check has something to compare against, and the
+exclusion policy is what both sides read.
+
+**I1 — Complete the generated spec by walking the backend source (retire
+`SCANNED_MODULES`).** The crate already does the hard part: `scan_routes` and
+`scan_handlers` take a `syn::File` and know nothing about which file it is. Only
+the _file selection_ is a hardcoded list today. So:
+
+- Add a crate-level walk, e.g. `discover_sources(app_root) -> Vec<SourceUnit>`,
+  that recurses every `.rs` file under `backend/src`, skipping the `tests/` tree
+  and any `#[cfg(test)]` item. The `syn` visitor already ignores doc comments, so
+  the `routes![]` occurrences under `src/tests/` are not a hazard; skipping
+  `tests/` is belt-and-braces.
+- Generalize `group_and_module` (`modules.rs:93`) from its one-directory-level
+  `split_once('/')` to arbitrary module depth, and re-key `SourceUnit` and
+  `handler_module_path` off the **application-root-relative** path instead of the
+  router-relative one, so a `routes![]` outside `router/` resolves too. This is
+  the only genuinely new parsing logic; the resolution rule has never been
+  exercised past one level because no nested `routes![a::b::c]` exists today, so
+  it needs its own fixture.
+- Point `build.rs` (`collect_all_routes`, currently iterating `SCANNED_MODULES`)
+  and the CLI (`main.rs`) at the shared walk, and delete the constant.
+- Delete the `backend/src/tests/route_scan.rs` guards that exist only to police
+  the list, including `scanned_router_modules_cover_every_mounted_group` (its
+  fixed five names detect removals, not additions — the walk is what closes that).
+- Replace the source-text assertion `build_script_scans_with_the_shared_analyzer`
+  with a behavioural one: generate a spec from a fixture tree through the same
+  entry point `build.rs` uses.
+- Retire the `--module` and `--router-root` CLI flags (the walk replaces file
+  selection) and update the surfaces that name them: the `justfile`
+  `openapi-sanity` recipe (still passes `--router-root`), the crate README's
+  option table and `SCANNED_MODULES` reference, and `docs/openapi-generator.md`.
+  The doc is written to the post-walk shape; the code flags change with I1.
+
+Acceptance: a `routes![]` block in a file no one listed — a new
+`src/api/v2.rs`, say — is picked up by both the generator and the CLI, and a
+feature-gated registration is either reported or explicitly excluded per I3.
+
+**I2 — Prove route-set parity behind `--check-openapi`.** A new mode on the
+binary, a sibling of `--dump-openapi`:
+
+- `main.rs` gains `--check-openapi <path-to-spec>` (defaulting to the committed
+  `backend/openapi.json`). Unlike `--dump-openapi`, it reads the **committed**
+  spec from disk rather than the compiled-in one — that is the published claim,
+  and reading it is what makes the check a gate on the artifact.
+- Build the real `build_rocket()` (not `build_test_rocket()`), read `.routes()`,
+  normalize both sides with the shared `to_spec_path`, and apply the asymmetric
+  rule: every mounted route must be in the spec (hard fail); a spec operation not
+  mounted in this build is excused only if it is feature-gated and that feature is
+  disabled here; an ungated spec-only operation is drift. Read this build's
+  enabled features via `cfg!(feature = ...)`.
+- Exit non-zero on drift with a per-route report; the spec-dependency stays in the
+  repo, not in the server's boot.
+- Run it in the release gate and the commit hook, pinned to the shipped feature
+  set (`--features embed-frontend`), so the build checking is the build shipping.
+- Add a fixture-tree negative test for the drift case, then retire the two
+  `openapi_contract.rs` parity tests to self-checks; the load-bearing assertion
+  moves here.
+
+**I3 — Express exclusions as one policy both sides read.** The `is_outside_contract`
+strings in `openapi_contract.rs:61` and the `--exclude-prefix` argument in the
+`justfile` both name the same exceptions. Put them in one backend-owned place (a
+const or a small policy file) that the generator, the CLI invocation, and the
+`--check-openapi` comparison all consume, so the generator and the gate cannot
+disagree about what is in the contract. Exclusions remain for genuinely non-API
+surfaces only — static file mounts, test-only probes — not for feature-gated APIs,
+which I1/I2's asymmetric rule handles without one.
+
+Ordering: I1 → I2 → I3. I2 depends on I1 (a complete spec is what "all production
+routes are documented" is measured against). I3 is independent but should land
+with I2, since both read the same policy.
+
+#### Ordered by the invariant, not by severity
+
+The findings are grouped by which half of the invariant they threaten and by what
+closes it, so work on the provable half is not blocked behind refinements of the
+static half.
+
+#### The gate's shape, settled 2026-09-28
+
+Two derivations of the route table, deliberately kept independent:
+
+1. **Static, by `syn`.** `scan_routes` and `scan_handlers` walk the source AST
+   and find `routes![...]` registrations and `#[utoipa::path]` annotations. This
+   is what the CLI runs, and it needs no compiled artifact, which is what lets it
+   run in the pre-commit hook and in `just check`.
+2. **Runtime, from Rocket.** The route table of the real `build_rocket()`,
+   built with the shipped feature set, reflects what the server actually serves,
+   including a `FileServer` mount that has no `routes![...]` to find. This is
+   `--check-openapi`'s input; it is deliberately not the
+   `build_test_rocket()` in the backend test, because a test build runs without
+   `embed-frontend` and therefore serves a different table than the one that
+   ships.
+
+The CLI does not take a route inventory from the server, and neither derivation
+becomes the other's authority: they are different methods, and their agreement is
+the evidence. What is wrong today is not the method but the file list — the
+static side parses only `SCANNED_MODULES`, so its coverage is asserted rather
+than derived. The implementation plan above fixes that, and the findings below
+are the same work seen from the review's angle.
+
+**Route set — provable at runtime.** These close the half of the invariant that
+can actually be proven, and the first is the precondition for all of them: the
+served spec has to be _complete_ before parity can mean anything.
+
+- [ ] Make the generated spec complete: walk the application root. Only the
+      five modules in `SCANNED_MODULES` are parsed, so a `routes![...]` block
+      anywhere else is invisible to the source gate. A probe tree whose sixth
+      module mounted an annotated but undocumented `/secret?<token>` handler
+      produced no finding about it. The gap is the file list, not the analysis:
+      `scan_routes` is a `syn` visitor that matches `routes!` by its last path
+      segment and walks function bodies, so it would report `builder.rs:135` on
+      the first file it was handed. Walk the application root and parse every
+      file with the visitors that already exist — skip the `tests/` tree and
+      `#[cfg(test)]` items, or the gate reads its own test suite as API (all four
+      `routes![]` occurrences under `backend/src/tests/` are in doc comments).
+      Scope the walk to the backend source, not `router/`: a route table outside
+      `router/` is equally invisible today.
+- [ ] Retire `SCANNED_MODULES` once the walk exists. It conflates two questions —
+      which files exist, which is derivable by walking, and what is part of the
+      contract, which is a decision. The decision survives as a path-based
+      exclusion (`--exclude-prefix`, and whatever the static-route policy makes
+      of `/assets`) read by both the build script and the CLI. Removing it also
+      removes the two guards in `backend/src/tests/route_scan.rs` that exist only
+      to police it, including `scanned_router_modules_cover_every_mounted_group`,
+      which hardcodes the same five names and so detects removals and not
+      additions. The walk belongs in the crate as one function, shared by
+      `build.rs` and the CLI, so the generator and the gate cannot disagree about
+      what the API's files are.
+- [ ] Express exclusions as declared backend intent, read by both sides. Settle
+      what a route discovered only by the source scan means for a feature-gated
+      or `cfg(test)` mount. `builder.rs:135` is
+      `#[cfg(feature = "embed-frontend")]` and the default build mounts a
+      `FileServer` at the same path, which has no `routes![]` at all — so the
+      source scan and the runtime comparison see different things for `/assets`
+      by construction, and any exclusion has to express "behind a feature" and
+      "not a route table" rather than a file path. Today this invariant is
+      _manually overridden_ by hand-written strings in `is_outside_contract`; the
+      walk turns that into a first-class, shared policy rather than a test-local
+      string.
+- [ ] Feature-gated routes: one canonical spec, feature-dependent operations
+      marked. A single `openapi.json` describes every route any build can expose —
+      the union across features, not one build's slice — and an operation that
+      exists only under a feature carries that feature as a vendor extension
+      (`x-picasu-feature: embed-frontend`). utoipa 5.5 supports
+      `extensions(...)` on `#[utoipa::path]` (utoipa-gen-5.5.0/src/lib.rs:1042),
+      so the marker is a supported mechanism, not a hand-patched field. This
+      makes the product-build parity check asymmetric, which is what
+      feature-gating requires: every route the running product actually mounts
+      must be in the spec (hard failure), but a spec operation that is not
+      mounted in _this_ build is acceptable when — and only when — it is
+      feature-gated and that feature is disabled here. An ungated spec operation
+      with no matching mount is still drift. The symmetric
+      `every_spec_operation_is_mounted` test cannot express this, which is why
+      feature-gating is awkward under it today and why `/assets` needed a
+      hand-written exclusion; the asymmetry removes the need for that exclusion
+      for feature-gated APIs, leaving exclusions only for genuinely
+      non-API surfaces (static file mounts, test-only probes).
+- [ ] Prove route-set parity behind a `--check-openapi` flag, in the product
+      build. The only mechanism that can prove the route-set half is Rocket's real
+      mount table, and only a real build has it correctly: `build_rocket()` is
+      reached on the launch path, and only the shipped feature set
+      (`--features embed-frontend`) carries the feature-gated registrations. A
+      test cannot stand in for this — `just test` builds without `embed-frontend`,
+      so a route registration behind a feature is absent from the test table and
+      the check can neither flag nor cover it, and it only runs when someone runs
+      `cargo test`. Add a `--check-openapi` mode to the binary (a sibling of
+      `--dump-openapi` in `main.rs`, but the check rather than the generator): read
+      the committed `backend/openapi.json` — the published claim — build the real
+      `build_rocket()`, read `.routes()` (cheap; neither ignites nor launches), and
+      compare the two under the asymmetric rule above. Fail with a precise message
+      on drift. The spec dependency is deliberately confined to where the spec is
+      authored and shipped — the repo, the commit hook, CI and the release gate —
+      not the server's runtime: `openapi.json` is a review artifact, not a
+      deployment dependency, so boot must not depend on it and startup must stay
+      clean. Run the flag unconditionally in the release gate so every shipped
+      artifact is verified against its own claim, with a fixture-tree negative
+      test for the drift case.
+      This also collapses the `SCANNED_MODULES` blind spot: a `routes![]` in a file
+      the generator never scans never reaches the spec, so it appears as a
+      mounted-but-undocumented route and fails the check rather than passing
+      silently. Assert inside the binary rather than diffing two JSON blobs in the
+      shell — it has both sides in memory, normalizes route paths the way the
+      runtime test does, and can share the exclusion policy. The route table
+      (Rocket's live mount) and the spec (utoipa's compiled annotations, committed)
+      stay derived from genuinely different sources; comparing them is the proof,
+      and deriving them from one another would make them agree by construction and
+      stop being evidence. Once this lands, the two `openapi_contract.rs` parity
+      tests retire down to their negative self-checks — the load-bearing assertion
+      moves out of the test harness.
+
+**Operation detail — static only.** Runtime knows nothing about these; they exist
+only in the annotations, so they can only be checked against the handler source.
+The walk above is a precondition here too — a route in an unscanned file has no
+checked detail at all.
+
 - [ ] A body type the analyzer cannot name is reported as drift instead of
       skipped. `body_drift` (`utils/openapi-sanity/src/params.rs`) substitutes
       the string `a type this analyzer cannot name` for an unnamed argument and
@@ -311,9 +510,6 @@ High:
       task records, one of them declares it. Mark the mechanism partial in the
       strategy section, then decide whether a status-family rule belongs in this
       tool or in the backend contract test.
-
-Medium:
-
 - [ ] The `required` rule is vacuous for a parameter it cannot bind to a plain
       argument: `plain_argument` matches `ArgKind::Plain` by name, so a
       struct-bound parameter, or a guard that shares the parameter's name, gets
@@ -342,7 +538,92 @@ Medium:
       test that reads the recipe and asserts it matches the Rust constant. Low
       effort.
 
+#### Considered and rejected
+
+Recorded so the next reader does not re-litigate them. Each was a reasonable
+first instinct that the invariant framing ruled out.
+
+- **A runtime route inventory as the CLI's input.** Feed `openapi-sanity` a route
+  table dumped by the server and let it be the authority on what the backend
+  registers. Rejected: it costs the checker its no-compiled-artifact property (the
+  whole reason it can sit in the pre-commit hook) and makes the external tool
+  responsible for the backend's registration — the checker would be judging the
+  code it is meant to check. The `syn` static scan stays the CLI's method; the
+  product-build route table is a _separate_ derivation used by `--check-openapi`,
+  not an input to the CLI.
+- **Promoting parity to a launch-time check (fail boot if the spec is missing or
+  drifted, `--waive-openapi` to skip).** Rejected: `openapi.json` is a review
+  artifact, not a deployment dependency. Making the server refuse to boot because
+  the file is absent turns a governance check into a runtime coupling and gives
+  every deployment a new way to fail to start. `--check-openapi` keeps the spec
+  dependency in the repo and the release gate, where the claim is actually made.
+- **One spec per feature configuration** (`openapi-embed.json`,
+  `openapi-default.json`). Rejected: it doubles the artifact count and the review
+  surface, and a route present in one slice and absent in another is drift between
+  two files rather than between code and spec. A single canonical spec with
+  `x-picasu-feature` markers keeps one source of record, and the asymmetric parity
+  rule expresses "this build may expose a subset" without a second file.
+- **Deriving the scanned file list from the `mount()` calls in `builder.rs`.**
+  Rejected: it just relocates the hardcoded list — it still asserts which files are
+  the API rather than deriving it, and a `routes![]` block not yet wired into a
+  mount would be invisible to the generator but visible to the runtime check. The
+  walk derives the set from the source tree instead.
+
 ## Progress
+
+- 2026-09-28: Consolidated Step 5 and documented the flow. Added an
+  **Implementation plan** reducing the step to three ordered pieces — I1 walk the
+  backend source and retire `SCANNED_MODULES`, I2 `--check-openapi` route-set
+  parity, I3 shared exclusion policy — each with the concrete files, the new
+  parsing logic (generalizing `group_and_module` to arbitrary module depth), the
+  acceptance condition, and the surfaces that change with it. Added a
+  **Considered and rejected** record so the runtime-inventory-as-CLI-input,
+  launch-time-enforcement, per-feature-spec, and derive-the-list-from-`mount()`
+  directions are not re-proposed. Rewrote `docs/openapi-generator.md` around the
+  invariant: it led with the checker as the product, described the symmetric
+  runtime parity test as load-bearing, and instructed adding new route modules to
+  `SCANNED_MODULES` — all three now wrong. The doc now leads with the invariant
+  and its two halves, documents the three-check gate including `--check-openapi`
+  and the asymmetric feature rule, marks feature-dependent operations with
+  `x-picasu-feature` via utoipa `extensions(...)`, and carries the same rejected
+  directions. The crate README and the `justfile` recipe still name the
+  `--router-root`/`--module` flags; they change with I1 and are listed there
+  rather than edited ahead of the code.
+
+- 2026-09-28: Reframed the plan around the invariant rather than around the
+  checker. The goal is one property — **the generated OpenAPI content must match
+  what the backend implements at runtime** — and the gates are the means of
+  enforcing it, not the product. It splits into two halves with different ground
+  truth: the route set (Rocket's table is the authority, so it is provable at
+  runtime) and operation detail (annotations only, so it is statically derivable
+  against the handler source). This supersedes three earlier framings: the
+  strategy no longer treats the five mechanisms as the deliverable, mechanism 2
+  no longer prefers a route inventory or runtime route metadata over source
+  discovery (that conflicts with the gate's shape settled below — the CLI keeps
+  `syn` static analysis; runtime is the authority for the route set, not a
+  replacement for the scan), and Step 5 is grouped by which half of the invariant
+  each finding threatens rather than by severity. The earlier claim that the gate
+  "held up" is narrowed: the methods held up, but the static side's coverage is
+  asserted, not derived. A finding was added, then sharpened: route-set parity is
+  proven in the product build, not in a test. Behind a `--check-openapi` flag,
+  the real `build_rocket().routes()` is compared against the committed
+  `openapi.json` and the check fails on drift; the spec dependency is confined to
+  the repo, the commit hook, CI and the release gate, so the server's boot stays
+  independent of a review artifact. The two `openapi_contract.rs` parity tests
+  are therefore wrong as the load-bearing check and retire to negative
+  self-checks; the CLI's route-table comparison is redundant with the build-time
+  one.
+
+- 2026-09-28: Settled Step 5's first three items after the review of the gate's
+  shape. The static side was always meant to find registrations by `syn` AST
+  analysis and does; the defect is that it parses only `SCANNED_MODULES`, so
+  coverage is asserted rather than derived, and `builder.rs` — which mounts
+  `/assets` at startup — is not among them. A runtime route inventory exported
+  from the server was considered and rejected as the fix: it would cost the
+  checker its no-compiled-artifact property and make the external tool the
+  authority on what the backend registers. The static scan and Rocket's runtime
+  route table stay as two independent derivations whose agreement is the
+  evidence, and the walk replaces the list.
 
 - 2026-09-28: Reviewed the branch against the goal it states — routes annotated
   and documented, authentication tracked, inputs and outputs described — and
