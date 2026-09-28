@@ -134,8 +134,8 @@ pub struct HandlerArg {
     pub optional: bool,
     /// The type the request body is known by, after unwrapping the `Result`,
     /// `Option` and `Json`/`Form` wrappers down to the type the developer named.
-    /// `None` for a guard — a guard carries no body — and for a type this
-    /// analyzer cannot name, such as a reference to a slice.
+    /// `None` for a guard — a guard carries no body — and for a type no path names,
+    /// which is a tuple, a slice or an array, written bare or behind a wrapper.
     pub body_type: Option<String>,
     /// Whether the argument is a `Form<..>` wrapper, which Rocket fills from a
     /// form-encoded or multipart request rather than from a JSON body.
@@ -289,8 +289,10 @@ struct BodyType {
 }
 
 impl BodyType {
-    /// The shape of a type that names nothing: a receiver, a reference to a
-    /// primitive, a slice or a tuple.
+    /// The shape of a type that names nothing: a slice, a tuple or an array, a
+    /// `dyn` trait object or a macro call, and a wrapper written without its type
+    /// argument. Only a reference at the top of the type is unwrapped, so
+    /// `&Json<T>` names `T` while `Json<&str>` names nothing.
     const fn none() -> Self {
         Self {
             optional: false,

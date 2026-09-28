@@ -225,6 +225,27 @@ once, locally, and is not also reported as document drift. The document is
 generated from the annotation, so it inherits the disagreement; a second finding
 would only restate the first.
 
+Two inputs are skipped for the same reason — the source cannot name them, so
+there is nothing to compare against the document and a finding would name a
+placeholder rather than a change:
+
+- a **request body whose type the analyzer cannot name**. The body type is read by
+  unwrapping `Result`/`Option`/`Json`/`Form` down to a path, so a tuple, a slice or
+  an array, a `dyn` trait object, a macro call, and a wrapper written without its
+  type argument all leave the type unnamed. P3 compares nothing about that body —
+  including the media type of a `Form` body, which is readable on its own but would
+  need a message that names no type.
+- a **query parameter the signature does not bind to a plain argument**. The
+  `required` half of the parameter rules reads whether the argument Rocket binds to
+  a `?<name>` is an `Option`, which needs an argument of that name. A guard declared
+  under the parameter's name is not that argument, and a `?<name>` filled from a
+  field of a `FromForm` struct bound to an argument of another name would mean
+  reading the struct's definition, which the scan does not do.
+
+No route in the repository is in either shape, and a test over `backend/src/router`
+fails if one enters it, so a parameter the rules cannot read is a failing test rather
+than an unchecked one.
+
 ## Authentication policy
 
 An operation that documents a `401` and one that enforces a guard are

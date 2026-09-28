@@ -33,6 +33,12 @@
 //! with no operation in the document has nothing to compare a parameter against,
 //! and its absence is one finding of its own.
 //!
+//! So is an input the source cannot name: a request body whose type is not a path,
+//! and a query parameter the signature does not bind to a plain argument. Both are
+//! read as nothing rather than compared as a mismatch, and each is stated on the
+//! rule that skips it, because a reader who cannot see the shape cannot tell a
+//! silent rule from a silent drift.
+//!
 //! P5 is the one rule with no handler side, and it reads the whole document
 //! rather than the compared contract — a schema is either named by the document or
 //! it is not, whichever path names it. It follows the duplicate-`operationId` rule
@@ -281,6 +287,18 @@ fn check_path_parameters(
 /// drift: Rocket refuses a request missing a `?<name>` unless the argument is an
 /// `Option`, so a document that says otherwise describes a request the route
 /// rejects.
+///
+/// That half reads one thing, and only where the signature provides it: whether the
+/// argument the route binds to a `?<name>` is an `Option`. Two shapes do not provide
+/// it, and neither is checked. A guard may share the parameter's name — a guard runs
+/// before the body, so its `Option` says whether the *authentication* is deferred,
+/// and reading it here would answer a policy question with a contract one. And a
+/// route may fill a `?<name>` from a field of a `FromForm` struct bound to an
+/// argument of another name, which would mean reading the struct's definition to
+/// find whether the field is optional; the scan reads handler signatures, not the
+/// types they name, so it says nothing rather than guess. A test over
+/// `backend/src/router` asserts that every query parameter a route binds reaches a
+/// plain argument, so neither shape can enter the API without failing there.
 fn check_query_parameters(
     label: &str,
     identity: &str,
@@ -321,9 +339,9 @@ fn check_query_parameters(
             continue;
         }
         // A route that binds a query parameter the handler does not declare as an
-        // argument does not compile, so an argument that is not found here means
-        // the signature is one this analyzer cannot read: there is no `Option<T>`
-        // to compare, and saying otherwise would be a guess.
+        // argument does not compile, so an argument that is not found here means the
+        // signature is one this analyzer cannot read; the shapes are named on
+        // `plain_argument` and the limit on this rule.
         let Some(argument) = plain_argument(handler, parameter.name) else {
             continue;
         };
@@ -369,6 +387,18 @@ fn mismatch_required(identity: &str, name: &str, optional: bool) -> String {
 /// `multipart/form-data`; naming the inner type under any other media type
 /// describes a body a caller does not know how to send, and that finding names the
 /// media type the document did declare.
+///
+/// A body whose type no name can be read for is not compared at all. The wrappers
+/// unwrap down to a path, so a tuple, a slice or an array leaves the handler's body
+/// unnamed (see [`crate::HandlerArg::body_type`]) — and a rule that substituted a
+/// placeholder for the missing name would report that placeholder as a mismatch,
+/// which is a finding naming neither the type the handler takes nor a change that
+/// would answer it. Silence is the same answer the `required` half of P2 gives a
+/// parameter it cannot bind to a plain argument, and it costs the media-type check
+/// on a `Form` body whose type is unnamed: that check is readable on its own, but
+/// every finding this rule makes about a form body names the inner type, and a
+/// second message shape for a type with no name would report the two unnamed
+/// bodies differently.
 fn check_request_body(
     label: &str,
     identity: &str,
@@ -413,12 +443,10 @@ fn check_request_body(
 }
 
 /// The finding a request body earns, or `None` when the document and the handler
-/// describe the same body.
+/// describe the same body — and when the body type is one no name can be read for,
+/// which [`check_request_body`] states as a limit of the rule.
 fn body_drift(argument: &HandlerArg, declared: &RequestBody<'_>) -> Option<String> {
-    let observed = argument
-        .body_type
-        .as_deref()
-        .unwrap_or("a type this analyzer cannot name");
+    let observed = argument.body_type.as_deref()?;
     let documented = documented_body_name(&declared.schema);
 
     if argument.multipart {
@@ -563,12 +591,19 @@ fn declared_names<'a>(
         .collect()
 }
 
-/// The plain argument a route segment or query key binds, if the signature
-/// declares one.
+/// The plain argument a query key binds, or `None` for a signature that fills the
+/// name some other way.
 ///
-/// A guard is not the argument: a guard of the same name would answer before the
-/// body runs, and reading its `Option` as the query parameter's optionality would
-/// answer a policy question with a contract one.
+/// The `required` flag is a claim about the `Option` of the argument Rocket binds to
+/// a `?<name>`, and two signatures have no such argument. A guard may be declared
+/// under the query parameter's name: it is not the argument, a guard of the same
+/// name would answer before the body runs, and reading its `Option` as the query
+/// parameter's optionality would answer a policy question with a contract one. And
+/// a route may fill the name from a field of a `FromForm` struct bound to an argument
+/// of another name — resolving that would mean reading the struct's definition,
+/// which the source scan does not do, so the rule reports nothing about the
+/// parameter rather than about a field it has not seen. See
+/// [`check_query_parameters`], which states both shapes as a limit of the rule.
 fn plain_argument<'a>(handler: &'a Handler, name: &str) -> Option<&'a HandlerArg> {
     handler
         .args

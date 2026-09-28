@@ -215,6 +215,9 @@ are one name, and a query parameter's `required` flag is checked against
 `Option<T>` on the bound argument. A `Form<T>` body is satisfied by a
 `multipart/form-data` content type; naming the schema under any other media type
 is a finding, because the media type is how a caller knows to send the fields.
+Two inputs are skipped where the source cannot name them at all — an unnamed body
+type and a query parameter no plain argument binds — and both are listed under
+[Limitations](#what-is-not-checked).
 
 ## How it is tested
 
@@ -301,6 +304,21 @@ macros are not expanded beyond what the visitor reads as tokens. Consequences:
 
 ### What is not checked
 
+- **A body whose type the analyzer cannot name.** The body type is read by unwrapping
+  `Result`/`Option`/`Json`/`Form` down to a path, so a tuple, a slice or an array, a
+  `dyn` trait object, a macro call and a wrapper written without its type argument
+  leave the type unnamed — and P3 compares nothing about that body. A `Form` body of
+  such a type is also not reported for a wrong media type, which is readable on its
+  own: every finding P3 makes about a form body names the inner type, and reporting the
+  media type alone would need a second message shape for a type that has no name. No
+  route in the repository is in this shape, and a body is normally a struct.
+- **A query parameter the signature does not bind to a plain argument.** P2's `required`
+  half reads whether the argument Rocket binds to a `?<name>` is an `Option`, which
+  needs an argument of that name. A guard declared under the parameter's name is not
+  that argument, and a `?<name>` filled from a field of a `FromForm` struct bound to an
+  argument of another name would mean reading the struct's definition, which the scan
+  does not do. Both are reported as nothing rather than guessed at; a test over the
+  repository fails if a route enters either shape, so the silence cannot spread.
 - **Schema content and response types.** The parameter rules read `parameters`
   and `requestBody` for names, flags, media types and the schema a `$ref` names —
   not the schema bodies themselves. A parameter declared with the wrong `type`, a

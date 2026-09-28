@@ -26,8 +26,8 @@
 use std::path::Path;
 
 use openapi_sanity::{
-    BodySchema, ParameterLocation, SchemaIndex, check_params, schema_index, spec_operations,
-    spec_placeholders,
+    ArgKind, BodySchema, ParameterLocation, SchemaIndex, check_params, route_query_bindings,
+    scan_source, schema_index, spec_operations, spec_placeholders,
 };
 
 mod support;
@@ -515,6 +515,33 @@ pub fn get_album(since: Option<GuardAuth>) {
     );
 }
 
+#[test]
+fn a_query_parameter_bound_through_a_struct_is_not_checked() {
+    // The other signature this rule cannot read, and the one that is silent for a
+    // different reason than the guard above: `?<since>` reaches the handler as a
+    // field of `AlbumFilter`, so the parameter is filled by an argument named
+    // `filter`. Reading the flag would mean reading the struct's definition to find
+    // whether that field is an `Option`, which the source scan does not do — so the
+    // rule says nothing rather than reading `required: true` as a claim about a
+    // `filter` it has not resolved. The shape is held out of the repository by
+    // `every_query_parameter_the_repository_binds_reaches_a_plain_argument`.
+    let tree = one_handler_tree(
+        "params-struct-bound-query",
+        r#"#[utoipa::path(get, path = "/write/albums", tag = "albums")]
+#[get("/write/albums?<since>")]
+pub fn get_album(filter: AlbumFilter) {}
+"#,
+        &DOCUMENT_WITH_OPTIONAL_QUERY.replace(r#""required": false"#, r#""required": true"#),
+    );
+
+    assert_eq!(
+        tree.param_findings(&[]),
+        Vec::<String>::new(),
+        "the `required` flag is a claim about an `Option<T>` on the bound argument, and \
+         `AlbumFilter`'s fields are not something this analyzer reads"
+    );
+}
+
 // ── P3: the request body ──────────────────────────────────────────────────────
 
 #[test]
@@ -750,6 +777,91 @@ pub fn create_album(password: Json<String>) {}
     );
 
     assert_eq!(tree.param_findings(&[]), Vec::<String>::new());
+}
+
+#[test]
+fn a_json_body_the_analyzer_cannot_name_is_not_compared_against_the_document() {
+    // The types the body reader unwraps to nothing: a tuple inside `Json`, a slice,
+    // and a reference to a slice. A `&` in front of a named type is unwrapped, so
+    // the last row is the control — a reference is not by itself a reason to skip.
+    //
+    // There is no name to compare, so the rule says nothing. The string it stood in
+    // for the missing name could only ever mismatch, and a finding carrying it names
+    // neither the type the handler takes nor a change that would answer it.
+    for (shape, body_type) in [
+        ("a tuple", "Json<(u64, String)>"),
+        ("a slice", "Json<&[u8]>"),
+        ("a reference to a slice", "&[u8]"),
+        ("a reference to a named type", "&Json<CreateAlbum>"),
+    ] {
+        let tree = write_tree(
+            &format!(
+                "params-unreadable-body-{}",
+                body_type.replace(['<', '>', ' ', '&'], "")
+            ),
+            &[
+                ("write/mod.rs", ROUTE_TABLE),
+                (
+                    "write/write.rs",
+                    &format!(
+                        r#"use rocket::post;
+
+#[utoipa::path(post, path = "/write/create", tag = "albums", request_body = CreateAlbum)]
+#[post("/write/create", format = "json", data = "<album>")]
+pub fn create_album(_auth: GuardAuth, album: {body_type}) {{}}
+"#
+                    ),
+                ),
+            ],
+            DECLARING_DOCUMENT,
+        );
+
+        assert_eq!(
+            tree.param_findings(&[]),
+            Vec::<String>::new(),
+            "`{body_type}` is {shape}, and a body the analyzer cannot name is not \
+             compared against the type the document declares"
+        );
+    }
+}
+
+#[test]
+fn a_form_body_the_analyzer_cannot_name_is_not_compared_at_all() {
+    // The same skip on the `Form` branch, with the media type wrong in the second
+    // row so the branch that would report it is reached rather than short-circuited
+    // on a media type that already agrees. The wrapper is read whatever the type
+    // inside it is, so the media type is readable without the type — and is skipped
+    // anyway, because every finding this rule makes about a form body names the
+    // inner type. Reporting the media type alone would need a second message shape
+    // for a type the analyzer cannot name, and would report the two unnamed bodies
+    // differently for the sake of the wording. Asserted here so the choice is
+    // visible rather than implied by the silence.
+    for (declared_as, document) in [
+        ("multipart", DECLARING_DOCUMENT),
+        (
+            "json",
+            &DECLARING_DOCUMENT.replace(
+                r#""multipart/form-data": { "schema": {} }"#,
+                r#""application/json": { "schema": {} }"#,
+            ),
+        ),
+    ] {
+        let tree = four_handler_tree(
+            &format!("params-unreadable-form-{declared_as}"),
+            &DECLARING_HANDLERS.replace(
+                "Result<Form<UploadForm<'_>>, Errors<'_>>",
+                "Result<Form<(String, String)>, Errors<'_>>",
+            ),
+            document,
+        );
+
+        assert_eq!(
+            tree.param_findings(&[]),
+            Vec::<String>::new(),
+            "the form body is declared {declared_as} and the analyzer cannot read the \
+             type it carries"
+        );
+    }
 }
 
 // ── P4: operation ids ─────────────────────────────────────────────────────────
@@ -1129,6 +1241,44 @@ fn the_repository_declares_every_parameter_and_references_every_schema() {
     assert!(
         reported.is_empty(),
         "the committed document drifted from the route source:\n{reported:#?}"
+    );
+}
+
+#[test]
+fn every_query_parameter_the_repository_binds_reaches_a_plain_argument() {
+    // The `required` half of P2 reads one thing: whether the argument Rocket binds
+    // to a `?<name>` is an `Option`. No route in the repository reaches that
+    // parameter any other way — a guard shares no query parameter's name, and no
+    // `?<x>` is filled from a `FromForm` struct's field — so the rule has no
+    // parameter it currently cannot read. Asserted rather than assumed: a route
+    // added in either unreadable shape makes this fail and name the handler, instead
+    // of the rule quietly checking nothing about it.
+    let repository = repository_root();
+    let router = Fixture::in_directory(&repository.join("backend").join("src").join("router"));
+    let mut unreadable = Vec::new();
+
+    for unit in router.units() {
+        let scan = scan_source(unit.label(), unit.source(), unit.group_prefix());
+        for handler in &scan.handlers {
+            let Some(uri) = handler.uri.as_deref() else {
+                continue;
+            };
+            for name in route_query_bindings(uri) {
+                let plain = handler
+                    .args
+                    .iter()
+                    .any(|argument| argument.kind == ArgKind::Plain && argument.name == name);
+                if !plain {
+                    unreadable.push(format!("{}:{} {}", unit.label(), handler.line, name));
+                }
+            }
+        }
+    }
+
+    assert!(
+        unreadable.is_empty(),
+        "P2 checks the `required` flag only where the route binds the name to a plain \
+         argument, and these do not reach one:\n{unreadable:#?}"
     );
 }
 
