@@ -351,6 +351,45 @@ Whenever metadata is changed via the API/frontend, the backend will
 create/update a corresponding sidecar XMP file. In addition, we may add an
 option to directly write the metadata back to the original images (IPTC/XMP only).
 
+### Writing a sidecar
+
+A sidecar is a shared file, so a write is a **read-modify-write** and not a
+replacement. `ExifTool` is given the managed properties by name and nothing
+else; every other property in the packet — another tool's creator and
+copyright, a location, a rating the app did not set, a namespace no reader here
+has a rule for, anything surfaced through `furtherMetadata` — comes back
+unchanged. The managed set is `dc:subject` (tags), `dc:description` and
+`xmp:Rating` for every asset, plus `dc:title` for a dir-album's `.albuminfo.xmp`.
+
+Three consequences worth knowing:
+
+- **A cleared managed field is removed, not blanked.** Removing a tag from a
+  photo removes it from the sidecar on the next edit; the tag bag is replaced
+  with the app's set rather than added to, so nothing accumulates across edits.
+- **A photo's `dc:title` is not managed.** The app never writes it, so it is
+  left alone — including one another tool put there. An album's title _is_
+  managed, because the app sets it, so clearing it there removes the property.
+- **The packet is re-serialised, so it is not byte-stable.** `ExifTool` rewrites
+  the whole packet when it edits it — regrouping properties by namespace,
+  re-indenting, restamping `x:xmptk`. The _properties_ are preserved; the bytes
+  are not, and a sidecar will differ textually after every edit.
+
+When the existing sidecar's XMP cannot be parsed — bytes `ExifTool` cannot read
+at all, or a packet cut off part-way — it refuses to write and the file is left
+byte-identical. The write then falls back to a managed-only packet, and the
+replacement is logged as an error. The unreadable bytes are not recoverable
+either way, since the app's own reader gets nothing from them, and keeping them
+would mean the API acknowledged an edit that is in no readable file, which the
+next reindex would revert. A write that cannot reach `ExifTool` at all is
+different: the sidecar is left exactly as it is, and the failure is reported to
+the caller.
+
+One lossy case is _not_ detected. A sidecar that is well-formed XML but carries
+no XMP is replaced by `ExifTool` as an ordinary successful write — the previous
+content is gone and nothing reports it, because there is no signal to tell that
+apart from editing a real packet. The result is still a readable packet holding
+the managed set; the operator is simply not told.
+
 ### Implementation notes
 
 The formats below are how the values are written in the file. What the backend

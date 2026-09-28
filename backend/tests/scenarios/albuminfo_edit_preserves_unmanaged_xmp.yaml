@@ -1,0 +1,62 @@
+name: an album sidecar edit leaves unmanaged XMP alone
+# The same read-modify-write contract as `sidecar_edit_preserves_unmanaged_xmp`,
+# on the album path, whose managed set is one property wider: `dc:title` joins
+# tags, description and rating.
+#
+# The album is hydrated from this sidecar at index time, so the seeded tags and
+# rating are the album's own managed values when the edit arrives — which is why
+# they are still in the packet afterwards. The assertion here is narrower than
+# the photo scenario's on purpose: there is no endpoint that edits an album's
+# tags, so the bag-replacement property has no API-level expression here and is
+# pinned at unit level (`a_removed_tag_does_not_survive_the_next_edit`).
+#
+# What this scenario adds over the photo one is the album-specific half: a title
+# the user set is written, and the properties of another tool in namespaces the
+# app has no read rule for are still there afterwards.
+given:
+  - dir_album: /e2e_rmw_album
+    id_as: $album_id
+  - raw_file: /e2e_rmw_album/.albuminfo.xmp
+    content: |
+      <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+        xmlns:dc="http://purl.org/dc/elements/1.1/"
+        xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+        xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/"
+        xmlns:Iptc4xmpCore="http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/">
+        <dc:subject><rdf:Bag>
+        <rdf:li>e2e_seed_tag</rdf:li>
+        <rdf:li>e2e_second_seed_tag</rdf:li>
+        </rdf:Bag></dc:subject>
+        <xmp:Rating>3</xmp:Rating>
+        <photoshop:City>Zürich</photoshop:City>
+        <Iptc4xmpCore:Location>Alps</Iptc4xmpCore:Location>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+      <?xpacket end="w"?>
+when:
+  - call: PUT /put/set_album_title
+    raw_body: '{"albumId":"${album_id}","title":"Chosen Name"}'
+then:
+  - response.status: 200
+  # The album-only managed property was written.
+  - file.contains: /e2e_rmw_album/.albuminfo.xmp
+    text: Chosen Name
+  # The managed fields the index took from this sidecar are still the album's, so
+  # a read-modify-write has to keep them.
+  - file.contains: /e2e_rmw_album/.albuminfo.xmp
+    text: e2e_seed_tag
+  - file.contains: /e2e_rmw_album/.albuminfo.xmp
+    text: e2e_second_seed_tag
+  # And the properties of another tool are untouched.
+  - file.contains: /e2e_rmw_album/.albuminfo.xmp
+    text: photoshop:City
+  - file.contains: /e2e_rmw_album/.albuminfo.xmp
+    text: Zürich
+  - file.contains: /e2e_rmw_album/.albuminfo.xmp
+    text: Iptc4xmpCore:Location
+  - file.contains: /e2e_rmw_album/.albuminfo.xmp
+    text: Alps

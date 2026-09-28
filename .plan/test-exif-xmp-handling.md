@@ -409,6 +409,29 @@ Relevant code: `backend/src/process/exif.rs` and
 
 ## Follow-up Status
 
+2026-09-28 — **Unmanaged-sidecar preservation implemented.** `write_sidecar_for`
+is now a read-modify-write through ExifTool (`exif::write_xmp_properties`,
+sharing the reader's thread-local `-stay_open` session): only the managed
+properties (`dc:subject`, `dc:description`, `xmp:Rating`, album `dc:title`) are
+named, so every other property/namespace survives. Measured semantics: bag
+assignments replace per element (no stale-tag accumulation; cleared tags delete
+the property), scalars clear with `-TAG=`, multi-line values are staged through
+a sibling file, `-overwrite_original` is mandatory. Photo title stays
+unmanaged (never named); album title is managed including removal-on-clear.
+Malformed sidecars: ExifTool refuses non-XMP byte-identically → controlled
+managed-only fallback overwrite with an error log; transport/dependency
+failures propagate without touching the file (the cache-divergence gap's
+territory). Residuals pinned/documented: valid-XML-that-is-not-XMP is replaced
+silently with no signal (`a_sidecar_of_xml_that_is_not_xmp_is_replaced_without_being_detected`);
+sidecars are property-stable but not byte-stable across edits; sidecar writes
+now require `exiftool` (consistent with the engine swap); an intermittent
+~3% write-then-read failure in tests (3/~90 runs, one captured as an empty
+read) could not be root-caused or reproduced in 150+ later runs — tests now
+surface read errors instead of defaulting, worth watching. Mutations: drop-RMW
+(10 kills), `+=` append (5), no-malformed-fallback (4), album-title skip (4),
+photo-title-managed (1). Gates: `cargo test -p picasu` 452 (+3 scenarios,
++27 tests, 2 ignored), snapfab 75, `just backend-check`, `cargo deny`,
+`just docs-check`.
 2026-09-28 — **Rebuild gap implemented.** One shared metadata pipeline
 (`process::index::process_media_info`) with two orchestration modes: the
 incremental index resolves identity through open/hash/deduplicate, the

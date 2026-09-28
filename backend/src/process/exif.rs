@@ -3,7 +3,10 @@ use anyhow::{Context, Result, anyhow};
 use exiftool::{ExifTool, ExifToolError};
 use regex::Regex;
 use serde_json::Value;
-use std::{cell::RefCell, collections::BTreeMap, path::Path, process::Command, sync::LazyLock};
+use std::{
+    cell::RefCell, collections::BTreeMap, io, path::Path, path::PathBuf, process::Command,
+    sync::LazyLock,
+};
 
 /// The metadata engine for image EXIF. `ExifTool` is an external binary (pure
 /// Perl, invoked as a separate process like `ffprobe` below), and there is no
@@ -116,6 +119,104 @@ pub(crate) fn read_metadata_record(file_path: &Path) -> Result<Value> {
     })
 }
 
+/// One property assignment for [`write_xmp_properties`]: an `ExifTool` tag name
+/// (`XMP-dc:Subject`) and the value to give it, or `None` to remove it.
+///
+/// An empty `Some("")` is *not* how a removal is spelled. `ExifTool` takes
+/// `-TAG=` as "delete this property" — measured, and the only spelling that
+/// removes one — so the two are kept apart here: `None` means delete, and an
+/// empty string is a value like any other.
+pub(crate) struct XmpAssignment<'a> {
+    pub(crate) tag: &'a str,
+    pub(crate) value: Option<&'a str>,
+}
+
+/// What a write through [`write_xmp_properties`] actually did.
+///
+/// Not every outcome is a success, and the difference decides what the caller
+/// is allowed to do about it, so the write's own result rather than a bare `()`
+/// is what comes back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum XmpWriteOutcome {
+    /// The properties were written into the file's existing packet.
+    Updated,
+    /// No packet was found, so `ExifTool` wrote one — either because the file
+    /// was absent or empty, or because what it held was not an XMP packet
+    /// `ExifTool` recognises. The caller's file was therefore replaced whole.
+    Created,
+    /// `ExifTool` read the file and refused to write to it. The file is
+    /// byte-identical to what it was: `ExifTool` stages the new packet in a
+    /// temporary file and renames it over the target only on success, so a
+    /// rejected write costs the caller nothing and tells it the file's own
+    /// metadata is what `ExifTool` cannot handle.
+    Rejected,
+}
+
+/// Write XMP properties into the packet at `file_path`, leaving every property
+/// this call does not name exactly as it was — the read-modify-write primitive
+/// `process::xmp_write` builds the sidecar contract on.
+///
+/// The write goes through the same thread-local session as [`read_metadata_record`],
+/// and for the same reason: a sidecar write happens on every tag, description,
+/// rating and album edit, and a cold `exiftool` costs ~330 ms against ~3 ms
+/// through a live child. Sharing the session also means a thread that reads and
+/// writes metadata keeps one child, not two.
+///
+/// `ExifTool` is the writer rather than a hand-rolled serialiser (decision 7 of
+/// `.plan/exiftool-metadata-engine.md`): a packet it edits is re-serialised by
+/// the tool that owns the format, which is what makes the properties it does
+/// not understand — unknown namespaces, another tool's ratings, edit history —
+/// survive an edit at all.
+///
+/// ## Argument shape, measured against `ExifTool` 13.59
+///
+/// * `assignments` become one `-<tag>=<value>` argument each, and **one
+///   assignment per list element**. A list-valued tag is *replaced* by its
+///   assignments, not appended to: `-XMP-dc:Subject=alpha` against a bag
+///   holding `[oldtag, keepme]` leaves `[alpha]`. The append spellings are
+///   `-<tag>+=<value>` and the remove-one is `-<tag>-=<value>`, neither of
+///   which is used here, so a rewritten tag set cannot accumulate stale tags
+///   across edits.
+/// * `value: None` becomes `-<tag>=`, which deletes the property. On a file
+///   that does not have it, that is a no-op `ExifTool` reports as
+///   `1 image files unchanged` — so clearing an absent managed field does not
+///   manufacture an empty element, and an album whose title was never
+///   customised still gets no `dc:title`.
+/// * `-overwrite_original` is mandatory: without it `ExifTool` leaves a
+///   `<file>_original` backup beside every sidecar it touches.
+/// * A value containing a newline cannot travel in an argument, because the
+///   `exiftool` crate writes one argument per line of the `-stay_open` argument
+///   file and a raw newline would split it into two — measured to write the
+///   value truncated at the newline *and* report a spurious error for the
+///   remainder. Backslash escaping is not a way out either: the argument file
+///   is not shell-interpreted, so `\n` arrives as a literal backslash and `n`.
+///   Such a value is staged in a file and assigned with `-<tag>=<path>`
+///   instead, which round-trips the content exactly, newlines, quotes,
+///   ampersands, backslashes and UTF-8 included.
+///
+/// ## Errors
+///
+/// `Err` means the write did not happen and says nothing about the file: no
+/// session could be started, the transport to the persistent child broke, or
+/// the child produced output this could not read. `ExifTool` rejecting the
+/// *file* is not an error here — that is [`XmpWriteOutcome::Rejected`], which
+/// carries a different remedy and is the caller's to act on.
+pub(crate) fn write_xmp_properties(
+    file_path: &Path,
+    assignments: &[XmpAssignment<'_>],
+) -> Result<XmpWriteOutcome> {
+    SESSION.with(|slot| -> Result<XmpWriteOutcome> {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(Session::start()?);
+        }
+        let session = slot.as_mut().expect("session installed just above");
+        session
+            .write_retrying(file_path, assignments)
+            .with_context(|| format!("failed to write XMP to {}", file_path.display()))
+    })
+}
+
 thread_local! {
     /// One `exiftool -stay_open` session per calling thread.
     ///
@@ -130,6 +231,9 @@ thread_local! {
     /// reader some other way pays one startup and then keeps its own child for
     /// as long as it lives. `measures_the_metadata_read_cost` measures both
     /// shapes.
+    ///
+    /// The read path and the write path share this one session, so a thread
+    /// that does both keeps a single child rather than one per direction.
     ///
     /// The session is dropped, and its child killed, when the owning thread
     /// exits; there is no cross-thread sharing and no global state to reset
@@ -199,6 +303,220 @@ impl Session {
             other => Ok(other?),
         }
     }
+
+    fn write(
+        &self,
+        file_path: &Path,
+        assignments: &[XmpAssignment<'_>],
+    ) -> Result<XmpWriteOutcome, ExifToolError> {
+        // Values that cannot survive one line of the argument file are staged
+        // beside the target and read back through `<=`, so the assignment list
+        // below can stay owned by the caller. `staged` is dropped on every path
+        // out of here, which is what removes the value files.
+        let staged = StagedValues::new(file_path, assignments)?;
+        let path = file_path.to_string_lossy().into_owned();
+        let mut args = vec![WRITE_FLAG];
+        args.extend(staged.arguments().iter().map(String::as_str));
+        args.push(&path);
+        // `execute_raw` reports a non-empty stderr as an error, so the outcome
+        // is decided from the child's stdout and the `Err` is only consulted for
+        // whether anything at all came back.
+        match self.tool.execute_raw(&args) {
+            // ExifTool prints its verdict on stdout, in the same `-execute`
+            // block as the counts, so this is the channel to read it from.
+            Ok(stdout) => Ok(classify_write(&String::from_utf8_lossy(&stdout))),
+            // The child is gone, which says nothing about the file: the caller
+            // restarts and retries.
+            Err(err) if is_transport_failure(&err) => Err(err),
+            // The crate turns *any* stderr into an `Err` and drops the stdout it
+            // already read, so a verdict can arrive on this channel instead. It
+            // is decidable, because ExifTool's two severities mean opposite
+            // things: an `Error:` line is a refused write, the file untouched,
+            // while a `Warning:` on its own accompanies a write that *landed* —
+            // measured, writing `XMP-dc:Subject` over a packet that held a
+            // scalar there fixes the list type and updates the file. Reading a
+            // warning as a refusal would replace a readable packet with a bare
+            // one, which is the loss of unmanaged data this whole path exists
+            // to prevent.
+            Err(ExifToolError::ExifToolProcess { message, .. }) => {
+                if reports_a_failure(&message) {
+                    Ok(XmpWriteOutcome::Rejected)
+                } else {
+                    log::warn!("{message}; the write landed, so the packet is kept as written");
+                    Ok(XmpWriteOutcome::Updated)
+                }
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Write through the session, restarting the child at most once.
+    ///
+    /// The same transport-versus-file split as [`Session::read_retrying`], and
+    /// for the same reason: a dead child is the one failure a fresh child can
+    /// fix, while a file `ExifTool` refuses reaches the same answer more slowly
+    /// on a new one.
+    fn write_retrying(
+        &mut self,
+        file_path: &Path,
+        assignments: &[XmpAssignment<'_>],
+    ) -> Result<XmpWriteOutcome> {
+        match self.write(file_path, assignments) {
+            Err(err) if is_transport_failure(&err) => {
+                *self = Session::start()?;
+                Ok(self.write(file_path, assignments)?)
+            }
+            other => Ok(other?),
+        }
+    }
+}
+
+/// The one argument every write carries, and the reason a write cannot be
+/// quiet about it: without it `ExifTool` leaves a `<file>_original` backup
+/// beside each sidecar it touches.
+const WRITE_FLAG: &str = "-overwrite_original";
+
+/// The line `ExifTool` prints when it declined to write to a file, and the only
+/// signal that distinguishes a refusal from a no-op.
+///
+/// It has to be this line and not the `0 image files updated` beside it:
+/// clearing a property the file does not have also reports zero files updated,
+/// alongside `1 image files unchanged`, and that is a success.
+const WRITE_REFUSED: &str = "files weren't updated due to errors";
+
+/// The line `ExifTool` prints when it found no packet to write into.
+const WRITE_CREATED: &str = "image files created";
+
+/// The prefix `ExifTool` puts on a stderr line that reports a failure, as
+/// opposed to the `Warning:` prefix that reports a repair it made on the way to
+/// a successful write.
+const STDERR_ERROR_PREFIX: &str = "Error:";
+
+/// Read a write's outcome off the child's stdout.
+///
+/// The `exiftool` crate's own error handling cannot answer this on its own. It
+/// polls the child's stderr for two milliseconds and turns anything it caught
+/// into an error, which is both too eager — a `Warning:` about a corrected list
+/// type accompanies a write that succeeded — and not sufficient on its own,
+/// since a slow stderr reader can miss the `Error:` line and hand back an `Ok`
+/// whose stdout the caller has to read. `ExifTool` prints the verdict on stdout in
+/// the same `-execute` block as the counts, so stdout is what this reads and
+/// [`reports_a_failure`] is the fallback for when the crate's error swallowed
+/// it.
+fn classify_write(stdout: &str) -> XmpWriteOutcome {
+    if stdout.contains(WRITE_REFUSED) {
+        XmpWriteOutcome::Rejected
+    } else if stdout.contains(WRITE_CREATED) {
+        XmpWriteOutcome::Created
+    } else {
+        XmpWriteOutcome::Updated
+    }
+}
+
+/// Whether what `ExifTool` wrote to stderr contains a line reporting a failure
+/// rather than a warning.
+fn reports_a_failure(stderr: &str) -> bool {
+    stderr
+        .lines()
+        .any(|line| line.trim_start().starts_with(STDERR_ERROR_PREFIX))
+}
+
+/// The assignment arguments for one write, with the values that cannot travel
+/// in an argument staged in files.
+///
+/// `ExifTool`'s argument file is line-oriented and is not shell-interpreted, so
+/// an embedded newline is unrepresentable in an argument: measured, it writes
+/// the value truncated at the newline and separately reports an error for the
+/// remainder, which would read as a rejected write for a file that is fine. A
+/// value containing a newline is therefore written to `<target>.picasu-value`
+/// and assigned with `-<tag>=<path>`, which `ExifTool` reads as the property's
+/// new value in full.
+struct StagedValues<'a> {
+    /// The `-<tag>=<value>` / `-<tag>=<path>` arguments, in assignment order.
+    arguments: Vec<String>,
+    /// The staged value files, removed when this value is dropped so that a
+    /// write which fails, succeeds or panics leaves none of them behind.
+    staged: Vec<PathBuf>,
+    /// Kept alive so `StagedValues` can borrow the assignments it renders.
+    _assignments: std::marker::PhantomData<&'a [XmpAssignment<'a>]>,
+}
+
+impl<'a> StagedValues<'a> {
+    fn new(
+        target: &Path,
+        assignments: &'a [XmpAssignment<'a>],
+    ) -> Result<StagedValues<'a>, ExifToolError> {
+        let mut staged = StagedValues {
+            arguments: Vec::with_capacity(assignments.len()),
+            staged: Vec::new(),
+            _assignments: std::marker::PhantomData,
+        };
+        for assignment in assignments {
+            let argument = staged.argument_for(target, assignment)?;
+            staged.arguments.push(argument);
+        }
+        Ok(staged)
+    }
+
+    /// The assignment's one argument, staging the value in a file when it
+    /// carries a line break.
+    fn argument_for(
+        &mut self,
+        target: &Path,
+        assignment: &XmpAssignment<'_>,
+    ) -> Result<String, ExifToolError> {
+        // A removal is `-<tag>=`, and it is the only spelling that removes one.
+        let Some(value) = assignment.value else {
+            return Ok(format!("-{}=", assignment.tag));
+        };
+        if !value.contains(['\n', '\r']) {
+            return Ok(format!("-{}={}", assignment.tag, value));
+        }
+        let path = staged_value_path(target, self.staged.len());
+        std::fs::write(&path, value.as_bytes()).map_err(ExifToolError::Io)?;
+        self.staged.push(path.clone());
+        Ok(format!("-{}<={}", assignment.tag, path.to_string_lossy()))
+    }
+
+    fn arguments(&self) -> &[String] {
+        &self.arguments
+    }
+}
+
+impl Drop for StagedValues<'_> {
+    fn drop(&mut self) {
+        for path in &self.staged {
+            // A leftover value file would be picked up as a sidecar on the next
+            // index, so failing to remove one is worth saying out loud rather
+            // than swallowing.
+            if let Err(err) = std::fs::remove_file(path)
+                && err.kind() != io::ErrorKind::NotFound
+            {
+                log::warn!(
+                    "failed to remove staged XMP value file {}: {err}",
+                    path.display()
+                );
+            }
+        }
+    }
+}
+
+/// Where the `n`th staged value of a write to `target` lives.
+///
+/// A sibling of the target rather than a temporary directory file, because
+/// `ExifTool` resolves a relative path against its own working directory and an
+/// absolute one is what keeps this independent of where the child was started.
+/// The name is derived from the target so two concurrent writes to two
+/// different sidecars in one directory cannot collide, and it is not a `.xmp`
+/// extension so an interrupted write can never be mistaken for a sidecar.
+fn staged_value_path(target: &Path, index: usize) -> PathBuf {
+    let name = target.file_name().map_or_else(
+        || "sidecar".to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    let stem = target.with_extension("");
+    let dir = stem.parent().unwrap_or_else(|| Path::new("."));
+    dir.join(format!(".{name}.picasu-value{index}"))
 }
 
 /// Whether `err` says the persistent child is gone rather than the file being
@@ -438,8 +756,6 @@ pub fn generate_exif_for_video(abstract_data: &AbstractData) -> Result<BTreeMap<
 }
 
 #[cfg(test)]
-use std::path::PathBuf;
-
 /// Locate `tool` as an executable file on `PATH`.
 ///
 /// Mirrors `process::video`'s copy, including its two-level check: the result
@@ -528,9 +844,11 @@ fn resolve_exiftool_tools() -> Vec<(&'static str, Option<PathBuf>)> {
 #[cfg(test)]
 mod tests {
     use super::{
-        GroupedMetadata, PathBuf, Session, check_exiftool_toolchain, exif_group_rank,
-        exif_map_from, exif_map_from_record, group_by_family, is_transport_failure,
-        json_value_to_string, read_metadata_record, resolve_exiftool_tools, tool_runs,
+        GroupedMetadata, PathBuf, Session, WRITE_REFUSED, XmpAssignment, XmpWriteOutcome,
+        check_exiftool_toolchain, classify_write, exif_group_rank, exif_map_from,
+        exif_map_from_record, group_by_family, is_transport_failure, json_value_to_string,
+        read_metadata_record, resolve_exiftool_tools, staged_value_path, tool_runs,
+        write_xmp_properties,
     };
     use exiftool::ExifToolError;
     use serde_json::json;
@@ -549,6 +867,438 @@ mod tests {
         read_metadata_record(path)
             .map(|record| exif_map_from_record(&record))
             .unwrap_or_default()
+    }
+
+    /// The XMP properties `ExifTool` reports for `path`, read back through the
+    /// production read path as `XMP-<ns>:<Tag>` → value. A tag the file does
+    /// not carry is absent rather than empty, which is what lets a test say
+    /// "this property is gone" and not "this property is blank".
+    fn xmp_properties_of(path: &Path) -> BTreeMap<String, String> {
+        let record = read_metadata_record(path).expect("the write must leave a readable file");
+        let serde_json::Value::Object(entries) = &record else {
+            panic!("a record is an object, as read_metadata_record returns one")
+        };
+        entries
+            .iter()
+            .filter(|(key, _)| key.starts_with("XMP-"))
+            .filter_map(|(key, value)| Some((key.clone(), super::json_value_to_string(value)?)))
+            .collect()
+    }
+
+    /// A sidecar carrying one managed property per namespace the app manages
+    /// and, beside them, properties from namespaces it does not model at all.
+    ///
+    /// The unmanaged set is the point of the fixture: `photoshop:*` and
+    /// `tiff:Make` are what another tool wrote, `Iptc4xmpCore:*` is a namespace
+    /// the app has no read rule for, and `xmpRights:Marked` is a scalar of the
+    /// *same* namespace the app writes a managed property in. A writer that
+    /// rewrote a whole namespace, rather than the named properties in it, would
+    /// pass on the first two and fail on the last.
+    fn seeded_sidecar() -> String {
+        [
+            r#"<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>"#,
+            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">"#,
+            r#"<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">"#,
+            r#"<rdf:Description rdf:about="""#,
+            r#"    xmlns:dc="http://purl.org/dc/elements/1.1/""#,
+            r#"    xmlns:xmp="http://ns.adobe.com/xap/1.0/""#,
+            r#"    xmlns:xmpRights="http://ns.adobe.com/xap/1.0/rights/""#,
+            r#"    xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/""#,
+            r#"    xmlns:tiff="http://ns.adobe.com/tiff/1.0/""#,
+            r#"    xmlns:Iptc4xmpCore="http://iptc.org/std/Iptc4xmpCore/1.0/xmlns/">"#,
+            r#"  <dc:subject><rdf:Bag><rdf:li>stale-tag</rdf:li><rdf:li>also-stale</rdf:li></rdf:Bag></dc:subject>"#,
+            r#"  <dc:description><rdf:Alt><rdf:li xml:lang="x-default">stale description</rdf:li></rdf:Alt></dc:description>"#,
+            r#"  <xmp:Rating>1</xmp:Rating>"#,
+            r#"  <xmpRights:Marked>True</xmpRights:Marked>"#,
+            r#"  <photoshop:City>Zürich</photoshop:City>"#,
+            r#"  <photoshop:Country>Switzerland</photoshop:Country>"#,
+            r#"  <tiff:Make>SeedCam</tiff:Make>"#,
+            r#"  <Iptc4xmpCore:Location>Alps</Iptc4xmpCore:Location>"#,
+            r#"</rdf:Description>"#,
+            r#"</rdf:RDF>"#,
+            r#"</x:xmpmeta>"#,
+            r#"<?xpacket end="w"?>"#,
+            "",
+        ]
+        .join("\n")
+    }
+
+    /// Write `seeded_sidecar` to `dir/photo.xmp` and return the path.
+    fn seed_sidecar_in(dir: &Path) -> PathBuf {
+        let path = dir.join("photo.xmp");
+        std::fs::write(&path, seeded_sidecar()).expect("seed the sidecar");
+        path
+    }
+
+    /// The read-modify-write contract in one test: naming some properties
+    /// changes exactly those and leaves every other property in the packet —
+    /// same namespace or not — as it was.
+    ///
+    /// `ExifTool` re-serialises a packet it edits, so "preserved" is a
+    /// property-level claim and not a byte-level one: the assertion is that the
+    /// values come back through the reader unchanged, which is what a consumer
+    /// of `furtherMetadata` or another tool observes.
+    #[test]
+    fn a_write_leaves_every_property_it_did_not_name_intact() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let sidecar = seed_sidecar_in(dir.path());
+        let before = xmp_properties_of(&sidecar);
+
+        write_xmp_properties(
+            &sidecar,
+            &[
+                XmpAssignment {
+                    tag: "XMP-dc:Subject",
+                    value: Some("fresh-tag"),
+                },
+                XmpAssignment {
+                    tag: "XMP-dc:Description",
+                    value: Some("a fresh description"),
+                },
+                XmpAssignment {
+                    tag: "XMP:Rating",
+                    value: Some("4"),
+                },
+            ],
+        )
+        .expect("the write should succeed");
+
+        let after = xmp_properties_of(&sidecar);
+        assert_eq!(
+            after.get("XMP-dc:Subject"),
+            Some(&"fresh-tag".to_string()),
+            "the bag must equal the managed tag set"
+        );
+        assert_eq!(
+            after.get("XMP-dc:Description"),
+            Some(&"a fresh description".to_string())
+        );
+        // ExifTool writes `XMP:Rating` and reports it back under the *namespace*
+        // it resolved, so the read key is not the write tag. Asserting the write
+        // spelling here would pass on a write that never happened.
+        assert_eq!(after.get("XMP-xmp:Rating"), Some(&"4".to_string()));
+        assert!(
+            !after.contains_key("XMP:Rating"),
+            "the rating must not land in an unnamespaced group"
+        );
+
+        for key in [
+            // Another tool's properties, in namespaces the app does not model.
+            "XMP-photoshop:City",
+            "XMP-photoshop:Country",
+            "XMP-tiff:Make",
+            "XMP-iptcCore:Location",
+            // A property in a namespace the write *does* touch, which a writer
+            // that replaced whole namespaces would have taken with it.
+            "XMP-xmpRights:Marked",
+        ] {
+            assert_eq!(
+                after.get(key),
+                before.get(key),
+                "{key} is unmanaged and must survive the write unchanged"
+            );
+            assert!(
+                before.contains_key(key),
+                "the seed must carry {key}, or the assertion above is vacuous"
+            );
+        }
+    }
+
+    /// The core correctness property of replacing rather than appending a list:
+    /// a tag removed from the managed set is gone from the sidecar after the
+    /// next edit, no matter how many edits came before it.
+    ///
+    /// A writer that appended instead would leave the seed's two tags in the
+    /// bag beside the new one, growing it on every edit.
+    #[test]
+    fn a_rewritten_tag_set_carries_no_tag_from_the_previous_one() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let sidecar = seed_sidecar_in(dir.path());
+
+        for round in 1..=3 {
+            write_xmp_properties(
+                &sidecar,
+                &[XmpAssignment {
+                    tag: "XMP-dc:Subject",
+                    value: Some(&format!("tag-{round}")),
+                }],
+            )
+            .expect("the write should succeed");
+            assert_eq!(
+                xmp_properties_of(&sidecar).get("XMP-dc:Subject"),
+                Some(&format!("tag-{round}").as_str().to_string()),
+                "round {round}: the bag must be exactly the managed tag set"
+            );
+        }
+    }
+
+    /// Every way a managed field can be *absent*, and that removing it removes
+    /// the property rather than blanking it.
+    ///
+    /// A blank is not a removal: a `dc:description` whose `x-default` entry is
+    /// empty reads back as an empty description, which the app stores as a
+    /// description the user never wrote. `None` is the only spelling that
+    /// deletes, so this is what pins that the caller reaches for it.
+    #[test]
+    fn removing_a_managed_property_removes_it_rather_than_blanking_it() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let sidecar = seed_sidecar_in(dir.path());
+
+        for tag in ["XMP-dc:Subject", "XMP-dc:Description", "XMP-xmp:Rating"] {
+            write_xmp_properties(&sidecar, &[XmpAssignment { tag, value: None }])
+                .unwrap_or_else(|err| panic!("removing {tag} should succeed: {err:#}"));
+            assert_eq!(
+                xmp_properties_of(&sidecar).get(tag),
+                None,
+                "{tag} must be absent after a removal, not present and empty"
+            );
+        }
+    }
+
+    /// A value `ExifTool` cannot take as an argument, and the same value through
+    /// the staged file that is the only way to write it.
+    ///
+    /// The property is a description, because `sanitize_text` keeps newlines —
+    /// a multi-line description is ordinary user input, and the argument file is
+    /// line-oriented. The round trip has to be exact, newlines and trailing
+    /// newline included: a value that came back shortened would silently edit
+    /// the user's text.
+    #[test]
+    fn a_value_containing_a_newline_round_trips_through_a_staged_file() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let sidecar = seed_sidecar_in(dir.path());
+        let value = "first line\nsecond line with \"quotes\" & <angle> \\ backslash\n\n";
+
+        write_xmp_properties(
+            &sidecar,
+            &[XmpAssignment {
+                tag: "XMP-dc:Description",
+                value: Some(value),
+            }],
+        )
+        .expect("a multi-line value must still be writable");
+
+        assert_eq!(
+            xmp_properties_of(&sidecar)
+                .get("XMP-dc:Description")
+                .map(String::as_str),
+            Some(value),
+            "the staged value must arrive whole"
+        );
+    }
+
+    /// A value whose argument form would be cut in half is written through a
+    /// file instead — asserted on the arguments rather than on the round trip,
+    /// because the round trip alone cannot tell a staged write from a
+    /// correctly-serialised inline one.
+    #[test]
+    fn a_value_with_a_line_break_is_staged_rather_than_passed_inline() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let target = dir.path().join("photo.xmp");
+        let staged = staged_value_path(&target, 0);
+
+        let inline = super::StagedValues::new(
+            &target,
+            &[XmpAssignment {
+                tag: "XMP-dc:Description",
+                value: Some("one line"),
+            }],
+        )
+        .expect("an inline value needs no staging");
+        assert_eq!(inline.arguments(), ["-XMP-dc:Description=one line"]);
+
+        let through_file = super::StagedValues::new(
+            &target,
+            &[XmpAssignment {
+                tag: "XMP-dc:Description",
+                value: Some("two\nlines"),
+            }],
+        )
+        .expect("a value with a line break is staged, not refused");
+        assert_eq!(
+            through_file.arguments(),
+            [format!("-XMP-dc:Description<={}", staged.to_string_lossy())]
+        );
+        // The staged file exists while the assignment is live and is gone once
+        // it is not, which is what keeps an index from later finding a stray
+        // file beside the media.
+        assert!(staged.exists(), "the value must be written to be assigned");
+        drop(through_file);
+        assert!(
+            !staged.exists(),
+            "the value file must not outlive the write"
+        );
+    }
+
+    /// The outcomes a write reports, each from a file that produces it.
+    ///
+    /// `Rejected` is the one that carries a remedy, so it is the one that must
+    /// be right: the file is unchanged, which is what lets a caller decide the
+    /// packet was unreadable rather than the write having failed.
+    #[test]
+    fn a_write_reports_whether_it_updated_created_or_was_refused() {
+        let dir = tempfile::tempdir().expect("temp dir");
+
+        // An absent file: a packet had to be created.
+        let absent = dir.path().join("absent.xmp");
+        assert_eq!(
+            write_xmp_properties(
+                &absent,
+                &[XmpAssignment {
+                    tag: "XMP-dc:Subject",
+                    value: Some("only"),
+                }]
+            )
+            .expect("writing an absent file creates it"),
+            XmpWriteOutcome::Created
+        );
+        assert_eq!(
+            xmp_properties_of(&absent).get("XMP-dc:Subject"),
+            Some(&"only".to_string())
+        );
+
+        // An existing packet: updated in place.
+        let existing = seed_sidecar_in(dir.path());
+        assert_eq!(
+            write_xmp_properties(
+                &existing,
+                &[XmpAssignment {
+                    tag: "XMP:Rating",
+                    value: Some("3"),
+                }]
+            )
+            .expect("writing an existing packet updates it"),
+            XmpWriteOutcome::Updated
+        );
+
+        // Structurally broken XMP: refused, and refused *without* damage. The
+        // `rdf:Bag` is never closed, so the packet cannot be parsed and there
+        // is no packet to write into.
+        let broken = dir.path().join("broken.xmp");
+        let broken_before = [
+            r#"<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>"#,
+            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">"#,
+            r#"<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">"#,
+            r#"<rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/">"#,
+            r#"<dc:subject><rdf:Bag><rdf:li>doomed</rdf:li>"#,
+            r#"</rdf:Description></rdf:RDF></x:xmpmeta>"#,
+            r#"<?xpacket end="w"?>"#,
+            "",
+        ]
+        .join("\n");
+        std::fs::write(&broken, &broken_before).expect("write the broken packet");
+        assert_eq!(
+            write_xmp_properties(
+                &broken,
+                &[XmpAssignment {
+                    tag: "XMP-dc:Subject",
+                    value: Some("replacement"),
+                }]
+            )
+            .expect("a refused write is an outcome, not an error"),
+            XmpWriteOutcome::Rejected
+        );
+        assert_eq!(
+            std::fs::read_to_string(&broken).expect("the file is still there"),
+            broken_before,
+            "a refused write must leave the file byte-identical"
+        );
+    }
+
+    /// The stdout lines each outcome is read off, as the child prints them.
+    ///
+    /// The strings are ExifTool's, not this code's, so they are pinned here
+    /// rather than left to a change in the reader: a wording change upstream
+    /// would otherwise turn every write into a silent [`XmpWriteOutcome::Updated`],
+    /// which is the one misreading that loses data quietly.
+    #[test]
+    fn the_write_outcome_is_read_off_the_lines_exiftool_prints() {
+        for (stdout, expected) in [
+            ("    1 image files updated", XmpWriteOutcome::Updated),
+            // A property cleared on a file that does not have it: nothing to
+            // change, and *not* a refusal.
+            (
+                "    0 image files updated\n    1 image files unchanged",
+                XmpWriteOutcome::Updated,
+            ),
+            ("    1 image files created", XmpWriteOutcome::Created),
+            (
+                "    0 image files updated\n    1 files weren't updated due to errors",
+                XmpWriteOutcome::Rejected,
+            ),
+        ] {
+            assert_eq!(
+                classify_write(stdout),
+                expected,
+                "{stdout:?} must classify as {expected:?}"
+            );
+        }
+        // The refusal line is what a refusal is recognised by, and no success
+        // line contains it — which is what keeps a successful write from being
+        // misread as a refusal.
+        assert_eq!(
+            classify_write("    1 image files updated"),
+            XmpWriteOutcome::Updated
+        );
+        assert!(!"    1 image files updated".contains(WRITE_REFUSED));
+    }
+
+    /// One write per sidecar edit costs one `exiftool` child, not one per edit.
+    ///
+    /// `#[ignore]`d because it is a measurement, not a check — the number is the
+    /// evidence for routing writes through the shared session rather than
+    /// spawning per write, and it goes stale silently otherwise. Run with
+    /// `cargo test -p picasu --lib -- --ignored --nocapture
+    /// measures_the_sidecar_write_cost`.
+    #[test]
+    #[ignore = "prints timings on this machine; not an assertion"]
+    fn measures_the_sidecar_write_cost() {
+        const CALLS: usize = 50;
+        let dir = tempfile::tempdir().expect("temp dir");
+        let sidecar = dir.path().join("photo.xmp");
+
+        let cold = Instant::now();
+        write_xmp_properties(
+            &sidecar,
+            &[XmpAssignment {
+                tag: "XMP-dc:Subject",
+                value: Some("cold"),
+            }],
+        )
+        .expect("the first write starts the session");
+        let first = cold.elapsed();
+
+        let warm = Instant::now();
+        for round in 0..CALLS {
+            write_xmp_properties(
+                &sidecar,
+                &[
+                    XmpAssignment {
+                        tag: "XMP-dc:Subject",
+                        value: Some(&format!("tag-{round}")),
+                    },
+                    XmpAssignment {
+                        tag: "XMP-dc:Description",
+                        value: Some("a description"),
+                    },
+                    XmpAssignment {
+                        tag: "XMP:Rating",
+                        value: Some("3"),
+                    },
+                ],
+            )
+            .expect("a warm write");
+        }
+        let warm = warm.elapsed();
+
+        println!(
+            "first write (session start): {:.1} ms",
+            first.as_secs_f64() * 1000.0
+        );
+        println!(
+            "warm write: {:.2} ms/write over {CALLS} writes (3 properties each)",
+            warm.as_secs_f64() * 1000.0 / CALLS as f64
+        );
     }
 
     /// The documented non-fallible contract: a failure to read EXIF is not an
