@@ -28,13 +28,22 @@ either hides an assertion or forces a workaround.
 - `backend/tests/schema.json` documents the scenario vocabulary but nothing
   loads it. Either wire it to a test (needs a JSON-Schema dependency) or drop
   it; its description now says it is unenforced.
-- The Playwright backend port race: `paths.ts::createPaths()` draws
+- **Fixed 2026-09-28 (Gap 6b).** The Playwright backend port race: `paths.ts::createPaths()` drew
   `30000 + random(30000)` when `WORKER_NUM` is unset, with no collision check,
   so two workers starting backends concurrently can hit `binding failed:
 Address already in use` and one scenario fails on a port that was never
-  free. Observed once across full-suite runs (the run passed on retry);
-  failed runs also leave an orphaned `picasu` process behind. Probe the port
-  before binding, retry on EADDRINUSE, or derive the port from the run id.
+  free. Observed once across full-suite runs (the run passed on retry).
+  Now: a bind-test probe redraws occupied ports (both the random and
+  WORKER_NUM paths; probe narrows but does not close the window — stated in
+  code), 13 unit tests in `frontend/tests/paths.test.ts`, and a decisive
+  A/B where a held port failed pre-fix and passed post-fix. Orphan leaks
+  measured per path: `process.exit` and startup-timeout now reap via a
+  once-installed live-backends backstop; SIGKILL of the worker remains
+  unfixable from Node (the probe is the compensating control). Also fixed
+  the silent-corruption path found on the way: a backend whose bind fails
+  stays alive with no listener, and `waitForServer` could resolve against
+  _another_ backend's HTTP answer — it now rejects on `Address already in
+use` in the child's stderr.
 
 - **Fixed 2026-09-28 (Gap 6a).** Body assertions in a **non-last** `call:`'s `then:` block were silently
   ignored: `backend_api.rs` runs only `check_status_assertions` for inline
@@ -62,6 +71,16 @@ Address already in use` and one scenario fails on a port that was never
   way. Now guarded (`image_home_path` rejects absolute results with a
   diagnostic), the two affected scenarios corrected, and
   `selftest/file_absent_rejects_absolute_path.yaml` pins the guard.
+
+- The documented `response.<path> absent` assertion form has **no
+  implementation branch** in `backend_api.rs` (the `"absent"` at the
+  `array_where` handler is a different feature). Anything written as
+  `response.json.foo: absent` therefore does not assert absence — found
+  2026-09-28 while pinning the video `furtherMetadata` decision, where the
+  implemented `null` check was used instead because it cannot distinguish
+  absent from explicit null either. Needs: implement the `absent` form (or
+  remove it from `docs/scenario-dsl.md`), and make the null-vs-absent
+  distinction testable.
 
 ## Notes
 

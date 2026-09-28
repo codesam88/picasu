@@ -155,10 +155,15 @@ pub fn asset_metadata_for(path: &Path, image: Option<&Value>) -> AssetMetadata {
 /// The natively modelled fields of the image at `path`, without the
 /// further-data bucket.
 ///
-/// `process_video_info` is the caller: a video's `exifVec` comes from `ffprobe`,
-/// and which source would own a video's further-data bucket is a later decision,
-/// so the video path stays on this narrower read for now. The image path uses
-/// [`asset_metadata_for`] and stores both halves.
+/// `process_video_info` is the caller. **A video has no further-data bucket,
+/// by decision** (`.plan/test-exif-xmp-handling.md`, "Additional Known Scope
+/// Gaps"): for a video, `exifVec` already *is* the complete `ffprobe`
+/// surface — format, streams and tags flattened into one map — so a second
+/// bucket would re-partition the same data across two read-only sections with
+/// no consumer for the split. The image path is the case that needs the
+/// bucket, because its `exifVec` holds the EXIF family alone; it uses
+/// [`asset_metadata_for`] and stores both halves. Revisit only if video
+/// extraction is ever split the way the image path's is.
 pub fn native_metadata_for(path: &Path, image: Option<&Value>) -> NativeMetadata {
     asset_metadata_for(path, image).native
 }

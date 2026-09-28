@@ -409,6 +409,31 @@ Relevant code: `backend/src/process/exif.rs` and
 
 ## Follow-up Status
 
+2026-09-28 — **Port race fixed and video bucket decided (Gap 6b).** Port
+allocation now bind-test-probes candidates (wildcard + exclusive, measured
+against Rocket's `0.0.0.0` bind) and redraws up to 10 times on both the
+random and `WORKER_NUM` paths — with the honest caveat recorded in code that a
+probe narrows the race rather than closing it. Decisive A/B: a held port
+reproduced the original failure pre-fix (and worse — the scenario silently
+talked to the _impostor_ server) and passed post-fix. Orphan leaks measured
+per path: `process.exit` and startup-timeout reapers added (once-installed
+backstop; SIGKILL of the worker remains unfixable from Node — the probe is
+the compensating control), and along the way the genuinely dangerous path was
+fixed: a backend whose bind fails stays alive with **no listener**, so
+`waitForServer` could resolve against another worker's backend — it now
+rejects on `Address already in use` in child stderr. 13 unit tests. **Video
+decision: no `furtherMetadata` bucket for video** — `exifVec` already is the
+complete ffprobe surface and a bucket would only re-partition it (images
+differ because their `exifVec` is EXIF-family-only); recorded in the four
+code/doc sites that said "undecided" and pinned executably by
+`furtherMetadata: null` in the mp4 scenario (characterization; the pin cannot
+distinguish absent from null — noted in the file) with a mutation that kills
+it. Found en route: the documented `response.<path> absent` assertion form has
+no implementation branch — filed in `.plan/scenario-harness-debt.md`.
+Debt file now: 6 fixed, 3 open (schema.json enforcement, snapfab CLI selector,
+absent-form). Gates: `cargo test -p picasu` 493, snapfab 75, `just
+frontend-test` (vitest 88, Playwright 40), `just frontend-check`,
+`just backend-check`, `cargo deny`, `just docs-check`.
 2026-09-28 — **Harness assertion integrity fixed (Gap 6a; five of the eight
 `.plan/scenario-harness-debt.md` items).** Every `call:`'s inline `then:` now
 runs status _and_ body _and_ file/serve assertions (non-list `then` is a hard
