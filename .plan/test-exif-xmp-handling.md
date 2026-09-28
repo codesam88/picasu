@@ -287,14 +287,30 @@ plan for later work; no implementation has started.
 `POST /post/rebuild` currently recreates identity and duplicate tables but does
 not run the metadata pipeline. After the metadata schema migration, the
 operator is told to rebuild, yet `exifVec`, tags, descriptions, ratings, and
-`furtherMetadata` remain empty until a separate reindex. A rebuild must either
-re-derive metadata for every discovered media file or explicitly chain a
-complete reindex before reporting success.
+`furtherMetadata` remain empty until a separate reindex.
+
+The intended design is one shared indexing pipeline with two orchestration
+modes:
+
+- Incremental index is additive/on-demand: preserve existing asset identity,
+  discover new or changed files, process their metadata and derived data, and
+  reconcile stale paths.
+- Rebuild resets identity, duplicate, and metadata tables, walks the complete
+  filesystem, recreates albums and media identity records, then runs the same
+  metadata/index pipeline for every discovered media asset before reporting
+  completion.
+
+Rebuild should reuse the internal indexing workflow, not literally call the
+HTTP incremental-index endpoint: incremental indexing assumes existing
+identity state, while rebuild must create that state first. It must clear
+`METADATA_TABLE` as well as the identity tables because rebuilt asset IDs are
+currently regenerated. Rebuild failures must retain per-file diagnostics and
+must not report a usable cache until metadata processing has completed.
 
 Required coverage:
 
 - Rebuild reconstructs EXIF, native fields, further metadata, and sidecar
-  overrides from the file system.
+  overrides from the file system through the shared indexing pipeline.
 - A rebuild after `METADATA_SCHEMA_VERSION` changes leaves usable metadata,
   not only identity records.
 - Rebuild failure states identify files that could not be reprocessed.
