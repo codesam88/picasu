@@ -1,5 +1,5 @@
 ---
-status: done
+status: backlog
 type: feature
 priority: medium
 area: testing
@@ -275,6 +275,127 @@ Randomization should complement, not replace, the deterministic matrix.
   capabilities.
 - `just check`, backend tests, frontend tests, and the relevant Playwright
   scenarios pass.
+
+## Follow-up Issues (Not Started)
+
+The format-coverage implementation is complete, but review identified the
+following source-of-truth and edit-semantics issues. This section extends the
+plan for later work; no implementation has started.
+
+### Rebuild Must Reconstruct Metadata
+
+`POST /post/rebuild` currently recreates identity and duplicate tables but does
+not run the metadata pipeline. After the metadata schema migration, the
+operator is told to rebuild, yet `exifVec`, tags, descriptions, ratings, and
+`furtherMetadata` remain empty until a separate reindex. A rebuild must either
+re-derive metadata for every discovered media file or explicitly chain a
+complete reindex before reporting success.
+
+Required coverage:
+
+- Rebuild reconstructs EXIF, native fields, further metadata, and sidecar
+  overrides from the file system.
+- A rebuild after `METADATA_SCHEMA_VERSION` changes leaves usable metadata,
+  not only identity records.
+- Rebuild failure states identify files that could not be reprocessed.
+
+Relevant code: `backend/src/process/rebuild.rs`,
+`backend/src/storage/ser_de.rs`, and
+`backend/tests/scenarios/rebuild_reconstructs_identity_but_not_metadata.yaml`.
+
+### Sidecar Edits Must Override Embedded Metadata
+
+The current rule replaces only the XMP source. Tags are unioned from XMP and
+embedded IPTC, so removing an embedded IPTC keyword through `/put/edit_tag`
+can appear to work in the cache and then return after reindexing. The future
+contract needs an explicit override/tombstone model, or a rule that a managed
+sidecar field is authoritative, including an intentionally empty tag set.
+
+Required coverage:
+
+- Add an embedded IPTC keyword, remove it through the edit API, reindex, and
+  verify that it stays removed.
+- Verify add, remove, clear, description, and rating edits against both
+  embedded XMP and IPTC sources.
+- Preserve the distinction between user-managed fields and unmodelled
+  read-only metadata.
+
+Relevant code: `backend/src/process/xmp.rs`,
+`backend/src/process/xmp_write.rs`, and the PUT edit handlers.
+
+### Preserve Unmanaged Sidecar Metadata
+
+`write_sidecar_for` replaces the entire `.xmp` file with a minimal packet for
+tags, description, rating, and album title. Editing a managed field can delete
+unmodelled XMP properties that are shown through `furtherMetadata`.
+
+The future write path should perform a read-modify-write using ExifTool or an
+equivalent established metadata writer, changing only managed properties and
+preserving unknown namespaces, properties, and packet data where possible.
+
+Required coverage:
+
+- Seed an XMP sidecar with managed and unmanaged properties.
+- Edit one managed property and verify the unmanaged properties remain.
+- Verify atomic replacement and behavior when the existing sidecar is
+  malformed.
+
+Relevant code: `backend/src/process/xmp_write.rs`.
+
+### Sidecar Write Failure Must Not Diverge the Cache
+
+The edit handlers log sidecar write errors but still persist the mutated redb
+payload and return success. A failed write therefore makes the cache claim an
+edit that is not present in the source-of-truth sidecar; the next reindex
+reverts it.
+
+Choose and test one explicit contract:
+
+- Return an error and leave the cached metadata unchanged, or
+- Keep the operation successful only after the sidecar write succeeds and
+  update the cache transactionally afterward.
+
+Required coverage includes permission/read-only failures for tag,
+description, and rating edits.
+
+Relevant code: `backend/src/router/put/edit_tag.rs`,
+`edit_description.rs`, `edit_rating.rs`, and
+`backend/src/process/xmp_write.rs`.
+
+### Missing ExifTool Runtime Behavior
+
+The current indexer logs an ExifTool startup failure and stores empty metadata,
+while malformed metadata also falls back to empty fields. These cases should
+be distinguishable operationally. Decide whether missing ExifTool is a hard
+indexing/deployment failure or a persistent health error rather than silently
+accepting empty metadata.
+
+Required coverage:
+
+- Missing executable during import/index.
+- ExifTool process failure after startup.
+- Malformed metadata in an otherwise decodable file.
+- Stable API status and actionable operator diagnostics for each case.
+
+Relevant code: `backend/src/process/exif.rs` and
+`backend/src/process/index.rs`.
+
+### Additional Known Scope Gaps
+
+- `furtherMetadata` is currently image-only; video metadata remains ffprobe
+  data in `exifVec` with no equivalent further bucket. Decide whether and how
+  video container metadata should be exposed.
+- The scenario harness still has the silent non-last-`then` assertion issue,
+  dead `serve_image_ok` behavior, failed-index assertion limitations, and
+  random-port race documented in `.plan/scenario-harness-debt.md`. These must
+  be fixed or explicitly accepted before using new scenarios as release
+  evidence.
+
+## Follow-up Status
+
+2026-09-28 — Core format coverage and ExifTool integration are complete. The
+plan is moved to `backlog` to record the source-of-truth/edit-semantics work
+above. No follow-up implementation was started in this change.
 
 ## Progress
 
