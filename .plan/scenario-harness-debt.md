@@ -44,6 +44,12 @@ Address already in use` and one scenario fails on a port that was never
   requirement, and nothing enforces it. Needs: harness support or a hard
   error, DSL docs, and an audit of existing scenarios for the pattern.
 
+- The `snapfab` CLI's library/random path samples from `manifest.formats`
+  (every declared format) instead of `selection::randomizable_formats()`, so
+  it panics with `manifest format 'webp' is not generatable by snapfab` on any
+  run that draws a pinned format. Pre-existing at `94b8fc0d`; the seeded
+  scenario path is unaffected (it uses the selector correctly).
+
 ## Notes
 
 2026-09-26 — Recorded from the Iteration 5 report of test-exif-xmp-handling;

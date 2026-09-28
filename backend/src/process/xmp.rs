@@ -1389,15 +1389,61 @@ mod tests {
         out
     }
 
+    /// The two keys a writing tool's own stamps contribute to the bucket, and
+    /// the only ones a fixture gets without `further_iptc`.
+    ///
+    /// `IPTC:ApplicationRecordVersion` is IIM 2:00, the record version every
+    /// writer of an IIM record sets, and `XMP-x:XMPToolkit` is the name the
+    /// writing tool puts in the packet it serialises — the XMP counterpart of
+    /// the EXIF `Software` tag. Both are metadata the app does not model, so
+    /// `map_further_fields` files them here on purpose (see its doc), and both
+    /// are the *writer's* identity rather than anything the fixture asked for.
+    ///
+    /// The expected set is read back out of the record rather than written out
+    /// literally, because `XMP-x:XMPToolkit` carries the ExifTool version —
+    /// 13.59 here, a different one in CI and in the Docker image — and a
+    /// version is not a contract. The *keys* are, which is what the assertion
+    /// therefore rests on, and the check at the end is what stops the
+    /// derivation from going vacuous: a record that stopped carrying a stamp
+    /// would quietly shrink the expectation instead of failing.
+    fn writer_stamps(image: &serde_json::Value) -> BTreeMap<String, String> {
+        use serde_json::Value;
+        let Value::Object(entries) = image else {
+            panic!("the record is an object, as `read_metadata_record` returns one")
+        };
+        let stamps: BTreeMap<String, String> = entries
+            .iter()
+            .filter(|(key, _)| {
+                matches!(
+                    key.as_str(),
+                    "IPTC:ApplicationRecordVersion" | "XMP-x:XMPToolkit"
+                )
+            })
+            .map(|(key, value)| {
+                (
+                    key.clone(),
+                    super::json_value_to_string(value).expect("a stamp always has a value"),
+                )
+            })
+            .collect();
+        assert_eq!(
+            stamps.keys().collect::<Vec<_>>(),
+            vec!["IPTC:ApplicationRecordVersion", "XMP-x:XMPToolkit"],
+            "the record must carry both writer stamps, or this expectation is vacuous: \
+             {stamps:?}"
+        );
+        stamps
+    }
+
     /// The bucket on a real file, through the real reader: the split holds
     /// against what `ExifTool` actually reports for a JPEG, not only against a
     /// recorded payload. The fixture is asked for the unmodelled IIM datasets
-    /// (`further_iptc`), and the bucket must be exactly those three — the
-    /// keywords, title and caption it shares with the native mapping are not in
-    /// it, and neither is the EXIF family, the JFIF parameters, the container
-    /// facts or the derived `Composite:` values.
+    /// (`further_iptc`), and the bucket must be exactly those three plus the
+    /// writer's two stamps — the keywords, title and caption it shares with the
+    /// native mapping are not in it, and neither is the EXIF family, the JFIF
+    /// parameters, the container facts or the derived `Composite:` values.
     #[test]
-    fn a_generated_jpeg_lands_only_its_unmodelled_iptc_datasets_in_the_bucket() {
+    fn a_generated_jpeg_lands_only_its_unmodelled_datasets_and_writer_stamps_in_the_bucket() {
         let dir = tempfile::tempdir().expect("temp dir");
         let photo = snapfab_further_jpeg(dir.path(), "further.jpg", &["bucket_keyword"]);
 
@@ -1415,32 +1461,37 @@ mod tests {
         assert!(data.native.description.is_some());
         assert!(data.native.title.is_some());
 
+        let mut expected: BTreeMap<String, String> = BTreeMap::from([
+            (
+                "IPTC:By-line".to_string(),
+                snapfab::FURTHER_IPTC_BY_LINE.to_string(),
+            ),
+            (
+                "IPTC:City".to_string(),
+                snapfab::FURTHER_IPTC_CITY.to_string(),
+            ),
+            (
+                "IPTC:CopyrightNotice".to_string(),
+                snapfab::FURTHER_IPTC_COPYRIGHT.to_string(),
+            ),
+        ]);
+        expected.extend(writer_stamps(&image));
+
         assert_eq!(
-            data.further,
-            BTreeMap::from([
-                (
-                    "IPTC:By-line".to_string(),
-                    snapfab::FURTHER_IPTC_BY_LINE.to_string()
-                ),
-                (
-                    "IPTC:City".to_string(),
-                    snapfab::FURTHER_IPTC_CITY.to_string()
-                ),
-                (
-                    "IPTC:CopyrightNotice".to_string(),
-                    snapfab::FURTHER_IPTC_COPYRIGHT.to_string()
-                ),
-            ]),
-            "the bucket is the three unmodelled datasets and nothing else: {:?}",
+            data.further, expected,
+            "the bucket is the three unmodelled datasets plus the writer's stamps and \
+             nothing else: {:?}",
             data.further
         );
     }
 
-    /// The same JPEG without `further_iptc` has no bucket at all: every IIM
-    /// dataset it writes is one the native mapping consumed. Without this the
-    /// test above could not tell "the split works" from "snapfab wrote more".
+    /// The same JPEG without `further_iptc` has nothing but the writer's stamps
+    /// in the bucket: every IIM dataset it writes is one the native mapping
+    /// consumed. Without this the test above could not tell "the split works"
+    /// from "snapfab wrote more" — the stamps are in both buckets, so they
+    /// cannot be what distinguishes them.
     #[test]
-    fn a_stock_generated_jpeg_leaves_the_bucket_empty() {
+    fn a_stock_generated_jpeg_buckets_only_the_writer_stamps() {
         let dir = tempfile::tempdir().expect("temp dir");
         let photo = snapfab_jpeg(dir.path(), "stock.jpg", &["bucket_keyword"]);
 
@@ -1451,9 +1502,11 @@ mod tests {
             !data.native.tags.is_empty(),
             "control: the fixture is tagged"
         );
-        assert!(
-            data.further.is_empty(),
-            "a fixture writing only Keywords/ObjectName/Caption has nothing further to report: {:?}",
+        assert_eq!(
+            data.further,
+            writer_stamps(&image),
+            "a fixture writing only Keywords/ObjectName/Caption has only the writer's own \
+             stamps left to report: {:?}",
             data.further
         );
     }
