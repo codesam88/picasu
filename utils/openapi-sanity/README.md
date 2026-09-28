@@ -189,6 +189,33 @@ a tag _and_ missing the reserved one. Whether a path is a data-API operation is 
 from path shape, because the document does not say which file annotated an operation;
 the assumption that makes the derivation valid is stated on `is_data_api_path`.
 
+### Parameters and the request body — `check_params`
+
+Five rule groups over each operation's inputs, each reported the same way:
+
+| Finding                                                                                                                            | Drift it catches                                                |
+| ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `the route binds path parameter X but the operation declares no in: path parameter by that name`                                   | A `<segment>` the document never documents                      |
+| `the operation declares path parameter X but the route binds no such segment`                                                      | A documented placeholder the route does not serve               |
+| `path parameter X is bound by the route and cannot be optional, but the operation declares required: false`                        | A path parameter documented as optional                         |
+| `the documented path binds X but the route serves no such segment` / `the route serves a X segment but the documented path binds…` | A spec `{placeholder}` and a route `<segment>` that disagree    |
+| `the route binds query parameter X but the operation declares no in: query…` / the reverse                                         | An undocumented or over-documented `?<x>` binding               |
+| `declares query parameter X as required: true but the handler binds it as an Option` (and the reverse)                             | A `required` flag that disagrees with `Option<T>`               |
+| `the route binds its body to X but the operation declares no request body` / the reverse                                           | A `data = "<x>"` binding the operation does not document        |
+| `the operation declares request body X but the route binds its body to Y`                                                          | A schema naming a type the handler does not take                |
+| `the operation describes the Form body as … — declare the body multipart/form-data` (and `…name the schema X or declare…`)         | A multipart form documented under another media type            |
+| `the operation declares no operationId…` / `declares operationId X but the handler is named Y`                                     | An operation a generated client could not call by its real name |
+| `` `$ref` to the component schema X, which the document does not define ``                                                         | A reference to a schema that does not exist                     |
+| `component schema X is defined but nothing references it`                                                                          | An orphaned schema (`FileEntry` shipped as one)                 |
+
+The rules compare sets, names and flags, not schema types: a `timestamp` declared
+as `string` would not be reported. Placeholders are compared after the same
+`to_spec_path` normalization the contract rules use, so `<_path..>` and `{path}`
+are one name, and a query parameter's `required` flag is checked against
+`Option<T>` on the bound argument. A `Form<T>` body is satisfied by a
+`multipart/form-data` content type; naming the schema under any other media type
+is a finding, because the media type is how a caller knows to send the fields.
+
 ## How it is tested
 
 `cargo test -p openapi-sanity` runs:
@@ -206,9 +233,10 @@ the assumption that makes the derivation valid is stated on `is_data_api_path`.
 - **Mutation tests** — `mutations.rs` starts from a conforming tree, breaks exactly one
   thing, requires the rule to appear, and restores it to require silence. A rule that
   fires for any reason at all fails there.
-- **The repository is clean today** — `cli.rs` and `auth.rs` and `tags.rs` each run the
-  gate over the real `backend/src/router` and `backend/openapi.json` and require no
-  findings, so the gate cannot be neutered and stay green on the repository.
+- **The repository is clean today** — `cli.rs`, `auth.rs`, `tags.rs` and `params.rs`
+  each run the gate over the real `backend/src/router` and `backend/openapi.json`
+  and require no findings, so the gate cannot be neutered and stay green on the
+  repository.
 - **Regression tests** — `regressions.rs` pins the _incidents_ rather than the rules:
   the source shape the repository actually shipped with, each asserted to produce its
   exact finding and, in its conforming form, silence. An incident already pinned
@@ -273,17 +301,15 @@ macros are not expanded beyond what the visitor reads as tokens. Consequences:
 
 ### What is not checked
 
-- **Request and response schema correctness.** Nothing reads `components`, `schemas`,
-  `params` or `request_body`. A response type that does not match the handler's return
-  type, or a body declaration for a parameter that does not exist, is invisible here.
-- **Parameter and body agreement.** Whether the declared path and query parameters match
-  the handler's parameters, and whether a `request_body` matches a `Json<T>` or upload
-  input, is a known follow-up in
-  [`.plan/openapi-contract-hardening.md`](../../.plan/openapi-contract-hardening.md)
-  (Step 4).
-- **`operationId` stability across releases.** Only collisions are reported. Renaming
-  an operation is invisible; a stale `AUTH_POLICY` entry is what surfaces a handler
-  rename, and it surfaces as a policy finding, not as a stability check.
+- **Schema content and response types.** The parameter rules read `parameters`
+  and `requestBody` for names, flags, media types and the schema a `$ref` names —
+  not the schema bodies themselves. A parameter declared with the wrong `type`, a
+  response schema that does not match the handler's return type, or a wrong field
+  type inside `components` is invisible here.
+- **`operationId` stability across releases.** Only collisions and disagreement
+  with the handler name are reported. Renaming an operation is invisible; a stale
+  `AUTH_POLICY` entry is what surfaces a handler rename, and it surfaces as a
+  policy finding, not as a stability check.
 - **General OpenAPI linting.** Nothing validates the document against the OpenAPI
   specification, and the two checks the backend keeps for that reason — the
   `Unauthorized` component being registered, and every 401 being a `$ref` to it rather

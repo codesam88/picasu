@@ -134,9 +134,11 @@ Medium — bad patterns and type fidelity:
 
 Low — consistency and polish:
 
-- [ ] Document remaining `/upload` query params on the utoipa path: only `auto_rename` is annotated; add
+- [x] Document remaining `/upload` query params on the utoipa path: only `auto_rename` is annotated; add
       `presigned_album_id_opt` and `on_conflict` (valid values `skip`|`rename`, defaults). Absorbed from
-      `openapi-upload-query-params.md` (2026-09-24).
+      `openapi-upload-query-params.md` (2026-09-24). **Done** — both are annotated with
+      descriptions (Step 4's parameter gate reported them, and the fix landed with the
+      other 25 findings in the same change).
 - [ ] Add descriptions to bare enums: `OnConflict` (`skip`/`rename` need
       behavior semantics), `AlbumIndexState`.
 - [ ] Decide a naming convention and document it: snake query params
@@ -237,6 +239,30 @@ typed handlers, `FileEntry` orphaned); those findings are fixed in the same
 change so the gate stays green.
 
 ## Progress
+
+- 2026-09-28: Implemented Step 4 as `check_params`, the fifth rule group,
+  chained into `openapi-sanity check` after the contract, tag and auth rules.
+  It follows the checker-not-generation decision above: P1/P2 compare the
+  sets a Rocket URI binds against the spec's placeholders and the
+  operation's declared path/query parameters, with `required` checked
+  against `Option<T>` on the bound argument; P3 compares the declared body
+  schema name with the type `data = "<x>"` binds after unwrapping
+  `Json<T>`/`Form<T>`, and requires a `multipart/form-data` content type for
+  form inputs; P4 asserts the document's `operationId` equals the handler
+  name (stability across releases stays mechanism 4's job); P5 fails `$ref`s
+  to undefined component schemas and schemas nothing references. The 25
+  findings the rules predicted on the repository — 10 undocumented path
+  parameters, 11 undocumented query parameters, three `Value`/`Form` bodies,
+  the `FileEntry` orphan — were fixed in the same change: parameters
+  annotated on the utoipa paths, `UploadForm`, `RegenerateThumbnailForm`
+  and `Expression` given `ToSchema` (`no_recursion` on `Expression`'s three
+  nesting variants, without which schema composition recurses until the
+  stack overflows), and `FileEntry` stripped from the public artifact
+  alongside the probe schemas that are what registers it. `tests/params.rs`
+  now requires the repository to be clean instead of pinning the old
+  counts, the README and `docs/openapi-generator.md` document the rule
+  group and its remaining blind spot (schema _content_ is still unchecked),
+  and `just openapi-check` runs the gate.
 
 - 2026-09-27: Documented the tool and pinned its known issues (Step 6).
   `utils/openapi-sanity/README.md` covers purpose, the failure class it exists

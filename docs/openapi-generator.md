@@ -164,26 +164,38 @@ generator and the gate cannot disagree about which files make up the API — plu
 every file those modules' `routes![]` blocks name a handler in. It reports, one
 per line as `file:line: message`:
 
-| Finding                                                                          | What it means                                                                       |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `registered in routes![] but the function carries no #[utoipa::path] annotation` | A mounted route with no operation of its own                                        |
-| `the route serves X but its #[utoipa::path] declares Y`                          | The route URI and the annotated path disagree after normalization                   |
-| `the route declares GET but its #[utoipa::path] declares POST`                   | The route attribute and the annotated verb disagree                                 |
-| `GET X is declared in source but absent from the spec`                           | A handler the generator would register that the document does not carry             |
-| `GET X is in the spec but no scanned route declares it`                          | A committed operation no scanned source backs                                       |
-| `registered in routes![] more than once (first at file:line)`                    | A handler identity registered twice                                                 |
-| `duplicate operationId \`id\` claimed by A, B`                                   | Two operations share an id, which merges their generated client methods             |
-| `METHOD PATH: declares no tags`                                                  | An annotation that lost its `tag = "..."`                                           |
-| `METHOD PATH: unknown tag \`x\``                                                 | A subject nobody reviewed; the vocabulary is closed                                 |
-| `METHOD PATH: data-API path carries the \`pages\` tag`                           | A data operation grouped with the SPA shell                                         |
-| `METHOD PATH: SPA page path must carry \`pages\``                                | A page route grouped under a subject                                                |
-| `the auth policy requires X but the handler declares no request guard`           | A guard removed from a protected handler, which is the change a consumer cannot see |
-| `the auth policy requires X but the handler declares Y`                          | A guard swapped for a weaker one, or a public route closed without a policy change  |
-| `the deferred guard X is bound to \`auth\` and never enforced`                   | A `GuardResult` the handler drops, so an unauthenticated caller is served           |
-| `METHOD PATH is guarded but documents no 401 response`                           | A rejection the contract does not describe                                          |
-| `METHOD PATH is a public operation but documents a 401`                          | A public exception that has quietly started rejecting callers                       |
-| `METHOD PATH is in no auth policy entry`                                         | A new operation nobody classified as guarded or open                                |
-| `auth policy entry \`id\` names an operation the document does not declare`      | A removed operation whose policy entry was left behind                              |
+| Finding                                                                                                | What it means                                                                       |
+| ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `registered in routes![] but the function carries no #[utoipa::path] annotation`                       | A mounted route with no operation of its own                                        |
+| `the route serves X but its #[utoipa::path] declares Y`                                                | The route URI and the annotated path disagree after normalization                   |
+| `the route declares GET but its #[utoipa::path] declares POST`                                         | The route attribute and the annotated verb disagree                                 |
+| `GET X is declared in source but absent from the spec`                                                 | A handler the generator would register that the document does not carry             |
+| `GET X is in the spec but no scanned route declares it`                                                | A committed operation no scanned source backs                                       |
+| `registered in routes![] more than once (first at file:line)`                                          | A handler identity registered twice                                                 |
+| `duplicate operationId \`id\` claimed by A, B`                                                         | Two operations share an id, which merges their generated client methods             |
+| `METHOD PATH: declares no tags`                                                                        | An annotation that lost its `tag = "..."`                                           |
+| `METHOD PATH: unknown tag \`x\``                                                                       | A subject nobody reviewed; the vocabulary is closed                                 |
+| `METHOD PATH: data-API path carries the \`pages\` tag`                                                 | A data operation grouped with the SPA shell                                         |
+| `METHOD PATH: SPA page path must carry \`pages\``                                                      | A page route grouped under a subject                                                |
+| `the auth policy requires X but the handler declares no request guard`                                 | A guard removed from a protected handler, which is the change a consumer cannot see |
+| `the auth policy requires X but the handler declares Y`                                                | A guard swapped for a weaker one, or a public route closed without a policy change  |
+| `the deferred guard X is bound to \`auth\` and never enforced`                                         | A `GuardResult` the handler drops, so an unauthenticated caller is served           |
+| `METHOD PATH is guarded but documents no 401 response`                                                 | A rejection the contract does not describe                                          |
+| `METHOD PATH is a public operation but documents a 401`                                                | A public exception that has quietly started rejecting callers                       |
+| `METHOD PATH is in no auth policy entry`                                                               | A new operation nobody classified as guarded or open                                |
+| `auth policy entry \`id\` names an operation the document does not declare`                            | A removed operation whose policy entry was left behind                              |
+| `the route binds path parameter X but the operation declares no in: path parameter…`                   | A `<segment>` the document never documents                                          |
+| `the operation declares path parameter X but the route binds no such segment`                          | A documented placeholder the route does not serve                                   |
+| `path parameter X … cannot be optional … required: false`                                              | A path parameter documented as optional                                             |
+| `the documented path binds X but the route serves no such segment` (and the reverse)                   | A spec `{placeholder}` and a route `<segment>` that disagree                        |
+| `the route binds query parameter X but the operation declares no in: query…` (and the reverse)         | An undocumented or over-documented `?<x>` binding                                   |
+| `declares query parameter X as required: true but the handler binds it as an Option` (and the reverse) | A `required` flag that disagrees with `Option<T>`                                   |
+| `the route binds its body to X but the operation declares no request body` (and the reverse)           | A `data = "<x>"` binding the operation does not document                            |
+| `the operation declares request body X but the route binds its body to Y`                              | A schema naming a type the handler does not take                                    |
+| `the operation describes the Form body as … — declare the body multipart/form-data`                    | A multipart form documented under another media type                                |
+| `the operation declares no operationId…` / `declares operationId X but the handler is named Y`         | An operation a generated client could not call by its real name                     |
+| `` `$ref` to the component schema X, which the document does not define ``                             | A reference to a schema that does not exist                                         |
+| `component schema X is defined but nothing references it`                                              | An orphaned schema (`FileEntry` shipped as one)                                     |
 
 Malformed input is reported rather than guessed at, on the same stream: an
 unparsable `routes![]` entry, a route attribute without a string-literal URI, and
@@ -341,6 +353,11 @@ findings rather than a passing gate.
   of every tag failure mode, its report is asserted, and the committed document is
   required to follow the vocabulary — including that the subjects it uses and the
   subjects the vocabulary names are the same set, so neither side can drift alone.
+- `tests/params.rs` does the same for the parameter rules: each rule is driven
+  over inline conforming and drifted trees and asserted as an exact diagnostic —
+  file, line and message — and it runs the rules over the real router and
+  document and requires them to be clean, so the repository's own parameters are
+  part of what the gate holds.
 - `tests/guards.rs` covers the guard observation itself — direct and qualified
   guard parameters, `Option<T>`, `GuardResult<T>` propagated, returned, matched
   and inspected, and the two discarded shapes — and holds `KNOWN_GUARDS` against
@@ -352,8 +369,9 @@ findings rather than a passing gate.
   `pages` on a data operation or missing from a page one. The mutations run over a
   copy in `target/`, and each restores to silence.
 - `tests/cli.rs` covers what the library does not own: the argument handling, the
-  exit codes, one finding per line on stderr, the three checks merged into one
-  report with a shared finding printed once, and two runs printing the same report.
+  exit codes, one finding per line on stderr, the four checks merged into one
+  report with a shared finding printed once, and two runs printing the same
+  report.
   It also runs the gate over the real `backend/src/router` and
   `backend/openapi.json` and requires them to be clean today, so the gate cannot
   be neutered and stay green on the repository.
