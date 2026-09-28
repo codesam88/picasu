@@ -19,6 +19,18 @@ name: a second rebuild leaves observable metadata unchanged
 #
 # The watcher is disabled so the second rebuild's result cannot be attributed to
 # an asynchronous reindex triggered by the first.
+#
+# The file's own keyword is asserted absent, and it is here for a second reason
+# beyond the contract: the point of the scenario is that the *second* pass
+# derives what the first did. A union rule is exactly the kind of thing that
+# would look stable here while being wrong elsewhere, so the tag set is pinned to
+# one source. The complete-authority rule is `.plan/test-exif-xmp-handling.md`,
+# Follow-up Issues → "Sidecar Edits Must Override Embedded Metadata" (amending
+# decision 6 of `.plan/exiftool-metadata-engine.md`): a sidecar is the whole
+# record for `tags`, so the image's IIM 2:25 keywords are not the asset's tags.
+# This scenario used to assert the union. The file's own IIM record is still
+# demonstrably read by both passes — the two unmodelled datasets below can only
+# come from it.
 given:
   - photo: /e2e_rebuild_twice/photo.jpg
     tags:
@@ -93,7 +105,7 @@ then:
   - response.json.tags:
       contains: e2e_rebuild_twice_sidecar
   - response.json.tags:
-      contains: e2e_rebuild_twice_embedded
+      not_contains: e2e_rebuild_twice_embedded
   - response.json.furtherMetadata.IPTC:By-line: picasu fixture author
   - response.json.furtherMetadata.IPTC:City: fixtureville
   - thumb_exists: $photo

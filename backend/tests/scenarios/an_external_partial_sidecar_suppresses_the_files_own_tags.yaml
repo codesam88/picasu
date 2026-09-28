@@ -1,0 +1,80 @@
+name: an external partial sidecar suppresses the file's own tags, by contract
+# `.plan/test-exif-xmp-handling.md`, Follow-up Issues → "Sidecar Edits Must
+# Override Embedded Metadata". This is the trade-off the follow-up accepts, named
+# and pinned rather than left to be discovered.
+#
+# The fixture is a sidecar some other tool wrote: it carries a description and
+# nothing else. The file beside it carries snapfab's keyword in *both* families —
+# an XMP packet and an IIM 2:25 record. Under the complete-authority rule the
+# asset has **no tags**: the sidecar is the record for the managed fields, and a
+# managed field it does not carry is empty. No union, no fall-through, and no
+# second guessing about which properties the writer "meant" to keep.
+#
+# This is accepted rather than solved, because the alternative is a rule that has
+# to guess. A merge would have to decide whether an absent `dc:subject` means
+# "no tags" or "this tool does not write tags", and it cannot: the same packet
+# is both a complete managed set and a fragment of one, depending only on what the
+# user wants. The other half of the trade-off is the scope where it cannot bite:
+# after the app's own first edit, `xmp_write` writes the *complete* managed set
+# (`dc:subject`, `dc:description`, `xmp:Rating` — each named, and an empty one
+# named as a removal), so every app-edited asset carries full managed state. The
+# partial case is a sidecar the app did not write, and it is the user who chose
+# it by putting that file there.
+#
+# The `furtherMetadata` half of the contract is asserted here too, because it is
+# the part a suppressed value could leak through: the bucket is unchanged. It is
+# the read-only complement of what the *mapping* consumed, and it excludes the
+# IPTC and XMP keys the mapping consumes by name — in every group `ExifTool` files
+# an IIM record under — whichever source supplied the value. So the file's
+# keywords are absent from `tags` and equally absent from the bucket, while the
+# IIM datasets the app does not model are still reported from the file.
+given:
+  - photo: /e2e_partial_sidecar/photo.jpg
+    tags:
+      - e2e_partial_embedded
+    # Unmodelled IIM datasets alongside the keywords, so the bucket is observable:
+    # the rule suppresses the managed fields and nothing else.
+    further_iptc: true
+    id_as: $photo
+    asset_id_as: $asset_id
+  - raw_file: /e2e_partial_sidecar/photo.xmp
+    content: |
+      <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+        xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:description><rdf:Alt>
+      <rdf:li xml:lang="x-default">Only a description was written</rdf:li>
+      </rdf:Alt></dc:description>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+      <?xpacket end="w"?>
+when:
+  - call: GET /get/index/status
+    then:
+      - response.status: 200
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  # The one field the sidecar does carry is read.
+  - response.json.description: Only a description was written
+  # The consequence, pinned: the file's own keywords are not the asset's tags.
+  - response.json.tags: []
+  # The bucket is unchanged — the unmodelled IIM datasets are still read from the
+  # file's own record.
+  - response.json.furtherMetadata.IPTC:City: fixtureville
+  # ...and the value the mapping consumed does not reappear there under the
+  # family's own name. Without this, "tags is empty" would hold for a bucket that
+  # had merely moved the keywords somewhere else.
+  - response.json.furtherMetadata.IPTC:Keywords: null
+  - response.json.furtherMetadata.IPTC:Caption-Abstract: null
+  - response.json.furtherMetadata.XMP-dc:Subject: null

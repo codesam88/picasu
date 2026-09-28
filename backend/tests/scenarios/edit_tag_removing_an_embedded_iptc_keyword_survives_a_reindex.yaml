@@ -1,0 +1,85 @@
+name: removing an embedded IPTC keyword through the edit API survives a reindex
+# `.plan/test-exif-xmp-handling.md`, Follow-up Issues → "Sidecar Edits Must
+# Override Embedded Metadata". The scenario is the review bug, end to end.
+#
+# The failure it reproduces: a JPEG whose keyword is in *both* families (snapfab's
+# writer puts the same keyword in the XMP packet and in IIM 2:25 `Keywords`),
+# paired with a sidecar. `PUT /put/edit_tag` removes the keyword; the writer
+# replaces the sidecar's `dc:subject` with what the app holds, so the sidecar no
+# longer mentions it. The next index used to re-union the file's IIM record into
+# the tag set and the keyword came back — the edit had been undone by the very
+# reindex that is supposed to adopt it.
+#
+# The contract this pins (`.plan/exiftool-metadata-engine.md` decision 6, as
+# amended by the follow-up above): **when a sidecar exists, it is the complete
+# authority for the managed fields.** `tags` is read from the sidecar's
+# `dc:subject` alone — no IIM union, no fall-through — so a keyword the sidecar
+# does not carry is a keyword the asset does not have. The cache is a cache of
+# the repository, and the repository is what the sidecar plus the file now say.
+#
+# Two assertions, in that order, and both are needed: `contains` alone would pass
+# on a union that happens to still hold the seed, and `not_contains` alone would
+# pass on a cache that lost everything. Together they say the edit is a removal
+# and not a wipe.
+#
+# The reindex is what makes this a reindex test: nothing between the edit and the
+# assertions touches the metadata table except `POST /post/index/album`, so the
+# detail that comes back can only have been re-read from the two files.
+given:
+  - photo: /e2e_override_tag/photo.jpg
+    tags:
+      - e2e_override_embedded
+    id_as: $photo
+    asset_id_as: $asset_id
+  - raw_file: /e2e_override_tag/photo.xmp
+    content: |
+      <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+        xmlns:dc="http://purl.org/dc/elements/1.1/"
+        xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_override_seed</rdf:li>
+      </rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+      <?xpacket end="w"?>
+when:
+  - call: GET /get/index/status
+    then:
+      - response.status: 200
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  # The app's tag set is the union it indexed — the seed plus the file's own
+  # keyword — so removing the file's keyword leaves the seed.
+  - call: PUT /put/edit_tag
+    raw_body: '{"indexArray":[${idx}],"addTagsArray":[],"removeTagsArray":["e2e_override_embedded"],"timestamp":${ts}}'
+    then:
+      - response.status: 200
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  # The sidecar really no longer carries the keyword, so a reindex that reads it
+  # had nothing to resurrect from in the first place.
+  - file.not_contains: /e2e_override_tag/photo.xmp
+    text: e2e_override_embedded
+  - response.json.tags:
+      contains: e2e_override_seed
+  - response.json.tags:
+      not_contains: e2e_override_embedded

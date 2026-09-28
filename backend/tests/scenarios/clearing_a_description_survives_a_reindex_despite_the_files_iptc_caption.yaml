@@ -1,0 +1,115 @@
+name: clearing a description survives a reindex although the file still carries an IIM caption
+# `.plan/test-exif-xmp-handling.md`, Follow-up Issues → "Sidecar Edits Must
+# Override Embedded Metadata". The scalar half of the same gap
+# `edit_tag_removing_an_embedded_iptc_keyword_survives_a_reindex` pins for tags.
+#
+# The failure it reproduces: `PUT /put/set_user_defined_description` with an empty
+# value sets the app's description to nothing, and the writer treats an empty
+# managed field as a *removal* rather than a blank — `xmp_write` names
+# `XMP-dc:Description` with no value, so `dc:description` leaves the sidecar
+# entirely. The next index then read `description` first-non-empty across XMP →
+# IIM → text, found no `dc:description` in the sidecar, and took the image's own
+# IIM 2:120 `Caption-Abstract`. The cleared description came back, with the
+# fixture's caption in it.
+#
+# The contract this pins: when a sidecar exists it is the complete authority for
+# the managed fields, so a field *absent* from it is empty. There is no
+# fall-through to the file, and an absent field and a blanked one are the same
+# answer — which is exactly why the writer removes rather than blanks. A sidecar
+# that could express "deliberately empty" would need a tombstone; the
+# complete-authority rule does not need one, because absence already means empty.
+#
+# The fixture is what makes this airtight about *which family* resurrects the
+# value. `jpeg-48x32-iptc` is ImageMagick's pixels with an ExifTool-written IIM
+# record and **no XMP packet at all** (provenance and digest in
+# `utils/snapfab/capabilities.json`), so "An IIM-only caption" exists in the file
+# in exactly one place, and no XMP value could be mistaken for it. The first read
+# asserts it is there, before any sidecar exists, which is the value the reindex
+# used to hand back.
+#
+# The other controls, because "description is null" is also what a broken read, a
+# failed edit, or a sidecar that was never written would produce:
+#
+#   * the read after the sidecar arrives shows the sidecar is being read at all;
+#   * the clear is asserted 200, so the request was not refused;
+#   * the sidecar on disk is asserted not to carry the description any more, so
+#     the removal is observed in the source of truth and not merely in the cache.
+given:
+  - fixture:
+      source: jpeg-48x32-iptc
+      destination: /e2e_override_desc/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: GET /get/index/status
+    then:
+      - response.status: 200
+  # No sidecar yet, so the description is the file's own IIM caption under the
+  # import precedence (XMP > IPTC > PNG text). This is the value that used to
+  # come back after the clear.
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token0: response.token
+      ts0: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts0}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token0}"
+    then:
+      - response.status: 200
+      - response.json.description: "An IIM-only caption"
+  # An external tool's sidecar, arriving after the index. Only `dc:description`
+  # is in it; the file's own caption and keywords are not, and under this
+  # contract they stop counting.
+  - write_file: /e2e_override_desc/photo.xmp
+    content: |
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:description><rdf:Alt>
+      <rdf:li xml:lang="x-default">e2e_override_desc_sidecar</rdf:li>
+      </rdf:Alt></dc:description>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token1: response.token
+      ts1: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts1}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token1}"
+    then:
+      - response.status: 200
+      - response.json.description: e2e_override_desc_sidecar
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      ts2: response.prefetch.timestamp
+      idx2: response.prefetch.locateTo
+  # The clear: an empty description, which the writer turns into a removal of
+  # `dc:description` rather than a blank.
+  - call: PUT /put/set_user_defined_description
+    raw_body: '{"index":${idx2},"description":"","timestamp":${ts2}}'
+    then:
+      - response.status: 200
+  - call: POST /post/index/album
+    raw_body: '{"album": "/"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token2: response.token
+      ts3: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts3}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token2}"
+then:
+  - response.status: 200
+  - response.json.description: null
+  # The source of truth, not just the cache: the property is gone from the file
+  # the next index read.
+  - file.not_contains: /e2e_override_desc/photo.xmp
+    text: e2e_override_desc_sidecar

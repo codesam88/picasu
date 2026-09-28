@@ -333,19 +333,57 @@ arrives unmodelled in the read-only `furtherMetadata` bucket.
 
 One engine reads a file: `ExifTool`, invoked once per file, and its grouped
 record is projected into the `exifVec` map (EXIF family), the natively modelled
-fields, and the read-only further-data bucket. The order the app applies to the
-values it models is:
+fields, and the read-only further-data bucket. **Whether a `.xmp` sidecar exists
+decides which of two regimes the modelled fields are read under**, and its
+existence alone decides it — not what it holds, and not whether it parses.
 
-1. the XMP family, which a paired sidecar supplies when one exists (a sidecar's
-   existence takes the XMP source, whether or not it parses),
+**A sidecar exists — the sidecar alone.** `tags`, `description`, `rating` and
+`title` are read from it and from nothing else. A field the sidecar does not
+carry is empty: no fallback to the image's embedded XMP packet, its IPTC IIM
+record or its PNG text chunks, and no union of the two keyword carriers. A value
+that is present but blank is the same answer as an absent one, because a cleared
+managed field is written as a _removal_ (below), so the file cannot express
+"deliberately empty" and does not need to.
+
+This is the rule that makes an edit stick. Tags and descriptions live in a JPEG's
+IPTC record as well as in its XMP packet, so a merge rule would hand back the
+value the user just removed: the sidecar stops listing the tag, the next index
+re-reads it from the file, and the tag reappears.
+
+**No sidecar — the import precedence.** The order the app applies to the values
+it models is:
+
+1. the XMP family embedded in the image,
 2. IPTC IIM from the image,
 3. PNG text chunks from the image.
 
 First non-empty wins; a value that is present but blank does not count, so a
 cleared field never shadows a lower family. Tags are the one exception and are
-the union of `XMP-dc:Subject` and IIM 2:25 `Keywords`. The exact per-field order
-and the rules behind it are documented on `process::xmp::map_native_fields`; the
-pipeline itself is in `docs/design.md`.
+the union of `XMP-dc:Subject` and IIM 2:25 `Keywords`.
+
+The exact per-field order and the rules behind both regimes are documented on
+`process::xmp::map_native_fields`; the pipeline itself is in `docs/design.md`.
+
+The further-data bucket is not part of this choice. It reads the XMP family from
+the sidecar when there is one and the IIM and text chunks from the image either
+way — it reports what the file carries, and the managed fields' override rule is
+not its rule. What keeps a suppressed value from reappearing there is that the
+bucket excludes the keys the mapping consumes _by name_, in every group `ExifTool`
+files an IIM record under, whichever source supplied the value: a keyword the
+sidecar suppressed is absent from `tags` and equally absent from
+`furtherMetadata`.
+
+#### A partial sidecar
+
+A sidecar some other tool wrote may name only some managed properties. The rule
+above is then a loss, not a judgement: an asset with a sidecar carrying only a
+`dc:description` has **no tags**, even when the file's IIM record lists some.
+
+Nothing in the packet distinguishes "no tags" from "this tool does not write
+tags", so a merge would have to guess and would be wrong in whichever direction
+it guessed. The cost is confined to sidecars the app did not write: after the
+app's first edit, `write_sidecar_for` writes the complete managed set (below), so
+an app-edited asset always carries full managed state.
 
 Whenever metadata is changed via the API/frontend, the backend will
 create/update a corresponding sidecar XMP file. In addition, we may add an
@@ -366,6 +404,10 @@ Three consequences worth knowing:
 - **A cleared managed field is removed, not blanked.** Removing a tag from a
   photo removes it from the sidecar on the next edit; the tag bag is replaced
   with the app's set rather than added to, so nothing accumulates across edits.
+  Removing rather than blanking is what lets the read side treat "absent" and
+  "blank" the same way (above), and it is why a sidecar needs no tombstone for a
+  deliberately emptied field: a cleared description simply leaves the property
+  out, and the next index reports the field as empty.
 - **A photo's `dc:title` is not managed.** The app never writes it, so it is
   left alone — including one another tool put there. An album's title _is_
   managed, because the app sets it, so clearing it there removes the property.

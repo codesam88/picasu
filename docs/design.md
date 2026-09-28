@@ -64,22 +64,27 @@ its identity. Losing or rebuilding `.albuminfo` must not lose photos.
 Metadata is resolved from the repository, never from the generated database:
 
 1. Read metadata embedded in the raw media file.
-2. Apply the paired sidecar as a partial overlay. Fields present in the sidecar
-   override the raw value; fields absent from the sidecar inherit the raw value.
-   An omitted field must not clear the raw value.
-3. Store only the resolved merged view in the database. The database is a
-   rebuildable cache and is never the source of truth.
+2. Resolve the natively modelled fields — `tags`, `description`, `rating`,
+   `title` — against the paired sidecar. Its **existence** settles it: when a
+   sidecar exists it is the whole record for those fields, so one it does not
+   carry is empty rather than inherited from the file; when it does not, the
+   fields are resolved from the file alone (XMP > IPTC IIM > PNG text). The
+   reason, and the accepted cost for a partial external sidecar, are under
+   [Metadata extraction pipeline](#metadata-extraction-pipeline).
+3. Store only the resolved view in the database. The database is a rebuildable
+   cache and is never the source of truth.
 4. Frontend metadata edits are explicit user intent. By default they create or
    update the sidecar and do not modify the raw media file.
 5. Merging selected metadata back into the raw file is a separate explicit
    action. It must preserve unmanaged metadata, use an atomic replacement, and
-   leave the sidecar as the authoritative overlay if the format cannot be
-   written safely.
+   leave the sidecar as the authoritative record if the format cannot be written
+   safely.
 
 Deleting the database and reindexing reconstructs the same view from raw files
-and sidecars. Deleting a sidecar removes the overlay and exposes the raw
-metadata again; it does not delete metadata from the raw file. External raw
-changes are visible for every field not overridden by the sidecar.
+and sidecars. Deleting a sidecar removes it and exposes the raw metadata's own
+resolution again; it does not delete metadata from the raw file. External raw
+changes are therefore visible for an asset with no sidecar, and hidden for a
+managed field of an asset that has one.
 
 Metadata the app does not model is a category of its own, not a fallback:
 `furtherMetadata` on the detail response holds it as `Group:Tag` key/value
@@ -123,16 +128,35 @@ complement of that second projection. Reading a file twice would double the
 metadata cost of indexing it, which at library scale is the dominant cost.
 
 A sidecar is the only second read, because it is a second file. Its
-_existence_ takes the XMP source away from the image whether or not it parses:
-the sidecar is where the app writes metadata back, so falling back to the
-packet still inside the image would undo the edit. Its XMP replaces the image's
-own packet, while the image's IPTC and text chunks keep filling what that
-packet left empty. A value that is present but blank does not count as supplied,
-so a cleared field cannot shadow a family that still carries it.
+_existence_ is what moves the managed fields onto it, whether or not it parses:
+the sidecar is where the app writes metadata back, so falling back to anything
+inside the image would undo the edit. That means a sidecar is the **whole record**
+for the natively modelled fields — not an overlay on the image's XMP, and not the
+XMP source with the image's IPTC and text chunks completing it. A field the
+sidecar does not carry is empty, and a value present but blank is the same answer
+as an absent one, because a cleared managed field is written as a removal.
 
-Within the native fields the first non-empty value wins in the order
-**XMP > IPTC IIM > PNG text**; the per-field order and the keyword union are
-documented on `process::xmp::map_native_fields`.
+The reason is a resurrection: tags and descriptions live in a JPEG's IPTC record
+as well as in its XMP packet, so under a merge rule a tag removed through the
+edit API comes back on the next index, which re-reads the file and finds it
+still there. The price is a sidecar that names only some managed properties
+suppressing the file's values for the ones it omits — accepted, because nothing
+in the packet distinguishes "no tags" from "this tool does not write tags", and
+because the app's own writer always emits the complete managed set.
+
+With no sidecar, the managed fields are read from the image under the import
+precedence, and the scalars are first non-empty wins in the order
+**XMP > IPTC IIM > PNG text** (there a blank does not count as supplied, or a
+cleared field would shadow a family that still carries the value). Tags are the
+union of the two keyword carriers there. The per-field order and the keyword
+union are documented on `process::xmp::map_native_fields`.
+
+The read-only bucket is deliberately outside this. It takes the XMP family from
+the sidecar when one exists and the IIM and text chunks from the image either
+way — it reports what the file carries, which is not the managed fields' question
+— and the keys the mapping consumes are excluded from it by name, in every group
+`ExifTool` files an IIM record under, so a value the sidecar suppressed does not
+reappear there under its own name.
 
 #### Identity and serving invariants
 

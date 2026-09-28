@@ -1,34 +1,40 @@
-name: a corrupt XMP sidecar suppresses the embedded XMP packet, not the file's IPTC
-# Sidecar precedence, rewritten for the contract settled in
-# `.plan/exiftool-metadata-engine.md` decision 6, which overturns the pin this
-# file originally carried.
+name: a corrupt XMP sidecar withholds every managed field, the file's IIM included
+# Sidecar precedence, as amended by `.plan/test-exif-xmp-handling.md`, Follow-up
+# Issues → "Sidecar Edits Must Override Embedded Metadata", which amends decision
+# 6 of `.plan/exiftool-metadata-engine.md`.
 #
-# A sidecar's existence replaces the **XMP source only**. The sidecar here is
-# truncated markup, so no XMP field is filled from it — and the packet embedded
-# in the JPEG is not consulted in its place, because the sidecar is where the
-# app writes metadata back (`PUT /put/edit_tag`), so reading the stale embedded
-# packet would undo the edit.
+# The contract: **when a sidecar exists it is the complete authority for the
+# managed fields** — `tags`, `description`, `rating`, `title` come from the
+# sidecar alone, and a field it does not carry is empty. This file is the
+# unreadable-sidecar corner of that rule, and it is the one place the two prior
+# contracts are visible in the same scenario:
 #
-# The image's own IPTC record is a different source and still fills: snapfab's
-# JPEG writer puts `e2e_corrupt_xmp_embedded` in an XMP packet *and* in an IIM
-# record, so the keyword reaches the index through IIM 2:25 `Keywords` even
-# though the XMP source yielded nothing.
+#   * `.plan/test-exif-xmp-handling.md` originally pinned "a corrupt sidecar
+#     suppresses everything the file carries" — right for the wrong reason, since
+#     the retired byte scan resolved a single source and read nothing else.
+#   * `.plan/exiftool-metadata-engine.md` decision 6 amended that to "a sidecar
+#     replaces the **XMP source only** — IPTC and PNG-text still fill native
+#     fields", which made the assertion below `present`.
+#   * The follow-up amends *that*: the union of the sidecar's `dc:subject` with
+#     the file's IIM 2:25 `Keywords` is what resurrected a removed tag on the
+#     next index, and a clear-then-reindex handed back the file's IIM caption. So
+#     the assertion is `absent` again, now for the right reason: the sidecar is
+#     the record, and a record that could not be read is empty.
 #
-# The withdrawn contract: this file used to assert
-# `e2e_corrupt_xmp_embedded: absent` under the rule that "a corrupt sidecar
-# suppresses everything the file carries". That was a consequence of the retired
-# byte scan, which resolved a single source — `discover_sidecar(path)` or else
-# the file — and read nothing else. The engine swap reads the image for its IPTC
-# and text chunks regardless, so the keyword is indexed and the assertion below
-# is `present`.
+# The price is visible in this very scenario and is accepted: a file with a
+# corrupt sidecar indexes with no tags and no description, even though its own
+# bytes carry both. `write_sidecar_for` would replace such a sidecar on the app's
+# next edit, so the state is not durable for an app-managed asset — it is the
+# observable outcome for a file the app has never touched, which is the only way
+# such a sidecar normally arises.
 #
 # The control is `sidecar_xmp_is_authoritative_over_embedded_xmp`: the same two
-# files with a readable sidecar, where the sidecar's own description is what
-# reaches the field.
+# files with a sidecar that parses, where the sidecar's own values are what
+# reach the fields.
 #
 # Also asserted: a corrupt sidecar does not fail the index. The file is
-# readable, so the job is `completed` with no failures; only the sidecar's own
-# keyword is lost.
+# readable, so the job is `completed` with no failures — the contract is about
+# which values are read, not about whether the asset indexes at all.
 given:
   - photo: /e2e_corrupt_xmp/photo.jpg
     tags:
@@ -49,10 +55,12 @@ then:
       where:
         tag: e2e_corrupt_xmp_unclosed
       expect: absent
-  # The image's own IPTC record is not part of the XMP source, so the keyword
-  # the file carries in IIM 2:25 `Keywords` is indexed. Before the engine swap
-  # this was `absent`; see the header.
+  # The image's own IIM 2:25 keywords are not indexed either. snapfab's JPEG
+  # writer puts `e2e_corrupt_xmp_embedded` in an XMP packet *and* in an IIM
+  # record, so under decision 6 this arrived through IIM and the assertion was
+  # `present`; under the follow-up's complete-authority rule the sidecar is the
+  # record for `tags` and a record that yields nothing means no tags.
   - array_where:
       where:
         tag: e2e_corrupt_xmp_embedded
-      expect: present
+      expect: absent
