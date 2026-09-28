@@ -11,10 +11,21 @@ pub mod get_list;
 pub mod get_metadata;
 pub mod get_page;
 pub mod get_prefetch;
+// The probe handlers are registered only in test builds (see
+// `generate_get_routes`); outside them they stay compiled — the cfg-blind
+// generator and the spec need them — but nothing mounts or calls them.
+#[cfg_attr(not(test), allow(dead_code))]
 pub mod get_test_probe;
 
+/// The GET route table Rocket mounts.
+///
+/// The `/get/test/` probes are appended only in test builds: `routes!` takes
+/// paths alone, so the gate is a `#[cfg(test)]`-gated extension of the list
+/// rather than a `#[cfg]` on an entry. Handlers and annotations stay
+/// unconditional so `build.rs` generation and the spec keep the probe paths.
 pub fn generate_get_routes() -> Vec<Route> {
-    routes![
+    #[cfg_attr(not(test), allow(unused_mut))]
+    let mut routes = routes![
         get_list::get_tags,
         get_list::get_albums,
         get_data::get_data,
@@ -51,9 +62,15 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_config::export_config_handler,
         get_fs_completion::get_fs_completion,
         get_album_index::get_album_index_status,
+    ];
+
+    #[cfg(test)]
+    routes.extend(routes![
         get_test_probe::probe_record,
         get_test_probe::probe_dupe_group,
-    ]
+    ]);
+
+    routes
 }
 
 #[cfg(test)]

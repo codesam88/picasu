@@ -15,8 +15,9 @@ use crate::openapi::generate_json;
 /// other.
 pub const TEST_ONLY_PATH_PREFIX: &str = "/get/test/";
 
-/// Whether a path belongs to the test-only probe surface, which is mounted in
-/// every build but only enabled by the test bootstrap.
+/// Whether a path belongs to the test-only probe surface, which is registered
+/// only in test builds (`#[cfg(test)]` in `generate_get_routes`) and enabled
+/// by the test bootstrap.
 #[must_use]
 pub fn is_test_only_path(path: &str) -> bool {
     path.starts_with(TEST_ONLY_PATH_PREFIX)

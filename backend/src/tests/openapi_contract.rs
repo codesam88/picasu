@@ -60,7 +60,7 @@ fn spec_operations() -> HashSet<Operation> {
 /// Mounted routes that are deliberately absent from the documented contract.
 fn is_outside_contract(operation: &Operation) -> bool {
     let (method, path) = operation;
-    // Test-only probes: mounted in every build, enabled only by the test
+    // Test-only probes: registered only in test builds, enabled by the test
     // bootstrap, and stripped from the public spec on purpose.
     if is_test_only_path(path) {
         return true;
