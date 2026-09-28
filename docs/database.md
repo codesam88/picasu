@@ -341,6 +341,16 @@ reordered variants):
 2. Copy the current structs to frozen `VN` types.
 3. Add a match arm in `from_bytes` for the previous version.
 
+A rebuild reconstructs the metadata rows as well as the identity rows: it
+clears `ASSET_BY_PATH`, `ASSET_BY_ID`, `DUPE_INDEX` and `METADATA_TABLE`,
+walks the image root, and then runs the same metadata pipeline the incremental
+indexer runs for every media file it finds. `METADATA_TABLE` has to be cleared
+too, because a rebuild reissues a random `asset_id` per asset and a row keyed
+by a previous id would be unreachable rather than gone. The response reports
+`metadataIndexed` against `mediaCreated` and names any file that could not be
+processed in `metadataFailures`, so a rebuild that reissued identity without
+deriving metadata is visible in the response rather than only in the log.
+
 ---
 
 ## Database file formats

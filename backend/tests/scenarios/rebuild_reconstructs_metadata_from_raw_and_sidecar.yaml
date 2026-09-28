@@ -1,0 +1,101 @@
+name: rebuild reconstructs metadata from the raw file plus its sidecar
+# `POST /post/rebuild` is the route the metadata schema migration tells operators
+# to run (`backend/src/storage/ser_de.rs` refuses an unreadable `MetadataRecord`
+# version and names the route). It used to clear `ASSET_BY_PATH`,
+# `ASSET_BY_ID` and `DUPE_INDEX` and repopulate them from a filesystem walk, and
+# nothing more: it hashed the file, read its size and mtime, and inserted an
+# identity record. `process_image_info` and `process::xmp`'s reader were never
+# called, so `exifVec`, `tags`, `description`, `rating` and `furtherMetadata`
+# came back at their defaults — an operator who obeyed the migration message got
+# an identity cache and no metadata.
+#
+# The contract this pins: rebuild runs the *same* metadata pipeline the
+# incremental indexer runs, for every discovered media file, after the identity
+# records exist. The fixture is the control for
+# `reindex_reconstructs_metadata_from_raw_and_sidecar`, which proves the same
+# composition through `POST /post/index/album`. Neither route reuses a stored
+# payload — both re-read the bytes — so what the detail reports after a rebuild
+# can only have come from the file and its sidecar.
+#
+# The assertions are split by source so the scenario cannot pass on one input
+# while the other is silently dropped:
+#
+#   * from the raw JPEG's own bytes — `ext`, decoded `width`/`height`, and a
+#     non-empty `exifVec`;
+#   * from the raw file's unmodelled IIM record — the `furtherMetadata` bucket;
+#   * from the sidecar — its keyword, its caption (XMP outranks the image's own
+#     `IPTC:Caption-Abstract`/`XMP-dc:Description`, so a sidecar caption that
+#     surfaces here is the sidecar being read as the XMP source), and its rating.
+#
+# `tags` is a union of the sidecar's `dc:subject` and the image's IIM 2:25
+# keywords, so both are asserted; see
+# `sidecar_xmp_is_authoritative_over_embedded_xmp` for that rule.
+#
+# The rebuilt asset is discovered by *path*, not by the id the first index
+# issued: rebuild assigns a fresh random `asset_id`, so depending on the old one
+# would test nothing. The `asset_id_as`/`discover_path` pair is the harness's
+# way of re-resolving it after the rebuild.
+given:
+  - photo: /e2e_rebuild_meta/photo.jpg
+    tags:
+      - e2e_rebuild_meta_embedded
+    # Unmodelled IIM datasets alongside the keywords, so the further bucket is
+    # observable: rebuild has to re-derive it from the file's own bytes.
+    further_iptc: true
+    id_as: $photo
+  - raw_file: /e2e_rebuild_meta/photo.xmp
+    content: |
+      <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+        xmlns:dc="http://purl.org/dc/elements/1.1/"
+        xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_rebuild_meta_sidecar</rdf:li>
+      </rdf:Bag></dc:subject>
+      <dc:description><rdf:Alt>
+      <rdf:li xml:lang="x-default">Caption written to the sidecar</rdf:li>
+      </rdf:Alt></dc:description>
+      <xmp:Rating>4</xmp:Rating>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+      <?xpacket end="w"?>
+when:
+  - call: POST /post/rebuild
+    then:
+      - response.status: 200
+    asset_id_as: $asset_id
+    discover_path: e2e_rebuild_meta/photo.jpg
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  # Identity is back under a freshly issued id, and the asset is addressable.
+  - response.json.type: image
+  # From the raw JPEG's own bytes — decoded, not copied from the file entry.
+  - response.json.ext: jpg
+  - response.json.width: 2
+  - response.json.height: 2
+  - response.json.exifVec.Software: not_null
+  # The further bucket, re-read from the file's own IIM record.
+  - response.json.furtherMetadata.IPTC:By-line: picasu fixture author
+  - response.json.furtherMetadata.IPTC:City: fixtureville
+  # From the sidecar.
+  - response.json.description: Caption written to the sidecar
+  - response.json.rating: 4
+  - response.json.tags:
+      contains: e2e_rebuild_meta_sidecar
+  # Unioned with the image's own IIM keywords, not suppressed by the sidecar.
+  - response.json.tags:
+      contains: e2e_rebuild_meta_embedded
+  # The on-disk thumbnail the pipeline derives, so the rebuild produced a
+  # servable asset rather than a metadata row alone.
+  - thumb_exists: $photo

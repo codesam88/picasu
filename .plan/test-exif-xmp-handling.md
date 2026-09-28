@@ -276,11 +276,11 @@ Randomization should complement, not replace, the deterministic matrix.
 - `just check`, backend tests, frontend tests, and the relevant Playwright
   scenarios pass.
 
-## Follow-up Issues (Not Started)
+## Follow-up Issues
 
 The format-coverage implementation is complete, but review identified the
-following source-of-truth and edit-semantics issues. This section extends the
-plan for later work; no implementation has started.
+following source-of-truth and edit-semantics issues. They are implemented one
+issue at a time; status is recorded under Follow-up Status below.
 
 ### Rebuild Must Reconstruct Metadata
 
@@ -409,9 +409,25 @@ Relevant code: `backend/src/process/exif.rs` and
 
 ## Follow-up Status
 
+2026-09-28 — **Rebuild gap implemented.** One shared metadata pipeline
+(`process::index::process_media_info`) with two orchestration modes: the
+incremental index resolves identity through open/hash/deduplicate, the
+filesystem rebuild now clears `METADATA_TABLE` alongside the identity tables,
+recreates identity from the walk, and runs the same pipeline per media file
+(`workflow::index_media_file`). Per-file failures are recoverable and reported
+(`metadataIndexed`/`metadataFailed`/`metadataFailures`, details capped at 100,
+uncapped count); a rebuild that only reissues identity reads as
+`metadataIndexed: 0` rather than success-with-empty-metadata. The stale
+`rebuild_reconstructs_identity_but_not_metadata.yaml` pin was replaced by three
+scenarios (reconstruction, idempotence, stale-payload drop) plus 4 unit tests;
+mutation-checked (pipeline removed → 13 tests fail; table clear removed → the
+row-identity unit test fails). Residuals: rebuild is single-threaded (one
+ExifTool read + thumbnail per file — slow for very large libraries, concurrency
+deferred), album payloads stay default-only (unchanged), rebuilt videos stay
+`pending: true` exactly like indexed ones (transcode is a separate task).
 2026-09-28 — Core format coverage and ExifTool integration are complete. The
 plan is moved to `backlog` to record the source-of-truth/edit-semantics work
-above. No follow-up implementation was started in this change.
+above.
 
 ## Progress
 
