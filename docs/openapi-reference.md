@@ -3761,7 +3761,9 @@ background;-returns-`202-accepted`-immediately.-responses">Responses</h3>
 This operation does not require authentication
 </aside>
 
-## Rebuild the asset tables from the filesystem under `IMAGE_HOME`.
+## Rebuild the asset tables and the metadata cache from the filesystem under
+
+`IMAGE_HOME`.
 
 <a id="opIdrebuild_handler"></a>
 
@@ -3902,11 +3904,16 @@ func main() {
 
 `POST /post/rebuild`
 
-Clears `ASSET_BY_PATH`/`ASSET_BY_ID`/`DUPE_INDEX`, walks the image root,
-and repopulates them. Then rewrites `METADATA_TABLE` from the fresh
-`AssetRecord`s (rebuild assigns new `asset_id`s, so stale rows keyed by
-the old ids must not remain) and waits for an in-memory tree refresh so
-the response does not race subsequent `prefetch`/`get-data` calls.
+`rebuild_from_filesystem` clears `ASSET_BY_PATH`, `ASSET_BY_ID`,
+`DUPE_INDEX` and `METADATA_TABLE`, walks the image root, and repopulates all
+four: identity from the walk, metadata from the same pipeline the incremental
+indexer runs. This route then waits for an in-memory tree refresh so the
+response does not race subsequent `prefetch`/`get-data` calls.
+
+The response carries the per-file outcome. `metadataIndexed` against
+`mediaCreated` is how a caller tells a rebuild that produced usable metadata
+from one that only reissued identity, and `metadataFailures` names the files
+that could not be processed.
 
 > Example responses
 
@@ -3917,11 +3924,21 @@ the response does not race subsequent `prefetch`/`get-data` calls.
   "albumsCreated": 0,
   "hashErrors": 0,
   "mediaCreated": 0,
+  "metadataFailed": 0,
+  "metadataFailures": [
+    {
+      "error": "string",
+      "path": "string"
+    }
+  ],
+  "metadataFailuresTruncated": true,
+  "metadataIndexed": 0,
   "unsupportedSkipped": 0
 }
 ```
 
-<h3 id="rebuild-the-asset-tables-from-the-filesystem-under-`image_home`.-responses">Responses</h3>
+<h3 id="rebuild-the-asset-tables-and-the-metadata-cache-from-the-filesystem-under
+`image_home`.-responses">Responses</h3>
 
 | Status | Meaning                                                                 | Description      | Schema                              |
 | ------ | ----------------------------------------------------------------------- | ---------------- | ----------------------------------- |
@@ -9989,6 +10006,32 @@ continued
 | ----- | ------ | -------- | ------------ | ----------- |
 | token | string | true     | none         | none        |
 
+<h2 id="tocS_RebuildFailure">RebuildFailure</h2>
+<!-- backwards compatibility -->
+<a id="schemarebuildfailure"></a>
+<a id="schema_RebuildFailure"></a>
+<a id="tocSrebuildfailure"></a>
+<a id="tocsrebuildfailure"></a>
+
+```json
+{
+  "error": "string",
+  "path": "string"
+}
+```
+
+One media asset whose metadata pipeline failed during a rebuild.
+
+The rebuild continues past the failure, so this is the only record of _why_
+an asset came out of the rebuild without metadata.
+
+### Properties
+
+| Name  | Type   | Required | Restrictions | Description                                               |
+| ----- | ------ | -------- | ------------ | --------------------------------------------------------- |
+| error | string | true     | none         | Rendered error, including the stage that failed.          |
+| path  | string | true     | none         | Absolute path of the file the pipeline could not process. |
+
 <h2 id="tocS_RebuildStats">RebuildStats</h2>
 <!-- backwards compatibility -->
 <a id="schemarebuildstats"></a>
@@ -10001,6 +10044,15 @@ continued
   "albumsCreated": 0,
   "hashErrors": 0,
   "mediaCreated": 0,
+  "metadataFailed": 0,
+  "metadataFailures": [
+    {
+      "error": "string",
+      "path": "string"
+    }
+  ],
+  "metadataFailuresTruncated": true,
+  "metadataIndexed": 0,
   "unsupportedSkipped": 0
 }
 ```
@@ -10009,12 +10061,16 @@ Statistics from a clean filesystem rebuild.
 
 ### Properties
 
-| Name               | Type    | Required | Restrictions | Description |
-| ------------------ | ------- | -------- | ------------ | ----------- |
-| albumsCreated      | integer | true     | none         | none        |
-| hashErrors         | integer | true     | none         | none        |
-| mediaCreated       | integer | true     | none         | none        |
-| unsupportedSkipped | integer | true     | none         | none        |
+| Name                      | Type                                      | Required | Restrictions | Description                                                                                                                                                                                                                                          |
+| ------------------------- | ----------------------------------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| albumsCreated             | integer                                   | true     | none         | none                                                                                                                                                                                                                                                 |
+| hashErrors                | integer                                   | true     | none         | none                                                                                                                                                                                                                                                 |
+| mediaCreated              | integer                                   | true     | none         | none                                                                                                                                                                                                                                                 |
+| metadataFailed            | integer                                   | true     | none         | Media assets whose metadata pipeline failed, counted whether or not the<br>detail for each one is still in `metadataFailures`.                                                                                                                       |
+| metadataFailures          | [[RebuildFailure](#schemarebuildfailure)] | true     | none         | Per-file diagnostics, capped so a wholesale failure cannot size the<br>response to the library. `metadataFailed` is the authoritative count and<br>`metadataFailuresTruncated` says whether this list was clipped.                                   |
+| metadataFailuresTruncated | boolean                                   | true     | none         | Whether `metadataFailures` stopped short of `metadataFailed`.                                                                                                                                                                                        |
+| metadataIndexed           | integer                                   | true     | none         | Media assets whose metadata pipeline returned `Ok` and whose payload was<br>written to `METADATA_TABLE`. Read against `mediaCreated`, this is what<br>distinguishes a rebuild that produced usable metadata from one that only<br>reissued identity. |
+| unsupportedSkipped        | integer                                   | true     | none         | none                                                                                                                                                                                                                                                 |
 
 <h2 id="tocS_ResolvedShare">ResolvedShare</h2>
 <!-- backwards compatibility -->

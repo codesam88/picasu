@@ -9,6 +9,28 @@ use crate::process::misc::{
 };
 use crate::process::xmp::{asset_metadata_for, native_metadata_for};
 
+/// Run the metadata pipeline for one media asset, dispatching on its kind.
+///
+/// The single entry point for "derive this asset's metadata and its derived
+/// data": the `ExifTool` read, sidecar precedence, the `furtherMetadata` bucket,
+/// dimension fix-ups, perceptual hashes and the on-disk thumbnail. Both
+/// orchestration modes go through here — the incremental indexer in
+/// [`crate::tasks::actor::index::IndexTask`] and the filesystem rebuild — so
+/// there is one implementation of that pipeline and no path where a rebuilt
+/// asset is described by different rules than an indexed one.
+///
+/// A video's `pending` flag is deliberately *not* set here. That flag means "the
+/// compressed form is not there yet", which is a property of the transcoding
+/// step, not of the metadata read; the caller decides whether it is going to
+/// transcode (see [`crate::workflow::index_media_file`]).
+pub fn process_media_info(abstract_data: &mut AbstractData) -> Result<()> {
+    if abstract_data.is_image() {
+        process_image_info(abstract_data)
+    } else {
+        process_video_info(abstract_data)
+    }
+}
+
 /// Analyse the newly‑imported **image** and populate the `AbstractData` record.
 pub fn process_image_info(abstract_data: &mut AbstractData) -> Result<()> {
     // One `ExifTool` read serves both metadata consumers: the EXIF map and the
