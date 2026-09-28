@@ -1,5 +1,5 @@
 ---
-status: backlog
+status: done
 type: bug
 priority: low
 area: testing
@@ -25,9 +25,15 @@ either hides an assertion or forces a workaround.
   end-to-end pinned by `album_index_failed_when_every_matched_file_fails.yaml`
   (which needed `truncate_file` as a `when` verb — a `given`-only transform
   runs before the given phase's own scan and cannot produce a failed match).
-- `backend/tests/schema.json` documents the scenario vocabulary but nothing
-  loads it. Either wire it to a test (needs a JSON-Schema dependency) or drop
-  it; its description now says it is unenforced.
+- **Fixed 2026-09-28 (Gap 6c).** `backend/tests/schema.json` documented the
+  scenario vocabulary but nothing loaded it. Now wired: `jsonschema` 0.58 as a
+  backend dev-dependency (defaults off, deny-verified), `scenario_schema.rs`
+  validates every scenario and selftest against it plus a valid-control /
+  8-rejection suite. The wiring audit found 186 failures across 162 files —
+  all six classes were schema bugs (incl. a `oneOf` ambiguity that made the
+  status-code range unenforceable), zero scenario edits needed; the schema now
+  also rejects bare `response.<path>` forms the interpreter would drop
+  silently.
 - **Fixed 2026-09-28 (Gap 6b).** The Playwright backend port race: `paths.ts::createPaths()` drew
   `30000 + random(30000)` when `WORKER_NUM` is unset, with no collision check,
   so two workers starting backends concurrently can hit `binding failed:
@@ -57,11 +63,15 @@ use` in the child's stderr.
   `locateTo` is a snapshot position, not a constant) — no hidden product
   failure. Pinned by `selftest/non_final_call_body_assertion_catches_wrong_value.yaml`.
 
-- The `snapfab` CLI's library/random path samples from `manifest.formats`
-  (every declared format) instead of `selection::randomizable_formats()`, so
-  it panics with `manifest format 'webp' is not generatable by snapfab` on any
-  run that draws a pinned format. Pre-existing at `94b8fc0d`; the seeded
-  scenario path is unaffected (it uses the selector correctly).
+- **Fixed 2026-09-28 (Gap 6c).** The `snapfab` CLI's library/random path
+  sampled from `manifest.formats` (every declared format) instead of the
+  randomizable set, panicking with `manifest format 'webp' is not generatable
+by snapfab` on any run that drew a pinned format. It now draws from
+  `randomizable_formats()` and honours each format's `FixturePlan` (generate
+  vs copy-pinned-fixture — measured that sampling alone would not have fixed
+  it, since all six formats are randomizable); 3 red tests plus a coverage
+  test that kills the tempting partial fix. The seeded scenario path was
+  always unaffected.
 
 - **Fixed 2026-09-28 (Gap 6a).** `file_absent`/`file_exists` accepted a `${data_path}`-prefixed (absolute) path:
   the path is joined onto `image_home` after stripping the leading `/`, so it
@@ -72,15 +82,14 @@ use` in the child's stderr.
   diagnostic), the two affected scenarios corrected, and
   `selftest/file_absent_rejects_absolute_path.yaml` pins the guard.
 
-- The documented `response.<path> absent` assertion form has **no
-  implementation branch** in `backend_api.rs` (the `"absent"` at the
-  `array_where` handler is a different feature). Anything written as
-  `response.json.foo: absent` therefore does not assert absence — found
-  2026-09-28 while pinning the video `furtherMetadata` decision, where the
-  implemented `null` check was used instead because it cannot distinguish
-  absent from explicit null either. Needs: implement the `absent` form (or
-  remove it from `docs/scenario-dsl.md`), and make the null-vs-absent
-  distinction testable.
+- **Fixed 2026-09-28 (Gap 6c).** The documented `response.<path> absent`
+  assertion form had no implementation branch in `backend_api.rs` (the
+  `"absent"` at the `array_where` handler is a different feature), so
+  `response.json.foo: absent` asserted nothing useful. Now implemented:
+  `resolve_json` + `assert_json_absent` pass iff the path does not resolve,
+  with distinct messages for a present value and a present explicit `null`;
+  two selftests carry the failing half; the mp4 video pin uses `absent` and
+  now kills an `Option`-style `None` field that the old `null` pin missed.
 
 ## Notes
 
@@ -90,3 +99,10 @@ each item has its measurement in that plan's Progress section.
 the Gap 5 upload-diagnosis work.
 2026-09-27 — Added the silent non-last-`then` body-assertion rule from the
 exiftool-metadata-engine Iteration 2 report.
+
+2026-09-28 — Gap 6c fixed the last three items; task closed. Also repaired
+`selftest/json_assert_catches_wrong_value.yaml`, whose `response.json.length`
+never resolved (it panicked on a Null mismatch for any expected value, so it
+never demonstrated catching a wrong value) — now asserts a resolved
+`response.json.[0].album_name`, which incidentally confirmed the schema
+guards the `response.json.[0]` root-index form.

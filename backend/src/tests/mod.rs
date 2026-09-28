@@ -18,3 +18,6 @@ mod openapi_parity;
 
 #[cfg(test)]
 mod seeds;
+
+#[cfg(test)]
+mod scenario_schema;

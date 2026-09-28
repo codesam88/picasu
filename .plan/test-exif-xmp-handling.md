@@ -1,5 +1,5 @@
 ---
-status: backlog
+status: done
 type: feature
 priority: medium
 area: testing
@@ -409,6 +409,44 @@ Relevant code: `backend/src/process/exif.rs` and
 
 ## Follow-up Status
 
+2026-09-28 — **All follow-up issues implemented; plan back to `done`.**
+Rebuild (cce5fa7f), unmanaged-sidecar preservation (c6e2650a), edit
+atomicity (eb0f2dc0), sidecar override semantics incl. the decision-6
+amendment (8632d4d5), toolchain-vs-content error separation with upload
+diagnostics (39308616), harness assertion integrity (7164478d), port race +
+video bucket decision (e09d60ea), and the final three backlog items (this
+entry). Accepted-open residuals, each recorded in the entries below or their
+named plan/task: the frontend does not roll back its optimistic tag update on
+a 5xx (display-only, converges on refresh); `POST /post/index/image` stays
+fire-and-forget; concurrent edits of one asset can interleave; `then: []` in
+`album_membership_singular_i.yaml` is vestigial; the schema is a lower bound
+on scenario vocabulary, not equality with the interpreter; a SIGKILLed
+Playwright worker can still leak a backend (the port probe compensates);
+rebuild is single-threaded (slow for very large libraries) and album payloads
+stay default-only; the reachable-500 `responses(...)` enumeration belongs to
+`.plan/openapi-contract-hardening.md`.
+
+2026-09-28 — **Last three backlog items closed (Gap 6c).** (1) The `snapfab`
+CLI library path now draws from `randomizable_formats()` and honours each
+format's `FixturePlan` — the measured twist being that sampling alone would
+not have fixed it, since all six formats are randomizable (3 red tests plus a
+coverage test that kills the partial fix). (2) The documented
+`response.<path> absent` assertion form is now implemented (`resolve_json` +
+`assert_json_absent`, distinct messages for present-value vs present-null,
+two selftests), and the mp4 video pin migrated to it — killing an
+`Option`-style `None` field the old `null` pin missed. (3) `schema.json` is
+enforced: `jsonschema` 0.58 as a dev-dependency (defaults off,
+deny-verified) with `scenario_schema.rs` validating the whole corpus plus a
+valid-control/8-rejection suite; the wiring audit's 186 failures across 162
+files were all six classes of _schema_ bugs (including a `oneOf` ambiguity
+that made the status-code range unenforceable) — zero scenario edits. Also
+repaired the vacuous `json_assert_catches_wrong_value` selftest (its
+`response.json.length` never resolved, so it panicked for any expected value)
+— now a resolved `response.json.[0].album_name` mismatch, which incidentally
+proved the schema guards the root-index form. Debt task
+`.plan/scenario-harness-debt.md`: all 9 items fixed, `status: done`. Gates:
+`cargo test -p picasu` 502 (2 ignored), snapfab 78, `just backend-check`,
+`just utils-check`, `cargo deny`, `just docs-check`.
 2026-09-28 — **Port race fixed and video bucket decided (Gap 6b).** Port
 allocation now bind-test-probes candidates (wildcard + exclusive, measured
 against Rocket's `0.0.0.0` bind) and redraws up to 10 times on both the

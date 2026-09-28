@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "API Scenario DSL Schema",
-  "description": "Documents API scenario YAML files in tests/scenarios/ and tests/scenarios/selftest/. No test loads this file: it is editor/CI-facing documentation of the vocabulary backend/src/tests/backend_api.rs accepts, and drift here is invisible to cargo test. Keep it in step with the interpreter.",
+  "description": "Documents API scenario YAML files in tests/scenarios/ and tests/scenarios/selftest/. Enforced: `backend/src/tests/scenario_schema.rs` compiles this file and validates every scenario in both directories against it, and `cargo test -p picasu` runs that. Keep it in step with the interpreter — a form added to `backend/src/tests/backend_api.rs` without a definition here passes this check silently, and `scenario_schema::the_documented_response_assertion_forms_are_expressible` is the guard for the response-assertion forms. The check is a lower bound on the interpreter's acceptance, not an equality: a form the schema allows and the interpreter ignores passes here.",
   "$ref": "#/definitions/apiScenario",
   "definitions": {
     "givenDirAlbum": {
@@ -36,6 +36,10 @@
         },
         "exif_date": {
           "type": "string"
+        },
+        "further_iptc": {
+          "description": "Also write the IIM datasets the app does not model, so the fixture carries the metadata engine's read-only further-data bucket. A stock tagged JPEG writes only the three natively consumed datasets and leaves it empty.",
+          "type": "boolean"
         },
         "color": {
           "type": "array",
@@ -386,6 +390,11 @@
           "type": "string",
           "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
         },
+        "asset_id_as": {
+          "description": "Bind the uploaded asset's API id to a variable. Bound after a non-final `when` step exactly as on a `call`, through `discover_path`.",
+          "type": "string",
+          "pattern": "^\\$[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
         "discover_path": {
           "type": "string"
         }
@@ -418,10 +427,10 @@
       "additionalProperties": false
     },
     "apiThenResponseField": {
-      "description": "One `response.json.<path>` equality assertion. The path allows `:` and `-` inside segments because ffprobe-derived video exifVec keys are literally named e.g. `TAG:major_brand` and `TAG:compatible_brands`.",
+      "description": "One `response.json.<path>` equality assertion. The `response.json.` prefix is required rather than conventional: `backend_api.rs` dispatches a body assertion only for a key that starts with it, so a bare `response.<path>` in a `then:` list would be read and silently dropped, and the schema must not admit a form that asserts nothing. The path allows `:` and `-` inside segments because ffprobe-derived video exifVec keys are literally named e.g. `TAG:major_brand` and `TAG:compatible_brands`, and `[n]` because `navigate_json` walks array indices.",
       "type": "object",
       "patternProperties": {
-        "^response\\.[a-zA-Z_][a-zA-Z0-9_.:-]*$": {
+        "^response\\.json\\.[A-Za-z0-9_.:\\[\\]-]+$": {
           "oneOf": [
             {
               "type": "string"
@@ -636,6 +645,9 @@
         },
         {
           "$ref": "#/definitions/apiWaitIndex"
+        },
+        {
+          "$ref": "#/definitions/apiChmod"
         }
       ]
     },
@@ -682,6 +694,30 @@
       ],
       "additionalProperties": false
     },
+    "apiChmod": {
+      "description": "Change the POSIX permissions of a path the given phase placed, so a scenario can watch the server meet a filesystem that refuses a read or a write. A `when` step rather than a `given` transform: the given phase's own index scan has to see the file first. Unix only — the interpreter panics on any other platform.",
+      "type": "object",
+      "properties": {
+        "chmod": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "description": "IMAGE_HOME-relative path, with or without a leading `/`.",
+              "type": "string"
+            },
+            "octal": {
+              "description": "The mode in the `chmod` spelling, e.g. `\"0500\"` to remove write permission, `\"0200\"` to keep only write.",
+              "type": "string",
+              "pattern": "^0[0-7]{3,4}$"
+            }
+          },
+          "required": ["path", "octal"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["chmod"],
+      "additionalProperties": false
+    },
     "apiScenario": {
       "type": "object",
       "properties": {
@@ -721,11 +757,12 @@
           ]
         },
         "then": {
+          "description": "Assertions on the last `when` step's response. Required, because the interpreter reads it unconditionally, but an empty list is accepted: a scenario whose assertions all sit in a non-final step's own `then:` has nothing left to assert here, and the interpreter treats an empty block as a no-op.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/apiThenItem"
           },
-          "minItems": 1
+          "minItems": 0
         }
       },
       "required": ["name", "when", "then"],

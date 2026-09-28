@@ -151,24 +151,38 @@ build time.
 
 ### `assert:` — assertions (one or more)
 
-| Form                             | Assertion                      |
-| -------------------------------- | ------------------------------ |
-| `response.status: <code>`        | HTTP status code               |
-| `response.status_not: <code>`    | HTTP status is not this code   |
-| `response.<json-path>: <value>`  | JSON body field matches value  |
-| `response.<json-path> absent`    | JSON body field is absent      |
-| `file_exists: <path>`            | File exists on disk            |
-| `file_absent: <path>`            | File does not exist on disk    |
-| `serve_image_ok: $<hash>`        | The compressed image serves    |
-| `thumb_exists: $<hash>`          | The generated thumbnail exists |
-| `file.contains: <path>` + `text` | File's text contains `text`    |
+| Form                             | Assertion                             |
+| -------------------------------- | ------------------------------------- |
+| `response.status: <code>`        | HTTP status code                      |
+| `response.status_not: <code>`    | HTTP status is not this code          |
+| `response.<json-path>: <value>`  | JSON body field matches value         |
+| `response.<json-path>: not_null` | JSON body field is not `null`         |
+| `response.<json-path>: absent`   | JSON body field is not in the payload |
+| `file_exists: <path>`            | File exists on disk                   |
+| `file_absent: <path>`            | File does not exist on disk           |
+| `serve_image_ok: $<hash>`        | The compressed image serves           |
+| `thumb_exists: $<hash>`          | The generated thumbnail exists        |
+| `file.contains: <path>` + `text` | File's text contains `text`           |
 
 `<json-path>` is a dot-separated path into the response JSON, e.g.
 `prefetch.locateTo` or `prefetch.timestamp`.
 
+`not_null` and `absent` are **form markers**, not values: the interpreter
+compares neither against the payload, so a response that really does carry the
+string `"absent"` cannot be asserted with these forms.
+
+`absent` is the only way to say the payload has no such key. It passes iff the
+dot-path does not resolve, and a key that is present carrying an explicit `null`
+**fails** it — absent is not null, and that difference is the reason the form
+exists. Asserting `response.json.foo: null` passes both for a payload that omits
+`foo` and for one that carries `"foo": null`, so it pins the value while claiming
+nothing about the key. Use `absent` when the key's absence is the claim, `null`
+when a present-but-empty value is.
+
 `${var}` interpolation applies to `response.<json-path>` values and to
 `file_exists` / `file_absent` paths, so a randomized scenario can assert on the
-selected format's extension.
+selected format's extension. It does not apply to the `not_null` or `absent`
+markers, which are read as markers before any interpolation.
 
 `file_exists`, `file_absent` and `file.contains` take an **IMAGE_HOME-relative**
 path with an optional leading `/`. A path that interpolates to an _absolute_ one
@@ -403,12 +417,31 @@ in this document and the interpreter in `interpreter.ts`.
 
 The DSL has separate JSON Schemas at
 `backend/tests/schema.json` (API) and
-`frontend/tests/playwright/schema.json` (UI). All scenario files
-are validated at load/compile time — a schema mismatch is a hard error.
+`frontend/tests/playwright/schema.json` (UI). A schema mismatch is a hard error
+in both.
 
-API scenarios are validated at build time by `build.rs`. UI scenarios are
-validated at runtime by `loadScenarios.ts` via the Zod `UiScenario`
-schema in `types.ts`.
+**API scenarios are validated by a test.**
+`backend/src/tests/scenario_schema.rs` compiles `backend/tests/schema.json` as
+the draft it declares (`2020-12`) and validates every YAML file under
+`backend/tests/scenarios/`, `selftest/` included, against it, under
+`cargo test -p picasu`. The YAML is parsed as data and never executed, so the
+check is static and costs no backend process. Two further tests keep the schema
+honest rather than merely present: one feeds it documents it must reject, so
+"every scenario validates" cannot be satisfied by a schema that accepts
+everything; one asserts the response-assertion forms listed above stay
+expressible, so a tightened schema fails instead of the corpus.
+
+`build.rs` does **not** validate the scenarios. It enumerates
+`tests/scenarios/*.yaml` and `tests/scenarios/selftest/*.yaml` to generate one
+`#[test]` per file, and the interpreter reads each file at run time.
+
+The API check is a lower bound on the interpreter's acceptance, not an equality:
+a form the schema allows and the interpreter silently ignores — a misspelled
+`then:` key, for instance — passes validation. That class of gap is pinned by a
+scenario instead, in `backend/tests/scenarios/selftest/`.
+
+UI scenarios are validated at runtime by `loadScenarios.ts` via the Zod
+`UiScenario` schema in `types.ts`.
 
 ## Idempotency and isolation
 
