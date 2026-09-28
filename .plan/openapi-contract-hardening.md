@@ -56,11 +56,22 @@ checks and treated as a single API review gate:
 
 High — contract wrong or materially incomplete:
 
-- [ ] Register `POST /post/renew-hash-token` in `openapi.rs` — it has an
+- [x] Register `POST /post/renew-hash-token` in `openapi.rs` — it has an
       utoipa annotation (`auth.rs`) but was never added to the paths list, so
       it is absent from the spec; sibling `/post/renew-timestamp-token` is
       documented (asymmetric omission). Add a coverage test comparing mounted
       routes against the spec so this class of omission cannot recur.
+      **Closed as premise-not-reproducible (2026-09-28)** — the handler is
+      annotated (`auth.rs:615`), mounted (`auth.rs:174`), and listed in the
+      build.rs-generated paths (`openapi.rs:66,142`); `backend/openapi.json`
+      has contained `"/post/renew-hash-token"` since the artifact was first
+      committed (`b679091a`). At writing time (2026-09-23) the spec was
+      gitignored and `backend/src/openapi.rs` did not exist (build.rs
+      generates it), so the claim could only have come from a stale artifact
+      — most plausibly the known-stale `docs/openapi-reference.md`, which had
+      no occurrence. The coverage test it asked for exists: `check_contract`'s
+      "declared in source but absent from the spec" finding and
+      `backend/src/tests/openapi_contract.rs`.
 - [x] Document `401` on guarded operations: only 2/65 ops currently declare
       `401` (`authenticate`, `/unauthorized`) while data endpoints sit behind
       `GuardAuth`/`GuardTimestamp` (24 router files). Introduce a reusable
@@ -101,29 +112,41 @@ Medium — bad patterns and type fidelity:
       `backend/src/tests/openapi_contract.rs` (known set, missing tags, and
       `pages`-by-path-shape), with negative self-checks; taxonomy documented
       in `docs/openapi-generator.md`.
-- [ ] Add missing schema field descriptions: ~204 `none` cells across ~30 of
-      39 schemas (`EditTagsData`, `DeleteList`, `CreateShare`, `Prefetch`, …).
+- [ ] Add missing schema field descriptions: ~205 table rows in the reference
+      still end in `none` and 36 of 45 schemas have at least one undescribed
+      property (`EditTagsData`, `DeleteList`, `CreateShare`, `Prefetch`, …).
       Existing hand-written `///` comments (`FileEntry`, `coverHash`) are the
       quality bar.
-- [ ] Fix nullable/union rendering: `Option<T>` collapses to `any` in tables
-      and `{}` in examples (`TestRecordProbe.path`,
-      `PrefetchReturn.resolvedShareOpt`, multipart upload `body`). Emit
-      explicit nullable schemas so generators keep the type.
+- [ ] Fix nullable/union rendering: the artifact now carries an explicit
+      `oneOf: [null, …]` for the cited `PrefetchReturn.resolvedShareOpt`, but
+      the generated reference still degrades it — the type column renders
+      `any` and the example synthesizes `{}`. Keep the type through tables and
+      examples.
 - [ ] Fix `FsCompletion` wire casing: serializes `is_default` (snake) while
       every other schema is camelCase — missing
       `#[serde(rename_all = "camelCase")]`. Real API inconsistency, not just
       docs.
-- [ ] Fix mangled anchors: 4 operations emit `<h3 id>` attributes containing
-      raw newlines/backticks/apostrophes from multi-line utoipa summaries
-      (album-index, index-image, probe ops), breaking Parameters/Responses
-      in-page links and duplicating description-as-anchor. Keep utoipa
-      summaries single-line titles.
+- [ ] Fix mangled headings: six operations carry multi-line utoipa summaries
+      (`/get/metadata/{asset_id}`, `/object/imported/{file_path}`,
+      `/post/create_dir_album`, `/post/index/album`, `/post/index/image`,
+      `/{path}`), and the newline ends the generated heading early — e.g. the
+      reference renders `## Walk a directory under … in the` and drops
+      `background.` into body text (lines 8122, 8429, 3053), breaking
+      Parameters/Responses in-page links and duplicating
+      description-as-anchor. Keep utoipa summaries single-line titles.
 - [ ] Revisit typed response schemas and `FileEntry`. `FileEntry` is registered
       as a component schema but referenced by no operation, so the Step 4
       orphan rule unregisters it; its doc comment says it is meant for the
       wire through `metadata.path`. Decide in a dedicated review which
       operations should expose typed response schemas and whether `FileEntry`
       returns as a `$ref`. Raised 2026-09-27, deferred pending that review.
+      Measured 2026-09-28: 14 of 61 operations declare a success response naming
+      a schema, 4 declare an inline `text/plain` string, and the rest declare no
+      body. The two handlers that return a typed payload with no documented
+      schema are `get_metadata` (`Json<AbstractData>`) and `authenticate`
+      (`Json<String>`) — the first is the largest data response in the API and
+      the reason `FileEntry` is orphaned, since no operation names
+      `AbstractData` at all.
 - [x] Update `docs/openapi-generator.md`: 4 references to
       `docs/mdbook/src/openapi-reference.md` are stale; `justfile` writes
       `docs/openapi-reference.md`. Anything wiring a CI drift-check against
@@ -139,8 +162,9 @@ Low — consistency and polish:
       `openapi-upload-query-params.md` (2026-09-24). **Done** — both are annotated with
       descriptions (Step 4's parameter gate reported them, and the fix landed with the
       other 25 findings in the same change).
-- [ ] Add descriptions to bare enums: `OnConflict` (`skip`/`rename` need
-      behavior semantics), `AlbumIndexState`.
+- [ ] Add a description to the bare `AlbumIndexState` enum (state meanings:
+      `idle`/`running`/`completed`/`canceled`/`failed`). `OnConflict` and
+      `AssignOutcome` already carry value semantics.
 - [ ] Decide a naming convention and document it: snake query params
       (`on_conflict`, `auto_rename`) vs camel bodies (`onConflict`) vs mixed
       path styles with verb-doubling (`/get/get-data`). Path changes are
@@ -238,7 +262,114 @@ without path parameters, 11 query parameters undocumented, `Value` bodies on
 typed handlers, `FileEntry` orphaned); those findings are fixed in the same
 change so the gate stays green.
 
+### Step 5: Review findings to investigate
+
+A review of the branch on 2026-09-28 probed the gate for drift it would not
+report, and the artifact and the source for claims that no longer hold. Every
+item below is a pointer: confirm it against the code and the artifact first, and
+fix it if it does. The evidence recorded is what the probe saw, and the fix is
+the direction to take rather than a decision already made. The three-way gate
+itself — source scan against the committed artifact, and Rocket's mounted route
+table against the served one — held up under the probe, as did every `[x]` task
+in this plan except the one closed above.
+
+High:
+
+- [ ] A route table outside `SCANNED_MODULES` is invisible to the source gate.
+      The list (`utils/openapi-sanity/src/modules.rs`) names five modules and no
+      rule fails when a `routes![...]` block exists elsewhere under `router/`: a
+      probe tree whose sixth module mounted an annotated but undocumented
+      `/secret?<token>` handler produced no finding about it. `/assets/<file..>`
+      (`backend/src/router/builder.rs`) is already such a route, held out of the
+      contract by the hand-written exclusion in
+      `backend/src/tests/openapi_contract.rs` and by the open static-route-policy
+      task below — which also contradicts this plan's opening note that route
+      coverage was already complete. The runtime test `every_mounted_route_is_documented`
+      catches the case, but only at `cargo test` time and only for routes Rocket
+      actually mounts, and the guard in `backend/src/tests/route_scan.rs`
+      hardcodes the same five names, so it detects removals and not additions.
+      Investigate deriving the scanned list from the `mount()` calls in
+      `router/builder.rs`, or failing on any route table no scanned module holds.
+- [ ] A body type the analyzer cannot name is reported as drift instead of
+      skipped. `body_drift` (`utils/openapi-sanity/src/params.rs`) substitutes
+      the string `a type this analyzer cannot name` for an unnamed argument and
+      compares it like a name, so it can only mismatch; `body_type` in
+      `utils/openapi-sanity/src/handlers.rs` returns no name for a tuple, a slice
+      or a reference. The query rule skips the same situation deliberately.
+      Confirm with a fixture, then make the body rule skip what it cannot read.
+- [ ] Parameter types are never compared. P1–P3 check names, sets and `required`,
+      so a query parameter declared `type: string` while the handler takes `i64`
+      passes, and `PRIMITIVE_TYPES` already maps JSON primitives to Rust
+      spellings for bodies. Read the override representation first: this
+      repository sets `#[schema(value_type = String)]` on enum variants, so a
+      declared type and the Rust type legitimately differ and a naive rule would
+      false-positive on every such field.
+- [ ] Mechanism 3 is partial and the strategy list does not say so. Only the 401
+      contract is checked among responses: no rule requires an operation to
+      declare a success response, or checks status families against what a guard
+      can produce — the 20 `GuardReadOnlyMode` routes answer 405 and, as the 401
+      task records, one of them declares it. Mark the mechanism partial in the
+      strategy section, then decide whether a status-family rule belongs in this
+      tool or in the backend contract test.
+
+Medium:
+
+- [ ] The `required` rule is vacuous for a parameter it cannot bind to a plain
+      argument: `plain_argument` matches `ArgKind::Plain` by name, so a
+      struct-bound parameter, or a guard that shares the parameter's name, gets
+      no check and no note. Confirm whether any current route is in that shape,
+      then resolve the struct's fields or state the limit in the rule's docs.
+- [ ] `build_script_scans_with_the_shared_analyzer`
+      (`backend/src/tests/route_scan.rs`) asserts that `build.rs` contains the
+      strings `openapi_sanity::scan_routes` and `openapi_sanity::scan_handlers`.
+      It fails on a spelling change that keeps the shared analyzer, and passes on
+      a build script that adds a second, private scanner beside it. Replace it
+      with a behavioural assertion — generating a spec from a fixture tree
+      through the entry point `build.rs` uses is the cheapest. Low effort.
+- [ ] `AUTH_POLICY` is repository-specific but lives in the crate
+      (`utils/openapi-sanity/src/auth.rs`). Against any other router tree the
+      checker emits one "auth policy entry … names an operation the document does
+      not declare" per entry — about sixty findings for a two-operation spec.
+      Decide whether the crate is single-repository, which the crate docs and the
+      README should then say, or whether the policy becomes a file the repository
+      owns and the checker loads; either way report the unclassified remainder as
+      one summary instead of one line per entry.
+- [ ] `/get/test/` is written out where it must agree across three places:
+      `openapi_public::TEST_ONLY_PATH_PREFIX`, the `--exclude-prefix` argument of
+      the `openapi-sanity` recipe in the `justfile`, and the prefix each test
+      passes. A second test-only prefix added to only some of them is either
+      stripped from the artifact and still gated, or gated and published. Add a
+      test that reads the recipe and asserts it matches the Rust constant. Low
+      effort.
+
 ## Progress
+
+- 2026-09-28: Reviewed the branch against the goal it states — routes annotated
+  and documented, authentication tracked, inputs and outputs described — and
+  recorded what the probe found as Step 5, each item as something to confirm
+  before fixing. The gate's structure held up: source scan against the
+  committed artifact, Rocket's mounted route table against the served one, and
+  negative self-checks for each. The gaps are coverage rather than correctness
+  — a `routes![]` outside `SCANNED_MODULES` is invisible to the source gate,
+  parameter types are never compared, an unnamed body type is reported as
+  drift, and the response side is largely ungated, with the largest data
+  response (`/get/metadata/{asset_id}`) naming no schema. Two claims in this
+  plan did not survive checking: the route that was said to be missing from the
+  spec (closed above) and the note that route coverage was already complete.
+
+- 2026-09-28: Reviewed every unchecked task against the current tree and the
+  committed artifact. Closed the `renew-hash-token` task as
+  premise-not-reproducible: the route is annotated, mounted, in the generated
+  paths, and has been in `openapi.json` since its first commit — at writing
+  time there was no committed spec (gitignored) and no `openapi.rs`
+  (build.rs-generated), so the claim came from a stale artifact, and the
+  coverage test it asked for now exists. Refreshed the other task bodies with
+  current measurements: 205 description-less reference rows / 36 of 45
+  schemas; `PrefetchReturn.resolvedShareOpt` carries `oneOf: [null, …]` in the
+  artifact while the reference still renders `any`/`{}`; six operations (not
+  four) carry multi-line summaries that split the generated headings;
+  `AlbumIndexState` is the last bare enum (`OnConflict`, `AssignOutcome`
+  documented).
 
 - 2026-09-28: Implemented Step 4 as `check_params`, the fifth rule group,
   chained into `openapi-sanity check` after the contract, tag and auth rules.
