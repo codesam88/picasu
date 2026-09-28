@@ -409,6 +409,32 @@ Relevant code: `backend/src/process/exif.rs` and
 
 ## Follow-up Status
 
+2026-09-28 — **Sidecar override semantics implemented (amends decision 6 of
+`.plan/exiftool-metadata-engine.md`).** `XmpSource` now carries provenance —
+`Sidecar(Option<record>)` vs `Image(Option<record>)` — and a sidecar's
+_existence_ (not its readability, not its content) selects the regime: with a
+sidecar, tags/description/rating/title come from the sidecar alone (absent ⇒
+empty, present-blank authoritative, no IPTC/PNG fall-through, no tag union);
+without one, the import precedence (XMP > IIM > PNG-text, tags unioned)
+stands. Two end-to-end reds proved the review bugs: an embedded IPTC keyword
+removed via `/put/edit_tag` no longer resurrects on reindex, and a cleared
+description stays cleared despite the file's IPTC caption. Nine pins flipped
+(old → new contract stated in each comment, citing this section): corrupt
+sidecar now withholds _every_ managed field (reversing decision 6's "IPTC
+still fills"), unreadable sidecar same, blank-sidecar-value authoritative
+while blank-embedded still falls through (the split needed provenance), plus
+three rebuild scenarios that had asserted the union. Accepted trade-offs
+pinned by name: an external partial sidecar suppresses the file's tags
+(`an_external_partial_sidecar_suppresses_the_files_own_tags`, with the bucket
+confirmed non-leaking via `NATIVE_KEYS` by-name exclusion); a corrupt sidecar
+shows no managed fields even when the bytes carry them (repaired by the next
+app edit). Residuals: video + sidecar inherits the rule but has no dedicated
+test; scenario _filenames_ keep their old stems because `.plan` progress notes
+reference them (their `name:` fields and headers state the current contract).
+Mutations: restore-IPTC-union (11 kills), restore-scalar-fall-through (5),
+consult-image-on-unreadable (1), no-key record ⇒ Image (2). Gates: `cargo test
+-p picasu` 471 (2 ignored), snapfab 75, `just backend-check`, `cargo deny`,
+`just docs-check`, `just frontend-test` (vitest 75, Playwright 40).
 2026-09-28 — **Sidecar/cache divergence fixed.** All four edit endpoints
 (tag/description/rating/album) now go through one request-level transaction,
 `process::sidecar_edit::commit_metadata_edits`: capture each sidecar's bytes →

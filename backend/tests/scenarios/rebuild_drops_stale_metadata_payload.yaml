@@ -19,6 +19,14 @@ name: rebuild drops the stored metadata payload and re-derives it
 #
 # The watcher is disabled so the reindex it would trigger on the sidecar write
 # cannot produce the v2 keyword on the rebuild's behalf.
+#
+# The file's own keyword is asserted absent, which is the complete-authority rule:
+# `.plan/test-exif-xmp-handling.md`, Follow-up Issues → "Sidecar Edits Must
+# Override Embedded Metadata" (amending decision 6 of
+# `.plan/exiftool-metadata-engine.md`) makes a sidecar the whole record for
+# `tags`, so the image's IIM 2:25 keywords are not the asset's tags. This
+# scenario used to assert the union. The file's IIM record is still demonstrably
+# read by this rebuild — the two unmodelled datasets below can only come from it.
 given:
   - photo: /e2e_rebuild_stale/photo.jpg
     tags:
@@ -93,7 +101,7 @@ then:
   - response.json.tags:
       contains: e2e_rebuild_stale_sidecar_v2
   - response.json.tags:
-      contains: e2e_rebuild_stale_embedded
+      not_contains: e2e_rebuild_stale_embedded
   # The whole payload was re-derived, not partially patched: the fields that
   # come from the raw file's own bytes are back too.
   - response.json.width: 2

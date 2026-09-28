@@ -244,6 +244,22 @@ backend-check`, `just utils-check`, `just docs-check`.
 
 ## Progress
 
+- 2026-09-28 — **Decision 6 amended** (by the "Sidecar Edits Must Override
+  Embedded Metadata" follow-up in `.plan/test-exif-xmp-handling.md`, which the
+  user requested after review found edits being resurrected by embedded IPTC on
+  reindex). Old rule: "a sidecar replaces the XMP source only; IPTC and
+  PNG-text still fill native fields no XMP source supplied." New rule: a
+  sidecar's **existence** selects the regime — with a sidecar, all managed
+  fields (tags, description, rating, title) come from the sidecar alone
+  (absent ⇒ empty, present-blank authoritative); file families (IPTC, PNG-text,
+  embedded XMP) fill them only when no sidecar exists. The Iteration-2 pins
+  that encoded the old rule (`corrupt sidecar still lets IPTC fill`,
+  `sidecar replaces XMP source and image IPTC still fills`, blank fall-through
+  for sidecar values) were flipped with the amendment cited in their comments;
+  scenario filenames keep their stems because this file's progress notes
+  reference them. Accepted consequences: an external partial sidecar
+  suppresses the file's tags; a corrupt sidecar withholds every managed field
+  until the next app edit rewrites it.
 - 2026-09-28 — Iteration 6 done, plan closed. snapfab now writes fixture
   metadata through ExifTool (decision 7): `PhotoSpec`'s surface is unchanged,
   the internals map to one `-stay_open` call per file over a `thread_local`

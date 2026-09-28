@@ -23,13 +23,19 @@ name: rebuild reconstructs metadata from the raw file plus its sidecar
 #   * from the raw JPEG's own bytes — `ext`, decoded `width`/`height`, and a
 #     non-empty `exifVec`;
 #   * from the raw file's unmodelled IIM record — the `furtherMetadata` bucket;
-#   * from the sidecar — its keyword, its caption (XMP outranks the image's own
-#     `IPTC:Caption-Abstract`/`XMP-dc:Description`, so a sidecar caption that
-#     surfaces here is the sidecar being read as the XMP source), and its rating.
+#   * from the sidecar — its keyword, its caption (the sidecar is the record for
+#     the managed fields, so a sidecar caption that surfaces here is the sidecar
+#     winning outright, not merely outranking the image's own
+#     `IPTC:Caption-Abstract`/`XMP-dc:Description`), and its rating.
 #
-# `tags` is a union of the sidecar's `dc:subject` and the image's IIM 2:25
-# keywords, so both are asserted; see
-# `sidecar_xmp_is_authoritative_over_embedded_xmp` for that rule.
+# The file's own keyword is asserted *absent*, which is the complete-authority
+# rule and not a loss of coverage: `.plan/test-exif-xmp-handling.md`, Follow-up
+# Issues → "Sidecar Edits Must Override Embedded Metadata" (amending decision 6
+# of `.plan/exiftool-metadata-engine.md`) makes a sidecar the whole record for
+# `tags`, so the image's IIM 2:25 keywords are not the asset's tags. This
+# scenario used to assert the union. The keyword still reaches the *unmodelled*
+# half of the metadata below, so the file's own IIM record is demonstrably being
+# read by the very same rebuild.
 #
 # The rebuilt asset is discovered by *path*, not by the id the first index
 # issued: rebuild assigns a fresh random `asset_id`, so depending on the old one
@@ -91,11 +97,12 @@ then:
   # From the sidecar.
   - response.json.description: Caption written to the sidecar
   - response.json.rating: 4
+  # The sidecar's `dc:subject` is the whole tag set; the image's IIM 2:25
+  # keywords are suppressed, not unioned in.
   - response.json.tags:
       contains: e2e_rebuild_meta_sidecar
-  # Unioned with the image's own IIM keywords, not suppressed by the sidecar.
   - response.json.tags:
-      contains: e2e_rebuild_meta_embedded
+      not_contains: e2e_rebuild_meta_embedded
   # The on-disk thumbnail the pipeline derives, so the rebuild produced a
   # servable asset rather than a metadata row alone.
   - thumb_exists: $photo

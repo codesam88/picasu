@@ -1,24 +1,34 @@
-name: a sidecar replaces the XMP source while the image's IPTC still fills tags
-# Sidecar precedence, safe direction — the control for
-# `corrupt_xmp_sidecar_suppresses_embedded_xmp`.
+name: a sidecar is the whole managed record, so the image's IPTC does not fill it
+# Sidecar precedence, readable direction — the control for
+# `corrupt_xmp_sidecar_suppresses_embedded_xmp`, and the scenario the
+# complete-authority rule is named after.
+#
+# `.plan/test-exif-xmp-handling.md`, Follow-up Issues → "Sidecar Edits Must
+# Override Embedded Metadata", which amends decision 6 of
+# `.plan/exiftool-metadata-engine.md` ("a sidecar replaces the XMP source only —
+# IPTC and PNG-text still fill native fields no XMP source supplied").
 #
 # Same two files as that scenario, with a sidecar that parses. The JPEG still
 # carries an embedded packet, and snapfab's writer has put the same keyword in
-# that packet and in an IIM record; the sidecar holds a packet of its own, with
-# a caption of its own.
+# that packet and in an IIM record; the sidecar holds a packet of its own, with a
+# caption of its own. Both halves of the contract are in one response:
 #
-# The contract settled in `.plan/exiftool-metadata-engine.md` decision 6 has two
-# halves, and this scenario pins both in one response:
+#   * The sidecar is the **record** for the managed fields, so the description is
+#     the sidecar's caption. A sidecar wins because that is where the app writes
+#     metadata back (`PUT /put/edit_tag`); reading the embedded packet or the
+#     file's own IIM caption instead would undo the edit with a stale value.
+#   * The image's own IIM 2:25 keywords are **not** unioned in. The sidecar never
+#     mentions `e2e_sidecar_embedded`, so the asset does not have that tag. Under
+#     decision 6 this keyword was indexed and the assertion said `contains`,
+#     which is exactly the behaviour that made a removed tag resurrect on the
+#     next index; the scenario
+#     `edit_tag_removing_an_embedded_iptc_keyword_survives_a_reindex` is that bug
+#     end to end.
 #
-#   * The sidecar is the **XMP source**, so the description is the sidecar's
-#     caption. A sidecar wins the XMP source because that is where the app
-#     writes metadata back (`PUT /put/edit_tag`); reading the embedded packet
-#     instead would undo the edit with a stale value. This assertion is what
-#     carries the scenario's name.
-#   * The image's own IIM record is a *different* source and is unioned in, so
-#     the file's keyword is indexed even though the sidecar never mentioned it.
-#     This file used to assert that keyword `absent`, which held only of the
-#     retired byte scan (it resolved one source and read nothing else).
+# The two tag assertions are complementary and both are needed: `contains` alone
+# would pass on a sidecar that was ignored in favour of the file, and
+# `not_contains` alone would pass on a sidecar that was read as "no metadata at
+# all".
 #
 # Asserted on the metadata response rather than on `GET /get/get-tags`, because
 # that is the one call whose body carries both fields; the harness only
@@ -59,8 +69,12 @@ then:
   - response.status: 200
   - response.json.tags:
       contains: e2e_sidecar_written
-  # The image's own IIM 2:25 keywords are unioned in rather than suppressed.
+  # The image's own IIM keywords are suppressed rather than unioned in, so a
+  # removal in the app survives a reindex. See the header.
   - response.json.tags:
-      contains: e2e_sidecar_embedded
-  # XMP outranks IPTC: the sidecar's caption, not the fixture's own.
+      not_contains: e2e_sidecar_embedded
+  # The caption is the sidecar's, not the file's own — which is the same rule for
+  # a scalar, and is what
+  # `clearing_a_description_survives_a_reindex_despite_the_files_iptc_caption`
+  # drives to its end.
   - response.json.description: "Caption written to the sidecar"

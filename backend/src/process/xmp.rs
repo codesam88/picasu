@@ -122,27 +122,32 @@ pub fn discover_sidecar(path: &Path) -> Option<PathBuf> {
 /// scale.
 ///
 /// The sidecar is the exception, and the exception is one extra read: a sidecar
-/// is a second file, and its XMP replaces the image's own packet while the
-/// image's IIM and text chunks keep filling what that packet left empty (see
-/// [`map_native_fields`]). Any failure to read is the documented non-fallible
-/// contract, as it is for `exifVec`: a file `ExifTool` cannot parse yields
-/// empty fields rather than an error, so a damaged image still indexes.
+/// is a second file. Any failure to read is the documented non-fallible
+/// contract, as it is for `exifVec`: a file `ExifTool` cannot parse yields empty
+/// fields rather than an error, so a damaged image still indexes.
 pub fn asset_metadata_for(path: &Path, image: Option<&Value>) -> AssetMetadata {
-    // A sidecar that exists is authoritative for the *XMP* fields whether or not
-    // it parses: the sidecar is where the app writes metadata back
-    // (`PUT /put/edit_tag`), so falling back to the packet still inside the
-    // image would undo the edit. Its presence is what takes the XMP source away
-    // — not its content, and not its readability.
+    // Which *file* the XMP-family record came from is decided here and nowhere
+    // else, because it is only known here: `discover_sidecar` is the read layer's
+    // question, and the mapping layer's answer depends on it. The mapping must not
+    // infer it from the record's contents — a packet that happens to carry only
+    // unmanaged properties is indistinguishable from a managed one, and reading
+    // provenance off the data is how a merge rule ends up guessing.
     let sidecar = discover_sidecar(path);
     let sidecar_record = sidecar
         .as_deref()
         .and_then(|sidecar| read_metadata_record(sidecar).ok());
-    let xmp = match &sidecar_record {
-        Some(record) => XmpSource::Record(record),
-        // A sidecar that exists but yields no record — corrupt markup, or a
-        // read that failed — still takes the XMP source away from the image.
-        None if sidecar.is_some() => XmpSource::Unavailable,
-        None => image.map_or(XmpSource::Unavailable, XmpSource::Record),
+    let xmp = match sidecar {
+        // A sidecar that exists is the record for the managed fields whether or
+        // not it parses: it is where the app writes metadata back
+        // (`PUT /put/edit_tag`), so falling back to anything in the image — the
+        // embedded packet, the IIM record, the text chunks — would undo the
+        // edit. Its *presence* is what takes them away, not its content and not
+        // its readability, which is why this arm matches on `Some(_)` and passes
+        // the record through as it is: a sidecar that could not be read, and one
+        // that parsed into a record with no XMP in it, are the same override with
+        // nothing in it.
+        Some(_) => XmpSource::Sidecar(sidecar_record.as_ref()),
+        None => XmpSource::Image(image),
     };
     map_asset_metadata(&xmp, image)
 }
@@ -160,39 +165,95 @@ pub fn native_metadata_for(path: &Path, image: Option<&Value>) -> NativeMetadata
 
 /// Resolve the native fields of a standalone XMP packet — a `.xmp` sidecar read
 /// as an asset in its own right, which is what a dir-album's `.albuminfo.xmp`
-/// is. Such a file carries no IPTC and no text chunks, so only its XMP counts.
+/// is. Such a file carries no IPTC and no text chunks, so only its XMP counts,
+/// and a failed read is the same empty answer a photo's unreadable sidecar gives.
 pub fn read_xmp_packet(path: &Path) -> NativeMetadata {
     match read_metadata_record(path) {
-        Ok(record) => map_native_fields(&XmpSource::Record(&record), None),
-        Err(_) => NativeMetadata::default(),
+        Ok(record) => map_native_fields(&XmpSource::Sidecar(Some(&record)), None),
+        Err(_) => map_native_fields(&XmpSource::Sidecar(None), None),
     }
 }
 
-/// The record the XMP-family fields are read from, or the fact that there is
-/// none.
+/// Which file the XMP-family record was read from, and whether there is one.
 ///
-/// Which file that record came from is the read layer's decision, made before
-/// the mapping runs; the mapping itself only sees a record or its absence. The
-/// absence is not the same as "no XMP anywhere": a sidecar that exists and
-/// yields nothing passes [`Unavailable`], not the image's own packet.
+/// The provenance is in the type because the mapping's contract depends on it and
+/// the read layer is the only place that can know it: "the packet is in the image"
+/// and "the packet is in the `.xmp` beside it" are the same record with different
+/// answers, and nothing in the record says which it is. The retired byte scan did
+/// not need to know — it resolved a single source and read nothing else — and the
+/// engine swap is what made the distinction load-bearing.
+///
+/// The record is optional in both variants, and the two `None`s are *not* the same
+/// answer: `Sidecar(None)` is a sidecar that exists and cannot be read, which
+/// withholds the managed fields, while `Image(None)` is an image with no embedded
+/// packet, which leaves the IIM and text families to fill them.
 enum XmpSource<'a> {
-    Record(&'a Value),
-    Unavailable,
+    /// The record is a `.xmp` sidecar beside the asset — the file the app's edit
+    /// endpoints write to. It is the **complete authority** for the managed
+    /// fields: the image's record is not consulted at all, whether or not the
+    /// sidecar parsed.
+    Sidecar(Option<&'a Value>),
+    /// No sidecar: the record is the image's own embedded packet, and the IIM and
+    /// text-chunk families complete what that packet leaves empty. `None` is an
+    /// image with no XMP packet in it.
+    Image(Option<&'a Value>),
 }
 
 impl<'a> XmpSource<'a> {
     fn record(&self) -> Option<&'a Value> {
         match self {
-            Self::Record(record) => Some(record),
-            Self::Unavailable => None,
+            Self::Sidecar(record) | Self::Image(record) => *record,
         }
+    }
+
+    /// Whether a sidecar is the record. A sidecar's existence is the whole of the
+    /// override rule — not whether it parsed, and not what it holds.
+    fn is_sidecar(&self) -> bool {
+        matches!(self, Self::Sidecar(_))
     }
 }
 
 /// Map `ExifTool` records onto [`NativeMetadata`]. Pure: this is the function
 /// the unit tests drive with recorded payloads.
 ///
-/// # The mapping
+/// # The two regimes
+///
+/// A sidecar's **existence** decides which of the two tables below applies. Its
+/// content and its readability do not.
+///
+/// ## A sidecar exists — the sidecar alone
+///
+/// | field         | source                          |
+/// | ------------- | ------------------------------- |
+/// | `description` | `XMP-dc:Description`            |
+/// | `title`       | `XMP-dc:Title`                  |
+/// | `rating`      | `XMP-xmp:Rating`                |
+/// | `tags`        | `XMP-dc:Subject`                |
+///
+/// A field the sidecar does not carry is **empty**: no IIM fallback, no text
+/// fallback, no keyword union. A value that is present but blank is the same
+/// answer as an absent one, because `xmp_write` writes an emptied managed field
+/// as a *removal* — so the two cannot be told apart in the file, and treating
+/// them differently would mean a clear that the writer already committed to.
+///
+/// This is the contract settled in `.plan/test-exif-xmp-handling.md`, Follow-up
+/// Issues → "Sidecar Edits Must Override Embedded Metadata", and it amends
+/// decision 6 of `.plan/exiftool-metadata-engine.md`, which had narrowed the
+/// rule to "a sidecar replaces the XMP source only — IPTC and PNG-text still
+/// fill". The amendment is the fix for a resurrection bug: a keyword removed
+/// through `PUT /put/edit_tag` left the file's IIM record untouched, the next
+/// index re-unioned it, and the tag came back.
+///
+/// The cost is a sidecar that carries only some managed properties — one another
+/// tool wrote — suppresses everything the file holds for the fields it omits.
+/// That is accepted rather than solved: nothing in the packet distinguishes "no
+/// tags" from "this tool does not write tags", and a merge that guessed would be
+/// wrong in whichever direction it guessed. The app's own writes do not have the
+/// problem, because `write_sidecar_for` names the complete managed set on every
+/// edit. `an_external_partial_sidecar_suppresses_the_images_iptc_keywords` pins
+/// the consequence, by name.
+///
+/// ## No sidecar — the import precedence
 ///
 /// | field         | 1st                            | 2nd                                | 3rd               |
 /// | ------------- | ------------------------------ | ---------------------------------- | ----------------- |
@@ -210,8 +271,8 @@ impl<'a> XmpSource<'a> {
 /// a file that carries the field twice in two families is described by the one
 /// the app would have written. A value that is present but blank does not count
 /// as supplied: an empty `rdf:Bag` or an empty `rdf:Alt` is what a writer emits
-/// when a field was cleared, and it must not shadow the family that still has
-/// the value.
+/// when a field was cleared, and in a file that is a cleared field, not a
+/// request to look further down.
 ///
 /// `title` takes IIM 2:05 `ObjectName` rather than 2:105 `Headline` because
 /// 2:05 is the dataset the IPTC↔XMP mapping pairs with `dc:title` (2:105 pairs
@@ -234,18 +295,22 @@ impl<'a> XmpSource<'a> {
 /// boundary, so it is left out of the index rather than guessed at.
 fn map_native_fields(xmp: &XmpSource<'_>, image: Option<&Value>) -> NativeMetadata {
     let record = xmp.record();
+    // The image's own record completes the packet only when the packet is the
+    // image's own. With a sidecar there is nothing to complete: the sidecar is
+    // the managed record, so `import` is empty and every lower family drops out.
+    let import = if xmp.is_sidecar() { None } else { image };
     NativeMetadata {
-        tags: keywords(record, image),
+        tags: keywords(record, import),
         description: first_text(&[
             field(record, XMP_DC, DESCRIPTION),
-            iim_field(image, CAPTION_ABSTRACT),
-            field(image, PNG, DESCRIPTION),
+            iim_field(import, CAPTION_ABSTRACT),
+            field(import, PNG, DESCRIPTION),
         ]),
         rating: raw_field(record, XMP_XMP, RATING).and_then(rating_from),
         title: first_text(&[
             field(record, XMP_DC, TITLE),
-            iim_field(image, OBJECT_NAME),
-            field(image, PNG, TITLE),
+            iim_field(import, OBJECT_NAME),
+            field(import, PNG, TITLE),
         ]),
     }
 }
@@ -333,10 +398,15 @@ fn map_asset_metadata(xmp: &XmpSource<'_>, image: Option<&Value>) -> AssetMetada
 ///   family it is in. [`NATIVE_KEYS`] is the single list of those keys, built
 ///   from the same group and tag constants the native mapping reads, so
 ///   renaming a constant cannot desynchronise the two.
-/// * The XMP family is read from the XMP source record and the IIM and text
-///   chunks from the image's own, exactly as the native fields are. A sidecar
-///   therefore masks the image's own XMP packet here too, instead of
-///   resurrecting the fields an edit replaced.
+/// * The XMP family is read from the XMP source record, so a sidecar masks the
+///   image's own XMP packet here too, instead of resurrecting the fields an edit
+///   replaced. The IIM and text chunks are read from the image's own record
+///   **whether or not a sidecar exists** — that asymmetry with
+///   [`map_native_fields`] is deliberate, and it is what makes [`NATIVE_KEYS`]
+///   load-bearing here: the bucket is a report on the file, but a value the
+///   mapping consumed stays out of it by key name, in every group, so a keyword
+///   the sidecar suppressed cannot reappear under its own name
+///   (`a_suppressed_iptc_value_does_not_reach_the_bucket_under_its_own_name`).
 fn map_further_fields(xmp: &XmpSource<'_>, image: Option<&Value>) -> BTreeMap<String, String> {
     let mut further = BTreeMap::new();
     collect_further_from(xmp.record(), is_xmp_family, &mut further);
@@ -475,10 +545,11 @@ fn is_png_container_property(group: &str, tag: &str) -> bool {
     group == PNG && PNG_CONTAINER_PROPERTIES.contains(&tag)
 }
 
-/// The keyword carriers, unioned. See [`map_native_fields`] for why this is the
-/// one field that is not first-wins. An IIM record's keywords are read from
-/// every group name in [`IIM_GROUPS`], for the same reason the scalars are: the
-/// numbered records hold the same dataset.
+/// The keyword carriers, unioned — but only for an image with no sidecar. See
+/// [`map_native_fields`] for why this is the one field that is not first-wins,
+/// and for the rule that a sidecar's `dc:subject` is the whole tag set. An IIM
+/// record's keywords are read from every group name in [`IIM_GROUPS`], for the
+/// same reason the scalars are: the numbered records hold the same dataset.
 fn keywords(xmp: Option<&Value>, image: Option<&Value>) -> HashSet<String> {
     let mut tags = HashSet::new();
     tags.extend(keyword_items(raw_field(xmp, XMP_DC, SUBJECT)));
@@ -692,7 +763,7 @@ mod tests {
     /// source and nothing else is needed.
     #[test]
     fn a_sidecar_packet_fills_every_native_field() {
-        let data = map_native_fields(&XmpSource::Record(&recorded_sidecar()), None);
+        let data = map_native_fields(&XmpSource::Sidecar(Some(&recorded_sidecar())), None);
         assert_eq!(
             data,
             NativeMetadata {
@@ -709,7 +780,7 @@ mod tests {
     /// one source and no fallback.
     #[test]
     fn an_iptc_record_fills_what_iptc_carries() {
-        let data = map_native_fields(&XmpSource::Unavailable, Some(&recorded_iptc_only()));
+        let data = map_native_fields(&XmpSource::Image(None), Some(&recorded_iptc_only()));
         assert_eq!(data.tags, HashSet::from(["a".to_string(), "b".to_string()]));
         assert_eq!(data.description.as_deref(), Some("IPTC Caption"));
         assert_eq!(data.title.as_deref(), Some("IPTC Object Name"));
@@ -722,7 +793,7 @@ mod tests {
     /// finds, so a chunk named `Rating` is not a rating the app may read.
     #[test]
     fn png_text_chunks_fill_description_and_title_last() {
-        let data = map_native_fields(&XmpSource::Unavailable, Some(&recorded_png_text_chunks()));
+        let data = map_native_fields(&XmpSource::Image(None), Some(&recorded_png_text_chunks()));
         assert_eq!(data.description.as_deref(), Some("A Description"));
         assert_eq!(data.title.as_deref(), Some("The Title"));
         assert_eq!(data.rating, None);
@@ -742,20 +813,71 @@ mod tests {
             json!({ "XMP-dc:Title": "Packet Title", "XMP-dc:Description": "Packet caption" }),
         );
 
-        let data = map_native_fields(&XmpSource::Record(&xmp), Some(&image));
+        let data = map_native_fields(&XmpSource::Image(Some(&xmp)), Some(&image));
         assert_eq!(data.title.as_deref(), Some("Packet Title"));
         assert_eq!(data.description.as_deref(), Some("Packet caption"));
     }
 
-    /// A value that is present but blank is not a supplied value: a writer
-    /// that cleared `dc:description` leaves an empty `rdf:Alt`, and the caption
-    /// the file still carries in IIM must survive it.
+    /// A value that is present but blank is not a supplied value **when the
+    /// packet is the image's own** — the import precedence, where a higher
+    /// family that carries nothing must not shadow a lower one that does.
+    /// (The sidecar case is the opposite rule and is pinned by
+    /// `a_blank_sidecar_value_is_authoritative_and_does_not_fall_through`.)
     #[test]
-    fn a_blank_xmp_value_falls_through_to_iptc() {
+    fn a_blank_embedded_xmp_value_falls_through_to_iptc() {
         let xmp = json!({ "XMP-dc:Title": "", "XMP-dc:Description": "   " });
-        let data = map_native_fields(&XmpSource::Record(&xmp), Some(&recorded_iptc_only()));
+        let data = map_native_fields(&XmpSource::Image(Some(&xmp)), Some(&recorded_iptc_only()));
         assert_eq!(data.title.as_deref(), Some("IPTC Object Name"));
         assert_eq!(data.description.as_deref(), Some("IPTC Caption"));
+    }
+
+    /// A blank in a **sidecar** is the opposite: the sidecar is the complete
+    /// authority for the managed fields, so a blank (or an absent property) is
+    /// the asset's answer, not a reason to look at the file.
+    ///
+    /// This is the mapping half of the contract settled in
+    /// `.plan/test-exif-xmp-handling.md`, Follow-up Issues → "Sidecar Edits Must
+    /// Override Embedded Metadata", which amends decision 6 of
+    /// `.plan/exiftool-metadata-engine.md` ("a sidecar replaces the XMP source
+    /// only"): the IIM and PNG-text families no longer complete a sidecar at
+    /// all. It is also what makes the writer's choice to *remove* an empty
+    /// managed property work — a blank and an absence are the same answer, so
+    /// the removal needs no tombstone.
+    #[test]
+    fn a_blank_sidecar_value_is_authoritative_and_does_not_fall_through() {
+        let sidecar = json!({ "XMP-dc:Title": "", "XMP-dc:Description": "   " });
+        let data = map_native_fields(
+            &XmpSource::Sidecar(Some(&sidecar)),
+            Some(&recorded_iptc_only()),
+        );
+        assert_eq!(data.title, None);
+        assert_eq!(data.description, None);
+    }
+
+    /// The accepted trade-off, at the mapping layer: a **partial external
+    /// sidecar** — one that names only a description — suppresses the file's own
+    /// IIM keywords. The asset has no tags, because the sidecar does not list
+    /// any, and no rule could tell a deliberately empty tag set from a packet
+    /// written by a tool that has no opinion about tags.
+    ///
+    /// The scope where this cannot bite is the app's own writes:
+    /// `xmp_write::write_sidecar_for` names `dc:subject`, `dc:description` and
+    /// `xmp:Rating` on every edit and names an empty one as a removal, so an
+    /// asset the app has edited always carries the complete managed set. The
+    /// partial case is a sidecar the app did not write.
+    #[test]
+    fn an_external_partial_sidecar_suppresses_the_images_iptc_keywords() {
+        let sidecar = json!({ "XMP-dc:Description": "Only a description" });
+        let data = map_native_fields(
+            &XmpSource::Sidecar(Some(&sidecar)),
+            Some(&recorded_iptc_only()),
+        );
+        assert_eq!(data.description.as_deref(), Some("Only a description"));
+        assert!(
+            data.tags.is_empty(),
+            "the sidecar is the complete authority for `tags`: {:?}",
+            data.tags
+        );
     }
 
     /// IPTC outranks PNG text for the same reason XMP outranks IPTC: the higher
@@ -764,7 +886,7 @@ mod tests {
     fn iptc_supplies_a_field_in_preference_to_png_text() {
         let mut image = recorded_iptc_only();
         merge(&mut image, recorded_png_text_chunks());
-        let data = map_native_fields(&XmpSource::Unavailable, Some(&image));
+        let data = map_native_fields(&XmpSource::Image(None), Some(&image));
         assert_eq!(data.title.as_deref(), Some("IPTC Object Name"));
         assert_eq!(data.description.as_deref(), Some("IPTC Caption"));
     }
@@ -778,7 +900,7 @@ mod tests {
     #[test]
     fn an_iim_record_exiftool_files_as_iptc2_or_iptc3_fills_the_same_fields() {
         let data = map_native_fields(
-            &XmpSource::Unavailable,
+            &XmpSource::Image(None),
             Some(&recorded_iptc_all_three_groups()),
         );
 
@@ -808,7 +930,7 @@ mod tests {
     #[test]
     fn the_standard_iim_record_outranks_a_numbered_one() {
         let data = map_native_fields(
-            &XmpSource::Unavailable,
+            &XmpSource::Image(None),
             Some(&recorded_iptc_numbered_records()),
         );
 
@@ -836,7 +958,7 @@ mod tests {
         let xmp = json!({ "XMP-dc:Subject": ["from_xmp", "shared"] });
         let image = json!({ "IPTC:Keywords": ["from_iptc", "shared"] });
 
-        let data = map_native_fields(&XmpSource::Record(&xmp), Some(&image));
+        let data = map_native_fields(&XmpSource::Image(Some(&xmp)), Some(&image));
         assert_eq!(
             data.tags,
             HashSet::from([
@@ -854,7 +976,7 @@ mod tests {
         let xmp = json!({ "XMP-dc:Subject": ["alpha", "beta"] });
         let image = json!({ "IPTC:Keywords": ["alpha", "beta"] });
 
-        let data = map_native_fields(&XmpSource::Record(&xmp), Some(&image));
+        let data = map_native_fields(&XmpSource::Image(Some(&xmp)), Some(&image));
         assert_eq!(
             data.tags,
             HashSet::from(["alpha".to_string(), "beta".to_string()])
@@ -869,7 +991,7 @@ mod tests {
     #[test]
     fn a_file_carrying_both_families_resolves_to_one_value_per_field() {
         let record = recorded_tagged_jpeg();
-        let data = map_native_fields(&XmpSource::Record(&record), Some(&record));
+        let data = map_native_fields(&XmpSource::Image(Some(&record)), Some(&record));
 
         assert_eq!(
             data.tags,
@@ -895,7 +1017,7 @@ mod tests {
         let xmp = json!({ "XMP-dc:Subject": "only_xmp" });
         let image = json!({ "IPTC:Keywords": "only_iptc" });
 
-        let data = map_native_fields(&XmpSource::Record(&xmp), Some(&image));
+        let data = map_native_fields(&XmpSource::Image(Some(&xmp)), Some(&image));
         assert_eq!(
             data.tags,
             HashSet::from(["only_xmp".to_string(), "only_iptc".to_string()])
@@ -909,7 +1031,7 @@ mod tests {
         let xmp = json!({ "XMP-dc:Subject": "" });
         let image = json!({ "IPTC:Keywords": [] });
 
-        let data = map_native_fields(&XmpSource::Record(&xmp), Some(&image));
+        let data = map_native_fields(&XmpSource::Image(Some(&xmp)), Some(&image));
         assert!(data.tags.is_empty());
     }
 
@@ -918,7 +1040,7 @@ mod tests {
     /// the file does not state. PNG text therefore contributes no tags.
     #[test]
     fn png_text_chunks_contribute_no_tags() {
-        let data = map_native_fields(&XmpSource::Unavailable, Some(&recorded_png_text_chunks()));
+        let data = map_native_fields(&XmpSource::Image(None), Some(&recorded_png_text_chunks()));
         assert!(
             data.tags.is_empty(),
             "a PNG text chunk has no keyword concept: {tags:?}",
@@ -934,11 +1056,11 @@ mod tests {
     fn a_rating_is_read_from_xmp() {
         let xmp = json!({ "XMP-xmp:Rating": 4 });
         assert_eq!(
-            map_native_fields(&XmpSource::Record(&xmp), None).rating,
+            map_native_fields(&XmpSource::Image(Some(&xmp)), None).rating,
             Some(4)
         );
         assert_eq!(
-            map_native_fields(&XmpSource::Record(&xmp), Some(&recorded_iptc_only())).rating,
+            map_native_fields(&XmpSource::Image(Some(&xmp)), Some(&recorded_iptc_only())).rating,
             Some(4)
         );
     }
@@ -961,7 +1083,7 @@ mod tests {
         ] {
             let record = json!({ "XMP-xmp:Rating": value.clone() });
             assert_eq!(
-                map_native_fields(&XmpSource::Record(&record), None).rating,
+                map_native_fields(&XmpSource::Image(Some(&record)), None).rating,
                 expected,
                 "XMP-xmp:Rating {value} should map to {expected:?}"
             );
@@ -1034,7 +1156,7 @@ mod tests {
     #[test]
     fn the_bucket_is_the_complement_of_the_native_keys_with_the_prefix_kept() {
         let record = recorded_kitchen_sink();
-        let native = map_native_fields(&XmpSource::Record(&record), Some(&record));
+        let native = map_native_fields(&XmpSource::Image(Some(&record)), Some(&record));
 
         // Control: the native mapping owns these, and they are all in the record.
         assert_eq!(native.title.as_deref(), Some("Garden Bloom"));
@@ -1061,7 +1183,7 @@ mod tests {
             );
         }
 
-        let bucket = map_further_fields(&XmpSource::Record(&record), Some(&record));
+        let bucket = map_further_fields(&XmpSource::Image(Some(&record)), Some(&record));
         assert_eq!(
             bucket,
             BTreeMap::from([
@@ -1095,7 +1217,7 @@ mod tests {
     #[test]
     fn no_native_key_is_repeated_in_the_bucket() {
         let record = recorded_kitchen_sink();
-        let bucket = map_further_fields(&XmpSource::Record(&record), Some(&record));
+        let bucket = map_further_fields(&XmpSource::Image(Some(&record)), Some(&record));
 
         for (group, tag) in NATIVE_KEYS.iter() {
             let prefixed = format!("{group}:{tag}");
@@ -1130,7 +1252,7 @@ mod tests {
     #[test]
     fn groups_that_are_not_written_metadata_stay_out_of_the_bucket() {
         let record = recorded_kitchen_sink();
-        let bucket = map_further_fields(&XmpSource::Record(&record), Some(&record));
+        let bucket = map_further_fields(&XmpSource::Image(Some(&record)), Some(&record));
 
         for group in [
             "IFD0",
@@ -1174,7 +1296,7 @@ mod tests {
             "PNG:Comment": "A Comment",
             "PNG:ZKeyword": "zlib text value"
         });
-        let bucket = map_further_fields(&XmpSource::Unavailable, Some(&record));
+        let bucket = map_further_fields(&XmpSource::Image(None), Some(&record));
 
         assert_eq!(
             bucket,
@@ -1198,7 +1320,7 @@ mod tests {
             "XMP-xmp:CreatorTool": "snapfab 1.0"
         });
         let image = recorded_iptc_only();
-        let bucket = map_further_fields(&XmpSource::Record(&sidecar), Some(&image));
+        let bucket = map_further_fields(&XmpSource::Sidecar(Some(&sidecar)), Some(&image));
 
         assert_eq!(
             bucket.get("XMP-xmp:CreatorTool").map(String::as_str),
@@ -1219,6 +1341,62 @@ mod tests {
         );
     }
 
+    /// The bucket is **unchanged** by the complete-authority rule, and that is a
+    /// separate decision rather than a consequence of it. A sidecar now withholds
+    /// the file's IIM and text values from the *managed* fields, and the bucket
+    /// still reads them from the file — so the one place a suppressed value
+    /// could reappear is here, and [`NATIVE_KEYS`] is what stops it.
+    ///
+    /// The exclusion is by key name, in every group, whichever source supplied
+    /// the value: so `IPTC:Keywords` and `IPTC2:Keywords` are both out of a
+    /// bucket built from an image whose sidecar says it has no tags, while the
+    /// datasets the app does not model are still reported. The bucket is the
+    /// complement of what the *mapping* consumes, and a consumed key does not
+    /// become visible again because the value it carried is now suppressed.
+    #[test]
+    fn a_suppressed_iptc_value_does_not_reach_the_bucket_under_its_own_name() {
+        let sidecar = json!({ "XMP-dc:Description": "Only a description",
+                              "XMP-xmp:CreatorTool": "some other tool" });
+        let image = recorded_iptc_numbered_records();
+        let bucket = map_further_fields(&XmpSource::Sidecar(Some(&sidecar)), Some(&image));
+
+        for key in [
+            "IPTC:Keywords",
+            "IPTC2:Keywords",
+            "IPTC:ObjectName",
+            "IPTC2:ObjectName",
+            "IPTC2:Caption-Abstract",
+        ] {
+            assert!(
+                !bucket.contains_key(key),
+                "{key} is consumed by the native mapping, so it is not in the bucket \
+                 whichever source supplied the value: {bucket:?}"
+            );
+        }
+        // The control: the same record's unconsumed dataset is still reported, so
+        // the exclusions above are the complement rule and not an empty bucket.
+        // The sidecar's own unconsumed property is reported too, which is what
+        // "the XMP family is read from the XMP source record" means.
+        assert_eq!(
+            bucket.get("IPTC2:City").map(String::as_str),
+            Some("Numberedville"),
+            "the bucket still reads the image's own IIM record: {bucket:?}"
+        );
+        assert_eq!(
+            bucket.get("XMP-xmp:CreatorTool").map(String::as_str),
+            Some("some other tool"),
+            "and the sidecar's own unconsumed XMP: {bucket:?}"
+        );
+        // `XMP-dc:Description` is a `NATIVE_KEYS` member, so the sidecar's own
+        // description is consumed rather than reported — the exclusion is by key
+        // name, not by whether this particular read used the value.
+        assert!(
+            !bucket.contains_key("XMP-dc:Description"),
+            "a natively consumed key is out of the bucket whether or not the value \
+             reached a managed field: {bucket:?}"
+        );
+    }
+
     /// Every value is a display string, as `exifVec`'s are: a JSON number, a
     /// boolean and a list all have to flatten into one string, because the
     /// bucket is `String -> String` and the sidebar prints it as text. The
@@ -1233,7 +1411,7 @@ mod tests {
             "XMP-photoshop:Credit": ["a", "b"]
         });
         let image = json!({ "IPTC:Urgency": 2, "IPTC:By-line": "" });
-        let bucket = map_further_fields(&XmpSource::Record(&xmp), Some(&image));
+        let bucket = map_further_fields(&XmpSource::Image(Some(&xmp)), Some(&image));
 
         assert_eq!(
             bucket.get("XMP-pdf:Producer").map(String::as_str),
@@ -1261,7 +1439,7 @@ mod tests {
     #[test]
     fn a_blank_bucket_value_is_absent_rather_than_an_empty_row() {
         let image = json!({ "IPTC:By-line": "   ", "IPTC:City": "fixtureville" });
-        let bucket = map_further_fields(&XmpSource::Unavailable, Some(&image));
+        let bucket = map_further_fields(&XmpSource::Image(None), Some(&image));
 
         assert!(
             !bucket.contains_key("IPTC:By-line"),
@@ -1277,14 +1455,14 @@ mod tests {
     /// `ExifTool` cannot read the file, and the shape the API reports as `{}`.
     #[test]
     fn no_record_yields_an_empty_bucket() {
-        assert!(map_further_fields(&XmpSource::Unavailable, None).is_empty());
+        assert!(map_further_fields(&XmpSource::Image(None), None).is_empty());
         // A record with nothing but the excluded groups is the same outcome.
         let record = json!({
             "File:FileType": "JPEG",
             "System:FileName": "bare.jpg",
             "IFD0:Make": "Canon"
         });
-        assert!(map_further_fields(&XmpSource::Record(&record), Some(&record)).is_empty());
+        assert!(map_further_fields(&XmpSource::Image(Some(&record)), Some(&record)).is_empty());
     }
 
     // ── Mapping: absent and unreadable sources ─────────────────────────────
@@ -1294,7 +1472,7 @@ mod tests {
     #[test]
     fn no_records_yield_empty_metadata() {
         let empty = NativeMetadata::default();
-        assert_eq!(map_native_fields(&XmpSource::Unavailable, None), empty);
+        assert_eq!(map_native_fields(&XmpSource::Image(None), None), empty);
     }
 
     /// A record with no metadata in it — what a corrupt sidecar reads as — is
@@ -1302,26 +1480,36 @@ mod tests {
     #[test]
     fn a_corrupt_sidecar_record_yields_no_xmp_fields() {
         let data = map_native_fields(
-            &XmpSource::Record(&recorded_corrupt_sidecar()),
+            &XmpSource::Sidecar(Some(&recorded_corrupt_sidecar())),
             None::<&Value>,
         );
         assert_eq!(data, NativeMetadata::default());
     }
 
-    /// The sidecar rule this change settles (`.plan/exiftool-metadata-engine.md`
-    /// decision 6): a sidecar's existence replaces the **XMP source only**. A
-    /// corrupt sidecar therefore leaves the XMP fields empty *and* lets the
-    /// image's own IIM record fill them — which is the opposite of the old pin
-    /// that a corrupt sidecar suppresses everything the file carries.
+    /// A record that yields no XMP at all — what a corrupt sidecar reads as —
+    /// withholds **every** managed field, including the ones the image's own IIM
+    /// record carries.
+    ///
+    /// This reverses `.plan/exiftool-metadata-engine.md` decision 6's second
+    /// half ("a sidecar replaces the XMP source only … IPTC and PNG-text still
+    /// fill"), as `.plan/test-exif-xmp-handling.md`'s Follow-up Issues → "Sidecar
+    /// Edits Must Override Embedded Metadata" requires. The sidecar is the record
+    /// for the managed fields, and a record that is empty leaves them empty.
+    /// Rationale: a sidecar exists because something wrote metadata there, so
+    /// there is no reading of "this file has no tags" in which falling back to
+    /// the image is right — a user who removed every tag in their editor would
+    /// get them back from the raw file on the next index.
     #[test]
-    fn a_corrupt_sidecar_still_lets_the_images_iptc_fill() {
+    fn a_sidecar_record_with_no_metadata_in_it_withholds_the_images_iptc() {
         let data = map_native_fields(
-            &XmpSource::Record(&recorded_corrupt_sidecar()),
+            &XmpSource::Sidecar(Some(&recorded_corrupt_sidecar())),
             Some(&recorded_iptc_only()),
         );
-        assert_eq!(data.tags, HashSet::from(["a".to_string(), "b".to_string()]));
-        assert_eq!(data.description.as_deref(), Some("IPTC Caption"));
-        assert_eq!(data.title.as_deref(), Some("IPTC Object Name"));
+        assert_eq!(
+            data,
+            NativeMetadata::default(),
+            "the image's IIM record is not consulted once a sidecar exists"
+        );
     }
 
     /// A record that has neither of the families yields empty rather than
@@ -1330,7 +1518,7 @@ mod tests {
     fn a_record_without_the_relevant_groups_yields_empty_metadata() {
         let record = json!({ "File:FileType": "JPEG", "IFD0:Make": "Canon" });
         assert_eq!(
-            map_native_fields(&XmpSource::Record(&record), Some(&record)),
+            map_native_fields(&XmpSource::Image(Some(&record)), Some(&record)),
             NativeMetadata::default()
         );
     }
@@ -1567,12 +1755,21 @@ mod tests {
         photo
     }
 
-    /// The sidecar replaces the XMP source, and the image's IIM record still
-    /// fills in the union: the sidecar's keyword and the image's own are both
-    /// indexed, while the scalars come from the packet the app would have
-    /// written.
+    /// The sidecar is the **complete** authority for the managed fields, so the
+    /// image's IIM record contributes nothing: the tag set is the sidecar's
+    /// `dc:subject` and the scalars are the sidecar's own.
+    ///
+    /// This is the contract settled in `.plan/test-exif-xmp-handling.md`,
+    /// Follow-up Issues → "Sidecar Edits Must Override Embedded Metadata", and it
+    /// amends decision 6 of `.plan/exiftool-metadata-engine.md` ("a sidecar
+    /// replaces the XMP source only — IPTC and PNG-text still fill"). The
+    /// scenario `an_external_partial_sidecar_suppresses_the_files_own_tags`
+    /// pins the same rule end to end, and
+    /// `sidecar_xmp_is_authoritative_over_embedded_xmp` is its readable
+    /// `sidecar_xmp_is_authoritative_over_embedded_xmp` is its readable
+    /// counterpart.
     #[test]
-    fn a_sidecar_replaces_the_xmp_source_and_the_image_iptc_still_fills() {
+    fn a_sidecar_is_the_whole_managed_record_and_the_images_iptc_does_not_fill() {
         let dir = tempfile::tempdir().expect("temp dir");
         let photo = snapfab_jpeg(dir.path(), "photo.jpg", &["image_iptc_keyword"]);
         std::fs::write(
@@ -1591,8 +1788,9 @@ mod tests {
 
         assert!(data.tags.contains("sidecar_xmp_keyword"), "{:?}", data.tags);
         assert!(
-            data.tags.contains("image_iptc_keyword"),
-            "the image's own IIM record still contributes: {:?}",
+            !data.tags.contains("image_iptc_keyword"),
+            "the image's own IIM record is not part of the managed record once a \
+             sidecar exists: {:?}",
             data.tags
         );
         assert_eq!(data.description.as_deref(), Some("sidecar description"));
@@ -1600,15 +1798,18 @@ mod tests {
         assert_eq!(data.title.as_deref(), Some("sidecar title"));
     }
 
-    /// The rewritten pin, at the read layer: a corrupt sidecar no longer
-    /// suppresses the whole file. It withholds the XMP fields (a sidecar that
-    /// exists is the XMP source), and the image's IIM record fills them from
-    /// its own metadata. See
-    /// `.plan/exiftool-metadata-engine.md` decision 6; the scenario
-    /// `corrupt_xmp_sidecar_suppresses_embedded_xmp` pins the same outcome
-    /// end-to-end.
+    /// The rewritten pin, at the read layer: a corrupt sidecar withholds
+    /// **everything**, not only the XMP half. There is no packet inside the image
+    /// and no IIM record to fall back on, because the sidecar is the record.
+    ///
+    /// This reverses the outcome `.plan/exiftool-metadata-engine.md` decision 6
+    /// settled ("a corrupt sidecar still lets the image's IPTC fill"), as
+    /// `.plan/test-exif-xmp-handling.md`'s Follow-up Issues → "Sidecar Edits Must
+    /// Override Embedded Metadata" requires. The scenario
+    /// `corrupt_xmp_sidecar_suppresses_embedded_xmp` pins the same outcome end to
+    /// end.
     #[test]
-    fn a_corrupt_sidecar_withholds_xmp_but_not_the_images_iptc() {
+    fn a_corrupt_sidecar_withholds_every_managed_field() {
         let dir = tempfile::tempdir().expect("temp dir");
         let photo = snapfab_jpeg(dir.path(), "photo.jpg", &["image_iptc_keyword"]);
         // Truncated markup: the opening tags are there, the closing ones are not.
@@ -1621,28 +1822,22 @@ mod tests {
         let image = read_metadata_record(&photo).expect("read image");
         let data = native_metadata_for(&photo, Some(&image));
 
-        assert!(
-            data.tags.contains("image_iptc_keyword"),
-            "the image's IIM record is not suppressed by the sidecar: {:?}",
-            data.tags
+        assert_eq!(
+            data,
+            NativeMetadata::default(),
+            "the sidecar exists, so it is the record; a record that is empty leaves \
+             the managed fields empty rather than handing them to the image"
         );
-        assert!(
-            !data.tags.contains("sidecar_keyword"),
-            "a corrupt packet contributes nothing: {:?}",
-            data.tags
-        );
-        // snapfab writes the same caption in both families, so this value is
-        // shared; what it pins is that the image's own record is still read.
-        assert!(data.description.is_some());
     }
 
-    /// A sidecar that exists but cannot be read does not hand the XMP source
-    /// back to the image either — a directory named `photo.xmp` is the portable
-    /// way to make the read fail, unlike a permission bit, which root ignores.
-    /// The packet embedded in the PNG is therefore invisible, and the text
-    /// chunks — which the image keeps filling from — are what remains.
+    /// A sidecar that exists but **cannot be read** withholds the managed fields
+    /// too, and this is the case where the withholding is a real loss rather than
+    /// a rule: the packet embedded in the PNG is invisible, *and* so are the text
+    /// chunks, which under the amended decision 6 no longer complete a sidecar.
+    /// A directory named `photo.xmp` is the portable way to make the read fail,
+    /// unlike a permission bit, which root ignores.
     #[test]
-    fn an_unreadable_sidecar_keeps_the_embedded_packet_out() {
+    fn an_unreadable_sidecar_withholds_every_managed_field_including_the_text_chunks() {
         let dir = tempfile::tempdir().expect("temp dir");
         let photo = png_with_text_chunks(
             dir.path(),
@@ -1655,11 +1850,11 @@ mod tests {
         let image = read_metadata_record(&photo).expect("read image");
         let data = native_metadata_for(&photo, Some(&image));
 
-        assert_eq!(data.description.as_deref(), Some("from the text chunk"));
-        assert!(
-            !data.tags.contains("embedded_keyword"),
-            "the embedded packet is not the XMP source while a sidecar exists: {:?}",
-            data.tags
+        assert_eq!(
+            data,
+            NativeMetadata::default(),
+            "the PNG's embedded packet and its text chunk are both behind the sidecar, \
+             which is unreadable"
         );
     }
 
