@@ -813,6 +813,40 @@ first instinct that the invariant framing ruled out.
 
 ## Progress
 
+- 2026-09-28: **Is the `openapi-sanity` linter redundant with existing
+  tooling? Investigated at the user's request; no — and the reason is the
+  invariant, not the tool.** Every external candidate (Spectral, Redocly CLI,
+  Speccy, vacuum, oasdiff) reads the document and nothing else. Of our 23
+  rules, 14 compare source or the runtime route table and are inexpressible in
+  a document linter; only 9 are document-only, and 4 of those need
+  `AUTH_POLICY`'s 61 entries re-expressed as data for a JS rule. Delegating the
+  document half would delete ~1 700 lines of well-tested Rust and keep the
+  load-bearing half — a poor trade, so the recommendation is **additive, not
+  substitutive**. What we genuinely do not do is validate the document against
+  the OpenAPI specification (`README.md:343-346` states that as a limitation),
+  and a measured Spectral run on the committed `openapi.json` found 122
+  problems we cannot see: 56 operations with no description, 61 tags with no
+  global `tags` entry, missing `info-contact`/`info-description`, and one real
+  error — ambiguous path templates `/{dynamic_album_id}` vs `/{path}`. For
+  mechanism 2 the tool argument is decisive: Dredd and Schemathesis drive
+  requests _from_ the document, so they can find spec operations that 404 but
+  never a mounted route the document omits, which is the load-bearing
+  direction. **Speccy (the tool the user named) is rejected on maintenance:**
+  last commit 2019-10-01, `test`/`proxy` gone from its CLI, a strict subset of
+  Spectral — it fails the bar the rest of this repo's toolchain holds (clippy,
+  `cargo deny`, CodeQL, pinned action SHAs). One measured constraint on the
+  substitution argument: Spectral's CLI hands custom functions a
+  **dereferenced** document (6 of 92 `$ref`s visible), so a `$ref`-graph rule
+  written as a Spectral function reports 44 false orphans where we report
+  zero — the `P5` rules have to stay in Rust. Two decisions are open for the
+  user and not scheduled: adopting Spectral **additively** for mechanism 3's
+  missing half (npx on the Node 24 toolchain CI already has, the same shape as
+  the widdershins recipe), and whether mechanism 4's breaking-change detection
+  moves to `oasdiff` (Apache-2.0, active; costs a Go binary or Docker in CI and
+  is blocked on a released-baseline artifact the repo does not have yet).
+  Schemathesis is deferred: a Python toolchain and a new test job for the
+  runtime half of I4, not warranted by the invariant today.
+
 - 2026-09-28: **I3 landed.** `to_spec_path` moved to `backend/src/spec_path.rs`
   (non-test code, so I2's `--check-openapi` can read it), with
   `utils/openapi-sanity/tests/paths.rs` deleted and its cases merged into the
