@@ -602,6 +602,17 @@ auto-open-browser"` so the build checking is the build shipping, and
    dependency `backend-test` already has. Building with default features would
    avoid that and would make the gate blind to any future feature-gated route,
    which is exactly the class the asymmetric rule exists for.
+5. **The CLI's scope is now specified separately.**
+   `.plan/openapi-sanity-source-checks.md` (2026-09-28) reduces
+   `openapi-sanity` to the checks that need source facts the document and the
+   mount table do not carry — guards/auth, the request body, query
+   requiredness — and names the owner for every rule that leaves (a phase of
+   `just openapi-check`, or a document linter per open decision 1). I1 and I4
+   below describe CLI work that this narrows or cancels: I1's route-set
+   direction is owned by `openapi-artifact` plus `openapi-routes`, and the
+   name-set halves of P1/P2 are runtime data (`Route::uri` carries both query
+   bindings and path segments), so a follow-up item should compare them in
+   `--check-openapi` rather than in a `syn` tool.
 
 #### Ordered by the invariant, not by severity
 
