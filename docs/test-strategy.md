@@ -126,17 +126,34 @@ playwright-report/results.json`).
 Derives an OpenAPI 3.1 spec from `#[utoipa::path]` annotations on route
 handlers. `build.rs` checks every handler registered in the `routes![]` macro
 for an annotation and prints `cargo:warning=` for any missing during every
-build. `just openapi-docs-check` regenerates and diffs the committed generated
-artifacts when that check is run.
+build. `just openapi-check` runs the source/spec analysis in
+`utils/openapi-sanity` and then diffs the committed artifact against a fresh
+generation.
 
-This is useful annotation and artifact coverage, but it is not yet complete
-contract enforcement. It does not prove that every mounted public route is in
-the generated public spec, that every spec operation is mounted, that
-authentication and error responses are documented, or that string-valued
-identifiers are used with the correct semantics. Public-spec filtering is also
-a separate step. These are the reasons for the route/spec parity, structural
-lint, breaking-diff, and spec-driven smoke-test work in
-`.plan/openapi-contract-hardening.md`.
+Annotation and artifact coverage alone are not complete contract
+enforcement. Route/spec agreement, authentication policy and the tag taxonomy
+are now checked by `utils/openapi-sanity` inside `just openapi-check`;
+still open are breaking-change detection, spec-driven smoke tests, and
+identifier semantics — tracked in `.plan/openapi-contract-hardening.md`.
+
+#### Why a separate scanner and checker
+
+Generating the annotations — or their structural parts — from the route
+attribute and handler signature was considered and rejected. A generative
+layer answers today's drift by moving it into generator code: later churn in
+route registration or handler shapes can break the generator itself, failure
+modes such as test or debug endpoints reaching production without proper
+guards become harder to spot, and the solution grows an extra layer that
+reviewers must understand before they can trust any output.
+
+The project keeps the simple path instead: route handlers registered through
+`routes![]`, hand-written `#[utoipa::path]` annotations carrying the
+documentation, and a separate scanner (`utils/openapi-sanity`) that finds the
+registered handlers and verifies each one is annotated and documented
+properly. Correctness is enforced from outside the annotation rather than
+baked into a generator, so the source stays reviewable. The committed
+generated `openapi.json` is the single first picture: what outside reviewers
+and test tools can always inspect without reading the source.
 
 See `docs/openapi-generator.md` for the full design, and
 `docs/openapi-reference.md` for the rendered reference.

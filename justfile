@@ -119,14 +119,25 @@ openapi-gen:
     RUST_MIN_STACK=16777216 cargo run --package picasu -- --dump-openapi > backend/openapi.json
     @echo "wrote backend/openapi.json"
 
-# Two phases, in order: `openapi-sanity` compares the annotated source with the
-# committed document, then `openapi-artifact` diffs the committed document
-# against a fresh generation. A dependency that fails stops the recipe, so
-# either phase failing fails this one with that phase's diagnostics on stderr.
+# Three phases, in order: `openapi-sanity` compares the annotated source with the
+# committed document, `openapi-artifact` diffs the committed document against a
+# fresh generation, and `openapi-routes` compares the routes the product build
+# mounts with the same document. A dependency that fails stops the recipe, so any
+# phase failing fails this one with that phase's diagnostics on stderr.
 #
 # Fail when the API source and the checked-in public OpenAPI artifact disagree
 [group('utils')]
-openapi-check: openapi-sanity openapi-artifact
+openapi-check: openapi-sanity openapi-artifact openapi-routes
+
+# Route-set parity: the routes a real build mounts against the committed
+# document. Pinned to the feature set the release ships, so the build doing the
+# checking is the build that ships — a feature-gated route only exists in the
+# table of a build that has the feature. It embeds the frontend bundle, hence
+# the build dependency.
+[group('utils')]
+openapi-routes: frontend-build-maybe
+    cargo run --quiet --package picasu --features "embed-frontend auto-open-browser" -- \
+        --check-openapi "{{justfile_directory()}}/backend/openapi.json"
 
 # Source/spec contract analysis: annotations, routes and the committed document
 [private]
@@ -134,7 +145,8 @@ openapi-sanity:
     cargo run --quiet --package openapi-sanity -- check \
         --router-root "{{justfile_directory()}}/backend/src/router" \
         --spec "{{justfile_directory()}}/backend/openapi.json" \
-        --exclude-prefix /get/test/
+        --exclude-prefix /get/test/ \
+        --exclude-prefix /assets
 
 # Generated-artifact diff against the committed document
 [private]

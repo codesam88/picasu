@@ -28,27 +28,10 @@ use openapi_sanity::{AuthRule, GuardClass, SCANNED_MODULES};
 
 mod support;
 
-use support::Fixture;
+use support::{Fixture, write_tree};
 
 /// The router root the crate's own default gate invocation reads.
 const REPOSITORY_ROUTER: &str = "backend/src/router";
-
-/// A router tree and a document, written to a directory of its own so the
-/// checked-in fixtures stay the baseline the other tests measure against.
-fn write_tree(name: &str, files: &[(&str, &str)], document: &str) -> Fixture {
-    let root = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
-    let _ = std::fs::remove_dir_all(&root);
-
-    for (relative, source) in files {
-        let path = root.join(relative);
-        std::fs::create_dir_all(path.parent().expect("a tree file has a parent"))
-            .expect("the parent directory is created");
-        std::fs::write(&path, source).expect("a tree file is written");
-    }
-    std::fs::write(root.join("openapi.json"), document).expect("the document is written");
-
-    Fixture::in_directory(&root)
-}
 
 /// The contract gate's report for a tree, as it prints it.
 fn contract_findings(tree: &Fixture) -> Vec<String> {

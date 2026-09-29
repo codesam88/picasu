@@ -16,7 +16,7 @@ use log::info;
 use rocket::form::{Errors, Form};
 use rocket::fs::TempFile;
 
-#[derive(FromForm, Debug)]
+#[derive(FromForm, Debug, utoipa::ToSchema)]
 pub struct RegenerateThumbnailForm<'r> {
     /// Asset ID of the image to regenerate thumbnail for
     #[field(name = "asset_id")]
@@ -24,6 +24,7 @@ pub struct RegenerateThumbnailForm<'r> {
 
     /// Frame file to use for thumbnail generation
     #[field(name = "frame")]
+    #[schema(value_type = String)]
     pub frame: TempFile<'r>,
 }
 
@@ -31,7 +32,7 @@ pub struct RegenerateThumbnailForm<'r> {
         put,
         path = "/put/regenerate-thumbnail-with-frame",
         tag = "assets",
-        request_body = Value,
+        request_body(content = RegenerateThumbnailForm, content_type = "multipart/form-data"),
         responses(
             (status = 200, description = "Thumbnail regenerated"),
             (status = 400, description = "Invalid input"),

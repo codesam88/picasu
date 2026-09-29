@@ -213,6 +213,15 @@ fn binding(input: &FnArg, body: &Block) -> Option<GuardBinding> {
     })
 }
 
+/// The guard one parameter declares, or `None` for a receiver or a non-guard.
+///
+/// A parameter of [`crate::ArgKind::Guard`] is one this returns a class for; the
+/// parameter rules need the same classification the auth policy does so that a
+/// guard is never read as a query parameter of the same name.
+pub(crate) fn is_guard(ty: &Type) -> bool {
+    classify(ty).is_some()
+}
+
 /// The guard class a parameter type names, and whether Rocket hands the decision
 /// to the body.
 fn classify(ty: &Type) -> Option<(GuardClass, bool)> {
@@ -232,7 +241,11 @@ fn classify(ty: &Type) -> Option<(GuardClass, bool)> {
 }
 
 /// The type a reference points at, so `&GuardAuth` is the guard `GuardAuth`.
-fn unwrap_reference(ty: &Type) -> &Type {
+///
+/// Shared with the parameter reader in [`crate::handlers`], which unwraps the
+/// same wrappers to name a request body: a `&Json<T>` binds a body of `T` exactly
+/// as a `&GuardAuth` binds a guard of `GuardAuth`.
+pub(crate) fn unwrap_reference(ty: &Type) -> &Type {
     match ty {
         Type::Reference(reference) => unwrap_reference(&reference.elem),
         Type::Paren(paren) => unwrap_reference(&paren.elem),

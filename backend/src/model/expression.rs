@@ -1,24 +1,33 @@
 use arrayvec::ArrayString;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, utoipa::ToSchema)]
 #[serde(untagged)]
 pub enum FilterValue {
     Value(String),
     Exists(bool),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash, utoipa::ToSchema)]
 #[serde(untagged)]
 pub enum AlbumFilterValue {
+    #[schema(value_type = String)]
     Value(ArrayString<64>),
     Exists(bool),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Hash)]
+/// A filter expression as the prefetch endpoint accepts it: `Or`/`And`/`Not`
+/// nest, the leaf variants filter on tags, extensions, paths, albums or state.
+#[derive(Debug, Clone, Deserialize, Serialize, Hash, utoipa::ToSchema)]
 pub enum Expression {
+    // `no_recursion` on the three nesting variants: schema composition would
+    // otherwise walk into this schema forever (a runtime stack overflow), and
+    // it turns those nested occurrences into `$ref`s to this schema instead.
+    #[schema(no_recursion)]
     Or(Vec<Expression>),
+    #[schema(no_recursion)]
     And(Vec<Expression>),
+    #[schema(no_recursion)]
     Not(Box<Expression>),
     Tag(FilterValue),
     ExtType(String),
@@ -29,6 +38,7 @@ pub enum Expression {
     Album(AlbumFilterValue),
     RootAlbum(bool),
     Any(String),
+    #[schema(value_type = String)]
     ParentAlbum(ArrayString<64>),
     Trashed(bool),
 }

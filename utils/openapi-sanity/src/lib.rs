@@ -23,8 +23,7 @@
 //! [`scan_routes`] and [`scan_handlers`] parse it for one of them. Results are
 //! plain owned types ([`RouteScan`], [`HandlerScan`], [`SourceScan`]) — no `syn`
 //! type is part of the surface, so the parser can be replaced without touching a
-//! caller. [`to_spec_path`] is the single Rocket-to-OpenAPI path translation,
-//! shared by every consumer that compares a mounted route with the spec.
+//! caller.
 //!
 //! # Diagnostics instead of failures
 //!
@@ -64,6 +63,16 @@
 //! else. A tag is a documentation grouping, so it says nothing about
 //! authentication — the two are separate policies, and neither is derived from
 //! the other.
+//!
+//! # What an operation takes
+//!
+//! The other rules compare the *shape* of the contract; [`check_params`]
+//! compares what a handler binds against what the document declares it takes —
+//! the path, query and form parameters a Rocket URI binds by name, the request
+//! body a `data = "<x>"` argument receives, and the `operationId` a generated
+//! client calls the operation by. It is the one group with no policy table,
+//! because there is nothing to classify: a route either declares a parameter and
+//! the document redeclares it, or the two disagree and the document is wrong.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -74,17 +83,22 @@ mod finding;
 mod guards;
 mod handlers;
 mod modules;
+mod params;
 mod path;
 mod routes;
 mod tags;
 
 pub use auth::{AUTH_POLICY, AuthRule, Unauthenticated, check_auth};
-pub use contract::{SpecOperation, check_contract, referenced_handler_files, spec_operations};
+pub use contract::{
+    BodySchema, ParameterLocation, RequestBody, SchemaIndex, SpecOperation, SpecParameter,
+    check_contract, referenced_handler_files, schema_index, spec_operations,
+};
 pub use finding::Finding;
 pub use guards::{Discard, Enforcement, GuardBinding, GuardClass, KNOWN_GUARDS};
-pub use handlers::{Handler, HandlerScan, HttpMethod};
+pub use handlers::{ArgKind, Handler, HandlerArg, HandlerScan, HttpMethod};
 pub use modules::{SCANNED_MODULES, SourceUnit, handler_module_path};
-pub use path::to_spec_path;
+pub use params::check_params;
+pub use path::{route_bindings, route_query_bindings, route_segments, spec_placeholders};
 pub use routes::{HandlerRef, RouteScan};
 pub use tags::{KNOWN_TAGS, check_tags};
 

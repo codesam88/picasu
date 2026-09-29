@@ -11,8 +11,11 @@ matches the source that produced it, and the build script only asks whether a
 registered handler carries an annotation at all. Between those two facts there is a
 class of drift nothing in the pipeline could see:
 
-- an annotation whose `path` or verb disagrees with the route attribute it sits on —
-  the route is mounted and served normally, the document describes something else;
+- an annotation whose verb disagrees with the route attribute it sits on — the route
+  is mounted and served normally, the document describes something else. A path
+  disagreement needs no rule of its own: the annotation's path absent from the
+  document is the "declared in source but absent from the spec" finding below, and
+  the route's own path absent from it is the backend's mounted-route comparison;
 - a `#[utoipa::path]` on a sibling function in the same file being read as this
   function's own, which registers a route under another operation's metadata;
 - a `GuardResult` the handler drops, so the operation documents a `401` and serves an
@@ -40,11 +43,13 @@ The semantic phase is:
 openapi-sanity check \
     --router-root backend/src/router \
     --spec backend/openapi.json \
-    --exclude-prefix /get/test/
+    --exclude-prefix /get/test/ \
+    --exclude-prefix /assets
 ```
 
 run from the repository root; the recipe passes absolute paths, and the first two flags
-are the defaults, so `openapi-sanity check --exclude-prefix /get/test/` is equivalent.
+are the defaults, so `openapi-sanity check --exclude-prefix /get/test/ --exclude-prefix
+/assets` is equivalent.
 The second phase is `openapi-artifact`, which regenerates the document and diffs it
 against the committed one. `just check` includes `openapi-check`, so CI runs it
 (`.github/workflows/ci.yml`, the `just check` step), and `.githooks/pre-commit` runs it for
@@ -62,10 +67,14 @@ any commit that touches `backend/`. The pipeline as a whole is documented in
 
 `--module` and `--exclude-prefix` are repeatable. `--module` **replaces** the built-in
 module list, which is how the gate is pointed at something other than the repository.
-`--exclude-prefix` is a parameter rather than a constant because it describes the
-artifact, not the analysis: the public document strips the test-only probe surface
-(`/get/test/`) while the handlers stay in the source, so a caller that forgets the
-exclusion sees the omission as findings rather than as a passing gate.
+`--exclude-prefix` stays a parameter because the analyzer has no backend dependency: it
+describes the artifact, not the analysis — the public document strips the test-only
+probe surface (`/get/test/`) while the handlers stay in the source, and `/assets`
+serves the frontend's files rather than API operations. The list itself lives once,
+in the backend's `CONTRACT_EXCLUSION_PREFIXES` (`backend/src/openapi_public.rs`), and a
+test there reads the `justfile` recipe to hold its `--exclude-prefix` values to that
+constant, so a caller that forgets an exclusion sees the omission as findings rather
+than as a passing gate.
 
 ### Exit codes and the summary line
 
@@ -112,7 +121,7 @@ let units = vec![SourceUnit::for_relative_path(
     &source,
 )];
 let spec = spec_operations(&document);
-for finding in check_contract(&units, "backend/openapi.json", &spec, &["/get/test/"]) {
+for finding in check_contract(&units, "backend/openapi.json", &spec, &["/get/test/", "/assets"]) {
     eprintln!("{finding}");
 }
 ```
@@ -125,12 +134,11 @@ files itself.
 
 ### The source/spec contract — `check_contract`
 
-Seven rules, each reported as a `file:line: message`:
+Six rules, each reported as a `file:line: message`:
 
 | Finding                                                                          | Drift it catches                                         |
 | -------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `registered in routes![] but the function carries no #[utoipa::path] annotation` | A mounted route with no operation of its own             |
-| `the route serves X but its #[utoipa::path] declares Y`                          | Route URI and annotated path disagree                    |
 | `the route declares GET but its #[utoipa::path] declares POST`                   | Route attribute and annotated verb disagree              |
 | `METHOD PATH is declared in source but absent from the spec`                     | A registered handler the document does not carry         |
 | `METHOD PATH is in the spec but no scanned route declares it`                    | A committed operation no scanned source backs            |
@@ -189,6 +197,37 @@ a tag _and_ missing the reserved one. Whether a path is a data-API operation is 
 from path shape, because the document does not say which file annotated an operation;
 the assumption that makes the derivation valid is stated on `is_data_api_path`.
 
+### Parameters and the request body — `check_params`
+
+Five rule groups over each operation's inputs, each reported the same way:
+
+| Finding                                                                                                                            | Drift it catches                                                |
+| ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `the route binds path parameter X but the operation declares no in: path parameter by that name`                                   | A `<segment>` the document never documents                      |
+| `the operation declares path parameter X but the route binds no such segment`                                                      | A documented placeholder the route does not serve               |
+| `path parameter X is bound by the route and cannot be optional, but the operation declares required: false`                        | A path parameter documented as optional                         |
+| `the documented path binds X but the route serves no such segment` / `the route serves a X segment but the documented path binds…` | A spec `{placeholder}` and a route `<segment>` that disagree    |
+| `the route binds query parameter X but the operation declares no in: query…` / the reverse                                         | An undocumented or over-documented `?<x>` binding               |
+| `declares query parameter X as required: true but the handler binds it as an Option` (and the reverse)                             | A `required` flag that disagrees with `Option<T>`               |
+| `the route binds its body to X but the operation declares no request body` / the reverse                                           | A `data = "<x>"` binding the operation does not document        |
+| `the operation declares request body X but the route binds its body to Y`                                                          | A schema naming a type the handler does not take                |
+| `the operation describes the Form body as … — declare the body multipart/form-data` (and `…name the schema X or declare…`)         | A multipart form documented under another media type            |
+| `the operation declares no operationId…` / `declares operationId X but the handler is named Y`                                     | An operation a generated client could not call by its real name |
+| `` `$ref` to the component schema X, which the document does not define ``                                                         | A reference to a schema that does not exist                     |
+| `component schema X is defined but nothing references it`                                                                          | An orphaned schema (`FileEntry` shipped as one)                 |
+
+The rules compare sets, names and flags, not schema types: a `timestamp` declared
+as `string` would not be reported. Placeholders are compared as names — the route's
+`<_path..>` and the document's `{path}` are one `path` once each side is read for
+what it spells — so no whole-path translation is involved, and a query parameter's
+`required` flag is checked against `Option<T>` on the bound argument. A `Form<T>` body
+is satisfied by a `multipart/form-data` content type; naming the schema under any other
+media type is a finding, because the media type is how a caller knows to send the
+fields.
+Two inputs are skipped where the source cannot name them at all — an unnamed body
+type and a query parameter no plain argument binds — and both are listed under
+[Limitations](#what-is-not-checked).
+
 ## How it is tested
 
 `cargo test -p openapi-sanity` runs:
@@ -197,8 +236,9 @@ the assumption that makes the derivation valid is stated on `is_data_api_path`.
   is reported on, malformed entries), `handlers.rs` (route attributes, per-function
   `#[utoipa::path]` attribution, nested token groups), `guards.rs` (direct vs deferred
   bindings, every enforcement shape, both discard shapes, and `KNOWN_GUARDS` held
-  against the backend's actual `FromRequest` implementations), `paths.rs` (the
-  Rocket-to-OpenAPI translation).
+  against the backend's actual `FromRequest` implementations). The
+  Rocket-to-OpenAPI translation lives with the backend comparison that uses it, so
+  its cases run under `cargo test --lib openapi_contract` instead.
 - **Fixture trees** under `tests/fixtures/{clean,drift,unauthored,untagged}`. `clean`
   reports nothing; each of the other three carries one instance of every failure mode of
   its check, and the whole report is asserted as an exact list — file, line and message —
@@ -206,9 +246,10 @@ the assumption that makes the derivation valid is stated on `is_data_api_path`.
 - **Mutation tests** — `mutations.rs` starts from a conforming tree, breaks exactly one
   thing, requires the rule to appear, and restores it to require silence. A rule that
   fires for any reason at all fails there.
-- **The repository is clean today** — `cli.rs` and `auth.rs` and `tags.rs` each run the
-  gate over the real `backend/src/router` and `backend/openapi.json` and require no
-  findings, so the gate cannot be neutered and stay green on the repository.
+- **The repository is clean today** — `cli.rs`, `auth.rs`, `tags.rs` and `params.rs`
+  each run the gate over the real `backend/src/router` and `backend/openapi.json`
+  and require no findings, so the gate cannot be neutered and stay green on the
+  repository.
 - **Regression tests** — `regressions.rs` pins the _incidents_ rather than the rules:
   the source shape the repository actually shipped with, each asserted to produce its
   exact finding and, in its conforming form, silence. An incident already pinned
@@ -222,13 +263,13 @@ the assumption that makes the derivation valid is stated on `is_data_api_path`.
 The analyzer is generic; the vocabulary it checks against is not. For a backend other
 than picasu:
 
-| Constant                                                  | What it holds                                                                                                | How a consumer changes it                                            |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| `SCANNED_MODULES` (`modules.rs`)                          | Picasu's router files that carry route tables                                                                | Edit the constant — **not** a CLI input                              |
-| `AUTH_POLICY` (`auth.rs`)                                 | All 61 picasu `operationId`s with their guard classes                                                        | Edit the constant — **not** a CLI input                              |
-| `KNOWN_GUARDS` (`guards.rs`)                              | Picasu's guard types, matched on the last path segment                                                       | Edit the constant and the `GuardClass` mapping — **not** a CLI input |
-| `KNOWN_TAGS`, `DATA_API_PREFIXES`, `PAGE_TAG` (`tags.rs`) | Picasu's subject taxonomy, the path shapes that identify data routes, and the tag reserved for the SPA shell | Edit the constants — **not** a CLI input                             |
-| `--exclude-prefix /get/test/`                             | Picasu's test-only probe surface, passed by `just openapi-check`                                             | Pass your own — this one _is_ a CLI input                            |
+| Constant                                                  | What it holds                                                                                                                                         | How a consumer changes it                                            |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `SCANNED_MODULES` (`modules.rs`)                          | Picasu's router files that carry route tables                                                                                                         | Edit the constant — **not** a CLI input                              |
+| `AUTH_POLICY` (`auth.rs`)                                 | All 61 picasu `operationId`s with their guard classes                                                                                                 | Edit the constant — **not** a CLI input                              |
+| `KNOWN_GUARDS` (`guards.rs`)                              | Picasu's guard types, matched on the last path segment                                                                                                | Edit the constant and the `GuardClass` mapping — **not** a CLI input |
+| `KNOWN_TAGS`, `DATA_API_PREFIXES`, `PAGE_TAG` (`tags.rs`) | Picasu's subject taxonomy, the path shapes that identify data routes, and the tag reserved for the SPA shell                                          | Edit the constants — **not** a CLI input                             |
+| `--exclude-prefix /get/test/ --exclude-prefix /assets`    | Picasu's test-only probe surface and static file mount, passed by `just openapi-check`, held to the backend's `CONTRACT_EXCLUSION_PREFIXES` by a test | Pass your own — this one _is_ a CLI input                            |
 
 The first four rows are compile-time constants, not configuration: a consumer with a
 different backend edits the source. `--exclude-prefix` and `--module` are the only
@@ -268,22 +309,37 @@ macros are not expanded beyond what the visitor reads as tokens. Consequences:
 - a `routes![]` entry is recognised as a macro whose last path segment is `routes`, and
   its entries must be plain `ident` or `path::ident` — anything else is reported rather
   than resolved;
-- `to_spec_path` is a text translation, and it is the single one in the repository so
-  the gate and the runtime comparison cannot drift apart.
+- whole-path translation is not done here at all: `to_spec_path` lives in the backend
+  (`backend/src/spec_path.rs`), beside the comparisons that use it, and the rules in
+  this crate compare segment and placeholder _names_, which need no translation — so
+  there is no second copy to drift from.
 
 ### What is not checked
 
-- **Request and response schema correctness.** Nothing reads `components`, `schemas`,
-  `params` or `request_body`. A response type that does not match the handler's return
-  type, or a body declaration for a parameter that does not exist, is invisible here.
-- **Parameter and body agreement.** Whether the declared path and query parameters match
-  the handler's parameters, and whether a `request_body` matches a `Json<T>` or upload
-  input, is a known follow-up in
-  [`.plan/openapi-contract-hardening.md`](../../.plan/openapi-contract-hardening.md)
-  (Step 4).
-- **`operationId` stability across releases.** Only collisions are reported. Renaming
-  an operation is invisible; a stale `AUTH_POLICY` entry is what surfaces a handler
-  rename, and it surfaces as a policy finding, not as a stability check.
+- **A body whose type the analyzer cannot name.** The body type is read by unwrapping
+  `Result`/`Option`/`Json`/`Form` down to a path, so a tuple, a slice or an array, a
+  `dyn` trait object, a macro call and a wrapper written without its type argument
+  leave the type unnamed — and P3 compares nothing about that body. A `Form` body of
+  such a type is also not reported for a wrong media type, which is readable on its
+  own: every finding P3 makes about a form body names the inner type, and reporting the
+  media type alone would need a second message shape for a type that has no name. No
+  route in the repository is in this shape, and a body is normally a struct.
+- **A query parameter the signature does not bind to a plain argument.** P2's `required`
+  half reads whether the argument Rocket binds to a `?<name>` is an `Option`, which
+  needs an argument of that name. A guard declared under the parameter's name is not
+  that argument, and a `?<name>` filled from a field of a `FromForm` struct bound to an
+  argument of another name would mean reading the struct's definition, which the scan
+  does not do. Both are reported as nothing rather than guessed at; a test over the
+  repository fails if a route enters either shape, so the silence cannot spread.
+- **Schema content and response types.** The parameter rules read `parameters`
+  and `requestBody` for names, flags, media types and the schema a `$ref` names —
+  not the schema bodies themselves. A parameter declared with the wrong `type`, a
+  response schema that does not match the handler's return type, or a wrong field
+  type inside `components` is invisible here.
+- **`operationId` stability across releases.** Only collisions and disagreement
+  with the handler name are reported. Renaming an operation is invisible; a stale
+  `AUTH_POLICY` entry is what surfaces a handler rename, and it surfaces as a
+  policy finding, not as a stability check.
 - **General OpenAPI linting.** Nothing validates the document against the OpenAPI
   specification, and the two checks the backend keeps for that reason — the
   `Unauthorized` component being registered, and every 401 being a `$ref` to it rather

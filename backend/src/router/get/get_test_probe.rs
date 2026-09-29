@@ -41,6 +41,12 @@ pub struct DupeGroupMember {
 /// test bootstrap flips it on. Compiled in only under `cfg(test)`, so the probe
 /// is unreachable in every production build and hidden behind an explicit
 /// opt-in during `cargo test`.
+///
+/// The registration is gated separately: `generate_get_routes()` appends the
+/// probes under `#[cfg(test)]`, so non-test builds mount no `/get/test/` route
+/// at all. The handlers and their `#[utoipa::path]` annotations stay compiled
+/// in every build because `build.rs` generation is cfg-blind and the spec keeps
+/// the probe paths.
 #[cfg(test)]
 static PROBE_REQUESTED: AtomicBool = AtomicBool::new(false);
 

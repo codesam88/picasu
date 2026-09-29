@@ -5,8 +5,13 @@
 //! existing pipeline. The build script only asks whether a registered handler
 //! carries an annotation, and the backend contract tests compare Rocket's
 //! *runtime* route table with the spec — but an annotation can sit on a route
-//! attribute and still describe a different path or a different verb. The route
-//! is mounted, the spec documents something else, and every other check passes.
+//! attribute and still declare a verb the route does not serve. The route is
+//! mounted, the spec documents something else, and every other check passes.
+//!
+//! The path half of that local comparison is gone: every path disagreement
+//! converges on a finding elsewhere (recorded at the deletion site in
+//! `check_registered`'s body), and dropping it is what left this crate with no
+//! Rocket-to-OpenAPI path translation to maintain.
 //!
 //! The comparison is done on source so it needs no compiled artifact and stays
 //! cheap enough to run on every `just openapi-check`. What it cannot answer —
@@ -19,7 +24,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::finding::Finding;
 use crate::handlers::{Handler, HttpMethod};
 use crate::modules::{SourceUnit, handler_module_path};
-use crate::path::to_spec_path;
 use crate::scan_source;
 
 /// One operation declared by an `OpenAPI` document.
@@ -38,7 +42,102 @@ pub struct SpecOperation<'a> {
     /// The subject tags the operation declares, in document order. Empty when it
     /// declares none, which [`crate::check_tags`] reports.
     pub tags: Vec<&'a str>,
+    /// The parameters the operation declares, in document order. Empty when it
+    /// declares none, which is not the same as a route that binds none: a Rocket
+    /// URI declares its path and query parameters itself, and every one of them
+    /// has to be declared here as well.
+    pub parameters: Vec<SpecParameter<'a>>,
+    /// The request body the operation declares, or `None` when it declares no
+    /// `requestBody` at all. `Some` with an untyped schema is how an annotation
+    /// saying `request_body = Value` reaches the document.
+    pub request_body: Option<RequestBody<'a>>,
 }
+
+/// Where a declared parameter is read from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ParameterLocation {
+    /// `in: path`: substituted into the path template. Always required, because
+    /// a request that omits a path segment does not address the operation.
+    Path,
+    /// `in: query`: read from the query string, and optional exactly when the
+    /// handler binds it as an `Option`.
+    Query,
+    /// `in: header`, `in: cookie`, or a location this crate does not know. Read
+    /// as one value rather than dropped, so a malformed entry is visible in the
+    /// parameter list instead of quietly shrinking it — and outside the
+    /// parameter rules, which compare the route's own bindings.
+    Other,
+}
+
+impl ParameterLocation {
+    /// The location an `in = "..."` value names.
+    #[must_use]
+    pub fn from_name(name: &str) -> Self {
+        match name {
+            "path" => Self::Path,
+            "query" => Self::Query,
+            _ => Self::Other,
+        }
+    }
+}
+
+/// One entry of an operation's `parameters` array.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SpecParameter<'a> {
+    /// The parameter's name, which is also the name Rocket binds its segment or
+    /// query key to.
+    pub name: &'a str,
+    /// Where the value is read from.
+    pub location: ParameterLocation,
+    /// The declared `required` flag, `false` when the key is absent. An absent
+    /// flag on a path parameter is not a valid path parameter: `OpenAPI` requires
+    /// `required: true` there, and a generator that reads the flag would tell a
+    /// caller the segment is optional.
+    pub required: bool,
+}
+
+/// The type an operation declares for its request body.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum BodySchema<'a> {
+    /// A `$ref` to a component schema: the document names a type, and the name is
+    /// the one the developer would have to write to satisfy it.
+    Named(&'a str),
+    /// A JSON Schema primitive `type`, which is what utoipa writes for
+    /// `request_body = String` and the like. Held as the document spells it,
+    /// because a `type` is a JSON Schema keyword rather than a component name.
+    Primitive(&'a str),
+    /// A schema carrying neither a `$ref` nor a `type`, which is how utoipa
+    /// renders `request_body = Value`: the document states nothing about the
+    /// shape of the body, and a generator reading it produces `any`.
+    Untyped,
+}
+
+/// The request body an operation declares.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct RequestBody<'a> {
+    /// The declared schema. A `requestBody` with no `content` at all is read as
+    /// [`BodySchema::Untyped`]: the key is there, and what it describes is not.
+    pub schema: BodySchema<'a>,
+    /// The media types the body may arrive as, in document order. Read as a set
+    /// for the rules, and from the first entry for the schema, which is the one
+    /// utoipa emits.
+    pub content_types: Vec<&'a str>,
+}
+
+/// The component schemas a document defines and the ones its `$ref`s name.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SchemaIndex<'a> {
+    /// Every name under `components/schemas`.
+    pub defined: BTreeSet<&'a str>,
+    /// Every name a `$ref` anywhere in the document points at, including refs
+    /// inside another component schema. A schema referenced only by another
+    /// unreferenced schema is still referenced, which is what makes the rule
+    /// about the whole document rather than about each operation.
+    pub referenced: BTreeSet<&'a str>,
+}
+
+/// The JSON pointer prefix a component schema is addressed by.
+const SCHEMA_REF_PREFIX: &str = "#/components/schemas/";
 
 impl SpecOperation<'_> {
     /// Whether the operation states that an unauthorized caller is answered
@@ -88,6 +187,8 @@ pub fn spec_operations(document: &serde_json::Value) -> Vec<SpecOperation<'_>> {
                     responses: declared_statuses(operation),
                     secured: declares_security(operation),
                     tags: declared_tags(operation),
+                    parameters: declared_parameters(operation),
+                    request_body: declared_request_body(operation),
                 })
             }))
         })
@@ -136,6 +237,136 @@ fn declared_tags(operation: &serde_json::Value) -> Vec<&str> {
         .and_then(serde_json::Value::as_array)
         .map(|tags| tags.iter().filter_map(serde_json::Value::as_str).collect())
         .unwrap_or_default()
+}
+
+/// The parameters an operation declares, in document order.
+///
+/// An entry with no `name` names no parameter and is left out; one with no `in`
+/// names no location and is read as [`ParameterLocation::Other`] rather than
+/// dropped, so a malformed entry shows up in the list instead of quietly
+/// shrinking it. Neither shape is reachable from the generator, which writes both
+/// keys from `params((..))`, so reading them leniently costs nothing.
+fn declared_parameters(operation: &serde_json::Value) -> Vec<SpecParameter<'_>> {
+    operation
+        .get("parameters")
+        .and_then(serde_json::Value::as_array)
+        .map(|parameters| {
+            parameters
+                .iter()
+                .filter_map(|parameter| {
+                    Some(SpecParameter {
+                        name: parameter.get("name")?.as_str()?,
+                        location: ParameterLocation::from_name(
+                            parameter
+                                .get("in")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or_default(),
+                        ),
+                        required: parameter
+                            .get("required")
+                            .and_then(serde_json::Value::as_bool)
+                            .unwrap_or(false),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The request body an operation declares, or `None` when it declares none.
+///
+/// A body spread over more than one media type is read through the first, which
+/// is the only shape utoipa emits; the media types themselves are all kept,
+/// because whether a handler's form body can arrive at all is a question about
+/// them rather than about the schema.
+fn declared_request_body(operation: &serde_json::Value) -> Option<RequestBody<'_>> {
+    let body = operation.get("requestBody")?;
+    let content = body.get("content").and_then(serde_json::Value::as_object);
+    Some(content.map_or(
+        RequestBody {
+            schema: BodySchema::Untyped,
+            content_types: Vec::new(),
+        },
+        |content| {
+            let schema = content
+                .values()
+                .next()
+                .and_then(|media_type| media_type.get("schema"))
+                .map_or(BodySchema::Untyped, declared_body_schema);
+            RequestBody {
+                schema,
+                content_types: content.keys().map(String::as_str).collect(),
+            }
+        },
+    ))
+}
+
+/// The type a `requestBody`'s schema declares.
+///
+/// A `$ref` names a component schema, and its last segment is the name; anything
+/// else names a type only if it carries a `type` keyword. A schema with neither
+/// says nothing about the body's shape, which is the document's way of saying
+/// `Value`.
+fn declared_body_schema(schema: &serde_json::Value) -> BodySchema<'_> {
+    if let Some(reference) = schema.get("$ref").and_then(serde_json::Value::as_str) {
+        return BodySchema::Named(
+            reference
+                .rsplit('/')
+                .next()
+                .filter(|name| !name.is_empty())
+                .unwrap_or(reference),
+        );
+    }
+    schema
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .map_or(BodySchema::Untyped, BodySchema::Primitive)
+}
+
+/// The component schemas a document defines, and the ones its `$ref`s name.
+///
+/// Both directions of the same question, so both are read from one walk of the
+/// document: what is under `components/schemas`, and what every `$ref` in the
+/// document — in an operation, in a response, inside another schema — points at.
+/// A `$ref` to a component kind other than a schema is not collected, because
+/// `defined` holds schema names and comparing the two sets is what the rule does.
+///
+/// No reference to the exclusions a caller passes to the checks: a schema is
+/// either named by the document or it is not, whatever the path it is named from.
+#[must_use]
+pub fn schema_index(document: &serde_json::Value) -> SchemaIndex<'_> {
+    let mut index = SchemaIndex::default();
+    if let Some(schemas) = document
+        .pointer("/components/schemas")
+        .and_then(serde_json::Value::as_object)
+    {
+        index.defined.extend(schemas.keys().map(String::as_str));
+    }
+    collect_schema_refs(document, &mut index);
+    index
+}
+
+/// Every component-schema `$ref` anywhere below `value`.
+fn collect_schema_refs<'a>(value: &'a serde_json::Value, index: &mut SchemaIndex<'a>) {
+    match value {
+        serde_json::Value::Object(members) => {
+            for (key, member) in members {
+                if key == "$ref"
+                    && let Some(reference) = member.as_str()
+                    && let Some(schema) = reference.strip_prefix(SCHEMA_REF_PREFIX)
+                {
+                    index.referenced.insert(schema);
+                }
+                collect_schema_refs(member, index);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_schema_refs(item, index);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Every way a set of router source files and an `OpenAPI` document disagree.
@@ -265,39 +496,34 @@ pub(crate) struct Registration {
 pub(crate) struct DeclaredOperation {
     pub(crate) method: HttpMethod,
     pub(crate) path: String,
-    /// Whether the annotation and the route attribute it sits on name the same
-    /// operation. A handler that disagrees with itself is already reported, so a
-    /// caller comparing it with the document does not restate the cause.
+    /// Whether the annotation and the route attribute it sits on declare the
+    /// same method. A handler that disagrees with itself is already reported, so
+    /// a caller comparing it with the document does not restate the cause. Path
+    /// agreement is not part of it: the route-attr↔annotation path rule was
+    /// dropped as redundant, and every path disagreement now converges on a
+    /// finding elsewhere (see the note at that rule's deletion site).
     pub(crate) agrees_with_route: bool,
 }
 
 /// The operation a route-declaring function documents.
 ///
-/// utoipa derives a path from the route when the annotation omits one, so the
-/// annotation wins where it speaks and the route fills the silence. The document
-/// is generated from the annotation, so the annotation is also what counts as the
+/// The document is generated from the annotation, so the annotation is the
 /// source declaration of the operation — including when it disagrees with the
-/// route, which is why a disagreeing handler still occupies its operation in the
-/// document instead of looking undeclared. `None` when neither the annotation nor
-/// the route names both a verb and a path.
+/// route, which is why a disagreeing handler still occupies its operation in
+/// the document instead of looking undeclared. The route's URI is not a
+/// fallback: every annotation in the repository names its `path`, and the
+/// route-path half of `agrees_with_route` went with the dropped path rule, so
+/// this crate translates no Rocket URI. `None` when the annotation names no
+/// path, or neither the annotation nor the route names a verb.
 pub(crate) fn declared_operation(handler: &Handler) -> Option<DeclaredOperation> {
-    let route_path = handler.uri.as_deref().map(to_spec_path);
-    let annotated_path = handler.spec_path.as_deref();
-    // Only a disagreement is a disagreement: an annotation that names no path or
-    // no verb leaves the route to speak, and the route is then the declaration.
-    let same_path = match (route_path.as_deref(), annotated_path) {
-        (Some(route), Some(annotated)) => route == annotated,
-        _ => true,
-    };
+    let annotated_path = handler.spec_path.as_deref()?;
     let same_method = handler.method.is_none() || handler.method == handler.spec_method;
-
     let method = handler.spec_method.or(handler.method)?;
-    let path = annotated_path.or(route_path.as_deref())?;
 
     Some(DeclaredOperation {
         method,
-        path: path.to_string(),
-        agrees_with_route: same_path && same_method,
+        path: annotated_path.to_string(),
+        agrees_with_route: same_method,
     })
 }
 
@@ -378,19 +604,16 @@ fn check_registered(
         return;
     }
 
-    let route_path = handler.uri.as_deref().map(to_spec_path);
-    if let (Some(route), Some(annotated)) = (route_path.as_deref(), handler.spec_path.as_deref())
-        && route != annotated
-    {
-        findings.push(Finding::on_line(
-            &declaration.label,
-            handler.line,
-            format!(
-                "{identity}: the route serves {route} but its #[utoipa::path] declares \
-                 {annotated}"
-            ),
-        ));
-    }
+    // The route-attr↔annotation path comparison that used to be here is
+    // redundant, not merely dropped: every path disagreement converges on a
+    // finding elsewhere. The mounted route's own path missing from the document
+    // surfaces at `--check-openapi` as mounted-but-absent from the spec (the
+    // load-bearing direction), the annotation's path missing from it is the
+    // "declared in source but absent from the spec" finding below, and a handler
+    // registered under a path no route serves is the route's own registration
+    // checks. That comparison was also the last whole-path Rocket-to-OpenAPI
+    // translation in this crate, which is what allowed the translation to leave
+    // it. The method comparison stays: it needs no translation.
     if let (Some(route), Some(annotated)) = (handler.method, handler.spec_method)
         && route != annotated
     {

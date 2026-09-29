@@ -21,10 +21,11 @@ use tokio::task::spawn_blocking;
 use uuid::Uuid;
 
 /// Data structure representing the multipart form for file uploads.
-#[derive(FromForm, Debug)]
+#[derive(FromForm, Debug, utoipa::ToSchema)]
 pub struct UploadForm<'r> {
     /// Sequential list of uploaded files.
     #[field(name = "file")]
+    #[schema(value_type = Vec<String>)]
     pub files: Vec<TempFile<'r>>,
 
     /// Timestamps (Unix epoch in milliseconds) corresponding to each file by index.
@@ -151,8 +152,10 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
         post,
         path = "/upload",
         tag = "upload",
-        request_body = Value,
+        request_body(content = UploadForm, content_type = "multipart/form-data"),
         params(
+            ("presigned_album_id_opt" = Option<String>, Query, description = "Album the upload is presigned to; the files land in it"),
+            ("on_conflict" = Option<String>, Query, description = "How to handle an existing filename: rename (default) or skip"),
             ("auto_rename" = Option<bool>, Query, description = "When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error."),
         ),
         responses(

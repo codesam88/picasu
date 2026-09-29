@@ -38,6 +38,9 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
         get,
         path = "/object/compressed/{file_path}",
         tag = "serving",
+        params(
+            ("file_path" = String, Path, description = "Path of the resized file, relative to the asset root"),
+        ),
         responses(
             (status = 200, description = "Compressed file"),
             (status = 400, description = "Invalid input"),
@@ -110,6 +113,9 @@ pub async fn compressed_file(
         get,
         path = "/object/imported/{file_path}",
         tag = "serving",
+        params(
+            ("file_path" = String, Path, description = "Path of the original file, relative to the asset root"),
+        ),
         responses(
             (status = 200, description = "Imported original file"),
             (status = 400, description = "Invalid input"),

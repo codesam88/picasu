@@ -16,7 +16,7 @@ path = "src/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 # The route scanner `build.rs` registers `paths(...)` from, and the translator
-# the contract tests compare mounted routes with. One implementation, shared.
+# the contract tests compare mounted routes with.
 [build-dependencies]
 openapi-sanity = { version = "0.1.0", path = "../utils/openapi-sanity" }
 

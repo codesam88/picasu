@@ -13,17 +13,9 @@
         ]
       }
     },
-    "/get/get-data-RENAMED": {
-      "get": {
-        "operationId": "get_data",
-        "tags": [
-          "timeline"
-        ]
-      }
-    },
     "/get/get-rows": {
       "post": {
-        "operationId": "get_rows",
+        "operationId": "get_data",
         "tags": [
           "timeline"
         ]

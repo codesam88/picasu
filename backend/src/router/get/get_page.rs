@@ -154,6 +154,9 @@ pub async fn timeline() -> AppResult<FrontendResponse> {
         get,
         path = "/timeline/view/{path}",
         tag = "pages",
+        params(
+            ("path" = String, Path, description = "Timeline view path the SPA route renders"),
+        ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
@@ -182,6 +185,9 @@ pub async fn albums() -> AppResult<FrontendResponse> {
         get,
         path = "/albums/view/{path}",
         tag = "pages",
+        params(
+            ("path" = String, Path, description = "Album view path the SPA route renders"),
+        ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
@@ -196,6 +202,9 @@ pub async fn albums_view(_path: PathBuf) -> AppResult<FrontendResponse> {
         get,
         path = "/{dynamic_album_id}",
         tag = "pages",
+        params(
+            ("dynamic_album_id" = String, Path, description = "Album page identifier (album-… or another SPA route)"),
+        ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
             (status = 404, description = "Not found"),
@@ -215,6 +224,9 @@ pub async fn album_page(dynamic_album_id: String) -> AppResult<FrontendResponse>
         get,
         path = "/share/{path}",
         tag = "pages",
+        params(
+            ("path" = String, Path, description = "Share view path the SPA route renders"),
+        ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
@@ -243,6 +255,9 @@ pub async fn trashed() -> AppResult<FrontendResponse> {
         get,
         path = "/trashed/view/{path}",
         tag = "pages",
+        params(
+            ("path" = String, Path, description = "Trash view path the SPA route renders"),
+        ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
@@ -271,6 +286,9 @@ pub async fn videos() -> AppResult<FrontendResponse> {
         get,
         path = "/videos/view/{path}",
         tag = "pages",
+        params(
+            ("path" = String, Path, description = "Video view path the SPA route renders"),
+        ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
@@ -383,6 +401,9 @@ pub async fn service_worker() -> AppResult<FrontendResponse> {
         get,
         path = "/{path}",
         tag = "pages",
+        params(
+            ("path" = String, Path, description = "Route path the SPA fallback serves"),
+        ),
         responses(
             (status = 200, description = "SPA fallback — serves index.html for Vue Router routes"),
         )

@@ -45,8 +45,8 @@ fn a_drifted_tree_exits_nonzero_with_one_diagnostic_per_line() {
          order"
     );
     for expected in [
-        "tests/fixtures/drift/get/data.rs:8: data::get_data: the route serves \
-         /get/get-data but its #[utoipa::path] declares /get/get-data-RENAMED",
+        "tests/fixtures/drift/get/data.rs:8: data::get_data: GET /get/get-data-RENAMED \
+         is declared in source but absent from the spec",
         "tests/fixtures/drift/get/data.rs:14: data::get_rows: the route declares GET \
          but its #[utoipa::path] declares POST",
         "tests/fixtures/drift/get/data.rs:20: data::path_completion: GET \
@@ -58,7 +58,7 @@ fn a_drifted_tree_exits_nonzero_with_one_diagnostic_per_line() {
         "tests/fixtures/drift/openapi.json: GET /get/get-albums is in the spec but \
          no scanned route declares it",
         "tests/fixtures/drift/openapi.json: duplicate operationId `get_data` claimed \
-         by GET /get/get-albums, GET /get/get-data-RENAMED",
+         by GET /get/get-albums, POST /get/get-rows",
     ] {
         assert!(
             lines.contains(&expected),

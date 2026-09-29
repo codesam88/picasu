@@ -1,19 +1,21 @@
 //! `openapi-sanity check` — the source/spec half of `just openapi-check`.
 //!
-//! The gate answers three questions: does the committed `OpenAPI` document
+//! The gate answers four questions: does the committed `OpenAPI` document
 //! describe the source that claims to produce it, does every documented operation
-//! belong to a reviewed subject in the taxonomy the reference groups by, and does
-//! every operation require the authentication the source actually performs. The
-//! build script already warns about handlers without an annotation, and the
-//! backend contract tests compare the spec against Rocket's mounted route table at
-//! runtime; what is left between them is a comparison of the source itself, which
-//! needs no compiled artifact and can therefore run before every spec
-//! regeneration.
+//! belong to a reviewed subject in the taxonomy the reference groups by, does
+//! every operation require the authentication the source actually performs, and
+//! does every operation declare the path, query and body inputs its handler
+//! binds. The build script already warns about handlers without an annotation,
+//! and the backend contract tests compare the spec against Rocket's mounted route
+//! table at runtime; what is left between them is a comparison of the source
+//! itself, which needs no compiled artifact and can therefore run before every
+//! spec regeneration.
 //!
 //! Everything here is I/O, formatting and exit codes. The rules live in
-//! [`openapi_sanity::check_contract`], [`openapi_sanity::check_tags`] and
-//! [`openapi_sanity::check_auth`], so the build script, the tests and this binary
-//! cannot disagree about what counts as drift.
+//! [`openapi_sanity::check_contract`], [`openapi_sanity::check_tags`],
+//! [`openapi_sanity::check_auth`] and [`openapi_sanity::check_params`], so the
+//! build script, the tests and this binary cannot disagree about what counts as
+//! drift.
 //!
 //! # Exit codes and summary line
 //!
@@ -39,7 +41,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use openapi_sanity::{
-    AUTH_POLICY, SCANNED_MODULES, SourceUnit, check_auth, check_contract, check_tags,
+    AUTH_POLICY, SCANNED_MODULES, SourceUnit, check_auth, check_contract, check_params, check_tags,
     referenced_handler_files, spec_operations,
 };
 
@@ -244,13 +246,14 @@ fn run(options: &Options) -> Result<Outcome, String> {
         .collect();
     let label = label_for(&options.spec);
 
-    // Both source-reading checks read the same files through the same parse, so a
-    // diagnostic about an unparsable file is produced twice; identical lines are
-    // one problem and are printed once.
+    // The source-reading checks read the same files through the same parse, so a
+    // diagnostic about an unparsable file is produced more than once; identical
+    // lines are one problem and are printed once.
     let mut findings: Vec<String> = check_contract(&units, &label, &spec, &excluded)
         .into_iter()
         .chain(check_tags(&label, &spec, &excluded))
         .chain(check_auth(&units, &label, &spec, &excluded, AUTH_POLICY))
+        .chain(check_params(&units, &label, &document, &excluded))
         .map(|finding| finding.to_string())
         .collect();
     findings.sort();

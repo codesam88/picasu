@@ -1,41 +1,50 @@
-//! Contract parity between the mounted Rocket routes and the public OpenAPI
-//! spec.
+//! Document-shape and parity self-checks for the public OpenAPI spec.
 //!
 //! The spec is generated from two sources that are not the runtime route table:
 //! `build.rs` scans `routes![]` invocations, and utoipa reads the
 //! `#[utoipa::path]` annotations. A handler can therefore be mounted and
 //! documented nowhere (or documented and no longer mounted) without any build or
-//! test failure. These tests compare the two views of the API directly.
+//! test failure.
+//!
+//! The check that closes that gap is **`picasu --check-openapi`**: it builds the
+//! real `build_rocket()`, reads Rocket's mount table and compares it with the
+//! committed `backend/openapi.json` under the asymmetric rule in
+//! [`crate::openapi_parity`]. That is the load-bearing route-set check, and it
+//! is not here because a test build is the wrong input — it runs without
+//! `embed-frontend` and carries the `#[cfg(test)]` probe registrations, so it
+//! serves a different table than the one that ships. It runs from
+//! `just openapi-check`, which `just check`, CI and the pre-commit hook run.
+//!
+//! What remains here drives the same comparison
+//! ([`compare_route_set`]) over the test build's table and over deliberately
+//! drifted fixtures, so the comparison cannot be neutered and stay green, and
+//! the exclusion policy is held to the routes it actually matches. A failure
+//! here is a self-check failing; the route-set verdict is `--check-openapi`'s.
 //!
 //! Anything intentionally outside the documented contract is listed in
-//! [`is_outside_contract`] with a reason, so adding an undocumented route is a
-//! deliberate, reviewable act rather than an omission.
+//! [`crate::openapi_public::CONTRACT_EXCLUSION_PREFIXES`] with a reason, so
+//! adding an undocumented route is a deliberate, reviewable act rather than an
+//! omission.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::MutexGuard;
 
-use openapi_sanity::{AUTH_POLICY, AuthRule, check_tags, to_spec_path};
+use openapi_sanity::{AUTH_POLICY, AuthRule, check_tags};
 use rocket::http::Method;
 
-use crate::openapi_public::{is_test_only_path, public_json};
+use crate::openapi_parity::{
+    Operation, compare_route_set, documented_operations, is_outside_contract, spec_method,
+};
+use crate::openapi_public::CONTRACT_EXCLUSION_PREFIXES;
+use crate::openapi_public::public_json;
+use crate::spec_path::to_spec_path;
 use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, build_test_rocket};
 
-/// A mounted route or a documented operation, as a comparable identity.
-type Operation = (Method, String);
-
-/// Parse a spec method key. `Method` has no fallible parser, and an unknown
-/// verb should fail the gate rather than be skipped.
-fn spec_method(key: &str) -> Method {
-    match key.to_ascii_lowercase().as_str() {
-        "get" => Method::Get,
-        "post" => Method::Post,
-        "put" => Method::Put,
-        "delete" => Method::Delete,
-        other => panic!("spec declares unsupported HTTP method {other}"),
-    }
-}
-
-/// Every route mounted on the application, in spec path form.
+/// Every route the *test* build mounts, in spec path form.
+///
+/// Not the product build's table: see the module doc for why
+/// `picasu --check-openapi` is the route-set gate and this is a self-check over
+/// it.
 fn mounted_operations() -> HashSet<Operation> {
     build_test_rocket()
         .routes()
@@ -43,47 +52,22 @@ fn mounted_operations() -> HashSet<Operation> {
         .collect()
 }
 
-/// Every operation in the public spec, in spec path form.
-fn spec_operations() -> HashSet<Operation> {
+/// Every operation in the public spec, with the feature it is gated behind —
+/// the document side `compare_route_set` reads, read here through the same
+/// reader so the two cannot disagree about what the document says.
+fn spec_operations() -> HashMap<Operation, Option<String>> {
     let spec: serde_json::Value =
         serde_json::from_str(&public_json()).expect("public spec must be valid JSON");
-    let paths = spec["paths"].as_object().expect("spec paths object");
-    let mut operations = HashSet::new();
-    for (path, item) in paths {
-        for method in item.as_object().expect("path item object").keys() {
-            operations.insert((spec_method(method), path.clone()));
-        }
-    }
-    operations
+    documented_operations(&spec).expect("the public spec must be a readable document")
 }
 
-/// Mounted routes that are deliberately absent from the documented contract.
-fn is_outside_contract(operation: &Operation) -> bool {
-    let (method, path) = operation;
-    // Test-only probes: mounted in every build, enabled only by the test
-    // bootstrap, and stripped from the public spec on purpose.
-    if is_test_only_path(path) {
-        return true;
-    }
-    // Static file server for the built frontend. It serves bytes, not API
-    // operations, so it carries no OpenAPI operation.
-    *method == Method::Get && path.starts_with("/assets")
-}
-
-/// Mounted routes that are in scope of the contract but not documented.
-fn undocumented_routes(mounted: &HashSet<Operation>, documented: &HashSet<Operation>) -> String {
-    render(
-        &mounted
-            .difference(documented)
-            .filter(|operation| !is_outside_contract(operation))
-            .cloned()
-            .collect(),
-    )
-}
-
-/// Operations in the spec that no route serves any more.
-fn stale_operations(documented: &HashSet<Operation>, mounted: &HashSet<Operation>) -> String {
-    render(&documented.difference(mounted).cloned().collect())
+/// Compare the test build's table with the public spec, the way
+/// `--check-openapi` compares the product build's.
+fn compare(
+    mounted: &HashSet<Operation>,
+    documented: &HashMap<Operation, Option<String>>,
+) -> String {
+    compare_route_set(mounted, documented, &[], &CONTRACT_EXCLUSION_PREFIXES).render()
 }
 
 /// `operationId` values claimed by more than one path.
@@ -104,15 +88,6 @@ fn duplicate_operation_ids(spec: &serde_json::Value) -> Vec<String> {
     duplicates
 }
 
-fn render(operations: &HashSet<Operation>) -> String {
-    let mut lines: Vec<String> = operations
-        .iter()
-        .map(|(method, path)| format!("{method} {path}"))
-        .collect();
-    lines.sort_unstable();
-    lines.join("\n")
-}
-
 /// Guards against a scenario mutating `APP_CONFIG` or wiping the data path while
 /// the route table is read.
 fn lock_state() -> MutexGuard<'static, ()> {
@@ -120,34 +95,48 @@ fn lock_state() -> MutexGuard<'static, ()> {
     TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// The load-bearing direction, over the test build's table. `--check-openapi`
+/// is the check that decides it, against a build configured like the shipped
+/// one; this keeps `cargo test` failing on the same drift in the configuration
+/// it can see.
 #[test]
-fn every_mounted_route_is_documented() {
+fn the_test_build_mounts_nothing_the_public_spec_omits() {
     let _guard = lock_state();
     let mounted = mounted_operations();
     let documented = spec_operations();
 
-    let undocumented = undocumented_routes(&mounted, &documented);
+    let report = compare_route_set(&mounted, &documented, &[], &CONTRACT_EXCLUSION_PREFIXES);
 
     assert!(
-        undocumented.is_empty(),
-        "mounted routes missing from the public spec:\n{}\n\
+        report.undocumented.is_empty(),
+        "the test build mounts routes the public spec omits:\n{}\n\
          Fix: add a `#[utoipa::path]` annotation to the handler and make sure its \
-         module is scanned by `backend/build.rs`.",
-        undocumented
+         module is scanned by `backend/build.rs`. The load-bearing check for \
+         this is `picasu --check-openapi` (`just openapi-check`), which runs \
+         against the product build.",
+        report.render()
     );
 }
 
+/// The converse, over the test build's table. An operation absent here may still
+/// be mounted in a product build behind a feature, which is why `--check-openapi`
+/// reads the features it was compiled with and this reads none.
 #[test]
-fn every_spec_operation_is_mounted() {
+fn the_public_spec_carries_nothing_the_test_build_leaves_unmounted() {
     let _guard = lock_state();
-    let stale = stale_operations(&spec_operations(), &mounted_operations());
+    let mounted = mounted_operations();
+    let documented = spec_operations();
+
+    let report = compare_route_set(&mounted, &documented, &[], &CONTRACT_EXCLUSION_PREFIXES);
 
     assert!(
-        stale.is_empty(),
-        "operations documented in the public spec but not mounted:\n{}\n\
+        report.unmounted.is_empty(),
+        "the public spec documents operations the test build does not mount:\n{}\n\
          Fix: the route was renamed or removed — regenerate the spec with \
-         `just openapi-gen` and review the diff.",
-        stale
+         `just openapi-gen` and review the diff. The load-bearing check for \
+         this is `picasu --check-openapi` (`just openapi-check`), which reads \
+         this build's enabled features before calling an operation drift.",
+        report.render()
     );
 }
 
@@ -175,7 +164,7 @@ fn contract_exclusions_match_mounted_routes() {
     let documented = spec_operations();
     let excluded: Vec<Operation> = mounted
         .iter()
-        .filter(|operation| is_outside_contract(operation))
+        .filter(|(_, path)| is_outside_contract(path, &CONTRACT_EXCLUSION_PREFIXES))
         .cloned()
         .collect();
 
@@ -186,37 +175,122 @@ fn contract_exclusions_match_mounted_routes() {
     );
     for operation in excluded {
         assert!(
-            !documented.contains(&operation),
+            !documented.contains_key(&operation),
             "{} {} is excluded from the contract but documented in the public \
-             spec; remove it from `is_outside_contract`",
+             spec; remove it from `CONTRACT_EXCLUSION_PREFIXES`",
             operation.0,
             operation.1
         );
     }
 }
 
-/// The Rocket-to-`OpenAPI` path translation is owned by `openapi-sanity`, which
-/// unit-tests it. What is asserted here is that both this test and the mounted
-/// route comparison above run on that shared implementation: a local copy would
-/// be free to drift, and a route that stopped matching its own documentation
-/// would go unnoticed.
+/// The `justfile` recipe and [`CONTRACT_EXCLUSION_PREFIXES`] are one list seen
+/// from two sides: the CLI has no backend dependency and takes
+/// `--exclude-prefix` as arguments, so nothing but this pin keeps the recipe
+/// naming exactly the prefixes the policy declares. Add a prefix to either side
+/// alone and the run fails, naming what each side is missing.
+#[test]
+fn the_justfile_recipe_pins_the_contract_exclusion_policy() {
+    let justfile = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../justfile"),
+    )
+    .unwrap_or_else(|error| panic!("the repository justfile must be readable: {error}"));
+
+    let recipe: HashSet<&str> = recipe_prefixes(&justfile, "openapi-sanity");
+    let policy: HashSet<&str> = CONTRACT_EXCLUSION_PREFIXES.into_iter().collect();
+    let mut missing_from_recipe: Vec<&str> = policy.difference(&recipe).copied().collect();
+    let mut missing_from_policy: Vec<&str> = recipe.difference(&policy).copied().collect();
+    missing_from_recipe.sort_unstable();
+    missing_from_policy.sort_unstable();
+
+    assert!(
+        missing_from_recipe.is_empty() && missing_from_policy.is_empty(),
+        "the `openapi-sanity` recipe and CONTRACT_EXCLUSION_PREFIXES must name the \
+         same `--exclude-prefix` values:\n  in the policy but not the recipe: \
+         {missing_from_recipe:?}\n  in the recipe but not the policy: \
+         {missing_from_policy:?}"
+    );
+}
+
+/// The `--exclude-prefix` values the named recipe passes.
+///
+/// The body of a just recipe is its indented lines, up to the next top-level
+/// line, so this reads the recipe the way `just` does rather than matching
+/// anywhere in the file.
+fn recipe_prefixes<'a>(justfile: &'a str, name: &str) -> HashSet<&'a str> {
+    let header = format!("\n{name}:");
+    let start = justfile
+        .find(&header)
+        .unwrap_or_else(|| panic!("the justfile declares a `{name}` recipe"))
+        + header.len();
+    let mut body = Vec::new();
+    for line in justfile[start..].lines().skip(1) {
+        if line.is_empty() || !line.starts_with([' ', '\t']) {
+            break;
+        }
+        body.push(line);
+    }
+
+    const FLAG: &str = "--exclude-prefix";
+    let mut prefixes = HashSet::new();
+    for line in body {
+        let mut rest = line;
+        while let Some(index) = rest.find(FLAG) {
+            let after = &rest[index + FLAG.len()..];
+            let value = after
+                .trim_start()
+                .split_whitespace()
+                .next()
+                .unwrap_or_else(|| panic!("`{FLAG}` must be followed by a value"));
+            prefixes.insert(value.trim_matches('"'));
+            rest = after;
+        }
+    }
+    prefixes
+}
+
+/// The Rocket-to-`OpenAPI` path translation is owned by this crate
+/// (`crate::spec_path`), and the mounted-route comparison above runs on the
+/// same function: a second copy would be free to drift, and a route that
+/// stopped matching its own documentation would go unnoticed. These cases pin
+/// the whole mapping — segment declarations, underscores, dots, the query part
+/// and malformed input.
 #[test]
 fn rocket_paths_normalize_to_spec_templates() {
+    // Named segments become placeholders.
     assert_eq!(
         to_spec_path("/get/metadata/<asset_id>"),
         "/get/metadata/{asset_id}"
     );
-    assert_eq!(
-        to_spec_path("/albums/view/<_path..>"),
-        "/albums/view/{path}"
-    );
+    // A zero-or-more segment drops the dots.
     assert_eq!(
         to_spec_path("/object/compressed/<file_path..>"),
         "/object/compressed/{file_path}"
     );
+    // `<_path..>` exists to avoid a clash with the handler name; OpenAPI has no
+    // counterpart for the underscore.
+    assert_eq!(
+        to_spec_path("/albums/view/<_path..>"),
+        "/albums/view/{path}"
+    );
+    assert_eq!(to_spec_path("/assets/<_file..>"), "/assets/{file}");
+    assert_eq!(
+        to_spec_path("/albums/view/<_path..>/photos/<index>/raw"),
+        "/albums/view/{path}/photos/{index}/raw"
+    );
     // Query parameters are documented per parameter, not in the path.
     assert_eq!(to_spec_path("/get/prefetch?<locate>"), "/get/prefetch");
+    assert_eq!(
+        to_spec_path("/upload?<auto_rename>&<on_conflict>"),
+        "/upload"
+    );
+    // A path without parameters is unchanged.
     assert_eq!(to_spec_path("/upload"), "/upload");
+    assert_eq!(to_spec_path("/login"), "/login");
+    assert_eq!(to_spec_path(""), "");
+    // Not a segment declaration: the remainder is passed through rather than
+    // silently dropped, so a malformed URI is visible in the comparison.
+    assert_eq!(to_spec_path("/get/<broken"), "/get/<broken");
 }
 
 // ── Operation tags ────────────────────────────────────────────────────────────
@@ -293,11 +367,13 @@ fn self_check_detects_tag_drift_in_the_public_spec() {
 
 // ── Negative self-checks ──────────────────────────────────────────────────────
 //
-// The gates above only fail if the comparison still works. A refactor that
-// emptied `undocumented_routes`, or a path-normalization change that silently
-// made every route "match", would turn the contract gate into a no-op that
-// still reports success. These tests feed the comparison deliberately drifted
-// inputs and require it to notice, so the gate cannot be neutered silently.
+// The gate only fails if the comparison still works. A refactor that emptied
+// `compare_route_set`, or a path-normalization change that silently made every
+// route "match", would turn `--check-openapi` into a no-op that still reports
+// success. These tests feed the comparison deliberately drifted inputs and
+// require it to notice. The asymmetric rule itself — the feature excuse in
+// particular — is driven over fixtures in `tests::openapi_parity`, where the
+// document side is a fixture rather than the generated spec.
 
 /// Build an operation set from `(method, path)` pairs.
 fn operations(entries: &[(Method, &str)]) -> HashSet<Operation> {
@@ -307,18 +383,27 @@ fn operations(entries: &[(Method, &str)]) -> HashSet<Operation> {
         .collect()
 }
 
+/// The same pairs as a document: every operation ungated, which is what the
+/// public spec is today.
+fn documented(entries: &[(Method, &str)]) -> HashMap<Operation, Option<String>> {
+    entries
+        .iter()
+        .map(|(method, path)| ((*method, (*path).to_string()), None))
+        .collect()
+}
+
 #[test]
 fn self_check_detects_an_undocumented_mounted_route() {
     let mounted = operations(&[
         (Method::Get, "/get/get-data"),
         (Method::Post, "/post/undeclared"),
     ]);
-    let documented = operations(&[(Method::Get, "/get/get-data")]);
+    let document = documented(&[(Method::Get, "/get/get-data")]);
 
-    let undetected = undocumented_routes(&mounted, &documented);
+    let report = compare(&mounted, &document);
     assert!(
-        undetected.contains("POST /post/undeclared"),
-        "a mounted route missing from the spec must be reported, got: {undetected:?}"
+        report.contains("POST /post/undeclared"),
+        "a mounted route missing from the spec must be reported, got: {report:?}"
     );
 }
 
@@ -327,12 +412,12 @@ fn self_check_detects_a_documented_operation_that_is_not_mounted() {
     // What a stale `path = "..."` in an annotation looks like: documented,
     // mounted under a different path.
     let mounted = operations(&[(Method::Post, "/post/index/album")]);
-    let documented = operations(&[(Method::Post, "/post/index/album-RENAMED")]);
+    let document = documented(&[(Method::Post, "/post/index/album-RENAMED")]);
 
-    let undetected = stale_operations(&documented, &mounted);
+    let report = compare(&mounted, &document);
     assert!(
-        undetected.contains("POST /post/index/album-RENAMED"),
-        "a spec operation with no matching route must be reported, got: {undetected:?}"
+        report.contains("POST /post/index/album-RENAMED"),
+        "a spec operation with no matching route must be reported, got: {report:?}"
     );
 }
 
@@ -344,10 +429,9 @@ fn self_check_reports_nothing_when_both_views_agree() {
         (Method::Put, "/put/assign_album"),
     ];
     let mounted = operations(&entries);
-    let documented = operations(&entries);
+    let document = documented(&entries);
 
-    assert_eq!(undocumented_routes(&mounted, &documented), "");
-    assert_eq!(stale_operations(&documented, &mounted), "");
+    assert_eq!(compare(&mounted, &document), "");
 }
 
 #[test]
@@ -360,16 +444,18 @@ fn self_check_does_not_report_excluded_routes_as_undocumented() {
         (Method::Get, "/assets/{path}"),
         (Method::Post, "/post/real-route"),
     ]);
-    let documented = operations(&[(Method::Post, "/post/real-route")]);
+    let document = documented(&[(Method::Post, "/post/real-route")]);
 
-    let undetected = undocumented_routes(&mounted, &documented);
+    let report = compare(&mounted, &document);
     assert_eq!(
-        undetected, "",
+        report, "",
         "test-only and file-server routes must stay out of the contract report"
     );
     // ...and an excluded prefix must not swallow a real route.
-    let real_route = (Method::Get, "/get/test-but-real".to_string());
-    assert!(!is_outside_contract(&real_route));
+    assert!(!is_outside_contract(
+        "/get/test-but-real",
+        &CONTRACT_EXCLUSION_PREFIXES
+    ));
 }
 
 #[test]
@@ -399,10 +485,11 @@ fn self_check_detects_a_method_mismatch() {
     // Same path, different verb: `GET /get/config` documented while only
     // `POST /get/config` is mounted. Path-only comparison would miss it.
     let mounted = operations(&[(Method::Post, "/get/config")]);
-    let documented = operations(&[(Method::Get, "/get/config")]);
+    let document = documented(&[(Method::Get, "/get/config")]);
 
-    assert!(undocumented_routes(&mounted, &documented).contains("POST /get/config"));
-    assert!(stale_operations(&documented, &mounted).contains("GET /get/config"));
+    let report = compare(&mounted, &document);
+    assert!(report.contains("POST /get/config"), "got: {report:?}");
+    assert!(report.contains("GET /get/config"), "got: {report:?}");
 }
 
 // ── Shared 401 response component ─────────────────────────────────────────────
@@ -512,7 +599,13 @@ fn operations_by_id(spec: &serde_json::Value) -> HashMap<&str, Operation> {
     for (path, item) in spec["paths"].as_object().expect("spec paths object") {
         for (method, operation) in item.as_object().expect("path item object") {
             if let Some(id) = operation["operationId"].as_str() {
-                by_id.insert(id, (spec_method(method), path.clone()));
+                by_id.insert(
+                    id,
+                    (
+                        spec_method(method).expect("the public spec declares a known verb"),
+                        path.clone(),
+                    ),
+                );
             }
         }
     }
@@ -563,7 +656,8 @@ fn policy_violations(spec: &serde_json::Value, policy: &[AuthRule]) -> Vec<Strin
             if unauthorized_response(operation).is_null() {
                 continue;
             }
-            if !accounted.contains(&(spec_method(method), path.clone())) {
+            let method = spec_method(method).expect("the public spec declares a known verb");
+            if !accounted.contains(&(method, path.clone())) {
                 violations.push(format!(
                     "{method} {path}: documents a 401 no auth policy entry accounts for"
                 ));
