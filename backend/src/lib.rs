@@ -14,6 +14,7 @@ mod model;
 #[rustfmt::skip]
 pub mod openapi;
 pub mod openapi_components;
+pub mod openapi_parity;
 pub mod openapi_public;
 mod process;
 mod router;

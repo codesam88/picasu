@@ -20,10 +20,10 @@ use crate::openapi::generate_json;
 pub const TEST_ONLY_PATH_PREFIX: &str = "/get/test/";
 
 /// Path prefixes deliberately outside the published contract — the one backend
-/// definition every consumer derives from: the mounted-route parity filter
-/// (`is_outside_contract`), the `justfile` recipe's `--exclude-prefix` values
-/// (held to it by a test that reads the recipe), and `--check-openapi`'s drop
-/// rule when it lands.
+/// definition every consumer derives from: the mounted-route parity filter and
+/// the `--check-openapi` drop rule (`crate::openapi_parity`), the `justfile`
+/// recipe's `--exclude-prefix` values (held to it by a test that reads the
+/// recipe), and the route-set self-checks in `tests::openapi_contract`.
 ///
 /// `TEST_ONLY_PATH_PREFIX` is registered only in test builds and stripped from
 /// the public artifact. `/assets` is the static file mount for the frontend: it

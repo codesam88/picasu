@@ -813,6 +813,55 @@ first instinct that the invariant framing ruled out.
 
 ## Progress
 
+- 2026-09-28: **I2 landed.** `--check-openapi` on the binary, a sibling of
+  `--dump-openapi`: it reads the committed `backend/openapi.json` from disk,
+  builds the real `build_rocket()`, and compares Rocket's table with the
+  document under the asymmetric rule. The comparison is one pure function,
+  `openapi_parity::compare_route_set(mounted, documented, enabled_features,
+excluded_prefixes)`, so the flag and the backend's self-checks run the same code
+  instead of two comparisons free to drift; `openapi_parity.rs` also owns the
+  `x-picasu-feature` reader, the `cfg!` feature read and the
+  `CONTRACT_EXCLUSION_PREFIXES` drop applied to both sides. Exit codes 0/1/2, a
+  per-route report, and an unreadable document is an error naming
+  `just openapi-gen` rather than a clean run. The spec stays out of the boot
+  path: nothing reads it unless the flag is asked for.
+
+  The excuse branch is vacuous in production (no operation carries a marker), so
+  it is proved over fixtures in `backend/src/tests/openapi_parity.rs` in both
+  directions — a gated operation absent from a build without the feature is
+  accepted, and is drift once the feature is on — alongside mounted-but-
+  undocumented and ungated-document-only, the marker reader (including an
+  unreadable marker, which is reported rather than ignored), and the read errors.
+  I6's marker pin is there too: every `x-picasu-feature` value in the committed
+  document must be a feature `backend/Cargo.toml` declares, fixture-backed, plus
+  a second pin holding `KNOWN_FEATURES` to the same set so a declared feature the
+  `cfg!` read does not name cannot excuse anything unconditionally.
+
+  The two load-bearing parity tests in `openapi_contract.rs` retired to
+  self-checks: they drive `compare_route_set` over the test build's table and
+  over drifted fixtures, and their failure text points at `--check-openapi`, whose
+  verdict is now the route-set one. `contract_exclusions_match_mounted_routes`
+  and the recipe pin are unchanged and still pass.
+
+  Wired as the third phase of `just openapi-check` (`openapi-routes`), so
+  `just check`, CI and the pre-commit hook run it; pinned to the release feature
+  set (`--features "embed-frontend auto-open-browser"`), and the release
+  workflow runs the flag on the binary it is about to ship. The phase depends on
+  the frontend bundle, because `embed-frontend` embeds it.
+
+  **Two corrections to the plan's phrasing, both verified against utoipa 5.5.0
+  by compiling a scratch crate.** The marker is written
+  `extensions(("x-picasu-feature" = json!("<feature>")))`, not
+  `extensions(x("picasu_feature" = "..."))`: `x` is not an attribute utoipa's
+  path macro accepts, and utoipa serializes a bare key as `x-` + that key
+  verbatim, so the plan's `picasu_feature` underscore would have landed as
+  `x-picasu_feature`, which the check does not read. The name is spelled whole
+  so the annotation and the reader are the same string, though utoipa's
+  `ExtensionsBuilder` would add the prefix itself. The `x-picasu-feature` name
+  is unchanged, and the docs now state the working syntax. Also, the spec is
+  `CARGO_MANIFEST_DIR/openapi.json` (the artifact sits in `backend/`, not in the
+  repository root).
+
 - 2026-09-28: **Is the `openapi-sanity` linter redundant with existing
   tooling? Investigated at the user's request; no — and the reason is the
   invariant, not the tool.** Every external candidate (Spectral, Redocly CLI,
