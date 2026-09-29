@@ -564,6 +564,45 @@ runtime check — so it depends on none of I6/I3/I2/I1 and runs last only becaus
 they edit `contract.rs` too and one worker at a time keeps the diff reviewable.
 I5 is done (2026-09-28).
 
+#### Open decisions — outside the sequence, awaiting the user
+
+None of these are scheduled, and nothing in the sequence above depends on them.
+They are recorded here so the trade-off survives the conversation that raised
+it. The evidence is in the progress note for the linter-redundancy
+investigation (2026-09-28).
+
+1. **Adopt an OpenAPI document linter (Spectral) additively, for mechanism 3's
+   missing half?** We do not validate the document against the specification at
+   all; a measured Spectral run found 122 problems we cannot see, one of them a
+   real error (ambiguous templates `/{dynamic_album_id}` vs `/{path}`). Cost:
+   one `npx` in `just openapi-check` on the Node toolchain CI already has, the
+   same shape as the widdershins recipe, plus a ruleset that is someone else's
+   opinion on house style (56 missing descriptions, 61 tags with no global
+   `tags` block). It substitutes for nothing of ours: 14 of 23 rules compare
+   source or the runtime table, and its CLI dereferences `$ref`s, so the orphan
+   -schema rules must stay in Rust. The middle option — a hand-picked rule list
+   instead of the full `spectral:oas` ruleset — is available at the price of
+   maintaining the selection.
+2. **Move mechanism 4 (breaking-change detection) to `oasdiff`?** It is the
+   clearest net win available (a classified change set we would otherwise
+   write), and it is blocked on something the repo does not have: a released
+   baseline document to diff against. Keeping the tag, treating
+   `backend/openapi.json` from that tag as the baseline and adding
+   `just openapi-breaking` is a release-process decision, then a small one.
+3. **I1 and I4 before or after a Spectral trial?** Both are work on our own
+   linter, not on the mechanisms no tool can supply — the essential parts
+   (mechanisms 1 and 2) are landed. I1 is the larger of the two. The
+   investigation's prediction is "delete nothing"; a trial would turn that into
+   a measurement, at the cost of running two linters over one document.
+4. **`just openapi-routes` builds the shipped feature set, which needs
+   `frontend/dist`.** The route-set gate runs `--features "embed-frontend
+auto-open-browser"` so the build checking is the build shipping, and
+   `embed-frontend` embeds the frontend bundle — so on a clone without one, the
+   pre-commit hook and `just check` run `npm run build` first, the same
+   dependency `backend-test` already has. Building with default features would
+   avoid that and would make the gate blind to any future feature-gated route,
+   which is exactly the class the asymmetric rule exists for.
+
 #### Ordered by the invariant, not by severity
 
 The findings are grouped by which half of the invariant they threaten and by what
