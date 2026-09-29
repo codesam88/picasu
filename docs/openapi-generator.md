@@ -29,7 +29,11 @@ anything, and fails on the failures the runtime table cannot show: an annotation
 whose path or verb disagrees with the route attribute it sits on, a handler
 registered twice, a committed document that no longer matches what the source
 declares, an operation grouped under a subject outside the taxonomy, or a handler
-whose request guards do not match what the operation is supposed to require.
+whose request guards do not match what the operation is supposed to require. The
+runtime half is `picasu --check-openapi`, a mode on the binary that builds the
+real `build_rocket()` and compares its route table with the committed document
+(see [Route-set parity](#route-set-parity---check-openapi)); the tests above are
+self-checks over the same comparison, run against a test build's table.
 
 The tag taxonomy and the auth policy are owned by `openapi-sanity` and enforced by
 the CLI; the backend tests run the same rules over the generated public spec, so
@@ -80,6 +84,8 @@ The goal is an exact, auditable mapping between:
 │ Phase 1  openapi-sanity check                        │
 │          source vs. backend/openapi.json             │
 │ Phase 2  regenerate and diff the committed artifact  │
+│ Phase 3  --check-openapi                             │
+│          build_rocket().routes() vs the spec         │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -115,7 +121,7 @@ The goal is an exact, auditable mapping between:
    - `widdershins` to convert `openapi.json` → `docs/openapi-reference.md`
    - `prettier` for consistent markdown formatting
 
-4. **`just openapi-check`** — the API contract gate, in two phases (see
+4. **`just openapi-check`** — the API contract gate, in three phases (see
    [The contract gate](#the-contract-gate)). It is part of `just check`, so it
    runs in CI, and the pre-commit hook runs it for any commit that touches
    `backend/`.
@@ -124,7 +130,11 @@ The goal is an exact, auditable mapping between:
    the mounted Rocket routes with the public spec, and run the shared tag and auth
    policies over it (the taxonomy below, and which operations can answer `401`).
    Both sides of the route comparison are normalized with
-   `openapi_sanity::to_spec_path`, the single path translation the crate owns.
+   `backend/src/spec_path.rs::to_spec_path`, the single path translation the
+   backend owns. They are self-checks over the _test_ build's route table; the
+   route-set verdict belongs to `--check-openapi`, because a test build runs
+   without `embed-frontend` and serves a different table than the one that ships
+   (see [Route-set parity](#route-set-parity---check-openapi)).
 
 6. **`openapi-sanity` tests** (`cargo test -p openapi-sanity`) — cover the
    scanner itself: `routes![]` entries in every layout, per-function annotation
@@ -135,15 +145,23 @@ The goal is an exact, auditable mapping between:
    matches its layout, and that the build script scans them through the shared
    crate rather than a private copy.
 
-7. **`committed_artifact_is_up_to_date`** — asserts `public_json()` equals the
+7. **`openapi_parity` tests** (`cargo test --lib openapi_parity`) — the
+   asymmetric parity rule over fixtures, since the feature-excuse branch has no
+   instance in the repository: a mounted route the document omits fails, an
+   ungated document-only operation fails, and a feature-gated operation absent
+   from this build is excused — and is drift once the feature is on. The same
+   file pins every `x-picasu-feature` value in the committed document to a
+   feature `backend/Cargo.toml` declares.
+
+8. **`committed_artifact_is_up_to_date`** — asserts `public_json()` equals the
    committed `backend/openapi.json`, so a stale artifact fails `cargo test` as
    well as `just openapi-check`.
 
 ## The contract gate
 
 `just openapi-check` is the single command developers and CI run for the API
-contract. It is two phases, and a phase that fails stops the recipe with a
-nonzero exit, so the failing phase's own diagnostics are what the run shows:
+contract. It runs three phases, and a failure stops the recipe with a nonzero
+exit, so the failing phase's own diagnostics are what the run shows:
 
 1. **`openapi-sanity check`** — the semantic phase. Compares the annotated source
    with the committed `backend/openapi.json` without compiling the backend, so it
@@ -152,9 +170,18 @@ nonzero exit, so the failing phase's own diagnostics are what the run shows:
    with `cargo run --package picasu -- --dump-openapi` into a temporary file and
    fails when it differs from the committed `backend/openapi.json`, printing the
    diff and the fix.
+3. **`openapi-routes`** — the route-set phase, `picasu --check-openapi` run
+   against a build configured like the shipped one. This is the only check that
+   can prove the route-set half of the invariant, and it is pinned to the release
+   feature set (`--features "embed-frontend auto-open-browser"`, the set
+   `.github/workflows/release.yml` builds) so the build doing the checking is the
+   build that ships: a feature-gated route only exists in the table of a build
+   that has the feature, so checking a build without it could not see the route
+   at all. The phase depends on the frontend bundle because `embed-frontend`
+   embeds it.
 
 The order matters only for the report: phase 1 is cheap and names the source that
-has to change, so it runs before the phase that has to compile the backend.
+has to change, so it runs before the phases that have to compile the backend.
 
 ### What the semantic phase checks
 
@@ -434,6 +461,96 @@ two read different documents on purpose: the CLI says what is committed, the
 backend test says what the annotations currently produce, and phase 2 of the gate
 is what catches them disagreeing.
 
+## Route-set parity (`--check-openapi`)
+
+`--check-openapi` is the check that proves the route-set half of the invariant. It
+is a mode on the binary, a sibling of `--dump-openapi`:
+
+```
+picasu --check-openapi [<path-to-spec>]   # default: backend/openapi.json
+```
+
+It reads the **committed** spec (the published claim, not the compiled-in copy),
+builds the real `build_rocket()`, reads `.routes()`, normalizes both sides with
+the backend's `to_spec_path`, and compares them under an **asymmetric** rule:
+
+- **Mounted ⊆ spec** — every route the running product registers must be in the
+  spec. A hard failure. This is the direction that cannot be argued with.
+- **Spec ⊆ mounted, feature-gated** — a spec operation that is not mounted in
+  _this_ build is acceptable when, and only when, it is feature-gated and that
+  feature is disabled here. An ungated spec operation with no matching mount is
+  still drift.
+
+Before the comparison both sides are normalized and then **dropped** under
+`openapi_public::CONTRACT_EXCLUSION_PREFIXES` — `/get/test/` and `/assets` — the
+one backend-owned list of surfaces outside the published contract. The same const
+is what `contract_exclusions_match_mounted_routes` holds to the routes it
+actually matches, so a prefix cannot be added to one consumer alone.
+
+Nothing under the exclusions is excused because of a feature: a mount with no
+operation is a failure whatever the reason it is mounted. The asymmetry only
+applies in the other direction, to operations the document carries.
+
+The asymmetry is what feature-gating requires. The build's enabled features are
+read with `cfg!` (`openapi_parity::enabled_features`), so the check runs
+correctly in any configuration. It exits `0` when the two views agree, `1` with a
+per-route report when they do not, and `2` when the document cannot be read or
+parsed — a missing file names `just openapi-gen` rather than reporting a clean run.
+
+The comparison is a pure function over three inputs — the mounted routes, the
+document's operations, and this build's enabled features
+(`openapi_parity::compare_route_set`) — so the rule is tested without a server
+and without a product build, and the flag and the backend's parity self-checks run
+the same code rather than two comparisons that can drift apart.
+
+The `/get/test/` probes are registered only in test builds (a `#[cfg(test)]`
+extension of `generate_get_routes()`), which is what the route-set rule requires:
+the public document never carried them, so a shipped build that mounted them
+would fail the gate. The handlers and their annotations stay compiled in every
+build, because `build.rs` generation is cfg-blind and the spec keeps the probe
+paths. `backend/tests/probe_registration.rs` observes that from an integration
+test, which is the only vantage point outside `cfg(test)`.
+
+### Feature-dependent routes
+
+A single canonical `openapi.json` describes every route _any_ build can expose —
+the union across features, not one build's slice. An operation that exists only
+under a feature carries that feature as a vendor extension, set with utoipa's
+`extensions(...)` on `#[utoipa::path]`:
+
+```rust
+#[utoipa::path(
+    get,
+    path = "/get/index/experimental",
+    extensions(("x-picasu-feature" = json!("embed-frontend"))),
+    ...
+)]
+```
+
+The key has to be spelled whole: utoipa prefixes a bare key with `x-` and
+otherwise leaves the rest as written, so `("picasu_feature" = …)` would serialize
+as `x-picasu_feature` and the check would not see it. The marker is written by
+the annotation author — `build.rs` cannot evaluate a `cfg` at a mount site.
+
+`--check-openapi` reads that marker, so in a build without `embed-frontend` the
+operation's absence from the mount table is expected rather than drift. This is
+what lets a feature-gated API be documented without a hand-written exclusion —
+exclusions remain only for genuinely non-API surfaces (static file mounts,
+test-only probes).
+
+A marker naming a feature `backend/Cargo.toml` does not declare would make the
+`cfg!` read permanently false and excuse the operation in every build, so
+`every_feature_marker_in_the_committed_spec_is_a_declared_feature` holds the
+committed document to the manifest's `[features]`, and
+`every_declared_feature_is_readable_by_the_enabled_feature_list` holds the list
+the check asks `cfg!` about to the same set. No operation carries a marker today,
+so both are fixture-backed rather than repository-backed.
+
+The spec dependency of this check is deliberately confined to the repo, the commit
+hook, CI and the release gate. `openapi.json` is a review artifact, not a
+deployment dependency, so the server's boot does not depend on it and a missing
+file cannot stop the server from starting.
+
 ## Workflow
 
 ### Adding a new data API route
@@ -448,6 +565,9 @@ is what catches them disagreeing.
    `tag = "..."` to the subject from the Tag conventions table — every operation
    must carry one, `pages` only on the SPA page routes, and the vocabulary is
    closed, so a new subject is a reviewed change to `KNOWN_TAGS` and this table.
+   If the route is feature-gated, add
+   `extensions(("x-picasu-feature" = json!("<feature>")))` so `--check-openapi`
+   knows a spec operation may legitimately be absent from a build without it.
 3. Add the operation to `AUTH_POLICY` in `utils/openapi-sanity/src/auth.rs`,
    naming the guards its parameters declare or marking it public. The gate fails
    on an operation in no policy entry, so this is part of adding the route.
@@ -458,7 +578,7 @@ is what catches them disagreeing.
    together.
 
 CI enforces steps 4 and 5: `just check` compares the source with the committed
-spec, diffs the spec artifact, and the parity tests fail on undocumented or
+spec, diffs the spec artifact, and `--check-openapi` fails on undocumented or
 stale operations.
 
 ### Removing a route
@@ -541,14 +661,20 @@ gets two loud findings rather than a silently narrowed contract.
 
 ## Files
 
-| File                                                         | Generator           | Role                                                                                     |
-| ------------------------------------------------------------ | ------------------- | ---------------------------------------------------------------------------------------- |
-| [`utils/openapi-sanity/`](../utils/openapi-sanity/README.md) | —                   | `syn`-based route/annotation/guard scanner, path rules, source/spec, tag and auth checks |
-| `utils/openapi-sanity/src/auth.rs`                           | —                   | The auth policy table and its checks                                                     |
-| `utils/openapi-sanity/src/tags.rs`                           | —                   | The subject taxonomy and its checks                                                      |
-| `utils/openapi-sanity/src/main.rs`                           | —                   | `openapi-sanity check` CLI (phase 1 of the gate)                                         |
-| `backend/src/openapi.rs`                                     | `build.rs`          | ApiDoc struct with all routes (gitignored)                                               |
-| `backend/openapi.json`                                       | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                                       |
-| `docs/openapi-reference.md`                                  | widdershins         | Human-readable API reference                                                             |
-| `backend/src/tests/openapi_contract.rs`                      | —                   | Mounted-route / spec parity gate                                                         |
-| `backend/build.rs`                                           | —                   | Reads the router files, writes `openapi.rs`                                              |
+| File                                                                               | Generator           | Role                                                                                     |
+| ---------------------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------- |
+| [`utils/openapi-sanity/`](../utils/openapi-sanity/README.md)                       | —                   | `syn`-based route/annotation/guard scanner, path rules, source/spec, tag and auth checks |
+| `utils/openapi-sanity/src/auth.rs`                                                 | —                   | The auth policy table and its checks                                                     |
+| `utils/openapi-sanity/src/tags.rs`                                                 | —                   | The subject taxonomy and its checks                                                      |
+| `utils/openapi-sanity/src/main.rs`                                                 | —                   | `openapi-sanity check` CLI (phase 1 of the gate)                                         |
+| `backend/src/openapi.rs`                                                           | `build.rs`          | ApiDoc struct with all routes (gitignored)                                               |
+| `backend/openapi.json`                                                             | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                                       |
+| `docs/openapi-reference.md`                                                        | widdershins         | Human-readable API reference                                                             |
+| [`backend/src/openapi_public.rs`](../../backend/src/openapi_public.rs)             | —                   | Public-spec filter and the backend-owned exclusion policy                                |
+| [`backend/src/openapi_parity.rs`](../../backend/src/openapi_parity.rs)             | —                   | The `--check-openapi` route-set gate and its asymmetric rule                             |
+| [`backend/src/spec_path.rs`](../../backend/src/spec_path.rs)                       | —                   | The Rocket-to-`OpenAPI` path translation, in one place                                   |
+| [`backend/src/main.rs`](../../backend/src/main.rs)                                 | —                   | `--dump-openapi` and `--check-openapi`                                                   |
+| `backend/src/tests/openapi_contract.rs`                                            | —                   | Mounted-route / spec parity self-checks                                                  |
+| [`backend/src/tests/openapi_parity.rs`](../../backend/src/tests/openapi_parity.rs) | —                   | The asymmetric rule over fixtures, and the feature-marker pins                           |
+| [`backend/tests/probe_registration.rs`](../../backend/tests/probe_registration.rs) | —                   | The `/get/test/` probe registration gate, seen from outside `cfg(test)`                  |
+| `backend/build.rs`                                                                 | —                   | Reads the router files, writes `openapi.rs`                                              |

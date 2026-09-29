@@ -45,6 +45,13 @@ jobs:
         working-directory: ./backend
         run: cargo build --release --features "embed-frontend auto-open-browser"
 
+      # The route-set gate, run on the binary that is about to ship: every route
+      # this build mounts must be in the committed spec, and an operation the
+      # document carries that nothing mounts is drift unless it is feature-gated
+      # and the feature is off here.
+      - name: Check the shipped binary's routes against the committed spec
+        run: ./backend/target/release/picasu --check-openapi backend/openapi.json
+
       - name: Prepare Release Package
         run: |
           echo "Downloading FFmpeg static build..."

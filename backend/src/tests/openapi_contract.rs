@@ -14,10 +14,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::MutexGuard;
 
-use openapi_sanity::{AUTH_POLICY, AuthRule, check_tags, to_spec_path};
+use openapi_sanity::{AUTH_POLICY, AuthRule, check_tags};
 use rocket::http::Method;
 
 use crate::openapi_public::{is_test_only_path, public_json};
+use crate::spec_path::to_spec_path;
 use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, build_test_rocket};
 
 /// A mounted route or a documented operation, as a comparable identity.
@@ -60,8 +61,8 @@ fn spec_operations() -> HashSet<Operation> {
 /// Mounted routes that are deliberately absent from the documented contract.
 fn is_outside_contract(operation: &Operation) -> bool {
     let (method, path) = operation;
-    // Test-only probes: mounted in every build, enabled only by the test
-    // bootstrap, and stripped from the public spec on purpose.
+    // Test-only probes: registered only in test builds, enabled only by the
+    // test bootstrap, and stripped from the public spec on purpose.
     if is_test_only_path(path) {
         return true;
     }
@@ -195,28 +196,48 @@ fn contract_exclusions_match_mounted_routes() {
     }
 }
 
-/// The Rocket-to-`OpenAPI` path translation is owned by `openapi-sanity`, which
-/// unit-tests it. What is asserted here is that both this test and the mounted
-/// route comparison above run on that shared implementation: a local copy would
-/// be free to drift, and a route that stopped matching its own documentation
-/// would go unnoticed.
+/// The Rocket-to-`OpenAPI` path translation is owned by this crate
+/// (`crate::spec_path`), and the mounted-route comparison above runs on the
+/// same function: a second copy would be free to drift, and a route that
+/// stopped matching its own documentation would go unnoticed. These cases pin
+/// the whole mapping — segment declarations, underscores, dots, the query part
+/// and malformed input.
 #[test]
 fn rocket_paths_normalize_to_spec_templates() {
+    // Named segments become placeholders.
     assert_eq!(
         to_spec_path("/get/metadata/<asset_id>"),
         "/get/metadata/{asset_id}"
     );
-    assert_eq!(
-        to_spec_path("/albums/view/<_path..>"),
-        "/albums/view/{path}"
-    );
+    // A zero-or-more segment drops the dots.
     assert_eq!(
         to_spec_path("/object/compressed/<file_path..>"),
         "/object/compressed/{file_path}"
     );
+    // `<_path..>` exists to avoid a clash with the handler name; OpenAPI has no
+    // counterpart for the underscore.
+    assert_eq!(
+        to_spec_path("/albums/view/<_path..>"),
+        "/albums/view/{path}"
+    );
+    assert_eq!(to_spec_path("/assets/<_file..>"), "/assets/{file}");
+    assert_eq!(
+        to_spec_path("/albums/view/<_path..>/photos/<index>/raw"),
+        "/albums/view/{path}/photos/{index}/raw"
+    );
     // Query parameters are documented per parameter, not in the path.
     assert_eq!(to_spec_path("/get/prefetch?<locate>"), "/get/prefetch");
+    assert_eq!(
+        to_spec_path("/upload?<auto_rename>&<on_conflict>"),
+        "/upload"
+    );
+    // A path without parameters is unchanged.
     assert_eq!(to_spec_path("/upload"), "/upload");
+    assert_eq!(to_spec_path("/login"), "/login");
+    assert_eq!(to_spec_path(""), "");
+    // Not a segment declaration: the remainder is passed through rather than
+    // silently dropped, so a malformed URI is visible in the comparison.
+    assert_eq!(to_spec_path("/get/<broken"), "/get/<broken");
 }
 
 // ── Operation tags ────────────────────────────────────────────────────────────
