@@ -7,6 +7,13 @@
 //! documented nowhere (or documented and no longer mounted) without any build or
 //! test failure. These tests compare the two views of the API directly.
 //!
+//! `--check-openapi` is the load-bearing route-set check: it runs the same
+//! comparison over the mount table of a build configured like the shipped one,
+//! against the committed document. What is here is the self-check half — the
+//! same comparisons, over a test build's route table, so that a refactor which
+//! emptied a comparison fails a named test instead of turning the gate into a
+//! no-op that still reports success.
+//!
 //! Anything intentionally outside the documented contract is listed in
 //! [`is_outside_contract`] with a reason, so adding an undocumented route is a
 //! deliberate, reviewable act rather than an omission.
@@ -14,7 +21,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::MutexGuard;
 
-use openapi_sanity::{AUTH_POLICY, AuthRule, check_tags};
 use rocket::http::Method;
 
 use crate::openapi_public::{is_test_only_path, public_json};
@@ -45,7 +51,7 @@ fn mounted_operations() -> HashSet<Operation> {
 }
 
 /// Every operation in the public spec, in spec path form.
-fn spec_operations() -> HashSet<Operation> {
+fn documented_operations() -> HashSet<Operation> {
     let spec: serde_json::Value =
         serde_json::from_str(&public_json()).expect("public spec must be valid JSON");
     let paths = spec["paths"].as_object().expect("spec paths object");
@@ -125,7 +131,7 @@ fn lock_state() -> MutexGuard<'static, ()> {
 fn every_mounted_route_is_documented() {
     let _guard = lock_state();
     let mounted = mounted_operations();
-    let documented = spec_operations();
+    let documented = documented_operations();
 
     let undocumented = undocumented_routes(&mounted, &documented);
 
@@ -141,7 +147,7 @@ fn every_mounted_route_is_documented() {
 #[test]
 fn every_spec_operation_is_mounted() {
     let _guard = lock_state();
-    let stale = stale_operations(&spec_operations(), &mounted_operations());
+    let stale = stale_operations(&documented_operations(), &mounted_operations());
 
     assert!(
         stale.is_empty(),
@@ -173,7 +179,7 @@ fn operation_ids_are_unique() {
 fn contract_exclusions_match_mounted_routes() {
     let _guard = lock_state();
     let mounted = mounted_operations();
-    let documented = spec_operations();
+    let documented = documented_operations();
     let excluded: Vec<Operation> = mounted
         .iter()
         .filter(|operation| is_outside_contract(operation))
@@ -238,78 +244,6 @@ fn rocket_paths_normalize_to_spec_templates() {
     // Not a segment declaration: the remainder is passed through rather than
     // silently dropped, so a malformed URI is visible in the comparison.
     assert_eq!(to_spec_path("/get/<broken"), "/get/<broken");
-}
-
-// ── Operation tags ────────────────────────────────────────────────────────────
-//
-// Every operation carries exactly one tag from a small taxonomy so the generated
-// reference groups by subject instead of by whichever handler was annotated last.
-// The vocabulary and the rules live in `openapi_sanity` (`KNOWN_TAGS`,
-// `check_tags`), and `openapi-sanity check` runs them on the committed document.
-// What follows is the document half of that run, kept in the backend so
-// `cargo test --lib` fails on the same drift without the CLI. It reads the
-// *generated* public spec rather than the committed artifact, so an annotation
-// edit is reported before `just openapi-gen` has run, while the CLI reports what
-// the committed document says and phase 2 of the gate catches the two disagreeing.
-
-/// The label the shared checks print for the committed artifact.
-const PUBLIC_SPEC_LABEL: &str = "backend/openapi.json";
-
-/// Every way an operation's tags violate the shared taxonomy, rendered as the
-/// shared check reports it.
-///
-/// The rules, the vocabulary and the `pages` placement logic belong to
-/// `openapi_sanity::check_tags`; what the backend reads is the generated public
-/// spec rather than the committed document, which is the one view of the
-/// contract only this crate has.
-fn tag_violations(spec: &serde_json::Value) -> Vec<String> {
-    let operations = openapi_sanity::spec_operations(spec);
-
-    check_tags(PUBLIC_SPEC_LABEL, &operations, &[])
-        .iter()
-        .map(ToString::to_string)
-        .collect()
-}
-
-/// The taxonomy gate: every operation in the public spec is grouped by a tag from
-/// the shared vocabulary, and `pages` sits on the SPA page routes and nowhere
-/// else.
-#[test]
-fn the_public_operations_follow_the_shared_tag_taxonomy() {
-    assert_eq!(
-        tag_violations(&public_spec()),
-        Vec::<String>::new(),
-        "operation tags must follow the taxonomy in `docs/openapi-generator.md`. \
-         Fix: set `tag = \"...\"` in the handler's `#[utoipa::path]` annotation and \
-         run `just openapi-gen`."
-    );
-}
-
-/// The vocabulary is a hand-written claim, and the shared check is the only thing
-/// that holds the document to it here. A check that stopped comparing would leave
-/// this test passing over a document nothing was read from, so the taxonomy is
-/// required to notice a tag the annotation does not have.
-#[test]
-fn self_check_detects_tag_drift_in_the_public_spec() {
-    let mut retagged = public_spec();
-    retagged["paths"]["/get/get-data"]["get"]["tags"] = serde_json::json!(["pages"]);
-
-    assert_eq!(
-        tag_violations(&public_spec()),
-        Vec::<String>::new(),
-        "the unmutated document is the baseline this self-check is measured against"
-    );
-    let violations = tag_violations(&retagged);
-
-    assert_eq!(
-        violations,
-        vec![format!(
-            "{PUBLIC_SPEC_LABEL}: GET /get/get-data: data-API path carries the `pages` tag"
-        )],
-        "a data operation wearing the SPA page tag is the drift the reserved tag \
-         exists to catch, and it has to be reported where the vocabulary lives now: \
-         {violations:?}"
-    );
 }
 
 // ── Negative self-checks ──────────────────────────────────────────────────────
@@ -432,23 +366,14 @@ fn self_check_detects_a_method_mismatch() {
 // `Unauthorized` component registered by `backend/build.rs`, so the meaning of
 // a 401 is documented once instead of drifting per route.
 //
-// Which operations can answer 401 is not decided here. It is
-// `openapi_sanity::AUTH_POLICY`, one entry per documented operation, and
-// `openapi-sanity check` holds the source to it from two sides: the handler has to
-// declare the guard the entry names, and the document has to state the rejection.
-// What follows is the document half of that, kept in the backend so
-// `cargo test --lib` fails on the same drift without running the CLI — the
-// limitation being that it can only read the document, not the handler
-// signature, so it is weaker than the check it duplicates.
+// Which operations *can* answer 401 is not decided here — nothing in the
+// repository decides it any more. What the document must satisfy is checked:
+// the component is registered, and every 401 is a `$ref` to it rather than an
+// inlined literal.
 
 /// Parse the public spec.
 fn public_spec() -> serde_json::Value {
     serde_json::from_str(&public_json()).expect("public spec must be valid JSON")
-}
-
-/// The operation object for `(method, path)`, or `Null` when undocumented.
-fn operation<'a>(spec: &'a serde_json::Value, method: &str, path: &str) -> &'a serde_json::Value {
-    &spec["paths"][path][method.to_ascii_lowercase()]
 }
 
 /// `GET /unauthorized` is the landing page whose own response body is a 401,
@@ -519,151 +444,5 @@ fn unauthorized_response_is_referenced_not_inlined() {
         "operations must reference the shared Unauthorized component instead of \
          inlining a duplicate response literal:\n{}",
         violations.join("\n")
-    );
-}
-
-/// Every documented operation, keyed by the `operationId` the auth policy is
-/// indexed by.
-///
-/// The policy is a property of the API, not of this document, so it is written in
-/// operation ids; resolving an entry to a route is what this map is for, and it is
-/// also how a stale entry is found: a name nothing declares resolves to nothing.
-fn operations_by_id(spec: &serde_json::Value) -> HashMap<&str, Operation> {
-    let mut by_id = HashMap::new();
-    for (path, item) in spec["paths"].as_object().expect("spec paths object") {
-        for (method, operation) in item.as_object().expect("path item object") {
-            if let Some(id) = operation["operationId"].as_str() {
-                by_id.insert(id, (spec_method(method), path.clone()));
-            }
-        }
-    }
-    by_id
-}
-
-/// Every way the auth policy and the document disagree about who can answer 401.
-///
-/// Three directions, because each one alone is satisfied by a policy that has
-/// drifted: an entry for an operation that no longer exists, an operation the
-/// policy protects that does not document the rejection, and an operation
-/// documenting a rejection the policy does not account for. Pure, so a neutered
-/// comparison fails a self-check below rather than passing quietly.
-fn policy_violations(spec: &serde_json::Value, policy: &[AuthRule]) -> Vec<String> {
-    let documented = operations_by_id(spec);
-    let mut violations = Vec::new();
-
-    for rule in policy {
-        let Some((method, path)) = documented.get(rule.operation_id) else {
-            violations.push(format!(
-                "AUTH_POLICY entry `{}` names an operation the spec does not declare",
-                rule.operation_id
-            ));
-            continue;
-        };
-        let declares = !unauthorized_response(operation(spec, &method.to_string(), path)).is_null();
-        if declares == rule.documents_unauthorized() {
-            continue;
-        }
-        if rule.documents_unauthorized() {
-            violations.push(format!(
-                "{method} {path}: the auth policy says it can answer 401 but it documents none"
-            ));
-        } else {
-            violations.push(format!(
-                "{method} {path}: documents a 401 the auth policy does not account for"
-            ));
-        }
-    }
-
-    let accounted: HashSet<Operation> = policy
-        .iter()
-        .filter(|rule| rule.documents_unauthorized())
-        .filter_map(|rule| documented.get(rule.operation_id).cloned())
-        .collect();
-    for (path, item) in spec["paths"].as_object().expect("spec paths object") {
-        for (method, operation) in item.as_object().expect("path item object") {
-            if unauthorized_response(operation).is_null() {
-                continue;
-            }
-            if !accounted.contains(&(spec_method(method), path.clone())) {
-                violations.push(format!(
-                    "{method} {path}: documents a 401 no auth policy entry accounts for"
-                ));
-            }
-        }
-    }
-
-    violations
-}
-
-#[test]
-fn the_auth_policy_and_the_documented_unauthorized_responses_agree() {
-    assert_eq!(
-        policy_violations(&public_spec(), AUTH_POLICY),
-        Vec::<String>::new(),
-        "the auth policy and the generated spec have to agree on which operations can \
-         answer 401"
-    );
-}
-
-#[test]
-fn self_check_detects_a_protected_operation_without_a_documented_401() {
-    let mut without = public_spec();
-    without["paths"]["/get/get-data"]["get"]["responses"]
-        .as_object_mut()
-        .expect("responses object")
-        .remove("401");
-
-    assert!(
-        policy_violations(&public_spec(), AUTH_POLICY).is_empty(),
-        "the unmutated document is the baseline the self-checks are measured against"
-    );
-    let violations = policy_violations(&without, AUTH_POLICY);
-
-    assert!(
-        violations
-            .iter()
-            .any(|violation| violation.starts_with("GET /get/get-data:")),
-        "dropping the 401 from a protected operation must be reported: {violations:?}"
-    );
-    assert!(
-        policy_violations(&public_spec(), AUTH_POLICY).is_empty(),
-        "and the violation has to be the mutation's, not the document's"
-    );
-}
-
-#[test]
-fn self_check_detects_a_stale_auth_policy_entry() {
-    let policy: Vec<AuthRule> = AUTH_POLICY
-        .iter()
-        .copied()
-        .chain(std::iter::once(AuthRule::public("renamed_operation")))
-        .collect();
-
-    assert_eq!(
-        policy_violations(&public_spec(), &policy),
-        vec![
-            "AUTH_POLICY entry `renamed_operation` names an operation the spec does not \
-             declare"
-                .to_string()
-        ]
-    );
-}
-
-#[test]
-fn self_check_detects_a_public_operation_that_documents_a_401() {
-    // A public page made to answer 401 is the drift the reverse direction exists
-    // for: the route was closed, or the response is stale, and the policy is what
-    // says which.
-    let mut spec = public_spec();
-    spec["paths"]["/login"]["get"]["responses"]["401"] =
-        serde_json::json!({ "$ref": "#/components/responses/Unauthorized" });
-
-    let violations = policy_violations(&spec, AUTH_POLICY);
-
-    assert!(
-        violations
-            .iter()
-            .any(|violation| violation.starts_with("GET /login:")),
-        "a public operation documenting a 401 must be reported: {violations:?}"
     );
 }

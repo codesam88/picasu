@@ -12,8 +12,8 @@
 //! need it are the backend's own: the mounted-route parity tests and the
 //! `--check-openapi` route-set check, which both compare a runtime route table
 //! against a generated document and therefore have to agree on one translation.
-//! The `openapi-sanity` CLI keeps only name-level readers and translates no URI,
-//! so this crate is the translation's single home.
+//! Nothing outside the backend translates a URI, so this crate is the
+//! translation's single home.
 
 /// Rewrite a Rocket route URI to `OpenAPI` path-template form.
 ///
