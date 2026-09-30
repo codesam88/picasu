@@ -126,17 +126,15 @@ playwright-report/results.json`).
 Derives an OpenAPI 3.1 spec from `#[utoipa::path]` annotations on route
 handlers. `build.rs` checks every handler registered in the `routes![]` macro
 for an annotation and prints `cargo:warning=` for any missing during every
-build. `just openapi-docs-check` regenerates and diffs the committed generated
-artifacts when that check is run.
+build. `just openapi-check` diffs the committed artifact against a fresh
+generation and runs `picasu --check-openapi`, which compares the routes a
+shipped-shaped build mounts against that artifact.
 
-This is useful annotation and artifact coverage, but it is not yet complete
-contract enforcement. It does not prove that every mounted public route is in
-the generated public spec, that every spec operation is mounted, that
-authentication and error responses are documented, or that string-valued
-identifiers are used with the correct semantics. Public-spec filtering is also
-a separate step. These are the reasons for the route/spec parity, structural
-lint, breaking-diff, and spec-driven smoke-test work in
-`.plan/openapi-contract-hardening.md`.
+The route-set half of the contract is therefore enforced: a mounted public route
+missing from the spec, and a spec operation no build mounts, both fail. What is
+not enforced is the document-only half — that authentication and error responses
+are documented, that operation tags follow a vocabulary, and that string-valued
+identifiers use the correct semantics. Those are review-time properties today.
 
 See `docs/openapi-generator.md` for the full design, and
 `docs/openapi-reference.md` for the rendered reference.

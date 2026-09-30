@@ -10,8 +10,6 @@ mod error;
 mod frontend;
 mod init;
 mod model;
-// Auto-generated file may not exist on fresh clone, do not try to format it
-#[rustfmt::skip]
 pub mod openapi;
 pub mod openapi_components;
 pub mod openapi_parity;
