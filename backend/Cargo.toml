@@ -15,11 +15,6 @@ path = "src/main.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-# The route scanner `build.rs` registers `paths(...)` from, and the translator
-# the contract tests compare mounted routes with. One implementation, shared.
-[build-dependencies]
-openapi-sanity = { version = "0.1.0", path = "../utils/openapi-sanity" }
-
 [dependencies]
 anyhow = "1.0.102"
 arrayvec = { version = "0.7.6", features = ["serde"] }
@@ -63,11 +58,11 @@ webbrowser = { version = "1.2.1", optional = true }
 rust-embed = "8.11.0"
 mime_guess = "2.0.5"
 utoipa = "5"
+utoipauto = "0.3.1"
 unicode-normalization = "0.1.25"
 infer = "0.22.0"
 
 [dev-dependencies]
-openapi-sanity = { version = "0.1.0", path = "../utils/openapi-sanity" }
 tempfile = "3"
 serde_yaml = "0.9"
 snapfab = { version = "0.1", path = "../utils/snapfab" }

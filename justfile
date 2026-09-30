@@ -93,23 +93,23 @@ frontend-build-maybe:
 frontend-audit:
     cd frontend && npm audit --omit=dev
 
-# ── Utils (snapfab, openapi-sanity) ────────────────────────────────────────────
+# ── Utils (snapfab, paste) ────────────────────────────────────────────────────
 
 # cargo fmt on utils/ crates
 [group('utils')]
 utils-format:
-    cargo fmt -p snapfab -p paste -p openapi-sanity
+    cargo fmt -p snapfab -p paste
 
 # cargo fmt --check + cargo clippy on utils/ crates
 [group('utils')]
 utils-check:
-    cargo fmt --check -p snapfab -p paste -p openapi-sanity
-    cargo clippy -p snapfab -p paste -p openapi-sanity -- -D warnings -A clippy::unwrap_used
+    cargo fmt --check -p snapfab -p paste
+    cargo clippy -p snapfab -p paste -- -D warnings -A clippy::unwrap_used
 
 # cargo test on utils/ crates
 [group('utils')]
 utils-test:
-    cargo test -p snapfab -p openapi-sanity
+    cargo test -p snapfab
 
 # ── Tooling ─────────────────────────────────────────────────────────────────────
 
@@ -119,37 +119,30 @@ openapi-gen:
     RUST_MIN_STACK=16777216 cargo run --package picasu -- --dump-openapi > backend/openapi.json
     @echo "wrote backend/openapi.json"
 
-# Three phases, in order: `openapi-sanity` compares the annotated source with the
-# committed document, `openapi-artifact` diffs the committed document against a
-# fresh generation, and `openapi-routes` compares the routes the product build
-# mounts with the same document. A dependency that fails stops the recipe, so any
-# phase failing fails this one with that phase's diagnostics on stderr.
+# Two phases, in order: `openapi-json-match` diffs the committed document against
+# a fresh generation, and `openapi-routes-match` compares the routes the product
+# build mounts with the same document. A dependency that fails stops the recipe,
+# so any phase failing fails this one with that phase's diagnostics on stderr.
 #
-# Fail when the API source and the checked-in public OpenAPI artifact disagree
+# Check that OpenAPI json matches routes registered in backend server
 [group('utils')]
-openapi-check: openapi-sanity openapi-artifact openapi-routes
+openapi-check: openapi-json-match openapi-routes-match
 
-# Route-set parity: the routes a real build mounts against the committed
-# document. Pinned to the feature set the release ships, so the build doing the
+# Route-set parity: Match output of runtime Rocket route() output against
+# last generated openapi.json output, ensuring that all routes are documented.
+# Pinned to the feature set the release ships, so the build doing the
 # checking is the build that ships — a feature-gated route only exists in the
 # table of a build that has the feature. It embeds the frontend bundle, hence
 # the build dependency.
 [group('utils')]
-openapi-routes: frontend-build-maybe
+[private]
+openapi-routes-match: frontend-build-maybe
     cargo run --quiet --package picasu --features "embed-frontend auto-open-browser" -- \
         --check-openapi "{{justfile_directory()}}/backend/openapi.json"
 
-# Source/spec contract analysis: annotations, routes and the committed document
+# Ensure that committed/staged json matches current --dump-openapi output
 [private]
-openapi-sanity:
-    cargo run --quiet --package openapi-sanity -- check \
-        --router-root "{{justfile_directory()}}/backend/src/router" \
-        --spec "{{justfile_directory()}}/backend/openapi.json" \
-        --exclude-prefix /get/test/
-
-# Generated-artifact diff against the committed document
-[private]
-openapi-artifact:
+openapi-json-match:
     #!/usr/bin/env bash
     set -euo pipefail
     generated="$(mktemp)"
