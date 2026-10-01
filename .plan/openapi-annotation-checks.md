@@ -130,6 +130,41 @@ with it.** This is the residue `rocket_extras` leaves, and it is source-only.
 | D6  | the re-authentication guard appears **with** an authentication guard, never alone                                                                        | a password check without a token is either a second authentication factor or an unauthenticated endpoint, and only one of those is intended |
 | D7  | the guard-provided credential is compared in constant time                                                                                               | `update_password_handler` compares with `!=` (`edit_config.rs:157`); the guard that replaces it must not carry the same habit forward       |
 
+### M — the mode guard (`GuardReadOnlyMode`)
+
+Not authentication, and it must never be documented as such. `read_only_mode` is
+a **server-side setting** (`APP_CONFIG`, settable at startup through
+`PICASU_READ_ONLY_MODE` — `backend/src/model/config.rs:403-408`, and through
+`PUT /put/config` while the mode is off). The guard consults it and rejects with
+**405 Method Not Allowed** and `ErrorKind::ReadOnlyMode` — a status that is not
+an authentication failure, which is the clearest sign it belongs to another
+class. Handlers consume it as `GuardResult<GuardReadOnlyMode>` and immediately
+`let _ = read_only_mode?;`: the value is a unit struct, so the guard's only
+effect is the rejection.
+
+So the guard is the route's own declaration that **this route mutates state**,
+and the setting decides whether that is currently permitted. Two consequences for
+the document: the requirement is a documented `405`, not a credential; and a
+client cannot satisfy it with any header or token, so putting it in `security`
+would tell generated clients to send something the server ignores and believe
+they are permitted when they are not.
+
+| #   | assertion                                                            | calibration                                                                                                                                                                                                                                                   |
+| --- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1  | every route with a mutating method (`PUT`, `POST`) carries the guard | **13/13 PUT and 4/4 POST routes carry it, zero exceptions.** `DELETE` has no routes yet, and the login/token-renewal routes live in `auth.rs` and mount separately, so they are outside these groups. The rule needs no heuristic and no exception list today |
+| M2  | a route carrying the guard documents a `405` response                | **16 findings today.** Exactly one operation documents it — `POST /post/rebuild`, which established the convention as `(status = 405, description = "Read-only mode")` — while the other 16 mutating routes can answer 405 and list only 200/400/401          |
+| M3  | the guard never appears in `security(...)`                           | no findings today, because no operation declares `security` at all                                                                                                                                                                                            |
+| M4  | the guard's argument is propagated with `?`                          | C1 restated for this class, so the rule reads where the class is described                                                                                                                                                                                    |
+
+**M1's exception list is empty today and will not stay empty.**
+`.plan/bug-readonly-lockout.md` exists because `PUT /put/config` — which
+carries the guard — is also the only route that can set the mode to `false`, so
+once the mode is on, the API cannot lift it. The fix introduces a
+re-authentication route that must stay reachable precisely because the mode is
+on; that route is the first named exception to M1, and the exception lives in
+that plan rather than here. `PUT /put/config/password` is the open question: it
+carries the guard today, and the same argument applies to it.
+
 ### E — deferred, and why
 
 - **A crate-wide function-signature index** to enforce "a handler holding
@@ -160,6 +195,9 @@ dev-dependency.
    fail the branch if any of the 63 annotations regresses.
 3. **B1–B3**, then **D1–D4** once the decision on `security(...)` versus the
    per-class extension is taken and the schemes are registered in `ApiDoc`.
+   **M1, M3, M4** land with them — all three are green today — and **M2 lands
+   with the 16 missing `405` responses added in the same change**, because a gate
+   that starts with sixteen findings is a gate people learn to ignore.
 4. **C2** last; it is a message-quality improvement over a gate that already
    catches the condition.
 
