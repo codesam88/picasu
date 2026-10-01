@@ -31,8 +31,6 @@ pub struct CreateShare {
 }
 
 #[utoipa::path(
-        post,
-        path = "/post/create_share",
         tag = "albums",
         request_body = CreateShare,
         responses(

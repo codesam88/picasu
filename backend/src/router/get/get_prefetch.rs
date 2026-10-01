@@ -275,8 +275,6 @@ fn execute_prefetch_logic(
 }
 
 #[utoipa::path(
-        post,
-        path = "/get/prefetch",
         tag = "timeline",
         request_body = serde_json::Value,
         responses(

@@ -39,8 +39,6 @@ pub struct DeleteList {
 type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
 
 #[utoipa::path(
-        delete,
-        path = "/delete/delete-data",
         tag = "assets",
         request_body = DeleteList,
         responses(

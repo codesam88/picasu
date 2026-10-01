@@ -81,8 +81,6 @@ async fn serve_file(filename: &str) -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
@@ -95,8 +93,6 @@ pub async fn redirect_to_photo() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/login",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
@@ -109,8 +105,6 @@ pub async fn login() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/redirect-to-login",
         tag = "pages",
         responses(
             (status = 302, description = "Redirect to /login"),
@@ -123,8 +117,6 @@ pub fn redirect_to_login() -> Redirect {
 }
 
 #[utoipa::path(
-        get,
-        path = "/unauthorized",
         tag = "pages",
         responses(
             (status = 401, description = "Unauthorized status"),
@@ -137,8 +129,6 @@ pub fn unauthorized() -> Status {
 }
 
 #[utoipa::path(
-        get,
-        path = "/timeline",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
@@ -151,7 +141,6 @@ pub async fn timeline() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
         path = "/timeline/view/{path}",
         tag = "pages",
         responses(
@@ -165,8 +154,6 @@ pub async fn timeline_view(_path: PathBuf) -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/albums",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
@@ -179,7 +166,6 @@ pub async fn albums() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
         path = "/albums/view/{path}",
         tag = "pages",
         responses(
@@ -193,8 +179,6 @@ pub async fn albums_view(_path: PathBuf) -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/{dynamic_album_id}",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
@@ -212,7 +196,6 @@ pub async fn album_page(dynamic_album_id: String) -> AppResult<FrontendResponse>
 }
 
 #[utoipa::path(
-        get,
         path = "/share/{path}",
         tag = "pages",
         responses(
@@ -226,8 +209,6 @@ pub async fn share(_path: PathBuf) -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/trashed",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
@@ -240,7 +221,6 @@ pub async fn trashed() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
         path = "/trashed/view/{path}",
         tag = "pages",
         responses(
@@ -254,8 +234,6 @@ pub async fn trashed_view(_path: PathBuf) -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/videos",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
@@ -268,7 +246,6 @@ pub async fn videos() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
         path = "/videos/view/{path}",
         tag = "pages",
         responses(
@@ -282,8 +259,6 @@ pub async fn videos_view(_path: PathBuf) -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/tags",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
@@ -296,8 +271,6 @@ pub async fn tags() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/links",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
@@ -310,8 +283,6 @@ pub async fn links() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/config",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
@@ -324,8 +295,6 @@ pub async fn config() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/setting",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
@@ -338,8 +307,6 @@ pub async fn setting() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/favicon.ico",
         tag = "pages",
         responses(
             (status = 200, description = "Favicon file"),
@@ -352,8 +319,6 @@ pub async fn favicon() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/registerSW.js",
         tag = "pages",
         responses(
             (status = 200, description = "Service worker registration script"),
@@ -366,8 +331,6 @@ pub async fn sregister_sw() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/serviceWorker.js",
         tag = "pages",
         responses(
             (status = 200, description = "Service worker script"),
@@ -380,8 +343,6 @@ pub async fn service_worker() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/{path}",
         tag = "pages",
         responses(
             (status = 200, description = "SPA fallback — serves index.html for Vue Router routes"),

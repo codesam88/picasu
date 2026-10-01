@@ -47,8 +47,6 @@ fn map_snapshot_read_error(err: SnapshotReadError) -> AppError {
 /// Album rows still read `METADATA_TABLE` because tiles need their stored
 /// title/cover/counts, composed with the album's `AssetRecord`.
 #[utoipa::path(
-        get,
-        path = "/get/get-data",
         tag = "timeline",
         responses(
             (status = 200, description = "Data by timestamp range", body = Vec<DataBaseTimestampReturn>),
@@ -179,8 +177,6 @@ pub async fn get_data(
 }
 
 #[utoipa::path(
-        get,
-        path = "/get/get-rows",
         tag = "timeline",
         responses(
             (status = 200, description = "Row data", body = Row),
@@ -210,8 +206,6 @@ pub async fn get_rows(
 }
 
 #[utoipa::path(
-        get,
-        path = "/get/get-scroll-bar",
         tag = "timeline",
         responses(
             (status = 200, description = "Scroll bar data", body = Vec<ScrollBarData>),

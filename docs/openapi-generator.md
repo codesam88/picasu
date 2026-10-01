@@ -297,12 +297,15 @@ could read it is gone.
    tree is scanned, so nothing has to be registered anywhere else — but an
    annotated `.rs` file that no `mod` statement declares is a build error, since
    its `__path_*` item has no module to live in.
-2. Add `#[utoipa::path(...)]` with the route's HTTP method, path, parameters,
-   and response types, and a `tag = "..."` from the table above. The annotated
-   `path` and verb must match the mounted route; a route that serves one path
-   while its annotation declares another is mounted and served normally under the
-   wrong name, so it is the reviewer's comparison to make. If the route is
-   feature-gated, add
+2. Add `#[utoipa::path(...)]` with the operation's responses, its `tag = "..."`
+   from the table above, and `params(...)` for any parameter that needs a
+   description or a schema the handler signature cannot carry. Leave the HTTP
+   method and the path out: with `rocket_extras` enabled, utoipa reads both from
+   the route attribute itself, so the document cannot name a path the route does
+   not serve. Declare `path = "..."` only when the derived spelling is wrong —
+   today that is the five SPA catch-all routes, whose segments are spelled
+   `<_path..>` to avoid a name clash and therefore derive as `{_path}` rather
+   than `{path}`. If the route is feature-gated, add
    `extensions(("x-picasu-feature" = json!("<feature>")))` so `--check-openapi`
    knows a spec operation may legitimately be absent from a build without it.
 3. Run `just openapi-gen` and `just docs-openapi` to regenerate the spec
@@ -322,9 +325,13 @@ Delete the handler and its entry from `routes![]`. Run `just openapi-gen` and
 
 ### Changing a route's signature
 
-Update the `#[utoipa::path(...)]` annotation. Run `just openapi-gen` and
-`just docs-openapi`. `just openapi-check` fails until the committed spec matches
-the annotation, so the change cannot be merged undocumented.
+Change the route attribute. The path, verb, parameters and request body follow
+it into the document without an annotation edit, so `just openapi-gen` and
+`just docs-openapi` are the whole job. Edit the `#[utoipa::path(...)]`
+annotation when the change is in what only it can say: responses, tags,
+summaries, or a parameter description or schema the signature cannot carry.
+`just openapi-check` fails in both cases until the committed spec is
+regenerated, so the change cannot be merged undocumented.
 
 ## Key Design Decisions
 

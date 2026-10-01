@@ -16,8 +16,6 @@ pub struct ExportEntry {
 }
 
 #[utoipa::path(
-        get,
-        path = "/get/get-export",
         tag = "timeline",
         responses(
             (status = 200, description = "Export data as JSON"),

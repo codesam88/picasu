@@ -611,8 +611,6 @@ pub struct RenewHashTokenReturn {
 }
 
 #[utoipa::path(
-        post,
-        path = "/post/renew-hash-token",
         tag = "auth",
         request_body = RenewHashToken,
         responses(
@@ -889,8 +887,6 @@ pub struct RenewTimestampTokenReturn {
 }
 
 #[utoipa::path(
-        post,
-        path = "/post/renew-timestamp-token",
         tag = "auth",
         request_body = RenewTimestampToken,
         responses(
