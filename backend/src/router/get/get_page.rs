@@ -141,15 +141,15 @@ pub async fn timeline() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        path = "/timeline/view/{path}",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
     )
 ]
-#[get("/timeline/view/<_path..>")]
-pub async fn timeline_view(_path: PathBuf) -> AppResult<FrontendResponse> {
+#[get("/timeline/view/<path..>")]
+pub async fn timeline_view(path: PathBuf) -> AppResult<FrontendResponse> {
+    let _ = path;
     serve_file("index.html").await
 }
 
@@ -166,15 +166,15 @@ pub async fn albums() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        path = "/albums/view/{path}",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
     )
 ]
-#[get("/albums/view/<_path..>")]
-pub async fn albums_view(_path: PathBuf) -> AppResult<FrontendResponse> {
+#[get("/albums/view/<path..>")]
+pub async fn albums_view(path: PathBuf) -> AppResult<FrontendResponse> {
+    let _ = path;
     serve_file("index.html").await
 }
 
@@ -196,15 +196,15 @@ pub async fn album_page(dynamic_album_id: String) -> AppResult<FrontendResponse>
 }
 
 #[utoipa::path(
-        path = "/share/{path}",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
     )
 ]
-#[get("/share/<_path..>")]
-pub async fn share(_path: PathBuf) -> AppResult<FrontendResponse> {
+#[get("/share/<path..>")]
+pub async fn share(path: PathBuf) -> AppResult<FrontendResponse> {
+    let _ = path;
     serve_file("index.html").await
 }
 
@@ -221,15 +221,15 @@ pub async fn trashed() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        path = "/trashed/view/{path}",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
     )
 ]
-#[get("/trashed/view/<_path..>")]
-pub async fn trashed_view(_path: PathBuf) -> AppResult<FrontendResponse> {
+#[get("/trashed/view/<path..>")]
+pub async fn trashed_view(path: PathBuf) -> AppResult<FrontendResponse> {
+    let _ = path;
     serve_file("index.html").await
 }
 
@@ -246,15 +246,15 @@ pub async fn videos() -> AppResult<FrontendResponse> {
 }
 
 #[utoipa::path(
-        path = "/videos/view/{path}",
         tag = "pages",
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
     )
 ]
-#[get("/videos/view/<_path..>")]
-pub async fn videos_view(_path: PathBuf) -> AppResult<FrontendResponse> {
+#[get("/videos/view/<path..>")]
+pub async fn videos_view(path: PathBuf) -> AppResult<FrontendResponse> {
+    let _ = path;
     serve_file("index.html").await
 }
 
