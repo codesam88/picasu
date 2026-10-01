@@ -25,8 +25,6 @@ pub struct IndexImageRequest {
 /// background.  `album` is a path relative to `IMAGE_HOME` — use `"/"` for
 /// the root.  Status can be polled via `GET /get/index/status`.
 #[utoipa::path(
-        post,
-        path = "/post/index/album",
         tag = "index",
         request_body = IndexAlbumRequest,
         responses(
@@ -50,8 +48,6 @@ pub fn index_album_handler(
 /// Index a single image by its path relative to `IMAGE_HOME`.  Runs in the
 /// background; returns `202 Accepted` immediately.
 #[utoipa::path(
-        post,
-        path = "/post/index/image",
         tag = "index",
         request_body = IndexImageRequest,
         responses(
@@ -81,8 +77,6 @@ pub fn index_image_handler(
 
 /// Cancel a running album index job.
 #[utoipa::path(
-        post,
-        path = "/post/index/cancel",
         tag = "index",
         responses(
             (status = 200, description = "Album index cancelled"),

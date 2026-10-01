@@ -96,8 +96,6 @@ pub struct SetAlbumCover {
 
 /// Updates the cover image of a specific album.
 #[utoipa::path(
-        put,
-        path = "/put/set_album_cover",
         tag = "albums",
         request_body = SetAlbumCover,
         responses(
@@ -207,8 +205,6 @@ pub struct SetAlbumTitle {
 /// (`title: None`) falls back `title` to the directory-derived default for
 /// dir-albums, so the sidecar-freezing bug can't reappear via this path.
 #[utoipa::path(
-        put,
-        path = "/put/set_album_title",
         tag = "albums",
         request_body = SetAlbumTitle,
         responses(

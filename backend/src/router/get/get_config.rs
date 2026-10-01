@@ -33,8 +33,6 @@ pub struct ConfigResponse {
 }
 
 #[utoipa::path(
-        get,
-        path = "/get/config",
         tag = "config",
         responses(
             (status = 200, description = "Public configuration", body = ConfigResponse),
@@ -70,8 +68,6 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
 }
 
 #[utoipa::path(
-        get,
-        path = "/get/config/export",
         tag = "config",
         responses(
             (status = 200, description = "Exported configuration", body = String),

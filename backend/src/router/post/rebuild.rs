@@ -24,8 +24,6 @@ use crate::tasks::batcher::update_tree::UpdateTreeTask;
 /// the old ids must not remain) and waits for an in-memory tree refresh so
 /// the response does not race subsequent `prefetch`/`get-data` calls.
 #[utoipa::path(
-        post,
-        path = "/post/rebuild",
         tag = "index",
         responses(
             (status = 200, description = "Rebuild complete", body = RebuildStats),

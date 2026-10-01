@@ -23,8 +23,6 @@ pub struct EditShare {
 }
 
 #[utoipa::path(
-        put,
-        path = "/put/edit_share",
         tag = "albums",
         request_body = EditShare,
         responses(
@@ -93,8 +91,6 @@ pub struct DeleteShare {
 }
 
 #[utoipa::path(
-        put,
-        path = "/put/delete_share",
         tag = "albums",
         request_body = DeleteShare,
         responses(

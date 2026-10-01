@@ -7,8 +7,6 @@ use crate::router::auth::Claims;
 use crate::router::{AppError, AppResult, ErrorKind};
 
 #[utoipa::path(
-        post,
-        path = "/post/authenticate",
         tag = "auth",
         request_body = String,
         responses(

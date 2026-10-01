@@ -35,8 +35,6 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
 }
 
 #[utoipa::path(
-        get,
-        path = "/object/compressed/{file_path}",
         tag = "serving",
         responses(
             (status = 200, description = "Compressed file"),
@@ -107,8 +105,6 @@ pub async fn compressed_file(
 /// `<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via
 /// `ASSET_BY_ID`.
 #[utoipa::path(
-        get,
-        path = "/object/imported/{file_path}",
         tag = "serving",
         responses(
             (status = 200, description = "Imported original file"),
