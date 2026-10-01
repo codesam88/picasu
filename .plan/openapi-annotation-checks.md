@@ -116,8 +116,28 @@ with it.** This is the residue `rocket_extras` leaves, and it is source-only.
 | #   | assertion                                                                                                                                                                                          | calibration                                                                                                                                                                                                                                                                                                                                                                          |
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | C1  | **a `GuardResult<…>` argument must have its rejection propagated**: the binding appears as `ident?`, is matched, or is forwarded. `let _ = ident;` and a binding absent from the body are findings | the tree has 52 `GuardResult<…>` bindings, all consumed as `let _ = ident?;`, so the conforming idiom is `let _ = ident?;` and the rule fires on the `84f29aa5` shape (`GuardResult<GuardTimestamp>` dropped without `?`). Zero findings today; it earns its place as a regression guard and must be proved by a mutation test (the deleted suite's `dropping_a_guard_result_fails`) |
-| C1b | **a plain `Guard…` argument needs nothing in the body**, and must not be flagged                                                                                                                   | Rocket runs the guard during request handling and short-circuits on failure, so the handler legitimately never touches the value. Five handlers bind `_auth: GuardAuth` and use it nowhere. A rule that treated every guard type alike would report five correct annotations as findings                                                                                             |
+| C1b | **a plain `Guard…` argument needs nothing in the body**, and must not be flagged                                                                                                                   | Rocket runs the guard during request handling and short-circuits on failure, so the handler legitimately never touches the value. Nine `_auth: GuardAuth` bindings across seven handlers are never touched. A rule that treated every guard type alike would report every one of those correct handlers as a finding                                                                 |
 | C2  | every `pub fn generate_*_routes()` is mounted in `router/builder.rs`                                                                                                                               | not coverage — `--check-openapi` catches an unmounted group — but the gate's message ("documented operation, no route mounts") sends the reader to the document instead of to `builder.rs`                                                                                                                                                                                           |
+
+#### C's known limitations, recorded so they are not rediscovered
+
+- **`GuardResult<…>` is a crate alias** for `Result<T, AppError>`, and C1 matches
+  the alias by name. A handler that spells the type out longhand would be
+  invisible to it. Nothing does today; the same alias knowledge matters more for
+  B2, which compares declared parameter types.
+- **Guard classification is by type name, and that is enough only for C1/C1b.**
+  `renew_hash_token` binds `TimestampGuardModified`, a plain Rocket guard that
+  does not match the `Guard` prefix — harmless here, because these two rules care
+  about the fallible alias and not about the class. The D-series cannot: it needs
+  to know which guard _class_ a parameter is. That needs a real signal on the
+  guard types (a `const fn` such as `is_authentication()`, or reading the class off
+  the route attribute), not a name prefix. Recorded here as a design requirement
+  for D.
+- **A one-hop rebinding is reported, not accepted.** `let x = auth; … x?;`
+  propagates in the author's intent and is a finding today, as is a `move` into a
+  closure that does not itself propagate. Neither occurs in the tree; the safe
+  direction is to report and let a human decide, but both should be pinned by
+  fixtures so the behaviour is a decision rather than an accident.
 
 ### D — the guard and `security` rules
 
@@ -183,8 +203,10 @@ carries the guard today, and the same argument applies to it.
 
 As backend tests, not build warnings. A build-time warning was what the deleted
 crate emitted and nothing read them; a failing test blocks. `syn` is needed only
-to read attributes and to walk function bodies — roughly 250 lines for the whole
-list — so it does not justify a crate of its own, and it should not go near the
+to read attributes and to walk function bodies. The scan support for the two
+rules in section C is already ~400 lines, and A, B and D add to the same walker
+rather than to a new one, so the estimate for the whole list is 1 200–1 500
+lines. That does not justify a crate of its own, and it should not go near the
 production binary. `backend/src/tests/` gains one module and `syn` arrives as a
 dev-dependency.
 
@@ -208,3 +230,46 @@ findings except where a finding is the expected demonstration; `just test` and
 `just check` are green; `docs/openapi-generator.md` states which rules are
 enforced here and which are review-time, so the boundary is written down rather
 than remembered.
+
+## Progress
+
+### 2026-10-01 — C1 and C1b landed (uncommitted, for review)
+
+Increment 1 of the sequencing: the two handler-body rules. Implemented as
+backend tests in `backend/src/tests/openapi_annotations.rs` (rules and
+fixtures) and `backend/src/tests/openapi_annotation_scan.rs` (the `syn` scan),
+with `syn` 3.0.5 and `proc-macro2/span-locations` added as dev-dependencies.
+The scan reads `src/router` through `walkdir`; findings render as
+`path:line: handler: what is wrong`.
+
+Zero findings across the tree, and the calibration constants are pinned so the
+scan cannot go quiet by walking less:
+
+| fact                      | pinned value | where it is checked                                 |
+| ------------------------- | ------------ | --------------------------------------------------- |
+| annotations               | 63           | `guard_propagation_is_clean_across_the_router_tree` |
+| `GuardResult<…>` bindings | 52           | same test                                           |
+| plain `Guard…` bindings   | 9            | same test                                           |
+
+**Correction to C1b's calibration:** the tree has **nine** plain-guard bindings,
+not five — `album_index.rs` ×3, `edit_config.rs` ×2, and one each in
+`rebuild.rs`, `import_config.rs`, `get_fs_completion.rs`, `get_album_index.rs`.
+All nine are `_auth: GuardAuth` and none of them is touched in the body. The
+conclusion of C1b is unaffected; only the count was wrong, and the test pins 9.
+
+**Open reading of C1, taken literally and worth a review decision:** the
+propagating positions are the operand of `?`, the scrutinee of `match` /
+`let` / `if let`, an argument of another call, and a returned value (including
+the trailing expression). A two-step `let carried = auth; … carried?;` is
+therefore a finding even though a human would accept it; neither it nor any other
+shape occurs in the tree today. A `move` into a closure is a different case and is
+**accepted** when the closure propagates (`spawn_blocking(move || { … auth?; … })`),
+because the walker recurses into closure bodies. Both are pinned as tests:
+`rebound_guard_result_is_reported` and `guard_moved_into_a_closure_is_accepted`.
+
+Guard classification is name-based: `GuardResult<…>` carries the obligation, any
+other type whose last segment starts with `Guard` carries none, and anything else
+is out of scope. Note that `renew_hash_token` binds `TimestampGuardModified`,
+which is a plain Rocket guard that does **not** match the `Guard` prefix. That
+is harmless for C1/C1b (it is not a `GuardResult`), but the D-series rules will
+have to identify guard classes by something other than a name prefix.

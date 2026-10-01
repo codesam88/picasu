@@ -66,6 +66,11 @@ infer = "0.22.0"
 tempfile = "3"
 serde_yaml = "0.9"
 snapfab = { version = "0.1", path = "../utils/snapfab" }
+# Source-level annotation checks. `syn` reads `#[utoipa::path]` attributes and
+# walks handler bodies; `proc-macro2/span-locations` turns `syn` spans into the
+# file lines a finding has to point at. Test-only: never linked into the binary.
+proc-macro2 = { version = "1.0.107", features = ["span-locations"] }
+syn = { version = "3.0.5", features = ["full", "visit"] }
 
 [features]
 embed-frontend = []

@@ -12,3 +12,9 @@ mod openapi_contract;
 
 #[cfg(test)]
 mod openapi_parity;
+
+#[cfg(test)]
+mod openapi_annotations;
+
+#[cfg(test)]
+mod openapi_annotation_scan;
