@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "backend",
+    "utils/openapi-sanity",
     "utils/snapfab",
     "utils/paste-shim",
 ]

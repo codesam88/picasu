@@ -10,27 +10,28 @@
 //! the route hands the handler a value that may be a rejection, and the
 //! *handler* is the only place that rejection can become an error response. Drop
 //! it and the route serves a request the guard refused — the `84f29aa5` shape,
-//! which the deleted `openapi-sanity` crate caught through a hand-written
-//! `AUTH_POLICY` table. A plain `GuardAuth` is the opposite case: Rocket runs it
-//! during request handling and short-circuits on failure, so the handler
-//! legitimately never touches the value. Treating the two alike would report
-//! every handler that correctly binds one as broken.
+//! which an earlier, now-deleted analyzer — the crate this tool is named after —
+//! caught through a hand-written `AUTH_POLICY` table. A plain `GuardAuth` is the
+//! opposite case: Rocket runs it during request handling and short-circuits on
+//! failure, so the handler legitimately never touches the value. Treating the two
+//! alike would report every handler that correctly binds one as broken.
 //!
 //! Both rules read a fact that exists only in source — nothing in the generated
 //! document or in the mount table says what a handler body does with a guard —
-//! and they run as backend tests, because the deleted crate emitted a build
-//! warning for the same defect and nothing read warnings.
+//! so they are a source check that runs as its own phase of `just
+//! openapi-check`, rather than a build warning nothing reads. The rules live in
+//! the crate's `lib.rs` so the CLI and these tests check the same code.
 //!
 //! Fixtures live in `tests/fixtures/openapi_annotations/` as ordinary `.rs`
 //! files. They are deliberately *not* modules of the crate: they are snippets for
-//! the parser, not code to compile, so `fixtures/mod.rs` does not declare them.
-//! Each is pulled in with `include_str!`, so a renamed or deleted fixture breaks
-//! the build instead of quietly skipping a test.
+//! the parser, not code to compile, so nothing declares them. Each is pulled in
+//! with `include_str!`, so a renamed or deleted fixture breaks the build instead
+//! of quietly skipping a test.
 //!
 //! Every rule has a fixture that must produce its finding, a conforming
-//! counterpart that must produce none, and a run over the real `src/router` tree
-//! that must stay silent. Removing a check fails a named test rather than turning
-//! the gate green.
+//! counterpart that must produce none, and a run over the real backend router
+//! tree that must stay silent. Removing a check fails a named test rather than
+//! turning the gate green.
 //!
 //! Two shapes are not named by C1 and had no precedent in the tree. They are
 //! pinned as tests below rather than left to be inferred from the walker, and
@@ -46,63 +47,19 @@
 //!   this finding may well be wrong; it is pinned as-is because deciding that is
 //!   a rule change, not a fixture edit.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use crate::tests::openapi_annotation_scan::{
-    AnnotatedHandler, Finding, Requirement, Use, annotated_handlers, guard_requirement,
-    handlers_in_file, relative_name, render,
+use openapi_sanity::{
+    Finding, Requirement, findings_in_source, guard_requirement, handlers_in_file, render,
+    scan_source_root,
 };
 
-/// C1 — a `GuardResult<…>` argument must have its rejection propagated.
+/// Both rules over one source file, for the fixtures below.
 ///
-/// Conforming: the binding is the operand of `?`, a matched scrutinee, an
-/// argument of another call, or a returned value. Findings: the binding is used
-/// only in positions that discard the rejection (`let _ = ident;`), or the body
-/// never mentions it at all.
-fn guard_results_propagate(handler: &AnnotatedHandler) -> Vec<Finding> {
-    handler
-        .fallible_guards()
-        .filter_map(|guard| {
-            // A discard is anchored where it happens; an absent binding has
-            // nothing in the body to point at, so the signature line it is
-            // declared on is where the reader has to start.
-            let (line, text) = match handler.body_use(&guard.ident) {
-                Use::Propagated => return None,
-                Use::Discarded { line } => (
-                    line,
-                    format!(
-                        "the route binds {} as a fallible guard, but the handler body \
-                         uses it without ever propagating the rejection, so the guard's \
-                         rejection never reaches the caller",
-                        guard.guard_type
-                    ),
-                ),
-                Use::Absent => (
-                    guard.span.start().line,
-                    format!(
-                        "the route binds {} as a fallible guard, but the handler body \
-                         never mentions it, so the guard's rejection never reaches the \
-                         caller",
-                        guard.guard_type
-                    ),
-                ),
-            };
-            Some(Finding::at(&handler.file, line, &handler.name, &text))
-        })
-        .collect()
-}
-
-/// Both rules over one source file.
-///
-/// C1b contributes nothing here: a plain guard carries `Requirement::None`, so
-/// `fallible_guards` filters it out before the body is ever consulted.
+/// A fixture that does not parse is a broken test, not a finding, so the error
+/// ends the test here rather than being reported as one.
 fn check_source(name: &str, source: &str) -> Vec<Finding> {
-    let parsed = syn::parse_file(source)
-        .unwrap_or_else(|error| panic!("{name} must parse as Rust: {error}"));
-    annotated_handlers(name, &parsed)
-        .iter()
-        .flat_map(guard_results_propagate)
-        .collect()
+    findings_in_source(name, source).unwrap_or_else(|error| panic!("{error}"))
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -321,21 +278,10 @@ const ANNOTATIONS_IN_ROUTER: usize = 63;
 /// which the body touches — Rocket runs them and short-circuits on failure.
 const GUARD_INVENTORY: (usize, usize) = (52, 9);
 
-fn router_sources() -> Vec<(String, String)> {
-    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut sources: Vec<(String, String)> = walkdir::WalkDir::new(manifest_dir.join("src/router"))
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "rs"))
-        .map(|entry| {
-            let name = relative_name(entry.path(), manifest_dir);
-            let source = std::fs::read_to_string(entry.path())
-                .unwrap_or_else(|error| panic!("{name} must be readable: {error}"));
-            (name, source)
-        })
-        .collect();
-    sources.sort();
-    sources
+/// The backend's router tree, resolved from this crate's manifest directory
+/// rather than from the working directory a test happens to run in.
+fn router_tree() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../backend/src/router")
 }
 
 /// Both rules over the real router tree.
@@ -345,32 +291,28 @@ fn router_sources() -> Vec<(String, String)> {
 /// apart silently.
 #[test]
 fn guard_propagation_is_clean_across_the_router_tree() {
-    let sources = router_sources();
+    let report = scan_source_root(&router_tree()).expect("the router tree must be readable");
     assert!(
-        sources.len() > 1,
+        report.files_scanned > 1,
         "the scan must see the whole router tree, saw {} file(s)",
-        sources.len()
+        report.files_scanned
     );
 
-    let mut annotations = 0;
-    let mut fallible_guards = 0;
-    let mut plain_guards = 0;
-    let mut findings: Vec<Finding> = Vec::new();
-
-    for (name, source) in &sources {
-        let parsed = syn::parse_file(source)
-            .unwrap_or_else(|error| panic!("{name} must parse as Rust: {error}"));
-        for handler in annotated_handlers(name, &parsed) {
-            annotations += 1;
-            fallible_guards += handler.fallible_guards().count();
-            plain_guards += handler.guards.len() - handler.fallible_guards().count();
-            findings.extend(guard_results_propagate(&handler));
-        }
-    }
+    let fallible_guards: usize = report
+        .handlers
+        .iter()
+        .map(|handler| handler.fallible_guards)
+        .sum();
+    let plain_guards: usize = report
+        .handlers
+        .iter()
+        .map(|handler| handler.plain_guards)
+        .sum();
 
     assert_eq!(
-        annotations, ANNOTATIONS_IN_ROUTER,
-        "the scan must see every annotation in src/router"
+        report.handlers.len(),
+        ANNOTATIONS_IN_ROUTER,
+        "the scan must see every annotation in backend/src/router"
     );
     assert_eq!(
         (fallible_guards, plain_guards),
@@ -378,9 +320,9 @@ fn guard_propagation_is_clean_across_the_router_tree() {
         "the tree's guard inventory moved; these rules were calibrated against it"
     );
     assert_eq!(
-        render(&findings),
+        render(&report.findings),
         "",
         "every `GuardResult` binding must propagate its rejection:\n{}",
-        render(&findings)
+        render(&report.findings)
     );
 }

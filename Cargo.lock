@@ -2266,6 +2266,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "openapi-sanity"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "syn 3.0.5",
+]
+
+[[package]]
 name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2429,7 +2437,6 @@ dependencies = [
  "mini_executor",
  "notify",
  "path-clean",
- "proc-macro2",
  "rand 0.10.3",
  "rayon",
  "redb",
@@ -2441,7 +2448,6 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "snapfab",
- "syn 3.0.5",
  "tempfile",
  "thumbhash",
  "tokio",

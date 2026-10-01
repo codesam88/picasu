@@ -1,0 +1,18 @@
+[package]
+name = "openapi-sanity"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+name = "openapi_sanity"
+path = "src/lib.rs"
+
+[[bin]]
+name = "openapi-sanity"
+path = "src/main.rs"
+
+[dependencies]
+proc-macro2 = { version = "1.0.107", features = ["span-locations"] }
+syn = { version = "3.0.5", features = ["full", "visit"] }

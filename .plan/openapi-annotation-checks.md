@@ -201,14 +201,35 @@ carries the guard today, and the same argument applies to it.
 
 ### Where this runs
 
-As backend tests, not build warnings. A build-time warning was what the deleted
-crate emitted and nothing read them; a failing test blocks. `syn` is needed only
-to read attributes and to walk function bodies. The scan support for the two
-rules in section C is already ~400 lines, and A, B and D add to the same walker
-rather than to a new one, so the estimate for the whole list is 1 200–1 500
-lines. That does not justify a crate of its own, and it should not go near the
-production binary. `backend/src/tests/` gains one module and `syn` arrives as a
-dev-dependency.
+As a standalone tool, `utils/openapi-sanity`, not as build warnings and not as
+backend tests. Both of those were tried: the deleted crate emitted a build
+warning and nothing read it, and the rules as backend tests only ran in CI,
+because the pre-commit hook runs `just backend-check` and `just openapi-check`
+for a `backend/` change but not the test suite. The tool is the first phase of
+`just openapi-check`, so it runs on the same `backend/` change that can introduce
+the defect. It reports one `file:line: message` per finding, a summary line
+naming the count, and exits non-zero on findings — the reporting contract the
+other two `openapi-check` phases already use.
+
+`just openapi-sanity` runs it over `backend/src/router`; `--source-root <dir>`
+points it at any other tree. The phase also passes `--expect-at-least 60`, a floor
+on the annotated handlers the scan must see before a clean run means anything: a
+walk that stopped descending reports the same emptiness as a clean tree, so a
+short scan fails instead of reporting clean. 60 is headroom below the tree's 63,
+so a new handler does not break the gate. Rules live in the crate's `src/lib.rs`
+so the CLI and the tests in `tests/openapi_annotations.rs` check the same code, and
+`syn` with `proc-macro2/span-locations` is a normal dependency of the tool rather
+than a dev-dependency of the backend. It stays out of the production binary either
+way. The scan support for the two rules in section C is already ~400 lines, and A,
+B and D add to the same walker rather than to a new one, so the whole list lands
+in one tool.
+
+**The name is reused deliberately.** The crate is named after the analyzer deleted
+in `e1ec74da` because it does the same job — a source-level gate on these
+annotations — but it is a new tool with a new rule set. None of that crate's rules
+come back: no tag policy, no `AUTH_POLICY` table, no route-set rules, no
+source/spec comparison. Its rule set is this plan, and only section C is
+implemented.
 
 ### Sequencing and acceptance
 
@@ -232,6 +253,26 @@ enforced here and which are review-time, so the boundary is written down rather
 than remembered.
 
 ## Progress
+
+### 2026-10-01 — the rules moved to `utils/openapi-sanity` (uncommitted, for review)
+
+The two rules kept their behaviour and their calibration and moved house. The
+backend placement was wrong for one reason: the pre-commit hook runs
+`just backend-check` and `just openapi-check` for a `backend/` change and not the
+test suite, so the rules only ran in CI. They are now `utils/openapi-sanity` — a
+tool, first phase of `just openapi-check` — and `backend/Cargo.toml` no longer
+carries `syn`.
+
+Two holes in that arrangement were closed in the same change, because the phase
+now runs where the rules used to be blind. The phase passes a handler floor
+(`--expect-at-least 60`), so a scan that stopped descending fails instead of
+reporting a clean tree — the CLI alone cannot tell that difference, only a floor
+supplied from outside can. And the hook's `utils/` branch runs `just utils-test`,
+so a change to the rules or the walk is exercised by its own suite before it
+reaches CI rather than after.
+
+The crate name is the deleted analyzer's name on purpose, which makes the old
+"as backend tests" note above a historical record rather than the current state.
 
 ### 2026-10-01 — C1 and C1b landed (uncommitted, for review)
 

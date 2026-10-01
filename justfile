@@ -93,23 +93,23 @@ frontend-build-maybe:
 frontend-audit:
     cd frontend && npm audit --omit=dev
 
-# ── Utils (snapfab, paste) ────────────────────────────────────────────────────
+# ── Utils (snapfab, paste, openapi-sanity) ────────────────────────────────────
 
 # cargo fmt on utils/ crates
 [group('utils')]
 utils-format:
-    cargo fmt -p snapfab -p paste
+    cargo fmt -p snapfab -p paste -p openapi-sanity
 
 # cargo fmt --check + cargo clippy on utils/ crates
 [group('utils')]
 utils-check:
-    cargo fmt --check -p snapfab -p paste
-    cargo clippy -p snapfab -p paste -- -D warnings -A clippy::unwrap_used
+    cargo fmt --check -p snapfab -p paste -p openapi-sanity
+    cargo clippy -p snapfab -p paste -p openapi-sanity -- -D warnings -A clippy::unwrap_used
 
 # cargo test on utils/ crates
 [group('utils')]
 utils-test:
-    cargo test -p snapfab
+    cargo test -p snapfab -p openapi-sanity
 
 # ── Tooling ─────────────────────────────────────────────────────────────────────
 
@@ -119,14 +119,31 @@ openapi-gen:
     RUST_MIN_STACK=16777216 cargo run --package picasu -- --dump-openapi > backend/openapi.json
     @echo "wrote backend/openapi.json"
 
-# Two phases, in order: `openapi-json-match` diffs the committed document against
-# a fresh generation, and `openapi-routes-match` compares the routes the product
-# build mounts with the same document. A dependency that fails stops the recipe,
-# so any phase failing fails this one with that phase's diagnostics on stderr.
+# Three phases, in order: `openapi-sanity` checks the annotated source itself,
+# `openapi-json-match` diffs the committed document against a fresh generation,
+# and `openapi-routes-match` compares the routes the product build mounts with
+# the same document. The source check comes first because the other two compare
+# a document that has to be regenerated before either of them can say anything —
+# a source defect found after the diff is a confusing way to be told about it.
+# A dependency that fails stops the recipe, so any phase failing fails this one
+# with that phase's diagnostics on stderr.
 #
 # Check that OpenAPI json matches routes registered in backend server
 [group('utils')]
-openapi-check: openapi-json-match openapi-routes-match
+openapi-check: openapi-sanity openapi-json-match openapi-routes-match
+
+# Source-level `#[utoipa::path]` checks: every fallible guard's rejection has to
+# be propagated by the handler body. Reads the source, so it needs no build and
+# no frontend bundle.
+#
+# `--expect-at-least` is the floor on annotated handlers the scan must see, with
+# headroom below the tree's 63: a new handler must not break the gate, but a walk
+# that stopped descending has to. The source root is absolute so that invoking
+# this from a subdirectory checks the same tree; the tool prints it relative to
+# the workspace root anyway.
+[group('utils')]
+openapi-sanity:
+    cargo run --quiet -p openapi-sanity -- --source-root "{{justfile_directory()}}/backend/src/router" --expect-at-least 60
 
 # Route-set parity: Match output of runtime Rocket route() output against
 # last generated openapi.json output, ensuring that all routes are documented.
@@ -306,6 +323,7 @@ precommit:
     fi
     if echo "$changed" | grep -q '^utils/'; then
         just utils-check
+        just utils-test
     fi
     if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$|utils/.*\.md$)'; then
         just plan-lint
