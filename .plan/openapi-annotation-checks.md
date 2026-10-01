@@ -42,13 +42,22 @@ deleted with the crate, and its guard rule caught a real bug (`84f29aa5`, the
 discarded `GuardResult`). So the checker's guard rules are not a regression
 against a covered area; they are the replacement for the only record we had.
 
-Seven guard classes exist, and they are two different things:
+Seven guard classes exist today, and they are three different things:
 
 - **Authentication** (they reject a caller who cannot prove who they are, and
   belong in the document): `GuardAuth`, `GuardTimestamp`, `GuardHash`,
   `GuardHashOriginal`, `GuardShare`, `GuardUpload`.
 - **Mode restriction** (they constrain what this build may do, and are not
   authentication): `GuardReadOnlyMode`.
+- **Explicit re-authentication** (decided 2026-09-28, not yet implemented): a
+  valid token is not enough, the caller must present the account password again.
+  It becomes its own guard rather than a field in a request body, because two
+  operations need it and the requirement belongs to the operation rather than to
+  one handler's payload: disabling read-only mode
+  (`.plan/bug-readonly-lockout.md`) and changing the user password. Because the
+  requirement is _in addition to_ the token, these operations declare two
+  security requirements — see the open question below on whether `security` can
+  carry that.
 
 The design, in two parts:
 
@@ -58,13 +67,20 @@ The design, in two parts:
   document yet and must be added to `ApiDoc`'s `components(...)`.
 - **Repo-specific class, only if the review wants it in the document.** An
   extension in the shape already used for features —
-  `extensions(("x-picasu-auth" = json!("GuardTimestamp")))` — would say _which
-  kind_, which `security` cannot express. **Open question for the user:** start
-  with `security(...)` alone (standard, visible to any consumer, checker ties it
-  to the route and the handler) or also carry the per-class extension. The
-  recommendation is to start with `security(...)`, because it is the signal a
-  consumer and a generator can both act on, and to add the extension when a
-  reviewer asks which token a route expects.
+  `extensions(("x-picasu-constraints" = json!(["auth", "read_only_mode"])))` —
+  would say _which kind_, which `security` cannot express. Note the name: the
+  list carries constraints, not only authentication, so `x-picasu-auth` would be
+  a slight lie on the mode and re-authentication routes.
+- **Explicit re-authentication has no honest `security` scheme.** OpenAPI's
+  vocabulary is http/bearer, apiKey, oauth2, openIdConnect, mutualTLS; "present
+  the account password again" is none of those, and an `apiKey` scheme would tell
+  a generated client to send a header we do not define. **Open question for the
+  user:** either declare a second scheme anyway (`password_reauth`, as
+  `apiKey in header`) so tooling can prompt for it, or keep it out of
+  `security` and carry it in the extension only. The recommendation is the
+  extension, because a wrong scheme is worse than an absent one — a client that
+  believes it may send a header we ignore is a client that believes it is
+  authenticated when it is not.
 
 Public operations (`renew_hash_token`, `renew_timestamp_token`, the login and
 page routes) carry no authentication guard and must declare no `security`; the
@@ -104,12 +120,15 @@ with it.** This is the residue `rocket_extras` leaves, and it is source-only.
 
 ### D — the guard and `security` rules
 
-| #   | assertion                                                                                                  | direction that matters                                                                        |
-| --- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| D1  | a route carrying an authentication guard has an operation that declares `security(...)`                    | undocumented authentication: a reviewer reading the document cannot tell the route is guarded |
-| D2  | an operation declaring `security(...)` has a route carrying an authentication guard                        | the dangerous direction: the document claims a requirement the code does not enforce          |
-| D3  | the guard argument matching that authentication class is propagated in the body (C1 applied to this class) | security declared, guard present, rejection dropped — the `get_rows` shape end to end         |
-| D4  | `securitySchemes` defines every scheme any operation references                                            | a dangling scheme name is a document that no generator can render                             |
+| #   | assertion                                                                                                                                                | direction that matters                                                                                                                      |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | a route carrying an authentication guard has an operation that declares `security(...)`                                                                  | undocumented authentication: a reviewer reading the document cannot tell the route is guarded                                               |
+| D2  | an operation declaring `security(...)` has a route carrying an authentication guard                                                                      | the dangerous direction: the document claims a requirement the code does not enforce                                                        |
+| D3  | the guard argument matching that authentication class is propagated in the body (C1 applied to this class)                                               | security declared, guard present, rejection dropped — the `get_rows` shape end to end                                                       |
+| D4  | `securitySchemes` defines every scheme any operation references                                                                                          | a dangling scheme name is a document that no generator can render                                                                           |
+| D5  | a route carrying the explicit re-authentication guard declares it in the document (extension today; a second scheme if that question goes the other way) | the dangerous direction: the operation silently needs a password the document never mentions, so a client cannot perform it                 |
+| D6  | the re-authentication guard appears **with** an authentication guard, never alone                                                                        | a password check without a token is either a second authentication factor or an unauthenticated endpoint, and only one of those is intended |
+| D7  | the guard-provided credential is compared in constant time                                                                                               | `update_password_handler` compares with `!=` (`edit_config.rs:157`); the guard that replaces it must not carry the same habit forward       |
 
 ### E — deferred, and why
 

@@ -26,12 +26,25 @@ way (`backend_api.rs:1041`), which is why the lockout was never exercised.
 
 ### The fix, decided 2026-09-28
 
-A dedicated endpoint that **disables read-only mode and requires the account
-password in the request**, not only the bearer token. Lifting a server-wide
-restriction is a privilege escalation step: a token that was captured or left
-behind must not be sufficient on its own, so the caller has to prove the
-password again. It may be an extension of an existing endpoint or a new route —
-see the open questions — but the re-authentication requirement is the point.
+**A new guard for explicit re-authentication**, used by a route that disables
+read-only mode. A valid token is not enough; the caller must present the account
+password again. Lifting a server-wide restriction is a privilege escalation
+step, so a captured or left-behind token must not be sufficient on its own.
+
+It is a guard rather than a password field in this request because the same
+requirement belongs to a second operation — **changing the user password**
+(`update_password_handler`, `edit_config.rs:139-147`) — and because the
+requirement is a property of the operation, not of one handler's payload. It
+lives beside the other guards in `backend/src/router/auth.rs`, and moves the
+password comparison out of `update_password_handler` into the guard, so both
+operations get the same behaviour and the same error.
+
+How the credential arrives is a design decision the guard settles rather than
+each caller: a request header (say `X-Picasu-Password`) keeps it out of request
+bodies and out of logs, which is the reason to prefer it. `update_password_handler`
+reads it from a JSON field today (`old_password`), and that field stays for
+compatibility with the existing client while the header is what new callers
+should send.
 
 ### Scope
 
@@ -40,10 +53,9 @@ see the open questions — but the re-authentication requirement is the point.
   "every mutating route carries the mode guard" rule (M1) in
   `.plan/openapi-annotation-checks.md`, and this plan is where that exception is
   justified. The route still requires `GuardAuth`.
-- **The request carries the current password**, compared the way
-  `update_password_handler` already does (`edit_config.rs:157` compares
-  `req_data.old_password != current_config.password`); reuse that comparison
-  rather than writing a second one.
+- **The guard compares the password in constant time.** `update_password_handler`
+  uses `!=` (`edit_config.rs:157`), which is fine for a local value and wrong for
+  a credential check; the new guard must not inherit the habit.
 - **`PUT /put/config` keeps its guard** and must document the 405 it can now
   return, which it does not today — the operation lists 200/400/401 only. That is
   the rule M2 in the annotation-checks plan, and this is where its first finding
@@ -64,12 +76,12 @@ see the open questions — but the re-authentication requirement is the point.
 2. **Status for a wrong or missing password**: 400 (as
    `update_password_handler` does today) or 403. 403 is more honest about _why_.
 3. **No password configured.** `AppConfig::password` defaults to `None`
-   (`config.rs:113`), so a fresh install has none and the new endpoint could
-   never be used — the lockout would persist for exactly the installs least
-   likely to have a password. Either require the config `auth_key` as the
-   fallback credential, or refuse with an error naming the restart path. This
-   needs an answer before implementation, because it decides whether the fix
-   works out of the box.
+   (`config.rs:113`), so a fresh install has none and the guard could never be
+   satisfied — the lockout would persist for exactly the installs least likely
+   to have a password. Either require the config `auth_key` as the fallback
+   credential, or fail closed with an error naming the restart path. This needs
+   an answer before implementation, and with a guard it is answered once for both
+   call sites rather than per endpoint.
 4. **Scope of the re-authentication**: only for lifting the mode, or also for
    setting it? The decision covers disabling; enabling is harmless by
    comparison, so the asymmetry is intended.
