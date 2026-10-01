@@ -1074,6 +1074,16 @@
     "/albums/view/{path}": {
       "get": {
         "operationId": "albums_view",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "_path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
@@ -1221,6 +1231,35 @@
       "get": {
         "description": "Phase 14 lean read path: media rows are built from the snapshot's\n`ReducedData` plus the lean `ASSET_BY_ID` record — no per-row\n`METADATA_TABLE` (payload) read, and no tags/EXIF/description on the\npayload (those are served by `GET /get/metadata/{assetId}`).\nAlbum rows still read `METADATA_TABLE` because tiles need their stored\ntitle/cover/counts, composed with the album's `AssetRecord`.",
         "operationId": "get_data",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timestamp",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1270,6 +1309,26 @@
     "/get/get-rows": {
       "get": {
         "operationId": "get_rows",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timestamp",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1296,6 +1355,17 @@
     "/get/get-scroll-bar": {
       "get": {
         "operationId": "get_scroll_bar",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "timestamp",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1381,6 +1451,25 @@
       "get": {
         "description": "This is the detail-side counterpart of `get-data`: list rows only carry\nlean identity fields (tags / EXIF / description / rating are stripped in\nPhase 14), so the sidebar, detail view, and edit prefill fetch the full\n`AbstractData` view here on demand. The wire shape is unchanged:\nidentity fields come from the record, metadata fields from the payload.\n\nAuth and share parity follow `get-data`: a `GuardTimestamp` bearer token\n(prefetch token) is required, and when the token resolves to a share with\n`show_metadata: false` the metadata fields are cleared before responding so\na share that hides metadata cannot leak it through this route.",
         "operationId": "get_metadata",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timestamp",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Full metadata record for the asset"
@@ -1401,6 +1490,16 @@
     "/get/path-completion": {
       "get": {
         "operationId": "get_fs_completion",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1427,6 +1526,16 @@
     "/get/prefetch": {
       "post": {
         "operationId": "prefetch",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "locate",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -1487,6 +1596,16 @@
     "/object/compressed/{file_path}": {
       "get": {
         "operationId": "compressed_file",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Compressed file"
@@ -1506,6 +1625,16 @@
     "/object/imported/{file_path}": {
       "get": {
         "operationId": "imported_file",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "file_path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Imported original file"
@@ -2293,6 +2422,16 @@
     "/share/{path}": {
       "get": {
         "operationId": "share",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "_path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
@@ -2332,6 +2471,16 @@
     "/timeline/view/{path}": {
       "get": {
         "operationId": "timeline_view",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "_path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
@@ -2358,6 +2507,16 @@
     "/trashed/view/{path}": {
       "get": {
         "operationId": "trashed_view",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "_path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
@@ -2392,6 +2551,22 @@
             "required": false,
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "on_conflict",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "presigned_album_id_opt",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -2435,6 +2610,16 @@
     "/videos/view/{path}": {
       "get": {
         "operationId": "videos_view",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "_path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
@@ -2448,6 +2633,16 @@
     "/{dynamic_album_id}": {
       "get": {
         "operationId": "album_page",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dynamic_album_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
@@ -2464,6 +2659,16 @@
     "/{path}": {
       "get": {
         "operationId": "spa_fallback",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SPA fallback — serves index.html for Vue Router routes"
