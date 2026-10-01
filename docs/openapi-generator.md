@@ -98,6 +98,17 @@ The goal is an exact, auditable mapping between:
    The directory is spelled relative to the **workspace root**, not the package,
    because that is the working directory cargo runs rustc in.
 
+   One derivation is imperfect, and it is in the document rather than the code:
+   the six SPA catch-all routes (`/albums/view/{path}` and its four siblings,
+   plus the `/<path..>` fallback) document their trailing segment as a **required**
+   path parameter, while `<path..>` matches zero or more segments — `/albums/view`
+   is routed too. utoipa derives `required` from the handler argument's type, and
+   a catch-all's argument is a `PathBuf` rather than an `Option`. Declaring the
+   parameter inline (`params(("path" = Option<String>, Path))`) makes its schema
+   nullable but leaves `required` at the derived value, so it is not a way out.
+   The parameter exists only to give the catch-all something to bind: the handlers
+   ignore it and serve `index.html`.
+
 2. **`build.rs`** — no longer discovers anything. It exists for
    `generate_scenarios_rs`, which writes the YAML-driven test functions into
    `OUT_DIR`. `#[utoipauto]` reads the router files with `std::fs` while the
@@ -302,10 +313,7 @@ could read it is gone.
    description or a schema the handler signature cannot carry. Leave the HTTP
    method and the path out: with `rocket_extras` enabled, utoipa reads both from
    the route attribute itself, so the document cannot name a path the route does
-   not serve. Declare `path = "..."` only when the derived spelling is wrong —
-   today that is the five SPA catch-all routes, whose segments are spelled
-   `<_path..>` to avoid a name clash and therefore derive as `{_path}` rather
-   than `{path}`. If the route is feature-gated, add
+   not serve. If the route is feature-gated, add
    `extensions(("x-picasu-feature" = json!("<feature>")))` so `--check-openapi`
    knows a spec operation may legitimately be absent from a build without it.
 3. Run `just openapi-gen` and `just docs-openapi` to regenerate the spec

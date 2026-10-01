@@ -4,7 +4,7 @@
 //!
 //! | spelling | shape | who needs it |
 //! | --- | --- | --- |
-//! | binding name | `_path`, `asset_id` | the handler's own parameter list — Rocket binds `<_path..>` to a parameter called `_path` |
+//! | binding name | `path`, `asset_id` | the handler's own parameter list — Rocket binds `<path..>` to a parameter called `path`, and requires the two names to match |
 //! | template name | `path`, `asset_id` | a documented path and the `<segment>` names a route serves |
 //! | path template | `/albums/view/{path}` | the committed document |
 //!
@@ -18,10 +18,10 @@
 /// Rewrite a Rocket route URI to `OpenAPI` path-template form.
 ///
 /// Rocket declares segments as `<name>` / `<name..>`; `OpenAPI` uses `{name}`.
-/// A leading underscore in a Rocket segment name (`<_path..>`, used to avoid a
-/// clash with the handler name) has no `OpenAPI` counterpart and is dropped.
-/// The query part is dropped because it is documented per parameter, not in the
-/// path.
+/// The segment name is carried through verbatim: utoipa derives the documented
+/// parameter from the same route string, so rewriting it here would make the two
+/// sides disagree. The query part is dropped because it is documented per
+/// parameter, not in the path.
 ///
 /// Mounted-route parity compares a runtime route table against a generated
 /// document, so both sides have to agree on this translation. It lives here so
@@ -90,7 +90,7 @@ fn scan(path: &str) -> Scan<'_> {
         let binding = after[..end].trim_end_matches('.');
         segments.push(Segment {
             prefix: &rest[..start],
-            template: binding.trim_start_matches('_'),
+            template: binding,
         });
         rest = &after[end + 1..];
     }
