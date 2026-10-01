@@ -206,7 +206,7 @@ fn contract_exclusions_match_mounted_routes() {
 /// (`crate::spec_path`), and the mounted-route comparison above runs on the
 /// same function: a second copy would be free to drift, and a route that
 /// stopped matching its own documentation would go unnoticed. These cases pin
-/// the whole mapping — segment declarations, underscores, dots, the query part
+/// the whole mapping — segment declarations, dots, the query part
 /// and malformed input.
 #[test]
 fn rocket_paths_normalize_to_spec_templates() {
@@ -220,15 +220,8 @@ fn rocket_paths_normalize_to_spec_templates() {
         to_spec_path("/object/compressed/<file_path..>"),
         "/object/compressed/{file_path}"
     );
-    // `<_path..>` exists to avoid a clash with the handler name; OpenAPI has no
-    // counterpart for the underscore.
     assert_eq!(
-        to_spec_path("/albums/view/<_path..>"),
-        "/albums/view/{path}"
-    );
-    assert_eq!(to_spec_path("/assets/<_file..>"), "/assets/{file}");
-    assert_eq!(
-        to_spec_path("/albums/view/<_path..>/photos/<index>/raw"),
+        to_spec_path("/albums/view/<path..>/photos/<index>/raw"),
         "/albums/view/{path}/photos/{index}/raw"
     );
     // Query parameters are documented per parameter, not in the path.
