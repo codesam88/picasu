@@ -24,8 +24,6 @@ pub struct CreateDirAlbumData {
 /// Create a new subdirectory under an existing dir-album's directory and
 /// register it as a new album. Returns the new album's ID.
 #[utoipa::path(
-        post,
-        path = "/post/create_dir_album",
         tag = "albums",
         request_body = CreateDirAlbumData,
         responses(

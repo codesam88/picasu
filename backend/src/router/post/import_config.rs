@@ -12,8 +12,6 @@ use crate::router::AppResult;
 use crate::router::auth::GuardAuth;
 
 #[utoipa::path(
-        post,
-        path = "/post/config/import",
         tag = "config",
         request_body = AppConfig,
         responses(

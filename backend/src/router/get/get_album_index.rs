@@ -6,8 +6,6 @@ use crate::router::auth::GuardAuth;
 use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
 
 #[utoipa::path(
-        get,
-        path = "/get/index/status",
         tag = "index",
         responses(
             (status = 200, description = "Album index status", body = AlbumIndexStatus),

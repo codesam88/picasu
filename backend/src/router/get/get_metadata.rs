@@ -26,8 +26,6 @@ use crate::router::{AppResult, GuardResult};
 /// `show_metadata: false` the metadata fields are cleared before responding so
 /// a share that hides metadata cannot leak it through this route.
 #[utoipa::path(
-        get,
-        path = "/get/metadata/{asset_id}",
         tag = "assets",
         responses(
             (status = 200, description = "Full metadata record for the asset"),

@@ -72,8 +72,6 @@ pub enum AssignOutcome {
 /// album membership, and report the conflict outcome. Returns 400 if the file
 /// is missing at the asset's path (stale record — re-index first).
 #[utoipa::path(
-        put,
-        path = "/put/assign_album",
         tag = "albums",
         summary = "Move an asset into an album",
         description = "Moves the file identified by asset_id into the album directory on disk, updates stored path and album membership, and reports the conflict outcome. Returns 400 when the file is missing at the asset's path (stale record) or the destination is a manual album.",

@@ -148,8 +148,6 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
 }
 
 #[utoipa::path(
-        post,
-        path = "/upload",
         tag = "upload",
         request_body = Value,
         params(

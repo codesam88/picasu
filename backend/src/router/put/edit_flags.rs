@@ -26,8 +26,6 @@ pub struct EditFlagsData {
 }
 
 #[utoipa::path(
-        put,
-        path = "/put/edit_flags",
         tag = "assets",
         request_body = EditFlagsData,
         responses(
