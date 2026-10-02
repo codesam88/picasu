@@ -9,7 +9,8 @@ and no source/spec comparison here. Invoking it expecting the old rules gets you
 the rules below and nothing else — in particular no check on security schemes or
 on whether a documented operation is mounted. Its rule set is
 [`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md),
-of which section A and the handler-body rules of section C are implemented so far.
+of which **nine rules are implemented** — A1–A7 and the two handler-body rules
+C1 and C1b — and the rest are specified but not built; both lists are below.
 
 ## What this crate holds: conventions, not backend facts
 
@@ -33,64 +34,191 @@ concrete form of that.
 
 ## What it asserts
 
-### Section A — the annotation's shape
+**Nine rules, all of them enforced, and nothing else.** Each one below gives what
+it asserts, **what specifically tests it** (fixture and test name, so a reader can
+go and change the test rather than guess; fixture paths are relative to `tests/`),
+and **why it exists** — the defect it
+was written for, or the convention it protects. Rule ids are the plan's
+([`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md),
+"Rule index"), and they are stable.
 
-Seven rules, each about one `#[utoipa::path]` annotation or the handler it sits
-on.
 All of them read a fact that exists only in source: the document is generated
 _from_ these annotations, so it cannot disagree with them without a rule here
 saying so first.
 
-- **A1** — no `path = "…"` and no bare verb token. With `rocket_extras` enabled,
-  utoipa derives the path and the verb from the route attribute, so a
-  restatement in the annotation is a second copy of a fact nothing compares.
-- **A2** — `responses(…)` is present and declares at least one entry. utoipa
-  invents no response, so the omission is silent: the operation documents nothing
-  it can answer.
-- **A3** — exactly one `tag = "…"`, and it is one of the ten in
-  [`TAGS`](src/lib.rs) — this repository's copy of the table in
-  [`docs/openapi-generator.md`](../../docs/openapi-generator.md) ("Tag
-  conventions"). The tool owns the list because a document linter is not
-  adopted, and it is a copy rather than a parse because the document is generated
-  from the annotations: reading the vocabulary back out of it would check the
-  output against its own input. The rule has no exemptions: every annotated
-  operation declares one tag. `internal` is how an operation outside the
-  published API — the test-only probes, which the backend strips from the
-  committed artifact — says so, as an entry in the list rather than a hole in the
-  rule.
-- **A4** — the handler carries a doc comment. `summary` and `description` are
-  derived from it, so a handler without one is an operation that reaches the
-  generated reference with neither.
-- **A5** — the doc comment's first paragraph is one line. That paragraph is the
-  `summary`, and the reference renders the `summary` as a heading, so a wrapped
-  paragraph puts a newline inside a markdown heading. This was measured on this
-  repository's own document, not adopted as a style opinion.
-- **A6** — no `operation_id = "…"`. utoipa derives it from the function name, and
-  a hand-set one is the only name in the document that nothing compares.
-- **A7** — no `summary = "…"` and no `description = "…"`. utoipa derives both from
-  the doc comment, so a hand-set one is the same prose written twice with nothing
-  comparing the copies — and while an annotation may set `summary`, "the first
-  paragraph _is_ the summary" is false, which is what A5’s premise rests on. A
-  per-response `description` is not this: that is how a status code’s text is
-  written, and nothing derives it.
+### A1 — the annotation restates neither `path` nor a bare verb
 
-### Section C — the handler body
+With `rocket_extras` enabled, utoipa derives the path and the verb from the route
+attribute, so either one restated in the annotation is a second copy of a fact
+nothing compares.
 
-- **C1** — a `GuardResult<…>` handler argument must have its rejection
-  propagated. `GuardResult<T>` is `Result<T, AppError>`: the route hands the
-  handler a value that may be a rejection, and the handler is the only place that
-  rejection can become an error response. A binding that is dropped without `?`
-  or consumed only in positions that discard it (`let _ = ident;`), and a binding
-  the body never mentions, are findings.
-- **C1b** — a plain `Guard…` handler argument needs nothing in the body and is
-  never reported. Rocket runs such a guard during request handling and
+- **Tested by** `a1_restated_path_or_verb_fails` over
+  `fixtures/openapi_annotations/a1_restated_route.rs` (all three restatement
+  shapes, `path = "…"` and two bare verbs including `trace`), and by the
+  conforming counterpart `a_route_annotation_free_of_restatement_is_accepted` over
+  `a1_conforming.rs`.
+- **Why it exists** — the convention exists only in review; nothing rejects a
+  re-introduced duplicate. `trace` is in the verb list because it is a Rocket verb
+  and utoipa accepts it as a bare token — the gap was closed after review found
+  the list of eight omitted it.
+
+### A2 — the annotation declares at least one response
+
+`responses(…)` is present and declares at least one entry. An absent
+`responses(…)` and an empty `responses()` are both findings, reported as
+different texts, and the absent one is anchored at the signature because there is
+no token to point at.
+
+- **Tested by** `a_missing_or_empty_responses_fails` over `a2_missing_responses.rs`
+  (both shapes) and by `one_declared_response_is_enough` over `a2_conforming.rs`.
+- **Why it exists** — utoipa invents no response, so the omission is silent: the
+  operation documents nothing it can answer.
+
+### A3 — the annotation declares exactly one `tag` from the vocabulary
+
+Exactly one `tag = "…"`, and it is one of the ten in
+[`TAGS`](src/lib.rs) — this repository's copy of the table in
+[`docs/openapi-generator.md`](../../docs/openapi-generator.md) ("Tag
+conventions"). The rule has no exemptions: `internal` is how an operation outside
+the published API (the test-only probes) says so, as an entry in the list rather
+than a hole in the rule.
+
+- **Tested by** `a_tag_outside_the_vocabulary_fails` over
+  `a3_tag_outside_the_vocabulary.rs` (no tag, a tag outside the vocabulary, and
+  two tags of which both are inside it) and by
+  `every_tag_of_the_vocabulary_is_accepted` over `a3_conforming.rs` — the second
+  half of that test builds its source from `TAGS` itself, so a tag added to one
+  place and not the other fails the test rather than the gate.
+- **Why it exists** — the vocabulary is documented in prose; its checker was
+  deleted with the analyzer, and until a document linter is adopted A3 and A6 are
+  the only tag/`operationId` coverage this repository has.
+
+### A4 — the handler carries a doc comment
+
+- **Tested by** `a_handler_without_a_doc_comment_fails` over
+  `a4_missing_doc_comment.rs` and by `a_doc_commented_handler_is_accepted` over
+  `a4_conforming.rs`.
+- **Why it exists** — `summary` and `description` are derived from the doc
+  comment, so a handler without one reaches the generated reference with neither,
+  and nothing in the document shows the omission: an operation with a `paths`
+  entry, a `responses` map and a `tags` array is indistinguishable from a
+  documented one until a reader looks for prose. **A4 found 50 such handlers on
+  this repository's own tree**, and 49 of the 61 published operations had no
+  `summary`.
+
+### A5 — the doc comment's first paragraph is one line
+
+- **Tested by** `a_multi_line_summary_fails` over `a5_multi_line_summary.rs` and
+  by `a_one_line_summary_with_a_wrapped_description_is_accepted` over
+  `a5_conforming.rs`.
+- **Why it exists** — that paragraph is the `summary`, and the generated
+  reference renders the `summary` as a heading, so a wrapped paragraph puts a
+  newline inside a markdown heading. Measured on this repository's own document,
+  not adopted as a style opinion; it found 8 findings.
+
+### A6 — the annotation sets no `operation_id`
+
+- **Tested by** `a_hand_set_operation_id_fails` over
+  `a6_hand_set_operation_id.rs` and by `a_derived_operation_id_is_accepted` over
+  `a6_conforming.rs`.
+- **Why it exists** — utoipa derives `operationId` from the function name; a
+  hand-set one is the only name in the document that nothing compares, and the
+  deleted `AUTH_POLICY` was keyed by it.
+
+### A7 — the annotation sets neither `summary` nor `description`
+
+A per-response `description` is **not** this: that is how a status code's text is
+written, and nothing derives it.
+
+- **Tested by** `a_hand_set_summary_or_description_fails` over
+  `a7_hand_set_prose.rs` and by `a_derived_summary_and_description_are_accepted`
+  over `a7_conforming.rs`.
+- **Why it exists** — utoipa derives both from the doc comment, so a hand-set one
+  is the same prose written twice with nothing comparing the copies. While an
+  annotation may set `summary`, "the first paragraph _is_ the summary" is false,
+  which is the premise A5 rests on — `put/assign_album.rs` did set both, and it is
+  why A5 was once reporting a defect the generated document did not have.
+
+### C1 — a `GuardResult<…>` argument has its rejection propagated
+
+`GuardResult<T>` is `Result<T, AppError>`: the route hands the handler a value
+that may be a rejection, and the handler is the only place that rejection can
+become an error response. The binding must appear as the operand of `?`, the
+scrutinee of a `match`/`let`/`if let`, an argument of another call, or a returned
+value. A binding dropped as `let _ = ident;`, and a binding the body never
+mentions, are findings.
+
+- **Tested by** `dropping_a_guard_result_fails` over `c1_discarded_guard_result.rs`
+  (the mutation fixture), `a_guard_result_absent_from_the_body_fails` over
+  `c1_absent_guard_result.rs`, `propagated_guard_results_are_accepted` over
+  `c1_conforming.rs`, `a_dropped_guard_in_an_unannotated_handler_is_out_of_scope`
+  over `c1_unannotated_ignored.rs`, `guard_moved_into_a_closure_is_accepted` over
+  `c1_moved_into_closure.rs`, and `rebound_guard_result_is_reported` over
+  `c1_rebound_guard_result.rs`.
+- **Why it exists** — it is the only rule with a proven incident behind it: the
+  deleted suite's `dropping_a_guard_result_fails` shape, commit `84f29aa5`, a
+  `GuardResult<GuardTimestamp>` dropped without `?`. The tree's conforming idiom
+  is `let _ = ident?;` (all 52 fallible bindings use it), and the rule has zero
+  findings today, so it earns its place as a regression guard — which is why it
+  ships with a mutation test that fails when the rule is removed. The two
+  decision-shaped cases are pinned as tests rather than left to the walk:
+  a `move` into a closure is **accepted** when the closure propagates, and a
+  one-hop rebinding (`let x = auth; … x?;`) is **reported** even though a human
+  would accept it.
+
+### C1b — a plain `Guard…` argument needs nothing in the body and is never reported
+
+- **Tested by** `an_unused_plain_guard_is_accepted` over `c1b_plain_guards.rs`
+  (a handler with two unused plain guards, and a handler mixing a `GuardResult`
+  with a plain one) and by `only_a_guard_result_carries_an_obligation`, which
+  pins the classification on `syn::Type` values rather than on a fixture — so a
+  new guard type cannot fail the build before someone has decided what it means.
+- **Why it exists** — Rocket runs such a guard during request handling and
   short-circuits on failure, so a handler that correctly ignores the value is
-  correct code.
+  correct code. Nine `_auth: GuardAuth` bindings across seven handlers are never
+  touched; a rule that treated every guard type alike would report every one of
+  them.
 
 Only annotated handlers are in scope; an undocumented route is a contract finding
 elsewhere. Every rule reads the source with `syn`, because nothing in the
 generated document or in Rocket's mount table says what an annotation or a
 handler body contains.
+
+## Specified but not built
+
+The tool is **not** the whole plan. These rules are written down in
+[`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md)
+with their reasoning, their calibration and where they are meant to land; none of
+them is enforced here, and the tree passing says nothing about them.
+
+| id  | rule, in one line                                                                                                                                  |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B1  | every declared `params(...)` name corresponds to a route segment or query binding                                                                  |
+| B2  | a declared parameter's `required` equals `!argument_is_option`                                                                                     |
+| B3  | a declared `request_body` schema equals the type the route's `data = "…"` binds                                                                    |
+| C2  | every `pub fn generate_*_routes()` is mounted in `router/builder.rs`                                                                               |
+| M1  | every `POST`/`PUT` route carries `GuardReadOnlyMode`                                                                                               |
+| M2  | a route carrying the mode guard documents a `405` response                                                                                         |
+| M3  | the mode guard never appears in `security(...)`                                                                                                    |
+| M4  | the mode guard's rejection is propagated                                                                                                           |
+| D1  | a route carrying a credential guard has an operation that declares `security(...)`, and the schemes it names are the ones that guard class maps to |
+| D2  | an operation declaring `security(...)` has a route carrying a credential guard                                                                     |
+| D4  | `securitySchemes` defines every scheme any operation references                                                                                    |
+| D5  | a route carrying the re-authentication guard declares its own scheme                                                                               |
+| D6  | the re-authentication guard appears with a credential guard, never alone                                                                           |
+| D7  | every `POST`/`PUT` route carries at least one credential guard, or is listed as deliberately public — blocked on the backend question Q1           |
+| D8  | the credential set an operation declares in `security(...)` equals the credential set its route's guards provide                                   |
+| A8  | every guard binding is named after its guard class, `_`-prefixed when the value is discarded — calibrated: 19 of 62 bindings would be findings     |
+| C3  | a route carrying a guard documents the status that guard rejects with — `401` for a credential guard, `405` for the mode guard                     |
+| R1  | a `POST` route lives under `/post/`, or is listed as deliberately placed elsewhere                                                                 |
+| S1  | a handler defined in `router/get/get_page.rs` is tagged `pages`, and no handler defined elsewhere is — calibrated: zero findings today             |
+
+Three ids in the plan are not rules this tool could enforce: **D3** is a
+cross-reference (the credential guard's rejection is propagated — that is C1),
+**V1** (a credential comparison is constant time) is a review obligation no
+checker can see, and **P1** (a handler's documented success status matches what it
+returns) is a spike whose return-type analysis cost has to be measured before the
+rule is written.
 
 ## What it deliberately does not check
 
@@ -107,8 +235,10 @@ handler body contains.
   any of them. (`trace` was one of these until it moved into A1’s verb list: it
   is a Rocket verb, so leaving the gap open was the cost of a rule nothing
   enforces.)
-- **Parameter agreement (B) and the security rules (D, M)** — not implemented. The
-  rest of the plan, and where each future rule lands, is in the plan file.
+- **Parameter agreement (B), the guard/`security` rules (D, M), the tag/route-family
+  rule (S1) and the naming rule (A8)** — not implemented, and listed by id above so
+  a reader knows the tool is not the whole plan. Where each one lands and what it
+  is calibrated against is in the plan file.
 
 ## Running it
 
@@ -144,11 +274,16 @@ or to the walk is exercised by its own suite there.
 the real router tree that has to stay silent. Each rule has a fixture that must
 produce its finding and a conforming counterpart that must produce none, so a
 rule that started flagging every annotation is caught as well as one that stopped
-flagging anything. `tests/cli.rs` pins the reporting contract the recipe depends
-on: the summary's counts, the exit codes and the coverage floor. Fixtures live in
-`tests/fixtures/openapi_annotations/` and are pulled in with `include_str!`, so a
-renamed or deleted fixture breaks the build instead of skipping a test. Run them
-with `cargo test -p openapi-sanity`.
+flagging anything — which fixture and which test cover which rule is written down
+per rule in "What it asserts" above, so a reader does not have to go looking.
+`the_router_tree_is_clean` is the half that proves the rules against the tree
+rather than against snippets, and it pins the scan's coverage (63 annotations, 52
+fallible guard bindings, 9 plain ones) so the two cannot drift apart silently.
+`tests/cli.rs` pins the reporting contract the recipe depends on: the summary's
+counts, the exit codes and the coverage floor — five tests there, 23 here, 28 in
+all. Fixtures live in `tests/fixtures/openapi_annotations/` and are pulled in with
+`include_str!`, so a renamed or deleted fixture breaks the build instead of
+skipping a test. Run them with `cargo test -p openapi-sanity`.
 
 ## A known duplication
 
