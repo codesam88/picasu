@@ -57,8 +57,8 @@
 use std::path::{Path, PathBuf};
 
 use openapi_sanity::{
-    EXCLUDED_ROUTE_PREFIXES, Finding, Requirement, TAGS, findings_in_source, guard_requirement,
-    handlers_in_file, render, scan_source_root,
+    Finding, Requirement, TAGS, findings_in_source, guard_requirement, handlers_in_file, render,
+    scan_source_root,
 };
 
 /// Every rule over one source file, for the fixtures below.
@@ -86,8 +86,6 @@ const NO_RESPONSES: &str = include_str!("fixtures/openapi_annotations/a2_missing
 const RESPONSES_DECLARED: &str = include_str!("fixtures/openapi_annotations/a2_conforming.rs");
 const BAD_TAGS: &str =
     include_str!("fixtures/openapi_annotations/a3_tag_outside_the_vocabulary.rs");
-const EXCLUDED_PREFIXES: &str =
-    include_str!("fixtures/openapi_annotations/a3_excluded_prefixes.rs");
 const VOCABULARY_TAGS: &str = include_str!("fixtures/openapi_annotations/a3_conforming.rs");
 const NO_DOC_COMMENT: &str = include_str!("fixtures/openapi_annotations/a4_missing_doc_comment.rs");
 const DOC_COMMENTED: &str = include_str!("fixtures/openapi_annotations/a4_conforming.rs");
@@ -191,10 +189,10 @@ fn a_tag_outside_the_vocabulary_fails() {
          the operation is filed nowhere in the generated reference; take one from the \
          vocabulary in docs/openapi-generator.md \"Tag conventions\"\n\
          a3_tag_outside_the_vocabulary.rs:14: unknown_tag: the annotation declares the tag \
-         \"data\", which is not one of the 9 in docs/openapi-generator.md \"Tag \
-         conventions\" (albums, assets, auth, config, index, pages, serving, timeline, \
-         upload); a tag outside the vocabulary files the operation outside every section \
-         of the reference\n\
+         \"data\", which is not one of the 10 in docs/openapi-generator.md \"Tag \
+         conventions\" (albums, assets, auth, config, index, internal, pages, serving, \
+         timeline, upload); a tag outside the vocabulary files the operation outside every \
+         section of the reference\n\
          a3_tag_outside_the_vocabulary.rs:24: two_tags: the annotation declares 2 tags \
          (\"assets\", \"timeline\"), but the house rule is exactly one tag per operation, \
          so the reference would file it under all of them",
@@ -327,63 +325,6 @@ fn a_derived_operation_id_is_accepted() {
     let findings = check_source("a6_conforming.rs", DERIVED_ID);
 
     assert_eq!(render(&findings), "");
-}
-
-/// A3's exemption, with the control that gives it meaning.
-///
-/// A handler under one of [`EXCLUDED_ROUTE_PREFIXES`] — the same set as the
-/// backend's `CONTRACT_EXCLUSION_PREFIXES` — is stripped from the published
-/// document, so no tag can file it in the reference and A3 does not ask for one.
-/// The third handler in the fixture is outside those prefixes and still fails,
-/// which is the half that stops the exemption from being a way to switch the
-/// rule off: both assertions are in this one test, on this one file.
-#[test]
-fn a_tag_is_not_required_on_a_route_the_published_document_drops() {
-    let findings = check_source("a3_excluded_prefixes.rs", EXCLUDED_PREFIXES);
-
-    assert_eq!(
-        render(&findings),
-        "a3_excluded_prefixes.rs:28: outside_the_excluded_prefixes: the annotation declares \
-         no tag, so the operation is filed nowhere in the generated reference; take one \
-         from the vocabulary in docs/openapi-generator.md \"Tag conventions\"",
-        "only the handler outside the excluded prefixes is reported: the exemption is \
-         for routes the document drops, not a way to switch the rule off"
-    );
-}
-
-/// The exemption is a prefix list, so it has to match on the prefix rather than on
-/// anything else — and its set is the backend's, spelled once here on purpose.
-#[test]
-fn the_exempt_prefixes_are_the_backend_exclusion_set() {
-    assert_eq!(
-        EXCLUDED_ROUTE_PREFIXES,
-        ["/get/test/", "/assets"],
-        "this is a copy of the backend's openapi_public::CONTRACT_EXCLUSION_PREFIXES; a \
-         prefix added to one side belongs in the other in the same change"
-    );
-
-    let handlers = handlers_in_file("a3_excluded_prefixes.rs", EXCLUDED_PREFIXES)
-        .expect("fixture must parse as Rust");
-    let routes: Vec<(&str, Option<&str>, bool)> = handlers
-        .iter()
-        .map(|handler| {
-            (
-                handler.name.as_str(),
-                handler.route_path.as_deref(),
-                handler.is_excluded(),
-            )
-        })
-        .collect();
-    assert_eq!(
-        routes,
-        vec![
-            ("probe_record", Some("/get/test/record/<asset_id>"), true),
-            ("static_file", Some("/assets/index.html"), true),
-            ("outside_the_excluded_prefixes", Some("/get/widget"), false),
-        ],
-        "the route path is read from the route attribute, and only a path under a \
-         listed prefix is exempt"
-    );
 }
 
 /// A7: utoipa derives `summary` from the doc comment's first paragraph and

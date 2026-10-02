@@ -68,6 +68,7 @@ fn probe_enabled() -> bool {
 
 /// Test-only probe: report one asset's stored record and the path it resolves to.
 #[utoipa::path(
+        tag = "internal",
         responses(
             (status = 200, description = "Test-only record probe with the asset's path", body = TestRecordProbe),
             (status = 400, description = "Invalid asset_id"),
@@ -134,6 +135,7 @@ pub fn probe_record(
 /// assert both presence and absence of members. Disabled (404) unless the test
 /// bootstrap opted in via `enable_test_probe`.
 #[utoipa::path(
+        tag = "internal",
         responses(
             (status = 200, description = "Test-only probe: members of a DUPE_INDEX content-hash group", body = Vec<DupeGroupMember>),
             (status = 404, description = "Probe disabled"),

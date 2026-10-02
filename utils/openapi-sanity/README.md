@@ -11,6 +11,26 @@ on whether a documented operation is mounted. Its rule set is
 [`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md),
 of which section A and the handler-body rules of section C are implemented so far.
 
+## What this crate holds: conventions, not backend facts
+
+Every constant in this crate is a **convention someone decided** — a tag
+vocabulary, a set of spellings utoipa also accepts — and every rule reads
+something written in the `#[utoipa::path]` annotation or in the handler beside
+it. This tool holds no facts about the backend, and that boundary is the point:
+
+> If a rule seems to need a route path, a URL prefix, a config value, a feature
+> name, a mount table or a constant from the backend, the rule belongs in the
+> backend or in a just recipe — not here.
+
+A copy of such a fact in this crate is a second place to forget, and a gate built
+on it reports a stale copy rather than the truth. It happened once: A3 briefly
+carried the backend's contract-exclusion prefixes so the test-only probes could
+be exempt from the tag rule, and the honest resolution turned out to be a
+vocabulary entry (`internal`) rather than a copy of a path list. Route-set parity,
+document drift and feature gating all have owners elsewhere, and none of them is
+this crate — the "what it deliberately does not check" list below is the
+concrete form of that.
+
 ## What it asserts
 
 ### Section A — the annotation's shape
@@ -27,20 +47,17 @@ saying so first.
 - **A2** — `responses(…)` is present and declares at least one entry. utoipa
   invents no response, so the omission is silent: the operation documents nothing
   it can answer.
-- **A3** — exactly one `tag = "…"`, and it is one of the nine in
+- **A3** — exactly one `tag = "…"`, and it is one of the ten in
   [`TAGS`](src/lib.rs) — this repository's copy of the table in
   [`docs/openapi-generator.md`](../../docs/openapi-generator.md) ("Tag
   conventions"). The tool owns the list because a document linter is not
   adopted, and it is a copy rather than a parse because the document is generated
   from the annotations: reading the vocabulary back out of it would check the
-  output against its own input. A route under
-  [`EXCLUDED_ROUTE_PREFIXES`](src/lib.rs) is exempt: that is the same set as the
-  backend's `openapi_public::CONTRACT_EXCLUSION_PREFIXES`, whose operations are
-  stripped from the published document, so a tag on one would name a section of
-  the reference that does not exist. The exemption is a copy in this crate and
-  deliberately not a `--exclude-prefix` flag, because a flag would mean spelling
-  the prefixes a third time in the justfile. Every other rule still applies to
-  that surface — the contract tests read the full spec, not the public one.
+  output against its own input. The rule has no exemptions: every annotated
+  operation declares one tag. `internal` is how an operation outside the
+  published API — the test-only probes, which the backend strips from the
+  committed artifact — says so, as an entry in the list rather than a hole in the
+  rule.
 - **A4** — the handler carries a doc comment. `summary` and `description` are
   derived from it, so a handler without one is an operation that reaches the
   generated reference with neither.
@@ -135,9 +152,16 @@ with `cargo test -p openapi-sanity`.
 
 ## A known duplication
 
-Two of the sets this tool enforces are copies of a backend definition: `TAGS` is
-the table in `docs/openapi-generator.md`, and `EXCLUDED_ROUTE_PREFIXES` is
-`openapi_public::CONTRACT_EXCLUSION_PREFIXES`. Neither could be read rather than
-copied — one is a generated artifact, the other is in another crate — and both
-are pinned by a test that names the set it is a copy of, so a prefix or a subject
-added to one side and not the other fails.
+`TAGS` is the one set this tool enforces that is written down elsewhere: it
+mirrors the table in
+[`docs/openapi-generator.md`](../../docs/openapi-generator.md) ("Tag
+conventions"), which cannot be read rather than copied because the document is
+generated from the annotations a rule would then be checking. Both places say the
+other exists, and a test asserts every tag in the constant is accepted, so a
+subject added to one and not the other shows up as a rule that rejects the table.
+
+The guard rules in section C name the shapes `GuardResult<…>` and `Guard…` by the
+spelling the backend writes them with. That is a convention read from the
+convention, not a fact copied from the backend: a guard class the tool cannot name
+is out of scope for every rule here, which is recorded in the plan file as the
+design requirement for section D.

@@ -202,16 +202,16 @@ Two of the three phases compare the document. The source phase checks the
 annotations themselves, because a handful of things about an annotation are wrong
 in a way the document cannot show:
 
-| Rule | Assertion                                                                                                               | Why the document cannot show it                                                                                        |
-| ---- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| A1   | no `path = "…"` and no bare verb token in the annotation                                                                | `rocket_extras` derives both from the route attribute, so a restatement is a second copy of a fact nothing compares    |
-| A2   | `responses(…)` is present and has at least one entry                                                                    | utoipa invents no response, so an operation with none documents nothing it can answer                                  |
-| A3   | exactly one `tag = "…"`, from the table in [Tag conventions](#tag-conventions), on a route the published document keeps | a missing or unknown tag files the operation outside every section of the reference                                    |
-| A4   | the handler carries a doc comment                                                                                       | `summary` and `description` are derived from it, so a handler without one is a complete-looking operation with no text |
-| A5   | the doc comment's first paragraph is one line                                                                           | it is the `summary`, and the reference renders the `summary` as a heading — a newline inside a heading splits it       |
-| A6   | no `operation_id = "…"`                                                                                                 | utoipa derives it from the function name; a hand-set one is the only name nothing compares                             |
-| A7   | no `summary = "…"` and no `description = "…"`                                                                           | utoipa derives both from the doc comment; a hand-set one is the same prose written twice, with nothing comparing them  |
-| C1   | a `GuardResult<…>` argument has its rejection propagated by the handler body                                            | the route hands the handler a value that may be a rejection, and only the body can turn it into a response             |
+| Rule | Assertion                                                                      | Why the document cannot show it                                                                                        |
+| ---- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| A1   | no `path = "…"` and no bare verb token in the annotation                       | `rocket_extras` derives both from the route attribute, so a restatement is a second copy of a fact nothing compares    |
+| A2   | `responses(…)` is present and has at least one entry                           | utoipa invents no response, so an operation with none documents nothing it can answer                                  |
+| A3   | exactly one `tag = "…"`, from the table in [Tag conventions](#tag-conventions) | a missing or unknown tag files the operation outside every section of the reference                                    |
+| A4   | the handler carries a doc comment                                              | `summary` and `description` are derived from it, so a handler without one is a complete-looking operation with no text |
+| A5   | the doc comment's first paragraph is one line                                  | it is the `summary`, and the reference renders the `summary` as a heading — a newline inside a heading splits it       |
+| A6   | no `operation_id = "…"`                                                        | utoipa derives it from the function name; a hand-set one is the only name nothing compares                             |
+| A7   | no `summary = "…"` and no `description = "…"`                                  | utoipa derives both from the doc comment; a hand-set one is the same prose written twice, with nothing comparing them  |
+| C1   | a `GuardResult<…>` argument has its rejection propagated by the handler body   | the route hands the handler a value that may be a rejection, and only the body can turn it into a response             |
 
 `docs/openapi-generator.md` is where the tag vocabulary is written down, and
 `utils/openapi-sanity/src/lib.rs` holds the tool's copy of it (`TAGS`); the two
@@ -220,17 +220,16 @@ document-side equivalent, which is why they live in the tool and not in a linter
 for the document — the document is generated _from_ these annotations, so a
 linter would be checking the output against its own input.
 
-**A3 does not apply to a route the published document drops.** The test-only
-probes under `/get/test/` and the `/assets` static mount are stripped from
-`backend/openapi.json`, so a tag on such an operation would name a section of the
-reference that does not exist — vocabulary nobody sees. The tool skips A3 for
-those prefixes: `EXCLUDED_ROUTE_PREFIXES`, a copy of the backend's
-[`CONTRACT_EXCLUSION_PREFIXES`](../../backend/src/openapi_public.rs), the one
-definition every route-set consumer derives from. **Adding a route outside the
-published contract means adding its prefix to both sides in the same change.**
-Every other rule still applies to that surface, because the contract tests read
-the _full_ spec rather than the public one: its responses (A2) and its doc comment
-(A4) are still read.
+Every rule reads what the annotation or the handler beside it says. None of them
+reads a route path, a config value, a feature name or a constant from the backend,
+and that is deliberate: a rule that needs one of those belongs in the backend or in
+a just recipe, where the fact is kept once. An out-of-contract operation is
+therefore not an exception to A3 but an entry in its vocabulary — `internal`, for
+the test-only probes, whose operations
+[`openapi_public`](../../backend/src/openapi_public.rs) strips from the committed
+artifact. Every other rule applies to them too, because the contract tests read
+the _full_ spec rather than the public one: their responses (A2) and their doc
+comments (A4) are still read.
 
 Three spellings utoipa also accepts are still review-time, and the boundary is
 deliberate: `method(GET)` is the parenthesised verb form of A1, `tags([…])` is a
@@ -342,6 +341,7 @@ operations by, so the vocabulary stays small and subject-oriented.
 | `timeline` | Grid/list data: prefetch, rows, scrollbar, tag list, export                         | `GET /get/get-data`                |
 | `upload`   | File upload                                                                         | `POST /upload`                     |
 | `pages`    | SPA HTML page routes served from `router/get/get_page.rs` (serve `index.html`)      | `GET /login`                       |
+| `internal` | Operations outside the published API — the test-only probes                         | `GET /get/test/record/{asset_id}`  |
 
 `pages` is reserved for the SPA page routes in `router/get/get_page.rs`; the data
 API lives under `/delete/`, `/get/`, `/object/`, `/post/`, `/put/` and `/upload`
@@ -355,14 +355,13 @@ these annotations and reading the vocabulary back out of it would check the
 output against its own input. **Adding a subject means changing this table and
 that constant in the same change.**
 
-The test-only probes under `/get/test/` are the one part of the tree the
-vocabulary does not cover, and that is a decision rather than an omission: their
-operations are dropped from the published document by
-[`CONTRACT_EXCLUSION_PREFIXES`](../../backend/src/openapi_public.rs), so a tag on
-them would file a route no reader of the reference can reach. A3 does not ask for
-one — see [the A3 exemption](#annotation-shape-what-the-source-gate-checks). The
-vocabulary stays nine subjects, none of them "routes that are not in the
-document".
+`internal` names the operations **outside the published API**, which today are
+the test-only probes under `/get/test/`. `openapi_public` strips those from the
+committed artifact, along with the routes under the contract's exclusion
+prefixes, so the generated reference never renders this group — the tag says "not
+part of the published surface" rather than naming a section a reader can open.
+Every operation is tagged, and `internal` is how an out-of-contract one says so;
+nothing is exempt from the rule.
 
 ## Workflow
 

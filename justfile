@@ -133,11 +133,14 @@ openapi-gen:
 openapi-check: openapi-sanity openapi-json-match openapi-routes-match
 
 # Source-level `#[utoipa::path]` checks: the annotation's shape (no restated
-# path or verb, at least one response, one vocabulary tag unless the route is
-# outside the published contract, a doc comment with a one-line summary, no
-# hand-set operation_id / summary / description) and the handler body (every
-# fallible guard's rejection has to be propagated). Reads the source, so it needs
-# no build and no frontend bundle.
+# path or verb, at least one response, one vocabulary tag, a doc comment with a
+# one-line summary, no hand-set operation_id / summary / description) and the
+# handler body (every fallible guard's rejection has to be propagated). Reads the
+# source, so it needs no build and no frontend bundle.
+#
+# The tool holds annotation conventions and no backend facts. A rule that needs a
+# route path, a config value or a feature name belongs in the backend or in a
+# recipe, not in `utils/openapi-sanity`.
 #
 # `--expect-at-least` is the floor on annotated handlers the scan must see, with
 # headroom below the tree's 63: a new handler must not break the gate, but a walk

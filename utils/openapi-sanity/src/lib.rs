@@ -5,6 +5,30 @@
 //! **C1b**, the two rules about the handler body. The parameter-agreement (B) and
 //! security (D, M) rules are separate increments.
 //!
+//! # What this crate holds, and what it must not
+//!
+//! This tool records **annotation conventions**, and it holds no facts about the
+//! backend. Every constant here is a convention someone decided — a tag
+//! vocabulary, a set of spellings utoipa also accepts — and every rule reads
+//! something written in the `#[utoipa::path]` annotation or in the handler beside
+//! it.
+//!
+//! That boundary is a design decision, not an accident, and the sign it is
+//! crossed is recognisable: **if a rule seems to need a route path, a URL prefix,
+//! a config value, a feature name, a mount table or a constant from the backend,
+//! the rule belongs in the backend or in a just recipe, not here.** A copy of
+//! such a fact in this crate is a second place to forget, and the gate built on
+//! it is a gate that reports a stale copy rather than the truth. It happened once:
+//! A3 briefly carried the backend's contract-exclusion prefixes so the test-only
+//! probes could be exempt, and the honest resolution was a vocabulary entry
+//! (`internal`) rather than a copy of a path list. Two conventions in the
+//! repository are copied rather than read, and both are recorded as conventions
+//! with a comment saying where the prose is: `TAGS` mirrors a table in
+//! `docs/openapi-generator.md`, and the guard shapes below are named by the alias
+//! the backend writes them with.
+//!
+//! # Why the rules belong in the gate
+//!
 //! Why the handler-body rules belong in the gate. `GuardResult<T>` is
 //! `Result<T, AppError>`: the route hands the handler a value that may be a
 //! rejection, and the *handler* is the only place that rejection can become an
@@ -104,8 +128,19 @@ use syn::{
 /// generated from these annotations — reading it from here would make the rule
 /// check the document with the document. Adding a subject means changing the
 /// table in the document and this constant in the same change.
-pub const TAGS: [&str; 9] = [
-    "albums", "assets", "auth", "config", "index", "pages", "serving", "timeline", "upload",
+///
+/// `internal` is the one entry that names a group the generated reference never
+/// renders: the operations outside the published API. Today those are the
+/// test-only probes, which `openapi_public` strips from the committed artifact
+/// along with the routes under the contract's exclusion prefixes, so a probe has
+/// no section to be filed under. The entry says so in the vocabulary rather than
+/// leaving those operations untagged, because a rule with an exemption is a rule
+/// with a way round it, and a tag in a list is a fact a reader of the source can
+/// see. Nothing in this crate decides *which* routes are internal — the backend
+/// owns that — so the entry carries a name, not a rule about paths.
+pub const TAGS: [&str; 10] = [
+    "albums", "assets", "auth", "config", "index", "internal", "pages", "serving", "timeline",
+    "upload",
 ];
 
 /// Bare verb tokens a `#[utoipa::path]` argument must not name, which A1
@@ -123,41 +158,6 @@ pub const TAGS: [&str; 9] = [
 const RESTATED_VERBS: [&str; 9] = [
     "get", "post", "put", "delete", "head", "options", "patch", "trace", "route",
 ];
-
-/// Rocket's route attributes, whose first argument is the path the route serves.
-///
-/// Read from the handler's own attributes because that string is the only place
-/// the route's path is written: with `rocket_extras` utoipa derives the
-/// operation's path from it rather than from the annotation, which is what makes
-/// [`EXCLUDED_ROUTE_PREFIXES`] checkable at all.
-const ROUTE_VERBS: [&str; 7] = ["get", "post", "put", "delete", "patch", "head", "options"];
-
-/// Route prefixes whose handlers never reach the published document, and are
-/// therefore exempt from A3's tag rule.
-///
-/// This is the same set as the backend's
-/// [`openapi_public::CONTRACT_EXCLUSION_PREFIXES`](../../../backend/src/openapi_public.rs):
-/// `/get/test/` is the test-only probe surface, mounted only in test builds and
-/// stripped from the committed artifact, and `/assets` is the static file mount,
-/// which serves bytes rather than API operations. An operation on either prefix
-/// is not in `backend/openapi.json` and not in the generated reference, so a tag
-/// on it would name a section no reader can reach — vocabulary that exists only
-/// to be printed. Asking for one would be asking for a filing decision about an
-/// operation the document does not have.
-///
-/// **This is a copy, and a copy is the point.** The tool reads source only, so it
-/// cannot import the backend's constant. The alternative — a `--exclude-prefix`
-/// flag — was rejected for the same reason the backend's constant exists: the
-/// prefixes would then be spelled a third time, in the justfile recipe, and three
-/// spellings of one set drift. A prefix added to either side belongs in the other
-/// in the same change, which is what
-/// `the_exempt_prefixes_are_the_backend_exclusion_set` in
-/// `tests/openapi_annotations.rs` pins.
-///
-/// The exemption is scoped to A3, and deliberately so: the excluded surface
-/// still has to document its responses (A2) and carry a doc comment (A4), because
-/// the contract tests read the full spec, not the public one.
-pub const EXCLUDED_ROUTE_PREFIXES: [&str; 2] = ["/get/test/", "/assets"];
 
 /// One reported problem, rendered as `path:line: identity: what is wrong`.
 ///
@@ -364,31 +364,6 @@ fn literal_text(literal: &proc_macro2::Literal) -> String {
     literal.to_string().trim_matches('"').to_owned()
 }
 
-/// The path a Rocket route attribute serves: its first argument, a string
-/// literal.
-///
-/// `#[get("/get/widget")]`, `#[get("/<path..>", rank = 11)]` and
-/// `#[post("/upload?<a>&<b>", data = "<form>")]` all write it first, so this
-/// reads the leading literal and nothing else — the rest of a Rocket argument
-/// list is Rocket's own grammar, not this tool's business. An attribute that is
-/// not one of [`ROUTE_VERBS`], or whose first argument is not a literal, is not a
-/// route and yields `None`.
-fn route_path(handler: &ItemFn) -> Option<String> {
-    handler.attrs.iter().find_map(|attribute| {
-        let verb = attribute.path().get_ident()?.to_string();
-        if !ROUTE_VERBS.contains(&verb.as_str()) {
-            return None;
-        }
-        let Meta::List(list) = &attribute.meta else {
-            return None;
-        };
-        match list.tokens.clone().into_iter().next() {
-            Some(TokenTree::Literal(literal)) => Some(literal_text(&literal)),
-            _ => None,
-        }
-    })
-}
-
 /// How many comma-separated entries a group holds, ignoring empty ones — the
 /// shape utoipa parses `responses(…)`, `params(…)` and `extensions(…)` in.
 fn entries_in(stream: &TokenStream) -> usize {
@@ -465,10 +440,6 @@ pub struct AnnotatedHandler {
     pub name: String,
     /// What the `#[utoipa::path(…)]` annotation declares.
     pub annotation: Annotation,
-    /// The path the route attribute serves, as written. `None` for a handler with
-    /// no Rocket route attribute, which is not a route at all and therefore not
-    /// under any prefix.
-    pub route_path: Option<String>,
     /// The handler's doc comment, line by line. Empty when it carries none.
     pub doc: Vec<Located<String>>,
     /// The line the signature is written on. Private because it exists only to
@@ -507,21 +478,6 @@ impl AnnotatedHandler {
     /// looks when the handler has nothing else to point at.
     fn signature_line(&self) -> usize {
         self.sig_line
-    }
-
-    /// Is this handler's route under a prefix that never reaches the published
-    /// document, so A3's tag rule does not apply to it?
-    ///
-    /// The set is [`EXCLUDED_ROUTE_PREFIXES`]. A handler with no route path is
-    /// not exempt: an unattributed operation has no reason to be, and treating
-    /// "unknown" as "excluded" would turn the exemption into a way to switch the
-    /// rule off.
-    pub fn is_excluded(&self) -> bool {
-        self.route_path.as_deref().is_some_and(|path| {
-            EXCLUDED_ROUTE_PREFIXES
-                .iter()
-                .any(|prefix| path.starts_with(prefix))
-        })
     }
 }
 
@@ -743,7 +699,6 @@ pub fn annotated_handlers(file: &str, parsed: &syn::File) -> Vec<AnnotatedHandle
             ),
             doc: doc_comment(handler),
             sig_line: handler.sig.span().start().line,
-            route_path: route_path(handler),
             guards: guard_bindings(handler),
             body: handler.block.as_ref().clone(),
         })
@@ -976,16 +931,13 @@ fn responses_declared(handler: &AnnotatedHandler) -> Vec<Finding> {
 /// repository copies into [`TAGS`]; the tool owns the list because a document
 /// linter is not adopted.
 ///
-/// The rule does not apply to a route under [`EXCLUDED_ROUTE_PREFIXES`], which is
-/// the whole of the exemption: such an operation is stripped from the published
-/// document before anyone reads it, so a tag on it files an operation the
-/// reference does not carry. Every other rule still applies to that surface — the
-/// contract tests read the full spec, so its responses (A2) and its doc comment
-/// (A4) are still worth having.
+/// The rule is absolute: every annotated operation declares one tag, with no
+/// exemptions for routes the published document drops. `internal` is how such an
+/// operation says so — a vocabulary entry, not a hole in the rule — so the
+/// surface that is stripped from the committed artifact is still declared in the
+/// same shape as everything else, and a reader of the tree can see it in the
+/// place a reader looks for it.
 fn one_vocabulary_tag(handler: &AnnotatedHandler) -> Vec<Finding> {
-    if handler.is_excluded() {
-        return Vec::new();
-    }
     match handler.annotation.tags.as_slice() {
         [] => vec![Finding::at(
             &handler.file,
