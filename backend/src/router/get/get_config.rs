@@ -43,8 +43,8 @@ pub struct ConfigResponse {
     )
 ]
 #[get("/get/config")]
-pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<ConfigResponse>> {
-    let _ = auth?;
+pub fn get_config_handler(share: GuardResult<GuardShare>) -> AppResult<Json<ConfigResponse>> {
+    let _ = share?;
     let config = APP_CONFIG
         .get()
         .expect("APP_CONFIG not initialized")

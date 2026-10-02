@@ -40,16 +40,17 @@ pub struct PartialUpdateConfigRequest {
             (status = 200, description = "Config updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]
 #[put("/put/config", data = "<req>")]
 pub async fn update_config_handler(
     _auth: GuardAuth,
-    read_only: GuardResult<GuardReadOnlyMode>,
+    read_only_mode: GuardResult<GuardReadOnlyMode>,
     req: Json<PartialUpdateConfigRequest>,
 ) -> AppResult<Status> {
-    let _ = read_only?;
+    let _ = read_only_mode?;
     let req_data = req.into_inner();
 
     spawn_blocking(move || -> Result<Status, AppError> {
@@ -137,16 +138,17 @@ pub struct UpdatePasswordRequest {
             (status = 200, description = "Password updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]
 #[put("/put/config/password", data = "<req>")]
 pub async fn update_password_handler(
     _auth: GuardAuth,
-    read_only: GuardResult<GuardReadOnlyMode>,
+    read_only_mode: GuardResult<GuardReadOnlyMode>,
     req: Json<UpdatePasswordRequest>,
 ) -> AppResult<Status> {
-    let _ = read_only?;
+    let _ = read_only_mode?;
     let req_data = req.into_inner();
 
     spawn_blocking(move || -> Result<Status, AppError> {

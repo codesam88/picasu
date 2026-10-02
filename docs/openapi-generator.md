@@ -202,27 +202,70 @@ Two of the three phases compare the document. The source phase checks the
 annotations themselves, because a handful of things about an annotation are wrong
 in a way the document cannot show:
 
-| Rule | Assertion                                                                      | Why the document cannot show it                                                                                        |
-| ---- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| A1   | no `path = "…"` and no bare verb token in the annotation                       | `rocket_extras` derives both from the route attribute, so a restatement is a second copy of a fact nothing compares    |
-| A2   | `responses(…)` is present and has at least one entry                           | utoipa invents no response, so an operation with none documents nothing it can answer                                  |
-| A3   | exactly one `tag = "…"`, from the table in [Tag conventions](#tag-conventions) | a missing or unknown tag files the operation outside every section of the reference                                    |
-| A4   | the handler carries a doc comment                                              | `summary` and `description` are derived from it, so a handler without one is a complete-looking operation with no text |
-| A5   | the doc comment's first paragraph is one line                                  | it is the `summary`, and the reference renders the `summary` as a heading — a newline inside a heading splits it       |
-| A6   | no `operation_id = "…"`                                                        | utoipa derives it from the function name; a hand-set one is the only name nothing compares                             |
-| A7   | no `summary = "…"` and no `description = "…"`                                  | utoipa derives both from the doc comment; a hand-set one is the same prose written twice, with nothing comparing them  |
-| B1   | every declared `params(…)` name is a `<segment>` or `?<name>` the route binds  | utoipa merges declared parameters into the derived document without checking that the route reads them                 |
-| B2   | a declared parameter's documented `required` matches the handler argument      | utoipa derives `required` from the declared type and never looks at the argument the route binds                       |
-| B3   | a declared `request_body` names the type the route's `data = "…"` parses       | utoipa takes the declared schema and never compares it to what Rocket parses                                           |
-| B4   | a `Form<…>` binding declares `multipart/form-data`                             | utoipa guesses `application/json` for a named non-primitive type, so a multipart endpoint was published as a JSON one  |
-| C1   | a `GuardResult<…>` argument has its rejection propagated by the handler body   | the route hands the handler a value that may be a rejection, and only the body can turn it into a response             |
+| Rule | Assertion                                                                                                                   | Why the document cannot show it                                                                                           |
+| ---- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| A1   | no `path = "…"` and no bare verb token in the annotation                                                                    | `rocket_extras` derives both from the route attribute, so a restatement is a second copy of a fact nothing compares       |
+| A2   | `responses(…)` is present and has at least one entry                                                                        | utoipa invents no response, so an operation with none documents nothing it can answer                                     |
+| A3   | exactly one `tag = "…"`, from the table in [Tag conventions](#tag-conventions)                                              | a missing or unknown tag files the operation outside every section of the reference                                       |
+| A4   | the handler carries a doc comment                                                                                           | `summary` and `description` are derived from it, so a handler without one is a complete-looking operation with no text    |
+| A5   | the doc comment's first paragraph is one line                                                                               | it is the `summary`, and the reference renders the `summary` as a heading — a newline inside a heading splits it          |
+| A6   | no `operation_id = "…"`                                                                                                     | utoipa derives it from the function name; a hand-set one is the only name nothing compares                                |
+| A7   | no `summary = "…"` and no `description = "…"`                                                                               | utoipa derives both from the doc comment; a hand-set one is the same prose written twice, with nothing comparing them     |
+| B1   | every declared `params(…)` name is a `<segment>` or `?<name>` the route binds                                               | utoipa merges declared parameters into the derived document without checking that the route reads them                    |
+| B2   | a declared parameter's documented `required` matches the handler argument                                                   | utoipa derives `required` from the declared type and never looks at the argument the route binds                          |
+| B3   | a declared `request_body` names the type the route's `data = "…"` parses                                                    | utoipa takes the declared schema and never compares it to what Rocket parses                                              |
+| B4   | a `Form<…>` binding declares `multipart/form-data`                                                                          | utoipa guesses `application/json` for a named non-primitive type, so a multipart endpoint was published as a JSON one     |
+| C1   | a `GuardResult<…>` argument has its rejection propagated by the handler body                                                | the route hands the handler a value that may be a rejection, and only the body can turn it into a response                |
+| A8   | every guard binding is named after its guard class, or carries the class name as a word-part where another parameter has it | the name is what a reader — and a C1 finding, which names the guard by its type — uses to say which guard it is           |
+| C3   | a route carrying a guard documents the status that guard rejects with                                                       | utoipa publishes exactly the statuses the annotation declares, so an undocumented `401` or `405` is invisible to a client |
 
 `docs/openapi-generator.md` is where the tag vocabulary is written down, and
 `utils/openapi-sanity/src/lib.rs` holds the tool's copy of it (`TAGS`); the two
-are changed together. Everything else in the table is a rule with no
-document-side equivalent, which is why they live in the tool and not in a linter
-for the document — the document is generated _from_ these annotations, so a
-linter would be checking the output against its own input.
+are changed together. `GUARD_CLASSES` is the tool's second copy: it pairs each
+guard type with the name a binding of it takes (A8) and the status its rejection
+is answered with (C3), and both the table and A8's two-branch naming rule are
+reproduced in
+[`.plan/openapi-annotation-checks.md`](../.plan/openapi-annotation-checks.md)
+section C, which is where the reasoning for the pairing lives. Everything else in
+the table is a rule with no document-side equivalent, which is why they live in the
+tool and not in a linter for the document — the document is generated _from_ these
+annotations, so a linter would be checking the output against its own input.
+
+### Which responses to declare
+
+This is the part of the annotation the document cannot supply, so it is worth
+spelling out. **Declare the status every guard on the route can answer with**,
+because that is the part a generated client reads before it makes the call:
+
+| guard on the route                                                                           | must document |
+| -------------------------------------------------------------------------------------------- | ------------- |
+| `GuardAuth`, `GuardTimestamp`, `GuardHash`, `GuardHashOriginal`, `GuardShare`, `GuardUpload` | `401`         |
+| `GuardReadOnlyMode`                                                                          | `405`         |
+
+A route can carry both — a token guard **and** the mode guard — and then it needs
+both entries. **C3 fails the build when one is missing**, and it fires over 21
+annotations of this repository's own when it was written: 19 mutating routes that
+could answer `405` and did not say so, and the two test-only probes that bind
+`GuardAuth` and documented no `401`. `POST /post/rebuild` set the spelling the rest
+followed: `(status = 405, description = "Read-only mode")`.
+
+The `405` half of that rule used to be a separate rule in the plan, **M2**; it is
+now C3's `GuardReadOnlyMode` row rather than a second rule meaning the same thing.
+
+Note what a `405` is **not**: a client cannot satisfy read-only mode with any
+header or token, because `read_only_mode` is a server-side setting (`APP_CONFIG`,
+settable at startup through `PICASU_READ_ONLY_MODE` and through `PUT /put/config`
+while the mode is off). So it belongs in `responses(…)` and **never** in
+`security(...)` — a `security` entry for it would tell a generated client to send
+something the server ignores and leave it believing it is permitted when it is not.
+The credential guards are the ones that belong in `security(...)`, which is what
+rules D1/D2 in the plan file are about; none of that is enforced here yet.
+
+The media type of a form body is a third thing, and it is B4's: a `Form<…>` binding
+must declare `multipart/form-data`. The two multipart routes do, with an **untyped
+`Object` schema**, so the document names the media type without itemising the
+fields — typing it needs a `ToSchema` for a struct holding a `TempFile<'r>`, which
+is its own piece of work (`.plan/multipart-body-schemas.md`).
 
 Every rule reads what the annotation, the handler beside it, or the handler's own
 route attribute says. None of them reads a route path, a config value, a feature
@@ -251,6 +294,33 @@ Three spellings utoipa also accepts are still review-time, and the boundary is
 deliberate: `method(GET)` is the parenthesised verb form of A1, `tags([…])` is a
 list form of A3, and `context_path` is a base-path form of A1. No annotation uses
 any of them.
+
+A8 and C3 are both scoped to the guard classes `GUARD_CLASSES` names, and a guard
+type outside it is out of scope for both rather than guessed at. `auth:
+TimestampGuardModified` in `backend/src/router/auth.rs` is the case in the tree: a
+plain Rocket guard whose name does not begin with `Guard`, which this crate does
+not classify at all. A test pins the classified-binding count against the total, so
+the first class neither rule can name fails that pin instead of going quietly
+unchecked.
+
+**A8 has one exception and it is worth knowing about before you name a guard.**
+Rocket binds a route's `?<name>` to a handler argument of the same name, so a query
+parameter can occupy a guard's canonical name — and `?<timestamp>` does exactly
+that in every signature that binds a `GuardTimestamp`. So the rule is in two
+branches: **where the canonical name is free the binding must be exactly it**, and
+**where another parameter of the signature already has it the binding must still
+carry the class name as a word-part** (underscores ignored, so `guard_timestamp`,
+`timestamp_guard` and `timestamp` all satisfy `GuardTimestamp`, and `auth` satisfies
+nothing). Four bindings take the second branch today, all bound as
+`guard_timestamp`, and the count is pinned — so if you add or drop a `?<timestamp>`
+the pin fails and the amendment's scope gets looked at again rather than silently
+changing what applies.
+
+**C3 has one stated limitation.** Its `401` half is absolute: it will fire on a
+route that deliberately answers a credential rejection with some other status — a
+`403` for an expired share, say. No route in this repository does that, so there is
+no mechanism to say "this one is meant", and the trigger for adding one is the first
+route that needs it. It is recorded rather than designed around.
 
 ## Route-set parity (`--check-openapi`)
 
@@ -398,7 +468,13 @@ nothing is exempt from the rule.
    `operation_id` (A6), and do not set `summary` or `description` (A7): utoipa
    derives all three, and a hand-set one is the same text written twice beside
    itself, with nothing comparing the copies. Declare at least one
-   `responses(…)` entry (A2) — utoipa invents none. If the route is
+   `responses(…)` entry (A2) — utoipa invents none — **and declare the status every
+   guard on the route rejects with** (C3): `401` for a credential guard, `405` for
+   `GuardReadOnlyMode`, both if the route carries both. Name each guard parameter
+   after its guard class as well (A8: `share` for a `GuardShare`,
+   `read_only_mode` for a `GuardReadOnlyMode`, `_auth` for a discarded one), because
+   the name is how a reader of the handler and of this tool's own findings says
+   which guard it is. If the route is
    feature-gated, add
    `extensions(("x-picasu-feature" = json!("<feature>")))` so `--check-openapi`
    knows a spec operation may legitimately be absent from a build without it.
@@ -537,17 +613,17 @@ uncaught. Both were diagnostics, never failures.
 
 ## Files
 
-| File                                                                   | Generator           | Role                                                                                                  |
-| ---------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------- |
-| [`backend/src/openapi.rs`](../backend/src/openapi.rs)                  | `#[utoipauto]`      | The `#[utoipauto(paths = ...)]` configuration and the `ApiDoc` struct                                 |
-| `backend/openapi.json`                                                 | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                                                    |
-| `docs/openapi-reference.md`                                            | widdershins         | Human-readable API reference                                                                          |
-| [`backend/src/openapi_public.rs`](../../backend/src/openapi_public.rs) | —                   | Public-spec filter and the backend-owned exclusion policy                                             |
-| [`backend/src/openapi_parity.rs`](../../backend/src/openapi_parity.rs) | —                   | The `--check-openapi` route-set gate and its asymmetric rule                                          |
-| [`backend/src/spec_path.rs`](../../backend/src/spec_path.rs)           | —                   | The Rocket-to-`OpenAPI` path translation, in one place                                                |
-| [`backend/src/main.rs`](../../backend/src/main.rs)                     | —                   | `--dump-openapi` and `--check-openapi`                                                                |
-| `backend/src/tests/openapi_contract.rs`                                | —                   | Mounted-route / spec parity self-checks                                                               |
-| `backend/src/tests/openapi_parity.rs`                                  | —                   | The asymmetric rule over fixtures, and the feature-marker pins                                        |
-| `backend/tests/probe_registration.rs`                                  | —                   | The `/get/test/` probe registration gate, seen from outside `cfg(test)`                               |
-| `backend/build.rs`                                                     | —                   | Writes the YAML scenario tests into `OUT_DIR`                                                         |
-| [`utils/openapi-sanity`](../../utils/openapi-sanity/README.md)         | —                   | The `openapi-sanity` source gate: annotation shape, declarations against the route, guard propagation |
+| File                                                                   | Generator           | Role                                                                                                                                                     |
+| ---------------------------------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`backend/src/openapi.rs`](../backend/src/openapi.rs)                  | `#[utoipauto]`      | The `#[utoipauto(paths = ...)]` configuration and the `ApiDoc` struct                                                                                    |
+| `backend/openapi.json`                                                 | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                                                                                                       |
+| `docs/openapi-reference.md`                                            | widdershins         | Human-readable API reference                                                                                                                             |
+| [`backend/src/openapi_public.rs`](../../backend/src/openapi_public.rs) | —                   | Public-spec filter and the backend-owned exclusion policy                                                                                                |
+| [`backend/src/openapi_parity.rs`](../../backend/src/openapi_parity.rs) | —                   | The `--check-openapi` route-set gate and its asymmetric rule                                                                                             |
+| [`backend/src/spec_path.rs`](../../backend/src/spec_path.rs)           | —                   | The Rocket-to-`OpenAPI` path translation, in one place                                                                                                   |
+| [`backend/src/main.rs`](../../backend/src/main.rs)                     | —                   | `--dump-openapi` and `--check-openapi`                                                                                                                   |
+| `backend/src/tests/openapi_contract.rs`                                | —                   | Mounted-route / spec parity self-checks                                                                                                                  |
+| `backend/src/tests/openapi_parity.rs`                                  | —                   | The asymmetric rule over fixtures, and the feature-marker pins                                                                                           |
+| `backend/tests/probe_registration.rs`                                  | —                   | The `/get/test/` probe registration gate, seen from outside `cfg(test)`                                                                                  |
+| `backend/build.rs`                                                     | —                   | Writes the YAML scenario tests into `OUT_DIR`                                                                                                            |
+| [`utils/openapi-sanity`](../../utils/openapi-sanity/README.md)         | —                   | The `openapi-sanity` source gate: annotation shape, declarations against the route, guard propagation, guard naming, and the status a guard rejects with |

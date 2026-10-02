@@ -63,6 +63,16 @@ fn annotated_handlers_in_the_router_tree() -> usize {
         .annotated_handlers()
 }
 
+/// The same count for the fixture tree, which carries a finding per fixture on
+/// purpose. The floor the next test uses is derived from it rather than written
+/// down, so adding a fixture does not turn that test into a passing run for the
+/// wrong reason.
+fn annotated_handlers_in_the_fixture_tree() -> usize {
+    openapi_sanity::scan_source_root(&fixture_tree())
+        .expect("the fixture tree must be readable")
+        .annotated_handlers()
+}
+
 #[test]
 fn a_clean_tree_above_the_floor_passes() {
     let handlers = annotated_handlers_in_the_router_tree();
@@ -120,12 +130,14 @@ fn a_tree_below_the_floor_fails() {
 /// they only describe the part of the tree that was reached.
 #[test]
 fn a_short_scan_reports_coverage_rather_than_findings() {
-    let output = run(&fixture_tree(), &["--expect-at-least", "60"]);
+    let floor = annotated_handlers_in_the_fixture_tree() + 1;
+
+    let output = run(&fixture_tree(), &["--expect-at-least", &floor.to_string()]);
 
     assert!(!output.status.success());
     let reported = stderr(&output);
     assert!(
-        reported.contains("fewer than the expected minimum of 60"),
+        reported.contains(&format!("fewer than the expected minimum of {floor}")),
         "{reported}"
     );
     assert!(
@@ -147,10 +159,11 @@ fn findings_still_report_the_observed_count() {
         "the findings themselves still reach the console: {reported}"
     );
     assert!(
-        reported.contains(
-            "finding(s) across 57 annotated handler(s) under \
+        reported.contains(&format!(
+            "finding(s) across {handlers} annotated handler(s) under \
              utils/openapi-sanity/tests/fixtures/openapi_annotations",
-        ),
+            handlers = annotated_handlers_in_the_fixture_tree()
+        )),
         "the summary keeps the observed count: {reported}"
     );
 }

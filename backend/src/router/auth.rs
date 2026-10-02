@@ -904,10 +904,10 @@ pub struct RenewTimestampTokenReturn {
     data = "<token_request>"
 )]
 pub async fn renew_timestamp_token(
-    auth: GuardResult<GuardShare>,
+    share: GuardResult<GuardShare>,
     token_request: Json<RenewTimestampToken>,
 ) -> AppResult<Json<RenewTimestampTokenReturn>> {
-    let _ = auth?;
+    let _ = share?;
     tokio::task::spawn_blocking(move || {
         let token = token_request.into_inner().token;
         let token_data = match decode::<ClaimsTimestamp>(

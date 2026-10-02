@@ -102,6 +102,7 @@ pub struct SetAlbumCover {
             (status = 200, description = "Album cover updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]
@@ -211,16 +212,17 @@ pub struct SetAlbumTitle {
             (status = 200, description = "Album title updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]
 #[put("/put/set_album_title", data = "<set_album_title>")]
 pub async fn set_album_title(
-    auth: GuardResult<GuardShare>,
+    share: GuardResult<GuardShare>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     set_album_title: Json<SetAlbumTitle>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let _ = share?;
     let _ = read_only_mode?;
 
     let set_album_title_inner = set_album_title.into_inner();

@@ -35,6 +35,7 @@ pub struct EditTagsData {
             (status = 200, description = "Tags updated", body = Vec<TagInfo>),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]

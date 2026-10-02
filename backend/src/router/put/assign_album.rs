@@ -80,6 +80,7 @@ pub enum AssignOutcome {
             (status = 200, description = "Item assigned to album", body = AssignResult),
             (status = 400, description = "Invalid input or item not found"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]

@@ -8,7 +8,7 @@
 /// Fetch one widget on a blocking task.
 #[utoipa::path(
     tag = "auth",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok"), (status = 401, description = "Unauthorized"))
 )]
 #[get("/get/guarded-in-closure")]
 pub async fn guarded_in_closure(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {

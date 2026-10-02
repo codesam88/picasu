@@ -4,14 +4,14 @@
 /// Fetch one widget, dropping the first guard on the way.
 #[utoipa::path(
     tag = "auth",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok"), (status = 401, description = "Unauthorized"))
 )]
 #[get("/get/dropped")]
 pub async fn dropped_guard_result(
     auth: GuardResult<GuardAuth>,
-    auth_two: GuardResult<GuardTimestamp>,
+    timestamp: GuardResult<GuardTimestamp>,
 ) -> AppResult<()> {
     let _ = auth;
-    let _ = auth_two?;
+    let _ = timestamp?;
     Ok(())
 }

@@ -144,7 +144,17 @@ openapi-check: openapi-sanity openapi-json-match openapi-routes-match
 #
 # The tool holds annotation conventions and no backend facts. A rule that needs a
 # route path, a config value or a feature name belongs in the backend or in a
-# recipe, not in `utils/openapi-sanity`.
+# recipe, not in `utils/openapi-sanity`. The one map it does hold is
+# `GUARD_CLASSES` — guard class to binding name and to the status that class
+# rejects with — which is a naming and status convention, not a fact read out of
+# the backend.
+#
+# A8 is green on the tree. Its second branch is the one to know about: four
+# `GuardTimestamp` bindings sit in a signature that already binds `?<timestamp>`,
+# so they carry the class name as a word (`guard_timestamp`) rather than as the
+# whole name. That count is pinned, so a route losing or gaining the collision fails
+# a test rather than quietly changing what the branch applies to — see the A8 entry
+# in section C of `.plan/openapi-annotation-checks.md`.
 #
 # `--expect-at-least` is the floor on annotated handlers the scan must see, with
 # headroom below the tree's 63: a new handler must not break the gate, but a walk

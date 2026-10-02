@@ -30,36 +30,37 @@ rule's wording does not change its id, a retired id is never reused, and a new r
 takes the next free number in its letter's series. "Where it lives" says who
 enforces the rule today, which is the question a reader of this table usually has.
 
-| id  | rule                                                                                                                           | status         | where it lives                                                                        |
-| --- | ------------------------------------------------------------------------------------------------------------------------------ | -------------- | ------------------------------------------------------------------------------------- |
-| A1  | the annotation restates neither `path` nor a bare verb                                                                         | enforced       | `utils/openapi-sanity`                                                                |
-| A2  | the annotation declares at least one response                                                                                  | enforced       | `utils/openapi-sanity`                                                                |
-| A3  | the annotation declares exactly one `tag` from the vocabulary                                                                  | enforced       | `utils/openapi-sanity`                                                                |
-| A4  | the handler carries a doc comment                                                                                              | enforced       | `utils/openapi-sanity`                                                                |
-| A5  | the doc comment's first paragraph is one line                                                                                  | enforced       | `utils/openapi-sanity`                                                                |
-| A6  | the annotation sets no `operation_id`                                                                                          | enforced       | `utils/openapi-sanity`                                                                |
-| A7  | the annotation sets neither `summary` nor `description`                                                                        | enforced       | `utils/openapi-sanity`                                                                |
-| C1  | a `GuardResult<…>` argument has its rejection propagated                                                                       | enforced       | `utils/openapi-sanity`                                                                |
-| C1b | a plain `Guard…` argument needs nothing in the body and is never reported                                                      | enforced       | `utils/openapi-sanity`                                                                |
-| B1  | every declared `params(...)` name corresponds to a route segment or query binding                                              | enforced       | `utils/openapi-sanity` — inline tuple form only, see section B                        |
-| B2  | a declared parameter's `required` equals `!argument_is_option`                                                                 | enforced       | `utils/openapi-sanity` — utoipa has no `required` key, see section B                  |
-| B3  | a declared `request_body` schema equals the type the route's `data = "…"` binds                                                | enforced       | `utils/openapi-sanity` — `Value` declares no constraint, see section B                |
-| B4  | a `Form<…>` binding declares `multipart/form-data`                                                                             | enforced       | `utils/openapi-sanity` — found two form bodies declared as JSON                       |
-| C2  | every `pub fn generate_*_routes()` is mounted in `router/builder.rs`                                                           | specified      | section C — not built                                                                 |
-| M1  | every `POST`/`PUT` route carries `GuardReadOnlyMode`                                                                           | specified      | section M — not built                                                                 |
-| M2  | a route carrying the mode guard documents a `405`                                                                              | specified      | section M — not built                                                                 |
-| M3  | the mode guard never appears in `security(...)`                                                                                | specified      | section M — not built                                                                 |
-| M4  | the mode guard's rejection is propagated                                                                                       | specified      | section M — not built                                                                 |
-| D7  | every `POST`/`PUT` route carries at least one credential guard, or is listed as deliberately public                            | new — blocked  | open decision, on Q1                                                                  |
-| D8  | the credential set an operation declares in `security(...)` equals the credential set its route's guards provide               | new — blocked  | open decision, on Q1 and the scheme open decision below                               |
-| A8  | every guard binding is named after its guard class, `_`-prefixed when the value is discarded                                   | new            | section C — not built, calibrated below                                               |
-| C3  | a route carrying a guard documents the status that guard rejects with — `401` for a credential guard, `405` for the mode guard | new            | section C — not built                                                                 |
-| R1  | a `POST` route lives under `/post/`, or is listed as deliberately placed elsewhere                                             | new            | not built                                                                             |
-| S1  | a handler defined in `router/get/get_page.rs` is tagged `pages`, and no handler defined elsewhere is                           | new — measured | not built, calibration below                                                          |
-| P1  | a handler's documented success status matches what it returns (204 for no body)                                                | spike          | spike first: measure the return-type analysis cost and report before writing the rule |
-| V1  | a credential comparison is constant-time                                                                                       | review-only    | no checker can see it — "Review rules" below                                          |
-| Q1  | are these five routes deliberately public?                                                                                     | open question  | the backend, not this plan — the answer makes D7 writable                             |
-| Q2  | should `POST /get/prefetch` publish its filter grammar as a schema, or describe it in prose?                                   | open question  | `.plan/bug-prefetch-request-body.md` — a public-API decision, not a tool rule         |
+| id  | rule                                                                                                                                                                    | status          | where it lives                                                                                                                                    |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | the annotation restates neither `path` nor a bare verb                                                                                                                  | enforced        | `utils/openapi-sanity`                                                                                                                            |
+| A2  | the annotation declares at least one response                                                                                                                           | enforced        | `utils/openapi-sanity`                                                                                                                            |
+| A3  | the annotation declares exactly one `tag` from the vocabulary                                                                                                           | enforced        | `utils/openapi-sanity`                                                                                                                            |
+| A4  | the handler carries a doc comment                                                                                                                                       | enforced        | `utils/openapi-sanity`                                                                                                                            |
+| A5  | the doc comment's first paragraph is one line                                                                                                                           | enforced        | `utils/openapi-sanity`                                                                                                                            |
+| A6  | the annotation sets no `operation_id`                                                                                                                                   | enforced        | `utils/openapi-sanity`                                                                                                                            |
+| A7  | the annotation sets neither `summary` nor `description`                                                                                                                 | enforced        | `utils/openapi-sanity`                                                                                                                            |
+| A8  | every guard binding is named after its guard class; where another parameter in the same signature already has that name, the binding must still carry it as a word-part | enforced        | `utils/openapi-sanity` — 19 findings across 12 files, 17 renames; the remaining 2 were the free-name branch reading `auth` for a `GuardTimestamp` |
+| C1  | a `GuardResult<…>` argument has its rejection propagated                                                                                                                | enforced        | `utils/openapi-sanity`                                                                                                                            |
+| C1b | a plain `Guard…` argument needs nothing in the body and is never reported                                                                                               | enforced        | `utils/openapi-sanity`                                                                                                                            |
+| C3  | a route carrying a guard documents the status that guard rejects with — `401` for a credential guard, `405` for the mode guard                                          | enforced        | `utils/openapi-sanity` — 21 findings fixed here (19 × `405`, 2 × `401`), zero today                                                               |
+| B1  | every declared `params(...)` name corresponds to a route segment or query binding                                                                                       | enforced        | `utils/openapi-sanity` — inline tuple form only, see section B                                                                                    |
+| B2  | a declared parameter's `required` equals `!argument_is_option`                                                                                                          | enforced        | `utils/openapi-sanity` — utoipa has no `required` key, see section B                                                                              |
+| B3  | a declared `request_body` schema equals the type the route's `data = "…"` binds                                                                                         | enforced        | `utils/openapi-sanity` — `Value` declares no constraint, see section B                                                                            |
+| B4  | a `Form<…>` binding declares `multipart/form-data`                                                                                                                      | enforced        | `utils/openapi-sanity` — found two form bodies declared as JSON                                                                                   |
+| C2  | every `pub fn generate_*_routes()` is mounted in `router/builder.rs`                                                                                                    | specified       | section C — not built                                                                                                                             |
+| M1  | every `POST`/`PUT` route carries `GuardReadOnlyMode`                                                                                                                    | specified       | section M — not built                                                                                                                             |
+| M2  | a route carrying the mode guard documents a `405`                                                                                                                       | expressed by C3 | the 405 half of C3 — one rule, not two that mean the same thing; see section M                                                                    |
+| M3  | the mode guard never appears in `security(...)`                                                                                                                         | specified       | section M — not built                                                                                                                             |
+| M4  | the mode guard's rejection is propagated                                                                                                                                | specified       | section M — not built                                                                                                                             |
+| D7  | every `POST`/`PUT` route carries at least one credential guard, or is listed as deliberately public                                                                     | new — blocked   | open decision, on Q1                                                                                                                              |
+| D8  | the credential set an operation declares in `security(...)` equals the credential set its route's guards provide                                                        | new — blocked   | open decision, on Q1 and the scheme open decision below                                                                                           |
+| R1  | a `POST` route lives under `/post/`, or is listed as deliberately placed elsewhere                                                                                      | new             | not built                                                                                                                                         |
+| S1  | a handler defined in `router/get/get_page.rs` is tagged `pages`, and no handler defined elsewhere is                                                                    | new — measured  | not built, calibration below                                                                                                                      |
+| P1  | a handler's documented success status matches what it returns (204 for no body)                                                                                         | spike           | spike first: measure the return-type analysis cost and report before writing the rule                                                             |
+| V1  | a credential comparison is constant-time                                                                                                                                | review-only     | no checker can see it — "Review rules" below                                                                                                      |
+| Q1  | are these five routes deliberately public?                                                                                                                              | open question   | the backend, not this plan — the answer makes D7 writable                                                                                         |
+| Q2  | should `POST /get/prefetch` publish its filter grammar as a schema, or describe it in prose?                                                                            | open question   | `.plan/bug-prefetch-request-body.md` — a public-API decision, not a tool rule                                                                     |
+| Q3  | the two multipart bodies name their media type but itemise no fields; typing them needs a `ToSchema` for a `TempFile<'r>` holder                                        | open question   | `.plan/multipart-body-schemas.md` — a backend change, distinct from B4                                                                            |
 
 ### What the deleted checker covered, and what covers it now
 
@@ -173,15 +174,16 @@ current tree (63 annotations)" calibration below was written before A4 and A5
 were run, and it was wrong: those two fired 50 and 8 times. What survives it is
 recorded per rule in the progress notes.
 
-| #   | assertion                                            | why nothing else enforces it                                                                                      |
-| --- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| A1  | no `path = "..."` and no bare verb                   | the convention exists only in review; nothing rejects a re-introduced duplicate                                   |
-| A2  | `responses(...)` present and non-empty               | utoipa invents no response, so the omission is silent                                                             |
-| A3  | exactly one `tag`, from the closed vocabulary of ten | the vocabulary is documented in `docs/openapi-generator.md`; its checker was deleted                              |
-| A4  | the handler carries a doc comment                    | `summary`/`description` are derived from it, so the omission is invisible except in the reference                 |
-| A5  | the summary is one line                              | a multi-line summary splits the generated reference's headings — measured, not stylistic                          |
-| A6  | no hand-set `operation_id`                           | utoipa derives it from the function name; a hand-set one is the only name nothing compares                        |
-| A7  | no hand-set `summary` or `description`               | utoipa derives both from the doc comment; a hand-set one is the same prose twice, and nothing compares the copies |
+| #   | assertion                                                                                                                   | why nothing else enforces it                                                                                                                     |
+| --- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| A1  | no `path = "..."` and no bare verb                                                                                          | the convention exists only in review; nothing rejects a re-introduced duplicate                                                                  |
+| A2  | `responses(...)` present and non-empty                                                                                      | utoipa invents no response, so the omission is silent                                                                                            |
+| A3  | exactly one `tag`, from the closed vocabulary of ten                                                                        | the vocabulary is documented in `docs/openapi-generator.md`; its checker was deleted                                                             |
+| A4  | the handler carries a doc comment                                                                                           | `summary`/`description` are derived from it, so the omission is invisible except in the reference                                                |
+| A5  | the summary is one line                                                                                                     | a multi-line summary splits the generated reference's headings — measured, not stylistic                                                         |
+| A6  | no hand-set `operation_id`                                                                                                  | utoipa derives it from the function name; a hand-set one is the only name nothing compares                                                       |
+| A7  | no hand-set `summary` or `description`                                                                                      | utoipa derives both from the doc comment; a hand-set one is the same prose twice, and nothing compares the copies                                |
+| A8  | every guard binding is named after its guard class, or carries the class name as a word-part where another parameter has it | the name is what a reader — and a C1 finding, which names the guard by its type — uses to say which guard it is; see section C for the amendment |
 
 **A3 has no exemptions, and the vocabulary absorbed the awkward case.** The two
 test-only probes (`probe_record`, `probe_dupe_group`) are stripped from the
@@ -403,15 +405,15 @@ schema.
   direction is to report and let a human decide, but both should be pinned by
   fixtures so the behaviour is a decision rather than an accident.
 
-#### A8 — guard bindings are named after their class (calibration first)
+#### A8 — guard bindings are named after their class
 
-A8 is a convention, not a defect today: a guard parameter is named after the guard
-class it binds, and `_`-prefixed when the handler discards the value
-(`auth`, `read_only_mode`, `hash`, `share`, `upload`, `timestamp`, `_auth`). The
-name is what a reader scans for when asking "which guard is this, and does the
-handler use its value", and a name that says `auth` on a `GuardShare` binding
-answers both questions wrongly at a glance. It is a naming rule, so it produces
-findings, not crashes — which is why it is measured before anyone writes it.
+A8 is a convention, not a defect: a guard parameter is named after the guard class
+it binds, and `_`-prefixed when the handler discards the value (`auth`,
+`read_only_mode`, `hash`, `share`, `upload`, `timestamp`, `_auth`). The name is
+what a reader scans for when asking "which guard is this, and does the handler use
+its value", and a name that says `auth` on a `GuardShare` binding answers both
+questions wrongly at a glance. It is a naming rule, so it produces findings, not
+crashes — which is why it was measured before anyone wrote it.
 
 **Measured 2026-10-02 over `backend/src/router` (no source changed):** 62 guard
 parameters, which is the 52 `GuardResult<…>` bindings C1 is calibrated against
@@ -434,11 +436,191 @@ files:
 | `auth : GuardResult<GuardUpload>`                 | 1     | **finding** — should be `upload`                                                               |
 | `auth : TimestampGuardModified`                   | 1     | out of scope — not a `Guard…` type, and a rule that needs the class cannot name it (see above) |
 
-So the cost of A8 is known before it is written: **19 renames across 12 files,
-zero rule changes, and no behaviour affected** — a parameter name is local to
-the handler. That is a review-sized diff rather than a defect, which is the
-argument for writing the rule and fixing the names in the same change instead of
-holding the rule back until the tree is tidy.
+So the cost of A8 was known before it was written: **19 renames across 12 files,
+zero rule changes, and no behaviour affected** — a parameter name is local to the
+handler.
+
+The finding text for the free-name branch is
+
+> the guard binding "`{name}`" is not named after its guard class: it binds
+> `{guard_type}`, whose binding is called "`{canonical}`", and the name is what a
+> reader of the handler, or of any finding this tool reports about it, uses to say
+> which guard this is
+
+and the rule is `guard_bindings_named_after_class` in
+`utils/openapi-sanity/src/lib.rs`, over the same `GuardBinding` C1 reads.
+
+##### 19 findings, 17 renames, and 2 that needed the amendment below
+
+The 19 findings break down as: the five `read_only`, five `auth : GuardShare` and
+two `auth_guard : GuardShare`, two `guard_timestamp`, two
+`auth : GuardResult<GuardTimestamp>`, and the three hash/upload rows. Fifteen of
+them were straight renames. **Two more — `guard_timestamp` — turned out to need no
+change at all**, because the word-part branch below accepts them. **The last two,
+`auth : GuardResult<GuardTimestamp>`, are the collision.** So 19 findings, 17
+renames, and 2 bindings that were already correct for a reason the rule did not yet
+have.
+
+##### The `?<timestamp>` collision, and why A8 was amended rather than scoped away
+
+Rocket binds a route's `?<name>` to a handler argument of the same name, and
+**`?<timestamp>` is bound in every signature in the repository that binds
+`GuardTimestamp`**:
+
+| handler                                                      | binding today     | collision                              |
+| ------------------------------------------------------------ | ----------------- | -------------------------------------- |
+| `get_data` (`backend/src/router/get/get_data.rs:60`)         | `guard_timestamp` | `?<timestamp>&<start>&<end>`           |
+| `get_rows` (`backend/src/router/get/get_data.rs:191`)        | `auth`            | `?<index>&<timestamp>`                 |
+| `get_scroll_bar` (`backend/src/router/get/get_data.rs:221`)  | `auth`            | `?<timestamp>`                         |
+| `get_metadata` (`backend/src/router/get/get_metadata.rs:38`) | `guard_timestamp` | `/get/metadata/<asset_id>?<timestamp>` |
+
+So the canonical name for the class is occupied in **every** case, not in four of
+nineteen places. Three ways out were put to review; the one taken is **the
+amendment**, and the other two are recorded because they are the reasons it was
+the right one:
+
+1. **Rename the query parameter** in the four routes and the four frontend call
+   sites (`frontend/src/worker/toDataWorker.ts:134,213`,
+   `frontend/src/api/fetchMetadata.ts:37`, `frontend/src/api/fetchScrollbar.ts:24`).
+   Rejected: a public-API change. The parameter is in the committed document and
+   in the frontend's URLs, so a third-party client sending `?timestamp=` breaks,
+   and that is not a tooling decision to take while writing a naming rule.
+2. **Scope `GuardTimestamp` out of A8.** Rejected: it drops the naming rule for one
+   of seven classes rather than answering a question about that class, and it
+   would leave `auth` on a timestamp guard in the tree permanently.
+3. **Amend A8 with a second branch.** **Taken.**
+
+##### The amended rule, in full
+
+> Every guard binding is named after its guard class. Where the canonical name for
+> the class is **free** in the signature, the binding must be exactly that name.
+> Where it is **taken** by another parameter of the same signature, the binding
+> must still carry the class name as a **word-part** — matched ignoring
+> underscores and case, so `timestamp`, `timestamp_guard` and `guard_timestamp`
+> all satisfy `GuardTimestamp` and `auth` does not.
+
+Which branch applies is a fact about the **signature**, not a choice made per
+binding: the other parameter names are the handler's own `arguments` minus the
+binding itself, compared with a leading underscore dropped from both sides
+(`_timestamp` occupies `timestamp` just as surely as `timestamp` does). The
+word-part match is **containment, not a prefix or a suffix**, on purpose — what
+A8 requires is that the name says which guard it is, and no arrangement of words
+around the class name does less than that.
+
+This is an exception **with a condition**, not an exemption with a hole, and three
+things keep it from becoming one:
+
+- **A taken canonical name is not a free pass.** A binding whose canonical name is
+  taken and which carries none of the class name is still a finding, with its own
+  text:
+  > the guard binding "`{name}`" carries none of its guard class's name: it binds
+  > `{guard_type}`, whose name is "`{canonical}`", and another parameter in this
+  > signature is already called "`{canonical}`", so the binding still has to carry
+  > "`{canonical}`" as a word — "`{canonical}_guard`" and "guard_{canonical}" both
+  > do, and "`{name}`" does not
+- **The count is pinned**, like `unread_parameters`: `HandlerSummary::taken_name_bindings`
+  records how many bindings take the branch and `the_router_tree_is_clean` asserts
+  it at **4**. All four are this collision, all bound as `guard_timestamp`. A
+  count that moves means a route changed shape — a `?<timestamp>` went away, so
+  the branch should no longer apply, or a fifth signature collided, so there is a
+  new case to read.
+- **Both branches have their own fixture and their own mutation test.** Disabling
+  the rule fails both; disabling **only** the taken-name branch fails only the
+  taken-name fixture; degrading the word-part match to a prefix match fails the
+  fixture's surrounded-by-other-words handler.
+
+**Result: 19 findings, 17 renames, 2 already correct, and the tree is silent.**
+`auth` on a `GuardTimestamp` is not a name A8 can accept in **any** branch — it
+carries no word-part of `timestamp` — so `get_rows` and `get_scroll_bar` were
+renamed to `guard_timestamp`, the spelling the two bindings that already carried
+the class name used, so all four read alike. `?<timestamp>` stays the query
+parameter's name; nothing about the public API moved.
+
+`auth: TimestampGuardModified` is left alone, as calibrated above: it is not a
+`Guard…` type, it matches neither the `GuardResult` nor the `Guard` prefix, and a
+rule that needed the class of a type it cannot recognise would have to guess it.
+`GUARD_CLASSES` resolves it to `None`, and the classified-bindings pin below is
+what turns the first class A8 cannot name into a test failure rather than a guard
+nobody reads.
+
+#### C3 — a route carrying a guard documents the status that guard rejects with
+
+The guard is the route's own statement about who may call it, and the status is the
+part a client reads before it makes the call. utoipa publishes exactly the statuses
+the annotation declares and invents none, so a route that can answer `401` while the
+annotation lists only `200` and `400` is an operation whose failure modes a generated
+client cannot see — the same shape as A2's missing `responses(…)`, one level down.
+
+C3 needs the one thing this tool is allowed to hold and nothing more: a map from a
+guard class to the status that class rejects with, which is `GUARD_CLASSES` in the
+tool. It is a **convention**, not a backend fact, and the reason is that the pairing
+is a decision this repository made rather than something derivable from the type:
+
+| guard class                                                                                  | binding          | rejects with |
+| -------------------------------------------------------------------------------------------- | ---------------- | ------------ |
+| `GuardAuth`, `GuardTimestamp`, `GuardHash`, `GuardHashOriginal`, `GuardShare`, `GuardUpload` | their class      | **401**      |
+| `GuardReadOnlyMode`                                                                          | `read_only_mode` | **405**      |
+
+The 401 half says the caller could not prove who they are. The 405 half says the
+build is read-only, which is a server-side setting (`APP_CONFIG`, `PICASU_READ_ONLY_MODE`)
+that **no client can satisfy with any header or token** — which is the same
+observation that keeps the mode guard out of `security(...)`, and the reason M2
+asserted `405` while every credential class asserted `401`.
+
+**C3 subsumes M2.** M2's assertion — "a route carrying the mode guard documents a
+405" — is the `GuardReadOnlyMode` row of the table above, and two rules asserting it
+would give one defect two findings and two places to change. M2 keeps its id, which
+the plan states is stable and never reused, and its row in the index says so.
+
+**Built 2026-10-03, and it found 21, not the 16 M2 predicted.** All 19 missing
+`405` responses were added in this change, plus the two missing `401`s on the
+test-only probes. The finding text is
+
+> the route binds `{class}`, which rejects with `{status}`, but the annotation
+> documents `({documented})` and not that status, so the document does not say the
+> operation can answer it
+
+**The `405` count is 19, and M2's 16 was wrong.** M2's own neighbour in the table
+above says 13 `PUT` and 6 `POST` routes carry the mode guard, plus the one `DELETE`
+route: **20 routes carry it, one of them (`POST /post/rebuild`) already documented
+405, so 19 were missing it.** M2 counted mutating routes only and missed three. The
+19 added entries are listed in the progress note below, and
+`backend/openapi.json` moved in exactly those 19 places and nowhere else.
+
+**The 2 missing `401`s are the test-only probes.** `probe_record` and
+`probe_dupe_group` in `backend/src/router/get/get_test_probe.rs` each bind
+`GuardResult<GuardAuth>` and documented `200`/`400`/`404` without a `401`. They are
+stripped from the committed artifact by `openapi_public`, so the committed document
+does not change — but the **contract tests read the full spec**, which is the same
+reason A3 and A4 apply to the probes rather than exempting them. Both now declare
+`(status = 401, response = Unauthorized)`.
+
+**Stated limitation: the `401` half is absolute, and no mechanism says otherwise.**
+It will fire on a route that deliberately answers a credential rejection with a
+different status — a `403` for an expired share, a `404` for a share that no
+longer exists. Such a route is not wrong; the rule simply has no way to know. It
+provides **no exemption mechanism, and none is built**, because no route in this
+repository needs one: all 39 credential-guard handlers that reach the document
+declare a `401`, and the two that did not were the test-only probes, fixed by
+adding one. The trigger for revisiting this is therefore concrete — **the first
+route whose credential rejection is deliberately not a `401`** — and answering it
+is a question about how the _declaration_ says so (a comment, a named constant, a
+second status), which is a question about the document rather than about this
+rule. It is recorded here and in the tool's docs rather than designed around,
+because a bypass built for a case that does not exist is a bypass waiting for a
+case that does.
+
+Two design points worth stating, because both are decisions rather than
+consequences:
+
+- **A route carrying two guards of the same class is reported once.** The missing
+  thing is one entry in `responses(…)`, and reporting it per binding would be two
+  findings for one defect. Two guards of _different_ classes are both checked —
+  `c3_guard_rejection_status_missing.rs` pins the case where one of the two
+  statuses is documented and the other is not.
+- **A rule that read fewer statuses would find _more_ missing ones, not fewer**,
+  so C3 cannot go quiet the way an unread count can. A scan that stopped reading
+  `status = …` turns every guarded route into a finding, loudly.
 
 ### D — the guard and `security` rules
 
@@ -578,9 +760,15 @@ they are permitted when they are not.
 | #   | assertion                                                            | calibration                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | --- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | M1  | every route with a mutating method (`PUT`, `POST`) carries the guard | **13/13 PUT and 12/12 POST routes carry it, except six**: `POST /post/authenticate` (login), `POST /get/prefetch` (a POST that only reads), `POST /post/renew-hash-token` and `POST /post/renew-timestamp-token` (mounted from `auth.rs`), `POST /post/config/import` and `POST /post/index/cancel`. `DELETE` has one route, `DELETE /delete/delete-data`, which carries it. An earlier measurement of "zero exceptions" was wrong: it counted files rather than handlers and missed the `_auth: GuardAuth` bindings. **The exception list needs a decision — see Q1** — so M1 is not built until then |
-| M2  | a route carrying the guard documents a `405` response                | **16 findings today.** Exactly one operation documents it — `POST /post/rebuild`, which established the convention as `(status = 405, description = "Read-only mode")` — while the other 16 mutating routes can answer 405 and list only 200/400/401                                                                                                                                                                                                                                                                                                                                                   |
+| M2  | a route carrying the guard documents a `405` response                | **Expressed by C3, and M2's own count was wrong.** Exactly one operation documented it — `POST /post/rebuild`, which established the convention as `(status = 405, description = "Read-only mode")`. M2 predicted 16 further findings; C3 measured **19**, because M1's own table in the row above says 13 `PUT` + 6 `POST` + the one `DELETE` route carry the guard, and M2 counted mutating routes only. All 19 were added in the change that built C3, and the rule is not built twice — see "C3 — a route carrying a guard documents the status that guard rejects with" in section C              |
 | M3  | the guard never appears in `security(...)`                           | no findings today, because no operation declares `security` at all                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | M4  | the guard's argument is propagated with `?`                          | C1 restated for this class, so the rule reads where the class is described                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+**M2 is not built, because C3 is built and already asserts it.** The mode guard's
+405 is one row of `GUARD_CLASSES`, so `guard_rejection_status_documented` enforces
+M2 verbatim alongside the `401` half for the credential classes. M2 keeps its id
+and is not reused; the section-C entry above carries the calibration, the finding
+text and the list of the 19 annotations that gained a `405`.
 
 **M1's exception list is empty today and will not stay empty.**
 `.plan/bug-readonly-lockout.md` exists because `PUT /put/config` — which
@@ -633,8 +821,9 @@ in one tool.
 in `e1ec74da` because it does the same job — a source-level gate on these
 annotations — but it is a new tool with a new rule set. None of that crate's rules
 come back: no tag policy, no `AUTH_POLICY` table, no route-set rules, no
-source/spec comparison. Its rule set is this plan, and of it A1–A7, B1–B4 and the
-handler-body rules of section C are implemented.
+source/spec comparison. Its rule set is this plan, and of it A1–A8, B1–B4, C1, C1b
+and C3 are implemented — A8 and C3 except for the four bindings A8 cannot name
+without a decision, recorded above.
 
 ### Sequencing and acceptance
 
@@ -646,11 +835,13 @@ handler-body rules of section C are implemented.
    `security(...)`-versus-extension question is
    settled (see the decision above), so what they wait on is the schemes being
    registered in `ApiDoc` and the scheme-location open decision. **M1, M3, M4**
-   land with them — all three are green today — and **M2 lands with the 16
-   missing `405` responses added in the same change**, because a gate that starts
-   with sixteen findings is a gate people learn to ignore. **D7, D8, A8, C3, S1,
-   R1** follow once Q1 is answered; A8 and R1 are written with the renames they
-   report, in the same change.
+   land with them — all three are green today — and **M2 landed as the
+   `405` half of C3**, with the 19 missing `405` responses added in the same change,
+   because a gate that starts with nineteen findings is a gate people learn to
+   ignore. **D7, D8, S1, R1** follow once Q1 is answered. **A8 and C3 are built**
+   (increment 5), and A8 is written with the renames it reports in the same change —
+   15 of the 19, with 4 raised as an exception because `?<timestamp>` already occupies
+   the name A8 asks for; see the A8 entry in section C.
 4. **C2** last; it is a message-quality improvement over a gate that already
    catches the condition.
 
@@ -662,6 +853,78 @@ enforced here and which are review-time, so the boundary is written down rather
 than remembered.
 
 ## Progress
+
+### 2026-10-03 — A8 amended and landed, C3 landed (uncommitted, for review)
+
+Increment 5: the two guard rules, in the same walker and the same `GuardBinding`
+C1 already builds, plus the first `GUARD_CLASSES` map in the tool.
+
+- **A8 shipped 19 findings across 12 files and 17 were renames.** The two it could
+  not rename were `auth` on a `GuardTimestamp`, because `?<timestamp>` is bound in
+  **every** signature that binds that class — Rocket binds a route's query segment
+  to a handler argument of the same name, so the canonical name is occupied 100% of
+  the time. That was raised as a blocked exception with three options; the decision
+  was **to amend the rule with a second branch** rather than rename the public query
+  parameter or scope the class out. Where the canonical name is taken, the binding
+  must still carry the class name as a word-part, matched ignoring underscores and
+  case. `get_rows` and `get_scroll_bar` became `guard_timestamp`, the spelling the
+  two bindings that already carried the class name used. **The tree is silent and
+  `just openapi-check` is green.**
+- **The amendment is an exception with a condition, not an exemption with a hole.**
+  Three things keep it that way, and all three are checks that can be run: a taken
+  canonical name with a binding carrying none of the class name is still a finding,
+  with its own text; the number of bindings taking the branch is pinned at **4** in
+  `HandlerSummary::taken_name_bindings`, the way `unread_parameters` is pinned; and
+  each branch has its own fixture and its own mutation test — disabling only the
+  taken-name branch fails only the taken-name fixture, and degrading the word-part
+  match to a prefix match fails the fixture's surrounded-by-other-words handler.
+- **C3 shipped 21 findings and fixed all of them: 19 missing `405` responses and
+  2 missing `401`s.** The 19 are the mode-guard routes; the 2 are the test-only
+  probes, which are stripped from the committed artifact but read by the contract
+  tests through the full spec — the reason A3 and A4 apply to them rather than
+  exempting them.
+- **M2's predicted 16 `405` findings were wrong; there are 19.** M1's own table in
+  section M says 13 `PUT` + 6 `POST` + the one `DELETE` route carry the guard, so
+  20 routes carry it, one of them already documented 405, and M2 counted mutating
+  routes only. **M2 is now expressed by C3** and is not a second rule; it keeps its
+  id and is not reused.
+- **`GUARD_CLASSES` is the one map the tool holds and the boundary held.** It is a
+  naming and status convention, not a backend fact, and it resolves by the
+  `GuardResult` **payload** and the type's **last path segment** — so
+  `GuardHash` and `GuardHashOriginal` are told apart, which matching on a prefix
+  would get wrong, and `crate::auth::GuardAuth` classifies as `GuardAuth`.
+- **`auth: TimestampGuardModified` is untouched and out of scope**, as the plan
+  said it would be: it matches neither the `GuardResult` nor the `Guard` prefix, so
+  this crate does not classify it and no rule demands a name for it.
+
+The document's diff is **exactly 19 added `405` responses and nothing else** — 19
+`"405"` keys, 19 `"Read-only mode"` descriptions, 19 closing braces. The two
+`401`s the probes gained do not appear because `openapi_public` strips those
+operations from the committed artifact.
+
+Mutation evidence, one rule **and one branch** at a time:
+
+| disabled                                             | fails                                                            |
+| ---------------------------------------------------- | ---------------------------------------------------------------- |
+| `guard_bindings_named_after_class` entirely          | both A8 fixtures, plus the tree run                              |
+| **only** A8's taken-name branch (`taken => free`)    | `a_canonical_name_already_taken_still_needs_the_class_name`      |
+| **only** A8's free-name branch (`free => satisfied`) | `a_guard_binding_named_after_another_class_fails`                |
+| the word-part match degraded to a prefix match       | `a_canonical_name_already_taken_still_needs_the_class_name`      |
+| `guard_rejection_status_documented`                  | `a_guard_rejection_status_the_operation_does_not_document_fails` |
+| the `GUARD_CLASSES` resolution                       | `guard_classes_resolve_by_payload_and_not_by_prefix`             |
+
+Each rule's conforming counterpart stays green throughout, and the four mutations
+of A8 fail on **disjoint** test sets — which is the evidence that the two branches
+are two branches and not one assertion wearing two fixtures.
+
+Three new coverage pins, because a scan that quietly reads less must fail rather
+than report a clean tree: **61** guard bindings read (what A8 reads), **61** of them
+classified (what A8 and C3 read), and **4** judged by A8's taken-name branch. The
+first two are equal today and pinned separately, so a guard class neither rule can
+name makes them part company and fails the pin — the same treatment
+`unread_parameters` gets. The third is the amendment's scope written down as a
+number: a `?<timestamp>` appearing or disappearing fails a test rather than leaving
+an exception quietly applying to a case nobody has read.
 
 ### 2026-10-03 — B1–B4 landed, and B4 found the two media types (uncommitted, for review)
 

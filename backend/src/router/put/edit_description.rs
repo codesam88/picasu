@@ -33,6 +33,7 @@ pub struct SetUserDefinedDescription {
             (status = 200, description = "Description updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]
@@ -41,11 +42,11 @@ pub struct SetUserDefinedDescription {
     data = "<set_user_defined_description>"
 )]
 pub async fn set_user_defined_description(
-    auth: GuardResult<GuardShare>,
+    share: GuardResult<GuardShare>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     set_user_defined_description: Json<SetUserDefinedDescription>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let _ = share?;
     let _ = read_only_mode?;
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let tree_snapshot = open_tree_snapshot_table(set_user_defined_description.timestamp)

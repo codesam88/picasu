@@ -158,6 +158,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
             (status = 200, description = "Upload successful"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]
@@ -166,14 +167,14 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
     data = "<form>"
 )]
 pub async fn upload(
-    auth: GuardResult<GuardUpload>,
+    upload: GuardResult<GuardUpload>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     presigned_album_id_opt: Option<String>,
     on_conflict: Option<String>,
     auto_rename: Option<bool>,
     form: Result<Form<UploadForm<'_>>, Errors<'_>>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let _ = upload?;
     let _ = read_only_mode?;
 
     let mut inner_form = match form {

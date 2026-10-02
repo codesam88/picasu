@@ -4,7 +4,7 @@
 /// Fetch one widget.
 #[utoipa::path(
     tag = "auth",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok"), (status = 401, description = "Unauthorized"))
 )]
 #[get("/get/unused-guard-result")]
 pub async fn unused_guard_result(auth: GuardResult<GuardAuth>) -> AppResult<()> {

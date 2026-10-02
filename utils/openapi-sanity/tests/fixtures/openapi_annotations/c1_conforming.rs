@@ -5,7 +5,7 @@
 /// Propagate with `?`.
 #[utoipa::path(
     tag = "auth",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok"), (status = 401, description = "Unauthorized"))
 )]
 #[get("/get/propagated")]
 pub async fn house_idiom(auth: GuardResult<GuardAuth>) -> AppResult<()> {
@@ -16,7 +16,7 @@ pub async fn house_idiom(auth: GuardResult<GuardAuth>) -> AppResult<()> {
 /// Bind before propagating.
 #[utoipa::path(
     tag = "auth",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok"), (status = 401, description = "Unauthorized"))
 )]
 #[get("/get/bound")]
 pub async fn bound_before_use(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {
@@ -27,7 +27,7 @@ pub async fn bound_before_use(auth: GuardResult<GuardAuth>) -> AppResult<Json<Cl
 /// Propagate with `match`.
 #[utoipa::path(
     tag = "auth",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok"), (status = 401, description = "Unauthorized"))
 )]
 #[get("/get/matched")]
 pub async fn matched(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {
@@ -41,7 +41,7 @@ pub async fn matched(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {
 /// Propagate with `if let`.
 #[utoipa::path(
     tag = "auth",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok"), (status = 401, description = "Unauthorized"))
 )]
 #[get("/get/if-let")]
 pub async fn if_let(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {
@@ -54,7 +54,7 @@ pub async fn if_let(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {
 /// Forward to another call.
 #[utoipa::path(
     tag = "auth",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok"), (status = 401, description = "Unauthorized"))
 )]
 #[get("/get/forwarded")]
 pub async fn forwarded(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {
@@ -64,7 +64,7 @@ pub async fn forwarded(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> 
 /// Return the forwarded value.
 #[utoipa::path(
     tag = "auth",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok"), (status = 401, description = "Unauthorized"))
 )]
 #[get("/get/returned")]
 pub async fn returned(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {
@@ -74,7 +74,7 @@ pub async fn returned(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {
 /// Return the binding as the trailing expression.
 #[utoipa::path(
     tag = "auth",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok"), (status = 401, description = "Unauthorized"))
 )]
 #[get("/get/tail")]
 pub async fn tail(auth: GuardResult<GuardAuth>) -> GuardResult<Json<Claims>> {

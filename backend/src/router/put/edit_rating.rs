@@ -33,6 +33,7 @@ pub struct EditRatingData {
             (status = 200, description = "Rating updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]

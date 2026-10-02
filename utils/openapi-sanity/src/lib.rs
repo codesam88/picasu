@@ -1,10 +1,12 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Three sections of `.plan/openapi-annotation-checks.md` are implemented here:
-//! **section A**, the seven rules about the annotation's own shape, **section B**,
+//! Four sections of `.plan/openapi-annotation-checks.md` are implemented here:
+//! **section A**, the eight rules about the annotation's own shape, **section B**,
 //! the four rules about what the annotation declares against what the route
-//! already says, and **C1** / **C1b**, the two rules about the handler body. The
-//! security (D, M) rules are a separate increment.
+//! already says, **C1** / **C1b**, the two rules about the handler body, and
+//! **C3**, what a guard obliges the document to say. The security (D, M) rules are
+//! a separate increment, except for the mode guard's `405`, which **M2** asserted
+//! and **C3** now enforces — one rule, not two that mean the same thing.
 //!
 //! # What this crate holds, and what it must not
 //!
@@ -22,11 +24,15 @@
 //! it is a gate that reports a stale copy rather than the truth. It happened once:
 //! A3 briefly carried the backend's contract-exclusion prefixes so the test-only
 //! probes could be exempt, and the honest resolution was a vocabulary entry
-//! (`internal`) rather than a copy of a path list. Two conventions in the
-//! repository are copied rather than read, and both are recorded as conventions
-//! with a comment saying where the prose is: `TAGS` mirrors a table in
-//! `docs/openapi-generator.md`, and the guard shapes below are named by the alias
-//! the backend writes them with.
+//! (`internal`) rather than a copy of a path list. Three conventions in the
+//! repository are named rather than read, and all three are recorded as
+//! conventions with a comment saying where the prose is: `TAGS` mirrors a table in
+//! `docs/openapi-generator.md`, `GUARD_CLASSES` mirrors the naming and rejection
+//! conventions recorded in the plan, and the guard shapes below are named by the
+//! alias the backend writes them with. `GUARD_CLASSES` is the one place a rule
+//! reads a **status**, and it is a convention rather than a fact because the
+//! pairing is a decision this repository made — read-only mode is not an
+//! authentication failure — not something the tool could derive.
 //!
 //! # Why the rules belong in the gate
 //!
@@ -50,6 +56,23 @@
 //! failure, so the handler legitimately never touches the value. Treating the two
 //! alike would report every handler that correctly binds one as broken.
 //!
+//! Why the guard-naming and guard-status rules belong in the gate. A8 and C3 read
+//! two things nothing else compares: the name a binding is given, and the statuses
+//! `responses(…)` declares. A guard parameter named `auth` that binds `GuardShare`
+//! makes this tool's own C1 findings — which name the guard by its type, because
+//! the name is what it is checking — read as though they were about a token, and a
+//! route that can answer `405` because the build is read-only while the annotation
+//! lists only `200` and `400` is a document that describes an operation which
+//! cannot fail the way it fails.
+//!
+//! A8's second branch is the one thing here that is not a flat assertion. Rocket
+//! binds a route's `?<name>` to a handler argument of the same name, so a query
+//! parameter can occupy a guard's canonical name — and `?<timestamp>` occupies it in
+//! **every** signature that binds `GuardTimestamp`. Where the canonical name is
+//! taken, the binding must still carry it as a word-part. That is an exception with
+//! a condition rather than an exemption with a hole, and it is counted: see
+//! [`HandlerSummary::taken_name_bindings`].
+//!
 //! Why the shape rules belong in the gate. Every one of them is invisible in the
 //! generated document, because the document is generated *from* the annotation: a
 //! restated path, a missing `responses(…)`, a tag outside the vocabulary, a
@@ -70,8 +93,8 @@
 //! 2. what the annotation declares ([`Annotation`]),
 //! 3. what the handler's doc comment says ([`Located`] lines, and the paragraph
 //!    utoipa turns into `summary`),
-//! 4. which of a handler's parameters are guards, and what each guard obliges
-//!    the body to do ([`Requirement`]),
+//! 4. which of a handler's parameters are guards, what class each belongs to, and
+//!    what each guard obliges the body to do ([`Requirement`], [`GuardClass`]),
 //! 5. how the body treats a binding ([`Use`]),
 //! 6. what the route attribute binds ([`Route`]: its path segments, its query
 //!    names and its `data = "…"` body argument),
@@ -118,6 +141,27 @@
 //! recognisable as a guard at all yields `None` from [`guard_requirement`] and
 //! is out of scope, which keeps a new guard type from failing the build until
 //! someone has decided what it means.
+//!
+//! A8 and C3 add a second, finer classification: [`guard_class`] resolves a
+//! binding's type against [`GUARD_CLASSES`] and `None` for a class the table
+//! names not. That is the same honesty with one more step: an unnamed class is
+//! out of scope for both rules, and `the_router_tree_is_clean` pins the
+//! classified bindings against all bindings so the first one fails a test rather
+//! than becoming a guard no rule reads. `auth: TimestampGuardModified` in
+//! `backend/src/router/auth.rs` is the case in the tree: it is a plain Rocket
+//! guard whose name does not begin with `Guard`, so it is not a binding this
+//! crate classifies, and A8's scope note says so rather than guessing a class.
+//!
+//! # What C3 does not cover
+//!
+//! **The 401 half is absolute, and that is a stated limitation rather than a
+//! decision.** It will fire on a route that deliberately answers a credential
+//! rejection with a different status — a `403` for an expired share, say. No
+//! mechanism says "this one is meant", and **none is built**, because no route in
+//! this repository needs one: all 39 credential-guard handlers reaching the
+//! document declare a 401, and the two that did not were the test-only probes,
+//! fixed by adding one. The trigger for revisiting it is the first route whose
+//! credential rejection is deliberately not a 401.
 //!
 //! # Pinned shapes
 //!
@@ -215,6 +259,33 @@ const RESTATED_VERBS: [&str; 9] = [
 /// `trace` and `route`, which a Rocket route attribute is never written with.
 /// This one is what `#[get]` / `#[post]` / … is.
 const ROUTE_VERBS: [&str; 7] = ["get", "post", "put", "delete", "patch", "head", "options"];
+
+/// The guard classes A8 and C3 name, with the two facts each class carries: the
+/// name a binding of it is called, and the status a rejection of it is answered
+/// with.
+///
+/// This is the "lightly project-specific" part of the tool, and the module docs
+/// say where the line is: a **class** is a naming and status convention, not a
+/// backend fact. It names types rather than reading one — no guard here carries a
+/// `const fn is_authentication()` — so a guard class the table does not name is
+/// out of scope for A8 and C3 rather than guessed at, and the first one to appear
+/// fails the `classified_guards` pin instead of silently going unchecked.
+///
+/// The pair in each row is not derivable from the type name: `GuardReadOnlyMode`
+/// rejects with `405 Method Not Allowed` because read-only mode is a server-side
+/// setting a client cannot satisfy with any credential, and every other class
+/// rejects with `401` because it rejects a caller who cannot prove who they are.
+/// The names in the middle column are the convention A8 enforces, and the
+/// reasoning is in the plan file.
+pub const GUARD_CLASSES: [(&str, &str, u16); 7] = [
+    ("GuardAuth", "auth", 401),
+    ("GuardTimestamp", "timestamp", 401),
+    ("GuardHash", "hash", 401),
+    ("GuardHashOriginal", "hash_original", 401),
+    ("GuardShare", "share", 401),
+    ("GuardUpload", "upload", 401),
+    ("GuardReadOnlyMode", "read_only_mode", 405),
+];
 
 /// Where a declared parameter is read from — utoipa's `ParameterIn`.
 ///
@@ -386,6 +457,10 @@ pub struct Annotation {
     /// How many entries `responses(…)` declares, or `None` when the annotation
     /// declares no `responses(…)` at all — a different defect from an empty one.
     pub responses: Option<Located<usize>>,
+    /// The `status` of every entry `responses(…)` declares, as written. C3 asks
+    /// whether the status a guard rejects with is among them, which needs the
+    /// statuses and not only the count.
+    pub response_statuses: Vec<String>,
     /// Every parameter `params(…)` declares in the inline tuple form. The struct
     /// form is not read; see [`Annotation::unread_params`].
     pub params: Vec<DeclaredParameter>,
@@ -506,6 +581,9 @@ impl Annotation {
                         "responses" => {
                             annotation.responses =
                                 Some(Located::new(entries_in(&group.stream()), line));
+                            annotation
+                                .response_statuses
+                                .extend(response_statuses(&group.stream()));
                         }
                         "params" => read_params(&group.stream(), &mut annotation),
                         "request_body" => {
@@ -707,6 +785,47 @@ fn entries_in(stream: &TokenStream) -> usize {
         entries += 1;
     }
     entries
+}
+
+/// The `status` of every entry `responses(…)` declares.
+///
+/// Each entry is read on its own — descending into the parenthesis utoipa writes
+/// it as — rather than by scanning the whole group for a `status` key, so that a
+/// nested group inside an entry cannot contribute a status that is not the
+/// response's own. A status is kept as written, so `405` compares equal to `405`,
+/// and an entry spelled with `default` instead of `status` contributes nothing.
+///
+/// A rule that read fewer statuses than were declared would find _more_ missing
+/// ones, not fewer, so this cannot go quiet the way an unread count can: the first
+/// annotation that declares no status at all turns into a finding.
+fn response_statuses(stream: &TokenStream) -> Vec<String> {
+    split_entries(stream)
+        .into_iter()
+        .filter_map(|entry| {
+            let mut trees: Box<dyn Iterator<Item = TokenTree>> = match entry.into_iter().next() {
+                // `(status = 200, description = "Ok")`
+                Some(TokenTree::Group(group)) => Box::new(group.stream().into_iter()),
+                _ => Box::new(std::iter::empty()),
+            };
+            while let Some(tree) = trees.next() {
+                let TokenTree::Ident(key) = &tree else {
+                    continue;
+                };
+                if key != "status" {
+                    continue;
+                }
+                if !matches!(trees.next(), Some(TokenTree::Punct(punct)) if punct.as_char() == '=')
+                {
+                    continue;
+                }
+                let Some(TokenTree::Literal(status)) = trees.next() else {
+                    return None;
+                };
+                return Some(literal_text(&status));
+            }
+            None
+        })
+        .collect()
 }
 
 /// The lines of a handler's doc comment, in source order.
@@ -916,6 +1035,21 @@ fn dynamic_names<'a>(fragments: impl Iterator<Item = &'a str>) -> Vec<String> {
         .collect()
 }
 
+/// One guard class of [`GUARD_CLASSES`], resolved from a binding's guard type.
+///
+/// `Copy` because a handler's classifications are read once per rule and there is
+/// nothing to own: every field is a `'static` from the table or a `u16`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GuardClass {
+    /// The guard type's name as written, which is what a finding names.
+    pub type_name: &'static str,
+    /// The name a binding of this class is called, which is what A8 expects.
+    pub binding: &'static str,
+    /// The status a rejection of this class is answered with, which is what C3
+    /// expects the annotation to document.
+    pub rejection_status: u16,
+}
+
 /// One parameter of an annotated handler that is a guard.
 #[derive(Debug, Clone)]
 pub struct GuardBinding {
@@ -927,6 +1061,9 @@ pub struct GuardBinding {
     pub guard_type: String,
     /// What this binding obliges the body to do.
     pub requirement: Requirement,
+    /// The class [`GUARD_CLASSES`] resolves this type to, or `None` when the
+    /// table names no such class — a guard type A8 and C3 do not speak about.
+    pub class: Option<GuardClass>,
 }
 
 /// A function carrying a `#[utoipa::path]` annotation, with its annotation, its
@@ -962,6 +1099,61 @@ impl AnnotatedHandler {
         self.guards
             .iter()
             .filter(|guard| guard.requirement == Requirement::PropagateRejection)
+    }
+
+    /// The guard classes this handler's route carries, one entry per class.
+    ///
+    /// Deduplicated because C3 asks a question about the operation's `responses`,
+    /// not about each binding: a route carrying two guards of the same class is
+    /// missing that class's status once, and reporting it twice would be two
+    /// findings for one defect.
+    pub fn guard_classes(&self) -> Vec<GuardClass> {
+        let mut classes: Vec<GuardClass> = Vec::new();
+        for class in self.guards.iter().filter_map(|guard| guard.class) {
+            if !classes.contains(&class) {
+                classes.push(class);
+            }
+        }
+        classes
+    }
+
+    /// How many of this handler's guard bindings [`GUARD_CLASSES`] names.
+    ///
+    /// The gap between this and `self.guards.len()` is the bindings A8 and C3
+    /// cannot speak about, and the scan pins the two counts apart.
+    pub fn classified_guards(&self) -> usize {
+        self.guards
+            .iter()
+            .filter(|guard| guard.class.is_some())
+            .count()
+    }
+
+    /// Does some parameter of this signature other than `guard` already carry the
+    /// canonical name of `guard`'s class?
+    ///
+    /// This is what decides which of A8's two branches a binding is judged by. The
+    /// comparison drops a leading underscore from both sides, because `_timestamp`
+    /// occupies `timestamp` just as surely as `timestamp` does.
+    pub fn canonical_name_is_taken(&self, guard: &GuardBinding) -> bool {
+        let Some(class) = guard.class else {
+            return false;
+        };
+        self.arguments.iter().any(|argument| {
+            argument.ident != guard.ident && argument.ident.trim_start_matches('_') == class.binding
+        })
+    }
+
+    /// How many of this handler's guard bindings are judged by A8's taken-name
+    /// branch rather than its free-name one.
+    ///
+    /// Pinned in the scan so that the exception is a recorded count rather than a
+    /// rule that has quietly stopped applying: see
+    /// [`HandlerSummary::taken_name_bindings`].
+    pub fn taken_name_bindings(&self) -> usize {
+        self.guards
+            .iter()
+            .filter(|guard| self.canonical_name_is_taken(guard))
+            .count()
     }
 
     /// The handler argument called `name`, if it binds one.
@@ -1108,6 +1300,19 @@ pub struct HandlerSummary {
     pub fallible_guards: usize,
     /// How many plain `Guard…` parameters the handler binds.
     pub plain_guards: usize,
+    /// How many guard parameters the handler binds in all — what A8 reads, and
+    /// the sum of the two counts above.
+    pub guard_bindings: usize,
+    /// How many of those bindings [`GUARD_CLASSES`] names — what A8 and C3 read.
+    /// Pinned against `guard_bindings`, so a guard class neither rule can classify
+    /// fails a test instead of going unchecked.
+    pub classified_guards: usize,
+    /// How many bindings A8 judges by its **taken-name** branch, because another
+    /// parameter of the same signature already holds the canonical name. Pinned
+    /// like `unread_parameters`: today all four are the `?<timestamp>` collision
+    /// in `get_data.rs` and `get_metadata.rs`, so a count that moves means a route
+    /// changed and the amendment's scope has to be looked at again.
+    pub taken_name_bindings: usize,
     /// How many parameters the annotation declares in the form B1 and B2 read.
     pub declared_parameters: usize,
     /// How many parameters the annotation declares in a form they do not read.
@@ -1230,9 +1435,40 @@ fn guard_bindings(arguments: &[HandlerArgument]) -> Vec<GuardBinding> {
                 span: argument.span,
                 guard_type: argument.ty.clone(),
                 requirement,
+                class: guard_class(&argument.ty),
             })
         })
         .collect()
+}
+
+/// The guard class a guard type as written resolves to.
+///
+/// `GuardResult<GuardShare>` is classified by its payload, because the alias is
+/// what makes the handler responsible for the rejection and says nothing about
+/// which guard rejects; the bare `GuardShare` is classified as itself. Both are
+/// matched on the type's **last** path segment, so `crate::auth::GuardAuth` and
+/// `GuardAuth` are the same class and `GuardHash` is not `GuardHashOriginal`.
+///
+/// `None` for a type the table does not name. That is the honest answer rather
+/// than a guess at a class, and it is why the classified-binding count is pinned:
+/// an unnamed class is out of scope for A8 and C3, and the pin makes the first one
+/// a test failure rather than a guard nobody reads.
+pub fn guard_class(guard_type_as_written: &str) -> Option<GuardClass> {
+    let text = guard_type_as_written.replace(' ', "");
+    let name = match head_segment(&text) {
+        "GuardResult" => text.split_once('<')?.1.trim_end_matches('>'),
+        _ => text.as_str(),
+    };
+    let name = schema_name(name);
+    GUARD_CLASSES
+        .iter()
+        .find_map(|&(type_name, binding, status)| {
+            (type_name == name).then_some(GuardClass {
+                type_name,
+                binding,
+                rejection_status: status,
+            })
+        })
 }
 
 /// Collect the `#[utoipa::path]`-annotated functions of a parsed file.
@@ -1650,11 +1886,11 @@ fn no_hand_set_prose(handler: &AnnotatedHandler) -> Vec<Finding> {
     findings
 }
 
-/// A1 to A7 of section A, B1 to B4 of section B, then C1: every rule over one
-/// handler, in a fixed order so a report reads the same way twice.
+/// A1 to A7 of section A, B1 to B4 of section B, then C1 and C3: every rule over
+/// one handler, in a fixed order so a report reads the same way twice.
 ///
-/// C1b contributes nothing here for the reason given on
-/// [`findings_in_source`].
+/// A8 sits with C1 and C3 at the end because all three read the same binding. C1b
+/// contributes nothing here for the reason given on [`findings_in_source`].
 fn rules_over(handler: &AnnotatedHandler) -> Vec<Finding> {
     [
         restated_route(handler),
@@ -1669,6 +1905,8 @@ fn rules_over(handler: &AnnotatedHandler) -> Vec<Finding> {
         declared_body_matches_binding(handler),
         form_body_declares_multipart(handler),
         guard_results_propagate(handler),
+        guard_bindings_named_after_class(handler),
+        guard_rejection_status_documented(handler),
     ]
     .concat()
 }
@@ -1927,6 +2165,205 @@ fn guard_results_propagate(handler: &AnnotatedHandler) -> Vec<Finding> {
         .collect()
 }
 
+/// A8 — every guard binding is named after its guard class, and carries the class
+/// name as a word where another parameter already has it.
+///
+/// A guard parameter's name is what a reader scans for when asking "which guard
+/// is this, and does the handler use its value", and it is the only handle this
+/// tool has on a binding in a finding: C1 names the guard by its _type_, because
+/// the name is what it is checking. So a binding called `auth` on a `GuardShare`
+/// answers both questions wrongly at a glance — it looks like the token guard, and
+/// it is the share guard.
+///
+/// **The name, exactly, when it is free.** The canonical name for a class is the
+/// middle column of [`GUARD_CLASSES`] — `auth`, `read_only_mode`, `hash`,
+/// `hash_original`, `share`, `upload`, `timestamp` — and where no other parameter
+/// of the signature has it, the binding must be exactly that.
+///
+/// **The name as a word, where it is taken.** Rocket binds a route's `?<name>` to a
+/// handler argument of the same name, so a query parameter can occupy the canonical
+/// name. `GuardTimestamp` collides with `?<timestamp>` in **every** signature in
+/// this repository that binds the class, which is why the second branch exists at
+/// all: with the canonical name unavailable, the binding must still carry it as a
+/// **word-part**. The match ignores underscores and case, so for a canonical
+/// `timestamp` the names `timestamp`, `timestamp_guard` and `guard_timestamp` all
+/// satisfy the rule while `auth` — this repository's own mistake at
+/// `backend/src/router/get/get_data.rs:191` and `:221` — does not. It is a
+/// word-part test rather than a prefix or a suffix test, so no arrangement of
+/// words passes that does not say which guard it is.
+///
+/// The branch is a statement about one structural collision, not an escape: a
+/// binding whose canonical name is **taken** and which carries none of the class
+/// name is still a finding, and `a_canonical_name_already_taken_still_needs_the_class_name`
+/// pins that. The count of taken-name bindings is pinned in the scan
+/// ([`HandlerSummary::taken_name_bindings`]) so that a future change to those four
+/// signatures — a route losing its `?<timestamp>`, say — fails a test rather than
+/// leaving an exception nobody has looked at.
+///
+/// `_`-prefixing is the tree's spelling for a guard whose value the handler never
+/// uses (`_auth: GuardAuth`), so a leading underscore is stripped before the name
+/// is read. It is only right on a binding that is **not** propagated: an underscore
+/// on a guard the body hands on with `?` says the value is discarded, which is the
+/// opposite of what the body does.
+///
+/// **Scope: the guard types of [`GUARD_CLASSES`].** A plain Rocket guard whose
+/// name does not start with `Guard` is not a binding this tool classifies at all,
+/// so `auth: TimestampGuardModified` in `backend/src/router/auth.rs` is out of
+/// scope — a rule that needed the class of a type it cannot recognise would have
+/// to guess it, and a guessed rename is worse than a left-alone name. The pin on
+/// classified bindings makes the first class A8 cannot name a test failure rather
+/// than a silently unchecked guard.
+fn guard_bindings_named_after_class(handler: &AnnotatedHandler) -> Vec<Finding> {
+    handler
+        .guards
+        .iter()
+        .filter_map(|guard| {
+            let class = guard.class?;
+            let name = guard.ident.as_str();
+            let canonical = class.binding;
+            let bare = name.strip_prefix('_').unwrap_or(name);
+
+            // A leading underscore is the discarded-value spelling, so it is only
+            // right on a binding the body never propagates.
+            let underscore_is_right =
+                bare.len() == name.len() || !matches!(handler.body_use(name), Use::Propagated);
+
+            // Two branches, and which one applies is a fact about the signature
+            // rather than a choice the rule makes per binding: where the
+            // canonical name is free the binding must be exactly it, and where
+            // another parameter already has it the binding must still carry it
+            // as a word.
+            let taken = handler.canonical_name_is_taken(guard);
+            let named_after_class = if taken {
+                carries_class_name(bare, canonical)
+            } else {
+                bare == canonical
+            };
+            if underscore_is_right && named_after_class {
+                return None;
+            }
+
+            let text = if taken {
+                format!(
+                    "the guard binding \"{name}\" carries none of its guard class's name: it \
+                     binds {}, whose name is \"{canonical}\", and another parameter in this \
+                     signature is already called \"{canonical}\", so the binding still has to \
+                     carry \"{canonical}\" as a word — \"{canonical}_guard\" and \
+                     \"guard_{canonical}\" both do, and \"{name}\" does not",
+                    guard.guard_type
+                )
+            } else {
+                format!(
+                    "the guard binding \"{name}\" is not named after its guard class: it binds \
+                     {}, whose binding is called \"{canonical}\", and the name is what a reader \
+                     of the handler, or of any finding this tool reports about it, uses to say \
+                     which guard this is",
+                    guard.guard_type
+                )
+            };
+            Some(Finding::at(
+                &handler.file,
+                guard.span.start().line,
+                &handler.name,
+                &text,
+            ))
+        })
+        .collect()
+}
+
+/// Does `name` carry `canonical` as a word-part?
+///
+/// Underscores are dropped from both sides and case is ignored, so `guard_timestamp`
+/// and `timestamp_guard` both carry `timestamp` and neither carries `auth`. This is
+/// a containment test rather than a prefix or a suffix one on purpose: what A8
+/// requires is that the name _says which guard it is_, and any arrangement of words
+/// around the class name says it.
+fn carries_class_name(name: &str, canonical: &str) -> bool {
+    fold_case_words(name).contains(&fold_case_words(canonical))
+}
+
+/// A name with its underscores removed and its letters lowercased, so that the two
+/// spellings of the same word compare equal.
+fn fold_case_words(name: &str) -> String {
+    name.chars()
+        .filter(|character| *character != '_')
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// C3 — a route carrying a guard documents the status that guard rejects with.
+///
+/// The guard is the route's own statement about who may call it, and the status is
+/// the part of that statement a client reads before it makes the call. utoipa
+/// publishes exactly the statuses the annotation declares and invents none, so a
+/// route that can answer `401` and documents only `200` and `400` produces an
+/// operation whose failure modes a generated client cannot see — the same shape as
+/// A2's missing `responses(…)`, one level down.
+///
+/// The mapping is [`GUARD_CLASSES`]' second column. **`GuardReadOnlyMode` is the
+/// `405` half, which is what M2 asserted**: a read-only build cannot be lifted by
+/// anything a client sends, so the status is "this method is not allowed here"
+/// rather than "who are you". M2 is expressed by this rule and is not a second
+/// rule saying the same thing.
+///
+/// The 401 half is the same assertion over the six credential classes. A route can
+/// carry two guards of different classes and both statuses are checked; a route
+/// carrying two of the same class is reported once, because the missing thing is
+/// one entry in `responses(…)`.
+///
+/// **Stated limitation, recorded rather than designed around.** The 401 half is
+/// absolute, so it will fire on a route that deliberately answers a credential
+/// rejection with a different status — a `403` for an expired share, say, or a
+/// `404` for a share that no longer exists. Such a route is not wrong; the rule
+/// has no way to say so. **It does not provide an exemption mechanism, and none is
+/// built**, because no route in this repository needs one: the 39 credential-guard
+/// handlers that reach the document all declare a 401, and the two that did not
+/// were the test-only probes, fixed by adding one. The trigger for revisiting this
+/// is therefore concrete: the first route whose credential rejection is
+/// deliberately not a 401. What that needs is a decision about how the
+/// declaration says so, which is a question about the document rather than about
+/// this rule — so it is recorded here and in the plan file rather than answered
+/// with a bypass.
+fn guard_rejection_status_documented(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let statuses = &handler.annotation.response_statuses;
+    handler
+        .guard_classes()
+        .into_iter()
+        .filter(|class| {
+            let status = class.rejection_status.to_string();
+            !statuses.iter().any(|declared| declared == &status)
+        })
+        .map(|class| {
+            Finding::at(
+                &handler.file,
+                responses_line(handler),
+                &handler.name,
+                &format!(
+                    "the route binds {}, which rejects with {}, but the annotation documents \
+                     ({}) and not that status, so the document does not say the operation can \
+                     answer it",
+                    class.type_name,
+                    class.rejection_status,
+                    statuses.join(", ")
+                ),
+            )
+        })
+        .collect()
+}
+
+/// Where a finding about the declared responses points.
+///
+/// The `responses(…)` group when the annotation declares one, because that is the
+/// token a reader has to edit; the signature line when it declares none, which A2
+/// reports in its own right and which leaves C3 nothing to point at.
+fn responses_line(handler: &AnnotatedHandler) -> usize {
+    handler
+        .annotation
+        .responses
+        .as_ref()
+        .map_or_else(|| handler.signature_line(), |responses| responses.line)
+}
+
 /// Every rule over one source file: the six of section A and the two of section C.
 ///
 /// C1b contributes nothing here: a plain guard carries `Requirement::None`, so
@@ -2004,6 +2441,9 @@ pub fn scan_source_root(source_root: &Path) -> Result<TreeReport, ScanError> {
                 name: handler.name.clone(),
                 fallible_guards: handler.fallible_guards().count(),
                 plain_guards: handler.guards.len() - handler.fallible_guards().count(),
+                guard_bindings: handler.guards.len(),
+                classified_guards: handler.classified_guards(),
+                taken_name_bindings: handler.taken_name_bindings(),
                 declared_parameters: handler.annotation.params.len(),
                 unread_parameters: handler.annotation.unread_params,
                 request_bodies: usize::from(handler.annotation.request_body.is_some()),

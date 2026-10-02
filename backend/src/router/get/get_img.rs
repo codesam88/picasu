@@ -46,12 +46,12 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
 ]
 #[get("/object/compressed/<file_path..>")]
 pub async fn compressed_file(
-    auth_guard: GuardResult<GuardShare>,
-    hash_guard: GuardResult<GuardHash>,
+    share: GuardResult<GuardShare>,
+    hash: GuardResult<GuardHash>,
     file_path: PathBuf,
 ) -> AppResult<CompressedFileResponse<'static>> {
-    let _ = auth_guard?;
-    let _ = hash_guard?;
+    let _ = share?;
+    let _ = hash?;
     let root = get_data_path();
     let compressed_file_path = root.join("object/compressed").join(&file_path);
 
@@ -117,12 +117,12 @@ pub async fn compressed_file(
 ]
 #[get("/object/imported/<file_path..>")]
 pub async fn imported_file(
-    auth: GuardResult<GuardShare>,
-    hash_guard: GuardResult<GuardHashOriginal>,
+    share: GuardResult<GuardShare>,
+    hash_original: GuardResult<GuardHashOriginal>,
     file_path: PathBuf,
 ) -> AppResult<CompressedFileResponse<'static>> {
-    let _ = auth?;
-    let _ = hash_guard?;
+    let _ = share?;
+    let _ = hash_original?;
 
     let id_str = file_path
         .file_stem()

@@ -9,9 +9,9 @@ and no source/spec comparison here. Invoking it expecting the old rules gets you
 the rules below and nothing else — in particular no check on security schemes or
 on whether a documented operation is mounted. Its rule set is
 [`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md),
-of which **thirteen rules are implemented** — A1–A7, B1–B4 and the two
-handler-body rules C1 and C1b — and the rest are specified but not built; both
-lists are below.
+of which **fifteen rules are implemented** — A1–A8, B1–B4, C1, C1b and C3 — and
+the rest are specified but not built; both lists are below. The tree is silent
+against all fifteen.
 
 ## What this crate holds: conventions, not backend facts
 
@@ -35,7 +35,7 @@ concrete form of that.
 
 ## What it asserts
 
-**Thirteen rules, all of them enforced, and nothing else.** Each one below gives
+**Fifteen rules, all of them enforced, and nothing else.** Each one below gives
 what it asserts, **what specifically tests it** (fixture and test name, so a
 reader can go and change the test rather than guess; fixture paths are relative to
 `tests/`), and **why it exists** — the defect it
@@ -139,6 +139,63 @@ written, and nothing derives it.
   annotation may set `summary`, "the first paragraph _is_ the summary" is false,
   which is the premise A5 rests on — `put/assign_album.rs` did set both, and it is
   why A5 was once reporting a defect the generated document did not have.
+
+### A8 — every guard binding is named after its guard class, and carries the class name as a word where another parameter already has it
+
+The rule has **two branches**, and which one applies is a fact about the signature
+rather than a per-binding choice:
+
+- **The name, exactly, when it is free.** Where no other parameter of the signature
+  has it, the binding must be exactly the canonical name for its class —
+  `auth`, `read_only_mode`, `hash`, `hash_original`, `share`, `upload`,
+  `timestamp`, the middle column of [`GUARD_CLASSES`](src/lib.rs).
+- **The name as a word, when it is taken.** Rocket binds a route's `?<name>` to a
+  handler argument of the same name, so a query parameter can occupy the canonical
+  name. Where that has happened the binding must still carry the class name as a
+  **word-part** — underscores dropped, case ignored — so `timestamp`,
+  `timestamp_guard` and `guard_timestamp` all satisfy `GuardTimestamp` and `auth`
+  does not. It is a containment test, not a prefix or a suffix one, so no
+  arrangement of words passes that does not say which guard it is.
+
+The second branch exists for one structural reason: **`GuardTimestamp` collides
+with `?<timestamp>` in every signature in this repository that binds the class**,
+so the canonical name is unavailable 100% of the time for that class. That was
+found by the rule rather than assumed: it shipped 19 findings, 15 were renames,
+and the remaining four were all this one collision.
+
+A leading underscore is stripped before the name is read, because `_auth: GuardAuth`
+is this repository's spelling for a guard whose value the handler never uses — but
+it is only right on a binding the body does **not** propagate, since an underscore on
+a guard handed on with `?` says the value is discarded.
+
+**Scope: the guard types `GUARD_CLASSES` names.** A plain Rocket guard whose name
+does not begin with `Guard` is not a binding this tool classifies at all, so
+`auth: TimestampGuardModified` in `backend/src/router/auth.rs` is out of scope: a
+rule that needed the class of a type it cannot recognise would have to guess it.
+
+- **Tested by** `a_guard_binding_named_after_another_class_fails` over
+  `a8_guard_binding_named_after_another_class.rs` (**free-name branch**: a binding
+  named after a different class, a binding named after a prefix of its class, and
+  the `_` spelling on a guard the body propagates) and by
+  `a_guard_binding_named_after_its_class_is_accepted` over `a8_conforming.rs`
+  (every class, a fallible and a plain spelling, `_`-prefixed plain guards, and the
+  unclassified-guard shape).
+- **Also tested by** `a_canonical_name_already_taken_still_needs_the_class_name`
+  over `a8_canonical_name_taken.rs` (**taken-name branch**): three accepted
+  spellings — `guard_timestamp`, `timestamp_guard`, and a class name surrounded by
+  other words — beside **one handler that carries none of the class name and is a
+  finding**. That fourth handler is what stops the branch from being an exemption:
+  without it, "any name is fine when the canonical name is taken" would pass this
+  suite, and the scan's `taken_name_bindings` count would keep reporting four with
+  nothing checking them.
+- **Why it exists** — a guard parameter's name is what a reader scans for when
+  asking "which guard is this, and does the handler use its value", and it is the
+  only handle this tool has on a binding: **C1 names the guard by its type,
+  precisely because the name is what A8 is checking.** A binding called `auth` on
+  a `GuardShare` therefore makes this tool's own findings read as though they were
+  about a token.
+- **The taken-name case is a pinned count, not a mechanism.** See
+  `HandlerSummary::taken_name_bindings` and the pin table below.
 
 ### B1 — every declared parameter is one the route actually binds
 
@@ -281,6 +338,57 @@ mentions, are findings.
   touched; a rule that treated every guard type alike would report every one of
   them.
 
+### C3 — a route carrying a guard documents the status that guard rejects with
+
+A credential guard (`GuardAuth`, `GuardTimestamp`, `GuardHash`,
+`GuardHashOriginal`, `GuardShare`, `GuardUpload`) rejects with **401**; the mode
+guard (`GuardReadOnlyMode`) rejects with **405**. The mapping is
+[`GUARD_CLASSES`](src/lib.rs) and it is the one thing this crate holds that is
+"lightly project-specific": it is a **convention**, not a backend fact, because the
+pairing is a decision this repository made. Read-only mode is a server-side
+setting (`APP_CONFIG`, `PICASU_READ_ONLY_MODE`) that no client can satisfy with any
+header or token, which is the same observation that keeps the mode guard out of
+`security(...)` — and the reason it answers 405 rather than 401.
+
+A route carrying two guards of **different** classes is checked against both
+statuses; a route carrying two of the **same** class is reported once, because the
+missing thing is one entry in `responses(…)`.
+
+- **Tested by** `a_guard_rejection_status_the_operation_does_not_document_fails`
+  over `c3_guard_rejection_status_missing.rs` (a missing 401, the missing 405 that
+  **M2** asserted, and a route carrying both guards with one status documented) and
+  by `a_documented_guard_rejection_status_is_accepted` over `c3_conforming.rs` (all
+  six credential classes behind one 401, both statuses on one route, and a route
+  with no guard at all).
+- **Why it exists** — the guard is the route's own statement about who may call
+  it, and the status is the part a client reads before it makes the call. utoipa
+  publishes exactly the statuses the annotation declares and invents none, so a
+  route that can answer 401 or 405 while the annotation lists neither is an
+  operation whose failure modes a generated client cannot see — the same shape as
+  A2's missing `responses(…)`, one level down.
+- **C3 subsumes M2.** "A route carrying the mode guard documents a `405`" is the
+  `GuardReadOnlyMode` row of the map, so M2 is enforced here and not built as a
+  second rule saying the same thing. M2 keeps its id, which the plan states is
+  stable and never reused. It found **19** missing 405 responses rather than the
+  16 the plan predicted — M1's own table says 20 routes carry the guard and M2
+  counted mutating ones only — plus **2** missing 401s on the test-only probes,
+  which `openapi_public` strips from the committed artifact but the contract
+  tests read through the full spec.
+- **A scan that stopped reading `status = …` would find _more_ missing statuses,
+  not fewer**, so C3 cannot go quiet the way an unread count can: the first
+  annotation that yields no status at all turns into a finding.
+- **Stated limitation: the 401 half is absolute.** It will fire on a route that
+  deliberately answers a credential rejection with a different status — a `403` for
+  an expired share, or a `404` for a share that no longer exists. Such a route is
+  not wrong, and the rule has no way to say so: **it provides no exemption
+  mechanism, and none is built**, because no route in this repository needs one.
+  All 39 credential-guard handlers that reach the document declare a 401, and the
+  two that did not were the test-only probes, fixed by adding one. The trigger for
+  revisiting this is therefore concrete — the first route whose credential rejection
+  is deliberately not a 401 — and answering it is a question about how the
+  _declaration_ says so, not about this rule. It is recorded rather than designed
+  around.
+
 Only annotated handlers are in scope; an undocumented route is a contract finding
 elsewhere. Every rule reads the source with `syn`, because nothing in the
 generated document or in Rocket's mount table says what an annotation or a
@@ -297,7 +405,6 @@ them is enforced here, and the tree passing says nothing about them.
 | --- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | C2  | every `pub fn generate_*_routes()` is mounted in `router/builder.rs`                                                                               |
 | M1  | every `POST`/`PUT` route carries `GuardReadOnlyMode`                                                                                               |
-| M2  | a route carrying the mode guard documents a `405` response                                                                                         |
 | M3  | the mode guard never appears in `security(...)`                                                                                                    |
 | M4  | the mode guard's rejection is propagated                                                                                                           |
 | D1  | a route carrying a credential guard has an operation that declares `security(...)`, and the schemes it names are the ones that guard class maps to |
@@ -307,17 +414,19 @@ them is enforced here, and the tree passing says nothing about them.
 | D6  | the re-authentication guard appears with a credential guard, never alone                                                                           |
 | D7  | every `POST`/`PUT` route carries at least one credential guard, or is listed as deliberately public — blocked on the backend question Q1           |
 | D8  | the credential set an operation declares in `security(...)` equals the credential set its route's guards provide                                   |
-| A8  | every guard binding is named after its guard class, `_`-prefixed when the value is discarded — calibrated: 19 of 62 bindings would be findings     |
-| C3  | a route carrying a guard documents the status that guard rejects with — `401` for a credential guard, `405` for the mode guard                     |
 | R1  | a `POST` route lives under `/post/`, or is listed as deliberately placed elsewhere                                                                 |
 | S1  | a handler defined in `router/get/get_page.rs` is tagged `pages`, and no handler defined elsewhere is — calibrated: zero findings today             |
 
-Three ids in the plan are not rules this tool could enforce: **D3** is a
+**M2 is not in this list**: it is enforced by C3, and the plan's rule index records
+it as "expressed by C3" rather than as a second rule meaning the same thing.
+
+Four ids in the plan are not rules this tool could enforce: **D3** is a
 cross-reference (the credential guard's rejection is propagated — that is C1),
 **V1** (a credential comparison is constant time) is a review obligation no
-checker can see, and **P1** (a handler's documented success status matches what it
+checker can see, **P1** (a handler's documented success status matches what it
 returns) is a spike whose return-type analysis cost has to be measured before the
-rule is written.
+rule is written, and **Q1**/**Q2**/**Q3** are questions for the backend and the
+public API rather than rules at all.
 
 ## What it deliberately does not check
 
@@ -334,10 +443,11 @@ rule is written.
   any of them. (`trace` was one of these until it moved into A1’s verb list: it
   is a Rocket verb, so leaving the gap open was the cost of a rule nothing
   enforces.)
-- **The guard/`security` rules (D, M), the tag/route-family rule (S1) and the
-  naming rule (A8)** — not implemented, and listed by id above so a reader knows
-  the tool is not the whole plan. Where each one lands and what it is calibrated
-  against is in the plan file.
+- **The `security(...)` rules (D) and the mode-guard rules M1, M3 and M4, the
+  tag/route-family rule S1 and the path rule R1** — not implemented, and listed by
+  id above so a reader knows the tool is not the whole plan. Where each one lands
+  and what it is calibrated against is in the plan file. (The mode guard's `405`
+  _is_ covered: that is C3's `GuardReadOnlyMode` row, which is what M2 asserted.)
 
 ## Running it
 
@@ -379,30 +489,39 @@ per rule in "What it asserts" above, so a reader does not have to go looking.
 rather than against snippets, and it pins the scan's coverage so the two cannot
 drift apart silently:
 
-| pinned                     | value | what a change of it means                                                          |
-| -------------------------- | ----- | ---------------------------------------------------------------------------------- |
-| annotated handlers         | 63    | the walk stopped finding annotations                                               |
-| `GuardResult<…>` bindings  | 52    | C1's calibration moved                                                             |
-| plain `Guard…` bindings    | 9     | C1b's calibration moved                                                            |
-| declared parameters read   | 1     | B1/B2 read less of the tree than they were calibrated against                      |
-| declared parameters unread | 0     | an `IntoParams` struct reached an annotation — see "What section B does not cover" |
-| declared request bodies    | 24    | B3/B4 read less of the tree than they were calibrated against                      |
+| pinned                                       | value | what a change of it means                                                                                       |
+| -------------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------- |
+| annotated handlers                           | 63    | the walk stopped finding annotations                                                                            |
+| `GuardResult<…>` bindings                    | 52    | C1's calibration moved                                                                                          |
+| plain `Guard…` bindings                      | 9     | C1b's calibration moved                                                                                         |
+| guard bindings read                          | 61    | A8 read less of the tree than it was calibrated against                                                         |
+| guard bindings classified                    | 61    | a guard class `GUARD_CLASSES` does not name reached a handler — see A8's scope                                  |
+| guard bindings whose canonical name is taken | 4     | a route changed shape, so A8's taken-name branch no longer applies where it did — or a fifth signature collided |
+| declared parameters read                     | 1     | B1/B2 read less of the tree than they were calibrated against                                                   |
+| declared parameters unread                   | 0     | an `IntoParams` struct reached an annotation — see "What section B does not cover"                              |
+| declared request bodies                      | 24    | B3/B4 read less of the tree than they were calibrated against                                                   |
 
 `tests/cli.rs` pins the reporting contract the recipe depends on: the summary's
-counts, the exit codes and the coverage floor — five tests there, 32 here, 37 in
+counts, the exit codes and the coverage floor — five tests there, 38 here, 43 in
 all. Fixtures live in `tests/fixtures/openapi_annotations/` and are pulled in with
 `include_str!`, so a renamed or deleted fixture breaks the build instead of
 skipping a test. Run them with `cargo test -p openapi-sanity`.
 
 ## A known duplication
 
-`TAGS` is the one set this tool enforces that is written down elsewhere: it
-mirrors the table in
+`TAGS` and `GUARD_CLASSES` are the two sets this tool enforces that are written
+down elsewhere. `TAGS` mirrors the table in
 [`docs/openapi-generator.md`](../../docs/openapi-generator.md) ("Tag
 conventions"), which cannot be read rather than copied because the document is
 generated from the annotations a rule would then be checking. Both places say the
 other exists, and a test asserts every tag in the constant is accepted, so a
 subject added to one and not the other shows up as a rule that rejects the table.
+
+`GUARD_CLASSES` is the second, and it is the one place a rule here reads a
+**status**: each row pairs a guard type with the name a binding of it takes (A8)
+and the status its rejection is answered with (C3). It is a convention rather than
+a fact because the pairing is a decision this repository made — read-only mode is
+not an authentication failure — not something derivable from a type name.
 
 The guard rules in section C name the shapes `GuardResult<…>` and `Guard…` by the
 spelling the backend writes them with. That is a convention read from the

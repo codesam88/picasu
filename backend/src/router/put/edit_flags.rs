@@ -33,6 +33,7 @@ pub struct EditFlagsData {
             (status = 200, description = "Flags updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]

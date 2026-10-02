@@ -36,9 +36,9 @@ use crate::tasks::batcher::update_tree::UpdateTreeTask;
 #[post("/post/rebuild")]
 pub async fn rebuild_handler(
     _auth: GuardAuth,
-    read_only: GuardResult<GuardReadOnlyMode>,
+    read_only_mode: GuardResult<GuardReadOnlyMode>,
 ) -> AppResult<Json<RebuildStats>> {
-    let _ = read_only?;
+    let _ = read_only_mode?;
 
     let image_root = get_resolved_image_home()
         .ok_or_else(|| AppError::new(ErrorKind::Internal, "IMAGE_HOME is not configured"))?;

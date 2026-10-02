@@ -32,16 +32,17 @@ pub struct IndexImageRequest {
             (status = 200, description = "Album indexing started"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]
 #[post("/post/index/album", data = "<req>")]
 pub fn index_album_handler(
     _auth: GuardAuth,
-    read_only: GuardResult<GuardReadOnlyMode>,
+    read_only_mode: GuardResult<GuardReadOnlyMode>,
     req: Json<IndexAlbumRequest>,
 ) -> AppResult<Status> {
-    let _ = read_only?;
+    let _ = read_only_mode?;
     index_album(&req.into_inner().album)?;
     Ok(Status::Accepted)
 }
@@ -56,16 +57,17 @@ pub fn index_album_handler(
             (status = 200, description = "Image indexing started"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]
 #[post("/post/index/image", data = "<req>")]
 pub fn index_image_handler(
     _auth: GuardAuth,
-    read_only: GuardResult<GuardReadOnlyMode>,
+    read_only_mode: GuardResult<GuardReadOnlyMode>,
     req: Json<IndexImageRequest>,
 ) -> AppResult<Status> {
-    let _ = read_only?;
+    let _ = read_only_mode?;
     let inner = req.into_inner();
     let src = PathBuf::from(inner.image);
     let dst = inner.album.map(PathBuf::from);

@@ -11,7 +11,7 @@
 /// Fetch one widget, rebinding the guard first.
 #[utoipa::path(
     tag = "auth",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok"), (status = 401, description = "Unauthorized"))
 )]
 #[get("/get/rebound-guard-result")]
 pub async fn rebound_guard_result(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {

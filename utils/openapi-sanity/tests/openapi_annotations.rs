@@ -1,11 +1,21 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Two sections of `.plan/openapi-annotation-checks.md` are checked here: **A**,
-//! the six rules about the annotation's own shape, and the two rules of section C
-//! that are about the handler body — **C1** (a `GuardResult<…>` argument must have
-//! its rejection propagated) and **C1b** (a plain `Guard…` argument needs nothing
-//! in the body and is never reported). The parameter-agreement (B) and security
-//! (D, M) rules are separate increments.
+//! Four sections of `.plan/openapi-annotation-checks.md` are checked here: **A**,
+//! the eight rules about the annotation's own shape, **B**, the four rules about
+//! what the annotation declares against what the route already says, the two
+//! rules of section C that are about the handler body — **C1** (a
+//! `GuardResult<…>` argument must have its rejection propagated) and **C1b** (a
+//! plain `Guard…` argument needs nothing in the body and is never reported) —
+//! and **C3**, what a guard obliges the document to say. The security (D) rules
+//! and M1/M3/M4 are separate increments; the mode guard's `405`, which the plan
+//! called **M2**, is C3's `GuardReadOnlyMode` row rather than a rule of its own.
+//!
+//! Two rules read what a guard *says* rather than what it *does*: **A8**, which
+//! asks what a guard binding is called, and **C3**, which asks whether the
+//! annotation declares the status that guard rejects with. Both read the same
+//! binding C1 does, and both cross-fix the other's fixtures, so that the findings
+//! in `a8_guard_binding_named_after_another_class.rs` are A8's alone and the
+//! findings in `c3_guard_rejection_status_missing.rs` are C3's alone.
 //!
 //! Why these belong in the gate. Each of them reads a fact that exists only in
 //! source, and each is invisible in the document: the document is generated *from*
@@ -40,6 +50,14 @@
 //! tree that must stay silent. Removing a check fails a named test rather than
 //! turning the gate green.
 //!
+//! **A8 has two branches and both are exercised.** The second exists because Rocket
+//! binds `?<timestamp>` to a handler argument of the same name, so
+//! `GuardTimestamp` cannot take its canonical name in any signature in this
+//! repository. Where the canonical name is taken the binding must still carry it as
+//! a word-part; where it is taken *and* the binding carries none of it, that is a
+//! finding — which is what keeps the branch from being an exemption. The four
+//! bindings that take the branch are counted and pinned.
+//!
 //! Two shapes are not named by C1 and had no precedent in the tree. They are
 //! pinned as tests below rather than left to be inferred from the walker, and
 //! neither expectation may be changed without a rule change going through review:
@@ -57,8 +75,8 @@
 use std::path::{Path, PathBuf};
 
 use openapi_sanity::{
-    Finding, Requirement, TAGS, findings_in_source, guard_requirement, handlers_in_file, render,
-    scan_source_root,
+    Finding, GUARD_CLASSES, GuardClass, Requirement, TAGS, findings_in_source, guard_class,
+    guard_requirement, handlers_in_file, render, scan_source_root,
 };
 
 /// Every rule over one source file, for the fixtures below.
@@ -108,6 +126,17 @@ const PARSED_BODY: &str = include_str!("fixtures/openapi_annotations/b3_conformi
 const FORM_WITHOUT_MULTIPART: &str =
     include_str!("fixtures/openapi_annotations/b4_form_body_without_multipart.rs");
 const FORM_WITH_MULTIPART: &str = include_str!("fixtures/openapi_annotations/b4_conforming.rs");
+
+const MISNAMED_GUARD_BINDINGS: &str =
+    include_str!("fixtures/openapi_annotations/a8_guard_binding_named_after_another_class.rs");
+const CANONICAL_NAME_TAKEN: &str =
+    include_str!("fixtures/openapi_annotations/a8_canonical_name_taken.rs");
+const GUARD_BINDINGS_AFTER_CLASS: &str =
+    include_str!("fixtures/openapi_annotations/a8_conforming.rs");
+const MISSING_REJECTION_STATUS: &str =
+    include_str!("fixtures/openapi_annotations/c3_guard_rejection_status_missing.rs");
+const DOCUMENTED_REJECTION_STATUS: &str =
+    include_str!("fixtures/openapi_annotations/c3_conforming.rs");
 
 // ── Section A — the annotation's shape ─────────────────────────────────────────
 //
@@ -806,10 +835,230 @@ fn only_a_guard_result_carries_an_obligation() {
 /// reporting a clean tree it never looked at. Update it with the annotation.
 const ANNOTATIONS_IN_ROUTER: usize = 63;
 
+// ── A8 and C3 — what a guard says, and what the document owes it ──────────────
+//
+// A8 and C3 read the same binding C1 does and the two questions nobody else asks
+// about it. A8 asks what the binding is **called**, C3 asks what the annotation
+// **declares** about a rejection the route can produce. The fixtures cross-fix
+// each other: the A8 fixture documents every rejection status so the findings
+// there are A8's alone, and the C3 fixture names every binding after its class so
+// the findings there are C3's alone.
+
+/// A8: a guard parameter's name is what a reader scans for when asking "which
+/// guard is this", and it is the only handle a finding has on the binding.
+///
+/// All three shapes are in one fixture: a binding named after a *different*
+/// class's binding (`auth` on a `GuardShare`), a binding named after a prefix of
+/// its class (`mode` on a `GuardReadOnlyMode`), and the tree's discarded-value
+/// spelling on a guard the body **propagates** — where the underscore says the
+/// value is thrown away, which is what the `?` is for.
+#[test]
+fn a_guard_binding_named_after_another_class_fails() {
+    let findings = check_source(
+        "a8_guard_binding_named_after_another_class.rs",
+        MISNAMED_GUARD_BINDINGS,
+    );
+
+    assert_eq!(
+        render(&findings),
+        "a8_guard_binding_named_after_another_class.rs:26: share_as_auth: the guard binding \
+         \"auth\" is not named after its guard class: it binds GuardResult<GuardShare>, whose \
+         binding is called \"share\", and the name is what a reader of the handler, or of any \
+         finding this tool reports about it, uses to say which guard this is\n\
+         a8_guard_binding_named_after_another_class.rs:40: rename: the guard binding \"mode\" is \
+         not named after its guard class: it binds GuardResult<GuardReadOnlyMode>, whose binding \
+         is called \"read_only_mode\", and the name is what a reader of the handler, or of any \
+         finding this tool reports about it, uses to say which guard this is\n\
+         a8_guard_binding_named_after_another_class.rs:54: discarded_timestamp: the guard binding \
+         \"_timestamp\" is not named after its guard class: it binds \
+         GuardResult<GuardTimestamp>, whose binding is called \"timestamp\", and the name is what \
+         a reader of the handler, or of any finding this tool reports about it, uses to say which \
+         guard this is",
+        "the rule names the class and the name it expects, and an underscore only excuses a \
+         binding whose value the body never propagates"
+    );
+}
+
+/// A8's second branch: the canonical name is taken and the binding still has to
+/// carry the class name as a word.
+///
+/// The amendment exists because Rocket binds `?<timestamp>` to a handler argument
+/// called `timestamp`, so `GuardTimestamp` cannot take its canonical name in any
+/// signature in this repository. The match ignores underscores and case, so the
+/// fixture carries three accepted spellings — `guard_timestamp`,
+/// `timestamp_guard`, and a class name surrounded by other words — and one
+/// rejected one.
+///
+/// **The rejected handler is what keeps this from being an exemption.** Without
+/// it the branch would be indistinguishable from "any name is fine when the
+/// canonical name is taken", and `taken_name_bindings` would keep reporting four
+/// in the scan without anything checking them. It is asserted here rather than
+/// only asserted in a comment.
+#[test]
+fn a_canonical_name_already_taken_still_needs_the_class_name() {
+    let findings = check_source("a8_canonical_name_taken.rs", CANONICAL_NAME_TAKEN);
+
+    assert_eq!(
+        render(&findings),
+        "a8_canonical_name_taken.rs:64: taken_canonical_name_not_carried: the guard binding \
+         \"auth\" carries none of its guard class's name: it binds GuardResult<GuardTimestamp>, \
+         whose name is \"timestamp\", and another parameter in this signature is already called \
+         \"timestamp\", so the binding still has to carry \"timestamp\" as a word — \
+         \"timestamp_guard\" and \"guard_timestamp\" both do, and \"auth\" does not",
+        "a taken canonical name is not a free pass: a binding that says nothing about the guard \
+         it binds is a finding, while all three spellings that carry the class name are silent"
+    );
+}
+
+/// The conforming counterpart: every class of `GUARD_CLASSES` bound under the name
+/// that class expects, in a fallible and in a plain spelling, plus `_`-prefixed
+/// plain guards and the mutating shape the tree uses throughout.
+///
+/// It also pins **A8's scope**: `auth: TimestampGuardModified` is a plain Rocket
+/// guard whose name does not begin with `Guard`, so this crate does not classify
+/// it and A8 demands no name for it. A rule that needed the class of a type it
+/// cannot recognise would have to guess it.
+#[test]
+fn a_guard_binding_named_after_its_class_is_accepted() {
+    let findings = check_source("a8_conforming.rs", GUARD_BINDINGS_AFTER_CLASS);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "every guard class named after itself must be silent, and a guard type outside \
+         GUARD_CLASSES must be out of scope rather than guessed at"
+    );
+}
+
+/// C3: utoipa publishes exactly the statuses the annotation declares and invents
+/// none, so a route that can answer 401 or 405 while the annotation lists neither
+/// is an operation whose failure modes a generated client cannot see.
+///
+/// All three shapes are in one fixture: a credential guard with no 401, the mode
+/// guard with no 405 (**what M2 asserted**, now expressed by C3 rather than by a
+/// second rule saying the same thing), and a route carrying both guards with only
+/// one of the two statuses documented.
+#[test]
+fn a_guard_rejection_status_the_operation_does_not_document_fails() {
+    let findings = check_source(
+        "c3_guard_rejection_status_missing.rs",
+        MISSING_REJECTION_STATUS,
+    );
+
+    assert_eq!(
+        render(&findings),
+        "c3_guard_rejection_status_missing.rs:19: share_without_401: the route binds \
+         GuardShare, which rejects with 401, but the annotation documents (200, 400) and not \
+         that status, so the document does not say the operation can answer it\n\
+         c3_guard_rejection_status_missing.rs:33: read_only_without_405: the route binds \
+         GuardReadOnlyMode, which rejects with 405, but the annotation documents (200, 400, 401) \
+         and not that status, so the document does not say the operation can answer it\n\
+         c3_guard_rejection_status_missing.rs:51: one_missing_of_two: the route binds \
+         GuardReadOnlyMode, which rejects with 405, but the annotation documents (200, 401) and \
+         not that status, so the document does not say the operation can answer it",
+        "each missing status is one finding; a route carrying two guards and documenting one of \
+         the two statuses is reported for the one it leaves out"
+    );
+}
+
+/// The conforming counterpart: all six credential classes behind one 401, the
+/// mode guard behind a 405, both statuses on one route, and a route with no guard
+/// at all — for which the rule asks nothing, because nothing can reject it.
+#[test]
+fn a_documented_guard_rejection_status_is_accepted() {
+    let findings = check_source("c3_conforming.rs", DOCUMENTED_REJECTION_STATUS);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "a guard's rejection status documented once is enough for every binding of its class, and \
+         a route with no guard needs none"
+    );
+}
+
+/// The guard-class table pinned on types rather than on a fixture, the way
+/// `only_a_guard_result_carries_an_obligation` pins C1's.
+///
+/// Two things have to hold and neither is visible from a finding: the `GuardResult`
+/// alias is classified by its **payload**, so `GuardResult<GuardShare>` and a bare
+/// `GuardShare` are the same class; and the two hash classes are told apart, which
+/// a prefix match would get wrong because `GuardHash` is a prefix of
+/// `GuardHashOriginal`. A new guard class the table does not name yields `None`
+/// rather than a guess, and the tree pin below is what makes the first one a
+/// failure.
+#[test]
+fn guard_classes_resolve_by_payload_and_not_by_prefix() {
+    for (ty, binding, status) in GUARD_CLASSES {
+        let expected = Some(GuardClass {
+            type_name: ty,
+            binding,
+            rejection_status: status,
+        });
+        assert_eq!(guard_class(ty), expected, "{ty} as a plain guard");
+        assert_eq!(
+            guard_class(&format!("GuardResult<{ty}>")),
+            expected,
+            "{ty} behind the GuardResult alias, which is classified by its payload rather than by \
+             the alias"
+        );
+        assert_eq!(
+            guard_class(&format!("crate::router::auth::{ty}")),
+            expected,
+            "{ty} written with a module path, which is classified on its last segment"
+        );
+    }
+
+    assert_eq!(
+        guard_class("TimestampGuardModified"),
+        None,
+        "a plain guard whose name does not begin with `Guard` is not a class this tool names, and \
+         it is the shape `renew_timestamp_token` binds"
+    );
+    assert_eq!(
+        guard_class("Json<AppConfig>"),
+        None,
+        "and neither is something that is not a guard at all"
+    );
+    assert_ne!(
+        guard_class("GuardHash"),
+        guard_class("GuardHashOriginal"),
+        "the two hash classes are told apart, which matching on a prefix would get wrong because \
+         `GuardHash` is a prefix of `GuardHashOriginal`"
+    );
+}
+
 /// The guard inventory the rules were calibrated against: 52 fallible bindings,
 /// all consumed as `let _ = ident?;`, and 9 plain `GuardAuth` bindings, none of
 /// which the body touches — Rocket runs them and short-circuits on failure.
 const GUARD_INVENTORY: (usize, usize) = (52, 9);
+
+/// How many guard bindings A8 and C3 read, and how many of them
+/// `GUARD_CLASSES` names.
+///
+/// The first number is the floor on what A8 reads, the way the annotated-handler
+/// count is the floor on the walk: a scan that stopped finding guard bindings
+/// would find nothing to name and report the same emptiness as a clean tree. The
+/// second is what keeps the class table honest: it equals the first today, and the
+/// day a guard class appears that neither A8 nor C3 can classify the two counts
+/// part company and this fails — the same treatment `unread_parameters` gets, and
+/// for the same reason: a limit that is stated is a decision, and a limit that
+/// fails open is not.
+const GUARD_CLASS_INVENTORY: (usize, usize) = (61, 61);
+
+/// How many guard bindings A8 judges by its **taken-name** branch, because another
+/// parameter of the same signature already holds the canonical name.
+///
+/// This follows the `unread_parameters` pattern: an exception recorded as a
+/// **count** rather than implemented as a mechanism, so it shows up in the scan's
+/// own output and a change to it fails a test. All four are the same structural
+/// collision — `?<timestamp>` occupying `timestamp` in `get_data.rs:60,191,221`
+/// and `get_metadata.rs:38` — and all four are bound as `guard_timestamp`.
+///
+/// A count that moves means a route changed shape: a `?<timestamp>` went away, so
+/// the branch should no longer apply, or a fifth signature collided, so the
+/// amendment has a new case to look at. Either way it is a test failure rather
+/// than an exception that quietly stopped applying.
+const TAKEN_NAME_BINDINGS: usize = 4;
 
 /// The declaration inventory section B was calibrated against: one declared
 /// parameter, all of them the inline `("name" = Type, Location, …)` form, and 24
@@ -857,6 +1106,21 @@ fn the_router_tree_is_clean() {
         .iter()
         .map(|handler| handler.plain_guards)
         .sum();
+    let guard_bindings: usize = report
+        .handlers
+        .iter()
+        .map(|handler| handler.guard_bindings)
+        .sum();
+    let classified_guards: usize = report
+        .handlers
+        .iter()
+        .map(|handler| handler.classified_guards)
+        .sum();
+    let taken_name_bindings: usize = report
+        .handlers
+        .iter()
+        .map(|handler| handler.taken_name_bindings)
+        .sum();
     let declared_parameters: usize = report
         .handlers
         .iter()
@@ -882,6 +1146,23 @@ fn the_router_tree_is_clean() {
         (fallible_guards, plain_guards),
         GUARD_INVENTORY,
         "the tree's guard inventory moved; these rules were calibrated against it"
+    );
+    assert_eq!(
+        (guard_bindings, classified_guards),
+        GUARD_CLASS_INVENTORY,
+        "A8 and C3 read less of the tree than they were calibrated against, or they read a guard \
+         class `GUARD_CLASSES` does not name. The second number must keep up with the first: a \
+         guard class neither rule can classify is out of scope for both, and the day one appears \
+         the two counts part company and this fails rather than the rule going quietly blind"
+    );
+    assert_eq!(
+        taken_name_bindings, TAKEN_NAME_BINDINGS,
+        "the number of guard bindings whose canonical name is taken by another parameter in the \
+         same signature moved. Today all {TAKEN_NAME_BINDINGS} are the `?<timestamp>` collision \
+         in get_data.rs and get_metadata.rs, all bound as `guard_timestamp`, which is what A8's \
+         taken-name branch is for. A count that moves means a route changed shape — a \
+         `?<timestamp>` went away, or a fifth signature collided — so the amendment's scope has \
+         to be looked at rather than left applying to a case nobody has read"
     );
     assert_eq!(
         (declared_parameters, unread_parameters, request_bodies),

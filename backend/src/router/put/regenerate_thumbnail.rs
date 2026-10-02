@@ -35,6 +35,7 @@ pub struct RegenerateThumbnailForm<'r> {
             (status = 200, description = "Thumbnail regenerated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]

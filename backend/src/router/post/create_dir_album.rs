@@ -31,6 +31,7 @@ pub struct CreateDirAlbumData {
             (status = 200, description = "New album ID", body = String),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]

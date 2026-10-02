@@ -30,6 +30,7 @@ pub struct EditShare {
             (status = 200, description = "Share updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]
@@ -99,6 +100,7 @@ pub struct DeleteShare {
             (status = 200, description = "Share deleted"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]
