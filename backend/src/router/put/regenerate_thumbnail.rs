@@ -30,7 +30,7 @@ pub struct RegenerateThumbnailForm<'r> {
 /// Regenerate the thumbnail of an image within an uploaded frame.
 #[utoipa::path(
         tag = "assets",
-        request_body = Value,
+        request_body(content_type = "multipart/form-data", content = Object),
         responses(
             (status = 200, description = "Thumbnail regenerated"),
             (status = 400, description = "Invalid input"),

@@ -134,9 +134,13 @@ openapi-check: openapi-sanity openapi-json-match openapi-routes-match
 
 # Source-level `#[utoipa::path]` checks: the annotation's shape (no restated
 # path or verb, at least one response, one vocabulary tag, a doc comment with a
-# one-line summary, no hand-set operation_id / summary / description) and the
-# handler body (every fallible guard's rejection has to be propagated). Reads the
-# source, so it needs no build and no frontend bundle.
+# one-line summary, no hand-set operation_id / summary / description), what it
+# declares against what the route already binds (every declared parameter is one
+# the route reads, its documented `required` matches the handler argument, its
+# request_body names what `data = "…"` parses, and a form body declares
+# multipart/form-data), and the handler body (every fallible guard's rejection
+# has to be propagated). Reads the source, so it needs no build and no frontend
+# bundle.
 #
 # The tool holds annotation conventions and no backend facts. A rule that needs a
 # route path, a config value or a feature name belongs in the backend or in a

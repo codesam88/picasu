@@ -96,6 +96,19 @@ const DERIVED_ID: &str = include_str!("fixtures/openapi_annotations/a6_conformin
 const HAND_SET_PROSE: &str = include_str!("fixtures/openapi_annotations/a7_hand_set_prose.rs");
 const DERIVED_PROSE: &str = include_str!("fixtures/openapi_annotations/a7_conforming.rs");
 
+const UNBOUND_PARAMETER: &str =
+    include_str!("fixtures/openapi_annotations/b1_parameter_the_route_does_not_bind.rs");
+const BOUND_PARAMETERS: &str = include_str!("fixtures/openapi_annotations/b1_conforming.rs");
+const DISAGREEING_OPTIONALITY: &str =
+    include_str!("fixtures/openapi_annotations/b2_optionality_the_argument_disagrees_with.rs");
+const AGREEING_OPTIONALITY: &str = include_str!("fixtures/openapi_annotations/b2_conforming.rs");
+const UNPARSED_BODY: &str =
+    include_str!("fixtures/openapi_annotations/b3_body_the_route_does_not_parse.rs");
+const PARSED_BODY: &str = include_str!("fixtures/openapi_annotations/b3_conforming.rs");
+const FORM_WITHOUT_MULTIPART: &str =
+    include_str!("fixtures/openapi_annotations/b4_form_body_without_multipart.rs");
+const FORM_WITH_MULTIPART: &str = include_str!("fixtures/openapi_annotations/b4_conforming.rs");
+
 // ── Section A — the annotation's shape ─────────────────────────────────────────
 //
 // Every rule has a fixture that must produce its finding and a conforming
@@ -365,6 +378,234 @@ fn a_derived_summary_and_description_are_accepted() {
     );
 }
 
+// ── Section B — what the annotation declares against what the route says ───────
+//
+// The invariant of this section is that **the route wins**: `rocket_extras` reads
+// the route attribute and supplies the path, the verb, a parameter for every
+// argument the signature binds, and a request body for `data = "…"`. What the
+// annotation declares is merged on top and compared against nothing, so each of
+// these rules reads one declaration and one fact the route already states.
+//
+// A rule here that read only the annotation would be a tautology — utoipa derives
+// `required` from the declared type — so every fixture pairs a declared parameter
+// or body with a route that disagrees with it.
+
+/// B1: `rocket_extras` derives a parameter for every argument the route binds,
+/// and merges whatever the annotation declares on top. Nothing checks the other
+/// direction, so a declared parameter no route reads reaches the document.
+#[test]
+fn a_parameter_the_route_does_not_bind_fails() {
+    let findings = check_source("b1_parameter_the_route_does_not_bind.rs", UNBOUND_PARAMETER);
+
+    assert_eq!(
+        render(&findings),
+        "b1_parameter_the_route_does_not_bind.rs:17: prefetch: the annotation declares the \
+         query parameter \"nope\", but the route binds no such query parameter: its query \
+         part is \"?<locate>\"\n\
+         b1_parameter_the_route_does_not_bind.rs:35: get_asset: the annotation declares the \
+         path parameter \"album_id\", but the route binds no such path parameter: its path is \
+         \"/assets/<asset_id>\"",
+        "both locations are checked, each against the part of the route that binds it, and \
+         the parameters the route *does* bind in the same annotations are silent"
+    );
+}
+
+/// The conforming counterpart: a query parameter and a path parameter the route
+/// binds, a route with no query part at all, and a partial-segment name — the
+/// `..` is Rocket's marker and not part of the name the handler binds.
+#[test]
+fn parameters_the_route_binds_are_accepted() {
+    let findings = check_source("b1_conforming.rs", BOUND_PARAMETERS);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "a declared parameter the route binds must be silent, including a `<name..>` \
+         partial segment"
+    );
+}
+
+/// B2: utoipa 5.5 has no `required` key in a parameter tuple and derives the
+/// documented `required` from the declared type, so the two optionalities that
+/// have to agree are the declared type's and the handler argument's.
+///
+/// Both directions mislead: a declared `Option<T>` on a `T` argument tells a client
+/// it may omit a parameter the route requires, and a declared `T` on an
+/// `Option<T>` argument tells it must send one the route does without.
+#[test]
+fn a_declared_optionality_the_argument_disagrees_with_fails() {
+    let findings = check_source(
+        "b2_optionality_the_argument_disagrees_with.rs",
+        DISAGREEING_OPTIONALITY,
+    );
+
+    assert_eq!(
+        render(&findings),
+        "b2_optionality_the_argument_disagrees_with.rs:21: get_rows: the annotation declares \
+         the parameter \"limit\" as Option<u64>, which utoipa documents as not required, but \
+         the handler binds it as u64, so the document and the route disagree about whether a \
+         caller may omit it\n\
+         b2_optionality_the_argument_disagrees_with.rs:22: get_rows: the annotation declares \
+         the parameter \"locate\" as String, which utoipa documents as required, but the \
+         handler binds it as Option<String>, so the document and the route disagree about \
+         whether a caller may omit it",
+        "the conforming parameter in the same annotation is silent, so the rule compares \
+         the two optionalities rather than flagging every declared parameter"
+    );
+}
+
+/// The conforming counterpart: both optionalities agreeing, and a route that
+/// declares no parameters at all because `rocket_extras` derives them.
+#[test]
+fn a_declared_optionality_the_argument_agrees_with_is_accepted() {
+    let findings = check_source("b2_conforming.rs", AGREEING_OPTIONALITY);
+
+    assert_eq!(render(&findings), "");
+}
+
+/// B3: utoipa takes the declared schema and never compares it to what Rocket
+/// parses, so an annotation can advertise a body the route rejects every time.
+#[test]
+fn a_body_the_route_does_not_parse_fails() {
+    let findings = check_source("b3_body_the_route_does_not_parse.rs", UNPARSED_BODY);
+
+    assert_eq!(
+        render(&findings),
+        "b3_body_the_route_does_not_parse.rs:17: edit_flags: the annotation declares \
+         request_body = EditRatingData, but the route binds the body as \
+         Json<EditFlagsData>, so the document advertises a schema the route never parses\n\
+         b3_body_the_route_does_not_parse.rs:32: import_config: the annotation declares \
+         request_body = AppConfig, but the route binds the body as Json<ConfigImport>, so \
+         the document advertises a schema the route never parses",
+        "a declared body that is not the type the route's `data = \"…\"` binds is a finding \
+         in both directions of the mismatch"
+    );
+}
+
+/// The conforming counterpart, and the three shapes B3 states it does not compare:
+/// the same type spelled with a module path, a schema it does not read
+/// (`Option<…>`), `request_body = Value` as "any body", and a `Form<…>` binding,
+/// which has no schema type an annotation could name.
+#[test]
+fn a_body_the_route_parses_is_accepted() {
+    let findings = check_source("b3_conforming.rs", PARSED_BODY);
+
+    assert_eq!(render(&findings), "");
+}
+
+/// B4: a form endpoint takes `multipart/form-data`, and utoipa guesses
+/// `application/json` for every named type that is not a primitive — so an
+/// annotation that does not name the media type documents a JSON body for a route
+/// that parses a multipart upload.
+#[test]
+fn a_form_body_without_multipart_fails() {
+    let findings = check_source("b4_form_body_without_multipart.rs", FORM_WITHOUT_MULTIPART);
+
+    assert_eq!(
+        render(&findings),
+        "b4_form_body_without_multipart.rs:21: upload: the route binds a form \
+         (Form<UploadForm>), so its body is multipart/form-data, but the annotation declares \
+         request_body = Value and names no multipart/form-data media type, which utoipa \
+         documents as application/json; a generated client would send JSON to a form \
+         endpoint\n\
+         b4_form_body_without_multipart.rs:35: regenerate_thumbnail: the route binds a form \
+         (Form<RegenerateThumbnailForm>), so its body is multipart/form-data, but the \
+         annotation declares no request body at all and names no multipart/form-data media \
+         type, which utoipa documents as application/json; a generated client would send \
+         JSON to a form endpoint",
+        "a body that is declared as `Value` and a body that is not declared at all are the \
+         same defect; the JSON route in the same fixture is silent, so the rule is about \
+         form bindings and not about a missing media type in general"
+    );
+}
+
+/// The conforming counterpart: both spellings utoipa accepts for naming a media
+/// type, and a JSON route that names none — utoipa's default is the right media
+/// type for it.
+#[test]
+fn a_form_body_naming_multipart_is_accepted() {
+    let findings = check_source("b4_conforming.rs", FORM_WITH_MULTIPART);
+
+    assert_eq!(render(&findings), "");
+}
+
+/// The two forms `params(…)` takes, told apart the way utoipa tells them apart.
+///
+/// This is the coverage that makes B1 and B2's scope limit a decision rather than
+/// an accident: the struct form is *counted*, not skipped, and
+/// `the_router_tree_is_clean` pins the count at zero. The day a
+/// `#[derive(IntoParams)]` struct reaches an annotation, that pin fails and the
+/// resolver either gets built or the limit gets renegotiated — it does not fail
+/// open.
+#[test]
+fn only_the_inline_parameter_form_is_read() {
+    let handlers = handlers_in_file("params_forms.rs", PARAMS_FORMS).expect("must parse as Rust");
+    let declared: Vec<(String, String)> = handlers[0]
+        .annotation
+        .params
+        .iter()
+        .map(|declared| (declared.name.clone(), declared.declared_type.clone()))
+        .collect();
+
+    assert_eq!(
+        declared,
+        vec![("locate".to_owned(), "Option<String>".to_owned())],
+        "the inline tuple beside a struct is read, with its declared type"
+    );
+    assert_eq!(
+        handlers[0].annotation.unread_params, 1,
+        "the `params(SomeQueryStruct, …)` struct is counted rather than silently skipped: \
+         it hides the name, the location and the type behind a type this tool would have \
+         to resolve across files"
+    );
+    assert_eq!(
+        handlers[1].annotation.unread_params, 1,
+        "a struct mixed with a tuple is one unread entry and one read one"
+    );
+    assert!(
+        !handlers[1].annotation.params[0].declared_optional,
+        "`String` is documented as required, which is what B2 compares against the argument"
+    );
+}
+
+/// A source that declares both forms of `params(…)`, which is the shape the rule's
+/// scope limit is about. Written inline rather than pulled in with `include_str!`
+/// because it is a reading of the parser rather than a finding to be reported.
+const PARAMS_FORMS: &str = r#"
+/// Read a timeline page.
+#[utoipa::path(
+        tag = "timeline",
+        params(
+            SomeQueryStruct,
+            ("locate" = Option<String>, Query, description = "Where to start"),
+        ),
+        responses(
+            (status = 200, description = "Ok"),
+        )
+    )
+]
+#[post("/get/prefetch?<locate>")]
+pub fn prefetch(locate: Option<String>) -> AppResult<Json<PrefetchReturn>> {
+    let _ = locate;
+    Ok(Json(PrefetchReturn::default()))
+}
+
+/// Read an asset.
+#[utoipa::path(
+        tag = "assets",
+        params(AssetQuery, ("asset_id" = String, Path)),
+        responses(
+            (status = 200, description = "Ok"),
+        )
+    )
+]
+#[get("/get/get-asset/<asset_id>")]
+pub fn get_asset(asset_id: String) -> AppResult<Json<Asset>> {
+    let _ = asset_id;
+    Ok(Json(Asset::default()))
+}
+"#;
+
 /// The mutation fixture of C1: a handler binding two fallible guards, dropping
 /// one without `?` and consuming the other correctly. Only the first is a
 /// finding — a rule that flagged both would be rejecting the house idiom.
@@ -570,6 +811,20 @@ const ANNOTATIONS_IN_ROUTER: usize = 63;
 /// which the body touches — Rocket runs them and short-circuits on failure.
 const GUARD_INVENTORY: (usize, usize) = (52, 9);
 
+/// The declaration inventory section B was calibrated against: one declared
+/// parameter, all of them the inline `("name" = Type, Location, …)` form, and 24
+/// declared request bodies.
+///
+/// The three numbers do three different jobs. The first is a floor on what B1 and
+/// B2 read, so a walk that stopped finding `params(…)` fails instead of reporting a
+/// clean tree. The second is what keeps the scope limit honest: it is **zero**, and
+/// the first `#[derive(IntoParams)]` struct to reach an annotation makes it
+/// non-zero, which fails this test rather than narrowing B1 and B2 without a
+/// decision. The third is what keeps B3 and B4 honest: a scan that stopped reading
+/// `request_body` would find nothing to compare and report the same emptiness as a
+/// clean tree.
+const DECLARATION_INVENTORY: (usize, usize, usize) = (1, 0, 24);
+
 /// The backend's router tree, resolved from this crate's manifest directory
 /// rather than from the working directory a test happens to run in.
 fn router_tree() -> PathBuf {
@@ -602,6 +857,21 @@ fn the_router_tree_is_clean() {
         .iter()
         .map(|handler| handler.plain_guards)
         .sum();
+    let declared_parameters: usize = report
+        .handlers
+        .iter()
+        .map(|handler| handler.declared_parameters)
+        .sum();
+    let unread_parameters: usize = report
+        .handlers
+        .iter()
+        .map(|handler| handler.unread_parameters)
+        .sum();
+    let request_bodies: usize = report
+        .handlers
+        .iter()
+        .map(|handler| handler.request_bodies)
+        .sum();
 
     assert_eq!(
         report.handlers.len(),
@@ -612,6 +882,14 @@ fn the_router_tree_is_clean() {
         (fallible_guards, plain_guards),
         GUARD_INVENTORY,
         "the tree's guard inventory moved; these rules were calibrated against it"
+    );
+    assert_eq!(
+        (declared_parameters, unread_parameters, request_bodies),
+        DECLARATION_INVENTORY,
+        "the tree's declaration inventory moved. `unread_parameters` must stay 0 while \
+         B1 and B2 read the inline tuple form only: the first `IntoParams` struct in an \
+         annotation needs either a resolver or a renegotiated limit, and a non-zero count \
+         fails here rather than narrowing the rules quietly"
     );
     assert_eq!(
         render(&report.findings),
