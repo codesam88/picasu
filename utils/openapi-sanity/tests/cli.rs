@@ -148,7 +148,7 @@ fn findings_still_report_the_observed_count() {
     );
     assert!(
         reported.contains(
-            "finding(s) across 14 annotated handler(s) under \
+            "finding(s) across 39 annotated handler(s) under \
              utils/openapi-sanity/tests/fixtures/openapi_annotations",
         ),
         "the summary keeps the observed count: {reported}"

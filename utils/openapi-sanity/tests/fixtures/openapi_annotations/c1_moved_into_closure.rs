@@ -5,8 +5,9 @@
 // the binding counts as propagated. `guard_moved_into_a_closure_is_accepted`
 // pins that, with this file as the evidence.
 
+/// Fetch one widget on a blocking task.
 #[utoipa::path(
-    tag = "data",
+    tag = "auth",
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/guarded-in-closure")]

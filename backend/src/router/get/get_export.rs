@@ -15,6 +15,7 @@ pub struct ExportEntry {
     value: AbstractData,
 }
 
+/// Export the whole tree as JSON.
 #[utoipa::path(
         tag = "timeline",
         responses(

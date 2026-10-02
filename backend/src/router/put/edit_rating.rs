@@ -25,6 +25,7 @@ pub struct EditRatingData {
     rating: Option<u8>,
 }
 
+/// Rate assets 0–5, or clear the rating with `null`.
 #[utoipa::path(
         tag = "assets",
         request_body = EditRatingData,

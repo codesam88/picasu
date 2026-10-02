@@ -2,8 +2,9 @@
 // request handling and short-circuits on failure, so the handler body is free
 // to ignore the value entirely — which is what the tree does in five handlers.
 
+/// Fetch one widget, ignoring the guards Rocket has already run.
 #[utoipa::path(
-    tag = "data",
+    tag = "auth",
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/unused-plain-guard")]
@@ -13,8 +14,9 @@ pub async fn unused_plain_guard(auth: GuardAuth, mode: GuardReadOnlyMode) -> App
 
 // The tree's spelling: an unused plain guard binds `_auth`, so rustc does not
 // even warn. It must not produce a finding either.
+/// Fetch one widget, binding the guard as `_auth` as the tree does.
 #[utoipa::path(
-    tag = "data",
+    tag = "auth",
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/underscore-plain-guard")]
@@ -23,8 +25,9 @@ pub async fn underscore_plain_guard(_auth: GuardAuth) -> AppResult<()> {
 }
 
 // Mixed: the one fallible guard propagates, the plain guard is ignored.
+/// Fetch one widget, propagating the fallible guard and ignoring the plain one.
 #[utoipa::path(
-    tag = "data",
+    tag = "auth",
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/mixed-guards")]

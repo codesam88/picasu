@@ -11,6 +11,7 @@ use crate::openapi_components::Unauthorized;
 use crate::router::AppResult;
 use crate::router::auth::GuardAuth;
 
+/// Replace the server configuration with the posted one.
 #[utoipa::path(
         tag = "config",
         request_body = AppConfig,

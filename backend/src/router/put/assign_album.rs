@@ -67,14 +67,14 @@ pub enum AssignOutcome {
     Skipped,
 }
 
-/// Move the asset identified by `asset_id` into the album's directory on disk
-/// (resolved from its physical path), update the stored path and
-/// album membership, and report the conflict outcome. Returns 400 if the file
-/// is missing at the asset's path (stale record — re-index first).
+/// Move the asset identified by `asset_id` into the album's directory on disk.
+///
+/// The directory is resolved from the asset's physical path; the stored path and
+/// the album membership are updated and the conflict outcome is reported. Returns
+/// 400 if the file is missing at the asset's path (stale record — re-index first)
+/// or the destination album is a manual album.
 #[utoipa::path(
         tag = "albums",
-        summary = "Move an asset into an album",
-        description = "Moves the file identified by asset_id into the album directory on disk, updates stored path and album membership, and reports the conflict outcome. Returns 400 when the file is missing at the asset's path (stale record) or the destination is a manual album.",
         request_body = AssignAlbumData,
         responses(
             (status = 200, description = "Item assigned to album", body = AssignResult),

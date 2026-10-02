@@ -30,6 +30,7 @@ pub struct CreateShare {
     pub exp: i64,
 }
 
+/// Create a share link for an album and return it.
 #[utoipa::path(
         tag = "albums",
         request_body = CreateShare,

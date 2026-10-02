@@ -34,6 +34,7 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
     }
 }
 
+/// Serve the compressed thumbnail of a hashed asset.
 #[utoipa::path(
         tag = "serving",
         responses(
@@ -99,9 +100,10 @@ pub async fn compressed_file(
     Ok(result)
 }
 
-/// Serve the original file directly from its current location under
-/// `imagePath` — there is no copy of it under `DATA_HOME`; `IMAGE_HOME` is
-/// the single, authoritative copy. The route's `<file_path..>` segment is
+/// Serve the original file from its current location under `imagePath`.
+///
+/// There is no copy of it under `DATA_HOME`; `IMAGE_HOME` is the single,
+/// authoritative copy. The route's `<file_path..>` segment is
 /// `<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via
 /// `ASSET_BY_ID`.
 #[utoipa::path(

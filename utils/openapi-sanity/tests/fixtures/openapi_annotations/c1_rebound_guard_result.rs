@@ -8,8 +8,9 @@
 // behaviour we want is a review decision, not something to settle by editing the
 // rule; `rebound_guard_result_is_reported` pins what the rule does today.
 
+/// Fetch one widget, rebinding the guard first.
 #[utoipa::path(
-    tag = "data",
+    tag = "auth",
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/rebound-guard-result")]

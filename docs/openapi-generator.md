@@ -160,14 +160,23 @@ The goal is an exact, auditable mapping between:
 ## The contract gate
 
 `just openapi-check` is the single command developers and CI run for the API
-contract. It runs two phases, and a failure stops the recipe with a nonzero
+contract. It runs three phases, and a failure stops the recipe with a nonzero
 exit, so the failing phase's own diagnostics are what the run shows:
 
-1. **`openapi-json-match`** — the generated-artifact phase. Regenerates the spec
+1. **`openapi-sanity`** — the source phase. Runs
+   [`utils/openapi-sanity`](../../utils/openapi-sanity/README.md) over
+   `backend/src/router` and reports one `file:line: message` per problem in an
+   annotation or in the handler it sits on. It comes first because the other two
+   phases compare a document that has to be regenerated before either of them can
+   say anything: a defect found after the diff is a confusing way to be told about
+   it. The rules are [annotation shape](#annotation-shape-what-the-source-gate-checks)
+   and the guard-propagation rule; they read source only, so the phase needs no
+   build and no frontend bundle.
+2. **`openapi-json-match`** — the generated-artifact phase. Regenerates the spec
    with `cargo run --package picasu -- --dump-openapi` into a temporary file and
    fails when it differs from the committed `backend/openapi.json`, printing the
    diff and the fix.
-2. **`openapi-routes-match`** — the route-set phase, `picasu --check-openapi` run
+3. **`openapi-routes-match`** — the route-set phase, `picasu --check-openapi` run
    against a build configured like the shipped one. This is the only check that
    can prove the route-set half of the invariant, and it is pinned to the release
    feature set (`--features "embed-frontend auto-open-browser"`, the set
@@ -180,6 +189,53 @@ exit, so the failing phase's own diagnostics are what the run shows:
 The same flag runs on the binary the release job ships
 (`.github/workflows/release.yml`), so the shipped build is the one that was
 checked.
+
+The source phase runs with `--expect-at-least 60`, a floor on the annotated
+handlers the scan must see. A file walk that stopped descending produces exactly
+the report a clean tree produces, so a scan below the floor fails instead of
+reporting clean. 60 is headroom below the tree's 63 annotations: a new handler
+must not break the gate, a lost one should be noticed.
+
+### Annotation shape (what the source gate checks)
+
+Two of the three phases compare the document. The source phase checks the
+annotations themselves, because a handful of things about an annotation are wrong
+in a way the document cannot show:
+
+| Rule | Assertion                                                                                                               | Why the document cannot show it                                                                                        |
+| ---- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| A1   | no `path = "…"` and no bare verb token in the annotation                                                                | `rocket_extras` derives both from the route attribute, so a restatement is a second copy of a fact nothing compares    |
+| A2   | `responses(…)` is present and has at least one entry                                                                    | utoipa invents no response, so an operation with none documents nothing it can answer                                  |
+| A3   | exactly one `tag = "…"`, from the table in [Tag conventions](#tag-conventions), on a route the published document keeps | a missing or unknown tag files the operation outside every section of the reference                                    |
+| A4   | the handler carries a doc comment                                                                                       | `summary` and `description` are derived from it, so a handler without one is a complete-looking operation with no text |
+| A5   | the doc comment's first paragraph is one line                                                                           | it is the `summary`, and the reference renders the `summary` as a heading — a newline inside a heading splits it       |
+| A6   | no `operation_id = "…"`                                                                                                 | utoipa derives it from the function name; a hand-set one is the only name nothing compares                             |
+| A7   | no `summary = "…"` and no `description = "…"`                                                                           | utoipa derives both from the doc comment; a hand-set one is the same prose written twice, with nothing comparing them  |
+| C1   | a `GuardResult<…>` argument has its rejection propagated by the handler body                                            | the route hands the handler a value that may be a rejection, and only the body can turn it into a response             |
+
+`docs/openapi-generator.md` is where the tag vocabulary is written down, and
+`utils/openapi-sanity/src/lib.rs` holds the tool's copy of it (`TAGS`); the two
+are changed together. Everything else in the table is a rule with no
+document-side equivalent, which is why they live in the tool and not in a linter
+for the document — the document is generated _from_ these annotations, so a
+linter would be checking the output against its own input.
+
+**A3 does not apply to a route the published document drops.** The test-only
+probes under `/get/test/` and the `/assets` static mount are stripped from
+`backend/openapi.json`, so a tag on such an operation would name a section of the
+reference that does not exist — vocabulary nobody sees. The tool skips A3 for
+those prefixes: `EXCLUDED_ROUTE_PREFIXES`, a copy of the backend's
+[`CONTRACT_EXCLUSION_PREFIXES`](../../backend/src/openapi_public.rs), the one
+definition every route-set consumer derives from. **Adding a route outside the
+published contract means adding its prefix to both sides in the same change.**
+Every other rule still applies to that surface, because the contract tests read
+the _full_ spec rather than the public one: its responses (A2) and its doc comment
+(A4) are still read.
+
+Three spellings utoipa also accepts are still review-time, and the boundary is
+deliberate: `method(GET)` is the parenthesised verb form of A1, `tags([…])` is a
+list form of A3, and `context_path` is a base-path form of A1. No annotation uses
+any of them.
 
 ## Route-set parity (`--check-openapi`)
 
@@ -240,8 +296,6 @@ under a feature carries that feature as a vendor extension, set with utoipa's
 
 ```rust
 #[utoipa::path(
-    get,
-    path = "/get/index/experimental",
     extensions(("x-picasu-feature" = json!("embed-frontend"))),
     ...
 )]
@@ -293,11 +347,22 @@ operations by, so the vocabulary stays small and subject-oriented.
 API lives under `/delete/`, `/get/`, `/object/`, `/post/`, `/put/` and `/upload`
 and takes a subject from the table.
 
-This table is a convention, not a checked rule: nothing in the repository holds
-the document to the vocabulary, so a new subject or a misplaced `pages` is caught
-in review rather than by a gate. The path-shape reasoning that used to drive that
-check (`is_data_api_path`) is a property of the document only, and the gate that
-could read it is gone.
+This table **is** a checked rule: A3 of the source gate holds every annotation to
+exactly one tag from it, and the gate fails the build on a tag that is not in the
+list. The list the tool checks is `TAGS` in `utils/openapi-sanity/src/lib.rs` —
+a copy of this table, not a parse of it, because the document is generated from
+these annotations and reading the vocabulary back out of it would check the
+output against its own input. **Adding a subject means changing this table and
+that constant in the same change.**
+
+The test-only probes under `/get/test/` are the one part of the tree the
+vocabulary does not cover, and that is a decision rather than an omission: their
+operations are dropped from the published document by
+[`CONTRACT_EXCLUSION_PREFIXES`](../../backend/src/openapi_public.rs), so a tag on
+them would file a route no reader of the reference can reach. A3 does not ask for
+one — see [the A3 exemption](#annotation-shape-what-the-source-gate-checks). The
+vocabulary stays nine subjects, none of them "routes that are not in the
+document".
 
 ## Workflow
 
@@ -313,17 +378,30 @@ could read it is gone.
    description or a schema the handler signature cannot carry. Leave the HTTP
    method and the path out: with `rocket_extras` enabled, utoipa reads both from
    the route attribute itself, so the document cannot name a path the route does
-   not serve. If the route is feature-gated, add
+   not serve — and A1 fails the build if the annotation restates either, because
+   a second copy of a route fact is a copy that can rot. Do not set
+   `operation_id` (A6), and do not set `summary` or `description` (A7): utoipa
+   derives all three, and a hand-set one is the same text written twice beside
+   itself, with nothing comparing the copies. Declare at least one
+   `responses(…)` entry (A2) — utoipa invents none. If the route is
+   feature-gated, add
    `extensions(("x-picasu-feature" = json!("<feature>")))` so `--check-openapi`
    knows a spec operation may legitimately be absent from a build without it.
-3. Run `just openapi-gen` and `just docs-openapi` to regenerate the spec
+3. Write a doc comment on the handler (A4), and make its **first paragraph a
+   single line** (A5). utoipa derives `summary` from that paragraph and
+   `description` from the rest, and the generated reference renders the `summary`
+   as a heading — a paragraph wrapped over two lines puts a newline inside a
+   markdown heading and splits it. Everything the operation needs to say belongs
+   in the doc comment, which is the only place the gate reads it from.
+4. Run `just openapi-gen` and `just docs-openapi` to regenerate the spec
    artifact and the reference.
-4. Run `just openapi-check`. Commit the handler, its annotation, and the
+5. Run `just openapi-check`. Commit the handler, its annotation, and the
    regenerated spec together.
 
-CI enforces steps 3 and 4: `just check` diffs the spec artifact against a fresh
-generation and fails on a route the document does not carry, a documented
-operation no build mounts, or a duplicate `operationId`.
+CI enforces steps 4 and 5: `just check` runs the source phase over the
+annotations, diffs the spec artifact against a fresh generation, and fails on a
+route the document does not carry, a documented operation no build mounts, or a
+duplicate `operationId`.
 
 ### Removing a route
 
@@ -416,6 +494,11 @@ that empties a check fails a named test instead of quietly passing:
   over both the real document and deliberately mutated copies of it.
 - `backend/tests/probe_registration.rs` observes the `cfg(test)`-gated probe
   registration from outside `cfg(test)`.
+- [`utils/openapi-sanity`](../../utils/openapi-sanity/README.md) drives every
+  source rule over a fixture that must produce its finding, a conforming
+  counterpart that must produce none, and the real router tree, which has to stay
+  silent. Each fixture is pulled in with `include_str!`, so a deleted fixture
+  breaks the build instead of skipping its test.
 
 The markdown reference is generated but not drift-checked: `widdershins` is
 fetched with `npx --yes` at generation time, which needs network access that CI
@@ -439,16 +522,17 @@ uncaught. Both were diagnostics, never failures.
 
 ## Files
 
-| File                                                                   | Generator           | Role                                                                    |
-| ---------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------- |
-| [`backend/src/openapi.rs`](../backend/src/openapi.rs)                  | `#[utoipauto]`      | The `#[utoipauto(paths = ...)]` configuration and the `ApiDoc` struct   |
-| `backend/openapi.json`                                                 | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                      |
-| `docs/openapi-reference.md`                                            | widdershins         | Human-readable API reference                                            |
-| [`backend/src/openapi_public.rs`](../../backend/src/openapi_public.rs) | —                   | Public-spec filter and the backend-owned exclusion policy               |
-| [`backend/src/openapi_parity.rs`](../../backend/src/openapi_parity.rs) | —                   | The `--check-openapi` route-set gate and its asymmetric rule            |
-| [`backend/src/spec_path.rs`](../../backend/src/spec_path.rs)           | —                   | The Rocket-to-`OpenAPI` path translation, in one place                  |
-| [`backend/src/main.rs`](../../backend/src/main.rs)                     | —                   | `--dump-openapi` and `--check-openapi`                                  |
-| `backend/src/tests/openapi_contract.rs`                                | —                   | Mounted-route / spec parity self-checks                                 |
-| `backend/src/tests/openapi_parity.rs`                                  | —                   | The asymmetric rule over fixtures, and the feature-marker pins          |
-| `backend/tests/probe_registration.rs`                                  | —                   | The `/get/test/` probe registration gate, seen from outside `cfg(test)` |
-| `backend/build.rs`                                                     | —                   | Writes the YAML scenario tests into `OUT_DIR`                           |
+| File                                                                   | Generator           | Role                                                                     |
+| ---------------------------------------------------------------------- | ------------------- | ------------------------------------------------------------------------ |
+| [`backend/src/openapi.rs`](../backend/src/openapi.rs)                  | `#[utoipauto]`      | The `#[utoipauto(paths = ...)]` configuration and the `ApiDoc` struct    |
+| `backend/openapi.json`                                                 | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                       |
+| `docs/openapi-reference.md`                                            | widdershins         | Human-readable API reference                                             |
+| [`backend/src/openapi_public.rs`](../../backend/src/openapi_public.rs) | —                   | Public-spec filter and the backend-owned exclusion policy                |
+| [`backend/src/openapi_parity.rs`](../../backend/src/openapi_parity.rs) | —                   | The `--check-openapi` route-set gate and its asymmetric rule             |
+| [`backend/src/spec_path.rs`](../../backend/src/spec_path.rs)           | —                   | The Rocket-to-`OpenAPI` path translation, in one place                   |
+| [`backend/src/main.rs`](../../backend/src/main.rs)                     | —                   | `--dump-openapi` and `--check-openapi`                                   |
+| `backend/src/tests/openapi_contract.rs`                                | —                   | Mounted-route / spec parity self-checks                                  |
+| `backend/src/tests/openapi_parity.rs`                                  | —                   | The asymmetric rule over fixtures, and the feature-marker pins           |
+| `backend/tests/probe_registration.rs`                                  | —                   | The `/get/test/` probe registration gate, seen from outside `cfg(test)`  |
+| `backend/build.rs`                                                     | —                   | Writes the YAML scenario tests into `OUT_DIR`                            |
+| [`utils/openapi-sanity`](../../utils/openapi-sanity/README.md)         | —                   | The `openapi-sanity` source gate: annotation shape and guard propagation |

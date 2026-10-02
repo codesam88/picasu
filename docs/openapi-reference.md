@@ -26,7 +26,7 @@ License: MIT
 
 <h1 id="picasu-pages">pages</h1>
 
-## redirect_to_photo
+## Serve the SPA entry point.
 
 <a id="opIdredirect_to_photo"></a>
 
@@ -143,7 +143,7 @@ func main() {
 
 `GET /`
 
-<h3 id="redirect_to_photo-responses">Responses</h3>
+<h3 id="serve-the-spa-entry-point.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -153,7 +153,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## albums
+## Serve the SPA albums page.
 
 <a id="opIdalbums"></a>
 
@@ -270,7 +270,7 @@ func main() {
 
 `GET /albums`
 
-<h3 id="albums-responses">Responses</h3>
+<h3 id="serve-the-spa-albums-page.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -280,7 +280,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## albums_view
+## Serve the SPA at an albums view path; the SPA resolves the view.
 
 <a id="opIdalbums_view"></a>
 
@@ -397,13 +397,13 @@ func main() {
 
 `GET /albums/view/{path}`
 
-<h3 id="albums_view-parameters">Parameters</h3>
+<h3 id="serve-the-spa-at-an-albums-view-path;-the-spa-resolves-the-view.-parameters">Parameters</h3>
 
-| Name  | In   | Type   | Required | Description |
-| ----- | ---- | ------ | -------- | ----------- |
-| _path | path | string | true     | none        |
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| path | path | string | true     | none        |
 
-<h3 id="albums_view-responses">Responses</h3>
+<h3 id="serve-the-spa-at-an-albums-view-path;-the-spa-resolves-the-view.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -413,7 +413,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## config
+## Serve the SPA config page.
 
 <a id="opIdconfig"></a>
 
@@ -530,7 +530,7 @@ func main() {
 
 `GET /config`
 
-<h3 id="config-responses">Responses</h3>
+<h3 id="serve-the-spa-config-page.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -540,7 +540,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## favicon
+## Serve the favicon.
 
 <a id="opIdfavicon"></a>
 
@@ -657,7 +657,7 @@ func main() {
 
 `GET /favicon.ico`
 
-<h3 id="favicon-responses">Responses</h3>
+<h3 id="serve-the-favicon.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description  | Schema |
 | ------ | ------------------------------------------------------- | ------------ | ------ |
@@ -667,7 +667,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## links
+## Serve the SPA links page.
 
 <a id="opIdlinks"></a>
 
@@ -784,7 +784,7 @@ func main() {
 
 `GET /links`
 
-<h3 id="links-responses">Responses</h3>
+<h3 id="serve-the-spa-links-page.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -794,7 +794,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## login
+## Serve the SPA at `/login`; the SPA itself asks for a password.
 
 <a id="opIdlogin"></a>
 
@@ -911,7 +911,7 @@ func main() {
 
 `GET /login`
 
-<h3 id="login-responses">Responses</h3>
+<h3 id="serve-the-spa-at-`/login`;-the-spa-itself-asks-for-a-password.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -921,7 +921,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## redirect_to_login
+## Redirect to `/login`.
 
 <a id="opIdredirect_to_login"></a>
 
@@ -1038,7 +1038,7 @@ func main() {
 
 `GET /redirect-to-login`
 
-<h3 id="redirect_to_login-responses">Responses</h3>
+<h3 id="redirect-to-`/login`.-responses">Responses</h3>
 
 | Status | Meaning                                                    | Description        | Schema |
 | ------ | ---------------------------------------------------------- | ------------------ | ------ |
@@ -1048,7 +1048,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## sregister_sw
+## Serve the service worker registration script.
 
 <a id="opIdsregister_sw"></a>
 
@@ -1165,7 +1165,7 @@ func main() {
 
 `GET /registerSW.js`
 
-<h3 id="sregister_sw-responses">Responses</h3>
+<h3 id="serve-the-service-worker-registration-script.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description                        | Schema |
 | ------ | ------------------------------------------------------- | ---------------------------------- | ------ |
@@ -1175,7 +1175,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## service_worker
+## Serve the service worker script.
 
 <a id="opIdservice_worker"></a>
 
@@ -1292,7 +1292,7 @@ func main() {
 
 `GET /serviceWorker.js`
 
-<h3 id="service_worker-responses">Responses</h3>
+<h3 id="serve-the-service-worker-script.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description           | Schema |
 | ------ | ------------------------------------------------------- | --------------------- | ------ |
@@ -1302,7 +1302,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## setting
+## Serve the SPA settings page.
 
 <a id="opIdsetting"></a>
 
@@ -1419,7 +1419,7 @@ func main() {
 
 `GET /setting`
 
-<h3 id="setting-responses">Responses</h3>
+<h3 id="serve-the-spa-settings-page.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -1429,7 +1429,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## share
+## Serve the SPA at a share path, which the share token in the URL opens.
 
 <a id="opIdshare"></a>
 
@@ -1546,13 +1546,13 @@ func main() {
 
 `GET /share/{path}`
 
-<h3 id="share-parameters">Parameters</h3>
+<h3 id="serve-the-spa-at-a-share-path,-which-the-share-token-in-the-url-opens.-parameters">Parameters</h3>
 
-| Name  | In   | Type   | Required | Description |
-| ----- | ---- | ------ | -------- | ----------- |
-| _path | path | string | true     | none        |
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| path | path | string | true     | none        |
 
-<h3 id="share-responses">Responses</h3>
+<h3 id="serve-the-spa-at-a-share-path,-which-the-share-token-in-the-url-opens.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -1562,7 +1562,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## tags
+## Serve the SPA tags page.
 
 <a id="opIdtags"></a>
 
@@ -1679,7 +1679,7 @@ func main() {
 
 `GET /tags`
 
-<h3 id="tags-responses">Responses</h3>
+<h3 id="serve-the-spa-tags-page.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -1689,7 +1689,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## timeline
+## Serve the SPA timeline page.
 
 <a id="opIdtimeline"></a>
 
@@ -1806,7 +1806,7 @@ func main() {
 
 `GET /timeline`
 
-<h3 id="timeline-responses">Responses</h3>
+<h3 id="serve-the-spa-timeline-page.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -1816,7 +1816,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## timeline_view
+## Serve the SPA at a timeline view path; the SPA resolves the view.
 
 <a id="opIdtimeline_view"></a>
 
@@ -1933,13 +1933,13 @@ func main() {
 
 `GET /timeline/view/{path}`
 
-<h3 id="timeline_view-parameters">Parameters</h3>
+<h3 id="serve-the-spa-at-a-timeline-view-path;-the-spa-resolves-the-view.-parameters">Parameters</h3>
 
-| Name  | In   | Type   | Required | Description |
-| ----- | ---- | ------ | -------- | ----------- |
-| _path | path | string | true     | none        |
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| path | path | string | true     | none        |
 
-<h3 id="timeline_view-responses">Responses</h3>
+<h3 id="serve-the-spa-at-a-timeline-view-path;-the-spa-resolves-the-view.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -1949,7 +1949,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## trashed
+## Serve the SPA trash page.
 
 <a id="opIdtrashed"></a>
 
@@ -2066,7 +2066,7 @@ func main() {
 
 `GET /trashed`
 
-<h3 id="trashed-responses">Responses</h3>
+<h3 id="serve-the-spa-trash-page.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -2076,7 +2076,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## trashed_view
+## Serve the SPA at a trash view path; the SPA resolves the view.
 
 <a id="opIdtrashed_view"></a>
 
@@ -2193,13 +2193,13 @@ func main() {
 
 `GET /trashed/view/{path}`
 
-<h3 id="trashed_view-parameters">Parameters</h3>
+<h3 id="serve-the-spa-at-a-trash-view-path;-the-spa-resolves-the-view.-parameters">Parameters</h3>
 
-| Name  | In   | Type   | Required | Description |
-| ----- | ---- | ------ | -------- | ----------- |
-| _path | path | string | true     | none        |
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| path | path | string | true     | none        |
 
-<h3 id="trashed_view-responses">Responses</h3>
+<h3 id="serve-the-spa-at-a-trash-view-path;-the-spa-resolves-the-view.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -2209,7 +2209,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## unauthorized
+## Answer `401` for the SPA path a rejected token ends on.
 
 <a id="opIdunauthorized"></a>
 
@@ -2326,7 +2326,7 @@ func main() {
 
 `GET /unauthorized`
 
-<h3 id="unauthorized-responses">Responses</h3>
+<h3 id="answer-`401`-for-the-spa-path-a-rejected-token-ends-on.-responses">Responses</h3>
 
 | Status | Meaning                                                         | Description         | Schema |
 | ------ | --------------------------------------------------------------- | ------------------- | ------ |
@@ -2336,7 +2336,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## videos
+## Serve the SPA videos page.
 
 <a id="opIdvideos"></a>
 
@@ -2453,7 +2453,7 @@ func main() {
 
 `GET /videos`
 
-<h3 id="videos-responses">Responses</h3>
+<h3 id="serve-the-spa-videos-page.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -2463,7 +2463,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## videos_view
+## Serve the SPA at a videos view path; the SPA resolves the view.
 
 <a id="opIdvideos_view"></a>
 
@@ -2580,13 +2580,13 @@ func main() {
 
 `GET /videos/view/{path}`
 
-<h3 id="videos_view-parameters">Parameters</h3>
+<h3 id="serve-the-spa-at-a-videos-view-path;-the-spa-resolves-the-view.-parameters">Parameters</h3>
 
-| Name  | In   | Type   | Required | Description |
-| ----- | ---- | ------ | -------- | ----------- |
-| _path | path | string | true     | none        |
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| path | path | string | true     | none        |
 
-<h3 id="videos_view-responses">Responses</h3>
+<h3 id="serve-the-spa-at-a-videos-view-path;-the-spa-resolves-the-view.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description     | Schema |
 | ------ | ------------------------------------------------------- | --------------- | ------ |
@@ -2596,7 +2596,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## album_page
+## Serve the SPA for a dynamic album id, and `404` for anything else.
 
 <a id="opIdalbum_page"></a>
 
@@ -2713,13 +2713,13 @@ func main() {
 
 `GET /{dynamic_album_id}`
 
-<h3 id="album_page-parameters">Parameters</h3>
+<h3 id="serve-the-spa-for-a-dynamic-album-id,-and-`404`-for-anything-else.-parameters">Parameters</h3>
 
 | Name             | In   | Type   | Required | Description |
 | ---------------- | ---- | ------ | -------- | ----------- |
 | dynamic_album_id | path | string | true     | none        |
 
-<h3 id="album_page-responses">Responses</h3>
+<h3 id="serve-the-spa-for-a-dynamic-album-id,-and-`404`-for-anything-else.-responses">Responses</h3>
 
 | Status | Meaning                                                        | Description     | Schema |
 | ------ | -------------------------------------------------------------- | --------------- | ------ |
@@ -2731,10 +2731,6 @@ This operation does not require authentication
 </aside>
 
 ## Catch-all SPA fallback — serves index.html for valid Vue Router routes.
-
-Paths matching `/album/<asset-id>` validate the album exists before serving
-the SPA; invalid album IDs return 404. Rank 11 ensures specific
-routes (assets at rank 10, API, pages) take priority.
 
 <a id="opIdspa_fallback"></a>
 
@@ -2851,19 +2847,17 @@ func main() {
 
 `GET /{path}`
 
-<h3 id="catch-all-spa-fallback-—-serves-index.html-for-valid-vue-router-routes.
-paths-matching-`/album/<asset-id>`-validate-the-album-exists-before-serving
-the-spa;-invalid-album-ids-return-404.-rank-11-ensures-specific
-routes-(assets-at-rank-10,-api,-pages)-take-priority.-parameters">Parameters</h3>
+Paths matching `/album/<asset-id>` validate the album exists before serving
+the SPA; invalid album IDs return 404. Rank 11 ensures specific
+routes (assets at rank 10, API, pages) take priority.
+
+<h3 id="catch-all-spa-fallback-—-serves-index.html-for-valid-vue-router-routes.-parameters">Parameters</h3>
 
 | Name | In   | Type   | Required | Description |
 | ---- | ---- | ------ | -------- | ----------- |
 | path | path | string | true     | none        |
 
-<h3 id="catch-all-spa-fallback-—-serves-index.html-for-valid-vue-router-routes.
-paths-matching-`/album/<asset-id>`-validate-the-album-exists-before-serving
-the-spa;-invalid-album-ids-return-404.-rank-11-ensures-specific
-routes-(assets-at-rank-10,-api,-pages)-take-priority.-responses">Responses</h3>
+<h3 id="catch-all-spa-fallback-—-serves-index.html-for-valid-vue-router-routes.-responses">Responses</h3>
 
 | Status | Meaning                                                 | Description                                            | Schema |
 | ------ | ------------------------------------------------------- | ------------------------------------------------------ | ------ |
@@ -2875,7 +2869,7 @@ This operation does not require authentication
 
 <h1 id="picasu-assets">assets</h1>
 
-## delete_data
+## Delete the listed assets: each file and its sidecar are removed from disk.
 
 <a id="opIddelete_data"></a>
 
@@ -3032,13 +3026,13 @@ func main() {
 }
 ```
 
-<h3 id="delete_data-parameters">Parameters</h3>
+<h3 id="delete-the-listed-assets:-each-file-and-its-sidecar-are-removed-from-disk.-parameters">Parameters</h3>
 
 | Name | In   | Type                            | Required | Description |
 | ---- | ---- | ------------------------------- | -------- | ----------- |
 | body | body | [DeleteList](#schemadeletelist) | true     | none        |
 
-<h3 id="delete_data-responses">Responses</h3>
+<h3 id="delete-the-listed-assets:-each-file-and-its-sidecar-are-removed-from-disk.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -3050,9 +3044,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## Full metadata detail for a single asset, composed at the edge from the
-
-asset's identity `AssetRecord` and its stored `METADATA_TABLE` payload.
+## Full metadata detail for a single asset, composed from its identity and its stored metadata payload.
 
 <a id="opIdget_metadata"></a>
 
@@ -3183,16 +3175,14 @@ Auth and share parity follow `get-data`: a `GuardTimestamp` bearer token
 `show_metadata: false` the metadata fields are cleared before responding so
 a share that hides metadata cannot leak it through this route.
 
-<h3 id="full-metadata-detail-for-a-single-asset,-composed-at-the-edge-from-the
-asset's-identity-`assetrecord`-and-its-stored-`metadata_table`-payload.-parameters">Parameters</h3>
+<h3 id="full-metadata-detail-for-a-single-asset,-composed-from-its-identity-and-its-stored-metadata-payload.-parameters">Parameters</h3>
 
 | Name      | In    | Type           | Required | Description |
 | --------- | ----- | -------------- | -------- | ----------- |
 | asset_id  | path  | string         | true     | none        |
 | timestamp | query | integer(int64) | true     | none        |
 
-<h3 id="full-metadata-detail-for-a-single-asset,-composed-at-the-edge-from-the
-asset's-identity-`assetrecord`-and-its-stored-`metadata_table`-payload.-responses">Responses</h3>
+<h3 id="full-metadata-detail-for-a-single-asset,-composed-from-its-identity-and-its-stored-metadata-payload.-responses">Responses</h3>
 
 | Status | Meaning                                                         | Description                                                                                | Schema |
 | ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -3204,7 +3194,7 @@ asset's-identity-`assetrecord`-and-its-stored-`metadata_table`-payload.-response
 This operation does not require authentication
 </aside>
 
-## edit_flags
+## Move assets to the trash, or restore them.
 
 <a id="opIdedit_flags"></a>
 
@@ -3363,13 +3353,13 @@ func main() {
 }
 ```
 
-<h3 id="edit_flags-parameters">Parameters</h3>
+<h3 id="move-assets-to-the-trash,-or-restore-them.-parameters">Parameters</h3>
 
 | Name | In   | Type                                  | Required | Description |
 | ---- | ---- | ------------------------------------- | -------- | ----------- |
 | body | body | [EditFlagsData](#schemaeditflagsdata) | true     | none        |
 
-<h3 id="edit_flags-responses">Responses</h3>
+<h3 id="move-assets-to-the-trash,-or-restore-them.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -3381,7 +3371,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## edit_rating
+## Rate assets 0–5, or clear the rating with `null`.
 
 <a id="opIdedit_rating"></a>
 
@@ -3540,13 +3530,13 @@ func main() {
 }
 ```
 
-<h3 id="edit_rating-parameters">Parameters</h3>
+<h3 id="rate-assets-0–5,-or-clear-the-rating-with-`null`.-parameters">Parameters</h3>
 
 | Name | In   | Type                                    | Required | Description |
 | ---- | ---- | --------------------------------------- | -------- | ----------- |
 | body | body | [EditRatingData](#schemaeditratingdata) | true     | none        |
 
-<h3 id="edit_rating-responses">Responses</h3>
+<h3 id="rate-assets-0–5,-or-clear-the-rating-with-`null`.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -3558,7 +3548,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## edit_tag
+## Add and remove tags on the listed assets, and return the resulting tag list.
 
 <a id="opIdedit_tag"></a>
 
@@ -3730,7 +3720,7 @@ func main() {
 }
 ```
 
-<h3 id="edit_tag-parameters">Parameters</h3>
+<h3 id="add-and-remove-tags-on-the-listed-assets,-and-return-the-resulting-tag-list.-parameters">Parameters</h3>
 
 | Name | In   | Type                                | Required | Description |
 | ---- | ---- | ----------------------------------- | -------- | ----------- |
@@ -3749,7 +3739,7 @@ func main() {
 ]
 ```
 
-<h3 id="edit_tag-responses">Responses</h3>
+<h3 id="add-and-remove-tags-on-the-listed-assets,-and-return-the-resulting-tag-list.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -3757,7 +3747,7 @@ func main() {
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
 
-<h3 id="edit_tag-responseschema">Response Schema</h3>
+<h3 id="add-and-remove-tags-on-the-listed-assets,-and-return-the-resulting-tag-list.-responseschema">Response Schema</h3>
 
 Status Code **200**
 
@@ -3771,7 +3761,7 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
-## regenerate_thumbnail_with_frame
+## Regenerate the thumbnail of an image within an uploaded frame.
 
 <a id="opIdregenerate_thumbnail_with_frame"></a>
 
@@ -3919,13 +3909,13 @@ func main() {
 null
 ```
 
-<h3 id="regenerate_thumbnail_with_frame-parameters">Parameters</h3>
+<h3 id="regenerate-the-thumbnail-of-an-image-within-an-uploaded-frame.-parameters">Parameters</h3>
 
 | Name | In   | Type | Required | Description |
 | ---- | ---- | ---- | -------- | ----------- |
 | body | body | any  | true     | none        |
 
-<h3 id="regenerate_thumbnail_with_frame-responses">Responses</h3>
+<h3 id="regenerate-the-thumbnail-of-an-image-within-an-uploaded-frame.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -3937,7 +3927,7 @@ null
 This operation does not require authentication
 </aside>
 
-## rotate_image
+## Rotate an image and regenerate what depends on its orientation.
 
 <a id="opIdrotate_image"></a>
 
@@ -4090,13 +4080,13 @@ func main() {
 }
 ```
 
-<h3 id="rotate_image-parameters">Parameters</h3>
+<h3 id="rotate-an-image-and-regenerate-what-depends-on-its-orientation.-parameters">Parameters</h3>
 
 | Name | In   | Type                                            | Required | Description |
 | ---- | ---- | ----------------------------------------------- | -------- | ----------- |
 | body | body | [RotateImageRequest](#schemarotateimagerequest) | true     | none        |
 
-<h3 id="rotate_image-responses">Responses</h3>
+<h3 id="rotate-an-image-and-regenerate-what-depends-on-its-orientation.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -4110,7 +4100,7 @@ This operation does not require authentication
 
 <h1 id="picasu-config">config</h1>
 
-## get_config_handler
+## Serve the configuration a client needs; a share token is enough.
 
 <a id="opIdget_config_handler"></a>
 
@@ -4273,7 +4263,7 @@ func main() {
 }
 ```
 
-<h3 id="get_config_handler-responses">Responses</h3>
+<h3 id="serve-the-configuration-a-client-needs;-a-share-token-is-enough.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema                                  |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------- |
@@ -4285,7 +4275,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## export_config_handler
+## Export the whole server configuration as JSON.
 
 <a id="opIdexport_config_handler"></a>
 
@@ -4434,7 +4424,7 @@ func main() {
 "string"
 ```
 
-<h3 id="export_config_handler-responses">Responses</h3>
+<h3 id="export-the-whole-server-configuration-as-json.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -4446,7 +4436,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## get_fs_completion
+## Complete a filesystem path for the path-completion field.
 
 <a id="opIdget_fs_completion"></a>
 
@@ -4587,7 +4577,7 @@ func main() {
 
 `GET /get/path-completion`
 
-<h3 id="get_fs_completion-parameters">Parameters</h3>
+<h3 id="complete-a-filesystem-path-for-the-path-completion-field.-parameters">Parameters</h3>
 
 | Name | In    | Type   | Required | Description |
 | ---- | ----- | ------ | -------- | ----------- |
@@ -4605,7 +4595,7 @@ func main() {
 }
 ```
 
-<h3 id="get_fs_completion-responses">Responses</h3>
+<h3 id="complete-a-filesystem-path-for-the-path-completion-field.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema                              |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
@@ -4617,7 +4607,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## import_config_handler
+## Replace the server configuration with the posted one.
 
 <a id="opIdimport_config_handler"></a>
 
@@ -4796,13 +4786,13 @@ func main() {
 }
 ```
 
-<h3 id="import_config_handler-parameters">Parameters</h3>
+<h3 id="replace-the-server-configuration-with-the-posted-one.-parameters">Parameters</h3>
 
 | Name | In   | Type                          | Required | Description |
 | ---- | ---- | ----------------------------- | -------- | ----------- |
 | body | body | [AppConfig](#schemaappconfig) | true     | none        |
 
-<h3 id="import_config_handler-responses">Responses</h3>
+<h3 id="replace-the-server-configuration-with-the-posted-one.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -4814,7 +4804,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## update_config_handler
+## Update the server configuration with the posted fields.
 
 <a id="opIdupdate_config_handler"></a>
 
@@ -4987,13 +4977,13 @@ func main() {
 }
 ```
 
-<h3 id="update_config_handler-parameters">Parameters</h3>
+<h3 id="update-the-server-configuration-with-the-posted-fields.-parameters">Parameters</h3>
 
 | Name | In   | Type                                                            | Required | Description |
 | ---- | ---- | --------------------------------------------------------------- | -------- | ----------- |
 | body | body | [PartialUpdateConfigRequest](#schemapartialupdateconfigrequest) | true     | none        |
 
-<h3 id="update_config_handler-responses">Responses</h3>
+<h3 id="update-the-server-configuration-with-the-posted-fields.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -5005,7 +4995,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## update_password_handler
+## Change the account password.
 
 <a id="opIdupdate_password_handler"></a>
 
@@ -5160,13 +5150,13 @@ func main() {
 }
 ```
 
-<h3 id="update_password_handler-parameters">Parameters</h3>
+<h3 id="change-the-account-password.-parameters">Parameters</h3>
 
 | Name | In   | Type                                                  | Required | Description |
 | ---- | ---- | ----------------------------------------------------- | -------- | ----------- |
 | body | body | [UpdatePasswordRequest](#schemaupdatepasswordrequest) | true     | none        |
 
-<h3 id="update_password_handler-responses">Responses</h3>
+<h3 id="change-the-account-password.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -5180,7 +5170,7 @@ This operation does not require authentication
 
 <h1 id="picasu-albums">albums</h1>
 
-## get_albums
+## List the albums the tree knows.
 
 <a id="opIdget_albums"></a>
 
@@ -5356,14 +5346,14 @@ func main() {
 ]
 ```
 
-<h3 id="get_albums-responses">Responses</h3>
+<h3 id="list-the-albums-the-tree-knows.-responses">Responses</h3>
 
 | Status | Meaning                                                         | Description                                                                                | Schema |
 | ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | List of albums                                                                             | Inline |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
 
-<h3 id="get_albums-responseschema">Response Schema</h3>
+<h3 id="list-the-albums-the-tree-knows.-responseschema">Response Schema</h3>
 
 Status Code **200**
 
@@ -5388,9 +5378,7 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
-## Create a new subdirectory under an existing dir-album's directory and
-
-register it as a new album. Returns the new album's ID.
+## Create a new subdirectory under an existing dir-album's directory and register it as a new album.
 
 <a id="opIdcreate_dir_album"></a>
 
@@ -5543,6 +5531,8 @@ func main() {
 
 `POST /post/create_dir_album`
 
+Returns the new album's ID.
+
 > Body parameter
 
 ```json
@@ -5552,8 +5542,7 @@ func main() {
 }
 ```
 
-<h3 id="create-a-new-subdirectory-under-an-existing-dir-album's-directory-and
-register-it-as-a-new-album.-returns-the-new-album's-id.-parameters">Parameters</h3>
+<h3 id="create-a-new-subdirectory-under-an-existing-dir-album's-directory-and-register-it-as-a-new-album.-parameters">Parameters</h3>
 
 | Name | In   | Type                                            | Required | Description |
 | ---- | ---- | ----------------------------------------------- | -------- | ----------- |
@@ -5567,8 +5556,7 @@ register-it-as-a-new-album.-returns-the-new-album's-id.-parameters">Parameters</
 "string"
 ```
 
-<h3 id="create-a-new-subdirectory-under-an-existing-dir-album's-directory-and
-register-it-as-a-new-album.-returns-the-new-album's-id.-responses">Responses</h3>
+<h3 id="create-a-new-subdirectory-under-an-existing-dir-album's-directory-and-register-it-as-a-new-album.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -5580,7 +5568,7 @@ register-it-as-a-new-album.-returns-the-new-album's-id.-responses">Responses</h3
 This operation does not require authentication
 </aside>
 
-## create_share
+## Create a share link for an album and return it.
 
 <a id="opIdcreate_share"></a>
 
@@ -5752,7 +5740,7 @@ func main() {
 }
 ```
 
-<h3 id="create_share-parameters">Parameters</h3>
+<h3 id="create-a-share-link-for-an-album-and-return-it.-parameters">Parameters</h3>
 
 | Name | In   | Type                              | Required | Description |
 | ---- | ---- | --------------------------------- | -------- | ----------- |
@@ -5766,7 +5754,7 @@ func main() {
 "string"
 ```
 
-<h3 id="create_share-responses">Responses</h3>
+<h3 id="create-a-share-link-for-an-album-and-return-it.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -5778,7 +5766,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## Move an asset into an album
+## Move the asset identified by `asset_id` into the album's directory on disk.
 
 <a id="opIdassign_album"></a>
 
@@ -5932,7 +5920,10 @@ func main() {
 
 `PUT /put/assign_album`
 
-Moves the file identified by asset_id into the album directory on disk, updates stored path and album membership, and reports the conflict outcome. Returns 400 when the file is missing at the asset's path (stale record) or the destination is a manual album.
+The directory is resolved from the asset's physical path; the stored path and
+the album membership are updated and the conflict outcome is reported. Returns
+400 if the file is missing at the asset's path (stale record — re-index first)
+or the destination album is a manual album.
 
 > Body parameter
 
@@ -5944,7 +5935,7 @@ Moves the file identified by asset_id into the album directory on disk, updates 
 }
 ```
 
-<h3 id="move-an-asset-into-an-album-parameters">Parameters</h3>
+<h3 id="move-the-asset-identified-by-`asset_id`-into-the-album's-directory-on-disk.-parameters">Parameters</h3>
 
 | Name | In   | Type                                      | Required | Description |
 | ---- | ---- | ----------------------------------------- | -------- | ----------- |
@@ -5960,7 +5951,7 @@ Moves the file identified by asset_id into the album directory on disk, updates 
 }
 ```
 
-<h3 id="move-an-asset-into-an-album-responses">Responses</h3>
+<h3 id="move-the-asset-identified-by-`asset_id`-into-the-album's-directory-on-disk.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema                              |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
@@ -5972,7 +5963,7 @@ Moves the file identified by asset_id into the album directory on disk, updates 
 This operation does not require authentication
 </aside>
 
-## delete_share
+## Delete one share of an album.
 
 <a id="opIddelete_share"></a>
 
@@ -6127,13 +6118,13 @@ func main() {
 }
 ```
 
-<h3 id="delete_share-parameters">Parameters</h3>
+<h3 id="delete-one-share-of-an-album.-parameters">Parameters</h3>
 
 | Name | In   | Type                              | Required | Description |
 | ---- | ---- | --------------------------------- | -------- | ----------- |
 | body | body | [DeleteShare](#schemadeleteshare) | true     | none        |
 
-<h3 id="delete_share-responses">Responses</h3>
+<h3 id="delete-one-share-of-an-album.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -6145,7 +6136,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## edit_share
+## Replace the share of an album.
 
 <a id="opIdedit_share"></a>
 
@@ -6316,13 +6307,13 @@ func main() {
 }
 ```
 
-<h3 id="edit_share-parameters">Parameters</h3>
+<h3 id="replace-the-share-of-an-album.-parameters">Parameters</h3>
 
 | Name | In   | Type                          | Required | Description |
 | ---- | ---- | ----------------------------- | -------- | ----------- |
 | body | body | [EditShare](#schemaeditshare) | true     | none        |
 
-<h3 id="edit_share-responses">Responses</h3>
+<h3 id="replace-the-share-of-an-album.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -6685,7 +6676,7 @@ dir-albums, so the sidecar-freezing bug can't reappear via this path.
 This operation does not require authentication
 </aside>
 
-## set_user_defined_description
+## Set the user-defined description of an asset, or clear it with `null`.
 
 <a id="opIdset_user_defined_description"></a>
 
@@ -6842,13 +6833,13 @@ func main() {
 }
 ```
 
-<h3 id="set_user_defined_description-parameters">Parameters</h3>
+<h3 id="set-the-user-defined-description-of-an-asset,-or-clear-it-with-`null`.-parameters">Parameters</h3>
 
 | Name | In   | Type                                                          | Required | Description |
 | ---- | ---- | ------------------------------------------------------------- | -------- | ----------- |
 | body | body | [SetUserDefinedDescription](#schemasetuserdefineddescription) | true     | none        |
 
-<h3 id="set_user_defined_description-responses">Responses</h3>
+<h3 id="set-the-user-defined-description-of-an-asset,-or-clear-it-with-`null`.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -7064,7 +7055,7 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
-## get_export
+## Export the whole tree as JSON.
 
 <a id="opIdget_export"></a>
 
@@ -7181,7 +7172,7 @@ func main() {
 
 `GET /get/get-export`
 
-<h3 id="get_export-responses">Responses</h3>
+<h3 id="export-the-whole-tree-as-json.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -7193,7 +7184,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## get_rows
+## Serve one row of a snapshot by its index.
 
 <a id="opIdget_rows"></a>
 
@@ -7338,7 +7329,7 @@ func main() {
 
 `GET /get/get-rows`
 
-<h3 id="get_rows-parameters">Parameters</h3>
+<h3 id="serve-one-row-of-a-snapshot-by-its-index.-parameters">Parameters</h3>
 
 | Name      | In    | Type           | Required | Description |
 | --------- | ----- | -------------- | -------- | ----------- |
@@ -7363,7 +7354,7 @@ func main() {
 }
 ```
 
-<h3 id="get_rows-responses">Responses</h3>
+<h3 id="serve-one-row-of-a-snapshot-by-its-index.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema            |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------- |
@@ -7375,7 +7366,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## get_scroll_bar
+## Serve the scroll bar positions of a snapshot.
 
 <a id="opIdget_scroll_bar"></a>
 
@@ -7519,7 +7510,7 @@ func main() {
 
 `GET /get/get-scroll-bar`
 
-<h3 id="get_scroll_bar-parameters">Parameters</h3>
+<h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-parameters">Parameters</h3>
 
 | Name      | In    | Type           | Required | Description |
 | --------- | ----- | -------------- | -------- | ----------- |
@@ -7539,7 +7530,7 @@ func main() {
 ]
 ```
 
-<h3 id="get_scroll_bar-responses">Responses</h3>
+<h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -7547,7 +7538,7 @@ func main() {
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
 
-<h3 id="get_scroll_bar-responseschema">Response Schema</h3>
+<h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-responseschema">Response Schema</h3>
 
 Status Code **200**
 
@@ -7562,7 +7553,7 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
-## get_tags
+## List the tags the tree knows.
 
 <a id="opIdget_tags"></a>
 
@@ -7716,7 +7707,7 @@ func main() {
 ]
 ```
 
-<h3 id="get_tags-responses">Responses</h3>
+<h3 id="list-the-tags-the-tree-knows.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -7724,7 +7715,7 @@ func main() {
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
 
-<h3 id="get_tags-responseschema">Response Schema</h3>
+<h3 id="list-the-tags-the-tree-knows.-responseschema">Response Schema</h3>
 
 Status Code **200**
 
@@ -7738,7 +7729,7 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
-## prefetch
+## Evaluate a timeline/list query, keep the result as a snapshot, and return its id.
 
 <a id="opIdprefetch"></a>
 
@@ -7893,7 +7884,7 @@ func main() {
 null
 ```
 
-<h3 id="prefetch-parameters">Parameters</h3>
+<h3 id="evaluate-a-timeline/list-query,-keep-the-result-as-a-snapshot,-and-return-its-id.-parameters">Parameters</h3>
 
 | Name   | In    | Type   | Required | Description |
 | ------ | ----- | ------ | -------- | ----------- |
@@ -7916,7 +7907,7 @@ null
 }
 ```
 
-<h3 id="prefetch-responses">Responses</h3>
+<h3 id="evaluate-a-timeline/list-query,-keep-the-result-as-a-snapshot,-and-return-its-id.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema                                  |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------- |
@@ -7930,7 +7921,7 @@ This operation does not require authentication
 
 <h1 id="picasu-index">index</h1>
 
-## get_album_index_status
+## Report the state of the running album-indexing job.
 
 <a id="opIdget_album_index_status"></a>
 
@@ -8089,7 +8080,7 @@ func main() {
 }
 ```
 
-<h3 id="get_album_index_status-responses">Responses</h3>
+<h3 id="report-the-state-of-the-running-album-indexing-job.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema                                      |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
@@ -8101,10 +8092,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## Walk a directory under `IMAGE_HOME` and index all media files in the
-
-background. `album` is a path relative to `IMAGE_HOME` — use `"/"` for
-the root. Status can be polled via `GET /get/index/status`.
+## Walk a directory under `IMAGE_HOME` and index all media files in the background.
 
 <a id="opIdindex_album_handler"></a>
 
@@ -8249,6 +8237,9 @@ func main() {
 
 `POST /post/index/album`
 
+`album` is a path relative to `IMAGE_HOME` — use `"/"` for the root. Status
+can be polled via `GET /get/index/status`.
+
 > Body parameter
 
 ```json
@@ -8257,17 +8248,13 @@ func main() {
 }
 ```
 
-<h3 id="walk-a-directory-under-`image_home`-and-index-all-media-files-in-the
-background.--`album`-is-a-path-relative-to-`image_home`-—-use-`"/"`-for
-the-root.--status-can-be-polled-via-`get-/get/index/status`.-parameters">Parameters</h3>
+<h3 id="walk-a-directory-under-`image_home`-and-index-all-media-files-in-the-background.-parameters">Parameters</h3>
 
 | Name | In   | Type                                          | Required | Description |
 | ---- | ---- | --------------------------------------------- | -------- | ----------- |
 | body | body | [IndexAlbumRequest](#schemaindexalbumrequest) | true     | none        |
 
-<h3 id="walk-a-directory-under-`image_home`-and-index-all-media-files-in-the
-background.--`album`-is-a-path-relative-to-`image_home`-—-use-`"/"`-for
-the-root.--status-can-be-polled-via-`get-/get/index/status`.-responses">Responses</h3>
+<h3 id="walk-a-directory-under-`image_home`-and-index-all-media-files-in-the-background.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -8408,9 +8395,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## Index a single image by its path relative to `IMAGE_HOME`. Runs in the
-
-background; returns `202 Accepted` immediately.
+## Index a single image by its path relative to `IMAGE_HOME`.
 
 <a id="opIdindex_image_handler"></a>
 
@@ -8556,6 +8541,8 @@ func main() {
 
 `POST /post/index/image`
 
+Runs in the background; returns `202 Accepted` immediately.
+
 > Body parameter
 
 ```json
@@ -8565,15 +8552,13 @@ func main() {
 }
 ```
 
-<h3 id="index-a-single-image-by-its-path-relative-to-`image_home`.--runs-in-the
-background;-returns-`202-accepted`-immediately.-parameters">Parameters</h3>
+<h3 id="index-a-single-image-by-its-path-relative-to-`image_home`.-parameters">Parameters</h3>
 
 | Name | In   | Type                                          | Required | Description |
 | ---- | ---- | --------------------------------------------- | -------- | ----------- |
 | body | body | [IndexImageRequest](#schemaindeximagerequest) | true     | none        |
 
-<h3 id="index-a-single-image-by-its-path-relative-to-`image_home`.--runs-in-the
-background;-returns-`202-accepted`-immediately.-responses">Responses</h3>
+<h3 id="index-a-single-image-by-its-path-relative-to-`image_home`.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -8760,7 +8745,7 @@ This operation does not require authentication
 
 <h1 id="picasu-serving">serving</h1>
 
-## compressed_file
+## Serve the compressed thumbnail of a hashed asset.
 
 <a id="opIdcompressed_file"></a>
 
@@ -8877,13 +8862,13 @@ func main() {
 
 `GET /object/compressed/{file_path}`
 
-<h3 id="compressed_file-parameters">Parameters</h3>
+<h3 id="serve-the-compressed-thumbnail-of-a-hashed-asset.-parameters">Parameters</h3>
 
 | Name      | In   | Type   | Required | Description |
 | --------- | ---- | ------ | -------- | ----------- |
 | file_path | path | string | true     | none        |
 
-<h3 id="compressed_file-responses">Responses</h3>
+<h3 id="serve-the-compressed-thumbnail-of-a-hashed-asset.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -8895,12 +8880,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## Serve the original file directly from its current location under
-
-`imagePath` — there is no copy of it under `DATA_HOME`; `IMAGE_HOME` is
-the single, authoritative copy. The route's `<file_path..>` segment is
-`<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via
-`ASSET_BY_ID`.
+## Serve the original file from its current location under `imagePath`.
 
 <a id="opIdimported_file"></a>
 
@@ -9017,21 +8997,18 @@ func main() {
 
 `GET /object/imported/{file_path}`
 
-<h3 id="serve-the-original-file-directly-from-its-current-location-under
-`imagepath`-—-there-is-no-copy-of-it-under-`data_home`;-`image_home`-is
-the-single,-authoritative-copy.-the-route's-`<file_path..>`-segment-is
-`<prefix>/<id>.<ext>`-where-`id`-is-the-`asset_id`.-resolves-via
-`asset_by_id`.-parameters">Parameters</h3>
+There is no copy of it under `DATA_HOME`; `IMAGE_HOME` is the single,
+authoritative copy. The route's `<file_path..>` segment is
+`<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via
+`ASSET_BY_ID`.
+
+<h3 id="serve-the-original-file-from-its-current-location-under-`imagepath`.-parameters">Parameters</h3>
 
 | Name      | In   | Type   | Required | Description |
 | --------- | ---- | ------ | -------- | ----------- |
 | file_path | path | string | true     | none        |
 
-<h3 id="serve-the-original-file-directly-from-its-current-location-under
-`imagepath`-—-there-is-no-copy-of-it-under-`data_home`;-`image_home`-is
-the-single,-authoritative-copy.-the-route's-`<file_path..>`-segment-is
-`<prefix>/<id>.<ext>`-where-`id`-is-the-`asset_id`.-resolves-via
-`asset_by_id`.-responses">Responses</h3>
+<h3 id="serve-the-original-file-from-its-current-location-under-`imagepath`.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -9045,7 +9022,7 @@ This operation does not require authentication
 
 <h1 id="picasu-auth">auth</h1>
 
-## authenticate
+## Sign in with the account password and return a JWT.
 
 <a id="opIdauthenticate"></a>
 
@@ -9201,7 +9178,7 @@ string
 
 ```
 
-<h3 id="authenticate-parameters">Parameters</h3>
+<h3 id="sign-in-with-the-account-password-and-return-a-jwt.-parameters">Parameters</h3>
 
 | Name | In   | Type   | Required | Description |
 | ---- | ---- | ------ | -------- | ----------- |
@@ -9215,7 +9192,7 @@ string
 "string"
 ```
 
-<h3 id="authenticate-responses">Responses</h3>
+<h3 id="sign-in-with-the-account-password-and-return-a-jwt.-responses">Responses</h3>
 
 | Status | Meaning                                                         | Description                                                                                | Schema |
 | ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -9226,7 +9203,7 @@ string
 This operation does not require authentication
 </aside>
 
-## renew_hash_token
+## Exchange an expired hash token for a fresh one.
 
 <a id="opIdrenew_hash_token"></a>
 
@@ -9386,7 +9363,7 @@ func main() {
 }
 ```
 
-<h3 id="renew_hash_token-parameters">Parameters</h3>
+<h3 id="exchange-an-expired-hash-token-for-a-fresh-one.-parameters">Parameters</h3>
 
 | Name | In   | Type                                    | Required | Description |
 | ---- | ---- | --------------------------------------- | -------- | ----------- |
@@ -9402,7 +9379,7 @@ func main() {
 }
 ```
 
-<h3 id="renew_hash_token-responses">Responses</h3>
+<h3 id="exchange-an-expired-hash-token-for-a-fresh-one.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema                                              |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
@@ -9414,7 +9391,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## renew_timestamp_token
+## Exchange an expired timestamp (prefetch) token for a fresh one.
 
 <a id="opIdrenew_timestamp_token"></a>
 
@@ -9574,7 +9551,7 @@ func main() {
 }
 ```
 
-<h3 id="renew_timestamp_token-parameters">Parameters</h3>
+<h3 id="exchange-an-expired-timestamp-(prefetch)-token-for-a-fresh-one.-parameters">Parameters</h3>
 
 | Name | In   | Type                                              | Required | Description |
 | ---- | ---- | ------------------------------------------------- | -------- | ----------- |
@@ -9590,7 +9567,7 @@ func main() {
 }
 ```
 
-<h3 id="renew_timestamp_token-responses">Responses</h3>
+<h3 id="exchange-an-expired-timestamp-(prefetch)-token-for-a-fresh-one.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema                                                        |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
@@ -9604,7 +9581,7 @@ This operation does not require authentication
 
 <h1 id="picasu-upload">upload</h1>
 
-## upload
+## Upload files, optionally into a presigned album, and index them.
 
 <a id="opIdupload"></a>
 
@@ -9752,7 +9729,7 @@ func main() {
 null
 ```
 
-<h3 id="upload-parameters">Parameters</h3>
+<h3 id="upload-files,-optionally-into-a-presigned-album,-and-index-them.-parameters">Parameters</h3>
 
 | Name                   | In    | Type    | Required | Description                                                                                                                                                                                                                                                                                                                                                                       |
 | ---------------------- | ----- | ------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -9761,7 +9738,7 @@ null
 | presigned_album_id_opt | query | string  | false    | none                                                                                                                                                                                                                                                                                                                                                                              |
 | body                   | body  | any     | true     | none                                                                                                                                                                                                                                                                                                                                                                              |
 
-<h3 id="upload-responses">Responses</h3>
+<h3 id="upload-files,-optionally-into-a-presigned-album,-and-index-them.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |

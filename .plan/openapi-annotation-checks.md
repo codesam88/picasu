@@ -1,5 +1,5 @@
 ---
-status: open
+status: in-progress
 type: feature
 priority: high
 area: backend
@@ -88,17 +88,42 @@ rules below are written so that neither direction fires on them.
 
 ### A — the annotation's shape
 
-Per annotation, no cross-file knowledge, no false positives found against the
-current tree (63 annotations).
+Per annotation, no cross-file knowledge. The "no false positives found against the
+current tree (63 annotations)" calibration below was written before A4 and A5
+were run, and it was wrong: those two fired 50 and 8 times. What survives it is
+recorded per rule in the progress notes.
 
-| #   | assertion                                             | why nothing else enforces it                                                                      |
-| --- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| A1  | no `path = "..."` and no bare verb                    | the convention exists only in review; nothing rejects a re-introduced duplicate                   |
-| A2  | `responses(...)` present and non-empty                | utoipa invents no response, so the omission is silent                                             |
-| A3  | exactly one `tag`, from the closed vocabulary of nine | the vocabulary is documented in `docs/openapi-generator.md`; its checker was deleted              |
-| A4  | the handler carries a doc comment                     | `summary`/`description` are derived from it, so the omission is invisible except in the reference |
-| A5  | the summary is one line                               | a multi-line summary splits the generated reference's headings — measured, not stylistic          |
-| A6  | no hand-set `operation_id`                            | utoipa derives it from the function name; a hand-set one is the only name nothing compares        |
+| #   | assertion                                                                                                    | why nothing else enforces it                                                                                      |
+| --- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| A1  | no `path = "..."` and no bare verb                                                                           | the convention exists only in review; nothing rejects a re-introduced duplicate                                   |
+| A2  | `responses(...)` present and non-empty                                                                       | utoipa invents no response, so the omission is silent                                                             |
+| A3  | exactly one `tag`, from the closed vocabulary of nine, **except on a route under `EXCLUDED_ROUTE_PREFIXES`** | the vocabulary is documented in `docs/openapi-generator.md`; its checker was deleted                              |
+| A4  | the handler carries a doc comment                                                                            | `summary`/`description` are derived from it, so the omission is invisible except in the reference                 |
+| A5  | the summary is one line                                                                                      | a multi-line summary splits the generated reference's headings — measured, not stylistic                          |
+| A6  | no hand-set `operation_id`                                                                                   | utoipa derives it from the function name; a hand-set one is the only name nothing compares                        |
+| A7  | no hand-set `summary` or `description`                                                                       | utoipa derives both from the doc comment; a hand-set one is the same prose twice, and nothing compares the copies |
+
+**A3's exemption, and why it is an exemption rather than a tenth tag.** The two
+test-only probes (`probe_record`, `probe_dupe_group`) are stripped from the
+published document by `openapi_public::CONTRACT_EXCLUSION_PREFIXES`, so no reader
+of the reference can reach them. A tag on such an operation names a section that
+does not exist — vocabulary nobody sees, and a tenth row in the table that means
+"routes that are not in the document". The exemption is
+`EXCLUDED_ROUTE_PREFIXES` in the tool, a copy of the backend's
+`CONTRACT_EXCLUSION_PREFIXES` (`/get/test/`, `/assets`), and it is scoped to A3
+only: the excluded surface still documents its responses (A2) and carries a doc
+comment (A4), because the contract tests read the _full_ spec rather than the
+public one. A `--exclude-prefix` flag was considered and rejected — the prefixes
+would then be spelled a third time, in the justfile, and three spellings of one
+set is what the backend's constant exists to prevent.
+
+**A7 exists because A5's premise is false without it.** utoipa lets an
+annotation set `summary` and `description` outright, and one annotation did
+(`put/assign_album.rs`, `summary` and `description` carrying the same prose as
+the doc comment beside them). While that is possible, "the first paragraph _is_
+the operation's summary" does not hold, and A5 was reporting a defect the
+generated document did not have. A7 closes it with A6's argument — a hand-set
+name is the one nothing compares, and here the name is prose.
 
 ### B — what the annotation declares against what the route already says
 
@@ -253,6 +278,102 @@ enforced here and which are review-time, so the boundary is written down rather
 than remembered.
 
 ## Progress
+
+### 2026-10-02 — A1–A7, the probe exemption, and `trace` (uncommitted, for review)
+
+Follow-up to the A1–A6 increment below, from its review. Three changes, none of
+which weakens a rule:
+
+- **A3 exempts the excluded surface.** `EXCLUDED_ROUTE_PREFIXES` in the tool is a
+  copy of the backend's `CONTRACT_EXCLUSION_PREFIXES`, and A3 skips a handler
+  whose route attribute is under one of them. The two test probes stop being
+  findings, so the tree is silent. The exemption is in the tool and not on the
+  command line on purpose: a `--exclude-prefix` flag would spell the prefixes a
+  third time, in the justfile, which is what the backend's constant exists to
+  avoid. `a3_excluded_prefixes.rs` carries two exempt handlers _and_ a
+  non-exempt one without a tag, and `a_tag_is_not_required_on_a_route_the_published_document_drops`
+  asserts all of it in one render — the control is what stops the exemption from
+  being a way to switch the rule off. A handler with no route path is not exempt.
+- **A7 — no hand-set `summary` or `description`.** Added because the review
+  confirmed the A5 gap: `put/assign_album.rs` carried both, saying what its doc
+  comment said, and while an annotation may set `summary`, "the first paragraph
+  _is_ the summary" is false. `grep` over every `#[utoipa::path]` body in
+  `backend/src/router` found **exactly one** override — `assign_album` at lines
+  77 and 78 — so it was removed and its doc comment extended with the one clause
+  the override carried that the comment did not ("or the destination album is a
+  manual album"). Nothing else in the tree overrides either key, so nothing was
+  deleted on a guess. `assign_album`'s `summary` in the document is now derived.
+- **`trace` added to A1's verb list.** It is a Rocket verb and utoipa's
+  `HttpMethod` accepts it as a bare token; the plan's list of eight omitted it by
+  oversight. No annotation uses it, so the tree is unaffected and a restatement
+  can no longer slip through the gap.
+
+### 2026-10-02 — A1–A6 landed (uncommitted, for review)
+
+Increment 2 of the sequencing: the six annotation-shape rules, as one module of
+`utils/openapi-sanity` beside C1/C1b. Each is a small function over an
+`AnnotatedHandler`; `scan_source_root` runs all of them, so the CLI and the
+suite check the same code. One fixture per rule plus a conforming counterpart per
+rule, all `include_str!`.
+
+**Section A's own claim of "no false positives found against the current tree" is
+wrong, and finding that is most of what this increment cost.** Three of the six
+rules fired on the 63 annotations; the source was fixed in every case, no rule was
+weakened:
+
+| Rule | Findings on the tree | Fix                                                              |
+| ---- | -------------------- | ---------------------------------------------------------------- |
+| A1   | 0                    | —                                                                |
+| A2   | 0                    | —                                                                |
+| A3   | 2                    | resolved in review: the exemption, see the entry above           |
+| A4   | 50                   | a doc comment on every annotated handler that had none           |
+| A5   | 8                    | the first paragraph of eight doc comments reflowed onto one line |
+| A6   | 0                    | —                                                                |
+
+A4 is the largest change in the branch and the most consequential: **49 of the
+61 operations in `backend/openapi.json` had no `summary` before it.** The
+annotation declares no `summary = "…"`, so utoipa derives the field from the
+doc comment, and 50 of the 63 annotated handlers had none. 49 of the 50 handlers
+that were missing one reach the document; the two test probes do not, which is
+why the number is 49 and not 50. The document still looked complete, because an
+operation with a `paths` entry, a `responses` map and a `tags` array is
+indistinguishable from a documented one until a reader looks for prose.
+
+A5's eight findings were the six multi-line summaries the document already had,
+plus two in handlers whose operations the public-spec filter drops. The fix was
+to move the wrapped sentences into a second paragraph rather than to lengthen one
+line, so the `description` keeps everything the `summary` used to say. This is
+also the rule with the one calibration worth recording:
+
+- **`put/assign_album.rs` sets `summary = "…"` and `description = "…"` in the
+  annotation**, which overrides the derivation A5 is about — so its multi-line
+  doc comment produced a finding against a generated summary that was one line and
+  correct. The doc comment was reflowed like the other seven, and the review that
+  followed closed the gap with A7 rather than with an exception to A5: the
+  overrides are gone and the doc comment is the single source.
+
+**The A3 question is now answered** — the exemption, as recorded in the review
+entry above. `probe_record` and `probe_dupe_group` keep no `tag`, and the
+nine-tag vocabulary stays nine, because neither operation is in the document a
+tag would file them in.
+
+Two smaller notes for the same review:
+
+- **The vocabulary is a copy.** `TAGS` in the tool duplicates the table in
+  `docs/openapi-generator.md`; the document cannot be parsed for it, because the
+  document is generated from the annotations. The two are changed together, and
+  both places now say so. `EXCLUDED_ROUTE_PREFIXES` is a second such copy, of
+  `openapi_public::CONTRACT_EXCLUSION_PREFIXES`, for the same reason.
+- **A1/A3 leave a residue.** `method(GET)`, `tags([…])` and `context_path` are
+  spellings utoipa accepts for the same facts, none of which the rules reject and
+  none of which the tree uses. `trace` was in this list until the review moved it
+  into A1's verb list. The remainder is named in the tool's module docs, its
+  README and `docs/openapi-generator.md` so the boundary is written down rather
+  than remembered.
+
+`backend/openapi.json` is regenerated in this change, and
+`docs/openapi-generator.md` now states the enforced rules, the three-phase gate
+and the corrected authoring steps.
 
 ### 2026-10-01 — the rules moved to `utils/openapi-sanity` (uncommitted, for review)
 

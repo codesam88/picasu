@@ -32,6 +32,7 @@ pub struct ConfigResponse {
     pub has_auth_key: bool,
 }
 
+/// Serve the configuration a client needs; a share token is enough.
 #[utoipa::path(
         tag = "config",
         responses(
@@ -67,6 +68,7 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
     Ok(Json(response))
 }
 
+/// Export the whole server configuration as JSON.
 #[utoipa::path(
         tag = "config",
         responses(

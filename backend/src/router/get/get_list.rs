@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
+/// List the tags the tree knows.
 #[utoipa::path(
         tag = "timeline",
         responses(
@@ -46,6 +47,7 @@ pub struct AlbumInfo {
     pub parent_album_id: Option<String>,
 }
 
+/// List the albums the tree knows.
 #[utoipa::path(
         tag = "albums",
         responses(

@@ -2,8 +2,9 @@
 // the rejection. Silence here is what keeps the rule from being satisfied by
 // flagging every guard argument in the tree.
 
+/// Propagate with `?`.
 #[utoipa::path(
-    tag = "data",
+    tag = "auth",
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/propagated")]
@@ -12,8 +13,9 @@ pub async fn house_idiom(auth: GuardResult<GuardAuth>) -> AppResult<()> {
     Ok(())
 }
 
+/// Bind before propagating.
 #[utoipa::path(
-    tag = "data",
+    tag = "auth",
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/bound")]
@@ -22,8 +24,9 @@ pub async fn bound_before_use(auth: GuardResult<GuardAuth>) -> AppResult<Json<Cl
     Ok(Json(claims))
 }
 
+/// Propagate with `match`.
 #[utoipa::path(
-    tag = "data",
+    tag = "auth",
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/matched")]
@@ -35,8 +38,9 @@ pub async fn matched(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {
     Ok(Json(claims))
 }
 
+/// Propagate with `if let`.
 #[utoipa::path(
-    tag = "data",
+    tag = "auth",
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/if-let")]
@@ -47,8 +51,9 @@ pub async fn if_let(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {
     Err(AppError::new(ErrorKind::Auth, "Unauthorized"))
 }
 
+/// Forward to another call.
 #[utoipa::path(
-    tag = "data",
+    tag = "auth",
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/forwarded")]
@@ -56,8 +61,9 @@ pub async fn forwarded(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> 
     audit(auth)
 }
 
+/// Return the forwarded value.
 #[utoipa::path(
-    tag = "data",
+    tag = "auth",
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/returned")]
@@ -65,8 +71,9 @@ pub async fn returned(auth: GuardResult<GuardAuth>) -> AppResult<Json<Claims>> {
     return audit(auth);
 }
 
+/// Return the binding as the trailing expression.
 #[utoipa::path(
-    tag = "data",
+    tag = "auth",
     responses((status = 200, description = "Ok"))
 )]
 #[get("/get/tail")]

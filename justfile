@@ -132,9 +132,12 @@ openapi-gen:
 [group('utils')]
 openapi-check: openapi-sanity openapi-json-match openapi-routes-match
 
-# Source-level `#[utoipa::path]` checks: every fallible guard's rejection has to
-# be propagated by the handler body. Reads the source, so it needs no build and
-# no frontend bundle.
+# Source-level `#[utoipa::path]` checks: the annotation's shape (no restated
+# path or verb, at least one response, one vocabulary tag unless the route is
+# outside the published contract, a doc comment with a one-line summary, no
+# hand-set operation_id / summary / description) and the handler body (every
+# fallible guard's rejection has to be propagated). Reads the source, so it needs
+# no build and no frontend bundle.
 #
 # `--expect-at-least` is the floor on annotated handlers the scan must see, with
 # headroom below the tree's 63: a new handler must not break the gate, but a walk
