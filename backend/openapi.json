@@ -173,7 +173,7 @@
             "type": "boolean"
           },
           "validateUploadContent": {
-            "description": "Cross-check uploads against the declared `Content-Type`. When enabled,\nthe first 512 bytes of each uploaded file are sniffed with the\n[`infer`](https://crates.io/crates/infer) magic-byte database and the\ndetected signature must fall in the family of the extension derived\nfrom the `Content-Type`: `jpg|jpeg|jfif|jpe` → JPEG, `tif|tiff` →\nTIFF, `mp4|mov|m4v` → ISO BMFF, `mkv|webm` → EBML, `mpeg` → MPEG-PS,\nand `png`, `webp`, `bmp`, `gif`, `avi`, `flv`, `wmv` 1:1. Mismatches\nand unrecognizable bytes are rejected with `400 InvalidInput`; the\ncheck is signature-based only, never a full decode, so unusual-but-valid\nvariants still pass. The stored file extension remains the one derived\nfrom the declared `Content-Type`. See\n`backend/src/router/post/post_upload.rs` (`validate_upload_content`).\nDisable only if legitimate media is being rejected.",
+            "description": "Cross-check uploaded content against the type its declared\n`Content-Type` implies. The declared extension yields the expected\nformat from the supported-format table; the content is then identified\nand the two are compared. See `backend/src/process/format.rs`.\n\nContent that cannot be identified at all is always rejected, with or\nwithout this setting: there is no way to tell whether such bytes are\nwhat the extension claims. This setting governs only the mismatch case,\nwhere the content *is* identified but is not the type the extension\nclaims — for example a video uploaded with an image content type, or an\nimage named with the wrong extension. Enabled (the default) rejects\nthose with `400 InvalidInput`; disabling it stores the file anyway, which\nmisdescribes it and leaves the indexer trusting a wrong extension. Only\ndisable this to tolerate mislabeled files.",
             "type": "boolean"
           }
         },
@@ -720,6 +720,24 @@
         ],
         "type": "object"
       },
+      "RebuildFailure": {
+        "description": "One media asset whose metadata pipeline failed during a rebuild.\n\nThe rebuild continues past the failure, so this is the only record of *why*\nan asset came out of the rebuild without metadata.",
+        "properties": {
+          "error": {
+            "description": "Rendered error, including the stage that failed.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute path of the file the pipeline could not process.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "error"
+        ],
+        "type": "object"
+      },
       "RebuildStats": {
         "description": "Statistics from a clean filesystem rebuild.",
         "properties": {
@@ -735,6 +753,27 @@
             "minimum": 0,
             "type": "integer"
           },
+          "metadataFailed": {
+            "description": "Media assets whose metadata pipeline failed, counted whether or not the\ndetail for each one is still in `metadataFailures`.",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "metadataFailures": {
+            "description": "Per-file diagnostics, capped so a wholesale failure cannot size the\nresponse to the library. `metadataFailed` is the authoritative count and\n`metadataFailuresTruncated` says whether this list was clipped.",
+            "items": {
+              "$ref": "#/components/schemas/RebuildFailure"
+            },
+            "type": "array"
+          },
+          "metadataFailuresTruncated": {
+            "description": "Whether `metadataFailures` stopped short of `metadataFailed`.",
+            "type": "boolean"
+          },
+          "metadataIndexed": {
+            "description": "Media assets whose metadata pipeline returned `Ok` and whose payload was\nwritten to `METADATA_TABLE`. Read against `mediaCreated`, this is what\ndistinguishes a rebuild that produced usable metadata from one that only\nreissued identity.",
+            "minimum": 0,
+            "type": "integer"
+          },
           "unsupportedSkipped": {
             "minimum": 0,
             "type": "integer"
@@ -744,7 +783,11 @@
           "albumsCreated",
           "mediaCreated",
           "unsupportedSkipped",
-          "hashErrors"
+          "hashErrors",
+          "metadataIndexed",
+          "metadataFailed",
+          "metadataFailures",
+          "metadataFailuresTruncated"
         ],
         "type": "object"
       },
@@ -1452,7 +1495,7 @@
     },
     "/get/metadata/{asset_id}": {
       "get": {
-        "description": "This is the detail-side counterpart of `get-data`: list rows only carry\nlean identity fields (tags / EXIF / description / rating are stripped in\nPhase 14), so the sidebar, detail view, and edit prefill fetch the full\n`AbstractData` view here on demand. The wire shape is unchanged:\nidentity fields come from the record, metadata fields from the payload.\n\nAuth and share parity follow `get-data`: a `GuardTimestamp` bearer token\n(prefetch token) is required, and when the token resolves to a share with\n`show_metadata: false` the metadata fields are cleared before responding so\na share that hides metadata cannot leak it through this route.",
+        "description": "This is the detail-side counterpart of `get-data`: list rows only carry\nlean identity fields (tags / EXIF / description / rating are stripped in\nPhase 14), so the sidebar, detail view, and edit prefill fetch the full\n`AbstractData` view here on demand. The wire shape is unchanged:\nidentity fields come from the record, metadata fields from the payload.\n\nThe response carries the `exifVec` map and, for images, `furtherMetadata` —\nthe read-only bucket of metadata the app does not model, keyed `Group:Tag`\n(`IPTC:By-line`, `XMP-xmp:CreatorTool`). The bucket is the one field here\nwith no edit path in the API: nothing reads it into an app field and nothing\nwrites it back. Which keys reach it, and which `ExifTool` groups are excluded\nfrom it, is documented on `process::xmp::map_further_fields`.\n\nAuth and share parity follow `get-data`: a `GuardTimestamp` bearer token\n(prefetch token) is required, and when the token resolves to a share with\n`show_metadata: false` the metadata fields are cleared before responding so\na share that hides metadata cannot leak it through this route.",
         "operationId": "get_metadata",
         "parameters": [
           {
@@ -1475,7 +1518,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Full metadata record for the asset"
+            "description": "Full metadata record for the asset: `exifVec` and the read-only `furtherMetadata` bucket, alongside the app's own fields"
           },
           "400": {
             "description": "Invalid input"
@@ -1929,7 +1972,7 @@
     },
     "/post/rebuild": {
       "post": {
-        "description": "Clears `ASSET_BY_PATH`/`ASSET_BY_ID`/`DUPE_INDEX`, walks the image root,\nand repopulates them. Then rewrites `METADATA_TABLE` from the fresh\n`AssetRecord`s (rebuild assigns new `asset_id`s, so stale rows keyed by\nthe old ids must not remain) and waits for an in-memory tree refresh so\nthe response does not race subsequent `prefetch`/`get-data` calls.",
+        "description": "`rebuild_from_filesystem` clears `ASSET_BY_PATH`, `ASSET_BY_ID`,\n`DUPE_INDEX` and `METADATA_TABLE`, walks the image root, and repopulates all\nfour: identity from the walk, metadata from the same pipeline the incremental\nindexer runs. This route then waits for an in-memory tree refresh so the\nresponse does not race subsequent `prefetch`/`get-data` calls.\n\nThe response carries the per-file outcome. `metadataIndexed` against\n`mediaCreated` is how a caller tells a rebuild that produced usable metadata\nfrom one that only reissued identity, and `metadataFailures` names the files\nthat could not be processed.",
         "operationId": "rebuild_handler",
         "responses": {
           "200": {
@@ -1955,7 +1998,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Rebuild the asset tables from the filesystem under `IMAGE_HOME`.",
+        "summary": "Rebuild the asset tables and metadata cache from the filesystem under `IMAGE_HOME`.",
         "tags": [
           "index"
         ]

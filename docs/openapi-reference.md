@@ -3170,6 +3170,13 @@ Phase 14), so the sidebar, detail view, and edit prefill fetch the full
 `AbstractData` view here on demand. The wire shape is unchanged:
 identity fields come from the record, metadata fields from the payload.
 
+The response carries the `exifVec` map and, for images, `furtherMetadata` —
+the read-only bucket of metadata the app does not model, keyed `Group:Tag`
+(`IPTC:By-line`, `XMP-xmp:CreatorTool`). The bucket is the one field here
+with no edit path in the API: nothing reads it into an app field and nothing
+writes it back. Which keys reach it, and which `ExifTool` groups are excluded
+from it, is documented on `process::xmp::map_further_fields`.
+
 Auth and share parity follow `get-data`: a `GuardTimestamp` bearer token
 (prefetch token) is required, and when the token resolves to a share with
 `show_metadata: false` the metadata fields are cleared before responding so
@@ -3184,11 +3191,11 @@ a share that hides metadata cannot leak it through this route.
 
 <h3 id="full-metadata-detail-for-a-single-asset,-composed-from-its-identity-and-its-stored-metadata-payload.-responses">Responses</h3>
 
-| Status | Meaning                                                         | Description                                                                                | Schema |
-| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | Full metadata record for the asset                                                         | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)  | Unknown asset_id                                                                           | None   |
+| Status | Meaning                                                         | Description                                                                                                              | Schema |
+| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | Full metadata record for the asset: `exifVec` and the read-only `furtherMetadata` bucket, alongside the app's own fields | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation.                               | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)  | Unknown asset_id                                                                                                         | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -3770,21 +3777,21 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/regenerate-thumbnail-with-frame \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: multipart/form-data'
 
 ```
 
 ```http
 PUT /put/regenerate-thumbnail-with-frame HTTP/1.1
 
-Content-Type: application/json
+Content-Type: multipart/form-data
 
 ```
 
 ```javascript
-const inputBody = "null";
+const inputBody = "{}";
 const headers = {
-  "Content-Type": "application/json",
+  "Content-Type": "multipart/form-data",
 };
 
 fetch("/put/regenerate-thumbnail-with-frame", {
@@ -3805,7 +3812,7 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'multipart/form-data'
 }
 
 result = RestClient.put '/put/regenerate-thumbnail-with-frame',
@@ -3819,7 +3826,7 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'multipart/form-data'
 }
 
 r = requests.put('/put/regenerate-thumbnail-with-frame', headers = headers)
@@ -3834,7 +3841,7 @@ print(r.json())
 require 'vendor/autoload.php';
 
 $headers = array(
-    'Content-Type' => 'application/json',
+    'Content-Type' => 'multipart/form-data',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -3887,7 +3894,7 @@ import (
 func main() {
 
     headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
+        "Content-Type": []string{"multipart/form-data"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -3905,15 +3912,15 @@ func main() {
 
 > Body parameter
 
-```json
-null
+```yaml
+{}
 ```
 
 <h3 id="regenerate-the-thumbnail-of-an-image-within-an-uploaded-frame.-parameters">Parameters</h3>
 
-| Name | In   | Type | Required | Description |
-| ---- | ---- | ---- | -------- | ----------- |
-| body | body | any  | true     | none        |
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| body | body | object | true     | none        |
 
 <h3 id="regenerate-the-thumbnail-of-an-image-within-an-uploaded-frame.-responses">Responses</h3>
 
@@ -8570,7 +8577,7 @@ Runs in the background; returns `202 Accepted` immediately.
 This operation does not require authentication
 </aside>
 
-## Rebuild the asset tables from the filesystem under `IMAGE_HOME`.
+## Rebuild the asset tables and metadata cache from the filesystem under `IMAGE_HOME`.
 
 <a id="opIdrebuild_handler"></a>
 
@@ -8711,11 +8718,16 @@ func main() {
 
 `POST /post/rebuild`
 
-Clears `ASSET_BY_PATH`/`ASSET_BY_ID`/`DUPE_INDEX`, walks the image root,
-and repopulates them. Then rewrites `METADATA_TABLE` from the fresh
-`AssetRecord`s (rebuild assigns new `asset_id`s, so stale rows keyed by
-the old ids must not remain) and waits for an in-memory tree refresh so
-the response does not race subsequent `prefetch`/`get-data` calls.
+`rebuild_from_filesystem` clears `ASSET_BY_PATH`, `ASSET_BY_ID`,
+`DUPE_INDEX` and `METADATA_TABLE`, walks the image root, and repopulates all
+four: identity from the walk, metadata from the same pipeline the incremental
+indexer runs. This route then waits for an in-memory tree refresh so the
+response does not race subsequent `prefetch`/`get-data` calls.
+
+The response carries the per-file outcome. `metadataIndexed` against
+`mediaCreated` is how a caller tells a rebuild that produced usable metadata
+from one that only reissued identity, and `metadataFailures` names the files
+that could not be processed.
 
 > Example responses
 
@@ -8726,11 +8738,20 @@ the response does not race subsequent `prefetch`/`get-data` calls.
   "albumsCreated": 0,
   "hashErrors": 0,
   "mediaCreated": 0,
+  "metadataFailed": 0,
+  "metadataFailures": [
+    {
+      "error": "string",
+      "path": "string"
+    }
+  ],
+  "metadataFailuresTruncated": true,
+  "metadataIndexed": 0,
   "unsupportedSkipped": 0
 }
 ```
 
-<h3 id="rebuild-the-asset-tables-from-the-filesystem-under-`image_home`.-responses">Responses</h3>
+<h3 id="rebuild-the-asset-tables-and-metadata-cache-from-the-filesystem-under-`image_home`.-responses">Responses</h3>
 
 | Status | Meaning                                                                 | Description                                                                                | Schema                              |
 | ------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
@@ -9590,21 +9611,21 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X POST /upload \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: multipart/form-data'
 
 ```
 
 ```http
 POST /upload HTTP/1.1
 
-Content-Type: application/json
+Content-Type: multipart/form-data
 
 ```
 
 ```javascript
-const inputBody = "null";
+const inputBody = "{}";
 const headers = {
-  "Content-Type": "application/json",
+  "Content-Type": "multipart/form-data",
 };
 
 fetch("/upload", {
@@ -9625,7 +9646,7 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'multipart/form-data'
 }
 
 result = RestClient.post '/upload',
@@ -9639,7 +9660,7 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'multipart/form-data'
 }
 
 r = requests.post('/upload', headers = headers)
@@ -9654,7 +9675,7 @@ print(r.json())
 require 'vendor/autoload.php';
 
 $headers = array(
-    'Content-Type' => 'application/json',
+    'Content-Type' => 'multipart/form-data',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -9707,7 +9728,7 @@ import (
 func main() {
 
     headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
+        "Content-Type": []string{"multipart/form-data"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -9725,8 +9746,8 @@ func main() {
 
 > Body parameter
 
-```json
-null
+```yaml
+{}
 ```
 
 <h3 id="upload-files,-optionally-into-a-presigned-album,-and-index-them.-parameters">Parameters</h3>
@@ -9736,7 +9757,7 @@ null
 | auto_rename            | query | boolean | false    | When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error. |
 | on_conflict            | query | string  | false    | none                                                                                                                                                                                                                                                                                                                                                                              |
 | presigned_album_id_opt | query | string  | false    | none                                                                                                                                                                                                                                                                                                                                                                              |
-| body                   | body  | any     | true     | none                                                                                                                                                                                                                                                                                                                                                                              |
+| body                   | body  | object  | true     | none                                                                                                                                                                                                                                                                                                                                                                              |
 
 <h3 id="upload-files,-optionally-into-a-presigned-album,-and-index-them.-responses">Responses</h3>
 
@@ -10497,6 +10518,32 @@ continued
 | ----- | ------ | -------- | ------------ | ----------- |
 | token | string | true     | none         | none        |
 
+<h2 id="tocS_RebuildFailure">RebuildFailure</h2>
+<!-- backwards compatibility -->
+<a id="schemarebuildfailure"></a>
+<a id="schema_RebuildFailure"></a>
+<a id="tocSrebuildfailure"></a>
+<a id="tocsrebuildfailure"></a>
+
+```json
+{
+  "error": "string",
+  "path": "string"
+}
+```
+
+One media asset whose metadata pipeline failed during a rebuild.
+
+The rebuild continues past the failure, so this is the only record of _why_
+an asset came out of the rebuild without metadata.
+
+### Properties
+
+| Name  | Type   | Required | Restrictions | Description                                               |
+| ----- | ------ | -------- | ------------ | --------------------------------------------------------- |
+| error | string | true     | none         | Rendered error, including the stage that failed.          |
+| path  | string | true     | none         | Absolute path of the file the pipeline could not process. |
+
 <h2 id="tocS_RebuildStats">RebuildStats</h2>
 <!-- backwards compatibility -->
 <a id="schemarebuildstats"></a>
@@ -10509,6 +10556,15 @@ continued
   "albumsCreated": 0,
   "hashErrors": 0,
   "mediaCreated": 0,
+  "metadataFailed": 0,
+  "metadataFailures": [
+    {
+      "error": "string",
+      "path": "string"
+    }
+  ],
+  "metadataFailuresTruncated": true,
+  "metadataIndexed": 0,
   "unsupportedSkipped": 0
 }
 ```
@@ -10517,12 +10573,16 @@ Statistics from a clean filesystem rebuild.
 
 ### Properties
 
-| Name               | Type    | Required | Restrictions | Description |
-| ------------------ | ------- | -------- | ------------ | ----------- |
-| albumsCreated      | integer | true     | none         | none        |
-| hashErrors         | integer | true     | none         | none        |
-| mediaCreated       | integer | true     | none         | none        |
-| unsupportedSkipped | integer | true     | none         | none        |
+| Name                      | Type                                      | Required | Restrictions | Description                                                                                                                                                                                                                                          |
+| ------------------------- | ----------------------------------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| albumsCreated             | integer                                   | true     | none         | none                                                                                                                                                                                                                                                 |
+| hashErrors                | integer                                   | true     | none         | none                                                                                                                                                                                                                                                 |
+| mediaCreated              | integer                                   | true     | none         | none                                                                                                                                                                                                                                                 |
+| metadataFailed            | integer                                   | true     | none         | Media assets whose metadata pipeline failed, counted whether or not the<br>detail for each one is still in `metadataFailures`.                                                                                                                       |
+| metadataFailures          | [[RebuildFailure](#schemarebuildfailure)] | true     | none         | Per-file diagnostics, capped so a wholesale failure cannot size the<br>response to the library. `metadataFailed` is the authoritative count and<br>`metadataFailuresTruncated` says whether this list was clipped.                                   |
+| metadataFailuresTruncated | boolean                                   | true     | none         | Whether `metadataFailures` stopped short of `metadataFailed`.                                                                                                                                                                                        |
+| metadataIndexed           | integer                                   | true     | none         | Media assets whose metadata pipeline returned `Ok` and whose payload was<br>written to `METADATA_TABLE`. Read against `mediaCreated`, this is what<br>distinguishes a rebuild that produced usable metadata from one that only<br>reissued identity. |
+| unsupportedSkipped        | integer                                   | true     | none         | none                                                                                                                                                                                                                                                 |
 
 <h2 id="tocS_RenewHashToken">RenewHashToken</h2>
 <!-- backwards compatibility -->

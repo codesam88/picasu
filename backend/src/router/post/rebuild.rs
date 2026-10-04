@@ -13,8 +13,7 @@ use crate::storage::files::get_resolved_image_home;
 use crate::tasks::BATCH_COORDINATOR;
 use crate::tasks::batcher::update_tree::UpdateTreeTask;
 
-/// Rebuild the asset tables and the metadata cache from the filesystem under
-/// `IMAGE_HOME`.
+/// Rebuild the asset tables and metadata cache from the filesystem under `IMAGE_HOME`.
 ///
 /// `rebuild_from_filesystem` clears `ASSET_BY_PATH`, `ASSET_BY_ID`,
 /// `DUPE_INDEX` and `METADATA_TABLE`, walks the image root, and repopulates all
