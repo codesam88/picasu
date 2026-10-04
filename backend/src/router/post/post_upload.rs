@@ -147,6 +147,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
     Ok(target_dir)
 }
 
+/// Upload files, optionally into a presigned album, and index them.
 #[utoipa::path(
         tag = "upload",
         request_body = Value,

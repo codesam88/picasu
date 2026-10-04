@@ -66,7 +66,9 @@ fn probe_enabled() -> bool {
     false
 }
 
+/// Test-only probe: report one asset's stored record and the path it resolves to.
 #[utoipa::path(
+        tag = "internal",
         responses(
             (status = 200, description = "Test-only record probe with the asset's path", body = TestRecordProbe),
             (status = 400, description = "Invalid asset_id"),
@@ -127,11 +129,13 @@ pub fn probe_record(
     Ok(Json(TestRecordProbe { asset_id, path }))
 }
 
-/// Test-only probe: list the `asset_id` members of a `DUPE_INDEX`
-/// content-hash group. Returns an empty list when no group exists for `hash`,
-/// so scenarios can assert both presence and absence of members. Disabled
-/// (404) unless the test bootstrap opted in via `enable_test_probe`.
+/// Test-only probe: list the `asset_id` members of a `DUPE_INDEX` content-hash group.
+///
+/// Returns an empty list when no group exists for `hash`, so scenarios can
+/// assert both presence and absence of members. Disabled (404) unless the test
+/// bootstrap opted in via `enable_test_probe`.
 #[utoipa::path(
+        tag = "internal",
         responses(
             (status = 200, description = "Test-only probe: members of a DUPE_INDEX content-hash group", body = Vec<DupeGroupMember>),
             (status = 404, description = "Probe disabled"),

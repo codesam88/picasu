@@ -32,6 +32,7 @@ pub struct PartialUpdateConfigRequest {
     pub auth_key: Option<String>,
 }
 
+/// Update the server configuration with the posted fields.
 #[utoipa::path(
         tag = "config",
         request_body = PartialUpdateConfigRequest,
@@ -128,6 +129,7 @@ pub struct UpdatePasswordRequest {
     pub old_password: Option<String>,
 }
 
+/// Change the account password.
 #[utoipa::path(
         tag = "config",
         request_body = UpdatePasswordRequest,

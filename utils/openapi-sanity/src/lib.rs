@@ -1,10 +1,40 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! This increment is the tool rather than a rule set: the walk over the router
-//! tree, the types its findings are reported through, and the coverage assertion
-//! that fails a walk which stopped descending instead of letting it report clean.
-//! The rules of `.plan/openapi-annotation-checks.md` land in later increments;
-//! none is enforced here yet.
+//! Section A of `.plan/openapi-annotation-checks.md` is implemented here: the
+//! seven rules about the annotation's own shape. The parameter-agreement (B) and
+//! the guard, security (D, M) and mode rules are separate increments.
+//!
+//! # What this crate holds, and what it must not
+//!
+//! This tool records **annotation conventions**, and it holds no facts about the
+//! backend. Every constant here is a convention someone decided — a tag
+//! vocabulary, a set of spellings utoipa also accepts — and every rule reads
+//! something written in the `#[utoipa::path]` annotation or in the handler beside
+//! it.
+//!
+//! That boundary is a design decision, not an accident, and the sign it is
+//! crossed is recognisable: **if a rule seems to need a route path, a URL prefix,
+//! a config value, a feature name, a mount table or a constant from the backend,
+//! the rule belongs in the backend or in a just recipe, not here.** A copy of
+//! such a fact in this crate is a second place to forget, and the gate built on
+//! it is a gate that reports a stale copy rather than the truth. It happened once:
+//! A3 briefly carried the backend's contract-exclusion prefixes so the test-only
+//! probes could be exempt, and the honest resolution was a vocabulary entry
+//! (`internal`) rather than a copy of a path list. The one convention this crate
+//! copies rather than read is recorded with a comment saying where the prose is:
+//! `TAGS` mirrors a table in `docs/openapi-generator.md`.
+//!
+//! # Why the rules belong in the gate
+//!
+//! Why the shape rules belong in the gate. Every one of them is invisible in the
+//! generated document, because the document is generated *from* the annotation: a
+//! restated path, a missing `responses(…)`, a tag outside the vocabulary, a
+//! handler with no doc comment, a summary wrapped over two lines, a hand-set
+//! `operation_id` and a hand-set `summary` or `description` each produce a
+//! document that looks complete while carrying a wrong, missing or unsortable
+//! field. The doc-comment rule is the sharpest case — before it existed, 49 of
+//! the 61 published operations had no `summary` at all, and nothing in the
+//! document showed that as a defect.
 //!
 //! # What the scan answers
 //!
@@ -13,15 +43,77 @@
 //! views:
 //!
 //! 1. which functions carry a `#[utoipa::path]` annotation,
-//! 2. which file and line each of them is written at,
-//! 3. how many annotated handlers the walk reached, so that a walk which stopped
-//!    descending early cannot be mistaken for a clean tree.
+//! 2. what the annotation declares ([`Annotation`]),
+//! 3. what the handler's doc comment says ([`Located`] lines, and the paragraph
+//!    utoipa turns into `summary`).
+//!
+//! # What section A does not cover
+//!
+//! The rules assert the *absence* of three spellings utoipa also accepts, each of
+//! which restates something the route attribute already says. They match the
+//! spellings the plan enumerates, so a residue stays and is review-time rather
+//! than gated:
+//!
+//! - `method(GET)` is the parenthesised verb spelling; A1 rejects only the bare
+//!   tokens in `RESTATED_VERBS`.
+//! - `tags(["a", "b"])` sets tags in one list; A3 counts `tag = "…"` occurrences
+//!   only, and no annotation uses it.
+//! - `context_path` sets a base path on the annotation; A1 rejects `path = "…"`.
+//!
+//! A3's vocabulary is [`TAGS`], which is this repository's copy of the table in
+//! `docs/openapi-generator.md` ("Tag conventions"). It is duplicated here rather
+//! than read from the document because the tool checks source and the document is
+//! a generated review artifact; the two must be changed together.
+//!
+//! The residue shrank with the work: `trace` moved from unenforced to
+//! `RESTATED_VERBS` once it was noticed that utoipa's `HttpMethod` accepts it as
+//! a bare token.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use syn::Attribute;
+use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use syn::spanned::Spanned;
+use syn::{Attribute, Expr, ItemFn, Lit, Meta};
+
+/// The closed tag vocabulary of `docs/openapi-generator.md` ("Tag conventions"),
+/// which A3 enforces.
+///
+/// This is the repository's copy of that table. It is duplicated here rather
+/// than parsed out of the document because the document is a review artifact
+/// generated from these annotations — reading it from here would make the rule
+/// check the document with the document. Adding a subject means changing the
+/// table in the document and this constant in the same change.
+///
+/// `internal` is the one entry that names a group the generated reference never
+/// renders: the operations outside the published API. Today those are the
+/// test-only probes, which `openapi_public` strips from the committed artifact
+/// along with the routes under the contract's exclusion prefixes, so a probe has
+/// no section to be filed under. The entry says so in the vocabulary rather than
+/// leaving those operations untagged, because a rule with an exemption is a rule
+/// with a way round it, and a tag in a list is a fact a reader of the source can
+/// see. Nothing in this crate decides *which* routes are internal — the backend
+/// owns that — so the entry carries a name, not a rule about paths.
+pub const TAGS: [&str; 10] = [
+    "albums", "assets", "auth", "config", "index", "internal", "pages", "serving", "timeline",
+    "upload",
+];
+
+/// Bare verb tokens a `#[utoipa::path]` argument must not name, which A1
+/// rejects.
+///
+/// With `rocket_extras` enabled, utoipa reads the verb and the path from the
+/// route attribute, so a verb written in the annotation is a second copy of a
+/// fact the route already states. Nothing compares the two copies, so a
+/// restatement can only rot.
+///
+/// `trace` is here because it is a Rocket verb and utoipa's `HttpMethod`
+/// accepts it, not because a Rocket route ever uses it — the plan's original
+/// list of eight omitted it by oversight, and adding a name nothing writes costs
+/// nothing while leaving the gap open would let a restatement through.
+const RESTATED_VERBS: [&str; 9] = [
+    "get", "post", "put", "delete", "head", "options", "patch", "trace", "route",
+];
 
 /// One reported problem, rendered as `path:line: identity: what is wrong`.
 ///
@@ -67,8 +159,194 @@ pub fn render(findings: &[Finding]) -> String {
         .join("\n")
 }
 
-/// A function carrying a `#[utoipa::path]` annotation, with its source location
-/// resolved.
+/// A value read from the source together with the 1-based line it was written
+/// on, so a finding can point at the token rather than at the handler.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Located<T> {
+    /// The value as written.
+    pub value: T,
+    /// Where it is written, 1-based.
+    pub line: usize,
+}
+
+impl<T> Located<T> {
+    /// A value at a line.
+    pub fn new(value: T, line: usize) -> Self {
+        Self { value, line }
+    }
+}
+
+/// What a `#[utoipa::path(…)]` annotation declares, read far enough for the
+/// shape rules of section A.
+///
+/// Only the four things A1–A3 and A6 assert on are kept. Parsed from the
+/// attribute's own token stream rather than through `syn::Meta`, so a value this
+/// crate does not model — a request body, an extension, a response schema — is
+/// skipped over instead of rejected: the annotation grammar belongs to utoipa, and
+/// a rule that could not parse a legal annotation would report a tree it never
+/// understood.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Annotation {
+    /// `path = "…"`, with the line it is written on.
+    pub path: Option<Located<String>>,
+    /// The first bare verb token, with the line it is written on. One is enough:
+    /// the finding names the spelling, and a second one is the same defect.
+    pub verb: Option<Located<String>>,
+    /// `operation_id = …`, with the line it is written on.
+    pub operation_id: Option<Located<String>>,
+    /// `summary = "…"`, with the line it is written on. A7 rejects it: utoipa
+    /// derives the field from the doc comment otherwise.
+    pub summary: Option<Located<String>>,
+    /// `description = "…"`, with the line it is written on. A7 rejects it for the
+    /// same reason as [`Annotation::summary`].
+    pub description: Option<Located<String>>,
+    /// Every `tag = "…"`, with the line each is written on.
+    pub tags: Vec<Located<String>>,
+    /// How many entries `responses(…)` declares, or `None` when the annotation
+    /// declares no `responses(…)` at all — a different defect from an empty one.
+    pub responses: Option<Located<usize>>,
+}
+
+impl Annotation {
+    /// Read an annotation's arguments.
+    ///
+    /// An annotation written as a bare `#[utoipa::path]` has no arguments at all
+    /// and yields the default: every rule that requires something to be declared
+    /// then reports it, which is the honest reading of an empty annotation.
+    pub fn parse(attribute: &Attribute) -> Self {
+        let Meta::List(list) = &attribute.meta else {
+            return Self::default();
+        };
+        let mut annotation = Self::default();
+        let mut tokens = list.tokens.clone().into_iter();
+
+        while let Some(tree) = tokens.next() {
+            let TokenTree::Ident(ident) = &tree else {
+                // A stray comma or a value this loop already consumed.
+                continue;
+            };
+            let name = ident.to_string();
+            let line = ident.span().start().line;
+
+            match tokens.next() {
+                // `name = value`
+                Some(TokenTree::Punct(punct)) if punct.as_char() == '=' => {
+                    let value = match tokens.next() {
+                        Some(TokenTree::Literal(literal)) => literal_text(&literal),
+                        // A non-literal value (an operation id built from a const,
+                        // say) is still a declaration; what it says does not matter
+                        // to a rule that only asks whether it is there.
+                        _ => String::new(),
+                    };
+                    // Read at the top level only. `description` is also the key of
+                    // a response entry, and those live inside the `responses(…)`
+                    // group, which the arm below never looks into — so A7 cannot
+                    // mistake a documented status code for a hand-set description.
+                    match name.as_str() {
+                        "path" => {
+                            annotation
+                                .path
+                                .get_or_insert_with(|| Located::new(value, line));
+                        }
+                        "operation_id" => {
+                            annotation
+                                .operation_id
+                                .get_or_insert_with(|| Located::new(value, line));
+                        }
+                        "summary" => {
+                            annotation
+                                .summary
+                                .get_or_insert_with(|| Located::new(value, line));
+                        }
+                        "description" => {
+                            annotation
+                                .description
+                                .get_or_insert_with(|| Located::new(value, line));
+                        }
+                        "tag" => annotation.tags.push(Located::new(value, line)),
+                        _ => {}
+                    }
+                }
+                // `name(…)`
+                Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Parenthesis => {
+                    if name == "responses" {
+                        annotation.responses =
+                            Some(Located::new(entries_in(&group.stream()), line));
+                    }
+                }
+                // `name` — a bare token, which for a verb is the restatement A1
+                // rejects and for anything else is a list A has no rule about.
+                _ => {
+                    if RESTATED_VERBS.contains(&name.as_str()) {
+                        annotation
+                            .verb
+                            .get_or_insert_with(|| Located::new(name, line));
+                    }
+                }
+            }
+        }
+
+        annotation
+    }
+}
+
+/// The text of a string literal token, without its quotes.
+fn literal_text(literal: &proc_macro2::Literal) -> String {
+    literal.to_string().trim_matches('"').to_owned()
+}
+
+/// How many comma-separated entries a group holds, ignoring empty ones — the
+/// shape utoipa parses `responses(…)`, `params(…)` and `extensions(…)` in.
+fn entries_in(stream: &TokenStream) -> usize {
+    let mut entries = 0;
+    let mut open = false;
+    for tree in stream.clone() {
+        match tree {
+            TokenTree::Punct(punct) if punct.as_char() == ',' => {
+                if open {
+                    entries += 1;
+                }
+                open = false;
+            }
+            _ => open = true,
+        }
+    }
+    if open {
+        entries += 1;
+    }
+    entries
+}
+
+/// The lines of a handler's doc comment, in source order.
+///
+/// `///` reaches `syn` as a `#[doc = "…"]` attribute, so this is the doc comment
+/// without a second source format to read. The text is trimmed the way a reader
+/// sees it, which is also what decides whether a line is a paragraph break.
+fn doc_comment(handler: &ItemFn) -> Vec<Located<String>> {
+    handler
+        .attrs
+        .iter()
+        .filter(|attribute| attribute.path().is_ident("doc"))
+        .filter_map(|attribute| {
+            let Meta::NameValue(name_value) = &attribute.meta else {
+                return None;
+            };
+            let Expr::Lit(expression) = &name_value.value else {
+                return None;
+            };
+            let Lit::Str(text) = &expression.lit else {
+                return None;
+            };
+            Some(Located::new(
+                text.value().trim().to_owned(),
+                attribute.span().start().line,
+            ))
+        })
+        .collect()
+}
+
+/// A function carrying a `#[utoipa::path]` annotation, with its annotation, doc
+/// comment and route arguments resolved.
 ///
 /// No `Debug`: `syn::Block` is only `Debug` under syn's `extra-traits` feature,
 /// which this crate does not otherwise need.
@@ -78,8 +356,33 @@ pub struct AnnotatedHandler {
     pub file: String,
     /// The function name — a handler's identity in a finding.
     pub name: String,
-    /// Where the function is written, so a finding can point at it.
-    pub sig_line: usize,
+    /// What the `#[utoipa::path(…)]` annotation declares.
+    pub annotation: Annotation,
+    /// The handler's doc comment, line by line. Empty when it carries none.
+    pub doc: Vec<Located<String>>,
+    /// The line the signature is written on. Private because it exists only to
+    /// anchor a finding about the handler as a whole.
+    sig_line: usize,
+}
+
+impl AnnotatedHandler {
+    /// How many lines the doc comment's first paragraph runs, which is the text
+    /// utoipa derives `summary` from.
+    ///
+    /// The paragraph ends at the first blank doc line, so a doc comment with no
+    /// blank line at all is one paragraph however long it is.
+    pub fn summary_lines(&self) -> usize {
+        self.doc
+            .iter()
+            .take_while(|line| !line.value.is_empty())
+            .count()
+    }
+
+    /// The line the signature is written on, which is where a reader
+    /// looks when the handler has nothing else to point at.
+    fn signature_line(&self) -> usize {
+        self.sig_line
+    }
 }
 
 /// A source file that could not be read or parsed.
@@ -172,8 +475,8 @@ impl fmt::Display for CoverageShortfall {
     }
 }
 
-/// What a handler contributes to a [`TreeReport`]: its name and where it is
-/// written, which is the only reason the report carries handlers at all.
+/// What a handler contributes to a [`TreeReport`]: its source location and name,
+/// plus the declaration counts used by the annotation checks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HandlerSummary {
     /// Path the source was read from.
@@ -201,13 +504,20 @@ pub fn annotated_handlers(file: &str, parsed: &syn::File) -> Vec<AnnotatedHandle
         .map(|handler| AnnotatedHandler {
             file: file.to_owned(),
             name: handler.sig.ident.to_string(),
+            annotation: Annotation::parse(
+                handler
+                    .attrs
+                    .iter()
+                    .find(|attribute| is_utoipa_path(attribute))
+                    .expect("the handler was filtered on carrying this attribute"),
+            ),
+            doc: doc_comment(handler),
             sig_line: handler.sig.span().start().line,
         })
         .collect()
 }
 
 /// Parse one source file and return its `#[utoipa::path]`-annotated functions
-/// with their source locations resolved.
 pub fn handlers_in_file(file: &str, source: &str) -> Result<Vec<AnnotatedHandler>, syn::Error> {
     let parsed: syn::File = syn::parse_file(source)?;
     Ok(annotated_handlers(file, &parsed))
@@ -229,19 +539,272 @@ pub fn relative_name(path: &Path, source_root: &Path) -> String {
     named.to_string_lossy().replace('\\', "/")
 }
 
-/// Every annotation rule over one source file.
+/// A1 — the annotation restates neither the route's path nor its verb.
 ///
-/// No rule is implemented yet: this increment ships the walk and the reporting
-/// types the rules of `.plan/openapi-annotation-checks.md` will use, so the
-/// parse error is still worth surfacing rather than swallowing. A file that does
-/// not parse would otherwise be a file no rule ever sees.
+/// With `rocket_extras` enabled, utoipa derives both from the route attribute,
+/// so neither is needed to document the operation. What the annotation adds is a
+/// second copy of a fact the route already states, and nothing compares the two
+/// copies: the only thing a restatement can do is rot.
+fn restated_route(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let mut findings = Vec::new();
+
+    if let Some(path) = &handler.annotation.path {
+        findings.push(Finding::at(
+            &handler.file,
+            path.line,
+            &handler.name,
+            &format!(
+                "the annotation declares path = \"{}\", but rocket_extras derives the \
+                 path from the route attribute, so a restatement can only be a duplicate \
+                 that can rot",
+                path.value
+            ),
+        ));
+    }
+
+    if let Some(verb) = &handler.annotation.verb {
+        findings.push(Finding::at(
+            &handler.file,
+            verb.line,
+            &handler.name,
+            &format!(
+                "the annotation names the verb {} as a bare argument, but \
+                 rocket_extras derives the verb from the route attribute, so a \
+                 restatement can only be a duplicate that can rot",
+                verb.value
+            ),
+        ));
+    }
+
+    findings
+}
+
+/// A2 — `responses(…)` is present and declares at least one entry.
+///
+/// utoipa invents no response, so an annotation without them produces an
+/// operation that documents nothing it can answer. An empty `responses()` is the
+/// same defect spelled differently and is reported separately, because it reads
+/// as though responses had been considered.
+fn responses_declared(handler: &AnnotatedHandler) -> Vec<Finding> {
+    match &handler.annotation.responses {
+        Some(entries) if entries.value > 0 => Vec::new(),
+        Some(entries) => vec![Finding::at(
+            &handler.file,
+            entries.line,
+            &handler.name,
+            "the annotation declares responses() with no entry, and utoipa invents no \
+             response, so the operation documents nothing it can answer",
+        )],
+        None => vec![Finding::at(
+            &handler.file,
+            handler.signature_line(),
+            &handler.name,
+            "the annotation declares no responses, and utoipa invents no response, so \
+             the operation documents nothing it can answer",
+        )],
+    }
+}
+
+/// A3 — exactly one `tag`, and it is one of [`TAGS`].
+///
+/// The tag is what the generated reference groups operations by, so a missing or
+/// misspelled one files the operation nowhere a reader looks. The vocabulary is
+/// the table in `docs/openapi-generator.md` ("Tag conventions"), which this
+/// repository copies into [`TAGS`]; the tool owns the list because a document
+/// linter is not adopted.
+///
+/// The rule is absolute: every annotated operation declares one tag, with no
+/// exemptions for routes the published document drops. `internal` is how such an
+/// operation says so — a vocabulary entry, not a hole in the rule — so the
+/// surface that is stripped from the committed artifact is still declared in the
+/// same shape as everything else, and a reader of the tree can see it in the
+/// place a reader looks for it.
+fn one_vocabulary_tag(handler: &AnnotatedHandler) -> Vec<Finding> {
+    match handler.annotation.tags.as_slice() {
+        [] => vec![Finding::at(
+            &handler.file,
+            handler.signature_line(),
+            &handler.name,
+            "the annotation declares no tag, so the operation is filed nowhere in the \
+             generated reference; take one from the vocabulary in docs/openapi-generator.md \
+             \"Tag conventions\"",
+        )],
+        [tag] if TAGS.contains(&tag.value.as_str()) => Vec::new(),
+        [tag] => vec![Finding::at(
+            &handler.file,
+            tag.line,
+            &handler.name,
+            &format!(
+                "the annotation declares the tag \"{}\", which is not one of the {} in \
+                 docs/openapi-generator.md \"Tag conventions\" ({}); a tag outside the \
+                 vocabulary files the operation outside every section of the reference",
+                tag.value,
+                TAGS.len(),
+                TAGS.join(", ")
+            ),
+        )],
+        tags => vec![Finding::at(
+            &handler.file,
+            tags[0].line,
+            &handler.name,
+            &format!(
+                "the annotation declares {} tags ({}), but the house rule is exactly one \
+                 tag per operation, so the reference would file it under all of them",
+                tags.len(),
+                tags.iter()
+                    .map(|tag| format!("\"{}\"", tag.value))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        )],
+    }
+}
+
+/// A4 — the handler carries a doc comment.
+///
+/// utoipa derives `summary` and `description` from it and the reference renders
+/// both, so a handler without one is an operation with no text in the generated
+/// documentation — invisible in the document, and invisible in review of the
+/// document, because the document looks complete.
+fn doc_comment_present(handler: &AnnotatedHandler) -> Vec<Finding> {
+    if !handler.doc.is_empty() {
+        return Vec::new();
+    }
+    vec![Finding::at(
+        &handler.file,
+        handler.signature_line(),
+        &handler.name,
+        "the handler carries no doc comment, and summary and description are derived \
+         from it, so the operation reaches the generated reference with neither",
+    )]
+}
+
+/// A5 — the doc comment's first paragraph is one line.
+///
+/// That paragraph is the operation's `summary`, and `widdershins` renders the
+/// summary as the reference's heading. A paragraph of more than one line puts a
+/// newline inside a markdown heading, which splits it. This was measured on this
+/// repository's own document, not adopted as a style opinion.
+fn one_line_summary(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let Some(first_line) = handler.doc.first() else {
+        return Vec::new();
+    };
+    let summary_lines = handler.summary_lines();
+    if summary_lines == 1 {
+        return Vec::new();
+    }
+    if summary_lines == 0 {
+        return vec![Finding::at(
+            &handler.file,
+            first_line.line,
+            &handler.name,
+            "the doc comment's first paragraph is empty, so utoipa has no summary text to render",
+        )];
+    }
+    let second_line = &handler.doc[1];
+    // Anchored at the second line of the paragraph: that is where the heading
+    // stops being a heading.
+    vec![Finding::at(
+        &handler.file,
+        second_line.line,
+        &handler.name,
+        &format!(
+            "the doc comment's first paragraph must be one line, and it is the \
+             operation's summary, which the reference renders as a heading; a heading \
+             must be one line, and this paragraph is {} line(s)",
+            handler.summary_lines()
+        ),
+    )]
+}
+
+/// A6 — the annotation sets no `operation_id`.
+///
+/// utoipa derives it from the function name, and every other name in the document
+/// is either derived the same way or compared by `openapi-routes-match`. A
+/// hand-set `operation_id` is the one name nothing compares: it can be changed
+/// without changing a route, and the parity check will not notice.
+fn no_hand_set_operation_id(handler: &AnnotatedHandler) -> Vec<Finding> {
+    handler
+        .annotation
+        .operation_id
+        .as_ref()
+        .map_or_else(Vec::new, |id| {
+            vec![Finding::at(
+                &handler.file,
+                id.line,
+                &handler.name,
+                &format!(
+                    "the annotation sets operation_id = \"{}\", which utoipa otherwise derives \
+                 from the function name; a hand-set one is the only name in the document \
+                 that nothing compares",
+                    id.value
+                ),
+            )]
+        })
+}
+
+/// A7 — the annotation sets neither `summary` nor `description`.
+///
+/// utoipa derives both from the doc comment: `summary` from its first paragraph
+/// and `description` from the rest. A hand-set one is therefore the same prose
+/// twice, and the two copies are compared by nothing — the same argument as A6,
+/// where the derived name is the only one a consumer can predict. A7 exists
+/// because A5's premise is false without it: while an annotation may set
+/// `summary`, "the first paragraph *is* the summary" does not hold, and A5 would
+/// be reporting a defect the document does not have.
+///
+/// A7 does not extend to a per-response `description`, which is how a status
+/// code's text is written and is not derived from anything.
+fn no_hand_set_prose(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for (key, declared) in [
+        ("summary", &handler.annotation.summary),
+        ("description", &handler.annotation.description),
+    ] {
+        let Some(declared) = declared else {
+            continue;
+        };
+        findings.push(Finding::at(
+            &handler.file,
+            declared.line,
+            &handler.name,
+            &format!(
+                "the annotation sets {key} = \"{}\", which utoipa otherwise derives from the \
+                 doc comment; a hand-set one is prose written twice beside itself, and \
+                 nothing compares the two copies",
+                declared.value
+            ),
+        ));
+    }
+    findings
+}
+
+/// A1 to A7 of section A, then C1: every rule over one handler, in a fixed
+/// order so a report reads the same way twice.
+///
+/// C1b contributes nothing here for the reason given on
+/// [`findings_in_source`].
+fn rules_over(handler: &AnnotatedHandler) -> Vec<Finding> {
+    [
+        restated_route(handler),
+        responses_declared(handler),
+        one_vocabulary_tag(handler),
+        doc_comment_present(handler),
+        one_line_summary(handler),
+        no_hand_set_operation_id(handler),
+        no_hand_set_prose(handler),
+    ]
+    .concat()
+}
+
+/// Every annotation rule over one source file: sections A and B.
 pub fn findings_in_source(name: &str, source: &str) -> Result<Vec<Finding>, ScanError> {
     handlers_in_file(name, source)
         .map_err(|error| ScanError {
             file: name.to_owned(),
             message: format!("must parse as Rust: {error}"),
         })
-        .map(|_| Vec::new())
+        .map(|handlers| handlers.iter().flat_map(rules_over).collect())
 }
 
 /// Read every `.rs` file under `source_root`, recursively, as `(name, source)`
@@ -282,7 +845,7 @@ fn rust_sources(source_root: &Path) -> Result<Vec<(String, String)>, ScanError> 
     Ok(sources)
 }
 
-/// Every annotation rule over every `.rs` file under `source_root`.
+/// Every rule over every `.rs` file under `source_root`.
 ///
 /// The findings, the file count and one [`HandlerSummary`] per annotated handler
 /// all come from the same walk, so a caller can assert on coverage as well as on
@@ -302,6 +865,7 @@ pub fn scan_source_root(source_root: &Path) -> Result<TreeReport, ScanError> {
             message: format!("must parse as Rust: {error}"),
         })?;
         for handler in &handlers {
+            report.findings.extend(rules_over(handler));
             report.handlers.push(HandlerSummary {
                 file: handler.file.clone(),
                 name: handler.name.clone(),

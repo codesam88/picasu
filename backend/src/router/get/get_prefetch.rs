@@ -274,6 +274,7 @@ fn execute_prefetch_logic(
     Ok(json)
 }
 
+/// Evaluate a timeline/list query, keep the result as a snapshot, and return its id.
 #[utoipa::path(
         tag = "timeline",
         request_body = serde_json::Value,

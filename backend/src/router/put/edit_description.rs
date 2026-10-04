@@ -25,6 +25,7 @@ pub struct SetUserDefinedDescription {
     pub timestamp: i64,
 }
 
+/// Set the user-defined description of an asset, or clear it with `null`.
 #[utoipa::path(
         tag = "albums",
         request_body = SetUserDefinedDescription,

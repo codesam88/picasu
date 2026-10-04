@@ -27,6 +27,7 @@ pub struct RegenerateThumbnailForm<'r> {
     pub frame: TempFile<'r>,
 }
 
+/// Regenerate the thumbnail of an image within an uploaded frame.
 #[utoipa::path(
         tag = "assets",
         request_body = Value,

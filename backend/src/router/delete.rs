@@ -38,6 +38,7 @@ pub struct DeleteList {
 
 type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
 
+/// Delete the listed assets: each file and its sidecar are removed from disk.
 #[utoipa::path(
         tag = "assets",
         request_body = DeleteList,
