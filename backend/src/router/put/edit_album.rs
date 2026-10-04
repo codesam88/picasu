@@ -102,6 +102,9 @@ pub struct SetAlbumCover {
             (status = 200, description = "Album cover updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
+            (status = 500, description = "Internal error"),
+            (status = 404, description = "Not found"),
         )
     )
 ]
@@ -211,6 +214,8 @@ pub struct SetAlbumTitle {
             (status = 200, description = "Album title updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
+            (status = 500, description = "Internal error"),
         )
     )
 ]

@@ -1110,6 +1110,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Delete the listed assets: each file and its sidecar are removed from disk.",
@@ -1265,6 +1271,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Serve one page of timeline/list rows for a snapshot timestamp.",
@@ -1285,6 +1294,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Export the whole tree as JSON.",
@@ -1332,6 +1344,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Serve one row of a snapshot by its index.",
@@ -1425,9 +1440,6 @@
             },
             "description": "Album index status"
           },
-          "400": {
-            "description": "Invalid input"
-          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
@@ -1465,11 +1477,17 @@
           "200": {
             "description": "Full metadata record for the asset"
           },
+          "400": {
+            "description": "Invalid input"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
           "404": {
             "description": "Unknown asset_id"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Full metadata detail for a single asset, composed from its identity and its stored metadata payload.",
@@ -1507,6 +1525,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Complete a filesystem path for the path-completion field.",
@@ -1552,6 +1576,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Evaluate a timeline/list query, keep the result as a snapshot, and return its id.",
@@ -1610,6 +1637,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Serve the compressed thumbnail of a hashed asset.",
@@ -1641,6 +1671,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Serve the original file from its current location under `imagePath`.",
@@ -1705,6 +1741,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Replace the server configuration with the posted one.",
@@ -1743,6 +1782,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Create a new subdirectory under an existing dir-album's directory and register it as a new album.",
@@ -1780,6 +1825,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Create a share link for an album and return it.",
@@ -1803,7 +1854,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "description": "Album indexing started"
           },
           "400": {
@@ -1811,6 +1862,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
           }
         },
         "summary": "Walk a directory under `IMAGE_HOME` and index all media files in the background.",
@@ -1854,7 +1908,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "description": "Image indexing started"
           },
           "400": {
@@ -1862,6 +1916,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
           }
         },
         "summary": "Index a single image by its path relative to `IMAGE_HOME`.",
@@ -1893,6 +1950,9 @@
           },
           "405": {
             "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Rebuild the asset tables from the filesystem under `IMAGE_HOME`.",
@@ -1930,6 +1990,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Exchange an expired hash token for a fresh one.",
@@ -1967,6 +2030,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Exchange an expired timestamp (prefetch) token for a fresh one.",
@@ -2005,6 +2071,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Move the asset identified by `asset_id` into the album's directory on disk.",
@@ -2035,6 +2107,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Update the server configuration with the posted fields.",
@@ -2065,6 +2143,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Change the account password.",
@@ -2095,6 +2179,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Delete one share of an album.",
@@ -2125,6 +2215,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Move assets to the trash, or restore them.",
@@ -2155,6 +2251,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Rate assets 0–5, or clear the rating with `null`.",
@@ -2185,6 +2287,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Replace the share of an album.",
@@ -2225,6 +2333,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Add and remove tags on the listed assets, and return the resulting tag list.",
@@ -2255,6 +2369,15 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Regenerate the thumbnail of an image within an uploaded frame.",
@@ -2285,6 +2408,15 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Rotate an image and regenerate what depends on its orientation.",
@@ -2315,6 +2447,15 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Updates the cover image of a specific album.",
@@ -2346,6 +2487,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Updates the display title of a specific album.",
@@ -2376,6 +2523,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Set the user-defined description of an asset, or clear it with `null`.",
@@ -2617,6 +2770,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Upload files, optionally into a presigned album, and index them.",
@@ -2707,6 +2866,12 @@
         "responses": {
           "200": {
             "description": "SPA fallback — serves index.html for Vue Router routes"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Catch-all SPA fallback — serves index.html for valid Vue Router routes.",

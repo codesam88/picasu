@@ -30,6 +30,8 @@ use crate::router::{AppResult, GuardResult};
             (status = 200, description = "Full metadata record for the asset"),
             (status = 404, description = "Unknown asset_id"),
             (status = 401, response = Unauthorized),
+            (status = 400, description = "Invalid input"),
+            (status = 500, description = "Internal error"),
         )
     )
 ]

@@ -32,6 +32,9 @@ pub struct RotateImageRequest {
             (status = 200, description = "Image rotated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
+            (status = 500, description = "Internal error"),
+            (status = 404, description = "Not found"),
         )
     )
 ]

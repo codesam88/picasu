@@ -20,3 +20,5 @@ pub async fn one_response() -> AppResult<Json<Widget>> {
 pub async fn two_responses() -> AppResult<()> {
     Ok(())
 }
+
+type AppResult<T> = Result<T, AppError>;

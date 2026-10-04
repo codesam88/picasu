@@ -1,10 +1,13 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Two sections of `.plan/openapi-annotation-checks.md` are implemented here:
-//! **section A**, the seven rules about the annotation's own shape, and **section
+//! Three sections of `.plan/openapi-annotation-checks.md` are implemented here:
+//! **section A**, the seven rules about the annotation's own shape; **section
 //! B**, the four rules about what the annotation declares against what the route
-//! already says. Guard and security semantics are deliberately deferred to a
-//! separate increment with runtime tests.
+//! already says; and **section P**, the four rules about response statuses —
+//! what the handler can answer versus what `responses(…)` claims. Documenting
+//! the operations with a security *scheme* remains deferred to a separate
+//! increment with runtime security tests; P2 reads only the outcome statuses a
+//! guard's `FromRequest` impl writes.
 //!
 //! # What this crate holds, and what it must not
 //!
@@ -62,6 +65,14 @@
 //!    names and its `data = "…"` body argument),
 //! 5. what each handler argument's type is ([`HandlerArgument`]), which is where
 //!    an `Option`, a `Json<…>`, a `Data<…>` and a `Form<…>` are told apart.
+//! 6. what success statuses a return type implies — fallibility through the
+//!    tree's own `type X = Result<…>` aliases, `Redirect`, and the `Status::`
+//!    constants a `Status` return writes in its body,
+//! 7. which guards a signature names, and what their `FromRequest` impls
+//!    anywhere in the scanned tree answer with (literal outcome statuses, or a
+//!    dynamic mark when the status is computed),
+//! 8. which `ErrorKind::` literals a body raises, and what the app-error map
+//!    (`--app-error-map`) translates them to.
 //!
 //! # What section B does not cover, and why
 //!
@@ -118,6 +129,7 @@
 //! `RESTATED_VERBS` once it was noticed that utoipa's `HttpMethod` accepts it as
 //! a bare token.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -290,8 +302,23 @@ impl<T> Located<T> {
     }
 }
 
+/// A status code as `responses(…)` declares it, or the text of a spelling this
+/// crate cannot read — `status = StatusCode::OK`, an entry with no status key.
+///
+/// An unreadable entry is a finding of its own (A9-style fail closed): the P4
+/// universe comparison cannot vouch for a declared code it never saw, and
+/// skipping it would let the rest of the comparison report a completeness it
+/// does not have.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StatusValue {
+    /// A numeric status code.
+    Code(u16),
+    /// The raw spelling of a status this crate did not understand.
+    Unreadable(String),
+}
+
 /// What a `#[utoipa::path(…)]` annotation declares, read far enough for the
-/// shape rules of section A and the declaration rules of section B.
+/// shape rules of section A and the declaration rules of sections B and P.
 ///
 /// Only what a rule asserts on is kept. Parsed from the attribute's own token
 /// stream rather than through `syn::Meta`, so a value this crate does not model —
@@ -318,6 +345,9 @@ pub struct Annotation {
     /// How many entries `responses(…)` declares, or `None` when the annotation
     /// declares no `responses(…)` at all — a different defect from an empty one.
     pub responses: Option<Located<usize>>,
+    /// Every status `responses(…)` declares, with the line each is written on.
+    /// Section P compares these against what the handler can answer.
+    pub statuses: Vec<Located<StatusValue>>,
     /// Every parameter `params(…)` declares in the inline tuple form. The struct
     /// form is not read; see [`Annotation::unread_params`].
     pub params: Vec<DeclaredParameter>,
@@ -438,6 +468,7 @@ impl Annotation {
                         "responses" => {
                             annotation.responses =
                                 Some(Located::new(entries_in(&group.stream()), line));
+                            read_response_statuses(&group.stream(), &mut annotation);
                         }
                         "params" => read_params(&group.stream(), &mut annotation),
                         "request_body" => {
@@ -639,6 +670,70 @@ fn entries_in(stream: &TokenStream) -> usize {
         entries += 1;
     }
     entries
+}
+
+/// Read every `responses(…)` entry's `status = …` into
+/// [`Annotation::statuses`].
+///
+/// An entry whose status is not a plain integer literal — or that has no
+/// `status` key at all — is recorded as [`StatusValue::Unreadable`] with its
+/// text, so section P reports it instead of comparing a set it only partly
+/// read.
+fn read_response_statuses(stream: &TokenStream, annotation: &mut Annotation) {
+    for entry in split_entries(stream) {
+        let mut trees = entry.clone().into_iter();
+        let tuple = match trees.next() {
+            Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Parenthesis => group,
+            other => {
+                // An entry in a shape the parser does not model still declares
+                // something; recording it as unreadable keeps P4 from claiming a
+                // completeness it does not have.
+                let line = other.as_ref().map_or(0, |tree| tree.span().start().line);
+                annotation.statuses.push(Located::new(
+                    StatusValue::Unreadable(entry.to_string()),
+                    line,
+                ));
+                continue;
+            }
+        };
+        let inner: Vec<TokenTree> = tuple.stream().into_iter().collect();
+        let mut found_status = false;
+        for index in 0..inner.len() {
+            let TokenTree::Ident(key) = &inner[index] else {
+                continue;
+            };
+            if key != "status" {
+                continue;
+            }
+            let Some(TokenTree::Punct(assign)) = inner.get(index + 1) else {
+                continue;
+            };
+            if assign.as_char() != '=' {
+                continue;
+            }
+            found_status = true;
+            let line = key.span().start().line;
+            let value = match inner.get(index + 2) {
+                Some(TokenTree::Literal(literal)) => {
+                    let text = literal_text(literal);
+                    match text.trim().parse::<u16>() {
+                        Ok(code) => StatusValue::Code(code),
+                        Err(_) => StatusValue::Unreadable(text),
+                    }
+                }
+                Some(other) => StatusValue::Unreadable(other.to_string()),
+                None => StatusValue::Unreadable(String::new()),
+            };
+            annotation.statuses.push(Located::new(value, line));
+        }
+        if !found_status {
+            let line = tuple.span().start().line;
+            let text = tuple.stream().to_string();
+            annotation
+                .statuses
+                .push(Located::new(StatusValue::Unreadable(text), line));
+        }
+    }
 }
 
 /// The lines of a handler's doc comment, in source order.
@@ -872,6 +967,15 @@ pub struct AnnotatedHandler {
     /// What the route attribute binds, or `None` when the handler carries no
     /// route attribute.
     pub route: Option<Route>,
+    /// The return type as written (`AppResult<Json<Widget>>`, `Status`,
+    /// `()`), rendered the same way an argument's type is. P1 reads it.
+    pub return_type: String,
+    /// Every `ErrorKind::K` literal in the handler body, in source order.
+    /// P3 translates them through the app-error map.
+    pub body_error_kinds: Vec<Located<String>>,
+    /// Every `Status::K` constant in the handler body, in source order. P1
+    /// reads them only when the return type is `Status`.
+    pub body_status_consts: Vec<Located<String>>,
 }
 
 impl AnnotatedHandler {
@@ -944,6 +1048,10 @@ pub struct TreeReport {
     pub handlers: Vec<HandlerSummary>,
     /// Every rule violation, in scan order.
     pub findings: Vec<Finding>,
+    /// Guards whose `FromRequest` outcome status is computed rather than a
+    /// literal `Status` constant, sorted — the P2 scope limit, pinned by the
+    /// router-tree test so a new one is a decision rather than a silent skip.
+    pub dynamic_guards: Vec<String>,
 }
 
 impl TreeReport {
@@ -1039,6 +1147,11 @@ fn type_head_segment(ty: &Type) -> Option<&syn::Ident> {
 /// Render a type as written, so a finding names the guard rather than a
 /// position in a signature: `GuardResult<GuardAuth>`, `GuardAuth`.
 fn type_text(ty: &Type) -> String {
+    if let Type::Tuple(tuple) = ty
+        && tuple.elems.is_empty()
+    {
+        return "()".to_owned();
+    }
     let Type::Path(path) = ty else {
         return type_head_segment(ty).map_or_else(|| "?".to_owned(), ToString::to_string);
     };
@@ -1096,7 +1209,7 @@ fn handler_arguments(handler: &ItemFn) -> Vec<HandlerArgument> {
 }
 
 /// Collect the `#[utoipa::path]`-annotated functions of a parsed file.
-pub fn annotated_handlers(file: &str, parsed: &syn::File) -> Vec<AnnotatedHandler> {
+pub fn annotated_handlers(file: &str, source: &str, parsed: &syn::File) -> Vec<AnnotatedHandler> {
     parsed
         .items
         .iter()
@@ -1107,6 +1220,11 @@ pub fn annotated_handlers(file: &str, parsed: &syn::File) -> Vec<AnnotatedHandle
         .filter(|handler| handler.attrs.iter().any(is_utoipa_path))
         .map(|handler| {
             let arguments = handler_arguments(handler);
+            let return_type = match &handler.sig.output {
+                syn::ReturnType::Default => "()".to_owned(),
+                syn::ReturnType::Type(_, ty) => type_text(ty),
+            };
+            let (body_error_kinds, body_status_consts) = body_signals(handler, source);
             AnnotatedHandler {
                 file: file.to_owned(),
                 name: handler.sig.ident.to_string(),
@@ -1121,6 +1239,9 @@ pub fn annotated_handlers(file: &str, parsed: &syn::File) -> Vec<AnnotatedHandle
                 sig_line: handler.sig.span().start().line,
                 arguments,
                 route: route_attribute(handler),
+                return_type,
+                body_error_kinds,
+                body_status_consts,
             }
         })
         .collect()
@@ -1129,7 +1250,45 @@ pub fn annotated_handlers(file: &str, parsed: &syn::File) -> Vec<AnnotatedHandle
 /// Parse one source file and return its `#[utoipa::path]`-annotated functions.
 pub fn handlers_in_file(file: &str, source: &str) -> Result<Vec<AnnotatedHandler>, syn::Error> {
     let parsed: syn::File = syn::parse_file(source)?;
-    Ok(annotated_handlers(file, &parsed))
+    Ok(annotated_handlers(file, source, &parsed))
+}
+
+/// The `ErrorKind::` and `Status::` signals written in a handler's body, with
+/// the line each appears on.
+///
+/// Read from the source text between the block's line bounds, with comments and
+/// string literals blanked out first (positions preserved), so a mention inside
+/// prose cannot count as a signal. A pattern inside a raw string containing
+/// quotes could blank past its end — no such string carries one of these
+/// patterns today, and the consequence is a missed signal, not a false one.
+fn body_signals(handler: &ItemFn, source: &str) -> (Vec<Located<String>>, Vec<Located<String>>) {
+    let start = handler.block.span().start().line;
+    let end = handler.block.span().end().line;
+    let text = line_slice(source, start, end);
+    let code = blank_strings_and_comments(text);
+    let offset_line = start.saturating_sub(1);
+    let kinds = patterns_in(&code, "ErrorKind::", offset_line);
+    let statuses = patterns_in(&code, "Status::", offset_line);
+    (kinds, statuses)
+}
+
+/// Every `prefix`-followed identifier in `code`, with the 1-based line it sits
+/// on (`offset_line` lines precede `code`).
+fn patterns_in(code: &str, prefix: &str, offset_line: usize) -> Vec<Located<String>> {
+    let mut found = Vec::new();
+    let mut from = 0;
+    while let Some(at) = code[from..].find(prefix) {
+        let start = from + at + prefix.len();
+        let end = ident_end(code, start);
+        if end == start {
+            from = start + 1;
+            continue;
+        }
+        let line = offset_line + 1 + code[..start].matches('\n').count();
+        found.push(Located::new(code[start..end].to_owned(), line));
+        from = end;
+    }
+    found
 }
 
 /// Name a source file for a finding, relative to the source root.
@@ -1390,7 +1549,7 @@ fn no_hand_set_prose(handler: &AnnotatedHandler) -> Vec<Finding> {
 
 /// A1 to A7 of section A and B1 to B4 of section B: every rule over one handler,
 /// in a fixed order so a report reads the same way twice.
-fn rules_over(handler: &AnnotatedHandler) -> Vec<Finding> {
+fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
     [
         restated_route(handler),
         responses_declared(handler),
@@ -1403,6 +1562,12 @@ fn rules_over(handler: &AnnotatedHandler) -> Vec<Finding> {
         declared_optionality_agrees(handler),
         declared_body_matches_binding(handler),
         form_body_declares_multipart(handler),
+        // Section P, in rule order: P1's finding must precede P4's when both
+        // anchor the same line, which is what a success-code mismatch produces.
+        success_statuses_declared(handler, derivations),
+        guard_statuses_declared(handler, derivations),
+        body_kind_statuses_declared(handler, derivations),
+        declared_statuses_within_universe(handler, derivations),
     ]
     .concat()
 }
@@ -1626,14 +1791,757 @@ fn form_body_declares_multipart(handler: &AnnotatedHandler) -> Vec<Finding> {
     )]
 }
 
-/// Every annotation rule over one source file: sections A and B.
-pub fn findings_in_source(name: &str, source: &str) -> Result<Vec<Finding>, ScanError> {
-    handlers_in_file(name, source)
-        .map_err(|error| ScanError {
-            file: name.to_owned(),
-            message: format!("must parse as Rust: {error}"),
+// ── Section P — response statuses ─────────────────────────────────────────────
+
+/// `rocket::http::Status` constants and their codes.
+///
+/// A fact of the Rocket crate rather than of this backend — the same class of
+/// external knowledge as B2's `Option` — held as one table so a `Status::…`
+/// spelling in source can be read. A constant outside the table is an
+/// `unreadable_status` finding rather than a guess.
+fn rocket_status_code(name: &str) -> Option<u16> {
+    Some(match name {
+        "Ok" => 200,
+        "Created" => 201,
+        "Accepted" => 202,
+        "NonAuthoritativeInformation" => 203,
+        "NoContent" => 204,
+        "PartialContent" => 206,
+        "MultiStatus" => 207,
+        "MovedPermanently" => 301,
+        "Found" => 302,
+        "SeeOther" => 303,
+        "NotModified" => 304,
+        "TemporaryRedirect" => 307,
+        "PermanentRedirect" => 308,
+        "BadRequest" => 400,
+        "Unauthorized" => 401,
+        "PaymentRequired" => 402,
+        "Forbidden" => 403,
+        "NotFound" => 404,
+        "MethodNotAllowed" => 405,
+        "NotAcceptable" => 406,
+        "RequestTimeout" => 408,
+        "Conflict" => 409,
+        "Gone" => 410,
+        "PayloadTooLarge" => 413,
+        "UriTooLong" => 414,
+        "UnsupportedMediaType" => 415,
+        "ImATeapot" => 418,
+        "UnprocessableEntity" => 422,
+        "TooManyRequests" => 429,
+        "InternalServerError" => 500,
+        "NotImplemented" => 501,
+        "BadGateway" => 502,
+        "ServiceUnavailable" => 503,
+        "GatewayTimeout" => 504,
+        _ => return None,
+    })
+}
+
+/// Everything section P derives from source: the app-error map, the tree's
+/// fallible aliases, its guards, and the findings the derivations produced.
+#[derive(Debug, Default)]
+struct Derivations {
+    /// `ErrorKind` variant → status code, complete over [`Self::kind_variants`].
+    kind_codes: BTreeMap<String, u16>,
+    /// Every status code `http_status` can return — half of P4's universe.
+    error_codes: BTreeSet<u16>,
+    /// The `ErrorKind` variants the map declares, for the unknown-kind finding.
+    kind_variants: BTreeSet<String>,
+    /// Type aliases whose right-hand side is `Result<…>` — `AppResult`.
+    fallible_aliases: BTreeSet<String>,
+    /// A `FromRequest` type → the literal statuses its outcome arms name.
+    guard_codes: BTreeMap<String, BTreeSet<u16>>,
+    /// `FromRequest` types whose outcome status is computed rather than
+    /// literal. They require nothing from P2; the set is pinned by tests.
+    dynamic_guards: BTreeSet<String>,
+    /// Findings the derivations themselves produced (unreadable guard status).
+    findings: Vec<Finding>,
+}
+
+/// Read the `ErrorKind` variants and their `http_status` mapping from a file
+/// shaped like `backend/src/error.rs`.
+///
+/// The mapping is read rather than copied: a copy in this crate would be a
+/// second place the backend's status mapping could rot — the failure mode the
+/// crate's no-backend-facts boundary exists to prevent.
+fn parse_app_error_map(origin: &str, source: &str) -> Result<Derivations, ScanError> {
+    let fail = |message: String| ScanError {
+        file: origin.to_owned(),
+        message,
+    };
+
+    let mut derivations = Derivations::default();
+
+    let enum_at = source
+        .find("enum ErrorKind")
+        .ok_or_else(|| fail("must declare `enum ErrorKind`, which section P reads".to_owned()))?;
+    let body_open = source[enum_at..]
+        .find('{')
+        .map(|at| enum_at + at)
+        .ok_or_else(|| fail("`enum ErrorKind` must have a body".to_owned()))?;
+    let body_close = source[body_open..]
+        .find('}')
+        .map(|at| body_open + at)
+        .ok_or_else(|| fail("`enum ErrorKind` body must close".to_owned()))?;
+    let mut enum_body = blank_strings_and_comments(&source[body_open + 1..body_close]);
+    blank_attributes(&mut enum_body);
+    derivations.kind_variants = idents_in(&enum_body).into_iter().collect();
+
+    let fn_at = source
+        .find("fn http_status")
+        .ok_or_else(|| fail("must declare `fn http_status`, which section P reads".to_owned()))?;
+    let match_at = source[fn_at..]
+        .find("match self.kind")
+        .map(|at| fn_at + at)
+        .ok_or_else(|| fail("`fn http_status` must match `self.kind`".to_owned()))?;
+    let match_open = source[match_at..]
+        .find('{')
+        .map(|at| match_at + at)
+        .ok_or_else(|| fail("`fn http_status` match must have a body".to_owned()))?;
+    let match_close = source[match_open..]
+        .find('}')
+        .map(|at| match_open + at)
+        .ok_or_else(|| fail("`fn http_status` match body must close".to_owned()))?;
+    let content = blank_strings_and_comments(&source[match_open + 1..match_close]);
+
+    // The `_` arm's status, which is what an unlisted variant falls through to.
+    let default_code = match content.find("_ =>") {
+        Some(at) => status_code_in(&content[at + 4..]),
+        None => None,
+    };
+
+    // Named arms: `ErrorKind::X => Status::Y`.
+    let mut from = 0;
+    while let Some(at) = content[from..].find("ErrorKind::") {
+        let kind_start = from + at + "ErrorKind::".len();
+        let kind_end = ident_end(&content, kind_start);
+        let kind = content[kind_start..kind_end].to_owned();
+        from = kind_end;
+        let Some(arrow) = content[from..].find("=>") else {
+            break;
+        };
+        if let Some(code) = status_code_in(&content[from + arrow + 2..]) {
+            derivations.kind_codes.insert(kind, code);
+        }
+    }
+
+    // Every variant needs a code: its named arm, or the `_` default. A map with
+    // neither cannot answer for a body that raises the variant, so it fails.
+    let variants = derivations.kind_variants.clone();
+    for variant in variants {
+        if derivations.kind_codes.contains_key(&variant) {
+            continue;
+        }
+        let code = default_code.ok_or_else(|| {
+            fail(format!(
+                "`ErrorKind::{variant}` has no arm and `http_status` has no `_` default"
+            ))
+        })?;
+        derivations.kind_codes.insert(variant, code);
+    }
+    derivations.error_codes = derivations.kind_codes.values().copied().collect();
+    if let Some(code) = default_code {
+        derivations.error_codes.insert(code);
+    }
+
+    Ok(derivations)
+}
+
+/// The `type X = Result<…>` aliases of one parsed file — how this tool learns
+/// that `AppResult<…>` is fallible without holding the name as a fact.
+fn collect_aliases(parsed: &syn::File, derivations: &mut Derivations) {
+    for item in &parsed.items {
+        let syn::Item::Type(item_type) = item else {
+            continue;
+        };
+        let rendered = type_text(&item_type.ty);
+        let head = path_head(&rendered);
+        if head == "Result" {
+            derivations
+                .fallible_aliases
+                .insert(item_type.ident.to_string());
+        }
+    }
+}
+
+/// Every `FromRequest` impl of one parsed file: its literal outcome statuses,
+/// or its dynamic mark, plus a finding for a `Status` constant the table does
+/// not know.
+fn collect_guards(parsed: &syn::File, source: &str, file: &str, derivations: &mut Derivations) {
+    for item in &parsed.items {
+        let syn::Item::Impl(item_impl) = item else {
+            continue;
+        };
+        let Some((trait_path, _)) = &item_impl.trait_ else {
+            continue;
+        };
+        if trait_path
+            .segments
+            .last()
+            .is_none_or(|segment| segment.ident != "FromRequest")
+        {
+            continue;
+        }
+        let Some(guard) = (match item_impl.self_ty.as_ref() {
+            syn::Type::Path(path) => path
+                .path
+                .segments
+                .last()
+                .map(|segment| segment.ident.to_string()),
+            _ => None,
+        }) else {
+            continue;
+        };
+        let start_line = item_impl.span().start().line;
+        let code =
+            blank_strings_and_comments(line_slice(source, start_line, item_impl.span().end().line));
+        let mut codes = BTreeSet::new();
+        let mut dynamic = false;
+        scan_outcomes(
+            &code,
+            start_line,
+            file,
+            &guard,
+            &mut codes,
+            &mut dynamic,
+            &mut derivations.findings,
+        );
+        if !codes.is_empty() {
+            derivations
+                .guard_codes
+                .entry(guard.clone())
+                .or_default()
+                .extend(codes);
+        }
+        if dynamic {
+            derivations.dynamic_guards.insert(guard);
+        }
+    }
+}
+
+/// Walk one `FromRequest` impl's `Outcome::Error(…)` / `Outcome::Forward(…)`
+/// sites: a literal `Status::X` arm contributes its code, anything else marks
+/// the guard dynamic.
+fn scan_outcomes(
+    code: &str,
+    start_line: usize,
+    file: &str,
+    guard: &str,
+    codes: &mut BTreeSet<u16>,
+    dynamic: &mut bool,
+    findings: &mut Vec<Finding>,
+) {
+    for marker in ["Outcome::Error(", "Outcome::Forward("] {
+        let mut from = 0;
+        while let Some(at) = code[from..].find(marker) {
+            let mut pos = from + at + marker.len();
+            from = pos;
+            // Skip whitespace and, for `Error`, the tuple's opening paren.
+            let bytes = code.as_bytes();
+            while pos < bytes.len() && (bytes[pos] as char).is_whitespace() {
+                pos += 1;
+            }
+            if marker.starts_with("Outcome::Error") && pos < bytes.len() && bytes[pos] == b'(' {
+                pos += 1;
+                while pos < bytes.len() && (bytes[pos] as char).is_whitespace() {
+                    pos += 1;
+                }
+            }
+            if code[pos..].starts_with("Status::") {
+                let name_start = pos + "Status::".len();
+                let name_end = ident_end(code, name_start);
+                let name = &code[name_start..name_end];
+                match rocket_status_code(name) {
+                    Some(code_value) => {
+                        codes.insert(code_value);
+                    }
+                    None => {
+                        let line = start_line + code[..name_start].matches('\n').count();
+                        findings.push(Finding::at(
+                            file,
+                            line,
+                            "unreadable_guard_status",
+                            &format!(
+                                "the outcome of {guard} reads Status::{name}, which is not a \
+                                 Status constant this tool knows"
+                            ),
+                        ));
+                    }
+                }
+            } else {
+                *dynamic = true;
+            }
+        }
+    }
+}
+
+/// The line a `responses(…)` finding anchors to: the `responses` keyword when
+/// the annotation has one, the signature otherwise.
+fn responses_line(handler: &AnnotatedHandler) -> usize {
+    handler
+        .annotation
+        .responses
+        .as_ref()
+        .map_or(handler.sig_line, |responses| responses.line)
+}
+
+/// The readable declared codes, together with a finding per unreadable
+/// spelling. Shared by the P rules so an unreadable entry is reported exactly
+/// once — by [`declared_statuses_within_universe`].
+fn declared_codes(handler: &AnnotatedHandler) -> BTreeSet<u16> {
+    handler
+        .annotation
+        .statuses
+        .iter()
+        .filter_map(|status| match status.value {
+            StatusValue::Code(code) => Some(code),
+            StatusValue::Unreadable(_) => None,
         })
-        .map(|handlers| handlers.iter().flat_map(rules_over).collect())
+        .collect()
+}
+
+/// Is the return type fallible — a `Result` or one of the tree's aliases?
+fn is_fallible(return_type: &str, derivations: &Derivations) -> bool {
+    let head = path_head(return_type);
+    head == "Result" || derivations.fallible_aliases.contains(head)
+}
+
+/// The head identifier of a type path written as text (`AppResult<Json<T>>`
+/// gives `AppResult`, `crate::router::AppResult<T>` gives `AppResult`).
+fn path_head(text: &str) -> &str {
+    let head = text.split('<').next().unwrap_or(text).trim();
+    head.rsplit("::").next().unwrap_or(head)
+}
+
+/// The first generic argument's text, if the type has one.
+fn generic_payload(text: &str) -> Option<String> {
+    let open = text.find('<')?;
+    let close = text.rfind('>')?;
+    (close > open).then(|| text[open + 1..close].to_owned())
+}
+
+/// P1 — the success statuses the handler can answer, or why they cannot be
+/// read.
+///
+/// A fallible return contributes its payload's success; `Redirect` is 302;
+/// `Status` is every `Status::` constant its body returns; anything else is
+/// 200. The "anything else" is the rule's documented limit: an exotic responder
+/// that is not 200 would need this match extended.
+fn success_statuses(
+    handler: &AnnotatedHandler,
+    derivations: &Derivations,
+) -> Result<BTreeSet<u16>, String> {
+    let payload = if is_fallible(&handler.return_type, derivations) {
+        generic_payload(&handler.return_type).unwrap_or_else(|| handler.return_type.clone())
+    } else {
+        handler.return_type.clone()
+    };
+    match path_head(&payload) {
+        "Redirect" => Ok(BTreeSet::from([302])),
+        "Status" => {
+            if handler.body_status_consts.is_empty() {
+                return Err(format!(
+                    "{} returns Status, and its body has no Status:: constant to read",
+                    handler.name
+                ));
+            }
+            let mut codes = BTreeSet::new();
+            for constant in &handler.body_status_consts {
+                match rocket_status_code(&constant.value) {
+                    Some(code) => {
+                        codes.insert(code);
+                    }
+                    None => {
+                        return Err(format!(
+                            "{} returns Status, and Status::{} is not a Status constant this \
+                             tool knows",
+                            handler.name, constant.value
+                        ));
+                    }
+                }
+            }
+            Ok(codes)
+        }
+        // Anything else — a tuple responder, a stream, a shape `type_text`
+        // renders as `?` — answers 200. This is the rule's documented limit:
+        // Rocket's non-200 responders are `Redirect` and `Status`, both
+        // handled above, and a future exotic responder extends this match.
+        _ => Ok(BTreeSet::from([200])),
+    }
+}
+
+/// P1 — the declared success statuses must be the handler's.
+fn success_statuses_declared(
+    handler: &AnnotatedHandler,
+    derivations: &Derivations,
+) -> Vec<Finding> {
+    // With nothing declared, A2 has already reported the defect; a second
+    // finding about the same absence would say it worse.
+    if handler.annotation.statuses.is_empty() {
+        return Vec::new();
+    }
+    let required = match success_statuses(handler, derivations) {
+        // The unreadable success is P1's own finding; P4 skips its comparison.
+        Err(message) => {
+            return vec![Finding::at(
+                &handler.file,
+                handler.sig_line,
+                "unreadable_status",
+                &message,
+            )];
+        }
+        Ok(required) => required,
+    };
+    let missing: Vec<u16> = required
+        .difference(&declared_codes(handler))
+        .copied()
+        .collect();
+    if missing.is_empty() {
+        return Vec::new();
+    }
+    vec![Finding::at(
+        &handler.file,
+        responses_line(handler),
+        "success_status",
+        &format!(
+            "{} can answer {}, but responses() does not declare it",
+            handler.name,
+            render_codes(&missing)
+        ),
+    )]
+}
+
+/// The identifiers of every argument type — `GuardResult<GuardAuth>` gives
+/// `GuardResult` and `GuardAuth`, looked up in the guard table exactly.
+fn guard_idents(handler: &AnnotatedHandler) -> impl Iterator<Item = &str> {
+    handler
+        .arguments
+        .iter()
+        .flat_map(|argument| {
+            argument
+                .ty
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .collect::<Vec<_>>()
+        })
+        .filter(|token| !token.is_empty())
+}
+
+/// P2 — every literal status of a guard named in the signature must be
+/// declared. Dynamic guards require nothing; see [`Derivations::dynamic_guards`].
+fn guard_statuses_declared(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
+    if handler.annotation.statuses.is_empty() {
+        return Vec::new();
+    }
+    let declared = declared_codes(handler);
+    let mut findings = Vec::new();
+    let mut seen = BTreeSet::new();
+    for ident in guard_idents(handler) {
+        let Some(codes) = derivations.guard_codes.get(ident) else {
+            continue;
+        };
+        if !seen.insert(ident) {
+            continue;
+        }
+        let missing: Vec<u16> = codes.difference(&declared).copied().collect();
+        if missing.is_empty() {
+            continue;
+        }
+        findings.push(Finding::at(
+            &handler.file,
+            responses_line(handler),
+            "guard_status",
+            &format!(
+                "{ident} can answer {}, but responses() does not declare it",
+                render_codes(&missing)
+            ),
+        ));
+    }
+    findings
+}
+
+/// P3 — every `ErrorKind::` literal in the body must map to a declared status;
+/// a kind the map does not know is a finding of its own.
+fn body_kind_statuses_declared(
+    handler: &AnnotatedHandler,
+    derivations: &Derivations,
+) -> Vec<Finding> {
+    if handler.annotation.statuses.is_empty() {
+        return Vec::new();
+    }
+    let declared = declared_codes(handler);
+    let mut findings = Vec::new();
+    let mut seen = BTreeSet::new();
+    // One finding per missing code: several kinds can map to 500, and the fix
+    // is a single response entry either way.
+    let mut reported_codes = BTreeSet::new();
+    for kind in &handler.body_error_kinds {
+        if !seen.insert(kind.value.clone()) {
+            continue;
+        }
+        let Some(code) = derivations.kind_codes.get(&kind.value) else {
+            findings.push(Finding::at(
+                &handler.file,
+                kind.line,
+                "unknown_error_kind",
+                &format!(
+                    "{} raises ErrorKind::{}, which is not a variant of the ErrorKind enum in \
+                     the app-error map",
+                    handler.name, kind.value
+                ),
+            ));
+            continue;
+        };
+        if declared.contains(code) || !reported_codes.insert(*code) {
+            continue;
+        }
+        findings.push(Finding::at(
+            &handler.file,
+            responses_line(handler),
+            "body_kind_status",
+            &format!(
+                "{} raises ErrorKind::{}, which answers {code}, but responses() does not \
+                 declare it",
+                handler.name, kind.value
+            ),
+        ));
+    }
+    findings
+}
+
+/// P4 — every readable declared code must lie in the handler's universe.
+///
+/// The universe over-approximates on purpose: success, guards, body kinds, the
+/// whole `http_status` range when the handler is fallible, and 400 when the
+/// route binds a body or query Rocket can reject before the handler runs. That
+/// is what keeps this direction free of false positives — helper-raised codes
+/// stay inside it — while a success code the handler never returns, or an error
+/// code on a bindingless infallible route, still flags.
+fn declared_statuses_within_universe(
+    handler: &AnnotatedHandler,
+    derivations: &Derivations,
+) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    let mut declared_at: BTreeMap<u16, usize> = BTreeMap::new();
+    for status in &handler.annotation.statuses {
+        match &status.value {
+            StatusValue::Code(code) => {
+                declared_at.entry(*code).or_insert(status.line);
+            }
+            StatusValue::Unreadable(text) => {
+                findings.push(Finding::at(
+                    &handler.file,
+                    status.line,
+                    "unreadable_status",
+                    &format!(
+                        "responses() declares `{text}`, which is not a status code this tool \
+                         can read"
+                    ),
+                ));
+            }
+        }
+    }
+
+    let success = match success_statuses(handler, derivations) {
+        Err(_) => return findings,
+        Ok(success) => success,
+    };
+    let mut universe = success;
+    for ident in guard_idents(handler) {
+        if let Some(codes) = derivations.guard_codes.get(ident) {
+            universe.extend(codes.iter().copied());
+        }
+    }
+    for kind in &handler.body_error_kinds {
+        if let Some(code) = derivations.kind_codes.get(&kind.value) {
+            universe.insert(*code);
+        }
+    }
+    if is_fallible(&handler.return_type, derivations) {
+        universe.extend(derivations.error_codes.iter().copied());
+    }
+    let route_binds_early_400 = handler
+        .route
+        .as_ref()
+        .is_some_and(|route| route.data.is_some() || !route.query.is_empty());
+    if route_binds_early_400 {
+        universe.insert(400);
+    }
+
+    for (code, line) in declared_at {
+        if universe.contains(&code) {
+            continue;
+        }
+        findings.push(Finding::at(
+            &handler.file,
+            line,
+            "declared_status",
+            &format!("responses() declares {code}, but nothing this handler can answer is {code}"),
+        ));
+    }
+    findings
+}
+
+/// Sorted codes for a finding message: `405` or `405, 500`.
+fn render_codes(codes: &[u16]) -> String {
+    codes
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The `lines` region of `source` (1-based, inclusive).
+fn line_slice(source: &str, from_line: usize, to_line: usize) -> &str {
+    let start: usize = source
+        .split_inclusive('\n')
+        .take(from_line.saturating_sub(1))
+        .map(str::len)
+        .sum();
+    let span: usize = source[start.min(source.len())..]
+        .split_inclusive('\n')
+        .take(to_line.saturating_sub(from_line) + 1)
+        .map(str::len)
+        .sum();
+    &source[start.min(source.len())..(start + span).min(source.len())]
+}
+
+/// Blank out line comments, block comments and string literals byte for byte,
+/// preserving newlines, so a pattern scan sees only code and every position
+/// still maps to the original source.
+///
+/// A raw string containing quotes can blank past its end; the consequence is a
+/// missed signal (under-approximation), never a fabricated one.
+fn blank_strings_and_comments(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = bytes.to_vec();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'/' => {
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    out[i] = b' ';
+                    i += 1;
+                }
+            }
+            b'/' if i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
+                let start = i;
+                i += 2;
+                while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                    i += 1;
+                }
+                i = (i + 2).min(bytes.len());
+                for byte in &mut out[start..i] {
+                    if *byte != b'\n' {
+                        *byte = b' ';
+                    }
+                }
+            }
+            b'"' => {
+                let start = i;
+                i += 1;
+                while i < bytes.len() && bytes[i] != b'"' {
+                    if bytes[i] == b'\\' {
+                        i += 1;
+                    }
+                    i += 1;
+                }
+                if i < bytes.len() {
+                    i += 1;
+                }
+                for byte in &mut out[start..i] {
+                    if *byte != b'\n' {
+                        *byte = b' ';
+                    }
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    String::from_utf8(out).expect("blanking only writes ASCII spaces")
+}
+
+/// Blank every `#[…]` group in place, for reading an enum body without its
+/// attribute macros.
+fn blank_attributes(text: &mut String) {
+    let bytes = text.as_bytes();
+    let mut out = bytes.to_vec();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'#' && bytes[i + 1] == b'[' {
+            let start = i;
+            let mut depth = 0;
+            while i < bytes.len() {
+                match bytes[i] {
+                    b'[' => depth += 1,
+                    b']' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            i += 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+            for byte in &mut out[start..i.min(bytes.len())] {
+                *byte = b' ';
+            }
+        } else {
+            i += 1;
+        }
+    }
+    *text = String::from_utf8(out).expect("blanking only writes ASCII spaces");
+}
+
+/// Every identifier-like run in `text`.
+fn idents_in(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .filter(|part| !part.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+/// The end of the identifier starting at `start`.
+fn ident_end(text: &str, start: usize) -> usize {
+    let rest = &text[start.min(text.len())..];
+    start
+        + rest
+            .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+            .unwrap_or(rest.len())
+}
+
+/// The status code of the first `Status::X` in `text`.
+fn status_code_in(text: &str) -> Option<u16> {
+    let at = text.find("Status::")?;
+    let start = at + "Status::".len();
+    let end = ident_end(text, start);
+    rocket_status_code(&text[start..end])
+}
+
+/// Every annotation rule over one source file: sections A, B and P.
+///
+/// `app_error_map` is the source of the `ErrorKind` → `http_status` mapping P3
+/// reads, shaped like `backend/src/error.rs`.
+pub fn findings_in_source(
+    name: &str,
+    source: &str,
+    app_error_map: &str,
+) -> Result<Vec<Finding>, ScanError> {
+    let parsed: syn::File = syn::parse_file(source).map_err(|error| ScanError {
+        file: name.to_owned(),
+        message: format!("must parse as Rust: {error}"),
+    })?;
+    let mut derivations = parse_app_error_map("app_error_map", app_error_map)?;
+    collect_aliases(&parsed, &mut derivations);
+    collect_guards(&parsed, source, name, &mut derivations);
+    let mut findings = std::mem::take(&mut derivations.findings);
+    for handler in annotated_handlers(name, source, &parsed) {
+        findings.extend(rules_over(&handler, &derivations));
+    }
+    Ok(findings)
 }
 
 /// Read every `.rs` file under `source_root`, recursively, as `(name, source)`
@@ -1679,22 +2587,41 @@ fn rust_sources(source_root: &Path) -> Result<Vec<(String, String)>, ScanError> 
 /// The findings, the file count and one [`HandlerSummary`] per annotated handler
 /// all come from the same walk, so a caller can assert on coverage as well as on
 /// findings without walking the tree a second time.
-pub fn scan_source_root(source_root: &Path) -> Result<TreeReport, ScanError> {
+pub fn scan_source_root(source_root: &Path, app_error_map: &Path) -> Result<TreeReport, ScanError> {
     let sources = rust_sources(source_root)?;
+    let map_name = app_error_map.to_string_lossy().into_owned();
+    let map_source = std::fs::read_to_string(app_error_map).map_err(|error| ScanError {
+        file: map_name.clone(),
+        message: format!("must be readable: {error}"),
+    })?;
+    let mut derivations = parse_app_error_map(&map_name, &map_source)?;
+
+    // Pass one: the tree-wide derivations — fallible aliases and guards live in
+    // different files from the handlers that use them, so they are collected
+    // before any rule runs.
+    let mut parsed_files = Vec::new();
+    for (name, source) in &sources {
+        let parsed: syn::File = syn::parse_file(source).map_err(|error| ScanError {
+            file: name.clone(),
+            message: format!("must parse as Rust: {error}"),
+        })?;
+        collect_aliases(&parsed, &mut derivations);
+        collect_guards(&parsed, source, name, &mut derivations);
+        parsed_files.push((name, source, parsed));
+    }
+
     let mut report = TreeReport {
         source_root: source_root.to_owned(),
         files_scanned: sources.len(),
         handlers: Vec::new(),
-        findings: Vec::new(),
+        findings: std::mem::take(&mut derivations.findings),
+        dynamic_guards: derivations.dynamic_guards.iter().cloned().collect(),
     };
 
-    for (name, source) in &sources {
-        let handlers = handlers_in_file(name, source).map_err(|error| ScanError {
-            file: name.clone(),
-            message: format!("must parse as Rust: {error}"),
-        })?;
-        for handler in &handlers {
-            report.findings.extend(rules_over(handler));
+    // Pass two: every rule over every annotated handler.
+    for (name, source, parsed) in &parsed_files {
+        for handler in annotated_handlers(name, source, parsed) {
+            report.findings.extend(rules_over(&handler, &derivations));
             report.handlers.push(HandlerSummary {
                 file: handler.file.clone(),
                 name: handler.name.clone(),

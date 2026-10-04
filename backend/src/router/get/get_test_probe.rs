@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::asset::AssetKind;
 use crate::model::response::FileEntry;
+use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{ASSET_BY_ID, DUPE_INDEX, TREE};
@@ -73,6 +74,8 @@ fn probe_enabled() -> bool {
             (status = 200, description = "Test-only record probe with the asset's path", body = TestRecordProbe),
             (status = 400, description = "Invalid asset_id"),
             (status = 404, description = "Probe disabled or record not found"),
+            (status = 401, response = Unauthorized),
+            (status = 500, description = "Internal error"),
         )
     )
 ]
@@ -139,6 +142,8 @@ pub fn probe_record(
         responses(
             (status = 200, description = "Test-only probe: members of a DUPE_INDEX content-hash group", body = Vec<DupeGroupMember>),
             (status = 404, description = "Probe disabled"),
+            (status = 401, response = Unauthorized),
+            (status = 500, description = "Internal error"),
         )
     )
 ]

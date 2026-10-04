@@ -30,6 +30,7 @@ use crate::tasks::batcher::update_tree::UpdateTreeTask;
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
             (status = 405, description = "Read-only mode"),
+            (status = 500, description = "Internal error"),
         )
     )
 ]

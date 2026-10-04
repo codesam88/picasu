@@ -46,6 +46,8 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
             (status = 200, description = "Data deleted"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
+            (status = 500, description = "Internal error"),
         )
     )
 ]

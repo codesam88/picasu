@@ -52,6 +52,7 @@ fn map_snapshot_read_error(err: SnapshotReadError) -> AppError {
             (status = 200, description = "Data by timestamp range", body = Vec<DataBaseTimestampReturn>),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 500, description = "Internal error"),
         )
     )
 ]
@@ -183,6 +184,7 @@ pub async fn get_data(
             (status = 200, description = "Row data", body = Row),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 500, description = "Internal error"),
         )
     )
 ]

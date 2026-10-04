@@ -29,9 +29,10 @@ pub struct IndexImageRequest {
         tag = "index",
         request_body = IndexAlbumRequest,
         responses(
-            (status = 200, description = "Album indexing started"),
+            (status = 202, description = "Album indexing started"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]
@@ -53,9 +54,10 @@ pub fn index_album_handler(
         tag = "index",
         request_body = IndexImageRequest,
         responses(
-            (status = 200, description = "Image indexing started"),
+            (status = 202, description = "Image indexing started"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
         )
     )
 ]

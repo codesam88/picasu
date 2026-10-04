@@ -10,7 +10,6 @@ use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
         tag = "index",
         responses(
             (status = 200, description = "Album index status", body = AlbumIndexStatus),
-            (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
         )
     )

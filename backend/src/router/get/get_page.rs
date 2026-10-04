@@ -367,6 +367,8 @@ pub async fn service_worker() -> AppResult<FrontendResponse> {
         tag = "pages",
         responses(
             (status = 200, description = "SPA fallback — serves index.html for Vue Router routes"),
+            (status = 500, description = "Internal error"),
+            (status = 404, description = "Not found"),
         )
     )
 ]

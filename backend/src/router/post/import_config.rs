@@ -19,6 +19,7 @@ use crate::router::auth::GuardAuth;
             (status = 200, description = "Config imported"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 500, description = "Internal error"),
         )
     )
 ]
