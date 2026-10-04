@@ -68,8 +68,10 @@ The goal is an exact, auditable mapping between:
 ┌──────────────────────────────────────────────────────┐
 │ just openapi-check (part of just check, runs in CI)   │
 │                                                      │
-│ Phase 1  openapi-json-match: regenerate and diff     │
-│ Phase 2  openapi-routes-match: --check-openapi       │
+│ Phase 1  openapi-sanity: source annotations          │
+│ Phase 2  openapi-json-match: regenerate and diff     │
+│ Phase 3  openapi-lint: Spectral over the document    │
+│ Phase 4  openapi-routes-match: --check-openapi       │
 │          build_rocket().routes() vs the spec         │
 └──────────────────────────────────────────────────────┘
 ```
@@ -160,23 +162,34 @@ The goal is an exact, auditable mapping between:
 ## The contract gate
 
 `just openapi-check` is the single command developers and CI run for the API
-contract. It runs three phases, and a failure stops the recipe with a nonzero
+contract. It runs four phases, and a failure stops the recipe with a nonzero
 exit, so the failing phase's own diagnostics are what the run shows:
 
 1. **`openapi-sanity`** — the source phase. Runs
    [`utils/openapi-sanity`](../../utils/openapi-sanity/README.md) over
    `backend/src/router` and reports one `file:line: message` per problem in an
    annotation or in the handler it sits on. It comes first because the other two
-   phases compare a document that has to be regenerated before either of them can
-   say anything: a defect found after the diff is a confusing way to be told about
-   it. The rules are [annotation shape](#annotation-shape-what-the-source-gate-checks)
+   comparing phases compare a document that has to be regenerated before either
+   of them can say anything: a defect found after the diff is a confusing way to
+   be told about it. The rules are [annotation shape](#annotation-shape-what-the-source-gate-checks)
    and the parameter-agreement rules; they read source only, so the phase needs
    no build and no frontend bundle.
 2. **`openapi-json-match`** — the generated-artifact phase. Regenerates the spec
    with `cargo run --package picasu -- --dump-openapi` into a temporary file and
    fails when it differs from the committed `backend/openapi.json`, printing the
    diff and the fix.
-3. **`openapi-routes-match`** — the route-set phase, `picasu --check-openapi` run
+3. **`openapi-lint`** — the document phase. Runs Spectral
+   (`@stoplight/spectral-cli`, a `frontend/` devDependency invoked with
+   `npx --no-install` so CI needs no network beyond `npm ci`) over the
+   committed document with the ruleset in `.spectral.yaml` (stock
+   `spectral:oas` plus baseline overrides, each with a reason). Spectral exits
+   nonzero on errors; warnings are reported but do not fail the gate. Current
+   baseline is 0 errors and 53 warnings: 51 `operation-description` (handlers
+   with summary-only doc comments — the description backfill), one
+   `path-params` (the rank-disambiguated `/{dynamic_album_id}` vs `/{path}`
+   SPA fallbacks), and one `operation-success-response` (`GET /unauthorized`
+   answers `401` by design).
+4. **`openapi-routes-match`** — the route-set phase, `picasu --check-openapi` run
    against a build configured like the shipped one. This is the only check that
    can prove the route-set half of the invariant, and it is pinned to the release
    feature set (`--features "embed-frontend auto-open-browser"`, the set
@@ -540,6 +553,7 @@ uncaught. Both were diagnostics, never failures.
 | ---------------------------------------------------------------------- | ------------------- | -------------------------------------------------------------------------- |
 | [`backend/src/openapi.rs`](../backend/src/openapi.rs)                  | `#[utoipauto]`      | The `#[utoipauto(paths = ...)]` configuration and the `ApiDoc` struct      |
 | `backend/openapi.json`                                                 | `ApiDoc::openapi()` | Public OpenAPI 3.1 spec (committed, drift-checked)                         |
+| `.spectral.yaml`                                                       | Spectral            | Document-lint ruleset: stock `spectral:oas` plus baseline overrides        |
 | `docs/openapi-reference.md`                                            | widdershins         | Human-readable API reference                                               |
 | [`backend/src/openapi_public.rs`](../../backend/src/openapi_public.rs) | —                   | Public-spec filter and the backend-owned exclusion policy                  |
 | [`backend/src/openapi_parity.rs`](../../backend/src/openapi_parity.rs) | —                   | The `--check-openapi` route-set gate and its asymmetric rule               |

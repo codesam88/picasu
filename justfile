@@ -121,7 +121,12 @@ openapi-gen:
 
 # Run all OpenAPI checks.
 [group('utils')]
-openapi-check: openapi-sanity openapi-json-match openapi-routes-match
+openapi-check: openapi-sanity openapi-json-match openapi-lint openapi-routes-match
+
+# Lint the committed OpenAPI document (errors fail, warnings are baseline noise).
+[group('utils')]
+openapi-lint:
+    cd frontend && npx --no-install spectral lint --ruleset ../.spectral.yaml ../backend/openapi.json
 
 # Check source-level OpenAPI annotation conventions.
 [group('utils')]

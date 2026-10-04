@@ -535,33 +535,6 @@
         ],
         "type": "object"
       },
-      "FileEntry": {
-        "description": "The asset's file entry: the single source path and its timestamps,\nassembled from the identity `AssetRecord` at composition time. A view\ntype for the wire — never stored (the metadata payload holds no path;\n`AssetRecord` owns the identity, including the trash flag).",
-        "properties": {
-          "file": {
-            "type": "string"
-          },
-          "isTrashed": {
-            "description": "Trash flag for the asset's file entry. The record is visible in the\ngallery while the path is live and in the trash view while it is\ntrashed; a missing path (`path: None`) matches neither view. A newly\ndiscovered path is always live.",
-            "type": "boolean"
-          },
-          "modified": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "scanTime": {
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "file",
-          "modified",
-          "scanTime",
-          "isTrashed"
-        ],
-        "type": "object"
-      },
       "FsCompletion": {
         "properties": {
           "children": {
@@ -1035,7 +1008,11 @@
     }
   },
   "info": {
-    "description": "",
+    "contact": {
+      "name": "picasu",
+      "url": "https://github.com/codesam88/picasu"
+    },
+    "description": "Self-hosted photo gallery API. This document is generated from the `#[utoipa::path]` annotations in `backend/src/router`; see `docs/openapi-generator.md`.",
     "license": {
       "identifier": "MIT",
       "name": "MIT"
@@ -2738,5 +2715,47 @@
         ]
       }
     }
-  }
+  },
+  "tags": [
+    {
+      "description": "Authentication and token renewal",
+      "name": "auth"
+    },
+    {
+      "description": "Albums and shares: creation, assignment, covers, titles, descriptions, share links",
+      "name": "albums"
+    },
+    {
+      "description": "Per-asset metadata and editing: flags, rating, tags, rotation, thumbnails, deletion",
+      "name": "assets"
+    },
+    {
+      "description": "Server configuration: read, write, password, export/import, path completion",
+      "name": "config"
+    },
+    {
+      "description": "Filesystem indexing jobs and full rebuild",
+      "name": "index"
+    },
+    {
+      "description": "Media byte delivery (compressed and original files)",
+      "name": "serving"
+    },
+    {
+      "description": "Grid/list data: prefetch, rows, scrollbar, tag list, export",
+      "name": "timeline"
+    },
+    {
+      "description": "File upload",
+      "name": "upload"
+    },
+    {
+      "description": "SPA HTML page routes served from `router/get/get_page.rs`",
+      "name": "pages"
+    },
+    {
+      "description": "Operations outside the published API (stripped from this document)",
+      "name": "internal"
+    }
+  ]
 }

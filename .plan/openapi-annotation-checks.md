@@ -208,6 +208,19 @@ Add a separate document-linter phase for OpenAPI validity and document-only
 conventions. Keep its configuration and rules distinct from source annotation
 checks and mounted-route parity.
 
+2026-10-04: baseline established with Spectral (`@stoplight/spectral-cli`,
+`frontend/` devDependency, ruleset `.spectral.yaml` extending stock
+`spectral:oas`). `just openapi-lint` is phase 3 of `just openapi-check`;
+errors fail, warnings do not. Baseline is 0 errors, 53 warnings. Fixed at
+baseline time: global `tags` + `info(description, contact)` in
+`backend/src/openapi.rs` (61 `operation-tag-defined`, `info-contact`,
+`info-description`), `oas3-api-servers` off (self-hosted, no canonical URL),
+orphaned `FileEntry` stripped in `openapi_public.rs`
+(`oas3-unused-component`). Remaining warnings are the backlog: 51
+`operation-description` (description backfill), `path-params` on the
+rank-disambiguated SPA fallbacks (warn), `operation-success-response` on the
+intentional always-`401` `GET /unauthorized`.
+
 The first concrete rule is parameter documentation: every published path or query
 parameter needs a description, and a parameter with a closed value set should name
 those values. `rocket_extras` derives the parameter list from the route attribute,
