@@ -62,13 +62,25 @@ jobs:
         run: just install-plan
 
       # Image metadata is read with ExifTool, an external binary with no
-      # in-process fallback; the dev install is `just install-exiftool` (no root,
-      # pinned pure-Perl distribution), CI uses the distro package.
+      # in-process fallback. Install the pinned distribution the dev
+      # environment uses (`just install-exiftool`, no root, pure Perl): the
+      # tests encode the pinned version's refusal behaviour, which the distro
+      # package does not reproduce.
       - name: Install ExifTool
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libimage-exiftool-perl
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install-exiftool
           exiftool -ver
+
+      # Video metadata (ffprobe), stream dimensions (ffprobe) and thumbnails
+      # (ffmpeg) are external binaries too. The runner image ships neither, and
+      # without them the video pipeline tests and every video scenario fail.
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffprobe -version
 
       - name: Cache Playwright browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -126,13 +138,21 @@ jobs:
         run: npx playwright install chromium
         working-directory: frontend
 
-      # Same requirement as the checks job: the release build indexes real
-      # images, so ExifTool has to be on PATH there too.
+      # Same requirements as the checks job: the release build runs the same
+      # test suite, so the pinned ExifTool and ffmpeg have to be on PATH here
+      # too.
       - name: Install ExifTool
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libimage-exiftool-perl
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install-exiftool
           exiftool -ver
+
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffprobe -version
 
       - name: Build and test release
         run: just test-release

@@ -237,9 +237,11 @@ install-plan:
 #
 # ExifTool is the image metadata engine (`process::exif`), an external binary
 # with no in-process fallback. The distribution is pure Perl and unpacks without
-# root, so a dev machine installs it into `~/.local`; CI and the runtime Docker
-# image use the distro package instead (`libimage-exiftool-perl`), see
-# `.github/workflows/ci.yml` and `./Dockerfile`.
+# root, so a dev machine installs it into `~/.local`. CI installs the same
+# pinned distribution (`just install-exiftool` in `.github/workflows/ci.yml`)
+# because the tests encode this version's refusal behaviour; only the runtime
+# Docker image uses the distro package (`libimage-exiftool-perl`, see
+# `./Dockerfile`).
 #
 # The version and its checksum move together: upstream publishes both at
 # https://exiftool.org/checksums-<version>.txt, and the archive is fetched from
