@@ -38,7 +38,6 @@
 //! document that is wrong in a way no generated client can detect before the
 //! call fails, and none of them shows up as anything in the document itself.
 //!
-
 //! Why the shape rules belong in the gate. Every one of them is invisible in the
 //! generated document, because the document is generated *from* the annotation: a
 //! restated path, a missing `responses(…)`, a tag outside the vocabulary, a
@@ -97,7 +96,6 @@
 //! `Query`: a header or cookie is not named anywhere in a Rocket route
 //! attribute, so there is no route binding for it to disagree with.
 //!
-
 //! # What section A does not cover
 //!
 //! The rules assert the *absence* of three spellings utoipa also accepts, each of
@@ -869,7 +867,6 @@ pub struct AnnotatedHandler {
     /// The line the signature is written on. Private because it exists only to
     /// anchor a finding about the handler as a whole.
     sig_line: usize,
-
     /// Every typed argument of the signature, guards included.
     pub arguments: Vec<HandlerArgument>,
     /// What the route attribute binds, or `None` when the handler carries no
@@ -1012,7 +1009,6 @@ pub struct HandlerSummary {
     pub file: String,
     /// The function name.
     pub name: String,
-
     /// How many parameters the annotation declares in the form B1 and B2 read.
     pub declared_parameters: usize,
     /// How many parameters the annotation declares in a form they do not read.
@@ -1123,7 +1119,6 @@ pub fn annotated_handlers(file: &str, parsed: &syn::File) -> Vec<AnnotatedHandle
                 ),
                 doc: doc_comment(handler),
                 sig_line: handler.sig.span().start().line,
-
                 arguments,
                 route: route_attribute(handler),
             }
@@ -1703,7 +1698,6 @@ pub fn scan_source_root(source_root: &Path) -> Result<TreeReport, ScanError> {
             report.handlers.push(HandlerSummary {
                 file: handler.file.clone(),
                 name: handler.name.clone(),
-
                 declared_parameters: handler.annotation.params.len(),
                 unread_parameters: handler.annotation.unread_params,
                 request_bodies: usize::from(handler.annotation.request_body.is_some()),

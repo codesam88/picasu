@@ -1,361 +1,205 @@
 # openapi-sanity
 
-Source-level checks on the backend's `#[utoipa::path]` annotations.
+`openapi-sanity` checks source-level conventions in `#[utoipa::path]`
+annotations and compares declared parameters and request bodies with the Rocket
+route and handler signature beside them. It scans Rust source; it does not
+validate generated OpenAPI documents or runtime behavior.
 
-This is a **new tool that reuses the name of the analyzer deleted in `e1ec74da`
-on purpose.** It is not that analyzer, it does not carry any of its rules, and
-none of them are coming back: there is no `AUTH_POLICY` table, no route-set rule
-and no source/spec comparison here. Invoking it expecting the old rules gets you
-the rules below and nothing else — in particular no check on security schemes or
-on whether a documented operation is mounted. Its rule set is
-[`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md),
-of which **eleven rules are implemented** — A1–A7 and B1–B4. The remaining rules
-are specified or deferred; both lists are below.
+The checker implements **A1–A7 and B1–B4** from
+[`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md).
+The rule index below summarizes each check and points to its regression tests.
 
-## What this crate holds: conventions, not backend facts
+## Checks
 
-Every constant in this crate is a **convention someone decided** — a tag
-vocabulary, a set of spellings utoipa also accepts — and every rule reads
-something written in the `#[utoipa::path]` annotation or in the handler beside
-it. This tool holds no facts about the backend, and that boundary is the point:
+### A1 — Do not restate the route path or bare verb
 
-> If a rule seems to need a route path, a URL prefix, a config value, a feature
-> name, a mount table or a constant from the backend, the rule belongs in the
-> backend or in a just recipe — not here.
+With `rocket_extras`, the route attribute supplies the operation path and HTTP
+verb. The annotation must not repeat them.
 
-A copy of such a fact in this crate is a second place to forget, and a gate built
-on it reports a stale copy rather than the truth. It happened once: A3 briefly
-carried the backend's contract-exclusion prefixes so the test-only probes could
-be exempt from the tag rule, and the honest resolution turned out to be a
-vocabulary entry (`internal`) rather than a copy of a path list. Route-set parity,
-document drift and feature gating all have owners elsewhere, and none of them is
-this crate — the "what it deliberately does not check" list below is the
-concrete form of that.
+```rust
+// Finding: path and verb are already given by #[get].
+#[utoipa::path(get, path = "/get/assets")]
+#[get("/get/assets")]
+```
 
-## What it asserts
+**Tests:** `a_restated_path_or_verb_fails` (`a1_restated_route.rs`) covers path,
+`get`, and `trace` restatements. `a_route_annotation_free_of_restatement_is_accepted`
+(`a1_conforming.rs`) covers the valid form.
 
-**Thirteen rules, all of them enforced, and nothing else.** Each one below gives
-what it asserts, **what specifically tests it** (fixture and test name, so a
-reader can go and change the test rather than guess; fixture paths are relative to
-`tests/`), and **why it exists** — the defect it
-was written for, or the convention it protects. Rule ids are the plan's
-([`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md),
-"Rule index"), and they are stable.
+### A2 — Declare at least one response
 
-All of them read a fact that exists only in source: the document is generated
-_from_ these annotations, so it cannot disagree with them without a rule here
-saying so first.
+Both a missing `responses(…)` and an empty `responses()` are findings. At least
+one response entry is sufficient; this rule does not prescribe status codes.
 
-### A1 — the annotation restates neither `path` nor a bare verb
+```rust
+#[utoipa::path(responses())] // Finding: no response is documented.
+```
 
-With `rocket_extras` enabled, utoipa derives the path and the verb from the route
-attribute, so either one restated in the annotation is a second copy of a fact
-nothing compares.
+**Tests:** `a_missing_or_empty_responses_fails` (`a2_missing_responses.rs`) covers
+both cases. `one_declared_response_is_enough` (`a2_conforming.rs`) is the valid
+counterpart.
 
-- **Tested by** `a1_restated_path_or_verb_fails` over
-  `fixtures/openapi_annotations/a1_restated_route.rs` (all three restatement
-  shapes, `path = "…"` and two bare verbs including `trace`), and by the
-  conforming counterpart `a_route_annotation_free_of_restatement_is_accepted` over
-  `a1_conforming.rs`.
-- **Why it exists** — the convention exists only in review; nothing rejects a
-  re-introduced duplicate. `trace` is in the verb list because it is a Rocket verb
-  and utoipa accepts it as a bare token — the gap was closed after review found
-  the list of eight omitted it.
+### A3 — Declare exactly one vocabulary tag
 
-### A2 — the annotation declares at least one response
+Each annotation must declare one `tag = "…"` from [`TAGS`](src/lib.rs), matching
+the “Tag conventions” table in [`docs/openapi-generator.md`](../../docs/openapi-generator.md).
+The ten tags are `albums`, `assets`, `auth`, `config`, `index`, `internal`,
+`pages`, `serving`, `timeline`, and `upload`. Use `internal` for operations not
+published in the API reference; there are no route-based exceptions.
 
-`responses(…)` is present and declares at least one entry. An absent
-`responses(…)` and an empty `responses()` are both findings, reported as
-different texts, and the absent one is anchored at the signature because there is
-no token to point at.
+**Tests:** `a_tag_outside_the_vocabulary_fails`
+(`a3_tag_outside_the_vocabulary.rs`) covers no tag, an unknown tag, and multiple
+tags. `every_tag_of_the_vocabulary_is_accepted` checks every entry in `TAGS`.
 
-- **Tested by** `a_missing_or_empty_responses_fails` over `a2_missing_responses.rs`
-  (both shapes) and by `one_declared_response_is_enough` over `a2_conforming.rs`.
-- **Why it exists** — utoipa invents no response, so the omission is silent: the
-  operation documents nothing it can answer.
+### A4 — Add a doc comment
 
-### A3 — the annotation declares exactly one `tag` from the vocabulary
+Every annotated handler must have a doc comment. utoipa derives the operation's
+`summary` and `description` from it.
 
-Exactly one `tag = "…"`, and it is one of the ten in
-[`TAGS`](src/lib.rs) — this repository's copy of the table in
-[`docs/openapi-generator.md`](../../docs/openapi-generator.md) ("Tag
-conventions"). The rule has no exemptions: `internal` is how an operation outside
-the published API (the test-only probes) says so, as an entry in the list rather
-than a hole in the rule.
+**Tests:** `a_handler_without_a_doc_comment_fails`
+(`a4_missing_doc_comment.rs`) and `a_doc_commented_handler_is_accepted`
+(`a4_conforming.rs`).
 
-- **Tested by** `a_tag_outside_the_vocabulary_fails` over
-  `a3_tag_outside_the_vocabulary.rs` (no tag, a tag outside the vocabulary, and
-  two tags of which both are inside it) and by
-  `every_tag_of_the_vocabulary_is_accepted` over `a3_conforming.rs` — the second
-  half of that test builds its source from `TAGS` itself, so a tag added to one
-  place and not the other fails the test rather than the gate.
-- **Why it exists** — the vocabulary is documented in prose; its checker was
-  deleted with the analyzer, and until a document linter is adopted A3 and A6 are
-  the only tag/`operationId` coverage this repository has.
+### A5 — Give the first doc paragraph a non-empty, one-line summary
 
-### A4 — the handler carries a doc comment
+The first doc-comment paragraph becomes the operation summary. It must contain
+text and occupy one line; later paragraphs may wrap. An empty doc comment is not
+a summary.
 
-- **Tested by** `a_handler_without_a_doc_comment_fails` over
-  `a4_missing_doc_comment.rs` and by `a_doc_commented_handler_is_accepted` over
-  `a4_conforming.rs`.
-- **Why it exists** — `summary` and `description` are derived from the doc
-  comment, so a handler without one reaches the generated reference with neither,
-  and nothing in the document shows the omission: an operation with a `paths`
-  entry, a `responses` map and a `tags` array is indistinguishable from a
-  documented one until a reader looks for prose. **A4 found 50 such handlers on
-  this repository's own tree**, and 49 of the 61 published operations had no
-  `summary`.
+**Tests:** `a_multi_line_summary_fails` (`a5_multi_line_summary.rs`),
+`an_empty_summary_fails` (`a5_empty_summary.rs`), and
+`a_one_line_summary_with_a_wrapped_description_is_accepted` (`a5_conforming.rs`).
 
-### A5 — the doc comment's first paragraph is one line
+### A6 — Do not set `operation_id` manually
 
-- **Tested by** `a_multi_line_summary_fails` over `a5_multi_line_summary.rs`,
-  `an_empty_summary_fails` over `a5_empty_summary.rs`, and by
-  `a_one_line_summary_with_a_wrapped_description_is_accepted` over `a5_conforming.rs`.
-- **Why it exists** — that paragraph is the `summary`, and the generated
-  reference renders the `summary` as a heading, so a wrapped paragraph puts a
-  newline inside a markdown heading. Measured on this repository's own document,
-  not adopted as a style opinion; it found 8 findings. An empty first paragraph
-  is also a finding because it leaves utoipa with no summary text to render.
+utoipa derives the operation ID from the handler function name.
 
-### A6 — the annotation sets no `operation_id`
+**Tests:** `a_hand_set_operation_id_fails` (`a6_hand_set_operation_id.rs`) and
+`a_derived_operation_id_is_accepted` (`a6_conforming.rs`).
 
-- **Tested by** `a_hand_set_operation_id_fails` over
-  `a6_hand_set_operation_id.rs` and by `a_derived_operation_id_is_accepted` over
-  `a6_conforming.rs`.
-- **Why it exists** — utoipa derives `operationId` from the function name; a
-  hand-set one is the only name in the document that nothing compares, and the
-  deleted `AUTH_POLICY` was keyed by it.
+### A7 — Do not set operation-level `summary` or `description`
 
-### A7 — the annotation sets neither `summary` nor `description`
+Both are derived from the doc comment. A per-response `description` is allowed;
+it describes a response and is not derived from handler documentation.
 
-A per-response `description` is **not** this: that is how a status code's text is
-written, and nothing derives it.
+**Tests:** `a_hand_set_summary_or_description_fails` (`a7_hand_set_prose.rs`) and
+`a_derived_summary_and_description_are_accepted` (`a7_conforming.rs`).
 
-- **Tested by** `a_hand_set_summary_or_description_fails` over
-  `a7_hand_set_prose.rs` and by `a_derived_summary_and_description_are_accepted`
-  over `a7_conforming.rs`.
-- **Why it exists** — utoipa derives both from the doc comment, so a hand-set one
-  is the same prose written twice with nothing comparing the copies. While an
-  annotation may set `summary`, "the first paragraph _is_ the summary" is false,
-  which is the premise A5 rests on — `put/assign_album.rs` did set both, and it is
-  why A5 was once reporting a defect the generated document did not have.
+### B1 — Bind every declared path/query parameter in the route
 
-### B1 — every declared parameter is one the route actually binds
+Each inline `params(…)` tuple in `Path` or `Query` must name a dynamic path or
+query binding from the Rocket route attribute. For example, `<album_id>` binds
+the path parameter `album_id`, and `?<limit>` binds the query parameter `limit`.
+For a partial path segment, `<name..>` binds `name`.
 
-With `rocket_extras`, utoipa derives a parameter for every argument the route
-binds and merges whatever the annotation declares on top of it. Nothing checks the
-other direction, so a declared parameter no route reads reaches the document: a
-generated client sends it and the server ignores it. A `Path` parameter's name must
-be a `<segment>` of the route's path; a `Query` parameter's must be a `?<name>` in
-its query part. A `<name..>` partial segment binds `name` — the `..` is Rocket's
-marker, not part of the name.
+Header and cookie parameters are not checked because route attributes do not
+name them. An annotated function without a route attribute is left to
+`openapi-routes-match`.
 
-- **Tested by** `a_parameter_the_route_does_not_bind_fails` over
-  `b1_parameter_the_route_does_not_bind.rs` (both locations, each against the part
-  of the route that binds it) and by `parameters_the_route_binds_are_accepted`
-  over `b1_conforming.rs` (a query and a path parameter the route binds, a route
-  with no query part, and a partial segment).
-- **Why it exists** — utoipa merges declared parameters into the derived document
-  without checking they exist, and a parameter nothing reads is invisible in the
-  document: it looks like a documented input. **Scope:** the inline tuple form
-  only. See "What section B does not cover" below.
+**Tests:** `a_parameter_the_route_does_not_bind_fails`
+(`b1_parameter_the_route_does_not_bind.rs`) covers missing path and query names.
+`parameters_the_route_binds_are_accepted` (`b1_conforming.rs`) covers matching
+path/query names and partial segments.
 
-### B2 — a declared parameter's `required` agrees with the handler argument
+### B2 — Match parameter optionality
 
-utoipa 5.5 has **no `required` key** in a parameter tuple — `required = true` is
-rejected by the macro as an unknown attribute, which this repository confirmed by
-compiling it — and derives the documented `required` from the declared type alone:
-`Option<…>` is optional, anything else is required. So B2 compares the declared
-type's optionality with the handler argument's, which is what the document ends up
-saying either way.
+utoipa 5.5 does not accept a `required` key in a parameter tuple. It derives the
+published `required` value from the declared type: `Option<T>` is optional; other
+types are required. The declared type's optionality must match the corresponding
+handler argument. Both `Option<T>` and `std::option::Option<T>` are recognized.
 
-- **Tested by** `a_declared_optionality_the_argument_disagrees_with_fails` over
-  `b2_optionality_the_argument_disagrees_with.rs` (both directions) and by
-  `a_declared_optionality_the_argument_agrees_with_is_accepted` over
-  `b2_conforming.rs`. `qualified_option_types_have_matching_optionality` over
-  `b2_qualified_optionality_agrees.rs` pins the equivalent fully-qualified spelling.
-- **Why it exists** — same as B1: utoipa derives the documented optionality from
-  the declared type and never looks at the argument the route binds. A declared
-  `Option<T>` on a `T` argument tells a client it may omit a parameter the route
-  will not parse without; a declared `T` on an `Option<T>` argument tells it must
-  send one the route is happy without. Either way the generated client is wrong
-  about the call it makes.
+**Tests:** `a_declared_optionality_the_argument_disagrees_with_fails`
+(`b2_optionality_the_argument_disagrees_with.rs`) covers both mismatch
+directions. `a_declared_optionality_the_argument_agrees_with_is_accepted`
+(`b2_conforming.rs`) and `qualified_option_types_have_matching_optionality`
+(`b2_qualified_optionality_agrees.rs`) cover matching types.
 
-### B3 — a declared `request_body` names what the route's `data = "…"` binds
+### B3 — Match a declared body schema to the route's body type
 
-The declared schema must be the type Rocket parses, unwrapping `Json<T>` and
-`Data<T>` through any `Option`. Types are compared by the last segment of their
-path, which is the name utoipa publishes the schema under.
+For a route binding `Json<T>` or `Data<T>`, a named `request_body` schema must
+match `T`. Schema names are compared by their final path segment, matching
+utoipa's component names.
 
-- **Tested by** `a_body_the_route_does_not_parse_fails` over
-  `b3_body_the_route_does_not_parse.rs` (two mismatched declarations),
-  `a_custom_type_ending_in_value_is_still_compared` over
-  `b3_value_suffix_is_not_unconstrained.rs`, and by `a_body_the_route_parses_is_accepted`
-  over `b3_conforming.rs`, which also pins the two shapes the rule does not compare.
-- **Why it exists** — utoipa takes the declared schema and never compares it to the
-  route's binding, so an annotation can advertise a body the route rejects every
-  time. **Two stated limits**, both properties of utoipa's grammar rather than
-  choices: `request_body = Value` is _declares no constraint_ and is not compared
-  (the same applies to `serde_json::Value`; a custom name such as `ExpectedValue`
-  is still compared, and a named type on a route binding `Json<Value>` is still a
-  finding), and a `Form<…>` binding is not compared at all, because a
-  payload carrying `TempFile<'r>` has no schema type an annotation could name.
-  B4 covers what can be checked about a form body.
+`Value`, `serde_json::Value`, and `::serde_json::Value` declare an unconstrained
+body and are not compared. Other names—including custom names ending in `Value`—
+are concrete schemas. `Form<…>` bodies are not schema-compared because their
+`TempFile<'r>` payloads have no schema type the annotation can name; B4 checks the
+media type. Request-body forms the parser cannot read are not verified and are
+part of the grammar limitation below.
 
-### B4 — a `Form<…>` binding declares `multipart/form-data`
+**Tests:** `a_body_the_route_does_not_parse_fails`
+(`b3_body_the_route_does_not_parse.rs`) covers mismatched schemas.
+`a_custom_type_ending_in_value_is_still_compared`
+(`b3_value_suffix_is_not_unconstrained.rs`) covers concrete names ending in
+`Value`. `a_body_the_route_parses_is_accepted` (`b3_conforming.rs`) covers
+matching, qualified names, unconstrained `Value`, and `Form` limitations.
 
-The rule asks the annotation to name the media type rather than reproducing
-utoipa's guess for it — the guess is a list of cases (byte arrays are
-`application/octet-stream`, primitives are `text/plain`), and reimplementing it
-would make this crate a second utoipa to keep in step. Anything but an explicit
-`multipart/form-data` is a finding, and so is a form route with no `request_body`
-at all.
+### B4 — Declare `multipart/form-data` for form routes
 
-- **Tested by** `a_form_body_without_multipart_fails` over
-  `b4_form_body_without_multipart.rs` (a body declared as `Value`, and no body at
-  all, with a JSON route in the same fixture left silent) and by
-  `a_form_body_naming_multipart_is_accepted` over `b4_conforming.rs` (both
-  spellings utoipa accepts for naming a media type).
-- **Why it exists** — **it is the only rule of section B that fires on the real
-  tree, and it found a real defect.** `post_upload` and `regenerate_thumbnail`
-  bind a `Form<…>` and declared `request_body = Value`, so the document published
-  `application/json` with an empty schema for two multipart upload endpoints. Both
-  annotations now declare
-  `request_body(content_type = "multipart/form-data", content = Object)`, and
-  `backend/openapi.json` moved in exactly those two places. The schema is an
-  untyped object because itemising the fields needs a `ToSchema` impl for a
-  struct holding a `TempFile` — a separate piece of work.
+A route binding `Form<…>` must declare the `multipart/form-data` media type. A
+missing request body or a different media type is a finding. Both utoipa
+spellings for declaring the media type are accepted.
 
-### What section B does not cover
+**Tests:** `a_form_body_without_multipart_fails`
+(`b4_form_body_without_multipart.rs`) covers missing and incorrect media types.
+`a_form_body_naming_multipart_is_accepted` (`b4_conforming.rs`) covers both
+accepted spellings and a JSON route.
 
-**B1 and B2 read the inline tuple form of a parameter, and the gap is pinned
-rather than left silent.** utoipa accepts two spellings in `params(…)`: the
-inline tuple `("name" = Type, Location, …)` and a struct — `params(SomeQueryStruct)`,
-or a struct mixed with tuples. The struct hides the name, the location and the type
-behind a type this tool would have to resolve across files, and **no type in this
-repository derives `IntoParams`**, so a resolver would ship untested against real
-code. Every entry the rules cannot read is counted in
-`HandlerSummary::unread_parameters`, `the_router_tree_is_clean` **pins that count
-at 0**, and `only_the_inline_parameter_form_is_read` pins the parsing. The first
-struct form in an annotation fails the pin, so the decision happens in review
-rather than as a quiet narrowing of the rules.
+## Supported syntax and limits
 
-A declared parameter whose location is neither `Path` nor `Query` is outside B1 as
-well: a header or cookie is named nowhere in a Rocket route attribute, so there is
-no route binding for it to disagree with.
+- B1/B2 read inline parameter tuples such as `("name" = Type, Query, …)`. A
+  struct-style `params(SomeQueryStruct)` entry is counted as unreadable, not
+  silently skipped. The tree test pins the unreadable count at zero; supporting
+  `IntoParams` structs requires resolving their fields and overrides.
+- B1 checks only `Path` and `Query` locations. It cannot compare header or cookie
+  parameters with Rocket route bindings.
+- B3 compares JSON/data schema names by their final path segment. Distinct Rust
+  types with the same final name cannot be distinguished by this check.
+- A9 grammar coverage is not complete. The current parser does not analyze
+  `method(GET)`, `tags([…])`, `context_path`, or every grouped/otherwise unreadable
+  value. Treat those spellings as unchecked until A9 is implemented.
+- Route coverage, generated-document consistency, document validity, and runtime
+  behavior are owned by other tools or tests. This checker only analyzes source
+  annotations and route attributes.
 
-## Specified but not built
-
-The tool is **not** the whole plan. These rules are written down in
-[`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md)
-with their reasoning, their calibration and where they are meant to land; none of
-them is enforced here, and the tree passing says nothing about them.
-
-| id  | rule, in one line                                                                                                                                  |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| C2  | every `pub fn generate_*_routes()` is mounted in `router/builder.rs`                                                                               |
-| M1  | every `POST`/`PUT` route carries `GuardReadOnlyMode`                                                                                               |
-| M2  | a route carrying the mode guard documents a `405` response                                                                                         |
-| M3  | the mode guard never appears in `security(...)`                                                                                                    |
-| M4  | the mode guard's rejection is propagated                                                                                                           |
-| D1  | a route carrying a credential guard has an operation that declares `security(...)`, and the schemes it names are the ones that guard class maps to |
-| D2  | an operation declaring `security(...)` has a route carrying a credential guard                                                                     |
-| D4  | `securitySchemes` defines every scheme any operation references                                                                                    |
-| D5  | a route carrying the re-authentication guard declares its own scheme                                                                               |
-| D6  | the re-authentication guard appears with a credential guard, never alone                                                                           |
-| D7  | every `POST`/`PUT` route carries at least one credential guard, or is listed as deliberately public — blocked on the backend question Q1           |
-| D8  | the credential set an operation declares in `security(...)` equals the credential set its route's guards provide                                   |
-| A8  | every guard binding is named after its guard class, `_`-prefixed when the value is discarded — calibrated: 19 of 62 bindings would be findings     |
-| C3  | a route carrying a guard documents the status that guard rejects with — `401` for a credential guard, `405` for the mode guard                     |
-| R1  | a `POST` route lives under `/post/`, or is listed as deliberately placed elsewhere                                                                 |
-| S1  | a handler defined in `router/get/get_page.rs` is tagged `pages`, and no handler defined elsewhere is — calibrated: zero findings today             |
-
-Three ids in the plan are not rules this tool could enforce: **D3** is a
-cross-reference for the deferred guard-propagation work,
-**V1** (a credential comparison is constant time) is a review obligation no
-checker can see, and **P1** (a handler's documented success status matches what it
-returns) is a spike whose return-type analysis cost has to be measured before the
-rule is written.
-
-## What it deliberately does not check
-
-- **Route coverage** — whether every mounted route is documented, and whether
-  every documented operation is mounted. That is `just openapi-routes-match`
-  (`--check-openapi`), which compares a real build's route table with
-  `backend/openapi.json`.
-- **Document validity** — whether the committed document matches a fresh
-  generation from the annotations. That is `just openapi-json-match` and
-  `just openapi-gen`.
-- **Three spellings utoipa also accepts**, which are review-time rather than
-  gated: `method(GET)` is the parenthesised verb form of A1, `tags([…])` is a list
-  form of A3, and `context_path` is a base-path form of A1. No annotation uses
-  any of them. (`trace` was one of these until it moved into A1’s verb list: it
-  is a Rocket verb, so leaving the gap open was the cost of a rule nothing
-  enforces.)
-- **The guard/`security` rules (D, M), the tag/route-family rule (S1) and the
-  naming rule (A8)** — not implemented, and listed by id above so a reader knows
-  the tool is not the whole plan. Where each one lands and what it is calibrated
-  against is in the plan file.
-
-## Running it
+## Run it
 
 ```sh
 cargo run -p openapi-sanity                                  # backend/src/router
-cargo run -p openapi-sanity -- --source-root path/to/tree   # anything else
-cargo run -p openapi-sanity -- --expect-at-least 60         # coverage floor
+cargo run -p openapi-sanity -- --source-root path/to/tree   # select a source root
+cargo run -p openapi-sanity -- --expect-at-least 60         # require a scan floor
 ```
 
-The default source root is relative to the workspace root, which is the working
-directory cargo runs rustc in.
+The default source root is `backend/src/router`, relative to the workspace root.
+`--source-root` selects another tree. `--expect-at-least` sets a minimum number
+of annotated handlers; the checker fails below that floor rather than reporting
+a potentially partial scan as clean. The gate sets the floor to 60 for a tree
+currently containing 63 handlers.
 
-One `file:line: message` per finding, a summary line naming the count, and an
-exit code of `0` clean, `1` findings or a scan below the floor, `2` an input that
-cannot be read.
+Findings are written as `file:line: handler: message`. For example:
 
-`--expect-at-least <n>` is the tool's own blindness check, and the gate phase
-passes it. A scan that saw fewer annotated handlers than the floor exits
-non-zero with a message saying the walk is the likely cause, because a walk that
-stopped descending produces the same report as a clean tree — reporting that as
-clean is the failure this tool exists to prevent. The floor the recipe sets is 60
-against a tree of 63: a new handler must not break the gate, but a lost one should
-be noticed. Coverage outranks findings in the same run.
+```text
+b1_parameter_the_route_does_not_bind.rs:17: prefetch: the annotation declares the query parameter "nope", but the route binds no such query parameter: its query part is "?<locate>"
+```
 
-It is the first phase of `just openapi-check`, so it runs on a `backend/` change
-in the pre-commit hook — which is why it is a tool and not a backend test. The
-hook also runs `just utils-test` for a `utils/` change, so a change to the rules
-or to the walk is exercised by its own suite there.
+Exit codes: `0` means no findings, `1` means findings or a scan below the floor,
+and `2` means the input could not be read or parsed.
 
-## Tests
+## Tests and checks
 
-`tests/openapi_annotations.rs` carries the fixtures for every rule plus a run over
-the real router tree that has to stay silent. Each rule has a fixture that must
-produce its finding and a conforming counterpart that must produce none, so a
-rule that started flagging every annotation is caught as well as one that stopped
-flagging anything — which fixture and which test cover which rule is written down
-per rule in "What it asserts" above, so a reader does not have to go looking.
-`the_router_tree_is_clean` is the half that proves the rules against the tree
-rather than against snippets, and it pins the scan's coverage so the two cannot
-drift apart silently:
+The rule fixtures are in `tests/fixtures/openapi_annotations/` and are loaded
+with `include_str!`. Every implemented rule has a failing case; checks with a
+valid counterpart also test that conforming source is accepted. The
+`the_router_tree_is_clean` test runs all checks over `backend/src/router`, pins
+63 handlers and the B1/B2/B3 inventory, and requires zero findings.
 
-| pinned                     | value | what a change of it means                                                          |
-| -------------------------- | ----- | ---------------------------------------------------------------------------------- |
-| annotated handlers         | 63    | the walk stopped finding annotations                                               |
-| declared parameters read   | 1     | B1/B2 read less of the tree than they were calibrated against                      |
-| declared parameters unread | 0     | an `IntoParams` struct reached an annotation — see "What section B does not cover" |
-| declared request bodies    | 24    | B3/B4 read less of the tree than they were calibrated against                      |
+Run the tool's tests with:
 
-`tests/cli.rs` pins the reporting contract the recipe depends on: the summary's
-counts, the exit codes and the coverage floor — five tests there, 27 here, 32 in
-all. Fixtures live in `tests/fixtures/openapi_annotations/` and are pulled in with
-`include_str!`, so a renamed or deleted fixture breaks the build instead of
-skipping a test. Run them with `cargo test -p openapi-sanity`.
+```sh
+cargo test -p openapi-sanity
+```
 
-## A known duplication
-
-`TAGS` is the one set this tool enforces that is written down elsewhere: it
-mirrors the table in
-[`docs/openapi-generator.md`](../../docs/openapi-generator.md) ("Tag
-conventions"), which cannot be read rather than copied because the document is
-generated from the annotations a rule would then be checking. Both places say the
-other exists, and a test asserts every tag in the constant is accepted, so a
-subject added to one and not the other shows up as a rule that rejects the table.
+`just openapi-check` runs this checker, verifies `backend/openapi.json`, and
+compares mounted routes with documented operations. `just utils-test` runs the
+checker tests; backend changes run both recipes in pre-commit. CI runs `just check`
+and `just test`.
