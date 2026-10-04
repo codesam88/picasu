@@ -1,17 +1,28 @@
 # openapi-sanity
 
-Source-level checks on the backend's `#[utoipa::path]` annotations.
+`openapi-sanity` is the **source-level checker for annotation conventions and
+relationships that are not recoverable from the generated OpenAPI document or
+Rocket's runtime route table**. It reads Rust source independently of utoipa's
+generated artifact and checks the facts that generation otherwise hides: annotation
+shape, source-to-annotation parameter/body relationships, documentation conventions,
+and handler obligations such as propagating a deferred guard rejection.
 
-This is a **new tool that reuses the name of the analyzer deleted in `e1ec74da`
-on purpose.** It is not that analyzer, it does not carry any of its rules, and
-none of them are coming back: there is no `AUTH_POLICY` table, no route-set rule
-and no source/spec comparison here. Invoking it expecting the old rules gets you
-the rules below and nothing else — in particular no check on security schemes or
-on whether a documented operation is mounted. Its rule set is
-[`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md),
-of which **fifteen rules are implemented** — A1–A8, B1–B4, C1, C1b and C3 — and
-the rest are specified but not built; both lists are below. The tree is silent
-against all fifteen.
+It is one owner in a deliberately split contract gate:
+
+- `openapi-sanity` owns source-only annotation facts and repository conventions;
+- the planned Redocly CLI phase owns OpenAPI 3.1 validity and document-only best
+  practices;
+- `openapi-routes-match` owns runtime mounted-route parity;
+- `openapi-json-match` owns reproducibility of the committed artifact.
+
+This tool is not a general OpenAPI validator, a route-mount checker, a security
+scheme validator, or a source/spec comparison tool. Those responsibilities must not
+be duplicated here. Its rule set is
+[`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md).
+Fourteen rules are currently treated as enforced — A1–A8, B1–B4, C1b and C3. C1's
+current implementation exists but remains in soundness hardening until it can prove
+that accepted syntax cannot continue after a rejected guard. A9 and the remaining
+plan rules are specified but not built.
 
 ## What this crate holds: conventions, not backend facts
 
@@ -35,11 +46,13 @@ concrete form of that.
 
 ## What it asserts
 
-**Fifteen rules, all of them enforced, and nothing else.** Each one below gives
-what it asserts, **what specifically tests it** (fixture and test name, so a
-reader can go and change the test rather than guess; fixture paths are relative to
-`tests/`), and **why it exists** — the defect it
-was written for, or the convention it protects. Rule ids are the plan's
+**Fourteen rules are currently enforced, and nothing else is claimed.** C1 is
+implemented but remains under soundness hardening; A9 and the remaining plan rules
+are not built. Each implemented rule below gives what it asserts, **what
+specifically tests it** (fixture and test name, so a reader can go and change the
+test rather than guess; fixture paths are relative to `tests/`), and **why it
+exists** — the defect it was written for, or the convention it protects. Rule ids
+are the plan's
 ([`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md),
 "Rule index"), and they are stable.
 
@@ -140,33 +153,33 @@ written, and nothing derives it.
   which is the premise A5 rests on — `put/assign_album.rs` did set both, and it is
   why A5 was once reporting a defect the generated document did not have.
 
-### A8 — every guard binding is named after its guard class, and carries the class name as a word where another parameter already has it
+### A8 — every guard binding is named exactly the canonical name for its guard class
 
-The rule has **two branches**, and which one applies is a fact about the signature
-rather than a per-binding choice:
+One rule, one finding text, **no branch and no escape hatch**: `GuardShare` is bound
+as `share`, `GuardHashOriginal` as `hash_original`, and so on for each class of
+[`GUARD_CLASSES`](src/lib.rs). A leading underscore is stripped before the
+comparison, because `_`-prefixing is this repository's spelling for a guard whose
+value the handler never uses (`_auth: GuardAuth`) — but it is only right on a binding
+the body does **not** propagate, since an underscore on a guard handed on with `?`
+says the value is discarded.
 
-- **The name, exactly, when it is free.** Where no other parameter of the signature
-  has it, the binding must be exactly the canonical name for its class —
-  `auth`, `read_only_mode`, `hash`, `hash_original`, `share`, `upload`,
-  `timestamp`, the middle column of [`GUARD_CLASSES`](src/lib.rs).
-- **The name as a word, when it is taken.** Rocket binds a route's `?<name>` to a
-  handler argument of the same name, so a query parameter can occupy the canonical
-  name. Where that has happened the binding must still carry the class name as a
-  **word-part** — underscores dropped, case ignored — so `timestamp`,
-  `timestamp_guard` and `guard_timestamp` all satisfy `GuardTimestamp` and `auth`
-  does not. It is a containment test, not a prefix or a suffix one, so no
-  arrangement of words passes that does not say which guard it is.
+**`GuardTimestamp` is `guard_timestamp`, not the prefix-stripped `timestamp`.** It is
+the one row that keeps the `Guard` prefix, and the reason is a collision the obvious
+spelling would have created: `?<timestamp>` is the client's clock, `GuardTimestamp` is
+the auth token, and both were called "timestamp". The query parameter's name is public
+API and stays public; the guard binding, local to the handler, says what it is.
 
-The second branch exists for one structural reason: **`GuardTimestamp` collides
-with `?<timestamp>` in every signature in this repository that binds the class**,
-so the canonical name is unavailable 100% of the time for that class. That was
-found by the rule rather than assumed: it shipped 19 findings, 15 were renames,
-and the remaining four were all this one collision.
-
-A leading underscore is stripped before the name is read, because `_auth: GuardAuth`
-is this repository's spelling for a guard whose value the handler never uses — but
-it is only right on a binding the body does **not** propagate, since an underscore on
-a guard handed on with `?` says the value is discarded.
+**Why there is no branch for a collision.** An earlier version had one: where the
+canonical name was already taken by another parameter of the same signature, the
+binding was allowed to carry the class name as a word-part. It was removed because a
+rule that accepts two shapes for one fact has findings that must hedge, and the hedge
+is how a guard stops being nameable — a binding satisfying "contains `timestamp`
+somewhere" is not a binding a finding can quote to the reader who has to go and look.
+The collision it accommodated was this repository's own naming, not a constraint of
+Rocket, and **a guard binding name is local to its handler**: renaming seventeen of
+them moved `backend/openapi.json` not one byte. So if a future route's own parameter
+takes a guard's canonical name, the fix is to harmonise one of the two names in
+source — most often the guard, since the parameter is usually the public half.
 
 **Scope: the guard types `GUARD_CLASSES` names.** A plain Rocket guard whose name
 does not begin with `Guard` is not a binding this tool classifies at all, so
@@ -174,28 +187,20 @@ does not begin with `Guard` is not a binding this tool classifies at all, so
 rule that needed the class of a type it cannot recognise would have to guess it.
 
 - **Tested by** `a_guard_binding_named_after_another_class_fails` over
-  `a8_guard_binding_named_after_another_class.rs` (**free-name branch**: a binding
-  named after a different class, a binding named after a prefix of its class, and
-  the `_` spelling on a guard the body propagates) and by
-  `a_guard_binding_named_after_its_class_is_accepted` over `a8_conforming.rs`
-  (every class, a fallible and a plain spelling, `_`-prefixed plain guards, and the
-  unclassified-guard shape).
-- **Also tested by** `a_canonical_name_already_taken_still_needs_the_class_name`
-  over `a8_canonical_name_taken.rs` (**taken-name branch**): three accepted
-  spellings — `guard_timestamp`, `timestamp_guard`, and a class name surrounded by
-  other words — beside **one handler that carries none of the class name and is a
-  finding**. That fourth handler is what stops the branch from being an exemption:
-  without it, "any name is fine when the canonical name is taken" would pass this
-  suite, and the scan's `taken_name_bindings` count would keep reporting four with
-  nothing checking them.
-- **Why it exists** — a guard parameter's name is what a reader scans for when
-  asking "which guard is this, and does the handler use its value", and it is the
-  only handle this tool has on a binding: **C1 names the guard by its type,
-  precisely because the name is what A8 is checking.** A binding called `auth` on
-  a `GuardShare` therefore makes this tool's own findings read as though they were
-  about a token.
-- **The taken-name case is a pinned count, not a mechanism.** See
-  `HandlerSummary::taken_name_bindings` and the pin table below.
+  `a8_guard_binding_named_after_another_class.rs` (a binding named after a different
+  class, a binding named after a prefix of its class, and the `_` spelling on a guard
+  the body propagates) and by `a_guard_binding_named_after_its_class_is_accepted`
+  over `a8_conforming.rs` (every class, a fallible and a plain spelling,
+  `_`-prefixed plain guards, and the unclassified-guard shape). Same shape as every
+  other rule here: one fixture, one conforming counterpart, one finding text, one
+  mutation.
+- **Why it exists** — a guard parameter's name is what a reader scans for when asking
+  "which guard is this, and does the handler use its value", and it is the only handle
+  this tool has on a binding: **C1 names the guard by its type, precisely because the
+  name is what A8 is checking.** A binding called `auth` on a `GuardShare` therefore
+  makes this tool's own findings read as though they were about a token. It shipped
+  19 findings across 12 files; all 19 needed a rename once the canonical names were
+  right, and the tree is silent.
 
 ### B1 — every declared parameter is one the route actually binds
 
@@ -298,14 +303,17 @@ A declared parameter whose location is neither `Path` nor `Query` is outside B1 
 well: a header or cookie is named nowhere in a Rocket route attribute, so there is
 no route binding for it to disagree with.
 
-### C1 — a `GuardResult<…>` argument has its rejection propagated
+### C1 — deferred guard rejection propagation (hardening required)
 
 `GuardResult<T>` is `Result<T, AppError>`: the route hands the handler a value
 that may be a rejection, and the handler is the only place that rejection can
-become an error response. The binding must appear as the operand of `?`, the
-scrutinee of a `match`/`let`/`if let`, an argument of another call, or a returned
-value. A binding dropped as `let _ = ident;`, and a binding the body never
-mentions, are findings.
+become an error response. C1 is present as a regression check for the known
+dropped-guard incident, but its current occurrence-based walker is not yet a sound
+proof: a call, match, rebinding, or nested closure can observe or move the value
+without ensuring that every rejection reaches the handler's caller. Until the
+hardening task is complete, C1 is not counted among the enforced rules above. The
+target behavior is conservative acceptance of only directly provable propagation,
+or an explicit unsupported-form finding.
 
 - **Tested by** `dropping_a_guard_result_fails` over `c1_discarded_guard_result.rs`
   (the mutation fixture), `a_guard_result_absent_from_the_body_fails` over
@@ -321,9 +329,10 @@ mentions, are findings.
   findings today, so it earns its place as a regression guard — which is why it
   ships with a mutation test that fails when the rule is removed. The two
   decision-shaped cases are pinned as tests rather than left to the walk:
-  a `move` into a closure is **accepted** when the closure propagates, and a
-  one-hop rebinding (`let x = auth; … x?;`) is **reported** even though a human
-  would accept it.
+  a `move` into a closure is currently **accepted** when the closure propagates,
+  and a one-hop rebinding (`let x = auth; … x?;`) is currently **reported** even
+  though a human would accept it. Both are explicitly temporary behavior covered
+  by the C1 soundness task, not guarantees of this tool.
 
 ### C1b — a plain `Guard…` argument needs nothing in the body and is never reported
 
@@ -489,20 +498,19 @@ per rule in "What it asserts" above, so a reader does not have to go looking.
 rather than against snippets, and it pins the scan's coverage so the two cannot
 drift apart silently:
 
-| pinned                                       | value | what a change of it means                                                                                       |
-| -------------------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------- |
-| annotated handlers                           | 63    | the walk stopped finding annotations                                                                            |
-| `GuardResult<…>` bindings                    | 52    | C1's calibration moved                                                                                          |
-| plain `Guard…` bindings                      | 9     | C1b's calibration moved                                                                                         |
-| guard bindings read                          | 61    | A8 read less of the tree than it was calibrated against                                                         |
-| guard bindings classified                    | 61    | a guard class `GUARD_CLASSES` does not name reached a handler — see A8's scope                                  |
-| guard bindings whose canonical name is taken | 4     | a route changed shape, so A8's taken-name branch no longer applies where it did — or a fifth signature collided |
-| declared parameters read                     | 1     | B1/B2 read less of the tree than they were calibrated against                                                   |
-| declared parameters unread                   | 0     | an `IntoParams` struct reached an annotation — see "What section B does not cover"                              |
-| declared request bodies                      | 24    | B3/B4 read less of the tree than they were calibrated against                                                   |
+| pinned                     | value | what a change of it means                                                          |
+| -------------------------- | ----- | ---------------------------------------------------------------------------------- |
+| annotated handlers         | 63    | the walk stopped finding annotations                                               |
+| `GuardResult<…>` bindings  | 52    | C1's calibration moved                                                             |
+| plain `Guard…` bindings    | 9     | C1b's calibration moved                                                            |
+| guard bindings read        | 61    | A8 read less of the tree than it was calibrated against                            |
+| guard bindings classified  | 61    | a guard class `GUARD_CLASSES` does not name reached a handler — see A8's scope     |
+| declared parameters read   | 1     | B1/B2 read less of the tree than they were calibrated against                      |
+| declared parameters unread | 0     | an `IntoParams` struct reached an annotation — see "What section B does not cover" |
+| declared request bodies    | 24    | B3/B4 read less of the tree than they were calibrated against                      |
 
 `tests/cli.rs` pins the reporting contract the recipe depends on: the summary's
-counts, the exit codes and the coverage floor — five tests there, 38 here, 43 in
+counts, the exit codes and the coverage floor — five tests there, 37 here, 42 in
 all. Fixtures live in `tests/fixtures/openapi_annotations/` and are pulled in with
 `include_str!`, so a renamed or deleted fixture breaks the build instead of
 skipping a test. Run them with `cargo test -p openapi-sanity`.
@@ -521,7 +529,9 @@ subject added to one and not the other shows up as a rule that rejects the table
 **status**: each row pairs a guard type with the name a binding of it takes (A8)
 and the status its rejection is answered with (C3). It is a convention rather than
 a fact because the pairing is a decision this repository made — read-only mode is
-not an authentication failure — not something derivable from a type name.
+not an authentication failure, and a `GuardTimestamp` binding is `guard_timestamp`,
+keeping the prefix the other six strip, because stripping it would collide with the
+public `?<timestamp>` parameter. The doc on the constant says why.
 
 The guard rules in section C name the shapes `GuardResult<…>` and `Guard…` by the
 spelling the backend writes them with. That is a convention read from the

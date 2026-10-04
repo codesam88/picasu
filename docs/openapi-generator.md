@@ -202,29 +202,29 @@ Two of the three phases compare the document. The source phase checks the
 annotations themselves, because a handful of things about an annotation are wrong
 in a way the document cannot show:
 
-| Rule | Assertion                                                                                                                   | Why the document cannot show it                                                                                           |
-| ---- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| A1   | no `path = "…"` and no bare verb token in the annotation                                                                    | `rocket_extras` derives both from the route attribute, so a restatement is a second copy of a fact nothing compares       |
-| A2   | `responses(…)` is present and has at least one entry                                                                        | utoipa invents no response, so an operation with none documents nothing it can answer                                     |
-| A3   | exactly one `tag = "…"`, from the table in [Tag conventions](#tag-conventions)                                              | a missing or unknown tag files the operation outside every section of the reference                                       |
-| A4   | the handler carries a doc comment                                                                                           | `summary` and `description` are derived from it, so a handler without one is a complete-looking operation with no text    |
-| A5   | the doc comment's first paragraph is one line                                                                               | it is the `summary`, and the reference renders the `summary` as a heading — a newline inside a heading splits it          |
-| A6   | no `operation_id = "…"`                                                                                                     | utoipa derives it from the function name; a hand-set one is the only name nothing compares                                |
-| A7   | no `summary = "…"` and no `description = "…"`                                                                               | utoipa derives both from the doc comment; a hand-set one is the same prose written twice, with nothing comparing them     |
-| B1   | every declared `params(…)` name is a `<segment>` or `?<name>` the route binds                                               | utoipa merges declared parameters into the derived document without checking that the route reads them                    |
-| B2   | a declared parameter's documented `required` matches the handler argument                                                   | utoipa derives `required` from the declared type and never looks at the argument the route binds                          |
-| B3   | a declared `request_body` names the type the route's `data = "…"` parses                                                    | utoipa takes the declared schema and never compares it to what Rocket parses                                              |
-| B4   | a `Form<…>` binding declares `multipart/form-data`                                                                          | utoipa guesses `application/json` for a named non-primitive type, so a multipart endpoint was published as a JSON one     |
-| C1   | a `GuardResult<…>` argument has its rejection propagated by the handler body                                                | the route hands the handler a value that may be a rejection, and only the body can turn it into a response                |
-| A8   | every guard binding is named after its guard class, or carries the class name as a word-part where another parameter has it | the name is what a reader — and a C1 finding, which names the guard by its type — uses to say which guard it is           |
-| C3   | a route carrying a guard documents the status that guard rejects with                                                       | utoipa publishes exactly the statuses the annotation declares, so an undocumented `401` or `405` is invisible to a client |
+| Rule | Assertion                                                                      | Why the document cannot show it                                                                                           |
+| ---- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| A1   | no `path = "…"` and no bare verb token in the annotation                       | `rocket_extras` derives both from the route attribute, so a restatement is a second copy of a fact nothing compares       |
+| A2   | `responses(…)` is present and has at least one entry                           | utoipa invents no response, so an operation with none documents nothing it can answer                                     |
+| A3   | exactly one `tag = "…"`, from the table in [Tag conventions](#tag-conventions) | a missing or unknown tag files the operation outside every section of the reference                                       |
+| A4   | the handler carries a doc comment                                              | `summary` and `description` are derived from it, so a handler without one is a complete-looking operation with no text    |
+| A5   | the doc comment's first paragraph is one line                                  | it is the `summary`, and the reference renders the `summary` as a heading — a newline inside a heading splits it          |
+| A6   | no `operation_id = "…"`                                                        | utoipa derives it from the function name; a hand-set one is the only name nothing compares                                |
+| A7   | no `summary = "…"` and no `description = "…"`                                  | utoipa derives both from the doc comment; a hand-set one is the same prose written twice, with nothing comparing them     |
+| B1   | every declared `params(…)` name is a `<segment>` or `?<name>` the route binds  | utoipa merges declared parameters into the derived document without checking that the route reads them                    |
+| B2   | a declared parameter's documented `required` matches the handler argument      | utoipa derives `required` from the declared type and never looks at the argument the route binds                          |
+| B3   | a declared `request_body` names the type the route's `data = "…"` parses       | utoipa takes the declared schema and never compares it to what Rocket parses                                              |
+| B4   | a `Form<…>` binding declares `multipart/form-data`                             | utoipa guesses `application/json` for a named non-primitive type, so a multipart endpoint was published as a JSON one     |
+| C1   | a `GuardResult<…>` argument has its rejection propagated by the handler body   | the route hands the handler a value that may be a rejection, and only the body can turn it into a response                |
+| A8   | every guard binding is named exactly the canonical name for its guard class    | the name is what a reader — and a C1 finding, which names the guard by its type — uses to say which guard it is           |
+| C3   | a route carrying a guard documents the status that guard rejects with          | utoipa publishes exactly the statuses the annotation declares, so an undocumented `401` or `405` is invisible to a client |
 
 `docs/openapi-generator.md` is where the tag vocabulary is written down, and
 `utils/openapi-sanity/src/lib.rs` holds the tool's copy of it (`TAGS`); the two
 are changed together. `GUARD_CLASSES` is the tool's second copy: it pairs each
 guard type with the name a binding of it takes (A8) and the status its rejection
-is answered with (C3), and both the table and A8's two-branch naming rule are
-reproduced in
+is answered with (C3), and both the table and A8's canonical names are reproduced
+in
 [`.plan/openapi-annotation-checks.md`](../.plan/openapi-annotation-checks.md)
 section C, which is where the reasoning for the pairing lives. Everything else in
 the table is a rule with no document-side equivalent, which is why they live in the
@@ -303,18 +303,32 @@ not classify at all. A test pins the classified-binding count against the total,
 the first class neither rule can name fails that pin instead of going quietly
 unchecked.
 
-**A8 has one exception and it is worth knowing about before you name a guard.**
-Rocket binds a route's `?<name>` to a handler argument of the same name, so a query
-parameter can occupy a guard's canonical name — and `?<timestamp>` does exactly
-that in every signature that binds a `GuardTimestamp`. So the rule is in two
-branches: **where the canonical name is free the binding must be exactly it**, and
-**where another parameter of the signature already has it the binding must still
-carry the class name as a word-part** (underscores ignored, so `guard_timestamp`,
-`timestamp_guard` and `timestamp` all satisfy `GuardTimestamp`, and `auth` satisfies
-nothing). Four bindings take the second branch today, all bound as
-`guard_timestamp`, and the count is pinned — so if you add or drop a `?<timestamp>`
-the pin fails and the amendment's scope gets looked at again rather than silently
-changing what applies.
+**A8 has no escape hatch, and the one collision it met is the precedent.** It is
+tempting to name a guard something other than its class's canonical name when another
+parameter of the signature already has that name. The rule does not allow it. If you
+hit that, **harmonise one of the two names in source** — usually the guard, because the
+other parameter is usually the public half. A guard binding name is local to its
+handler, so this costs nothing outside Rust.
+
+The case that settled it: `?<timestamp>` is the client's clock, `GuardTimestamp` is
+the auth token, and the class's obvious canonical name and the query parameter were
+both `timestamp`. The query parameter's name is in the committed document and in the
+frontend's URLs, so it keeps `timestamp`; the class instead keeps the `Guard` prefix
+the other six strip, so the binding is `guard_timestamp` and all four read alike.
+Renaming the seventeen bindings in the same change left `backend/openapi.json`
+byte-identical, which is the proof.
+
+So `GUARD_CLASSES` has one row whose binding keeps the `Guard` prefix:
+
+| guard type          | binding           | rejects with |
+| ------------------- | ----------------- | ------------ |
+| `GuardAuth`         | `auth`            | 401          |
+| `GuardTimestamp`    | `guard_timestamp` | 401          |
+| `GuardHash`         | `hash`            | 401          |
+| `GuardHashOriginal` | `hash_original`   | 401          |
+| `GuardShare`        | `share`           | 401          |
+| `GuardUpload`       | `upload`          | 401          |
+| `GuardReadOnlyMode` | `read_only_mode`  | 405          |
 
 **C3 has one stated limitation.** Its `401` half is absolute: it will fire on a
 route that deliberately answers a credential rejection with some other status — a
