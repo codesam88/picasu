@@ -23,6 +23,10 @@ mod workflow;
 
 // Re-exports for integration tests that need to access the real init path.
 pub use model::config::{APP_CONFIG, AppConfig};
+pub use process::exif::{
+    StayOpenExitGuard, exiftool_children_of_this_process, kill_stay_open_children,
+    read_metadata_record,
+};
 pub use router::builder::build_rocket_with_config;
 pub use storage::files::DATA_PATH;
 
@@ -41,6 +45,14 @@ use model::metadata_record::MetadataRecord;
 #[allow(clippy::missing_panics_doc)]
 pub fn run() {
     use tokio::signal::unix::{SignalKind, signal};
+
+    // Rayon and tokio pool threads never run their thread-local destructors
+    // at process exit, so their `exiftool -stay_open` children would outlive
+    // the server as orphaned Perl processes (every read path thread owns one).
+    // The guard kills them on every exit that runs destructors: normal return
+    // after the joins below, a panic unwinding through here, and the
+    // SIGTERM/SIGINT shutdown these handlers turn into that normal return.
+    let _stay_open_exit = process::exif::StayOpenExitGuard;
 
     // Initialize logger first thing
     initialize_logger();

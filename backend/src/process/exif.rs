@@ -108,7 +108,7 @@ pub(crate) fn exif_map_from_record(record: &Value) -> BTreeMap<String, String> {
 /// propagate that is [`is_toolchain_failure`]'s question; a file `ExifTool`
 /// cannot parse is not an error here at all — it comes back as a record with no
 /// EXIF groups, which the callers render as an empty map.
-pub(crate) fn read_metadata_record(file_path: &Path) -> Result<Value> {
+pub fn read_metadata_record(file_path: &Path) -> Result<Value> {
     read_with_the_engine(file_path)
         .with_context(|| format!("failed to read metadata for {}", file_path.display()))
 }
@@ -331,6 +331,85 @@ fn executable_for_this_thread() -> PathBuf {
         return override_path;
     }
     PathBuf::from(EXIFTOOL)
+}
+
+/// Every `exiftool -stay_open` child this process owns, from any thread.
+///
+/// The unit suite finds its children through `/proc/thread-self/children`; an
+/// exit hook runs on whatever thread the process happens to leave through, so
+/// it has to see every thread's children — the union of
+/// `/proc/self/task/*/children` — filtered to stay-open sessions by cmdline so
+/// a sibling child such as a browser opener is never mistaken for one. A
+/// child whose cmdline is already gone (a zombie from someone else's kill)
+/// matches neither term and drops out on its own.
+#[must_use]
+pub fn exiftool_children_of_this_process() -> Vec<u32> {
+    let Ok(tasks) = std::fs::read_dir("/proc/self/task") else {
+        return Vec::new();
+    };
+    let mut pids: Vec<u32> = tasks
+        .flatten()
+        .flat_map(|task| {
+            std::fs::read_to_string(task.path().join("children"))
+                .unwrap_or_default()
+                .split_whitespace()
+                .filter_map(|field| field.parse::<u32>().ok())
+                .collect::<Vec<u32>>()
+        })
+        .filter(|pid| {
+            std::fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|cmdline| {
+                let cmdline = String::from_utf8_lossy(&cmdline);
+                cmdline.contains("exiftool") && cmdline.contains("-stay_open")
+            })
+        })
+        .collect();
+    pids.sort_unstable();
+    pids.dedup();
+    pids
+}
+
+/// SIGKILL every `exiftool -stay_open` child this process owns.
+///
+/// Returns how many children were signalled. The signal goes through `kill(1)`
+/// rather than an FFI `kill(2)` so the crate keeps its `deny(unsafe_code)`;
+/// the test suite already shells out to the same binary to break a session on
+/// purpose. A child that died since the scan reports `ESRCH`, which is the
+/// goal reached by another route — the failure worth logging is `kill` itself
+/// not being runnable.
+#[must_use = "a caller that ignores the count cannot tell the hook did anything"]
+pub fn kill_stay_open_children() -> usize {
+    let children = exiftool_children_of_this_process();
+    for pid in &children {
+        let args = ["-9", &pid.to_string()];
+        let signalled = Command::new("kill")
+            .args(args)
+            .status()
+            .or_else(|_| Command::new("/bin/kill").args(args).status());
+        match signalled {
+            Ok(_) => {}
+            Err(err) => log::error!("could not signal exiftool child {pid} on exit: {err:#}"),
+        }
+    }
+    children.len()
+}
+
+/// Kills this process's `exiftool -stay_open` children when it drops.
+///
+/// `picasu::run` holds one for the life of the server: rayon and tokio pool
+/// threads never run their thread-local destructors at process exit, so their
+/// sessions would outlive the process as orphaned Perl children. Dropping the
+/// guard covers every exit that runs destructors — normal return, panic
+/// unwind, and the SIGTERM/SIGINT shutdown the tokio handlers drive — which
+/// is every exit except a signal with the default disposition and SIGKILL.
+pub struct StayOpenExitGuard;
+
+impl Drop for StayOpenExitGuard {
+    fn drop(&mut self) {
+        let killed = kill_stay_open_children();
+        if killed > 0 {
+            log::info!("killed {killed} exiftool session(s) on the way out");
+        }
+    }
 }
 
 /// A running `exiftool -stay_open` child plus the one read that has to survive
