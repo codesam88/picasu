@@ -21,10 +21,20 @@ pub struct IndexImageRequest {
     album: Option<String>,
 }
 
-/// Walk a directory under `IMAGE_HOME` and index all media files in the background.
+/// Index every media file under a directory tree in the background.
 ///
-/// `album` is a path relative to `IMAGE_HOME` — use `"/"` for the root. Status
-/// can be polled via `GET /get/index/status`.
+/// `album` is a directory path relative to `IMAGE_HOME`, where `"/"` selects
+/// the root. The walk is asynchronous: the response returns once the job is
+/// accepted, and progress — the scanned, matched, processed and failed
+/// counters plus the final state — is reported by `GET /get/index/status`.
+///
+/// Corner cases: One album-index job runs at a time, so a request made while
+/// another job is running is a 409. The walk does not stop at a file it cannot
+/// read or decode; it counts the failure and carries on.
+///
+/// Errors: 400 no `imagePath` configured, a path that is missing or not a
+/// directory, or a Picasu internal data directory — 401 missing or invalid
+/// credentials — 405 read-only mode — 409 an index job is already running.
 #[utoipa::path(
         tag = "index",
         request_body = IndexAlbumRequest,
@@ -33,6 +43,7 @@ pub struct IndexImageRequest {
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
             (status = 405, description = "Read-only mode"),
+            (status = 409, description = "An index job is already running"),
         )
     )
 ]
@@ -49,7 +60,16 @@ pub fn index_album_handler(
 
 /// Index a single image by its path relative to `IMAGE_HOME`.
 ///
-/// Runs in the background; returns `202 Accepted` immediately.
+/// The request returns as soon as the indexing task is spawned, so it reports
+/// only that the work was started. `image` is the path below `IMAGE_HOME`,
+/// and `album` optionally overrides the album the image is filed under.
+///
+/// Corner cases: The task runs detached from the request, so an indexing
+/// failure is logged rather than returned and leaves no entry in
+/// `GET /get/index/status`, which tracks album-index jobs only.
+///
+/// Errors: 400 unusable request body — 401 missing or invalid credentials —
+/// 405 read-only mode.
 #[utoipa::path(
         tag = "index",
         request_body = IndexImageRequest,
@@ -79,13 +99,25 @@ pub fn index_image_handler(
     Ok(Status::Accepted)
 }
 
-/// Cancel a running album index job.
+/// Request cancellation of the running album index job.
+///
+/// Stores a cancel flag that the running walk checks as it goes; the response
+/// returns as soon as the flag is set, while the job itself keeps walking
+/// until it reaches its next directory entry.
+///
+/// Corner cases: Cancellation is cooperative, not immediate. While the walk
+/// winds down the job reports `cancelRequested` with its state still `running`;
+/// the state settles as `canceled` only once the walk has actually stopped.
+///
+/// Errors: 400 malformed request — 401 missing or invalid credentials —
+/// 404 no index job is active.
 #[utoipa::path(
         tag = "index",
         responses(
             (status = 200, description = "Album index cancelled"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 404, description = "No active index job"),
         )
     )
 ]

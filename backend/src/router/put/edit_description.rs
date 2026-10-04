@@ -25,7 +25,24 @@ pub struct SetUserDefinedDescription {
     pub timestamp: i64,
 }
 
-/// Set the user-defined description of an asset, or clear it with `null`.
+/// Set or clear the user-defined description of an asset.
+///
+/// `index` addresses the asset in the snapshot named by `timestamp`, and
+/// `description` replaces the field: `null` clears it, other text is
+/// NFC-normalized and filtered to valid XML characters. The value is written to
+/// the asset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and
+/// the in-memory tree is rebuilt before the call returns. Share credentials
+/// (`x-album-id` plus `x-share-id`, or `albumId` plus `shareId`) are accepted
+/// alongside the admin JWT cookie.
+///
+/// Corner cases: the share's `showMetadata` flag is not consulted, so a share
+/// without metadata rights may still write a description. An index whose asset
+/// record no longer exists is skipped and still answers 200, and a failed
+/// sidecar write is logged rather than failing the request.
+///
+/// Errors: 400 malformed body — 401 missing or invalid admin or share
+/// credentials — 405 read-only mode — 500 unknown snapshot, out-of-range index,
+/// or storage failure.
 #[utoipa::path(
         tag = "albums",
         request_body = SetUserDefinedDescription,

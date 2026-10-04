@@ -18,11 +18,18 @@ use crate::tasks::batcher::update_tree::UpdateTreeTask;
 
 /// Rebuild the asset tables from the filesystem under `IMAGE_HOME`.
 ///
-/// Clears `ASSET_BY_PATH`/`ASSET_BY_ID`/`DUPE_INDEX`, walks the image root,
-/// and repopulates them. Then rewrites `METADATA_TABLE` from the fresh
-/// `AssetRecord`s (rebuild assigns new `asset_id`s, so stale rows keyed by
-/// the old ids must not remain) and waits for an in-memory tree refresh so
-/// the response does not race subsequent `prefetch`/`get-data` calls.
+/// Clears `ASSET_BY_PATH`, `ASSET_BY_ID` and `DUPE_INDEX`, walks the image
+/// root and repopulates them, then rewrites `METADATA_TABLE` from the fresh
+/// records. The response carries the rebuild stats and is returned only after
+/// an in-memory tree refresh, so it does not race a following prefetch or
+/// get-data call.
+///
+/// Corner cases: Rows are rewritten wholesale rather than merged: the rebuild
+/// assigns new `asset_id`s, so rows keyed by the previous ids must not remain.
+///
+/// Errors: 400 malformed request — 401 missing or invalid credentials —
+/// 405 read-only mode — 500 `imagePath` unset, or a failure while walking the
+/// image root or writing the tables.
 #[utoipa::path(
         tag = "index",
         responses(

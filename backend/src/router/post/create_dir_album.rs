@@ -21,9 +21,20 @@ pub struct CreateDirAlbumData {
     pub name: String,
 }
 
-/// Create a new subdirectory under an existing dir-album's directory and register it as a new album.
+/// Create a subdirectory under a dir-album and register it as an album.
 ///
-/// Returns the new album's ID.
+/// `name` is trimmed and must be a single path segment — no separator, no `.`
+/// or `..`. The directory is created directly under the existing parent
+/// album's own directory, registered as an album, and the parent album is
+/// refreshed before the response returns.
+///
+/// Corner cases: The new album's ID is returned as a string. A failure after
+/// the directory was created but before the album was registered leaves the
+/// empty directory behind.
+///
+/// Errors: 400 unusable `name`, or a `parentAlbumId` that names no dir-album —
+/// 401 missing or invalid credentials — 405 read-only mode — 500 the directory
+/// could not be created or the album not registered.
 #[utoipa::path(
         tag = "albums",
         request_body = CreateDirAlbumData,

@@ -22,30 +22,48 @@ headingLevel: 2
 
 > Scroll down for code samples, example requests and responses. Select a language for code samples from the tabs above or the mobile navigation menu.
 
+Self-hosted photo gallery API. This document is generated from the `#[utoipa::path]` annotations in `backend/src/router`; see `docs/openapi-generator.md`.
+
+Web: <a href="https://github.com/codesam88/picasu">picasu</a>
 License: MIT
 
-<h1 id="picasu-pages">pages</h1>
+<h1 id="picasu-auth">auth</h1>
 
-## Serve the SPA entry point.
+Authentication and token renewal
 
-<a id="opIdredirect_to_photo"></a>
+## Sign in with the account password and return a 14-day admin JWT.
+
+<a id="opIdauthenticate"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X GET /
+curl -X POST /post/authenticate \
+  -H 'Content-Type: text/plain' \
+  -H 'Accept: text/plain'
 
 ```
 
 ```http
-GET / HTTP/1.1
+POST /post/authenticate HTTP/1.1
+
+Content-Type: text/plain
+Accept: text/plain
 
 ```
 
 ```javascript
-fetch("/", {
-  method: "GET",
+const inputBody = "string";
+const headers = {
+  "Content-Type": "text/plain",
+  Accept: "text/plain",
+};
+
+fetch("/post/authenticate", {
+  method: "POST",
+  body: inputBody,
+  headers: headers,
 })
   .then(function (res) {
     return res.json();
@@ -59,9 +77,14 @@ fetch("/", {
 require 'rest-client'
 require 'json'
 
-result = RestClient.get '/',
+headers = {
+  'Content-Type' => 'text/plain',
+  'Accept' => 'text/plain'
+}
+
+result = RestClient.post '/post/authenticate',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -69,8 +92,12 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Content-Type': 'text/plain',
+  'Accept': 'text/plain'
+}
 
-r = requests.get('/')
+r = requests.post('/post/authenticate', headers = headers)
 
 print(r.json())
 
@@ -81,13 +108,18 @@ print(r.json())
 
 require 'vendor/autoload.php';
 
+$headers = array(
+    'Content-Type' => 'text/plain',
+    'Accept' => 'text/plain',
+);
+
 $client = new \GuzzleHttp\Client();
 
 // Define array of request body.
 $request_body = array();
 
 try {
-    $response = $client->request('GET','/', array(
+    $response = $client->request('POST','/post/authenticate', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -104,9 +136,9 @@ try {
 ```
 
 ```java
-URL obj = new URL("/");
+URL obj = new URL("/post/authenticate");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
+con.setRequestMethod("POST");
 int responseCode = con.getResponseCode();
 BufferedReader in = new BufferedReader(
     new InputStreamReader(con.getInputStream()));
@@ -130,8 +162,13 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Content-Type": []string{"text/plain"},
+        "Accept": []string{"text/plain"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/", data)
+    req, err := http.NewRequest("POST", "/post/authenticate", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -141,314 +178,108 @@ func main() {
 
 ```
 
-`GET /`
+`POST /post/authenticate`
 
-<h3 id="serve-the-spa-entry-point.-responses">Responses</h3>
+The posted password is trimmed and compared against the configured one; a
+match returns the signed admin token as a JSON string. Tokens are signed
+with `authKey`, or with a secret generated once per process when `authKey`
+is unset, so changing `authKey` invalidates every token issued under the
+previous one.
 
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+Corner cases: While no password is configured, sign-in succeeds without
+one: every input, including an empty string, is accepted.
 
-<aside class="success">
-This operation does not require authentication
-</aside>
+Errors: 401 password does not match the configured one.
 
-## Serve the SPA albums page.
+> Body parameter
 
-<a id="opIdalbums"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /albums
+```
+string
 
 ```
 
-```http
-GET /albums HTTP/1.1
-
-```
-
-```javascript
-fetch("/albums", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/albums',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/albums')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/albums', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/albums");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/albums", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /albums`
-
-<h3 id="serve-the-spa-albums-page.-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Serve the SPA at an albums view path; the SPA resolves the view.
-
-<a id="opIdalbums_view"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /albums/view/{path}
-
-```
-
-```http
-GET /albums/view/{path} HTTP/1.1
-
-```
-
-```javascript
-fetch("/albums/view/{path}", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/albums/view/{path}',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/albums/view/{path}')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/albums/view/{path}', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/albums/view/{path}");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/albums/view/{path}", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /albums/view/{path}`
-
-<h3 id="serve-the-spa-at-an-albums-view-path;-the-spa-resolves-the-view.-parameters">Parameters</h3>
+<h3 id="sign-in-with-the-account-password-and-return-a-14-day-admin-jwt.-parameters">Parameters</h3>
 
 | Name | In   | Type   | Required | Description |
 | ---- | ---- | ------ | -------- | ----------- |
-| path | path | string | true     | none        |
+| body | body | string | true     | none        |
 
-<h3 id="serve-the-spa-at-an-albums-view-path;-the-spa-resolves-the-view.-responses">Responses</h3>
+> Example responses
 
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+> 200 Response
+
+```
+"string"
+```
+
+<h3 id="sign-in-with-the-account-password-and-return-a-14-day-admin-jwt.-responses">Responses</h3>
+
+| Status | Meaning                                                         | Description                                                                                | Schema |
+| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | JWT token                                                                                  | string |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Serve the SPA config page.
+## Exchange an expired image-serving token for a freshly issued one.
 
-<a id="opIdconfig"></a>
+<a id="opIdrenew_hash_token"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X GET /config
+curl -X POST /post/renew-hash-token \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
 ```http
-GET /config HTTP/1.1
+POST /post/renew-hash-token HTTP/1.1
+
+Content-Type: application/json
+Accept: application/json
 
 ```
 
 ```javascript
-fetch("/config", {
-  method: "GET",
+const inputBody = '{
+  "expiredHashToken": "string"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('/post/renew-hash-token',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
 require 'rest-client'
 require 'json'
 
-result = RestClient.get '/config',
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
+}
+
+result = RestClient.post '/post/renew-hash-token',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -456,8 +287,12 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
+}
 
-r = requests.get('/config')
+r = requests.post('/post/renew-hash-token', headers = headers)
 
 print(r.json())
 
@@ -468,13 +303,18 @@ print(r.json())
 
 require 'vendor/autoload.php';
 
+$headers = array(
+    'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
+);
+
 $client = new \GuzzleHttp\Client();
 
 // Define array of request body.
 $request_body = array();
 
 try {
-    $response = $client->request('GET','/config', array(
+    $response = $client->request('POST','/post/renew-hash-token', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -491,7 +331,405 @@ try {
 ```
 
 ```java
-URL obj = new URL("/config");
+URL obj = new URL("/post/renew-hash-token");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("POST");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("POST", "/post/renew-hash-token", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`POST /post/renew-hash-token`
+
+The submitted token is decoded with expiration checking disabled, so an
+expired but correctly signed token is accepted. The returned token keeps
+the original `hash`, `assetId` and `allowOriginal` claims and expires 300
+seconds after it is issued.
+
+Corner cases: The request must also carry a valid, unexpired prefetch
+timestamp bearer token, and the `timestamp` claim of the submitted token
+must match it — renewing only extends the lifetime of the same snapshot.
+
+Errors: 400 unusable request body — 401 unverifiable signature, mismatched
+`timestamp`, or a missing or invalid timestamp bearer token — 500 internal
+failure.
+
+> Body parameter
+
+```json
+{
+  "expiredHashToken": "string"
+}
+```
+
+<h3 id="exchange-an-expired-image-serving-token-for-a-freshly-issued-one.-parameters">Parameters</h3>
+
+| Name | In   | Type                                    | Required | Description |
+| ---- | ---- | --------------------------------------- | -------- | ----------- |
+| body | body | [RenewHashToken](#schemarenewhashtoken) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "token": "string"
+}
+```
+
+<h3 id="exchange-an-expired-image-serving-token-for-a-freshly-issued-one.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                                              |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Hash token renewed                                                                         | [RenewHashTokenReturn](#schemarenewhashtokenreturn) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                                |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Exchange an expired prefetch timestamp token for a freshly issued one.
+
+<a id="opIdrenew_timestamp_token"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X POST /post/renew-timestamp-token \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
+
+```
+
+```http
+POST /post/renew-timestamp-token HTTP/1.1
+
+Content-Type: application/json
+Accept: application/json
+
+```
+
+```javascript
+const inputBody = '{
+  "token": "string"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('/post/renew-timestamp-token',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
+}
+
+result = RestClient.post '/post/renew-timestamp-token',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
+}
+
+r = requests.post('/post/renew-timestamp-token', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('POST','/post/renew-timestamp-token', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/post/renew-timestamp-token");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("POST");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("POST", "/post/renew-timestamp-token", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`POST /post/renew-timestamp-token`
+
+Accepts share credentials (`x-album-id` + `x-share-id` headers or
+`albumId` + `shareId` query parameters) or an admin JWT cookie. The
+submitted token is decoded with expiration checking disabled and reissued
+with its original snapshot `timestamp` and resolved share intact, expiring
+300 seconds later.
+
+Corner cases: Re-renewing keeps addressing the same snapshot, so only the
+expiry changes and the underlying data is not re-read.
+
+Errors: 400 only one of the share credential header or query pair given —
+401 missing or invalid credentials, or an unverifiable token signature —
+500 internal failure.
+
+> Body parameter
+
+```json
+{
+  "token": "string"
+}
+```
+
+<h3 id="exchange-an-expired-prefetch-timestamp-token-for-a-freshly-issued-one.-parameters">Parameters</h3>
+
+| Name | In   | Type                                              | Required | Description |
+| ---- | ---- | ------------------------------------------------- | -------- | ----------- |
+| body | body | [RenewTimestampToken](#schemarenewtimestamptoken) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "token": "string"
+}
+```
+
+<h3 id="exchange-an-expired-prefetch-timestamp-token-for-a-freshly-issued-one.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                                                        |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Timestamp token renewed                                                                    | [RenewTimestampTokenReturn](#schemarenewtimestamptokenreturn) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                          |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                                          |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                          |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+<h1 id="picasu-albums">albums</h1>
+
+Albums and shares: creation, assignment, covers, titles, descriptions, share links
+
+## List every album the metadata tree knows.
+
+<a id="opIdget_albums"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/get-albums \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/get-albums HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/get-albums", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/get-albums',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/get-albums', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/get-albums', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/get-albums");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
 con.setRequestMethod("GET");
 int responseCode = con.getResponseCode();
@@ -517,8 +755,12 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/config", data)
+    req, err := http.NewRequest("GET", "/get/get-albums", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -528,54 +770,144 @@ func main() {
 
 ```
 
-`GET /config`
+`GET /get/get-albums`
 
-<h3 id="serve-the-spa-config-page.-responses">Responses</h3>
+Returns one entry per album with `albumId`, `albumName`, the album's
+`shareList` share definitions, `dirPath` and `parentAlbumId`.
 
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+Corner cases: `dirPath` is reported relative to the configured `imagePath`
+so clients never handle the absolute library location, falling back to the
+absolute path for albums outside that root; `parentAlbumId` names the direct
+parent directory album and is `null` for top-level dir albums and all
+manually created albums.
+
+Errors: 401 no valid admin credentials.
+
+> Example responses
+
+> 200 Response
+
+```json
+[
+  {
+    "albumId": "string",
+    "albumName": "string",
+    "dirPath": "string",
+    "parentAlbumId": "string",
+    "shareList": {
+      "property1": {
+        "description": "string",
+        "exp": 0,
+        "password": "string",
+        "showDownload": true,
+        "showMetadata": true,
+        "showUpload": true,
+        "url": "string"
+      },
+      "property2": {
+        "description": "string",
+        "exp": 0,
+        "password": "string",
+        "showDownload": true,
+        "showMetadata": true,
+        "showUpload": true,
+        "url": "string"
+      }
+    }
+  }
+]
+```
+
+<h3 id="list-every-album-the-metadata-tree-knows.-responses">Responses</h3>
+
+| Status | Meaning                                                         | Description                                                                                | Schema |
+| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | List of albums                                                                             | Inline |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+
+<h3 id="list-every-album-the-metadata-tree-knows.-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+| Name                        | Type                            | Required | Restrictions | Description                                                                                                       |
+| --------------------------- | ------------------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------- |
+| _anonymous_                 | [[AlbumInfo](#schemaalbuminfo)] | false    | none         | none                                                                                                              |
+| » albumId                   | string                          | true     | none         | none                                                                                                              |
+| » albumName                 | string,null                     | false    | none         | none                                                                                                              |
+| » dirPath                   | string,null                     | false    | none         | none                                                                                                              |
+| » parentAlbumId             | string,null                     | false    | none         | Album ID of the direct parent directory album, or `None` for top-level<br>dir albums and all user-created albums. |
+| » shareList                 | object                          | true     | none         | none                                                                                                              |
+| »» **additionalProperties** | [Share](#schemashare)           | false    | none         | none                                                                                                              |
+| »»» description             | string                          | true     | none         | none                                                                                                              |
+| »»» exp                     | integer(int64)                  | true     | none         | none                                                                                                              |
+| »»» password                | string,null                     | false    | none         | none                                                                                                              |
+| »»» showDownload            | boolean                         | true     | none         | none                                                                                                              |
+| »»» showMetadata            | boolean                         | true     | none         | none                                                                                                              |
+| »»» showUpload              | boolean                         | true     | none         | none                                                                                                              |
+| »»» url                     | string                          | true     | none         | none                                                                                                              |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Serve the favicon.
+## Create a subdirectory under a dir-album and register it as an album.
 
-<a id="opIdfavicon"></a>
+<a id="opIdcreate_dir_album"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X GET /favicon.ico
+curl -X POST /post/create_dir_album \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: text/plain'
 
 ```
 
 ```http
-GET /favicon.ico HTTP/1.1
+POST /post/create_dir_album HTTP/1.1
+
+Content-Type: application/json
+Accept: text/plain
 
 ```
 
 ```javascript
-fetch("/favicon.ico", {
-  method: "GET",
+const inputBody = '{
+  "name": "string",
+  "parentAlbumId": "string"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'text/plain'
+};
+
+fetch('/post/create_dir_album',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
 require 'rest-client'
 require 'json'
 
-result = RestClient.get '/favicon.ico',
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'text/plain'
+}
+
+result = RestClient.post '/post/create_dir_album',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -583,8 +915,12 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'text/plain'
+}
 
-r = requests.get('/favicon.ico')
+r = requests.post('/post/create_dir_album', headers = headers)
 
 print(r.json())
 
@@ -595,13 +931,18 @@ print(r.json())
 
 require 'vendor/autoload.php';
 
+$headers = array(
+    'Content-Type' => 'application/json',
+    'Accept' => 'text/plain',
+);
+
 $client = new \GuzzleHttp\Client();
 
 // Define array of request body.
 $request_body = array();
 
 try {
-    $response = $client->request('GET','/favicon.ico', array(
+    $response = $client->request('POST','/post/create_dir_album', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -618,9 +959,9 @@ try {
 ```
 
 ```java
-URL obj = new URL("/favicon.ico");
+URL obj = new URL("/post/create_dir_album");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
+con.setRequestMethod("POST");
 int responseCode = con.getResponseCode();
 BufferedReader in = new BufferedReader(
     new InputStreamReader(con.getInputStream()));
@@ -644,8 +985,13 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"text/plain"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/favicon.ico", data)
+    req, err := http.NewRequest("POST", "/post/create_dir_album", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -655,54 +1001,121 @@ func main() {
 
 ```
 
-`GET /favicon.ico`
+`POST /post/create_dir_album`
 
-<h3 id="serve-the-favicon.-responses">Responses</h3>
+`name` is trimmed and must be a single path segment — no separator, no `.`
+or `..`. The directory is created directly under the existing parent
+album's own directory, registered as an album, and the parent album is
+refreshed before the response returns.
 
-| Status | Meaning                                                 | Description  | Schema |
-| ------ | ------------------------------------------------------- | ------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | Favicon file | None   |
+Corner cases: The new album's ID is returned as a string. A failure after
+the directory was created but before the album was registered leaves the
+empty directory behind.
+
+Errors: 400 unusable `name`, or a `parentAlbumId` that names no dir-album —
+401 missing or invalid credentials — 405 read-only mode — 500 the directory
+could not be created or the album not registered.
+
+> Body parameter
+
+```json
+{
+  "name": "string",
+  "parentAlbumId": "string"
+}
+```
+
+<h3 id="create-a-subdirectory-under-a-dir-album-and-register-it-as-an-album.-parameters">Parameters</h3>
+
+| Name | In   | Type                                            | Required | Description |
+| ---- | ---- | ----------------------------------------------- | -------- | ----------- |
+| body | body | [CreateDirAlbumData](#schemacreatediralbumdata) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```
+"string"
+```
+
+<h3 id="create-a-subdirectory-under-a-dir-album-and-register-it-as-an-album.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | New album ID                                                                               | string |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Serve the SPA links page.
+## Create a share for an album and return its generated id.
 
-<a id="opIdlinks"></a>
+<a id="opIdcreate_share"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X GET /links
+curl -X POST /post/create_share \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: text/plain'
 
 ```
 
 ```http
-GET /links HTTP/1.1
+POST /post/create_share HTTP/1.1
+
+Content-Type: application/json
+Accept: text/plain
 
 ```
 
 ```javascript
-fetch("/links", {
-  method: "GET",
+const inputBody = '{
+  "albumId": "string",
+  "description": "string",
+  "exp": 0,
+  "password": "string",
+  "showDownload": true,
+  "showMetadata": true,
+  "showUpload": true
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'text/plain'
+};
+
+fetch('/post/create_share',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
 require 'rest-client'
 require 'json'
 
-result = RestClient.get '/links',
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'text/plain'
+}
+
+result = RestClient.post '/post/create_share',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -710,8 +1123,12 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'text/plain'
+}
 
-r = requests.get('/links')
+r = requests.post('/post/create_share', headers = headers)
 
 print(r.json())
 
@@ -722,13 +1139,18 @@ print(r.json())
 
 require 'vendor/autoload.php';
 
+$headers = array(
+    'Content-Type' => 'application/json',
+    'Accept' => 'text/plain',
+);
+
 $client = new \GuzzleHttp\Client();
 
 // Define array of request body.
 $request_body = array();
 
 try {
-    $response = $client->request('GET','/links', array(
+    $response = $client->request('POST','/post/create_share', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -745,9 +1167,9 @@ try {
 ```
 
 ```java
-URL obj = new URL("/links");
+URL obj = new URL("/post/create_share");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
+con.setRequestMethod("POST");
 int responseCode = con.getResponseCode();
 BufferedReader in = new BufferedReader(
     new InputStreamReader(con.getInputStream()));
@@ -771,8 +1193,13 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"text/plain"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/links", data)
+    req, err := http.NewRequest("POST", "/post/create_share", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -782,54 +1209,124 @@ func main() {
 
 ```
 
-`GET /links`
+`POST /post/create_share`
 
-<h3 id="serve-the-spa-links-page.-responses">Responses</h3>
+`albumId` must name an existing album row. The returned id is a freshly
+generated 64-character lowercase alphanumeric string that becomes the
+album's `shareList` key. `exp` is stored verbatim as unix seconds, where
+`0` marks a share that never expires; `password`, `showMetadata`,
+`showDownload` and `showUpload` are stored as posted and decide what later
+requests carrying the share may do.
 
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+Corner cases: The id is generated, never supplied by the caller, so a
+second share for the same album is a separate entry. Nothing is written
+unless the album exists.
+
+Errors: 400 unusable request body — 401 missing or invalid credentials —
+404 `albumId` names no album — 405 read-only mode — 500 storage failure.
+
+> Body parameter
+
+```json
+{
+  "albumId": "string",
+  "description": "string",
+  "exp": 0,
+  "password": "string",
+  "showDownload": true,
+  "showMetadata": true,
+  "showUpload": true
+}
+```
+
+<h3 id="create-a-share-for-an-album-and-return-its-generated-id.-parameters">Parameters</h3>
+
+| Name | In   | Type                              | Required | Description |
+| ---- | ---- | --------------------------------- | -------- | ----------- |
+| body | body | [CreateShare](#schemacreateshare) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```
+"string"
+```
+
+<h3 id="create-a-share-for-an-album-and-return-its-generated-id.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share link created                                                                         | string |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Album not found                                                                            | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Serve the SPA at `/login`; the SPA itself asks for a password.
+## Move one asset, or one album directory, into another album.
 
-<a id="opIdlogin"></a>
+<a id="opIdassign_album"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X GET /login
+curl -X PUT /put/assign_album \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
 ```http
-GET /login HTTP/1.1
+PUT /put/assign_album HTTP/1.1
+
+Content-Type: application/json
+Accept: application/json
 
 ```
 
 ```javascript
-fetch("/login", {
-  method: "GET",
+const inputBody = '{
+  "albumId": "string",
+  "assetId": "string",
+  "onConflict": "skip"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('/put/assign_album',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
 require 'rest-client'
 require 'json'
 
-result = RestClient.get '/login',
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
+}
+
+result = RestClient.put '/put/assign_album',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -837,8 +1334,12 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
+}
 
-r = requests.get('/login')
+r = requests.put('/put/assign_album', headers = headers)
 
 print(r.json())
 
@@ -849,13 +1350,18 @@ print(r.json())
 
 require 'vendor/autoload.php';
 
+$headers = array(
+    'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
+);
+
 $client = new \GuzzleHttp\Client();
 
 // Define array of request body.
 $request_body = array();
 
 try {
-    $response = $client->request('GET','/login', array(
+    $response = $client->request('PUT','/put/assign_album', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -872,9 +1378,9 @@ try {
 ```
 
 ```java
-URL obj = new URL("/login");
+URL obj = new URL("/put/assign_album");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
+con.setRequestMethod("PUT");
 int responseCode = con.getResponseCode();
 BufferedReader in = new BufferedReader(
     new InputStreamReader(con.getInputStream()));
@@ -898,8 +1404,13 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/login", data)
+    req, err := http.NewRequest("PUT", "/put/assign_album", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -909,54 +1420,124 @@ func main() {
 
 ```
 
-`GET /login`
+`PUT /put/assign_album`
 
-<h3 id="serve-the-spa-at-`/login`;-the-spa-itself-asks-for-a-password.-responses">Responses</h3>
+`assetId` addresses the asset record and `albumId` the destination album,
+whose directory is resolved from the album directory cache. Only the file at
+the asset's own path moves, never hash-matched duplicates: the stored path
+and album membership are rewritten to match, an album moves as its whole
+directory tree with every descendant record's path rewritten, and a `.xmp`
+sidecar rides along with the file. The destination album's stats are
+refreshed and the query-cache version bumped before the response returns, so
+the next prefetch already reflects the move.
 
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+Corner cases: `onConflict` is required and has no default — `skip` leaves an
+existing destination untouched and reports `skipped`, `rename` lands under a
+suffixed name and reports `renamedFrom`, a plain move reports `moved`. An
+asset already sitting in the destination directory reports `moved` without
+anything being rewritten, and an album moved into itself or into one of its
+own sub-albums is rejected. Compressed thumbnails and videos are keyed by
+content hash, not by path, so no derivative moves or is invalidated.
+
+Errors: 400 unknown asset or album id, a source path or album directory that
+no longer exists, or a destination album that has no directory — 401 missing
+or invalid admin credentials; share tokens are not accepted — 405 read-only
+mode — 500 storage failure.
+
+> Body parameter
+
+```json
+{
+  "albumId": "string",
+  "assetId": "string",
+  "onConflict": "skip"
+}
+```
+
+<h3 id="move-one-asset,-or-one-album-directory,-into-another-album.-parameters">Parameters</h3>
+
+| Name | In   | Type                                      | Required | Description |
+| ---- | ---- | ----------------------------------------- | -------- | ----------- |
+| body | body | [AssignAlbumData](#schemaassignalbumdata) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "outcome": "moved"
+}
+```
+
+<h3 id="move-one-asset,-or-one-album-directory,-into-another-album.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                              |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Item assigned to album                                                                     | [AssignResult](#schemaassignresult) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input or item not found                                                            | None                                |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Redirect to `/login`.
+## Remove one share from an album.
 
-<a id="opIdredirect_to_login"></a>
+<a id="opIddelete_share"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X GET /redirect-to-login
+curl -X PUT /put/delete_share \
+  -H 'Content-Type: application/json'
 
 ```
 
 ```http
-GET /redirect-to-login HTTP/1.1
+PUT /put/delete_share HTTP/1.1
+
+Content-Type: application/json
 
 ```
 
 ```javascript
-fetch("/redirect-to-login", {
-  method: "GET",
+const inputBody = '{
+  "albumId": "string",
+  "shareId": "string"
+}';
+const headers = {
+  'Content-Type':'application/json'
+};
+
+fetch('/put/delete_share',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
 require 'rest-client'
 require 'json'
 
-result = RestClient.get '/redirect-to-login',
+headers = {
+  'Content-Type' => 'application/json'
+}
+
+result = RestClient.put '/put/delete_share',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -964,8 +1545,11 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Content-Type': 'application/json'
+}
 
-r = requests.get('/redirect-to-login')
+r = requests.put('/put/delete_share', headers = headers)
 
 print(r.json())
 
@@ -976,13 +1560,17 @@ print(r.json())
 
 require 'vendor/autoload.php';
 
+$headers = array(
+    'Content-Type' => 'application/json',
+);
+
 $client = new \GuzzleHttp\Client();
 
 // Define array of request body.
 $request_body = array();
 
 try {
-    $response = $client->request('GET','/redirect-to-login', array(
+    $response = $client->request('PUT','/put/delete_share', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -999,9 +1587,9 @@ try {
 ```
 
 ```java
-URL obj = new URL("/redirect-to-login");
+URL obj = new URL("/put/delete_share");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
+con.setRequestMethod("PUT");
 int responseCode = con.getResponseCode();
 BufferedReader in = new BufferedReader(
     new InputStreamReader(con.getInputStream()));
@@ -1025,8 +1613,12 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/redirect-to-login", data)
+    req, err := http.NewRequest("PUT", "/put/delete_share", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -1036,54 +1628,111 @@ func main() {
 
 ```
 
-`GET /redirect-to-login`
+`PUT /put/delete_share`
 
-<h3 id="redirect-to-`/login`.-responses">Responses</h3>
+`albumId` names the album and `shareId` the entry to drop from its share
+list. The removal is committed to the album's stored share list, no
+`.albuminfo.xmp` sidecar is written, and the in-memory tree is rebuilt
+before the call returns.
 
-| Status | Meaning                                                    | Description        | Schema |
-| ------ | ---------------------------------------------------------- | ------------------ | ------ |
-| 302    | [Found](https://tools.ietf.org/html/rfc7231#section-6.4.3) | Redirect to /login | None   |
+Corner cases: removing a share that is not present, or addressing an
+`albumId` that holds no album row, is a silent no-op that still answers 200
+rather than a 404.
+
+Errors: 400 malformed body — 401 missing or invalid admin credentials; share
+tokens are not accepted — 405 read-only mode — 500 storage failure.
+
+> Body parameter
+
+```json
+{
+  "albumId": "string",
+  "shareId": "string"
+}
+```
+
+<h3 id="remove-one-share-from-an-album.-parameters">Parameters</h3>
+
+| Name | In   | Type                              | Required | Description |
+| ---- | ---- | --------------------------------- | -------- | ----------- |
+| body | body | [DeleteShare](#schemadeleteshare) | true     | none        |
+
+<h3 id="remove-one-share-from-an-album.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share deleted                                                                              | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Serve the service worker registration script.
+## Create or replace one of an album's share entries.
 
-<a id="opIdsregister_sw"></a>
+<a id="opIdedit_share"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X GET /registerSW.js
+curl -X PUT /put/edit_share \
+  -H 'Content-Type: application/json'
 
 ```
 
 ```http
-GET /registerSW.js HTTP/1.1
+PUT /put/edit_share HTTP/1.1
+
+Content-Type: application/json
 
 ```
 
 ```javascript
-fetch("/registerSW.js", {
-  method: "GET",
+const inputBody = '{
+  "albumId": "string",
+  "share": {
+    "description": "string",
+    "exp": 0,
+    "password": "string",
+    "showDownload": true,
+    "showMetadata": true,
+    "showUpload": true,
+    "url": "string"
+  }
+}';
+const headers = {
+  'Content-Type':'application/json'
+};
+
+fetch('/put/edit_share',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
 require 'rest-client'
 require 'json'
 
-result = RestClient.get '/registerSW.js',
+headers = {
+  'Content-Type' => 'application/json'
+}
+
+result = RestClient.put '/put/edit_share',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -1091,8 +1740,11 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Content-Type': 'application/json'
+}
 
-r = requests.get('/registerSW.js')
+r = requests.put('/put/edit_share', headers = headers)
 
 print(r.json())
 
@@ -1103,13 +1755,17 @@ print(r.json())
 
 require 'vendor/autoload.php';
 
+$headers = array(
+    'Content-Type' => 'application/json',
+);
+
 $client = new \GuzzleHttp\Client();
 
 // Define array of request body.
 $request_body = array();
 
 try {
-    $response = $client->request('GET','/registerSW.js', array(
+    $response = $client->request('PUT','/put/edit_share', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -1126,9 +1782,9 @@ try {
 ```
 
 ```java
-URL obj = new URL("/registerSW.js");
+URL obj = new URL("/put/edit_share");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
+con.setRequestMethod("PUT");
 int responseCode = con.getResponseCode();
 BufferedReader in = new BufferedReader(
     new InputStreamReader(con.getInputStream()));
@@ -1152,8 +1808,12 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/registerSW.js", data)
+    req, err := http.NewRequest("PUT", "/put/edit_share", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -1163,54 +1823,112 @@ func main() {
 
 ```
 
-`GET /registerSW.js`
+`PUT /put/edit_share`
 
-<h3 id="serve-the-service-worker-registration-script.-responses">Responses</h3>
+The submitted `share` object is stored under the key `share.url`, replacing
+any entry already held under that key, so a share is edited by posting a
+complete object and every capability and field takes its submitted value
+rather than the existing one. The payload is never checked against the
+album, no `.albuminfo.xmp` sidecar is written, and the in-memory tree is
+rebuilt before the call returns.
 
-| Status | Meaning                                                 | Description                        | Schema |
-| ------ | ------------------------------------------------------- | ---------------------------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | Service worker registration script | None   |
+Corner cases: an `albumId` that holds no album row is a silent no-op that
+still answers 200.
+
+Errors: 400 malformed body — 401 missing or invalid admin credentials; share
+tokens are not accepted — 405 read-only mode — 500 storage failure.
+
+> Body parameter
+
+```json
+{
+  "albumId": "string",
+  "share": {
+    "description": "string",
+    "exp": 0,
+    "password": "string",
+    "showDownload": true,
+    "showMetadata": true,
+    "showUpload": true,
+    "url": "string"
+  }
+}
+```
+
+<h3 id="create-or-replace-one-of-an-album's-share-entries.-parameters">Parameters</h3>
+
+| Name | In   | Type                          | Required | Description |
+| ---- | ---- | ----------------------------- | -------- | ----------- |
+| body | body | [EditShare](#schemaeditshare) | true     | none        |
+
+<h3 id="create-or-replace-one-of-an-album's-share-entries.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share updated                                                                              | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Serve the service worker script.
+## Set the cover image of an album.
 
-<a id="opIdservice_worker"></a>
+<a id="opIdset_album_cover"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X GET /serviceWorker.js
+curl -X PUT /put/set_album_cover \
+  -H 'Content-Type: application/json'
 
 ```
 
 ```http
-GET /serviceWorker.js HTTP/1.1
+PUT /put/set_album_cover HTTP/1.1
+
+Content-Type: application/json
 
 ```
 
 ```javascript
-fetch("/serviceWorker.js", {
-  method: "GET",
+const inputBody = '{
+  "albumId": "string",
+  "coverAssetId": "string"
+}';
+const headers = {
+  'Content-Type':'application/json'
+};
+
+fetch('/put/set_album_cover',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
 require 'rest-client'
 require 'json'
 
-result = RestClient.get '/serviceWorker.js',
+headers = {
+  'Content-Type' => 'application/json'
+}
+
+result = RestClient.put '/put/set_album_cover',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -1218,8 +1936,11 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Content-Type': 'application/json'
+}
 
-r = requests.get('/serviceWorker.js')
+r = requests.put('/put/set_album_cover', headers = headers)
 
 print(r.json())
 
@@ -1230,13 +1951,17 @@ print(r.json())
 
 require 'vendor/autoload.php';
 
+$headers = array(
+    'Content-Type' => 'application/json',
+);
+
 $client = new \GuzzleHttp\Client();
 
 // Define array of request body.
 $request_body = array();
 
 try {
-    $response = $client->request('GET','/serviceWorker.js', array(
+    $response = $client->request('PUT','/put/set_album_cover', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -1253,9 +1978,9 @@ try {
 ```
 
 ```java
-URL obj = new URL("/serviceWorker.js");
+URL obj = new URL("/put/set_album_cover");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
+con.setRequestMethod("PUT");
 int responseCode = con.getResponseCode();
 BufferedReader in = new BufferedReader(
     new InputStreamReader(con.getInputStream()));
@@ -1279,8 +2004,12 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/serviceWorker.js", data)
+    req, err := http.NewRequest("PUT", "/put/set_album_cover", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -1290,54 +2019,105 @@ func main() {
 
 ```
 
-`GET /serviceWorker.js`
+`PUT /put/set_album_cover`
 
-<h3 id="serve-the-service-worker-script.-responses">Responses</h3>
+`albumId` must resolve to an album record and `coverAssetId` to an existing
+record. The album's `cover` becomes `coverAssetId` and its `thumbhash` is
+overwritten with the cover's, and the in-memory tree is rebuilt before the
+call returns.
 
-| Status | Meaning                                                 | Description           | Schema |
-| ------ | ------------------------------------------------------- | --------------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | Service worker script | None   |
+Corner cases: the cover's kind is never checked, so any asset can serve as
+the cover, and no `.albuminfo.xmp` sidecar is written, so the new cover is
+stored in the database only.
+
+Errors: 400 `albumId` names a media record — 401 missing or invalid admin
+credentials; share tokens are not accepted — 404 `albumId` or `coverAssetId`
+names no record — 405 read-only mode — 500 storage failure.
+
+> Body parameter
+
+```json
+{
+  "albumId": "string",
+  "coverAssetId": "string"
+}
+```
+
+<h3 id="set-the-cover-image-of-an-album.-parameters">Parameters</h3>
+
+| Name | In   | Type                                  | Required | Description |
+| ---- | ---- | ------------------------------------- | -------- | ----------- |
+| body | body | [SetAlbumCover](#schemasetalbumcover) | true     | none        |
+
+<h3 id="set-the-cover-image-of-an-album.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Album cover updated                                                                        | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Serve the SPA settings page.
+## Set the display title of an album.
 
-<a id="opIdsetting"></a>
+<a id="opIdset_album_title"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X GET /setting
+curl -X PUT /put/set_album_title \
+  -H 'Content-Type: application/json'
 
 ```
 
 ```http
-GET /setting HTTP/1.1
+PUT /put/set_album_title HTTP/1.1
+
+Content-Type: application/json
 
 ```
 
 ```javascript
-fetch("/setting", {
-  method: "GET",
+const inputBody = '{
+  "albumId": "string",
+  "title": "string"
+}';
+const headers = {
+  'Content-Type':'application/json'
+};
+
+fetch('/put/set_album_title',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
 require 'rest-client'
 require 'json'
 
-result = RestClient.get '/setting',
+headers = {
+  'Content-Type' => 'application/json'
+}
+
+result = RestClient.put '/put/set_album_title',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -1345,8 +2125,11 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Content-Type': 'application/json'
+}
 
-r = requests.get('/setting')
+r = requests.put('/put/set_album_title', headers = headers)
 
 print(r.json())
 
@@ -1357,13 +2140,17 @@ print(r.json())
 
 require 'vendor/autoload.php';
 
+$headers = array(
+    'Content-Type' => 'application/json',
+);
+
 $client = new \GuzzleHttp\Client();
 
 // Define array of request body.
 $request_body = array();
 
 try {
-    $response = $client->request('GET','/setting', array(
+    $response = $client->request('PUT','/put/set_album_title', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -1380,9 +2167,9 @@ try {
 ```
 
 ```java
-URL obj = new URL("/setting");
+URL obj = new URL("/put/set_album_title");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
+con.setRequestMethod("PUT");
 int responseCode = con.getResponseCode();
 BufferedReader in = new BufferedReader(
     new InputStreamReader(con.getInputStream()));
@@ -1406,8 +2193,12 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/setting", data)
+    req, err := http.NewRequest("PUT", "/put/set_album_title", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -1417,54 +2208,104 @@ func main() {
 
 ```
 
-`GET /setting`
+`PUT /put/set_album_title`
 
-<h3 id="serve-the-spa-settings-page.-responses">Responses</h3>
+`albumId` names the album to edit and `title` its new display title. Both
+the raw display `title` and `custom_title`, the value written to the album's
+`.albuminfo.xmp` sidecar, take the submitted value, and the in-memory tree
+is rebuilt before the call returns.
 
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+Corner cases: `title: null` clears `custom_title` and falls `title` back to
+the directory-derived default, so a cleared title leaves no empty string
+behind.
+
+Errors: 400 malformed body — 401 missing or invalid admin or share
+credentials — 405 read-only mode — 500 storage failure.
+
+> Body parameter
+
+```json
+{
+  "albumId": "string",
+  "title": "string"
+}
+```
+
+<h3 id="set-the-display-title-of-an-album.-parameters">Parameters</h3>
+
+| Name | In   | Type                                  | Required | Description |
+| ---- | ---- | ------------------------------------- | -------- | ----------- |
+| body | body | [SetAlbumTitle](#schemasetalbumtitle) | true     | none        |
+
+<h3 id="set-the-display-title-of-an-album.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Album title updated                                                                        | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Serve the SPA at a share path, which the share token in the URL opens.
+## Set or clear the user-defined description of an asset.
 
-<a id="opIdshare"></a>
+<a id="opIdset_user_defined_description"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X GET /share/{path}
+curl -X PUT /put/set_user_defined_description \
+  -H 'Content-Type: application/json'
 
 ```
 
 ```http
-GET /share/{path} HTTP/1.1
+PUT /put/set_user_defined_description HTTP/1.1
+
+Content-Type: application/json
 
 ```
 
 ```javascript
-fetch("/share/{path}", {
-  method: "GET",
+const inputBody = '{
+  "description": "string",
+  "index": 0,
+  "timestamp": 0
+}';
+const headers = {
+  'Content-Type':'application/json'
+};
+
+fetch('/put/set_user_defined_description',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
 })
-  .then(function (res) {
+.then(function(res) {
     return res.json();
-  })
-  .then(function (body) {
+}).then(function(body) {
     console.log(body);
-  });
+});
+
 ```
 
 ```ruby
 require 'rest-client'
 require 'json'
 
-result = RestClient.get '/share/{path}',
+headers = {
+  'Content-Type' => 'application/json'
+}
+
+result = RestClient.put '/put/set_user_defined_description',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -1472,8 +2313,11 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Content-Type': 'application/json'
+}
 
-r = requests.get('/share/{path}')
+r = requests.put('/put/set_user_defined_description', headers = headers)
 
 print(r.json())
 
@@ -1484,13 +2328,17 @@ print(r.json())
 
 require 'vendor/autoload.php';
 
+$headers = array(
+    'Content-Type' => 'application/json',
+);
+
 $client = new \GuzzleHttp\Client();
 
 // Define array of request body.
 $request_body = array();
 
 try {
-    $response = $client->request('GET','/share/{path}', array(
+    $response = $client->request('PUT','/put/set_user_defined_description', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -1507,9 +2355,9 @@ try {
 ```
 
 ```java
-URL obj = new URL("/share/{path}");
+URL obj = new URL("/put/set_user_defined_description");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
+con.setRequestMethod("PUT");
 int responseCode = con.getResponseCode();
 BufferedReader in = new BufferedReader(
     new InputStreamReader(con.getInputStream()));
@@ -1533,8 +2381,12 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/share/{path}", data)
+    req, err := http.NewRequest("PUT", "/put/set_user_defined_description", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -1544,1324 +2396,50 @@ func main() {
 
 ```
 
-`GET /share/{path}`
+`PUT /put/set_user_defined_description`
 
-<h3 id="serve-the-spa-at-a-share-path,-which-the-share-token-in-the-url-opens.-parameters">Parameters</h3>
+`index` addresses the asset in the snapshot named by `timestamp`, and
+`description` replaces the field: `null` clears it, other text is
+NFC-normalized and filtered to valid XML characters. The value is written to
+the asset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and
+the in-memory tree is rebuilt before the call returns. Share credentials
+(`x-album-id` plus `x-share-id`, or `albumId` plus `shareId`) are accepted
+alongside the admin JWT cookie.
 
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| path | path | string | true     | none        |
+Corner cases: the share's `showMetadata` flag is not consulted, so a share
+without metadata rights may still write a description. An index whose asset
+record no longer exists is skipped and still answers 200, and a failed
+sidecar write is logged rather than failing the request.
 
-<h3 id="serve-the-spa-at-a-share-path,-which-the-share-token-in-the-url-opens.-responses">Responses</h3>
+Errors: 400 malformed body — 401 missing or invalid admin or share
+credentials — 405 read-only mode — 500 unknown snapshot, out-of-range index,
+or storage failure.
 
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+> Body parameter
 
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Serve the SPA tags page.
-
-<a id="opIdtags"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /tags
-
-```
-
-```http
-GET /tags HTTP/1.1
-
-```
-
-```javascript
-fetch("/tags", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/tags',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/tags')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/tags', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/tags");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
+```json
+{
+  "description": "string",
+  "index": 0,
+  "timestamp": 0
 }
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/tags", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /tags`
-
-<h3 id="serve-the-spa-tags-page.-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Serve the SPA timeline page.
-
-<a id="opIdtimeline"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /timeline
-
-```
-
-```http
-GET /timeline HTTP/1.1
-
-```
-
-```javascript
-fetch("/timeline", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/timeline',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/timeline')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/timeline', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/timeline");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/timeline", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /timeline`
-
-<h3 id="serve-the-spa-timeline-page.-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Serve the SPA at a timeline view path; the SPA resolves the view.
-
-<a id="opIdtimeline_view"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /timeline/view/{path}
-
-```
-
-```http
-GET /timeline/view/{path} HTTP/1.1
-
-```
-
-```javascript
-fetch("/timeline/view/{path}", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/timeline/view/{path}',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/timeline/view/{path}')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/timeline/view/{path}', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/timeline/view/{path}");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/timeline/view/{path}", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /timeline/view/{path}`
-
-<h3 id="serve-the-spa-at-a-timeline-view-path;-the-spa-resolves-the-view.-parameters">Parameters</h3>
-
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| path | path | string | true     | none        |
-
-<h3 id="serve-the-spa-at-a-timeline-view-path;-the-spa-resolves-the-view.-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Serve the SPA trash page.
-
-<a id="opIdtrashed"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /trashed
-
-```
-
-```http
-GET /trashed HTTP/1.1
-
-```
-
-```javascript
-fetch("/trashed", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/trashed',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/trashed')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/trashed', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/trashed");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/trashed", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /trashed`
-
-<h3 id="serve-the-spa-trash-page.-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Serve the SPA at a trash view path; the SPA resolves the view.
-
-<a id="opIdtrashed_view"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /trashed/view/{path}
-
-```
-
-```http
-GET /trashed/view/{path} HTTP/1.1
-
-```
-
-```javascript
-fetch("/trashed/view/{path}", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/trashed/view/{path}',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/trashed/view/{path}')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/trashed/view/{path}', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/trashed/view/{path}");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/trashed/view/{path}", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /trashed/view/{path}`
-
-<h3 id="serve-the-spa-at-a-trash-view-path;-the-spa-resolves-the-view.-parameters">Parameters</h3>
-
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| path | path | string | true     | none        |
-
-<h3 id="serve-the-spa-at-a-trash-view-path;-the-spa-resolves-the-view.-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Answer `401` for the SPA path a rejected token ends on.
-
-<a id="opIdunauthorized"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /unauthorized
-
-```
-
-```http
-GET /unauthorized HTTP/1.1
-
-```
-
-```javascript
-fetch("/unauthorized", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/unauthorized',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/unauthorized')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/unauthorized', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/unauthorized");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/unauthorized", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /unauthorized`
-
-<h3 id="answer-`401`-for-the-spa-path-a-rejected-token-ends-on.-responses">Responses</h3>
-
-| Status | Meaning                                                         | Description         | Schema |
-| ------ | --------------------------------------------------------------- | ------------------- | ------ |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Unauthorized status | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Serve the SPA videos page.
-
-<a id="opIdvideos"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /videos
-
-```
-
-```http
-GET /videos HTTP/1.1
-
-```
-
-```javascript
-fetch("/videos", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/videos',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/videos')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/videos', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/videos");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/videos", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /videos`
-
-<h3 id="serve-the-spa-videos-page.-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Serve the SPA at a videos view path; the SPA resolves the view.
-
-<a id="opIdvideos_view"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /videos/view/{path}
-
-```
-
-```http
-GET /videos/view/{path} HTTP/1.1
-
-```
-
-```javascript
-fetch("/videos/view/{path}", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/videos/view/{path}',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/videos/view/{path}')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/videos/view/{path}', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
 ```
-
-```java
-URL obj = new URL("/videos/view/{path}");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/videos/view/{path}", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /videos/view/{path}`
-
-<h3 id="serve-the-spa-at-a-videos-view-path;-the-spa-resolves-the-view.-parameters">Parameters</h3>
-
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| path | path | string | true     | none        |
-
-<h3 id="serve-the-spa-at-a-videos-view-path;-the-spa-resolves-the-view.-responses">Responses</h3>
-
-| Status | Meaning                                                 | Description     | Schema |
-| ------ | ------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Serve the SPA for a dynamic album id, and `404` for anything else.
-
-<a id="opIdalbum_page"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /{dynamic_album_id}
-
-```
-
-```http
-GET /{dynamic_album_id} HTTP/1.1
-
-```
-
-```javascript
-fetch("/{dynamic_album_id}", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/{dynamic_album_id}',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/{dynamic_album_id}')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/{dynamic_album_id}', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/{dynamic_album_id}");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/{dynamic_album_id}", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /{dynamic_album_id}`
-
-<h3 id="serve-the-spa-for-a-dynamic-album-id,-and-`404`-for-anything-else.-parameters">Parameters</h3>
-
-| Name             | In   | Type   | Required | Description |
-| ---------------- | ---- | ------ | -------- | ----------- |
-| dynamic_album_id | path | string | true     | none        |
-
-<h3 id="serve-the-spa-for-a-dynamic-album-id,-and-`404`-for-anything-else.-responses">Responses</h3>
-
-| Status | Meaning                                                        | Description     | Schema |
-| ------ | -------------------------------------------------------------- | --------------- | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)        | SPA page (HTML) | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4) | Not found       | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Catch-all SPA fallback — serves index.html for valid Vue Router routes.
-
-<a id="opIdspa_fallback"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /{path}
-
-```
-
-```http
-GET /{path} HTTP/1.1
-
-```
-
-```javascript
-fetch("/{path}", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/{path}',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/{path}')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/{path}', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/{path}");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/{path}", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /{path}`
-
-Paths matching `/album/<asset-id>` validate the album exists before serving
-the SPA; invalid album IDs return 404. Rank 11 ensures specific
-routes (assets at rank 10, API, pages) take priority.
 
-<h3 id="catch-all-spa-fallback-—-serves-index.html-for-valid-vue-router-routes.-parameters">Parameters</h3>
+<h3 id="set-or-clear-the-user-defined-description-of-an-asset.-parameters">Parameters</h3>
 
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| path | path | string | true     | none        |
+| Name | In   | Type                                                          | Required | Description |
+| ---- | ---- | ------------------------------------------------------------- | -------- | ----------- |
+| body | body | [SetUserDefinedDescription](#schemasetuserdefineddescription) | true     | none        |
 
-<h3 id="catch-all-spa-fallback-—-serves-index.html-for-valid-vue-router-routes.-responses">Responses</h3>
+<h3 id="set-or-clear-the-user-defined-description-of-an-asset.-responses">Responses</h3>
 
-| Status | Meaning                                                 | Description                                            | Schema |
-| ------ | ------------------------------------------------------- | ------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA fallback — serves index.html for Vue Router routes | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Description updated                                                                        | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -2869,7 +2447,9 @@ This operation does not require authentication
 
 <h1 id="picasu-assets">assets</h1>
 
-## Delete the listed assets: each file and its sidecar are removed from disk.
+Per-asset metadata and editing: flags, rating, tags, rotation, thumbnails, deletion
+
+## Delete the listed assets: files, sidecars and metadata rows are removed.
 
 <a id="opIddelete_data"></a>
 
@@ -3017,6 +2597,21 @@ func main() {
 
 `DELETE /delete/delete-data`
 
+`assetIds` are resolved by asset ID; each entry's file and `.xmp` sidecar
+are removed from disk and its metadata row is dropped. Every album the
+deletion touched is refreshed before the response returns.
+
+Corner cases: An empty `assetIds` is a 400. IDs are processed in order, so
+a malformed or unresolvable ID aborts the request part-way and files
+already removed by earlier entries stay deleted. Deleting an album also
+removes every descendant asset, sidecar and directory below it, and a
+compressed thumbnail is kept while another asset still references the same
+content hash.
+
+Errors: 400 empty `assetIds`, or an ID that exceeds 64 bytes — 401 missing
+or invalid credentials — 404 an ID names no asset — 405 read-only mode —
+500 storage failure.
+
 > Body parameter
 
 ```json
@@ -3026,25 +2621,28 @@ func main() {
 }
 ```
 
-<h3 id="delete-the-listed-assets:-each-file-and-its-sidecar-are-removed-from-disk.-parameters">Parameters</h3>
+<h3 id="delete-the-listed-assets:-files,-sidecars-and-metadata-rows-are-removed.-parameters">Parameters</h3>
 
 | Name | In   | Type                            | Required | Description |
 | ---- | ---- | ------------------------------- | -------- | ----------- |
 | body | body | [DeleteList](#schemadeletelist) | true     | none        |
 
-<h3 id="delete-the-listed-assets:-each-file-and-its-sidecar-are-removed-from-disk.-responses">Responses</h3>
+<h3 id="delete-the-listed-assets:-files,-sidecars-and-metadata-rows-are-removed.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Data deleted                                                                               | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Data deleted                                                                               | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Asset not found                                                                            | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Full metadata detail for a single asset, composed from its identity and its stored metadata payload.
+## Serve the full metadata of a single asset.
 
 <a id="opIdget_metadata"></a>
 
@@ -3164,37 +2762,43 @@ func main() {
 
 `GET /get/metadata/{asset_id}`
 
-This is the detail-side counterpart of `get-data`: list rows only carry
-lean identity fields (tags / EXIF / description / rating are stripped in
-Phase 14), so the sidebar, detail view, and edit prefill fetch the full
-`AbstractData` view here on demand. The wire shape is unchanged:
-identity fields come from the record, metadata fields from the payload.
+List rows carry only lean identity fields, so the detail view, sidebar and
+edit prefill fetch the complete asset here. The wire shape is unchanged:
+identity fields come from the asset's identity record, metadata fields from
+its stored payload.
 
-Auth and share parity follow `get-data`: a `GuardTimestamp` bearer token
-(prefetch token) is required, and when the token resolves to a share with
-`show_metadata: false` the metadata fields are cleared before responding so
-a share that hides metadata cannot leak it through this route.
+Corner cases: `timestamp` is required and must equal the prefetch token's
+`timestamp` claim. When the token resolves to a share with
+`show_metadata: false`, the metadata fields — including the stored path —
+are cleared before responding, so a share that hides metadata cannot leak it
+here.
 
-<h3 id="full-metadata-detail-for-a-single-asset,-composed-from-its-identity-and-its-stored-metadata-payload.-parameters">Parameters</h3>
+Errors: 400 invalid `asset_id` — 401 missing, invalid, or mismatched
+prefetch token — 404 unknown `asset_id` — 500 the asset record could not be
+composed.
+
+<h3 id="serve-the-full-metadata-of-a-single-asset.-parameters">Parameters</h3>
 
 | Name      | In    | Type           | Required | Description |
 | --------- | ----- | -------------- | -------- | ----------- |
 | asset_id  | path  | string         | true     | none        |
 | timestamp | query | integer(int64) | true     | none        |
 
-<h3 id="full-metadata-detail-for-a-single-asset,-composed-from-its-identity-and-its-stored-metadata-payload.-responses">Responses</h3>
+<h3 id="serve-the-full-metadata-of-a-single-asset.-responses">Responses</h3>
 
-| Status | Meaning                                                         | Description                                                                                | Schema |
-| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | Full metadata record for the asset                                                         | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)  | Unknown asset_id                                                                           | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Full metadata record for the asset                                                         | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Unknown asset_id                                                                           | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Move assets to the trash, or restore them.
+## Set or clear the trash flag on the listed assets.
 
 <a id="opIdedit_flags"></a>
 
@@ -3343,6 +2947,20 @@ func main() {
 
 `PUT /put/edit_flags`
 
+`indexArray` addresses the assets in the snapshot named by `timestamp`, and
+a sent `isTrashed` value lands on each asset's own record; no file on disk
+is touched. Every album that lost or regained a member is refreshed in the
+background, so its counts may still be catching up when the call returns.
+
+Corner cases: the removed `isFavorite` and `isArchived` keys are still
+accepted and ignored rather than rejected, and an absent `isTrashed` leaves
+every flag as it was. An index whose asset record no longer exists is
+skipped and still answers 200.
+
+Errors: 400 malformed body — 401 missing or invalid admin credentials; share
+tokens are not accepted — 405 read-only mode — 500 unknown snapshot,
+out-of-range index, or storage failure.
+
 > Body parameter
 
 ```json
@@ -3353,25 +2971,27 @@ func main() {
 }
 ```
 
-<h3 id="move-assets-to-the-trash,-or-restore-them.-parameters">Parameters</h3>
+<h3 id="set-or-clear-the-trash-flag-on-the-listed-assets.-parameters">Parameters</h3>
 
 | Name | In   | Type                                  | Required | Description |
 | ---- | ---- | ------------------------------------- | -------- | ----------- |
 | body | body | [EditFlagsData](#schemaeditflagsdata) | true     | none        |
 
-<h3 id="move-assets-to-the-trash,-or-restore-them.-responses">Responses</h3>
+<h3 id="set-or-clear-the-trash-flag-on-the-listed-assets.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Flags updated                                                                              | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Flags updated                                                                              | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Rate assets 0–5, or clear the rating with `null`.
+## Rate the listed assets 0–5, or clear the rating.
 
 <a id="opIdedit_rating"></a>
 
@@ -3520,6 +3140,20 @@ func main() {
 
 `PUT /put/edit_rating`
 
+`indexArray` addresses the assets in the snapshot named by `timestamp`, and
+`rating` carries 0–5 or `null` to clear. Each rating is written to the
+asset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and the
+in-memory tree is rebuilt before the call returns.
+
+Corner cases: a rating above 5 is rejected before any asset is touched, so
+one bad value fails the whole batch. An index whose asset record no longer
+exists is skipped and still answers 200, and a failed sidecar write is
+logged rather than failing the request.
+
+Errors: 400 `rating` is above 5, or the body cannot be parsed — 401 missing
+or invalid admin credentials; share tokens are not accepted — 405 read-only
+mode — 500 unknown snapshot, out-of-range index, or storage failure.
+
 > Body parameter
 
 ```json
@@ -3530,25 +3164,27 @@ func main() {
 }
 ```
 
-<h3 id="rate-assets-0–5,-or-clear-the-rating-with-`null`.-parameters">Parameters</h3>
+<h3 id="rate-the-listed-assets-0–5,-or-clear-the-rating.-parameters">Parameters</h3>
 
 | Name | In   | Type                                    | Required | Description |
 | ---- | ---- | --------------------------------------- | -------- | ----------- |
 | body | body | [EditRatingData](#schemaeditratingdata) | true     | none        |
 
-<h3 id="rate-assets-0–5,-or-clear-the-rating-with-`null`.-responses">Responses</h3>
+<h3 id="rate-the-listed-assets-0–5,-or-clear-the-rating.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Rating updated                                                                             | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Rating updated                                                                             | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Add and remove tags on the listed assets, and return the resulting tag list.
+## Add and remove tags on the listed assets and return the resulting tag list.
 
 <a id="opIdedit_tag"></a>
 
@@ -3709,6 +3345,21 @@ func main() {
 
 `PUT /put/edit_tag`
 
+`indexArray` addresses the assets in the snapshot named by `timestamp`, and
+additions and removals are applied per asset in list order after
+NFC-normalization and filtering to valid XML characters. Each asset's
+`.albuminfo.xmp` sidecar is rewritten on a best-effort basis, and the
+returned list counts every tag over the whole metadata table, not only the
+edited assets.
+
+Corner cases: a tag that sanitizes to empty is skipped on add but still
+serves as the removal key, and an index whose asset record no longer exists
+is skipped and still answers 200.
+
+Errors: 400 malformed body — 401 missing or invalid admin credentials; share
+tokens are not accepted — 405 read-only mode — 500 unknown snapshot,
+out-of-range index, or storage failure.
+
 > Body parameter
 
 ```json
@@ -3720,7 +3371,7 @@ func main() {
 }
 ```
 
-<h3 id="add-and-remove-tags-on-the-listed-assets,-and-return-the-resulting-tag-list.-parameters">Parameters</h3>
+<h3 id="add-and-remove-tags-on-the-listed-assets-and-return-the-resulting-tag-list.-parameters">Parameters</h3>
 
 | Name | In   | Type                                | Required | Description |
 | ---- | ---- | ----------------------------------- | -------- | ----------- |
@@ -3739,15 +3390,17 @@ func main() {
 ]
 ```
 
-<h3 id="add-and-remove-tags-on-the-listed-assets,-and-return-the-resulting-tag-list.-responses">Responses</h3>
+<h3 id="add-and-remove-tags-on-the-listed-assets-and-return-the-resulting-tag-list.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Tags updated                                                                               | Inline |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Tags updated                                                                               | Inline |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
-<h3 id="add-and-remove-tags-on-the-listed-assets,-and-return-the-resulting-tag-list.-responseschema">Response Schema</h3>
+<h3 id="add-and-remove-tags-on-the-listed-assets-and-return-the-resulting-tag-list.-responseschema">Response Schema</h3>
 
 Status Code **200**
 
@@ -3761,7 +3414,7 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
-## Regenerate the thumbnail of an image within an uploaded frame.
+## Replace an asset's compressed thumbnail with an uploaded frame.
 
 <a id="opIdregenerate_thumbnail_with_frame"></a>
 
@@ -3770,21 +3423,21 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/regenerate-thumbnail-with-frame \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: multipart/form-data'
 
 ```
 
 ```http
 PUT /put/regenerate-thumbnail-with-frame HTTP/1.1
 
-Content-Type: application/json
+Content-Type: multipart/form-data
 
 ```
 
 ```javascript
-const inputBody = "null";
+const inputBody = "{}";
 const headers = {
-  "Content-Type": "application/json",
+  "Content-Type": "multipart/form-data",
 };
 
 fetch("/put/regenerate-thumbnail-with-frame", {
@@ -3805,7 +3458,7 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'multipart/form-data'
 }
 
 result = RestClient.put '/put/regenerate-thumbnail-with-frame',
@@ -3819,7 +3472,7 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'multipart/form-data'
 }
 
 r = requests.put('/put/regenerate-thumbnail-with-frame', headers = headers)
@@ -3834,7 +3487,7 @@ print(r.json())
 require 'vendor/autoload.php';
 
 $headers = array(
-    'Content-Type' => 'application/json',
+    'Content-Type' => 'multipart/form-data',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -3887,7 +3540,7 @@ import (
 func main() {
 
     headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
+        "Content-Type": []string{"multipart/form-data"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -3903,31 +3556,51 @@ func main() {
 
 `PUT /put/regenerate-thumbnail-with-frame`
 
+The multipart body carries the `asset_id` and the `frame` file, and the
+frame is written to the asset's compressed-thumbnail path,
+`object/compressed/<first two characters of the asset id>/<asset_id>.jpg`,
+overwriting whatever was there. `thumbhash`, `phash` and `updatedAt` are
+recomputed and flushed.
+
+Corner cases: the frame is written before the record is looked up, so a
+request naming an unknown id still leaves the file behind. The recomputed
+hashes are derived from the original file on disk rather than from the
+frame, and the stored dimensions, EXIF and `.albuminfo.xmp` sidecar are
+left untouched.
+
+Errors: 400 malformed multipart body or an `asset_id` longer than 64 bytes —
+401 missing or invalid admin credentials; share tokens are not accepted —
+404 `asset_id` names no asset record — 405 read-only mode — 500 frame write,
+decode, or storage failure.
+
 > Body parameter
 
-```json
-null
+```yaml
+{}
 ```
 
-<h3 id="regenerate-the-thumbnail-of-an-image-within-an-uploaded-frame.-parameters">Parameters</h3>
+<h3 id="replace-an-asset's-compressed-thumbnail-with-an-uploaded-frame.-parameters">Parameters</h3>
 
-| Name | In   | Type | Required | Description |
-| ---- | ---- | ---- | -------- | ----------- |
-| body | body | any  | true     | none        |
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| body | body | object | true     | none        |
 
-<h3 id="regenerate-the-thumbnail-of-an-image-within-an-uploaded-frame.-responses">Responses</h3>
+<h3 id="replace-an-asset's-compressed-thumbnail-with-an-uploaded-frame.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Thumbnail regenerated                                                                      | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Thumbnail regenerated                                                                      | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Rotate an image and regenerate what depends on its orientation.
+## Rotate an image 90° counter-clockwise and rebuild its derivatives.
 
 <a id="opIdrotate_image"></a>
 
@@ -4072,6 +3745,20 @@ func main() {
 
 `PUT /put/rotate-image`
 
+The compressed JPEG is loaded, rotated and written back, `width` and
+`height` are swapped, and `thumbhash` and `phash` are recomputed. Each
+parent album's `updatedAt` is bumped before the records are flushed.
+
+Corner cases: only the compressed JPEG is re-rendered — the original file,
+its EXIF orientation and the `.albuminfo.xmp` sidecar are left as they were,
+so the rotation is a display-level transform that accumulates across
+repeated calls.
+
+Errors: 400 an `asset_id` longer than 64 bytes, or an album or video — 401
+missing or invalid admin credentials; share tokens are not accepted — 404
+`asset_id` names no asset record — 405 read-only mode — 500 decode,
+thumbnail write, or storage failure.
+
 > Body parameter
 
 ```json
@@ -4080,19 +3767,22 @@ func main() {
 }
 ```
 
-<h3 id="rotate-an-image-and-regenerate-what-depends-on-its-orientation.-parameters">Parameters</h3>
+<h3 id="rotate-an-image-90°-counter-clockwise-and-rebuild-its-derivatives.-parameters">Parameters</h3>
 
 | Name | In   | Type                                            | Required | Description |
 | ---- | ---- | ----------------------------------------------- | -------- | ----------- |
 | body | body | [RotateImageRequest](#schemarotateimagerequest) | true     | none        |
 
-<h3 id="rotate-an-image-and-regenerate-what-depends-on-its-orientation.-responses">Responses</h3>
+<h3 id="rotate-an-image-90°-counter-clockwise-and-rebuild-its-derivatives.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Image rotated                                                                              | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Image rotated                                                                              | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -4100,7 +3790,9 @@ This operation does not require authentication
 
 <h1 id="picasu-config">config</h1>
 
-## Serve the configuration a client needs; a share token is enough.
+Server configuration: read, write, password, export/import, path completion
+
+## Serve the client-visible server configuration.
 
 <a id="opIdget_config_handler"></a>
 
@@ -4241,6 +3933,19 @@ func main() {
 
 `GET /get/config`
 
+Returns the values a client needs to drive the other operations: address
+and port, the image library root (`imagePath`), `uploadFolder`,
+`maxUploadSize`, `readOnlyMode`, `disableImg`, `fsNotifyWatcher`,
+`normalizeUploadFilenames`, `validateUploadContent`,
+`useClientTimestampInfo`, plus `hasPassword` and `hasAuthKey`.
+
+Corner cases: secrets are never returned — `hasPassword` and `hasAuthKey`
+only report whether a password or an auth key is configured. `imagePath` is
+the absolute library root and serializes as `null` when it is unset.
+
+Errors: 400 half-supplied share credentials or an id that is not an album —
+401 no valid admin or share credentials.
+
 > Example responses
 
 > 200 Response
@@ -4263,7 +3968,7 @@ func main() {
 }
 ```
 
-<h3 id="serve-the-configuration-a-client-needs;-a-share-token-is-enough.-responses">Responses</h3>
+<h3 id="serve-the-client-visible-server-configuration.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema                                  |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------- |
@@ -4275,7 +3980,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## Export the whole server configuration as JSON.
+## Export the full server configuration as JSON.
 
 <a id="opIdexport_config_handler"></a>
 
@@ -4416,6 +4121,12 @@ func main() {
 
 `GET /get/config/export`
 
+Returns the complete serialized configuration, including `password` and
+`authKey` in plaintext whenever they are set, so the response has to be
+handled as a secret. `webRoot` is the only field never serialized.
+
+Errors: 400 invalid input — 401 no valid admin credentials.
+
 > Example responses
 
 > 200 Response
@@ -4424,7 +4135,7 @@ func main() {
 "string"
 ```
 
-<h3 id="export-the-whole-server-configuration-as-json.-responses">Responses</h3>
+<h3 id="export-the-full-server-configuration-as-json.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -4436,7 +4147,7 @@ func main() {
 This operation does not require authentication
 </aside>
 
-## Complete a filesystem path for the path-completion field.
+## Complete a filesystem directory path for the path-completion field.
 
 <a id="opIdget_fs_completion"></a>
 
@@ -4577,7 +4288,21 @@ func main() {
 
 `GET /get/path-completion`
 
-<h3 id="complete-a-filesystem-path-for-the-path-completion-field.-parameters">Parameters</h3>
+An absent or blank `path` returns the platform roots plus the
+subdirectories of the server's working directory with `is_default: true`. A
+trailing separator lists that directory, a bare name is matched against the
+roots and the working directory, and a path with a parent lists the parent
+filtered by its last segment.
+
+Corner cases: only directories are returned, as absolute paths, sorted
+case-insensitively and truncated to 50 entries. A non-empty prefix that
+matches nothing is a 404, while a prefix-less listing that finds nothing
+answers 200 with no children.
+
+Errors: 400 invalid input — 401 no valid admin credentials — 404 the prefix
+matched no directory — 500 the directory could not be read.
+
+<h3 id="complete-a-filesystem-directory-path-for-the-path-completion-field.-parameters">Parameters</h3>
 
 | Name | In    | Type   | Required | Description |
 | ---- | ----- | ------ | -------- | ----------- |
@@ -4595,13 +4320,15 @@ func main() {
 }
 ```
 
-<h3 id="complete-a-filesystem-path-for-the-path-completion-field.-responses">Responses</h3>
+<h3 id="complete-a-filesystem-directory-path-for-the-path-completion-field.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema                              |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Filesystem path completion                                                                 | [FsCompletion](#schemafscompletion) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                |
+| Status | Meaning                                                                    | Description                                                                                | Schema                              |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Filesystem path completion                                                                 | [FsCompletion](#schemafscompletion) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                |
 
 <aside class="success">
 This operation does not require authentication
@@ -4765,6 +4492,21 @@ func main() {
 
 `POST /post/config/import`
 
+The body is a complete `AppConfig` rather than a patch. Before writing,
+`imagePath` is trimmed of whitespace and quotes (an empty value becomes
+`null`), `uploadFolder` is trimmed, and an empty `authKey` is stored as
+`null`, moving JWT signing onto the random secret generated once per
+process. On success `config.toml` is rewritten, the in-memory configuration
+is replaced and the filesystem watcher reloaded.
+
+Corner cases: The posted configuration is accepted as-is: unlike
+`PUT /put/config` it applies no validation, so an `uploadFolder` that is
+absolute or contains `..` is stored here. A failed write is a 500 and leaves
+the running configuration untouched.
+
+Errors: 400 unusable request body — 401 missing or invalid credentials —
+500 storage failure.
+
 > Body parameter
 
 ```json
@@ -4794,17 +4536,18 @@ func main() {
 
 <h3 id="replace-the-server-configuration-with-the-posted-one.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Config imported                                                                            | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Config imported                                                                            | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Update the server configuration with the posted fields.
+## Patch the server configuration with the posted fields.
 
 <a id="opIdupdate_config_handler"></a>
 
@@ -4959,6 +4702,21 @@ func main() {
 
 `PUT /put/config`
 
+Every field is optional and a field absent from the body keeps its current
+value. The only validation is on `uploadFolder`, which must be a relative
+path free of `..` components; on success `config.toml` is rewritten, the
+in-memory configuration is replaced and the filesystem watcher is reloaded.
+
+Corner cases: `authKey` is trimmed, and clearing or replacing it moves JWT
+signing onto a new key, invalidating every token issued under the previous
+one. `uploadFolder` and `maxUploadSize` take an empty string to reset to
+their defaults, `uploads` and `100MiB`. `address` and `port` are stored but
+the listener is not rebound, so they take effect only after a restart.
+
+Errors: 400 `uploadFolder` is absolute or contains `..`, or the body cannot
+be parsed — 401 missing or invalid admin credentials; share tokens are not
+accepted — 405 read-only mode — 500 config write failure.
+
 > Body parameter
 
 ```json
@@ -4977,25 +4735,27 @@ func main() {
 }
 ```
 
-<h3 id="update-the-server-configuration-with-the-posted-fields.-parameters">Parameters</h3>
+<h3 id="patch-the-server-configuration-with-the-posted-fields.-parameters">Parameters</h3>
 
 | Name | In   | Type                                                            | Required | Description |
 | ---- | ---- | --------------------------------------------------------------- | -------- | ----------- |
 | body | body | [PartialUpdateConfigRequest](#schemapartialupdateconfigrequest) | true     | none        |
 
-<h3 id="update-the-server-configuration-with-the-posted-fields.-responses">Responses</h3>
+<h3 id="patch-the-server-configuration-with-the-posted-fields.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Config updated                                                                             | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Config updated                                                                             | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Change the account password.
+## Change or clear the account password.
 
 <a id="opIdupdate_password_handler"></a>
 
@@ -5141,6 +4901,20 @@ func main() {
 
 `PUT /put/config/password`
 
+`oldPassword` is compared verbatim against the stored password, and
+`password` supplies the new one, which is trimmed before it is stored. Only
+the password moves — `authKey` is untouched — so tokens already signed with
+it stay valid across the change.
+
+Corner cases: an omitted or blank `password` clears the password, after
+which any input to the sign-in operation is accepted. Because `oldPassword`
+is compared verbatim against the stored value, it must be omitted rather
+than sent empty while no password is set.
+
+Errors: 400 `oldPassword` does not match the stored password, or the body
+cannot be parsed — 401 missing or invalid admin credentials; share tokens
+are not accepted — 405 read-only mode — 500 config write failure.
+
 > Body parameter
 
 ```json
@@ -5150,2770 +4924,21 @@ func main() {
 }
 ```
 
-<h3 id="change-the-account-password.-parameters">Parameters</h3>
+<h3 id="change-or-clear-the-account-password.-parameters">Parameters</h3>
 
 | Name | In   | Type                                                  | Required | Description |
 | ---- | ---- | ----------------------------------------------------- | -------- | ----------- |
 | body | body | [UpdatePasswordRequest](#schemaupdatepasswordrequest) | true     | none        |
 
-<h3 id="change-the-account-password.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Password updated                                                                           | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-<h1 id="picasu-albums">albums</h1>
-
-## List the albums the tree knows.
-
-<a id="opIdget_albums"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /get/get-albums \
-  -H 'Accept: application/json'
-
-```
-
-```http
-GET /get/get-albums HTTP/1.1
-
-Accept: application/json
-
-```
-
-```javascript
-const headers = {
-  Accept: "application/json",
-};
-
-fetch("/get/get-albums", {
-  method: "GET",
-
-  headers: headers,
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Accept' => 'application/json'
-}
-
-result = RestClient.get '/get/get-albums',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Accept': 'application/json'
-}
-
-r = requests.get('/get/get-albums', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/get/get-albums', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/get/get-albums");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/get/get-albums", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /get/get-albums`
-
-> Example responses
-
-> 200 Response
-
-```json
-[
-  {
-    "albumId": "string",
-    "albumName": "string",
-    "dirPath": "string",
-    "parentAlbumId": "string",
-    "shareList": {
-      "property1": {
-        "description": "string",
-        "exp": 0,
-        "password": "string",
-        "showDownload": true,
-        "showMetadata": true,
-        "showUpload": true,
-        "url": "string"
-      },
-      "property2": {
-        "description": "string",
-        "exp": 0,
-        "password": "string",
-        "showDownload": true,
-        "showMetadata": true,
-        "showUpload": true,
-        "url": "string"
-      }
-    }
-  }
-]
-```
-
-<h3 id="list-the-albums-the-tree-knows.-responses">Responses</h3>
-
-| Status | Meaning                                                         | Description                                                                                | Schema |
-| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | List of albums                                                                             | Inline |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<h3 id="list-the-albums-the-tree-knows.-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-| Name                        | Type                            | Required | Restrictions | Description                                                                                                       |
-| --------------------------- | ------------------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------- |
-| _anonymous_                 | [[AlbumInfo](#schemaalbuminfo)] | false    | none         | none                                                                                                              |
-| » albumId                   | string                          | true     | none         | none                                                                                                              |
-| » albumName                 | string,null                     | false    | none         | none                                                                                                              |
-| » dirPath                   | string,null                     | false    | none         | none                                                                                                              |
-| » parentAlbumId             | string,null                     | false    | none         | Album ID of the direct parent directory album, or `None` for top-level<br>dir albums and all user-created albums. |
-| » shareList                 | object                          | true     | none         | none                                                                                                              |
-| »» **additionalProperties** | [Share](#schemashare)           | false    | none         | none                                                                                                              |
-| »»» description             | string                          | true     | none         | none                                                                                                              |
-| »»» exp                     | integer(int64)                  | true     | none         | none                                                                                                              |
-| »»» password                | string,null                     | false    | none         | none                                                                                                              |
-| »»» showDownload            | boolean                         | true     | none         | none                                                                                                              |
-| »»» showMetadata            | boolean                         | true     | none         | none                                                                                                              |
-| »»» showUpload              | boolean                         | true     | none         | none                                                                                                              |
-| »»» url                     | string                          | true     | none         | none                                                                                                              |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Create a new subdirectory under an existing dir-album's directory and register it as a new album.
-
-<a id="opIdcreate_dir_album"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X POST /post/create_dir_album \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: text/plain'
-
-```
-
-```http
-POST /post/create_dir_album HTTP/1.1
-
-Content-Type: application/json
-Accept: text/plain
-
-```
-
-```javascript
-const inputBody = '{
-  "name": "string",
-  "parentAlbumId": "string"
-}';
-const headers = {
-  'Content-Type':'application/json',
-  'Accept':'text/plain'
-};
-
-fetch('/post/create_dir_album',
-{
-  method: 'POST',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json',
-  'Accept' => 'text/plain'
-}
-
-result = RestClient.post '/post/create_dir_album',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json',
-  'Accept': 'text/plain'
-}
-
-r = requests.post('/post/create_dir_album', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-    'Accept' => 'text/plain',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('POST','/post/create_dir_album', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/post/create_dir_album");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("POST");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-        "Accept": []string{"text/plain"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/post/create_dir_album", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`POST /post/create_dir_album`
-
-Returns the new album's ID.
-
-> Body parameter
-
-```json
-{
-  "name": "string",
-  "parentAlbumId": "string"
-}
-```
-
-<h3 id="create-a-new-subdirectory-under-an-existing-dir-album's-directory-and-register-it-as-a-new-album.-parameters">Parameters</h3>
-
-| Name | In   | Type                                            | Required | Description |
-| ---- | ---- | ----------------------------------------------- | -------- | ----------- |
-| body | body | [CreateDirAlbumData](#schemacreatediralbumdata) | true     | none        |
-
-> Example responses
-
-> 200 Response
-
-```
-"string"
-```
-
-<h3 id="create-a-new-subdirectory-under-an-existing-dir-album's-directory-and-register-it-as-a-new-album.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | New album ID                                                                               | string |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Create a share link for an album and return it.
-
-<a id="opIdcreate_share"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X POST /post/create_share \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: text/plain'
-
-```
-
-```http
-POST /post/create_share HTTP/1.1
-
-Content-Type: application/json
-Accept: text/plain
-
-```
-
-```javascript
-const inputBody = '{
-  "albumId": "string",
-  "description": "string",
-  "exp": 0,
-  "password": "string",
-  "showDownload": true,
-  "showMetadata": true,
-  "showUpload": true
-}';
-const headers = {
-  'Content-Type':'application/json',
-  'Accept':'text/plain'
-};
-
-fetch('/post/create_share',
-{
-  method: 'POST',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json',
-  'Accept' => 'text/plain'
-}
-
-result = RestClient.post '/post/create_share',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json',
-  'Accept': 'text/plain'
-}
-
-r = requests.post('/post/create_share', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-    'Accept' => 'text/plain',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('POST','/post/create_share', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/post/create_share");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("POST");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-        "Accept": []string{"text/plain"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/post/create_share", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`POST /post/create_share`
-
-> Body parameter
-
-```json
-{
-  "albumId": "string",
-  "description": "string",
-  "exp": 0,
-  "password": "string",
-  "showDownload": true,
-  "showMetadata": true,
-  "showUpload": true
-}
-```
-
-<h3 id="create-a-share-link-for-an-album-and-return-it.-parameters">Parameters</h3>
-
-| Name | In   | Type                              | Required | Description |
-| ---- | ---- | --------------------------------- | -------- | ----------- |
-| body | body | [CreateShare](#schemacreateshare) | true     | none        |
-
-> Example responses
-
-> 200 Response
-
-```
-"string"
-```
-
-<h3 id="create-a-share-link-for-an-album-and-return-it.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Share link created                                                                         | string |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Move the asset identified by `asset_id` into the album's directory on disk.
-
-<a id="opIdassign_album"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X PUT /put/assign_album \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json'
-
-```
-
-```http
-PUT /put/assign_album HTTP/1.1
-
-Content-Type: application/json
-Accept: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "albumId": "string",
-  "assetId": "string",
-  "onConflict": "skip"
-}';
-const headers = {
-  'Content-Type':'application/json',
-  'Accept':'application/json'
-};
-
-fetch('/put/assign_album',
-{
-  method: 'PUT',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json',
-  'Accept' => 'application/json'
-}
-
-result = RestClient.put '/put/assign_album',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json',
-  'Accept': 'application/json'
-}
-
-r = requests.put('/put/assign_album', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('PUT','/put/assign_album', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/put/assign_album");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("PUT");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("PUT", "/put/assign_album", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`PUT /put/assign_album`
-
-The directory is resolved from the asset's physical path; the stored path and
-the album membership are updated and the conflict outcome is reported. Returns
-400 if the file is missing at the asset's path (stale record — re-index first)
-or the destination album is a manual album.
-
-> Body parameter
-
-```json
-{
-  "albumId": "string",
-  "assetId": "string",
-  "onConflict": "skip"
-}
-```
-
-<h3 id="move-the-asset-identified-by-`asset_id`-into-the-album's-directory-on-disk.-parameters">Parameters</h3>
-
-| Name | In   | Type                                      | Required | Description |
-| ---- | ---- | ----------------------------------------- | -------- | ----------- |
-| body | body | [AssignAlbumData](#schemaassignalbumdata) | true     | none        |
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "outcome": "moved"
-}
-```
-
-<h3 id="move-the-asset-identified-by-`asset_id`-into-the-album's-directory-on-disk.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema                              |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Item assigned to album                                                                     | [AssignResult](#schemaassignresult) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input or item not found                                                            | None                                |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Delete one share of an album.
-
-<a id="opIddelete_share"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X PUT /put/delete_share \
-  -H 'Content-Type: application/json'
-
-```
-
-```http
-PUT /put/delete_share HTTP/1.1
-
-Content-Type: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "albumId": "string",
-  "shareId": "string"
-}';
-const headers = {
-  'Content-Type':'application/json'
-};
-
-fetch('/put/delete_share',
-{
-  method: 'PUT',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json'
-}
-
-result = RestClient.put '/put/delete_share',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json'
-}
-
-r = requests.put('/put/delete_share', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('PUT','/put/delete_share', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/put/delete_share");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("PUT");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("PUT", "/put/delete_share", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`PUT /put/delete_share`
-
-> Body parameter
-
-```json
-{
-  "albumId": "string",
-  "shareId": "string"
-}
-```
-
-<h3 id="delete-one-share-of-an-album.-parameters">Parameters</h3>
-
-| Name | In   | Type                              | Required | Description |
-| ---- | ---- | --------------------------------- | -------- | ----------- |
-| body | body | [DeleteShare](#schemadeleteshare) | true     | none        |
-
-<h3 id="delete-one-share-of-an-album.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Share deleted                                                                              | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Replace the share of an album.
-
-<a id="opIdedit_share"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X PUT /put/edit_share \
-  -H 'Content-Type: application/json'
-
-```
-
-```http
-PUT /put/edit_share HTTP/1.1
-
-Content-Type: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "albumId": "string",
-  "share": {
-    "description": "string",
-    "exp": 0,
-    "password": "string",
-    "showDownload": true,
-    "showMetadata": true,
-    "showUpload": true,
-    "url": "string"
-  }
-}';
-const headers = {
-  'Content-Type':'application/json'
-};
-
-fetch('/put/edit_share',
-{
-  method: 'PUT',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json'
-}
-
-result = RestClient.put '/put/edit_share',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json'
-}
-
-r = requests.put('/put/edit_share', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('PUT','/put/edit_share', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/put/edit_share");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("PUT");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("PUT", "/put/edit_share", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`PUT /put/edit_share`
-
-> Body parameter
-
-```json
-{
-  "albumId": "string",
-  "share": {
-    "description": "string",
-    "exp": 0,
-    "password": "string",
-    "showDownload": true,
-    "showMetadata": true,
-    "showUpload": true,
-    "url": "string"
-  }
-}
-```
-
-<h3 id="replace-the-share-of-an-album.-parameters">Parameters</h3>
-
-| Name | In   | Type                          | Required | Description |
-| ---- | ---- | ----------------------------- | -------- | ----------- |
-| body | body | [EditShare](#schemaeditshare) | true     | none        |
-
-<h3 id="replace-the-share-of-an-album.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Share updated                                                                              | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Updates the cover image of a specific album.
-
-<a id="opIdset_album_cover"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X PUT /put/set_album_cover \
-  -H 'Content-Type: application/json'
-
-```
-
-```http
-PUT /put/set_album_cover HTTP/1.1
-
-Content-Type: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "albumId": "string",
-  "coverAssetId": "string"
-}';
-const headers = {
-  'Content-Type':'application/json'
-};
-
-fetch('/put/set_album_cover',
-{
-  method: 'PUT',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json'
-}
-
-result = RestClient.put '/put/set_album_cover',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json'
-}
-
-r = requests.put('/put/set_album_cover', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('PUT','/put/set_album_cover', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/put/set_album_cover");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("PUT");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("PUT", "/put/set_album_cover", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`PUT /put/set_album_cover`
-
-> Body parameter
-
-```json
-{
-  "albumId": "string",
-  "coverAssetId": "string"
-}
-```
-
-<h3 id="updates-the-cover-image-of-a-specific-album.-parameters">Parameters</h3>
-
-| Name | In   | Type                                  | Required | Description |
-| ---- | ---- | ------------------------------------- | -------- | ----------- |
-| body | body | [SetAlbumCover](#schemasetalbumcover) | true     | none        |
-
-<h3 id="updates-the-cover-image-of-a-specific-album.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Album cover updated                                                                        | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Updates the display title of a specific album.
-
-<a id="opIdset_album_title"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X PUT /put/set_album_title \
-  -H 'Content-Type: application/json'
-
-```
-
-```http
-PUT /put/set_album_title HTTP/1.1
-
-Content-Type: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "albumId": "string",
-  "title": "string"
-}';
-const headers = {
-  'Content-Type':'application/json'
-};
-
-fetch('/put/set_album_title',
-{
-  method: 'PUT',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json'
-}
-
-result = RestClient.put '/put/set_album_title',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json'
-}
-
-r = requests.put('/put/set_album_title', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('PUT','/put/set_album_title', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/put/set_album_title");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("PUT");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("PUT", "/put/set_album_title", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`PUT /put/set_album_title`
-
-Sets both the raw display `title` and `custom_title` (the value actually
-persisted to `.albuminfo.xmp` by `write_sidecar_for`). Clearing the title
-(`title: None`) falls back `title` to the directory-derived default for
-dir-albums, so the sidecar-freezing bug can't reappear via this path.
-
-> Body parameter
-
-```json
-{
-  "albumId": "string",
-  "title": "string"
-}
-```
-
-<h3 id="updates-the-display-title-of-a-specific-album.-parameters">Parameters</h3>
-
-| Name | In   | Type                                  | Required | Description |
-| ---- | ---- | ------------------------------------- | -------- | ----------- |
-| body | body | [SetAlbumTitle](#schemasetalbumtitle) | true     | none        |
-
-<h3 id="updates-the-display-title-of-a-specific-album.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Album title updated                                                                        | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Set the user-defined description of an asset, or clear it with `null`.
-
-<a id="opIdset_user_defined_description"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X PUT /put/set_user_defined_description \
-  -H 'Content-Type: application/json'
-
-```
-
-```http
-PUT /put/set_user_defined_description HTTP/1.1
-
-Content-Type: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "description": "string",
-  "index": 0,
-  "timestamp": 0
-}';
-const headers = {
-  'Content-Type':'application/json'
-};
-
-fetch('/put/set_user_defined_description',
-{
-  method: 'PUT',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json'
-}
-
-result = RestClient.put '/put/set_user_defined_description',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json'
-}
-
-r = requests.put('/put/set_user_defined_description', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('PUT','/put/set_user_defined_description', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/put/set_user_defined_description");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("PUT");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("PUT", "/put/set_user_defined_description", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`PUT /put/set_user_defined_description`
-
-> Body parameter
-
-```json
-{
-  "description": "string",
-  "index": 0,
-  "timestamp": 0
-}
-```
-
-<h3 id="set-the-user-defined-description-of-an-asset,-or-clear-it-with-`null`.-parameters">Parameters</h3>
-
-| Name | In   | Type                                                          | Required | Description |
-| ---- | ---- | ------------------------------------------------------------- | -------- | ----------- |
-| body | body | [SetUserDefinedDescription](#schemasetuserdefineddescription) | true     | none        |
-
-<h3 id="set-the-user-defined-description-of-an-asset,-or-clear-it-with-`null`.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Description updated                                                                        | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-<h1 id="picasu-timeline">timeline</h1>
-
-## Serve one page of timeline/list rows for a snapshot timestamp.
-
-<a id="opIdget_data"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /get/get-data?end=0&start=0&timestamp=0 \
-  -H 'Accept: application/json'
-
-```
-
-```http
-GET /get/get-data?end=0&start=0&timestamp=0 HTTP/1.1
-
-Accept: application/json
-
-```
-
-```javascript
-const headers = {
-  Accept: "application/json",
-};
-
-fetch("/get/get-data?end=0&start=0&timestamp=0", {
-  method: "GET",
-
-  headers: headers,
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Accept' => 'application/json'
-}
-
-result = RestClient.get '/get/get-data',
-  params: {
-  'end' => 'integer',
-'start' => 'integer',
-'timestamp' => 'integer(int64)'
-}, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Accept': 'application/json'
-}
-
-r = requests.get('/get/get-data', params={
-  'end': '0',  'start': '0',  'timestamp': '0'
-}, headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/get/get-data', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/get/get-data?end=0&start=0&timestamp=0");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/get/get-data", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /get/get-data`
-
-Phase 14 lean read path: media rows are built from the snapshot's
-`ReducedData` plus the lean `ASSET_BY_ID` record — no per-row
-`METADATA_TABLE` (payload) read, and no tags/EXIF/description on the
-payload (those are served by `GET /get/metadata/{assetId}`).
-Album rows still read `METADATA_TABLE` because tiles need their stored
-title/cover/counts, composed with the album's `AssetRecord`.
-
-<h3 id="serve-one-page-of-timeline/list-rows-for-a-snapshot-timestamp.-parameters">Parameters</h3>
-
-| Name      | In    | Type           | Required | Description |
-| --------- | ----- | -------------- | -------- | ----------- |
-| end       | query | integer        | true     | none        |
-| start     | query | integer        | true     | none        |
-| timestamp | query | integer(int64) | true     | none        |
-
-> Example responses
-
-> 200 Response
-
-```json
-[
-  {
-    "abstractData": {},
-    "assetId": "string",
-    "coverHash": "string",
-    "timestamp": 0,
-    "token": "string"
-  }
-]
-```
-
-<h3 id="serve-one-page-of-timeline/list-rows-for-a-snapshot-timestamp.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Data by timestamp range                                                                    | Inline |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<h3 id="serve-one-page-of-timeline/list-rows-for-a-snapshot-timestamp.-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-| Name           | Type                                                        | Required | Restrictions | Description                                                                                                                                                               |
-| -------------- | ----------------------------------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| _anonymous_    | [[DataBaseTimestampReturn](#schemadatabasetimestampreturn)] | false    | none         | none                                                                                                                                                                      |
-| » abstractData | object                                                      | true     | none         | none                                                                                                                                                                      |
-| » assetId      | string                                                      | true     | none         | Path-primary asset ID.                                                                                                                                                    |
-| » coverHash    | string,null                                                 | false    | none         | For albums: the cover image's content hash (used for compressed<br>thumbnail URL construction and token validation). `None` for media<br>items or albums without a cover. |
-| » timestamp    | integer(int64)                                              | true     | none         | none                                                                                                                                                                      |
-| » token        | string                                                      | true     | none         | none                                                                                                                                                                      |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Export the whole tree as JSON.
-
-<a id="opIdget_export"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /get/get-export
-
-```
-
-```http
-GET /get/get-export HTTP/1.1
-
-```
-
-```javascript
-fetch("/get/get-export", {
-  method: "GET",
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-result = RestClient.get '/get/get-export',
-  params: {
-  }
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-
-r = requests.get('/get/get-export')
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/get/get-export', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/get/get-export");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/get/get-export", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /get/get-export`
-
-<h3 id="export-the-whole-tree-as-json.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Export data as JSON                                                                        | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Serve one row of a snapshot by its index.
-
-<a id="opIdget_rows"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /get/get-rows?index=0&timestamp=0 \
-  -H 'Accept: application/json'
-
-```
-
-```http
-GET /get/get-rows?index=0&timestamp=0 HTTP/1.1
-
-Accept: application/json
-
-```
-
-```javascript
-const headers = {
-  Accept: "application/json",
-};
-
-fetch("/get/get-rows?index=0&timestamp=0", {
-  method: "GET",
-
-  headers: headers,
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Accept' => 'application/json'
-}
-
-result = RestClient.get '/get/get-rows',
-  params: {
-  'index' => 'integer',
-'timestamp' => 'integer(int64)'
-}, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Accept': 'application/json'
-}
-
-r = requests.get('/get/get-rows', params={
-  'index': '0',  'timestamp': '0'
-}, headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/get/get-rows', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/get/get-rows?index=0&timestamp=0");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/get/get-rows", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /get/get-rows`
-
-<h3 id="serve-one-row-of-a-snapshot-by-its-index.-parameters">Parameters</h3>
-
-| Name      | In    | Type           | Required | Description |
-| --------- | ----- | -------------- | -------- | ----------- |
-| index     | query | integer        | true     | none        |
-| timestamp | query | integer(int64) | true     | none        |
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "displayElements": [
-    {
-      "displayHeight": 0,
-      "displayWidth": 0
-    }
-  ],
-  "end": 0,
-  "rowIndex": 0,
-  "start": 0
-}
-```
-
-<h3 id="serve-one-row-of-a-snapshot-by-its-index.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema            |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Row data                                                                                   | [Row](#schemarow) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None              |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None              |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Serve the scroll bar positions of a snapshot.
-
-<a id="opIdget_scroll_bar"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /get/get-scroll-bar?timestamp=0 \
-  -H 'Accept: application/json'
-
-```
-
-```http
-GET /get/get-scroll-bar?timestamp=0 HTTP/1.1
-
-Accept: application/json
-
-```
-
-```javascript
-const headers = {
-  Accept: "application/json",
-};
-
-fetch("/get/get-scroll-bar?timestamp=0", {
-  method: "GET",
-
-  headers: headers,
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Accept' => 'application/json'
-}
-
-result = RestClient.get '/get/get-scroll-bar',
-  params: {
-  'timestamp' => 'integer(int64)'
-}, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Accept': 'application/json'
-}
-
-r = requests.get('/get/get-scroll-bar', params={
-  'timestamp': '0'
-}, headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/get/get-scroll-bar', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/get/get-scroll-bar?timestamp=0");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/get/get-scroll-bar", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /get/get-scroll-bar`
-
-<h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-parameters">Parameters</h3>
-
-| Name      | In    | Type           | Required | Description |
-| --------- | ----- | -------------- | -------- | ----------- |
-| timestamp | query | integer(int64) | true     | none        |
-
-> Example responses
-
-> 200 Response
-
-```json
-[
-  {
-    "index": 0,
-    "month": 0,
-    "year": 0
-  }
-]
-```
-
-<h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Scroll bar data                                                                            | Inline |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-| Name        | Type                                    | Required | Restrictions | Description |
-| ----------- | --------------------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [[ScrollBarData](#schemascrollbardata)] | false    | none         | none        |
-| » index     | integer                                 | true     | none         | none        |
-| » month     | integer                                 | true     | none         | none        |
-| » year      | integer                                 | true     | none         | none        |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## List the tags the tree knows.
-
-<a id="opIdget_tags"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X GET /get/get-tags \
-  -H 'Accept: application/json'
-
-```
-
-```http
-GET /get/get-tags HTTP/1.1
-
-Accept: application/json
-
-```
-
-```javascript
-const headers = {
-  Accept: "application/json",
-};
-
-fetch("/get/get-tags", {
-  method: "GET",
-
-  headers: headers,
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Accept' => 'application/json'
-}
-
-result = RestClient.get '/get/get-tags',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Accept': 'application/json'
-}
-
-r = requests.get('/get/get-tags', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('GET','/get/get-tags', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/get/get-tags");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("GET");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("GET", "/get/get-tags", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`GET /get/get-tags`
-
-> Example responses
-
-> 200 Response
-
-```json
-[
-  {
-    "number": 0,
-    "tag": "string"
-  }
-]
-```
-
-<h3 id="list-the-tags-the-tree-knows.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | List of tags                                                                               | Inline |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<h3 id="list-the-tags-the-tree-knows.-responseschema">Response Schema</h3>
-
-Status Code **200**
-
-| Name        | Type                        | Required | Restrictions | Description |
-| ----------- | --------------------------- | -------- | ------------ | ----------- |
-| _anonymous_ | [[TagInfo](#schemataginfo)] | false    | none         | none        |
-| » number    | integer                     | true     | none         | none        |
-| » tag       | string                      | true     | none         | none        |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Evaluate a timeline/list query, keep the result as a snapshot, and return its id.
-
-<a id="opIdprefetch"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X POST /get/prefetch \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json'
-
-```
-
-```http
-POST /get/prefetch HTTP/1.1
-
-Content-Type: application/json
-Accept: application/json
-
-```
-
-```javascript
-const inputBody = "null";
-const headers = {
-  "Content-Type": "application/json",
-  Accept: "application/json",
-};
-
-fetch("/get/prefetch", {
-  method: "POST",
-  body: inputBody,
-  headers: headers,
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json',
-  'Accept' => 'application/json'
-}
-
-result = RestClient.post '/get/prefetch',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json',
-  'Accept': 'application/json'
-}
-
-r = requests.post('/get/prefetch', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('POST','/get/prefetch', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/get/prefetch");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("POST");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/get/prefetch", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`POST /get/prefetch`
-
-> Body parameter
-
-```json
-null
-```
-
-<h3 id="evaluate-a-timeline/list-query,-keep-the-result-as-a-snapshot,-and-return-its-id.-parameters">Parameters</h3>
-
-| Name   | In    | Type   | Required | Description |
-| ------ | ----- | ------ | -------- | ----------- |
-| locate | query | string | false    | none        |
-| body   | body  | any    | true     | none        |
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "prefetch": {
-    "dataLength": 0,
-    "locateTo": 0,
-    "timestamp": 0
-  },
-  "resolvedShareOpt": {},
-  "token": "string"
-}
-```
-
-<h3 id="evaluate-a-timeline/list-query,-keep-the-result-as-a-snapshot,-and-return-its-id.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema                                  |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Prefetch result                                                                            | [PrefetchReturn](#schemaprefetchreturn) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                    |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                    |
+<h3 id="change-or-clear-the-account-password.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Password updated                                                                           | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -7921,7 +4946,9 @@ This operation does not require authentication
 
 <h1 id="picasu-index">index</h1>
 
-## Report the state of the running album-indexing job.
+Filesystem indexing jobs and full rebuild
+
+## Report the state of the most recently started album-indexing job.
 
 <a id="opIdget_album_index_status"></a>
 
@@ -8062,6 +5089,18 @@ func main() {
 
 `GET /get/index/status`
 
+The body carries the job's state (`idle`, `running`, `completed`,
+`canceled` or `failed`), the root it walks, the `scanned` / `matched` /
+`processed` / `failed` counters, `startedAt` / `finishedAt` epoch
+milliseconds and `cancelRequested`, so an album-index run can be polled
+until it settles.
+
+Corner cases: before the first run the state is `idle` with zeroed counters
+and no timestamps. Only the album-index job writes this status: a new run
+overwrites it, and single-image indexing never appears here.
+
+Errors: 401 no valid admin credentials.
+
 > Example responses
 
 > 200 Response
@@ -8080,19 +5119,18 @@ func main() {
 }
 ```
 
-<h3 id="report-the-state-of-the-running-album-indexing-job.-responses">Responses</h3>
+<h3 id="report-the-state-of-the-most-recently-started-album-indexing-job.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema                                      |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Album index status                                                                         | [AlbumIndexStatus](#schemaalbumindexstatus) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                        |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                        |
+| Status | Meaning                                                         | Description                                                                                | Schema                                      |
+| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | Album index status                                                                         | [AlbumIndexStatus](#schemaalbumindexstatus) |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                        |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Walk a directory under `IMAGE_HOME` and index all media files in the background.
+## Index every media file under a directory tree in the background.
 
 <a id="opIdindex_album_handler"></a>
 
@@ -8237,8 +5275,18 @@ func main() {
 
 `POST /post/index/album`
 
-`album` is a path relative to `IMAGE_HOME` — use `"/"` for the root. Status
-can be polled via `GET /get/index/status`.
+`album` is a directory path relative to `IMAGE_HOME`, where `"/"` selects
+the root. The walk is asynchronous: the response returns once the job is
+accepted, and progress — the scanned, matched, processed and failed
+counters plus the final state — is reported by `GET /get/index/status`.
+
+Corner cases: One album-index job runs at a time, so a request made while
+another job is running is a 409. The walk does not stop at a file it cannot
+read or decode; it counts the failure and carries on.
+
+Errors: 400 no `imagePath` configured, a path that is missing or not a
+directory, or a Picasu internal data directory — 401 missing or invalid
+credentials — 405 read-only mode — 409 an index job is already running.
 
 > Body parameter
 
@@ -8248,25 +5296,27 @@ can be polled via `GET /get/index/status`.
 }
 ```
 
-<h3 id="walk-a-directory-under-`image_home`-and-index-all-media-files-in-the-background.-parameters">Parameters</h3>
+<h3 id="index-every-media-file-under-a-directory-tree-in-the-background.-parameters">Parameters</h3>
 
 | Name | In   | Type                                          | Required | Description |
 | ---- | ---- | --------------------------------------------- | -------- | ----------- |
 | body | body | [IndexAlbumRequest](#schemaindexalbumrequest) | true     | none        |
 
-<h3 id="walk-a-directory-under-`image_home`-and-index-all-media-files-in-the-background.-responses">Responses</h3>
+<h3 id="index-every-media-file-under-a-directory-tree-in-the-background.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Album indexing started                                                                     | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                 | Description                                                                                | Schema |
+| ------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 202    | [Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)           | Album indexing started                                                                     | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)        | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)         | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5) | Read-only mode                                                                             | None   |
+| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)           | An index job is already running                                                            | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-## Cancel a running album index job.
+## Request cancellation of the running album index job.
 
 <a id="opIdcancel_album_index_handler"></a>
 
@@ -8383,13 +5433,25 @@ func main() {
 
 `POST /post/index/cancel`
 
-<h3 id="cancel-a-running-album-index-job.-responses">Responses</h3>
+Stores a cancel flag that the running walk checks as it goes; the response
+returns as soon as the flag is set, while the job itself keeps walking
+until it reaches its next directory entry.
+
+Corner cases: Cancellation is cooperative, not immediate. While the walk
+winds down the job reports `cancelRequested` with its state still `running`;
+the state settles as `canceled` only once the walk has actually stopped.
+
+Errors: 400 malformed request — 401 missing or invalid credentials —
+404 no index job is active.
+
+<h3 id="request-cancellation-of-the-running-album-index-job.-responses">Responses</h3>
 
 | Status | Meaning                                                          | Description                                                                                | Schema |
 | ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Album index cancelled                                                                      | None   |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | No active index job                                                                        | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -8541,7 +5603,16 @@ func main() {
 
 `POST /post/index/image`
 
-Runs in the background; returns `202 Accepted` immediately.
+The request returns as soon as the indexing task is spawned, so it reports
+only that the work was started. `image` is the path below `IMAGE_HOME`,
+and `album` optionally overrides the album the image is filed under.
+
+Corner cases: The task runs detached from the request, so an indexing
+failure is logged rather than returned and leaves no entry in
+`GET /get/index/status`, which tracks album-index jobs only.
+
+Errors: 400 unusable request body — 401 missing or invalid credentials —
+405 read-only mode.
 
 > Body parameter
 
@@ -8560,11 +5631,12 @@ Runs in the background; returns `202 Accepted` immediately.
 
 <h3 id="index-a-single-image-by-its-path-relative-to-`image_home`.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Image indexing started                                                                     | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                 | Description                                                                                | Schema |
+| ------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 202    | [Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)           | Image indexing started                                                                     | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)        | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)         | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5) | Read-only mode                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -8711,11 +5783,18 @@ func main() {
 
 `POST /post/rebuild`
 
-Clears `ASSET_BY_PATH`/`ASSET_BY_ID`/`DUPE_INDEX`, walks the image root,
-and repopulates them. Then rewrites `METADATA_TABLE` from the fresh
-`AssetRecord`s (rebuild assigns new `asset_id`s, so stale rows keyed by
-the old ids must not remain) and waits for an in-memory tree refresh so
-the response does not race subsequent `prefetch`/`get-data` calls.
+Clears `ASSET_BY_PATH`, `ASSET_BY_ID` and `DUPE_INDEX`, walks the image
+root and repopulates them, then rewrites `METADATA_TABLE` from the fresh
+records. The response carries the rebuild stats and is returned only after
+an in-memory tree refresh, so it does not race a following prefetch or
+get-data call.
+
+Corner cases: Rows are rewritten wholesale rather than merged: the rebuild
+assigns new `asset_id`s, so rows keyed by the previous ids must not remain.
+
+Errors: 400 malformed request — 401 missing or invalid credentials —
+405 read-only mode — 500 `imagePath` unset, or a failure while walking the
+image root or writing the tables.
 
 > Example responses
 
@@ -8732,12 +5811,13 @@ the response does not race subsequent `prefetch`/`get-data` calls.
 
 <h3 id="rebuild-the-asset-tables-from-the-filesystem-under-`image_home`.-responses">Responses</h3>
 
-| Status | Meaning                                                                 | Description                                                                                | Schema                              |
-| ------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                 | Rebuild complete                                                                           | [RebuildStats](#schemarebuildstats) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)        | Invalid input                                                                              | None                                |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)         | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5) | Read-only mode                                                                             | None                                |
+| Status | Meaning                                                                    | Description                                                                                | Schema                              |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Rebuild complete                                                                           | [RebuildStats](#schemarebuildstats) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                |
 
 <aside class="success">
 This operation does not require authentication
@@ -8745,7 +5825,9 @@ This operation does not require authentication
 
 <h1 id="picasu-serving">serving</h1>
 
-## Serve the compressed thumbnail of a hashed asset.
+Media byte delivery (compressed and original files)
+
+## Serve the compressed thumbnail or preview of a hashed asset.
 
 <a id="opIdcompressed_file"></a>
 
@@ -8862,19 +5944,33 @@ func main() {
 
 `GET /object/compressed/{file_path}`
 
-<h3 id="serve-the-compressed-thumbnail-of-a-hashed-asset.-parameters">Parameters</h3>
+Resolves the requested path under `DATA_HOME/object/compressed` and serves
+`.jpg` in a single response or `.mp4` as a range-capable stream pinned to
+`video/mp4`.
+
+Corner cases: one image-serving token authorizes exactly one file — its
+`hash` claim must equal the id in the last path segment. Any extension other
+than `.jpg` or `.mp4`, and a path without an extension, are rejected as
+invalid input.
+
+Errors: 400 unsupported or missing file extension — 401 no valid admin or
+share credentials, or no image-serving token for this file — 500 the
+compressed file could not be opened.
+
+<h3 id="serve-the-compressed-thumbnail-or-preview-of-a-hashed-asset.-parameters">Parameters</h3>
 
 | Name      | In   | Type   | Required | Description |
 | --------- | ---- | ------ | -------- | ----------- |
 | file_path | path | string | true     | none        |
 
-<h3 id="serve-the-compressed-thumbnail-of-a-hashed-asset.-responses">Responses</h3>
+<h3 id="serve-the-compressed-thumbnail-or-preview-of-a-hashed-asset.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Compressed file                                                                            | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Compressed file                                                                            | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -8997,10 +6093,18 @@ func main() {
 
 `GET /object/imported/{file_path}`
 
-There is no copy of it under `DATA_HOME`; `IMAGE_HOME` is the single,
-authoritative copy. The route's `<file_path..>` segment is
-`<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via
-`ASSET_BY_ID`.
+There is no copy under `DATA_HOME`: `imagePath` holds the single
+authoritative copy. The last path segment is `<id>.<ext>`, where `id` is the
+asset ID, and the record for that ID names the location the file is streamed
+from.
+
+Corner cases: resolving is by asset ID alone — there is no hash fallback —
+and the image-serving token must both grant original access and name this
+asset in its `asset_id` claim.
+
+Errors: 400 the path carries no usable asset id — 401 no valid admin or
+share credentials, or no image-serving token granting original access —
+404 unknown asset id — 500 the asset record or the file could not be read.
 
 <h3 id="serve-the-original-file-from-its-current-location-under-`imagepath`.-parameters">Parameters</h3>
 
@@ -9010,48 +6114,980 @@ authoritative copy. The route's `<file_path..>` segment is
 
 <h3 id="serve-the-original-file-from-its-current-location-under-`imagepath`.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Imported original file                                                                     | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Imported original file                                                                     | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
 </aside>
 
-<h1 id="picasu-auth">auth</h1>
+<h1 id="picasu-timeline">timeline</h1>
 
-## Sign in with the account password and return a JWT.
+Grid/list data: prefetch, rows, scrollbar, tag list, export
 
-<a id="opIdauthenticate"></a>
+## Serve one page of timeline/list rows for a snapshot timestamp.
+
+<a id="opIdget_data"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X POST /post/authenticate \
-  -H 'Content-Type: text/plain' \
-  -H 'Accept: text/plain'
+curl -X GET /get/get-data?end=0&start=0&timestamp=0 \
+  -H 'Accept: application/json'
 
 ```
 
 ```http
-POST /post/authenticate HTTP/1.1
+GET /get/get-data?end=0&start=0&timestamp=0 HTTP/1.1
 
-Content-Type: text/plain
-Accept: text/plain
+Accept: application/json
 
 ```
 
 ```javascript
-const inputBody = "string";
 const headers = {
-  "Content-Type": "text/plain",
-  Accept: "text/plain",
+  Accept: "application/json",
 };
 
-fetch("/post/authenticate", {
+fetch("/get/get-data?end=0&start=0&timestamp=0", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/get-data',
+  params: {
+  'end' => 'integer',
+'start' => 'integer',
+'timestamp' => 'integer(int64)'
+}, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/get-data', params={
+  'end': '0',  'start': '0',  'timestamp': '0'
+}, headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/get-data', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/get-data?end=0&start=0&timestamp=0");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/get-data", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/get-data`
+
+Returns the rows in the half-open index range `[start, end)` of the snapshot
+named by `timestamp`. Media rows carry identity and timing fields only, so
+tags, EXIF, description and rating come from the single-asset metadata
+operation; album rows additionally carry their stored title, cover and
+counts, which their tiles render.
+
+Corner cases: `end` is clamped to the snapshot length, and a range that
+starts past it answers with an empty array rather than an error. Each row's
+timestamp is the snapshot's own sort date, so a media row keeps its
+EXIF-derived date.
+
+Errors: 400 unknown or expired snapshot id — 401 missing, invalid, or
+mismatched prefetch token — 500 the snapshot or an asset record could not be
+read.
+
+<h3 id="serve-one-page-of-timeline/list-rows-for-a-snapshot-timestamp.-parameters">Parameters</h3>
+
+| Name      | In    | Type           | Required | Description |
+| --------- | ----- | -------------- | -------- | ----------- |
+| end       | query | integer        | true     | none        |
+| start     | query | integer        | true     | none        |
+| timestamp | query | integer(int64) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```json
+[
+  {
+    "abstractData": {},
+    "assetId": "string",
+    "coverHash": "string",
+    "timestamp": 0,
+    "token": "string"
+  }
+]
+```
+
+<h3 id="serve-one-page-of-timeline/list-rows-for-a-snapshot-timestamp.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Data by timestamp range                                                                    | Inline |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+
+<h3 id="serve-one-page-of-timeline/list-rows-for-a-snapshot-timestamp.-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+| Name           | Type                                                        | Required | Restrictions | Description                                                                                                                                                               |
+| -------------- | ----------------------------------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _anonymous_    | [[DataBaseTimestampReturn](#schemadatabasetimestampreturn)] | false    | none         | none                                                                                                                                                                      |
+| » abstractData | object                                                      | true     | none         | none                                                                                                                                                                      |
+| » assetId      | string                                                      | true     | none         | Path-primary asset ID.                                                                                                                                                    |
+| » coverHash    | string,null                                                 | false    | none         | For albums: the cover image's content hash (used for compressed<br>thumbnail URL construction and token validation). `None` for media<br>items or albums without a cover. |
+| » timestamp    | integer(int64)                                              | true     | none         | none                                                                                                                                                                      |
+| » token        | string                                                      | true     | none         | none                                                                                                                                                                      |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Export the whole tree as JSON.
+
+<a id="opIdget_export"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/get-export
+
+```
+
+```http
+GET /get/get-export HTTP/1.1
+
+```
+
+```javascript
+fetch("/get/get-export", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/get/get-export',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/get/get-export')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/get-export', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/get-export");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/get-export", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/get-export`
+
+Applies no album, share or trash filtering. Streams a JSON array of
+`{key, value}` entries — one per stored metadata row composed with its
+identity record — served as `application/octet-stream`.
+
+Corner cases: the response starts before iteration, so rows whose identity
+record is missing or unparsable are skipped silently and the array may be
+incomplete; a failure to start iterating answers with an `{"error":…}` body
+instead of the array.
+
+Errors: 400 invalid input — 401 no valid admin credentials — 500 the tables
+could not be opened.
+
+<h3 id="export-the-whole-tree-as-json.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Export data as JSON                                                                        | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the display layout of one batched row of a snapshot.
+
+<a id="opIdget_rows"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/get-rows?index=0&timestamp=0 \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/get-rows?index=0&timestamp=0 HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/get-rows?index=0&timestamp=0", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/get-rows',
+  params: {
+  'index' => 'integer',
+'timestamp' => 'integer(int64)'
+}, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/get-rows', params={
+  'index': '0',  'timestamp': '0'
+}, headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/get-rows', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/get-rows?index=0&timestamp=0");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/get-rows", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/get-rows`
+
+`index` addresses a batch of 20 consecutive snapshot entries. The response
+reports the batch's `start` / `end` offsets plus each entry's display width
+and height and nothing else — no asset data — so a virtualized grid can
+reserve space before it fetches the rows themselves.
+
+Corner cases: an `index` beyond the snapshot's last batch is a server-side
+fault rather than an empty row, and the last batch of a snapshot shorter
+than 20 entries is reported with `end` past the snapshot length.
+
+Errors: 400 unknown or expired snapshot id — 401 missing, invalid, or
+mismatched prefetch token — 500 the snapshot could not be read or the row
+index is out of bounds.
+
+<h3 id="serve-the-display-layout-of-one-batched-row-of-a-snapshot.-parameters">Parameters</h3>
+
+| Name      | In    | Type           | Required | Description |
+| --------- | ----- | -------------- | -------- | ----------- |
+| index     | query | integer        | true     | none        |
+| timestamp | query | integer(int64) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "displayElements": [
+    {
+      "displayHeight": 0,
+      "displayWidth": 0
+    }
+  ],
+  "end": 0,
+  "rowIndex": 0,
+  "start": 0
+}
+```
+
+<h3 id="serve-the-display-layout-of-one-batched-row-of-a-snapshot.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema            |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Row data                                                                                   | [Row](#schemarow) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None              |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None              |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None              |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the scroll bar positions of a snapshot.
+
+<a id="opIdget_scroll_bar"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/get-scroll-bar?timestamp=0 \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/get-scroll-bar?timestamp=0 HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/get-scroll-bar?timestamp=0", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/get-scroll-bar',
+  params: {
+  'timestamp' => 'integer(int64)'
+}, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/get-scroll-bar', params={
+  'timestamp': '0'
+}, headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/get-scroll-bar', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/get-scroll-bar?timestamp=0");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/get-scroll-bar", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/get-scroll-bar`
+
+Returns one entry per year/month boundary in snapshot order, each naming the
+`index` of the first entry in that bucket, so scroll bar positions map onto
+dates without loading any rows.
+
+Errors: 400 unknown or expired snapshot id — 401 missing, invalid, or
+mismatched prefetch token.
+
+<h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-parameters">Parameters</h3>
+
+| Name      | In    | Type           | Required | Description |
+| --------- | ----- | -------------- | -------- | ----------- |
+| timestamp | query | integer(int64) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```json
+[
+  {
+    "index": 0,
+    "month": 0,
+    "year": 0
+  }
+]
+```
+
+<h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-responses">Responses</h3>
+
+| Status | Meaning                                                          | Description                                                                                | Schema |
+| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Scroll bar data                                                                            | Inline |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+
+<h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+| Name        | Type                                    | Required | Restrictions | Description |
+| ----------- | --------------------------------------- | -------- | ------------ | ----------- |
+| _anonymous_ | [[ScrollBarData](#schemascrollbardata)] | false    | none         | none        |
+| » index     | integer                                 | true     | none         | none        |
+| » month     | integer                                 | true     | none         | none        |
+| » year      | integer                                 | true     | none         | none        |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## List every tag in the tree with the number of assets carrying it.
+
+<a id="opIdget_tags"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/get-tags \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/get-tags HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/get-tags", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/get-tags',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/get-tags', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/get-tags', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/get-tags");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/get-tags", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/get-tags`
+
+Counts every stored tag in the tree together with how many assets carry it,
+so the result covers assets outside the snapshot or share a client happens
+to be viewing.
+
+Corner cases: the counts are accumulated in parallel, so the order of the
+returned list is unspecified and not stable between calls.
+
+Errors: 400 invalid input — 401 no valid admin credentials.
+
+> Example responses
+
+> 200 Response
+
+```json
+[
+  {
+    "number": 0,
+    "tag": "string"
+  }
+]
+```
+
+<h3 id="list-every-tag-in-the-tree-with-the-number-of-assets-carrying-it.-responses">Responses</h3>
+
+| Status | Meaning                                                          | Description                                                                                | Schema |
+| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | List of tags                                                                               | Inline |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+
+<h3 id="list-every-tag-in-the-tree-with-the-number-of-assets-carrying-it.-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+| Name        | Type                        | Required | Restrictions | Description |
+| ----------- | --------------------------- | -------- | ------------ | ----------- |
+| _anonymous_ | [[TagInfo](#schemataginfo)] | false    | none         | none        |
+| » number    | integer                     | true     | none         | none        |
+| » tag       | string                      | true     | none         | none        |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Evaluate a list query, snapshot its result, and return the snapshot id.
+
+<a id="opIdprefetch"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X POST /get/prefetch \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
+
+```
+
+```http
+POST /get/prefetch HTTP/1.1
+
+Content-Type: application/json
+Accept: application/json
+
+```
+
+```javascript
+const inputBody = "null";
+const headers = {
+  "Content-Type": "application/json",
+  Accept: "application/json",
+};
+
+fetch("/get/prefetch", {
   method: "POST",
   body: inputBody,
   headers: headers,
@@ -9069,195 +7105,11 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'text/plain',
-  'Accept' => 'text/plain'
-}
-
-result = RestClient.post '/post/authenticate',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'text/plain',
-  'Accept': 'text/plain'
-}
-
-r = requests.post('/post/authenticate', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'text/plain',
-    'Accept' => 'text/plain',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('POST','/post/authenticate', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/post/authenticate");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("POST");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"text/plain"},
-        "Accept": []string{"text/plain"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/post/authenticate", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`POST /post/authenticate`
-
-> Body parameter
-
-```
-string
-
-```
-
-<h3 id="sign-in-with-the-account-password-and-return-a-jwt.-parameters">Parameters</h3>
-
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| body | body | string | true     | none        |
-
-> Example responses
-
-> 200 Response
-
-```
-"string"
-```
-
-<h3 id="sign-in-with-the-account-password-and-return-a-jwt.-responses">Responses</h3>
-
-| Status | Meaning                                                         | Description                                                                                | Schema |
-| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | JWT token                                                                                  | string |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Exchange an expired hash token for a fresh one.
-
-<a id="opIdrenew_hash_token"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X POST /post/renew-hash-token \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json'
-
-```
-
-```http
-POST /post/renew-hash-token HTTP/1.1
-
-Content-Type: application/json
-Accept: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "expiredHashToken": "string"
-}';
-const headers = {
-  'Content-Type':'application/json',
-  'Accept':'application/json'
-};
-
-fetch('/post/renew-hash-token',
-{
-  method: 'POST',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
   'Content-Type' => 'application/json',
   'Accept' => 'application/json'
 }
 
-result = RestClient.post '/post/renew-hash-token',
+result = RestClient.post '/get/prefetch',
   params: {
   }, headers: headers
 
@@ -9272,7 +7124,7 @@ headers = {
   'Accept': 'application/json'
 }
 
-r = requests.post('/post/renew-hash-token', headers = headers)
+r = requests.post('/get/prefetch', headers = headers)
 
 print(r.json())
 
@@ -9294,7 +7146,7 @@ $client = new \GuzzleHttp\Client();
 $request_body = array();
 
 try {
-    $response = $client->request('POST','/post/renew-hash-token', array(
+    $response = $client->request('POST','/get/prefetch', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -9311,7 +7163,7 @@ try {
 ```
 
 ```java
-URL obj = new URL("/post/renew-hash-token");
+URL obj = new URL("/get/prefetch");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
 con.setRequestMethod("POST");
 int responseCode = con.getResponseCode();
@@ -9343,7 +7195,7 @@ func main() {
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/post/renew-hash-token", data)
+    req, err := http.NewRequest("POST", "/get/prefetch", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -9353,21 +7205,40 @@ func main() {
 
 ```
 
-`POST /post/renew-hash-token`
+`POST /get/prefetch`
+
+The optional JSON filter body selects the assets to include; results are
+cached by expression, `locate` and tree version, so an identical query
+reuses the snapshot that already exists. The response carries the snapshot
+`timestamp`, the row count, the `locateTo` index, a new prefetch bearer
+token valid for 300 seconds, and the resolved share when the query ran for
+one. That token and timestamp are what the row, data and scroll bar
+operations require.
+
+Corner cases: the filter body is optional, and a body the server cannot
+parse is treated as absent and selects the whole tree. For a share the
+album filter is combined with the supplied expression, and a share that
+hides metadata additionally rewrites the filter so metadata-derived
+conditions (tag, path, camera make or model) can never match. `locate`
+names the asset whose row index comes back as `locateTo`, which is `null`
+when that asset is not in the result.
+
+Errors: 400 half-supplied share credentials or an id that is not an album —
+401 no valid admin or share credentials — 500 the tree could not be read or
+the snapshot could not be stored.
 
 > Body parameter
 
 ```json
-{
-  "expiredHashToken": "string"
-}
+null
 ```
 
-<h3 id="exchange-an-expired-hash-token-for-a-fresh-one.-parameters">Parameters</h3>
+<h3 id="evaluate-a-list-query,-snapshot-its-result,-and-return-the-snapshot-id.-parameters">Parameters</h3>
 
-| Name | In   | Type                                    | Required | Description |
-| ---- | ---- | --------------------------------------- | -------- | ----------- |
-| body | body | [RenewHashToken](#schemarenewhashtoken) | true     | none        |
+| Name   | In    | Type   | Required | Description |
+| ------ | ----- | ------ | -------- | ----------- |
+| locate | query | string | false    | none        |
+| body   | body  | any    | true     | none        |
 
 > Example responses
 
@@ -9375,205 +7246,24 @@ func main() {
 
 ```json
 {
+  "prefetch": {
+    "dataLength": 0,
+    "locateTo": 0,
+    "timestamp": 0
+  },
+  "resolvedShareOpt": {},
   "token": "string"
 }
 ```
 
-<h3 id="exchange-an-expired-hash-token-for-a-fresh-one.-responses">Responses</h3>
+<h3 id="evaluate-a-list-query,-snapshot-its-result,-and-return-the-snapshot-id.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema                                              |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Hash token renewed                                                                         | [RenewHashTokenReturn](#schemarenewhashtokenreturn) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                                |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                                |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Exchange an expired timestamp (prefetch) token for a fresh one.
-
-<a id="opIdrenew_timestamp_token"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X POST /post/renew-timestamp-token \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json'
-
-```
-
-```http
-POST /post/renew-timestamp-token HTTP/1.1
-
-Content-Type: application/json
-Accept: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "token": "string"
-}';
-const headers = {
-  'Content-Type':'application/json',
-  'Accept':'application/json'
-};
-
-fetch('/post/renew-timestamp-token',
-{
-  method: 'POST',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json',
-  'Accept' => 'application/json'
-}
-
-result = RestClient.post '/post/renew-timestamp-token',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json',
-  'Accept': 'application/json'
-}
-
-r = requests.post('/post/renew-timestamp-token', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('POST','/post/renew-timestamp-token', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/post/renew-timestamp-token");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("POST");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/post/renew-timestamp-token", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`POST /post/renew-timestamp-token`
-
-> Body parameter
-
-```json
-{
-  "token": "string"
-}
-```
-
-<h3 id="exchange-an-expired-timestamp-(prefetch)-token-for-a-fresh-one.-parameters">Parameters</h3>
-
-| Name | In   | Type                                              | Required | Description |
-| ---- | ---- | ------------------------------------------------- | -------- | ----------- |
-| body | body | [RenewTimestampToken](#schemarenewtimestamptoken) | true     | none        |
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "token": "string"
-}
-```
-
-<h3 id="exchange-an-expired-timestamp-(prefetch)-token-for-a-fresh-one.-responses">Responses</h3>
-
-| Status | Meaning                                                          | Description                                                                                | Schema                                                        |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Timestamp token renewed                                                                    | [RenewTimestampTokenReturn](#schemarenewtimestamptokenreturn) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                                          |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                                          |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                  |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Prefetch result                                                                            | [PrefetchReturn](#schemaprefetchreturn) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                    |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                    |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                    |
 
 <aside class="success">
 This operation does not require authentication
@@ -9581,7 +7271,9 @@ This operation does not require authentication
 
 <h1 id="picasu-upload">upload</h1>
 
-## Upload files, optionally into a presigned album, and index them.
+File upload
+
+## Upload media files into an album or the upload folder and index each one.
 
 <a id="opIdupload"></a>
 
@@ -9590,21 +7282,21 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X POST /upload \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: multipart/form-data'
 
 ```
 
 ```http
 POST /upload HTTP/1.1
 
-Content-Type: application/json
+Content-Type: multipart/form-data
 
 ```
 
 ```javascript
-const inputBody = "null";
+const inputBody = "{}";
 const headers = {
-  "Content-Type": "application/json",
+  "Content-Type": "multipart/form-data",
 };
 
 fetch("/upload", {
@@ -9625,7 +7317,7 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'multipart/form-data'
 }
 
 result = RestClient.post '/upload',
@@ -9639,7 +7331,7 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'multipart/form-data'
 }
 
 r = requests.post('/upload', headers = headers)
@@ -9654,7 +7346,7 @@ print(r.json())
 require 'vendor/autoload.php';
 
 $headers = array(
-    'Content-Type' => 'application/json',
+    'Content-Type' => 'multipart/form-data',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -9707,7 +7399,7 @@ import (
 func main() {
 
     headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
+        "Content-Type": []string{"multipart/form-data"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -9723,28 +7415,3047 @@ func main() {
 
 `POST /upload`
 
+With a target album the files land in that album's own directory; without
+one they land in the configured `uploadFolder` below `imagePath`, which
+becomes its own top-level album. Each file is written to its final location
+and indexed before the response returns.
+
+Corner cases: Credentials may be admin or share — a share is accepted when
+it sets `showUpload`, is unexpired, matches `x-share-password` and names
+the same album as `presigned_album_id_opt`. `on_conflict` defaults to
+`rename`, which suffixes a collision `-001`, `-002`, …; `skip` discards that
+part without writing or indexing it, and any other value is a 400. Every
+part is validated before the first file is written, so a rejected name, an
+extension outside the image or video whitelist, or a
+`file`/`lastModified` count mismatch aborts the batch with a 400 and leaves
+nothing behind. The stored extension always comes from the part's
+`Content-Type` rather than the client filename, and a file the indexing
+pipeline cannot decode is removed again and reported as a 400.
+
+Errors: 400 unknown `on_conflict`, unsupported or mismatched file type,
+rejected filename, count mismatch, missing `imagePath`, or an undecodable
+file — 401 missing or invalid admin or share credentials — 405 read-only
+mode — 500 storage failure.
+
 > Body parameter
 
-```json
-null
+```yaml
+{}
 ```
 
-<h3 id="upload-files,-optionally-into-a-presigned-album,-and-index-them.-parameters">Parameters</h3>
+<h3 id="upload-media-files-into-an-album-or-the-upload-folder-and-index-each-one.-parameters">Parameters</h3>
 
 | Name                   | In    | Type    | Required | Description                                                                                                                                                                                                                                                                                                                                                                       |
 | ---------------------- | ----- | ------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | auto_rename            | query | boolean | false    | When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error. |
 | on_conflict            | query | string  | false    | none                                                                                                                                                                                                                                                                                                                                                                              |
 | presigned_album_id_opt | query | string  | false    | none                                                                                                                                                                                                                                                                                                                                                                              |
-| body                   | body  | any     | true     | none                                                                                                                                                                                                                                                                                                                                                                              |
+| body                   | body  | object  | true     | none                                                                                                                                                                                                                                                                                                                                                                              |
 
-<h3 id="upload-files,-optionally-into-a-presigned-album,-and-index-them.-responses">Responses</h3>
+<h3 id="upload-media-files-into-an-album-or-the-upload-folder-and-index-each-one.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Upload successful                                                                          | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Upload successful                                                                          | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+<h1 id="picasu-pages">pages</h1>
+
+SPA HTML page routes served from `router/get/get_page.rs`
+
+## Serve the SPA shell; the client router opens the timeline.
+
+<a id="opIdredirect_to_photo"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /
+
+```
+
+```http
+GET / HTTP/1.1
+
+```
+
+```javascript
+fetch("/", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /`
+
+Returns `index.html` — the embedded asset in a build with
+`embed-frontend`, otherwise `<web_root>/index.html` from the app config —
+the same shell every page route returns. The Vue Router root record
+redirects `/` to `/timeline` in the browser, so no server-side redirect is
+issued here.
+
+<h3 id="serve-the-spa-shell;-the-client-router-opens-the-timeline.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for the albums page.
+
+<a id="opIdalbums"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /albums
+
+```
+
+```http
+GET /albums HTTP/1.1
+
+```
+
+```javascript
+fetch("/albums", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/albums',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/albums')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/albums', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/albums");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/albums", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /albums`
+
+Returns the shared `index.html` shell for the `albums` client route. The
+album list itself comes from the albums API route, which reads the album
+index, so this route performs no lookup of its own.
+
+Corner cases: An album URL has a different shape — `/album/<album-id>` —
+and is matched by the rank-11 catch-all, which verifies that the album
+exists before returning the same shell.
+
+<h3 id="serve-the-spa-shell-for-the-albums-page.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for an albums view path resolved by the client.
+
+<a id="opIdalbums_view"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /albums/view/{path}
+
+```
+
+```http
+GET /albums/view/{path} HTTP/1.1
+
+```
+
+```javascript
+fetch("/albums/view/{path}", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/albums/view/{path}',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/albums/view/{path}')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/albums/view/{path}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/albums/view/{path}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/albums/view/{path}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /albums/view/{path}`
+
+Returns `index.html` for `/albums/view/<path..>` at any depth. The
+captured path is bound and discarded; the client router resolves the view
+(`view/:assetId`) from the URL, so the server performs no lookup.
+
+Corner cases: Every path below `/albums/view/` gets the shell, including
+one the client router cannot resolve into an asset id.
+
+<h3 id="serve-the-spa-shell-for-an-albums-view-path-resolved-by-the-client.-parameters">Parameters</h3>
+
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| path | path | string | true     | none        |
+
+<h3 id="serve-the-spa-shell-for-an-albums-view-path-resolved-by-the-client.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for the configuration page.
+
+<a id="opIdconfig"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /config
+
+```
+
+```http
+GET /config HTTP/1.1
+
+```
+
+```javascript
+fetch("/config", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/config',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/config')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/config', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/config");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/config", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /config`
+
+Returns the shared `index.html` shell for the `config` client route. The
+configuration the page shows is fetched separately from `/get/config`; this
+route returns the shell and no configuration data.
+
+<h3 id="serve-the-spa-shell-for-the-configuration-page.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the favicon.
+
+<a id="opIdfavicon"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /favicon.ico
+
+```
+
+```http
+GET /favicon.ico HTTP/1.1
+
+```
+
+```javascript
+fetch("/favicon.ico", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/favicon.ico',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/favicon.ico')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/favicon.ico', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/favicon.ico");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/favicon.ico", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /favicon.ico`
+
+Returns `favicon.ico` from the frontend build — the embedded asset in a
+build with `embed-frontend`, otherwise `<web_root>/favicon.ico` — with the
+content type guessed from the file extension.
+
+Errors: 404 frontend build without the embedded asset — 500 open of
+`<web_root>/favicon.ico` failed.
+
+<h3 id="serve-the-favicon.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description    | Schema |
+| ------ | -------------------------------------------------------------------------- | -------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Favicon file   | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found      | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for the links page.
+
+<a id="opIdlinks"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /links
+
+```
+
+```http
+GET /links HTTP/1.1
+
+```
+
+```javascript
+fetch("/links", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/links',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/links')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/links', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/links");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/links", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /links`
+
+Returns the shared `index.html` shell for the `links` client route. The path
+is fixed and carries no parameters, so this route performs no lookup of its
+own.
+
+<h3 id="serve-the-spa-shell-for-the-links-page.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell where the sign-in page is rendered.
+
+<a id="opIdlogin"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /login
+
+```
+
+```http
+GET /login HTTP/1.1
+
+```
+
+```javascript
+fetch("/login", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/login',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/login')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/login', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/login");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/login", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /login`
+
+Returns `index.html`, the shell every page route returns. The `login`
+client route renders the password prompt, which posts the entered password
+to the authentication API, so this route answers an authenticated session
+with the same shell it gives an anonymous one.
+
+<h3 id="serve-the-spa-shell-where-the-sign-in-page-is-rendered.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Redirect to the sign-in page.
+
+<a id="opIdredirect_to_login"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /redirect-to-login
+
+```
+
+```http
+GET /redirect-to-login HTTP/1.1
+
+```
+
+```javascript
+fetch("/redirect-to-login", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/redirect-to-login',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/redirect-to-login')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/redirect-to-login', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/redirect-to-login");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/redirect-to-login", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /redirect-to-login`
+
+Answers 303 See Other with a `Location: /login` header and an empty body.
+The client that follows the redirect receives the SPA shell from the
+sign-in page route, which renders the password prompt.
+
+<h3 id="redirect-to-the-sign-in-page.-responses">Responses</h3>
+
+| Status | Meaning                                                        | Description        | Schema |
+| ------ | -------------------------------------------------------------- | ------------------ | ------ |
+| 303    | [See Other](https://tools.ietf.org/html/rfc7231#section-6.4.4) | Redirect to /login | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the service worker registration script.
+
+<a id="opIdsregister_sw"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /registerSW.js
+
+```
+
+```http
+GET /registerSW.js HTTP/1.1
+
+```
+
+```javascript
+fetch("/registerSW.js", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/registerSW.js',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/registerSW.js')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/registerSW.js', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/registerSW.js");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/registerSW.js", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /registerSW.js`
+
+Returns `registerSW.js` from the frontend build — the embedded asset in a
+build with `embed-frontend`, otherwise `<web_root>/registerSW.js` — with the
+content type guessed from the `.js` extension. The browser calls it to
+register `/serviceWorker.js`.
+
+Errors: 404 frontend build without the embedded asset — 500 open of
+`<web_root>/registerSW.js` failed.
+
+<h3 id="serve-the-service-worker-registration-script.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                        | Schema |
+| ------ | -------------------------------------------------------------------------- | ---------------------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Service worker registration script | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                          | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                     | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the service worker script.
+
+<a id="opIdservice_worker"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /serviceWorker.js
+
+```
+
+```http
+GET /serviceWorker.js HTTP/1.1
+
+```
+
+```javascript
+fetch("/serviceWorker.js", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/serviceWorker.js',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/serviceWorker.js')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/serviceWorker.js', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/serviceWorker.js");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/serviceWorker.js", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /serviceWorker.js`
+
+Returns `serviceWorker.js` from the frontend build — the embedded asset in a
+build with `embed-frontend`, otherwise `<web_root>/serviceWorker.js` — with
+the content type guessed from the `.js` extension. The script the browser
+executes for this origin installs a `fetch` listener.
+
+Errors: 404 frontend build without the embedded asset — 500 open of
+`<web_root>/serviceWorker.js` failed.
+
+<h3 id="serve-the-service-worker-script.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description           | Schema |
+| ------ | -------------------------------------------------------------------------- | --------------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Service worker script | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error        | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for the settings path.
+
+<a id="opIdsetting"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /setting
+
+```
+
+```http
+GET /setting HTTP/1.1
+
+```
+
+```javascript
+fetch("/setting", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/setting',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/setting')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/setting', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/setting");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/setting", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /setting`
+
+Returns the same `index.html` as the other page routes, from the embedded
+asset or from `<web_root>/index.html`.
+
+Corner cases: The client route table has no `/setting` record, so the shell
+loads and the client has no view to render for that path.
+
+<h3 id="serve-the-spa-shell-for-the-settings-path.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for a share path.
+
+<a id="opIdshare"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /share/{path}
+
+```
+
+```http
+GET /share/{path} HTTP/1.1
+
+```
+
+```javascript
+fetch("/share/{path}", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/share/{path}',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/share/{path}')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/share/{path}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/share/{path}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/share/{path}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /share/{path}`
+
+Returns `index.html` for `/share/<path..>` at any depth. The captured path is
+bound and discarded; the client route splits `<albumId>-<shareId>` out of the
+URL and resolves the pair through the share API, so the server performs no
+lookup.
+
+Corner cases: Every path below `/share/` gets the shell, including one the
+client router cannot split into an album and share id.
+
+<h3 id="serve-the-spa-shell-for-a-share-path.-parameters">Parameters</h3>
+
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| path | path | string | true     | none        |
+
+<h3 id="serve-the-spa-shell-for-a-share-path.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for the tags page.
+
+<a id="opIdtags"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /tags
+
+```
+
+```http
+GET /tags HTTP/1.1
+
+```
+
+```javascript
+fetch("/tags", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/tags',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/tags')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/tags', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/tags");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/tags", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /tags`
+
+Returns the shared `index.html` shell for the `tags` client route. The tag
+list the page shows comes from the tags API route, so this route performs no
+lookup of its own.
+
+<h3 id="serve-the-spa-shell-for-the-tags-page.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for the timeline page.
+
+<a id="opIdtimeline"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /timeline
+
+```
+
+```http
+GET /timeline HTTP/1.1
+
+```
+
+```javascript
+fetch("/timeline", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/timeline',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/timeline')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/timeline', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/timeline");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/timeline", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /timeline`
+
+Returns `index.html` for the `timeline` client route, the shell every page
+route returns. The timeline's rows, albums and scrollbar come from the
+separate `/get/...` API routes that read the metadata database, so this
+route performs no lookup of its own.
+
+<h3 id="serve-the-spa-shell-for-the-timeline-page.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for a timeline view path resolved by the client.
+
+<a id="opIdtimeline_view"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /timeline/view/{path}
+
+```
+
+```http
+GET /timeline/view/{path} HTTP/1.1
+
+```
+
+```javascript
+fetch("/timeline/view/{path}", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/timeline/view/{path}',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/timeline/view/{path}')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/timeline/view/{path}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/timeline/view/{path}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/timeline/view/{path}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /timeline/view/{path}`
+
+Returns `index.html` for `/timeline/view/<path..>` at any depth. The
+captured path is bound and discarded: the client router resolves the view
+(`view/:assetId`) from the URL and then reads the asset through the API
+routes, so the server performs no lookup.
+
+Corner cases: Every path below `/timeline/view/` gets the shell, including
+one the client router cannot resolve into an asset id.
+
+<h3 id="serve-the-spa-shell-for-a-timeline-view-path-resolved-by-the-client.-parameters">Parameters</h3>
+
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| path | path | string | true     | none        |
+
+<h3 id="serve-the-spa-shell-for-a-timeline-view-path-resolved-by-the-client.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for the trash page.
+
+<a id="opIdtrashed"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /trashed
+
+```
+
+```http
+GET /trashed HTTP/1.1
+
+```
+
+```javascript
+fetch("/trashed", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/trashed',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/trashed')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/trashed', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/trashed");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/trashed", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /trashed`
+
+Returns the shared `index.html` shell for the `trashed` client route. The
+trashed content the page shows is read through the separate API routes, so
+this route performs no lookup of its own.
+
+<h3 id="serve-the-spa-shell-for-the-trash-page.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for a trash view path resolved by the client.
+
+<a id="opIdtrashed_view"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /trashed/view/{path}
+
+```
+
+```http
+GET /trashed/view/{path} HTTP/1.1
+
+```
+
+```javascript
+fetch("/trashed/view/{path}", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/trashed/view/{path}',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/trashed/view/{path}')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/trashed/view/{path}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/trashed/view/{path}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/trashed/view/{path}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /trashed/view/{path}`
+
+Returns `index.html` for `/trashed/view/<path..>` at any depth. The captured
+path is bound and discarded; the client router resolves the view
+(`view/:assetId`) from the URL, so the server performs no lookup.
+
+Corner cases: Every path below `/trashed/view/` gets the shell, including one
+the client router cannot resolve into an asset id.
+
+<h3 id="serve-the-spa-shell-for-a-trash-view-path-resolved-by-the-client.-parameters">Parameters</h3>
+
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| path | path | string | true     | none        |
+
+<h3 id="serve-the-spa-shell-for-a-trash-view-path-resolved-by-the-client.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Answer the 401 status a rejected sign-in lands on.
+
+<a id="opIdunauthorized"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /unauthorized
+
+```
+
+```http
+GET /unauthorized HTTP/1.1
+
+```
+
+```javascript
+fetch("/unauthorized", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/unauthorized',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/unauthorized')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/unauthorized', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/unauthorized");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/unauthorized", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /unauthorized`
+
+Returns the status alone — no body and no `Location` header — so the
+browser renders its own error page for it.
+
+Corner cases: Every request to this path gets that status; the SPA shell
+is never returned here.
+
+Errors: 401 always returned, whatever the request carries.
+
+<h3 id="answer-the-401-status-a-rejected-sign-in-lands-on.-responses">Responses</h3>
+
+| Status | Meaning                                                         | Description         | Schema |
+| ------ | --------------------------------------------------------------- | ------------------- | ------ |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Unauthorized status | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for the videos page.
+
+<a id="opIdvideos"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /videos
+
+```
+
+```http
+GET /videos HTTP/1.1
+
+```
+
+```javascript
+fetch("/videos", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/videos',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/videos')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/videos', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/videos");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/videos", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /videos`
+
+Returns the shared `index.html` shell for the `videos` client route — the
+embedded asset in a build with `embed-frontend`, otherwise
+`<web_root>/index.html`. The video list itself comes from the separate API
+routes, so this route performs no lookup of its own.
+
+<h3 id="serve-the-spa-shell-for-the-videos-page.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for a videos view path resolved by the client.
+
+<a id="opIdvideos_view"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /videos/view/{path}
+
+```
+
+```http
+GET /videos/view/{path} HTTP/1.1
+
+```
+
+```javascript
+fetch("/videos/view/{path}", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/videos/view/{path}',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/videos/view/{path}')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/videos/view/{path}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/videos/view/{path}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/videos/view/{path}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /videos/view/{path}`
+
+Returns `index.html` for `/videos/view/<path..>` at any depth. The captured
+path is bound and discarded; the client router resolves the view
+(`view/:assetId`) from the URL, so the server performs no lookup.
+
+Corner cases: Every path below `/videos/view/` gets the shell, including one
+the client router cannot resolve into an asset id.
+
+<h3 id="serve-the-spa-shell-for-a-videos-view-path-resolved-by-the-client.-parameters">Parameters</h3>
+
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| path | path | string | true     | none        |
+
+<h3 id="serve-the-spa-shell-for-a-videos-view-path-resolved-by-the-client.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for a one-segment album path, 404 for anything else.
+
+<a id="opIdalbum_page"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /{dynamic_album_id}
+
+```
+
+```http
+GET /{dynamic_album_id} HTTP/1.1
+
+```
+
+```javascript
+fetch("/{dynamic_album_id}", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/{dynamic_album_id}',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/{dynamic_album_id}')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/{dynamic_album_id}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/{dynamic_album_id}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/{dynamic_album_id}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /{dynamic_album_id}`
+
+The one-segment matcher returns `index.html` when the captured segment starts
+with `album-`; the prefix is the only server-side check and no album record
+is read. Any other one-segment top-level path answers 404 with the JSON error
+body the shared error type produces.
+
+Corner cases: Multi-segment paths are left to the rank-11 catch-all. Among the
+one-segment page and asset routes mounted at the same rank, this matcher comes
+first in mount order, so a request for `/videos`, `/favicon.ico`,
+`/registerSW.js` or `/serviceWorker.js` is answered here and 404s.
+
+Errors: 404 captured segment does not start with `album-`.
+
+<h3 id="serve-the-spa-shell-for-a-one-segment-album-path,-404-for-anything-else.-parameters">Parameters</h3>
+
+| Name             | In   | Type   | Required | Description |
+| ---------------- | ---- | ------ | -------- | ----------- |
+| dynamic_album_id | path | string | true     | none        |
+
+<h3 id="serve-the-spa-shell-for-a-one-segment-album-path,-404-for-anything-else.-responses">Responses</h3>
+
+| Status | Meaning                                                        | Description     | Schema |
+| ------ | -------------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)        | SPA page (HTML) | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4) | Not found       | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Serve the SPA shell for unmatched paths, verifying album paths first.
+
+<a id="opIdspa_fallback"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /{path}
+
+```
+
+```http
+GET /{path} HTTP/1.1
+
+```
+
+```javascript
+fetch("/{path}", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/{path}',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/{path}')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/{path}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/{path}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/{path}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /{path}`
+
+Returns `index.html` for every path no other route matches. A path starting
+with `album/` is checked first: the remainder must be an existing album
+record in the metadata database.
+
+Corner cases: Rank 11 puts this route last, so the page routes and the API
+routes take precedence over it. The album check covers the `album/` prefix
+only; any other multi-segment path gets the shell without a database read.
+
+Errors: 404 `/album/<album-id>` names no album record — 500 metadata
+database read, blocking task, or shell file failure.
+
+<h3 id="serve-the-spa-shell-for-unmatched-paths,-verifying-album-paths-first.-parameters">Parameters</h3>
+
+| Name | In   | Type   | Required | Description |
+| ---- | ---- | ------ | -------- | ----------- |
+| path | path | string | true     | none        |
+
+<h3 id="serve-the-spa-shell-for-unmatched-paths,-verifying-album-paths-first.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                            | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | SPA fallback — serves index.html for Vue Router routes | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                              | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                         | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -10267,36 +10978,6 @@ silent about what happened to the selected item.
 | indexArray      | [integer]      | true     | none         | none        |
 | removeTagsArray | [string]       | true     | none         | none        |
 | timestamp       | integer(int64) | true     | none         | none        |
-
-<h2 id="tocS_FileEntry">FileEntry</h2>
-<!-- backwards compatibility -->
-<a id="schemafileentry"></a>
-<a id="schema_FileEntry"></a>
-<a id="tocSfileentry"></a>
-<a id="tocsfileentry"></a>
-
-```json
-{
-  "file": "string",
-  "isTrashed": true,
-  "modified": 0,
-  "scanTime": 0
-}
-```
-
-The asset's file entry: the single source path and its timestamps,
-assembled from the identity `AssetRecord` at composition time. A view
-type for the wire — never stored (the metadata payload holds no path;
-`AssetRecord` owns the identity, including the trash flag).
-
-### Properties
-
-| Name      | Type           | Required | Restrictions | Description                                                                                                                                                                                                                                        |
-| --------- | -------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| file      | string         | true     | none         | none                                                                                                                                                                                                                                               |
-| isTrashed | boolean        | true     | none         | Trash flag for the asset's file entry. The record is visible in the<br>gallery while the path is live and in the trash view while it is<br>trashed; a missing path (`path: None`) matches neither view. A newly<br>discovered path is always live. |
-| modified  | integer(int64) | true     | none         | none                                                                                                                                                                                                                                               |
-| scanTime  | integer(int64) | true     | none         | none                                                                                                                                                                                                                                               |
 
 <h2 id="tocS_FsCompletion">FsCompletion</h2>
 <!-- backwards compatibility -->

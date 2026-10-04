@@ -32,7 +32,21 @@ fn absolutize(p: &Path) -> PathBuf {
     }
 }
 
-/// Complete a filesystem path for the path-completion field.
+/// Complete a filesystem directory path for the path-completion field.
+///
+/// An absent or blank `path` returns the platform roots plus the
+/// subdirectories of the server's working directory with `is_default: true`. A
+/// trailing separator lists that directory, a bare name is matched against the
+/// roots and the working directory, and a path with a parent lists the parent
+/// filtered by its last segment.
+///
+/// Corner cases: only directories are returned, as absolute paths, sorted
+/// case-insensitively and truncated to 50 entries. A non-empty prefix that
+/// matches nothing is a 404, while a prefix-less listing that finds nothing
+/// answers 200 with no children.
+///
+/// Errors: 400 invalid input — 401 no valid admin credentials — 404 the prefix
+/// matched no directory — 500 the directory could not be read.
 #[utoipa::path(
         tag = "config",
         responses(

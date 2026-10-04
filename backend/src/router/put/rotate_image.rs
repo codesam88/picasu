@@ -24,7 +24,21 @@ pub struct RotateImageRequest {
     pub asset_id: String,
 }
 
-/// Rotate an image and regenerate what depends on its orientation.
+/// Rotate an image 90° counter-clockwise and rebuild its derivatives.
+///
+/// The compressed JPEG is loaded, rotated and written back, `width` and
+/// `height` are swapped, and `thumbhash` and `phash` are recomputed. Each
+/// parent album's `updatedAt` is bumped before the records are flushed.
+///
+/// Corner cases: only the compressed JPEG is re-rendered — the original file,
+/// its EXIF orientation and the `.albuminfo.xmp` sidecar are left as they were,
+/// so the rotation is a display-level transform that accumulates across
+/// repeated calls.
+///
+/// Errors: 400 an `asset_id` longer than 64 bytes, or an album or video — 401
+/// missing or invalid admin credentials; share tokens are not accepted — 404
+/// `asset_id` names no asset record — 405 read-only mode — 500 decode,
+/// thumbnail write, or storage failure.
 #[utoipa::path(
         tag = "assets",
         request_body = RotateImageRequest,

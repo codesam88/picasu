@@ -675,17 +675,20 @@ fn p1_a_returned_success_status_is_accepted() {
     assert_eq!(render(&findings), "");
 }
 
-/// P1 over the return type rather than a body constant: `Redirect` answers 302.
+/// P1 over the return type rather than a body constant: a `Redirect` answers
+/// its constructor's status — `Redirect::to` is 303 See Other, `Redirect::found`
+/// is 302. The second handler pins the constructor table's 302 entry.
 #[test]
 fn p1_a_redirect_declared_as_200_fails() {
     let findings = check_source("p1_redirect_missing.rs", REDIRECT_MISSING);
 
     assert_eq!(
         render(&findings),
-        "p1_redirect_missing.rs:7: success_status: redirect_to_login can answer 302, but \
-         responses() does not declare it\np1_redirect_missing.rs:7: declared_status: \
+        "p1_redirect_missing.rs:9: success_status: redirect_to_login can answer 303, but \
+         responses() does not declare it\np1_redirect_missing.rs:9: declared_status: \
          responses() declares 200, but nothing this handler can answer is 200",
-        "a Redirect's success is 302, and 200 is not among the handler's answers"
+        "Redirect::to is 303, not 302; the Redirect::found handler declaring 302 is \
+         silent"
     );
 }
 

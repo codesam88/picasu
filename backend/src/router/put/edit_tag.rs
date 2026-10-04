@@ -27,7 +27,22 @@ pub struct EditTagsData {
     timestamp: i64,
 }
 
-/// Add and remove tags on the listed assets, and return the resulting tag list.
+/// Add and remove tags on the listed assets and return the resulting tag list.
+///
+/// `indexArray` addresses the assets in the snapshot named by `timestamp`, and
+/// additions and removals are applied per asset in list order after
+/// NFC-normalization and filtering to valid XML characters. Each asset's
+/// `.albuminfo.xmp` sidecar is rewritten on a best-effort basis, and the
+/// returned list counts every tag over the whole metadata table, not only the
+/// edited assets.
+///
+/// Corner cases: a tag that sanitizes to empty is skipped on add but still
+/// serves as the removal key, and an index whose asset record no longer exists
+/// is skipped and still answers 200.
+///
+/// Errors: 400 malformed body — 401 missing or invalid admin credentials; share
+/// tokens are not accepted — 405 read-only mode — 500 unknown snapshot,
+/// out-of-range index, or storage failure.
 #[utoipa::path(
         tag = "assets",
         request_body = EditTagsData,

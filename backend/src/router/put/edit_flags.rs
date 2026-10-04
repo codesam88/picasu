@@ -25,7 +25,21 @@ pub struct EditFlagsData {
     is_trashed: Option<bool>,
 }
 
-/// Move assets to the trash, or restore them.
+/// Set or clear the trash flag on the listed assets.
+///
+/// `indexArray` addresses the assets in the snapshot named by `timestamp`, and
+/// a sent `isTrashed` value lands on each asset's own record; no file on disk
+/// is touched. Every album that lost or regained a member is refreshed in the
+/// background, so its counts may still be catching up when the call returns.
+///
+/// Corner cases: the removed `isFavorite` and `isArchived` keys are still
+/// accepted and ignored rather than rejected, and an absent `isTrashed` leaves
+/// every flag as it was. An index whose asset record no longer exists is
+/// skipped and still answers 200.
+///
+/// Errors: 400 malformed body — 401 missing or invalid admin credentials; share
+/// tokens are not accepted — 405 read-only mode — 500 unknown snapshot,
+/// out-of-range index, or storage failure.
 #[utoipa::path(
         tag = "assets",
         request_body = EditFlagsData,

@@ -25,7 +25,21 @@ pub struct EditRatingData {
     rating: Option<u8>,
 }
 
-/// Rate assets 0–5, or clear the rating with `null`.
+/// Rate the listed assets 0–5, or clear the rating.
+///
+/// `indexArray` addresses the assets in the snapshot named by `timestamp`, and
+/// `rating` carries 0–5 or `null` to clear. Each rating is written to the
+/// asset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and the
+/// in-memory tree is rebuilt before the call returns.
+///
+/// Corner cases: a rating above 5 is rejected before any asset is touched, so
+/// one bad value fails the whole batch. An index whose asset record no longer
+/// exists is skipped and still answers 200, and a failed sidecar write is
+/// logged rather than failing the request.
+///
+/// Errors: 400 `rating` is above 5, or the body cannot be parsed — 401 missing
+/// or invalid admin credentials; share tokens are not accepted — 405 read-only
+/// mode — 500 unknown snapshot, out-of-range index, or storage failure.
 #[utoipa::path(
         tag = "assets",
         request_body = EditRatingData,

@@ -30,7 +30,21 @@ pub struct CreateShare {
     pub exp: i64,
 }
 
-/// Create a share link for an album and return it.
+/// Create a share for an album and return its generated id.
+///
+/// `albumId` must name an existing album row. The returned id is a freshly
+/// generated 64-character lowercase alphanumeric string that becomes the
+/// album's `shareList` key. `exp` is stored verbatim as unix seconds, where
+/// `0` marks a share that never expires; `password`, `showMetadata`,
+/// `showDownload` and `showUpload` are stored as posted and decide what later
+/// requests carrying the share may do.
+///
+/// Corner cases: The id is generated, never supplied by the caller, so a
+/// second share for the same album is a separate entry. Nothing is written
+/// unless the album exists.
+///
+/// Errors: 400 unusable request body — 401 missing or invalid credentials —
+/// 404 `albumId` names no album — 405 read-only mode — 500 storage failure.
 #[utoipa::path(
         tag = "albums",
         request_body = CreateShare,
@@ -38,6 +52,7 @@ pub struct CreateShare {
             (status = 200, description = "Share link created", body = String),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 404, description = "Album not found"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
         )

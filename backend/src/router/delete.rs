@@ -38,7 +38,22 @@ pub struct DeleteList {
 
 type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
 
-/// Delete the listed assets: each file and its sidecar are removed from disk.
+/// Delete the listed assets: files, sidecars and metadata rows are removed.
+///
+/// `assetIds` are resolved by asset ID; each entry's file and `.xmp` sidecar
+/// are removed from disk and its metadata row is dropped. Every album the
+/// deletion touched is refreshed before the response returns.
+///
+/// Corner cases: An empty `assetIds` is a 400. IDs are processed in order, so
+/// a malformed or unresolvable ID aborts the request part-way and files
+/// already removed by earlier entries stay deleted. Deleting an album also
+/// removes every descendant asset, sidecar and directory below it, and a
+/// compressed thumbnail is kept while another asset still references the same
+/// content hash.
+///
+/// Errors: 400 empty `assetIds`, or an ID that exceeds 64 bytes — 401 missing
+/// or invalid credentials — 404 an ID names no asset — 405 read-only mode —
+/// 500 storage failure.
 #[utoipa::path(
         tag = "assets",
         request_body = DeleteList,
@@ -46,6 +61,7 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
             (status = 200, description = "Data deleted"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 404, description = "Asset not found"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
         )

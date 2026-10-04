@@ -1024,13 +1024,14 @@
   "paths": {
     "/": {
       "get": {
+        "description": "Returns `index.html` — the embedded asset in a build with\n`embed-frontend`, otherwise `<web_root>/index.html` from the app config —\nthe same shell every page route returns. The Vue Router root record\nredirects `/` to `/timeline` in the browser, so no server-side redirect is\nissued here.",
         "operationId": "redirect_to_photo",
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA entry point.",
+        "summary": "Serve the SPA shell; the client router opens the timeline.",
         "tags": [
           "pages"
         ]
@@ -1038,13 +1039,14 @@
     },
     "/albums": {
       "get": {
+        "description": "Returns the shared `index.html` shell for the `albums` client route. The\nalbum list itself comes from the albums API route, which reads the album\nindex, so this route performs no lookup of its own.\n\nCorner cases: An album URL has a different shape — `/album/<album-id>` —\nand is matched by the rank-11 catch-all, which verifies that the album\nexists before returning the same shell.",
         "operationId": "albums",
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA albums page.",
+        "summary": "Serve the SPA shell for the albums page.",
         "tags": [
           "pages"
         ]
@@ -1052,6 +1054,7 @@
     },
     "/albums/view/{path}": {
       "get": {
+        "description": "Returns `index.html` for `/albums/view/<path..>` at any depth. The\ncaptured path is bound and discarded; the client router resolves the view\n(`view/:assetId`) from the URL, so the server performs no lookup.\n\nCorner cases: Every path below `/albums/view/` gets the shell, including\none the client router cannot resolve into an asset id.",
         "operationId": "albums_view",
         "parameters": [
           {
@@ -1068,7 +1071,7 @@
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA at an albums view path; the SPA resolves the view.",
+        "summary": "Serve the SPA shell for an albums view path resolved by the client.",
         "tags": [
           "pages"
         ]
@@ -1076,13 +1079,14 @@
     },
     "/config": {
       "get": {
+        "description": "Returns the shared `index.html` shell for the `config` client route. The\nconfiguration the page shows is fetched separately from `/get/config`; this\nroute returns the shell and no configuration data.",
         "operationId": "config",
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA config page.",
+        "summary": "Serve the SPA shell for the configuration page.",
         "tags": [
           "pages"
         ]
@@ -1090,6 +1094,7 @@
     },
     "/delete/delete-data": {
       "delete": {
+        "description": "`assetIds` are resolved by asset ID; each entry's file and `.xmp` sidecar\nare removed from disk and its metadata row is dropped. Every album the\ndeletion touched is refreshed before the response returns.\n\nCorner cases: An empty `assetIds` is a 400. IDs are processed in order, so\na malformed or unresolvable ID aborts the request part-way and files\nalready removed by earlier entries stay deleted. Deleting an album also\nremoves every descendant asset, sidecar and directory below it, and a\ncompressed thumbnail is kept while another asset still references the same\ncontent hash.\n\nErrors: 400 empty `assetIds`, or an ID that exceeds 64 bytes — 401 missing\nor invalid credentials — 404 an ID names no asset — 405 read-only mode —\n500 storage failure.",
         "operationId": "delete_data",
         "requestBody": {
           "content": {
@@ -1111,6 +1116,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "404": {
+            "description": "Asset not found"
+          },
           "405": {
             "description": "Read-only mode"
           },
@@ -1118,7 +1126,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Delete the listed assets: each file and its sidecar are removed from disk.",
+        "summary": "Delete the listed assets: files, sidecars and metadata rows are removed.",
         "tags": [
           "assets"
         ]
@@ -1126,10 +1134,17 @@
     },
     "/favicon.ico": {
       "get": {
+        "description": "Returns `favicon.ico` from the frontend build — the embedded asset in a\nbuild with `embed-frontend`, otherwise `<web_root>/favicon.ico` — with the\ncontent type guessed from the file extension.\n\nErrors: 404 frontend build without the embedded asset — 500 open of\n`<web_root>/favicon.ico` failed.",
         "operationId": "favicon",
         "responses": {
           "200": {
             "description": "Favicon file"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Serve the favicon.",
@@ -1140,6 +1155,7 @@
     },
     "/get/config": {
       "get": {
+        "description": "Returns the values a client needs to drive the other operations: address\nand port, the image library root (`imagePath`), `uploadFolder`,\n`maxUploadSize`, `readOnlyMode`, `disableImg`, `fsNotifyWatcher`,\n`normalizeUploadFilenames`, `validateUploadContent`,\n`useClientTimestampInfo`, plus `hasPassword` and `hasAuthKey`.\n\nCorner cases: secrets are never returned — `hasPassword` and `hasAuthKey`\nonly report whether a password or an auth key is configured. `imagePath` is\nthe absolute library root and serializes as `null` when it is unset.\n\nErrors: 400 half-supplied share credentials or an id that is not an album —\n401 no valid admin or share credentials.",
         "operationId": "get_config_handler",
         "responses": {
           "200": {
@@ -1159,7 +1175,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "summary": "Serve the configuration a client needs; a share token is enough.",
+        "summary": "Serve the client-visible server configuration.",
         "tags": [
           "config"
         ]
@@ -1167,6 +1183,7 @@
     },
     "/get/config/export": {
       "get": {
+        "description": "Returns the complete serialized configuration, including `password` and\n`authKey` in plaintext whenever they are set, so the response has to be\nhandled as a secret. `webRoot` is the only field never serialized.\n\nErrors: 400 invalid input — 401 no valid admin credentials.",
         "operationId": "export_config_handler",
         "responses": {
           "200": {
@@ -1186,7 +1203,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "summary": "Export the whole server configuration as JSON.",
+        "summary": "Export the full server configuration as JSON.",
         "tags": [
           "config"
         ]
@@ -1194,6 +1211,7 @@
     },
     "/get/get-albums": {
       "get": {
+        "description": "Returns one entry per album with `albumId`, `albumName`, the album's\n`shareList` share definitions, `dirPath` and `parentAlbumId`.\n\nCorner cases: `dirPath` is reported relative to the configured `imagePath`\nso clients never handle the absolute library location, falling back to the\nabsolute path for albums outside that root; `parentAlbumId` names the direct\nparent directory album and is `null` for top-level dir albums and all\nmanually created albums.\n\nErrors: 401 no valid admin credentials.",
         "operationId": "get_albums",
         "responses": {
           "200": {
@@ -1213,7 +1231,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "summary": "List the albums the tree knows.",
+        "summary": "List every album the metadata tree knows.",
         "tags": [
           "albums"
         ]
@@ -1221,7 +1239,7 @@
     },
     "/get/get-data": {
       "get": {
-        "description": "Phase 14 lean read path: media rows are built from the snapshot's\n`ReducedData` plus the lean `ASSET_BY_ID` record — no per-row\n`METADATA_TABLE` (payload) read, and no tags/EXIF/description on the\npayload (those are served by `GET /get/metadata/{assetId}`).\nAlbum rows still read `METADATA_TABLE` because tiles need their stored\ntitle/cover/counts, composed with the album's `AssetRecord`.",
+        "description": "Returns the rows in the half-open index range `[start, end)` of the snapshot\nnamed by `timestamp`. Media rows carry identity and timing fields only, so\ntags, EXIF, description and rating come from the single-asset metadata\noperation; album rows additionally carry their stored title, cover and\ncounts, which their tiles render.\n\nCorner cases: `end` is clamped to the snapshot length, and a range that\nstarts past it answers with an empty array rather than an error. Each row's\ntimestamp is the snapshot's own sort date, so a media row keeps its\nEXIF-derived date.\n\nErrors: 400 unknown or expired snapshot id — 401 missing, invalid, or\nmismatched prefetch token — 500 the snapshot or an asset record could not be\nread.",
         "operationId": "get_data",
         "parameters": [
           {
@@ -1284,6 +1302,7 @@
     },
     "/get/get-export": {
       "get": {
+        "description": "Applies no album, share or trash filtering. Streams a JSON array of\n`{key, value}` entries — one per stored metadata row composed with its\nidentity record — served as `application/octet-stream`.\n\nCorner cases: the response starts before iteration, so rows whose identity\nrecord is missing or unparsable are skipped silently and the array may be\nincomplete; a failure to start iterating answers with an `{\"error\":…}` body\ninstead of the array.\n\nErrors: 400 invalid input — 401 no valid admin credentials — 500 the tables\ncould not be opened.",
         "operationId": "get_export",
         "responses": {
           "200": {
@@ -1307,6 +1326,7 @@
     },
     "/get/get-rows": {
       "get": {
+        "description": "`index` addresses a batch of 20 consecutive snapshot entries. The response\nreports the batch's `start` / `end` offsets plus each entry's display width\nand height and nothing else — no asset data — so a virtualized grid can\nreserve space before it fetches the rows themselves.\n\nCorner cases: an `index` beyond the snapshot's last batch is a server-side\nfault rather than an empty row, and the last batch of a snapshot shorter\nthan 20 entries is reported with `end` past the snapshot length.\n\nErrors: 400 unknown or expired snapshot id — 401 missing, invalid, or\nmismatched prefetch token — 500 the snapshot could not be read or the row\nindex is out of bounds.",
         "operationId": "get_rows",
         "parameters": [
           {
@@ -1349,7 +1369,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Serve one row of a snapshot by its index.",
+        "summary": "Serve the display layout of one batched row of a snapshot.",
         "tags": [
           "timeline"
         ]
@@ -1357,6 +1377,7 @@
     },
     "/get/get-scroll-bar": {
       "get": {
+        "description": "Returns one entry per year/month boundary in snapshot order, each naming the\n`index` of the first entry in that bucket, so scroll bar positions map onto\ndates without loading any rows.\n\nErrors: 400 unknown or expired snapshot id — 401 missing, invalid, or\nmismatched prefetch token.",
         "operationId": "get_scroll_bar",
         "parameters": [
           {
@@ -1398,6 +1419,7 @@
     },
     "/get/get-tags": {
       "get": {
+        "description": "Counts every stored tag in the tree together with how many assets carry it,\nso the result covers assets outside the snapshot or share a client happens\nto be viewing.\n\nCorner cases: the counts are accumulated in parallel, so the order of the\nreturned list is unspecified and not stable between calls.\n\nErrors: 400 invalid input — 401 no valid admin credentials.",
         "operationId": "get_tags",
         "responses": {
           "200": {
@@ -1420,7 +1442,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "summary": "List the tags the tree knows.",
+        "summary": "List every tag in the tree with the number of assets carrying it.",
         "tags": [
           "timeline"
         ]
@@ -1428,6 +1450,7 @@
     },
     "/get/index/status": {
       "get": {
+        "description": "The body carries the job's state (`idle`, `running`, `completed`,\n`canceled` or `failed`), the root it walks, the `scanned` / `matched` /\n`processed` / `failed` counters, `startedAt` / `finishedAt` epoch\nmilliseconds and `cancelRequested`, so an album-index run can be polled\nuntil it settles.\n\nCorner cases: before the first run the state is `idle` with zeroed counters\nand no timestamps. Only the album-index job writes this status: a new run\noverwrites it, and single-image indexing never appears here.\n\nErrors: 401 no valid admin credentials.",
         "operationId": "get_album_index_status",
         "responses": {
           "200": {
@@ -1444,7 +1467,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "summary": "Report the state of the running album-indexing job.",
+        "summary": "Report the state of the most recently started album-indexing job.",
         "tags": [
           "index"
         ]
@@ -1452,7 +1475,7 @@
     },
     "/get/metadata/{asset_id}": {
       "get": {
-        "description": "This is the detail-side counterpart of `get-data`: list rows only carry\nlean identity fields (tags / EXIF / description / rating are stripped in\nPhase 14), so the sidebar, detail view, and edit prefill fetch the full\n`AbstractData` view here on demand. The wire shape is unchanged:\nidentity fields come from the record, metadata fields from the payload.\n\nAuth and share parity follow `get-data`: a `GuardTimestamp` bearer token\n(prefetch token) is required, and when the token resolves to a share with\n`show_metadata: false` the metadata fields are cleared before responding so\na share that hides metadata cannot leak it through this route.",
+        "description": "List rows carry only lean identity fields, so the detail view, sidebar and\nedit prefill fetch the complete asset here. The wire shape is unchanged:\nidentity fields come from the asset's identity record, metadata fields from\nits stored payload.\n\nCorner cases: `timestamp` is required and must equal the prefetch token's\n`timestamp` claim. When the token resolves to a share with\n`show_metadata: false`, the metadata fields — including the stored path —\nare cleared before responding, so a share that hides metadata cannot leak it\nhere.\n\nErrors: 400 invalid `asset_id` — 401 missing, invalid, or mismatched\nprefetch token — 404 unknown `asset_id` — 500 the asset record could not be\ncomposed.",
         "operationId": "get_metadata",
         "parameters": [
           {
@@ -1490,7 +1513,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Full metadata detail for a single asset, composed from its identity and its stored metadata payload.",
+        "summary": "Serve the full metadata of a single asset.",
         "tags": [
           "assets"
         ]
@@ -1498,6 +1521,7 @@
     },
     "/get/path-completion": {
       "get": {
+        "description": "An absent or blank `path` returns the platform roots plus the\nsubdirectories of the server's working directory with `is_default: true`. A\ntrailing separator lists that directory, a bare name is matched against the\nroots and the working directory, and a path with a parent lists the parent\nfiltered by its last segment.\n\nCorner cases: only directories are returned, as absolute paths, sorted\ncase-insensitively and truncated to 50 entries. A non-empty prefix that\nmatches nothing is a 404, while a prefix-less listing that finds nothing\nanswers 200 with no children.\n\nErrors: 400 invalid input — 401 no valid admin credentials — 404 the prefix\nmatched no directory — 500 the directory could not be read.",
         "operationId": "get_fs_completion",
         "parameters": [
           {
@@ -1533,7 +1557,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Complete a filesystem path for the path-completion field.",
+        "summary": "Complete a filesystem directory path for the path-completion field.",
         "tags": [
           "config"
         ]
@@ -1541,6 +1565,7 @@
     },
     "/get/prefetch": {
       "post": {
+        "description": "The optional JSON filter body selects the assets to include; results are\ncached by expression, `locate` and tree version, so an identical query\nreuses the snapshot that already exists. The response carries the snapshot\n`timestamp`, the row count, the `locateTo` index, a new prefetch bearer\ntoken valid for 300 seconds, and the resolved share when the query ran for\none. That token and timestamp are what the row, data and scroll bar\noperations require.\n\nCorner cases: the filter body is optional, and a body the server cannot\nparse is treated as absent and selects the whole tree. For a share the\nalbum filter is combined with the supplied expression, and a share that\nhides metadata additionally rewrites the filter so metadata-derived\nconditions (tag, path, camera make or model) can never match. `locate`\nnames the asset whose row index comes back as `locateTo`, which is `null`\nwhen that asset is not in the result.\n\nErrors: 400 half-supplied share credentials or an id that is not an album —\n401 no valid admin or share credentials — 500 the tree could not be read or\nthe snapshot could not be stored.",
         "operationId": "prefetch",
         "parameters": [
           {
@@ -1581,7 +1606,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Evaluate a timeline/list query, keep the result as a snapshot, and return its id.",
+        "summary": "Evaluate a list query, snapshot its result, and return the snapshot id.",
         "tags": [
           "timeline"
         ]
@@ -1589,13 +1614,14 @@
     },
     "/links": {
       "get": {
+        "description": "Returns the shared `index.html` shell for the `links` client route. The path\nis fixed and carries no parameters, so this route performs no lookup of its\nown.",
         "operationId": "links",
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA links page.",
+        "summary": "Serve the SPA shell for the links page.",
         "tags": [
           "pages"
         ]
@@ -1603,13 +1629,14 @@
     },
     "/login": {
       "get": {
+        "description": "Returns `index.html`, the shell every page route returns. The `login`\nclient route renders the password prompt, which posts the entered password\nto the authentication API, so this route answers an authenticated session\nwith the same shell it gives an anonymous one.",
         "operationId": "login",
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA at `/login`; the SPA itself asks for a password.",
+        "summary": "Serve the SPA shell where the sign-in page is rendered.",
         "tags": [
           "pages"
         ]
@@ -1617,6 +1644,7 @@
     },
     "/object/compressed/{file_path}": {
       "get": {
+        "description": "Resolves the requested path under `DATA_HOME/object/compressed` and serves\n`.jpg` in a single response or `.mp4` as a range-capable stream pinned to\n`video/mp4`.\n\nCorner cases: one image-serving token authorizes exactly one file — its\n`hash` claim must equal the id in the last path segment. Any extension other\nthan `.jpg` or `.mp4`, and a path without an extension, are rejected as\ninvalid input.\n\nErrors: 400 unsupported or missing file extension — 401 no valid admin or\nshare credentials, or no image-serving token for this file — 500 the\ncompressed file could not be opened.",
         "operationId": "compressed_file",
         "parameters": [
           {
@@ -1642,7 +1670,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Serve the compressed thumbnail of a hashed asset.",
+        "summary": "Serve the compressed thumbnail or preview of a hashed asset.",
         "tags": [
           "serving"
         ]
@@ -1650,7 +1678,7 @@
     },
     "/object/imported/{file_path}": {
       "get": {
-        "description": "There is no copy of it under `DATA_HOME`; `IMAGE_HOME` is the single,\nauthoritative copy. The route's `<file_path..>` segment is\n`<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via\n`ASSET_BY_ID`.",
+        "description": "There is no copy under `DATA_HOME`: `imagePath` holds the single\nauthoritative copy. The last path segment is `<id>.<ext>`, where `id` is the\nasset ID, and the record for that ID names the location the file is streamed\nfrom.\n\nCorner cases: resolving is by asset ID alone — there is no hash fallback —\nand the image-serving token must both grant original access and name this\nasset in its `asset_id` claim.\n\nErrors: 400 the path carries no usable asset id — 401 no valid admin or\nshare credentials, or no image-serving token granting original access —\n404 unknown asset id — 500 the asset record or the file could not be read.",
         "operationId": "imported_file",
         "parameters": [
           {
@@ -1687,6 +1715,7 @@
     },
     "/post/authenticate": {
       "post": {
+        "description": "The posted password is trimmed and compared against the configured one; a\nmatch returns the signed admin token as a JSON string. Tokens are signed\nwith `authKey`, or with a secret generated once per process when `authKey`\nis unset, so changing `authKey` invalidates every token issued under the\nprevious one.\n\nCorner cases: While no password is configured, sign-in succeeds without\none: every input, including an empty string, is accepted.\n\nErrors: 401 password does not match the configured one.",
         "operationId": "authenticate",
         "requestBody": {
           "content": {
@@ -1713,7 +1742,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "summary": "Sign in with the account password and return a JWT.",
+        "summary": "Sign in with the account password and return a 14-day admin JWT.",
         "tags": [
           "auth"
         ]
@@ -1721,6 +1750,7 @@
     },
     "/post/config/import": {
       "post": {
+        "description": "The body is a complete `AppConfig` rather than a patch. Before writing,\n`imagePath` is trimmed of whitespace and quotes (an empty value becomes\n`null`), `uploadFolder` is trimmed, and an empty `authKey` is stored as\n`null`, moving JWT signing onto the random secret generated once per\nprocess. On success `config.toml` is rewritten, the in-memory configuration\nis replaced and the filesystem watcher reloaded.\n\nCorner cases: The posted configuration is accepted as-is: unlike\n`PUT /put/config` it applies no validation, so an `uploadFolder` that is\nabsolute or contains `..` is stored here. A failed write is a 500 and leaves\nthe running configuration untouched.\n\nErrors: 400 unusable request body — 401 missing or invalid credentials —\n500 storage failure.",
         "operationId": "import_config_handler",
         "requestBody": {
           "content": {
@@ -1754,7 +1784,7 @@
     },
     "/post/create_dir_album": {
       "post": {
-        "description": "Returns the new album's ID.",
+        "description": "`name` is trimmed and must be a single path segment — no separator, no `.`\nor `..`. The directory is created directly under the existing parent\nalbum's own directory, registered as an album, and the parent album is\nrefreshed before the response returns.\n\nCorner cases: The new album's ID is returned as a string. A failure after\nthe directory was created but before the album was registered leaves the\nempty directory behind.\n\nErrors: 400 unusable `name`, or a `parentAlbumId` that names no dir-album —\n401 missing or invalid credentials — 405 read-only mode — 500 the directory\ncould not be created or the album not registered.",
         "operationId": "create_dir_album",
         "requestBody": {
           "content": {
@@ -1790,7 +1820,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Create a new subdirectory under an existing dir-album's directory and register it as a new album.",
+        "summary": "Create a subdirectory under a dir-album and register it as an album.",
         "tags": [
           "albums"
         ]
@@ -1798,6 +1828,7 @@
     },
     "/post/create_share": {
       "post": {
+        "description": "`albumId` must name an existing album row. The returned id is a freshly\ngenerated 64-character lowercase alphanumeric string that becomes the\nalbum's `shareList` key. `exp` is stored verbatim as unix seconds, where\n`0` marks a share that never expires; `password`, `showMetadata`,\n`showDownload` and `showUpload` are stored as posted and decide what later\nrequests carrying the share may do.\n\nCorner cases: The id is generated, never supplied by the caller, so a\nsecond share for the same album is a separate entry. Nothing is written\nunless the album exists.\n\nErrors: 400 unusable request body — 401 missing or invalid credentials —\n404 `albumId` names no album — 405 read-only mode — 500 storage failure.",
         "operationId": "create_share",
         "requestBody": {
           "content": {
@@ -1826,6 +1857,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "404": {
+            "description": "Album not found"
+          },
           "405": {
             "description": "Read-only mode"
           },
@@ -1833,7 +1867,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Create a share link for an album and return it.",
+        "summary": "Create a share for an album and return its generated id.",
         "tags": [
           "albums"
         ]
@@ -1841,7 +1875,7 @@
     },
     "/post/index/album": {
       "post": {
-        "description": "`album` is a path relative to `IMAGE_HOME` — use `\"/\"` for the root. Status\ncan be polled via `GET /get/index/status`.",
+        "description": "`album` is a directory path relative to `IMAGE_HOME`, where `\"/\"` selects\nthe root. The walk is asynchronous: the response returns once the job is\naccepted, and progress — the scanned, matched, processed and failed\ncounters plus the final state — is reported by `GET /get/index/status`.\n\nCorner cases: One album-index job runs at a time, so a request made while\nanother job is running is a 409. The walk does not stop at a file it cannot\nread or decode; it counts the failure and carries on.\n\nErrors: 400 no `imagePath` configured, a path that is missing or not a\ndirectory, or a Picasu internal data directory — 401 missing or invalid\ncredentials — 405 read-only mode — 409 an index job is already running.",
         "operationId": "index_album_handler",
         "requestBody": {
           "content": {
@@ -1865,9 +1899,12 @@
           },
           "405": {
             "description": "Read-only mode"
+          },
+          "409": {
+            "description": "An index job is already running"
           }
         },
-        "summary": "Walk a directory under `IMAGE_HOME` and index all media files in the background.",
+        "summary": "Index every media file under a directory tree in the background.",
         "tags": [
           "index"
         ]
@@ -1875,6 +1912,7 @@
     },
     "/post/index/cancel": {
       "post": {
+        "description": "Stores a cancel flag that the running walk checks as it goes; the response\nreturns as soon as the flag is set, while the job itself keeps walking\nuntil it reaches its next directory entry.\n\nCorner cases: Cancellation is cooperative, not immediate. While the walk\nwinds down the job reports `cancelRequested` with its state still `running`;\nthe state settles as `canceled` only once the walk has actually stopped.\n\nErrors: 400 malformed request — 401 missing or invalid credentials —\n404 no index job is active.",
         "operationId": "cancel_album_index_handler",
         "responses": {
           "200": {
@@ -1885,9 +1923,12 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "No active index job"
           }
         },
-        "summary": "Cancel a running album index job.",
+        "summary": "Request cancellation of the running album index job.",
         "tags": [
           "index"
         ]
@@ -1895,7 +1936,7 @@
     },
     "/post/index/image": {
       "post": {
-        "description": "Runs in the background; returns `202 Accepted` immediately.",
+        "description": "The request returns as soon as the indexing task is spawned, so it reports\nonly that the work was started. `image` is the path below `IMAGE_HOME`,\nand `album` optionally overrides the album the image is filed under.\n\nCorner cases: The task runs detached from the request, so an indexing\nfailure is logged rather than returned and leaves no entry in\n`GET /get/index/status`, which tracks album-index jobs only.\n\nErrors: 400 unusable request body — 401 missing or invalid credentials —\n405 read-only mode.",
         "operationId": "index_image_handler",
         "requestBody": {
           "content": {
@@ -1929,7 +1970,7 @@
     },
     "/post/rebuild": {
       "post": {
-        "description": "Clears `ASSET_BY_PATH`/`ASSET_BY_ID`/`DUPE_INDEX`, walks the image root,\nand repopulates them. Then rewrites `METADATA_TABLE` from the fresh\n`AssetRecord`s (rebuild assigns new `asset_id`s, so stale rows keyed by\nthe old ids must not remain) and waits for an in-memory tree refresh so\nthe response does not race subsequent `prefetch`/`get-data` calls.",
+        "description": "Clears `ASSET_BY_PATH`, `ASSET_BY_ID` and `DUPE_INDEX`, walks the image\nroot and repopulates them, then rewrites `METADATA_TABLE` from the fresh\nrecords. The response carries the rebuild stats and is returned only after\nan in-memory tree refresh, so it does not race a following prefetch or\nget-data call.\n\nCorner cases: Rows are rewritten wholesale rather than merged: the rebuild\nassigns new `asset_id`s, so rows keyed by the previous ids must not remain.\n\nErrors: 400 malformed request — 401 missing or invalid credentials —\n405 read-only mode — 500 `imagePath` unset, or a failure while walking the\nimage root or writing the tables.",
         "operationId": "rebuild_handler",
         "responses": {
           "200": {
@@ -1963,6 +2004,7 @@
     },
     "/post/renew-hash-token": {
       "post": {
+        "description": "The submitted token is decoded with expiration checking disabled, so an\nexpired but correctly signed token is accepted. The returned token keeps\nthe original `hash`, `assetId` and `allowOriginal` claims and expires 300\nseconds after it is issued.\n\nCorner cases: The request must also carry a valid, unexpired prefetch\ntimestamp bearer token, and the `timestamp` claim of the submitted token\nmust match it — renewing only extends the lifetime of the same snapshot.\n\nErrors: 400 unusable request body — 401 unverifiable signature, mismatched\n`timestamp`, or a missing or invalid timestamp bearer token — 500 internal\nfailure.",
         "operationId": "renew_hash_token",
         "requestBody": {
           "content": {
@@ -1995,7 +2037,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Exchange an expired hash token for a fresh one.",
+        "summary": "Exchange an expired image-serving token for a freshly issued one.",
         "tags": [
           "auth"
         ]
@@ -2003,6 +2045,7 @@
     },
     "/post/renew-timestamp-token": {
       "post": {
+        "description": "Accepts share credentials (`x-album-id` + `x-share-id` headers or\n`albumId` + `shareId` query parameters) or an admin JWT cookie. The\nsubmitted token is decoded with expiration checking disabled and reissued\nwith its original snapshot `timestamp` and resolved share intact, expiring\n300 seconds later.\n\nCorner cases: Re-renewing keeps addressing the same snapshot, so only the\nexpiry changes and the underlying data is not re-read.\n\nErrors: 400 only one of the share credential header or query pair given —\n401 missing or invalid credentials, or an unverifiable token signature —\n500 internal failure.",
         "operationId": "renew_timestamp_token",
         "requestBody": {
           "content": {
@@ -2035,7 +2078,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Exchange an expired timestamp (prefetch) token for a fresh one.",
+        "summary": "Exchange an expired prefetch timestamp token for a freshly issued one.",
         "tags": [
           "auth"
         ]
@@ -2043,7 +2086,7 @@
     },
     "/put/assign_album": {
       "put": {
-        "description": "The directory is resolved from the asset's physical path; the stored path and\nthe album membership are updated and the conflict outcome is reported. Returns\n400 if the file is missing at the asset's path (stale record — re-index first)\nor the destination album is a manual album.",
+        "description": "`assetId` addresses the asset record and `albumId` the destination album,\nwhose directory is resolved from the album directory cache. Only the file at\nthe asset's own path moves, never hash-matched duplicates: the stored path\nand album membership are rewritten to match, an album moves as its whole\ndirectory tree with every descendant record's path rewritten, and a `.xmp`\nsidecar rides along with the file. The destination album's stats are\nrefreshed and the query-cache version bumped before the response returns, so\nthe next prefetch already reflects the move.\n\nCorner cases: `onConflict` is required and has no default — `skip` leaves an\nexisting destination untouched and reports `skipped`, `rename` lands under a\nsuffixed name and reports `renamedFrom`, a plain move reports `moved`. An\nasset already sitting in the destination directory reports `moved` without\nanything being rewritten, and an album moved into itself or into one of its\nown sub-albums is rejected. Compressed thumbnails and videos are keyed by\ncontent hash, not by path, so no derivative moves or is invalidated.\n\nErrors: 400 unknown asset or album id, a source path or album directory that\nno longer exists, or a destination album that has no directory — 401 missing\nor invalid admin credentials; share tokens are not accepted — 405 read-only\nmode — 500 storage failure.",
         "operationId": "assign_album",
         "requestBody": {
           "content": {
@@ -2079,7 +2122,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Move the asset identified by `asset_id` into the album's directory on disk.",
+        "summary": "Move one asset, or one album directory, into another album.",
         "tags": [
           "albums"
         ]
@@ -2087,6 +2130,7 @@
     },
     "/put/config": {
       "put": {
+        "description": "Every field is optional and a field absent from the body keeps its current\nvalue. The only validation is on `uploadFolder`, which must be a relative\npath free of `..` components; on success `config.toml` is rewritten, the\nin-memory configuration is replaced and the filesystem watcher is reloaded.\n\nCorner cases: `authKey` is trimmed, and clearing or replacing it moves JWT\nsigning onto a new key, invalidating every token issued under the previous\none. `uploadFolder` and `maxUploadSize` take an empty string to reset to\ntheir defaults, `uploads` and `100MiB`. `address` and `port` are stored but\nthe listener is not rebound, so they take effect only after a restart.\n\nErrors: 400 `uploadFolder` is absolute or contains `..`, or the body cannot\nbe parsed — 401 missing or invalid admin credentials; share tokens are not\naccepted — 405 read-only mode — 500 config write failure.",
         "operationId": "update_config_handler",
         "requestBody": {
           "content": {
@@ -2115,7 +2159,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Update the server configuration with the posted fields.",
+        "summary": "Patch the server configuration with the posted fields.",
         "tags": [
           "config"
         ]
@@ -2123,6 +2167,7 @@
     },
     "/put/config/password": {
       "put": {
+        "description": "`oldPassword` is compared verbatim against the stored password, and\n`password` supplies the new one, which is trimmed before it is stored. Only\nthe password moves — `authKey` is untouched — so tokens already signed with\nit stay valid across the change.\n\nCorner cases: an omitted or blank `password` clears the password, after\nwhich any input to the sign-in operation is accepted. Because `oldPassword`\nis compared verbatim against the stored value, it must be omitted rather\nthan sent empty while no password is set.\n\nErrors: 400 `oldPassword` does not match the stored password, or the body\ncannot be parsed — 401 missing or invalid admin credentials; share tokens\nare not accepted — 405 read-only mode — 500 config write failure.",
         "operationId": "update_password_handler",
         "requestBody": {
           "content": {
@@ -2151,7 +2196,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Change the account password.",
+        "summary": "Change or clear the account password.",
         "tags": [
           "config"
         ]
@@ -2159,6 +2204,7 @@
     },
     "/put/delete_share": {
       "put": {
+        "description": "`albumId` names the album and `shareId` the entry to drop from its share\nlist. The removal is committed to the album's stored share list, no\n`.albuminfo.xmp` sidecar is written, and the in-memory tree is rebuilt\nbefore the call returns.\n\nCorner cases: removing a share that is not present, or addressing an\n`albumId` that holds no album row, is a silent no-op that still answers 200\nrather than a 404.\n\nErrors: 400 malformed body — 401 missing or invalid admin credentials; share\ntokens are not accepted — 405 read-only mode — 500 storage failure.",
         "operationId": "delete_share",
         "requestBody": {
           "content": {
@@ -2187,7 +2233,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Delete one share of an album.",
+        "summary": "Remove one share from an album.",
         "tags": [
           "albums"
         ]
@@ -2195,6 +2241,7 @@
     },
     "/put/edit_flags": {
       "put": {
+        "description": "`indexArray` addresses the assets in the snapshot named by `timestamp`, and\na sent `isTrashed` value lands on each asset's own record; no file on disk\nis touched. Every album that lost or regained a member is refreshed in the\nbackground, so its counts may still be catching up when the call returns.\n\nCorner cases: the removed `isFavorite` and `isArchived` keys are still\naccepted and ignored rather than rejected, and an absent `isTrashed` leaves\nevery flag as it was. An index whose asset record no longer exists is\nskipped and still answers 200.\n\nErrors: 400 malformed body — 401 missing or invalid admin credentials; share\ntokens are not accepted — 405 read-only mode — 500 unknown snapshot,\nout-of-range index, or storage failure.",
         "operationId": "edit_flags",
         "requestBody": {
           "content": {
@@ -2223,7 +2270,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Move assets to the trash, or restore them.",
+        "summary": "Set or clear the trash flag on the listed assets.",
         "tags": [
           "assets"
         ]
@@ -2231,6 +2278,7 @@
     },
     "/put/edit_rating": {
       "put": {
+        "description": "`indexArray` addresses the assets in the snapshot named by `timestamp`, and\n`rating` carries 0–5 or `null` to clear. Each rating is written to the\nasset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and the\nin-memory tree is rebuilt before the call returns.\n\nCorner cases: a rating above 5 is rejected before any asset is touched, so\none bad value fails the whole batch. An index whose asset record no longer\nexists is skipped and still answers 200, and a failed sidecar write is\nlogged rather than failing the request.\n\nErrors: 400 `rating` is above 5, or the body cannot be parsed — 401 missing\nor invalid admin credentials; share tokens are not accepted — 405 read-only\nmode — 500 unknown snapshot, out-of-range index, or storage failure.",
         "operationId": "edit_rating",
         "requestBody": {
           "content": {
@@ -2259,7 +2307,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Rate assets 0–5, or clear the rating with `null`.",
+        "summary": "Rate the listed assets 0–5, or clear the rating.",
         "tags": [
           "assets"
         ]
@@ -2267,6 +2315,7 @@
     },
     "/put/edit_share": {
       "put": {
+        "description": "The submitted `share` object is stored under the key `share.url`, replacing\nany entry already held under that key, so a share is edited by posting a\ncomplete object and every capability and field takes its submitted value\nrather than the existing one. The payload is never checked against the\nalbum, no `.albuminfo.xmp` sidecar is written, and the in-memory tree is\nrebuilt before the call returns.\n\nCorner cases: an `albumId` that holds no album row is a silent no-op that\nstill answers 200.\n\nErrors: 400 malformed body — 401 missing or invalid admin credentials; share\ntokens are not accepted — 405 read-only mode — 500 storage failure.",
         "operationId": "edit_share",
         "requestBody": {
           "content": {
@@ -2295,7 +2344,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Replace the share of an album.",
+        "summary": "Create or replace one of an album's share entries.",
         "tags": [
           "albums"
         ]
@@ -2303,6 +2352,7 @@
     },
     "/put/edit_tag": {
       "put": {
+        "description": "`indexArray` addresses the assets in the snapshot named by `timestamp`, and\nadditions and removals are applied per asset in list order after\nNFC-normalization and filtering to valid XML characters. Each asset's\n`.albuminfo.xmp` sidecar is rewritten on a best-effort basis, and the\nreturned list counts every tag over the whole metadata table, not only the\nedited assets.\n\nCorner cases: a tag that sanitizes to empty is skipped on add but still\nserves as the removal key, and an index whose asset record no longer exists\nis skipped and still answers 200.\n\nErrors: 400 malformed body — 401 missing or invalid admin credentials; share\ntokens are not accepted — 405 read-only mode — 500 unknown snapshot,\nout-of-range index, or storage failure.",
         "operationId": "edit_tag",
         "requestBody": {
           "content": {
@@ -2341,7 +2391,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Add and remove tags on the listed assets, and return the resulting tag list.",
+        "summary": "Add and remove tags on the listed assets and return the resulting tag list.",
         "tags": [
           "assets"
         ]
@@ -2349,6 +2399,7 @@
     },
     "/put/regenerate-thumbnail-with-frame": {
       "put": {
+        "description": "The multipart body carries the `asset_id` and the `frame` file, and the\nframe is written to the asset's compressed-thumbnail path,\n`object/compressed/<first two characters of the asset id>/<asset_id>.jpg`,\noverwriting whatever was there. `thumbhash`, `phash` and `updatedAt` are\nrecomputed and flushed.\n\nCorner cases: the frame is written before the record is looked up, so a\nrequest naming an unknown id still leaves the file behind. The recomputed\nhashes are derived from the original file on disk rather than from the\nframe, and the stored dimensions, EXIF and `.albuminfo.xmp` sidecar are\nleft untouched.\n\nErrors: 400 malformed multipart body or an `asset_id` longer than 64 bytes —\n401 missing or invalid admin credentials; share tokens are not accepted —\n404 `asset_id` names no asset record — 405 read-only mode — 500 frame write,\ndecode, or storage failure.",
         "operationId": "regenerate_thumbnail_with_frame",
         "requestBody": {
           "content": {
@@ -2380,7 +2431,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Regenerate the thumbnail of an image within an uploaded frame.",
+        "summary": "Replace an asset's compressed thumbnail with an uploaded frame.",
         "tags": [
           "assets"
         ]
@@ -2388,6 +2439,7 @@
     },
     "/put/rotate-image": {
       "put": {
+        "description": "The compressed JPEG is loaded, rotated and written back, `width` and\n`height` are swapped, and `thumbhash` and `phash` are recomputed. Each\nparent album's `updatedAt` is bumped before the records are flushed.\n\nCorner cases: only the compressed JPEG is re-rendered — the original file,\nits EXIF orientation and the `.albuminfo.xmp` sidecar are left as they were,\nso the rotation is a display-level transform that accumulates across\nrepeated calls.\n\nErrors: 400 an `asset_id` longer than 64 bytes, or an album or video — 401\nmissing or invalid admin credentials; share tokens are not accepted — 404\n`asset_id` names no asset record — 405 read-only mode — 500 decode,\nthumbnail write, or storage failure.",
         "operationId": "rotate_image",
         "requestBody": {
           "content": {
@@ -2419,7 +2471,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Rotate an image and regenerate what depends on its orientation.",
+        "summary": "Rotate an image 90° counter-clockwise and rebuild its derivatives.",
         "tags": [
           "assets"
         ]
@@ -2427,6 +2479,7 @@
     },
     "/put/set_album_cover": {
       "put": {
+        "description": "`albumId` must resolve to an album record and `coverAssetId` to an existing\nrecord. The album's `cover` becomes `coverAssetId` and its `thumbhash` is\noverwritten with the cover's, and the in-memory tree is rebuilt before the\ncall returns.\n\nCorner cases: the cover's kind is never checked, so any asset can serve as\nthe cover, and no `.albuminfo.xmp` sidecar is written, so the new cover is\nstored in the database only.\n\nErrors: 400 `albumId` names a media record — 401 missing or invalid admin\ncredentials; share tokens are not accepted — 404 `albumId` or `coverAssetId`\nnames no record — 405 read-only mode — 500 storage failure.",
         "operationId": "set_album_cover",
         "requestBody": {
           "content": {
@@ -2458,7 +2511,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Updates the cover image of a specific album.",
+        "summary": "Set the cover image of an album.",
         "tags": [
           "albums"
         ]
@@ -2466,7 +2519,7 @@
     },
     "/put/set_album_title": {
       "put": {
-        "description": "Sets both the raw display `title` and `custom_title` (the value actually\npersisted to `.albuminfo.xmp` by `write_sidecar_for`). Clearing the title\n(`title: None`) falls back `title` to the directory-derived default for\ndir-albums, so the sidecar-freezing bug can't reappear via this path.",
+        "description": "`albumId` names the album to edit and `title` its new display title. Both\nthe raw display `title` and `custom_title`, the value written to the album's\n`.albuminfo.xmp` sidecar, take the submitted value, and the in-memory tree\nis rebuilt before the call returns.\n\nCorner cases: `title: null` clears `custom_title` and falls `title` back to\nthe directory-derived default, so a cleared title leaves no empty string\nbehind.\n\nErrors: 400 malformed body — 401 missing or invalid admin or share\ncredentials — 405 read-only mode — 500 storage failure.",
         "operationId": "set_album_title",
         "requestBody": {
           "content": {
@@ -2495,7 +2548,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Updates the display title of a specific album.",
+        "summary": "Set the display title of an album.",
         "tags": [
           "albums"
         ]
@@ -2503,6 +2556,7 @@
     },
     "/put/set_user_defined_description": {
       "put": {
+        "description": "`index` addresses the asset in the snapshot named by `timestamp`, and\n`description` replaces the field: `null` clears it, other text is\nNFC-normalized and filtered to valid XML characters. The value is written to\nthe asset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and\nthe in-memory tree is rebuilt before the call returns. Share credentials\n(`x-album-id` plus `x-share-id`, or `albumId` plus `shareId`) are accepted\nalongside the admin JWT cookie.\n\nCorner cases: the share's `showMetadata` flag is not consulted, so a share\nwithout metadata rights may still write a description. An index whose asset\nrecord no longer exists is skipped and still answers 200, and a failed\nsidecar write is logged rather than failing the request.\n\nErrors: 400 malformed body — 401 missing or invalid admin or share\ncredentials — 405 read-only mode — 500 unknown snapshot, out-of-range index,\nor storage failure.",
         "operationId": "set_user_defined_description",
         "requestBody": {
           "content": {
@@ -2531,7 +2585,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Set the user-defined description of an asset, or clear it with `null`.",
+        "summary": "Set or clear the user-defined description of an asset.",
         "tags": [
           "albums"
         ]
@@ -2539,13 +2593,14 @@
     },
     "/redirect-to-login": {
       "get": {
+        "description": "Answers 303 See Other with a `Location: /login` header and an empty body.\nThe client that follows the redirect receives the SPA shell from the\nsign-in page route, which renders the password prompt.",
         "operationId": "redirect_to_login",
         "responses": {
-          "302": {
+          "303": {
             "description": "Redirect to /login"
           }
         },
-        "summary": "Redirect to `/login`.",
+        "summary": "Redirect to the sign-in page.",
         "tags": [
           "pages"
         ]
@@ -2553,10 +2608,17 @@
     },
     "/registerSW.js": {
       "get": {
+        "description": "Returns `registerSW.js` from the frontend build — the embedded asset in a\nbuild with `embed-frontend`, otherwise `<web_root>/registerSW.js` — with the\ncontent type guessed from the `.js` extension. The browser calls it to\nregister `/serviceWorker.js`.\n\nErrors: 404 frontend build without the embedded asset — 500 open of\n`<web_root>/registerSW.js` failed.",
         "operationId": "sregister_sw",
         "responses": {
           "200": {
             "description": "Service worker registration script"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Serve the service worker registration script.",
@@ -2567,10 +2629,17 @@
     },
     "/serviceWorker.js": {
       "get": {
+        "description": "Returns `serviceWorker.js` from the frontend build — the embedded asset in a\nbuild with `embed-frontend`, otherwise `<web_root>/serviceWorker.js` — with\nthe content type guessed from the `.js` extension. The script the browser\nexecutes for this origin installs a `fetch` listener.\n\nErrors: 404 frontend build without the embedded asset — 500 open of\n`<web_root>/serviceWorker.js` failed.",
         "operationId": "service_worker",
         "responses": {
           "200": {
             "description": "Service worker script"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
         "summary": "Serve the service worker script.",
@@ -2581,13 +2650,14 @@
     },
     "/setting": {
       "get": {
+        "description": "Returns the same `index.html` as the other page routes, from the embedded\nasset or from `<web_root>/index.html`.\n\nCorner cases: The client route table has no `/setting` record, so the shell\nloads and the client has no view to render for that path.",
         "operationId": "setting",
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA settings page.",
+        "summary": "Serve the SPA shell for the settings path.",
         "tags": [
           "pages"
         ]
@@ -2595,6 +2665,7 @@
     },
     "/share/{path}": {
       "get": {
+        "description": "Returns `index.html` for `/share/<path..>` at any depth. The captured path is\nbound and discarded; the client route splits `<albumId>-<shareId>` out of the\nURL and resolves the pair through the share API, so the server performs no\nlookup.\n\nCorner cases: Every path below `/share/` gets the shell, including one the\nclient router cannot split into an album and share id.",
         "operationId": "share",
         "parameters": [
           {
@@ -2611,7 +2682,7 @@
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA at a share path, which the share token in the URL opens.",
+        "summary": "Serve the SPA shell for a share path.",
         "tags": [
           "pages"
         ]
@@ -2619,13 +2690,14 @@
     },
     "/tags": {
       "get": {
+        "description": "Returns the shared `index.html` shell for the `tags` client route. The tag\nlist the page shows comes from the tags API route, so this route performs no\nlookup of its own.",
         "operationId": "tags",
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA tags page.",
+        "summary": "Serve the SPA shell for the tags page.",
         "tags": [
           "pages"
         ]
@@ -2633,13 +2705,14 @@
     },
     "/timeline": {
       "get": {
+        "description": "Returns `index.html` for the `timeline` client route, the shell every page\nroute returns. The timeline's rows, albums and scrollbar come from the\nseparate `/get/...` API routes that read the metadata database, so this\nroute performs no lookup of its own.",
         "operationId": "timeline",
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA timeline page.",
+        "summary": "Serve the SPA shell for the timeline page.",
         "tags": [
           "pages"
         ]
@@ -2647,6 +2720,7 @@
     },
     "/timeline/view/{path}": {
       "get": {
+        "description": "Returns `index.html` for `/timeline/view/<path..>` at any depth. The\ncaptured path is bound and discarded: the client router resolves the view\n(`view/:assetId`) from the URL and then reads the asset through the API\nroutes, so the server performs no lookup.\n\nCorner cases: Every path below `/timeline/view/` gets the shell, including\none the client router cannot resolve into an asset id.",
         "operationId": "timeline_view",
         "parameters": [
           {
@@ -2663,7 +2737,7 @@
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA at a timeline view path; the SPA resolves the view.",
+        "summary": "Serve the SPA shell for a timeline view path resolved by the client.",
         "tags": [
           "pages"
         ]
@@ -2671,13 +2745,14 @@
     },
     "/trashed": {
       "get": {
+        "description": "Returns the shared `index.html` shell for the `trashed` client route. The\ntrashed content the page shows is read through the separate API routes, so\nthis route performs no lookup of its own.",
         "operationId": "trashed",
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA trash page.",
+        "summary": "Serve the SPA shell for the trash page.",
         "tags": [
           "pages"
         ]
@@ -2685,6 +2760,7 @@
     },
     "/trashed/view/{path}": {
       "get": {
+        "description": "Returns `index.html` for `/trashed/view/<path..>` at any depth. The captured\npath is bound and discarded; the client router resolves the view\n(`view/:assetId`) from the URL, so the server performs no lookup.\n\nCorner cases: Every path below `/trashed/view/` gets the shell, including one\nthe client router cannot resolve into an asset id.",
         "operationId": "trashed_view",
         "parameters": [
           {
@@ -2701,7 +2777,7 @@
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA at a trash view path; the SPA resolves the view.",
+        "summary": "Serve the SPA shell for a trash view path resolved by the client.",
         "tags": [
           "pages"
         ]
@@ -2709,13 +2785,14 @@
     },
     "/unauthorized": {
       "get": {
+        "description": "Returns the status alone — no body and no `Location` header — so the\nbrowser renders its own error page for it.\n\nCorner cases: Every request to this path gets that status; the SPA shell\nis never returned here.\n\nErrors: 401 always returned, whatever the request carries.",
         "operationId": "unauthorized",
         "responses": {
           "401": {
             "description": "Unauthorized status"
           }
         },
-        "summary": "Answer `401` for the SPA path a rejected token ends on.",
+        "summary": "Answer the 401 status a rejected sign-in lands on.",
         "tags": [
           "pages"
         ]
@@ -2723,6 +2800,7 @@
     },
     "/upload": {
       "post": {
+        "description": "With a target album the files land in that album's own directory; without\none they land in the configured `uploadFolder` below `imagePath`, which\nbecomes its own top-level album. Each file is written to its final location\nand indexed before the response returns.\n\nCorner cases: Credentials may be admin or share — a share is accepted when\nit sets `showUpload`, is unexpired, matches `x-share-password` and names\nthe same album as `presigned_album_id_opt`. `on_conflict` defaults to\n`rename`, which suffixes a collision `-001`, `-002`, …; `skip` discards that\npart without writing or indexing it, and any other value is a 400. Every\npart is validated before the first file is written, so a rejected name, an\nextension outside the image or video whitelist, or a\n`file`/`lastModified` count mismatch aborts the batch with a 400 and leaves\nnothing behind. The stored extension always comes from the part's\n`Content-Type` rather than the client filename, and a file the indexing\npipeline cannot decode is removed again and reported as a 400.\n\nErrors: 400 unknown `on_conflict`, unsupported or mismatched file type,\nrejected filename, count mismatch, missing `imagePath`, or an undecodable\nfile — 401 missing or invalid admin or share credentials — 405 read-only\nmode — 500 storage failure.",
         "operationId": "upload",
         "parameters": [
           {
@@ -2778,7 +2856,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Upload files, optionally into a presigned album, and index them.",
+        "summary": "Upload media files into an album or the upload folder and index each one.",
         "tags": [
           "upload"
         ]
@@ -2786,13 +2864,14 @@
     },
     "/videos": {
       "get": {
+        "description": "Returns the shared `index.html` shell for the `videos` client route — the\nembedded asset in a build with `embed-frontend`, otherwise\n`<web_root>/index.html`. The video list itself comes from the separate API\nroutes, so this route performs no lookup of its own.",
         "operationId": "videos",
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA videos page.",
+        "summary": "Serve the SPA shell for the videos page.",
         "tags": [
           "pages"
         ]
@@ -2800,6 +2879,7 @@
     },
     "/videos/view/{path}": {
       "get": {
+        "description": "Returns `index.html` for `/videos/view/<path..>` at any depth. The captured\npath is bound and discarded; the client router resolves the view\n(`view/:assetId`) from the URL, so the server performs no lookup.\n\nCorner cases: Every path below `/videos/view/` gets the shell, including one\nthe client router cannot resolve into an asset id.",
         "operationId": "videos_view",
         "parameters": [
           {
@@ -2816,7 +2896,7 @@
             "description": "SPA page (HTML)"
           }
         },
-        "summary": "Serve the SPA at a videos view path; the SPA resolves the view.",
+        "summary": "Serve the SPA shell for a videos view path resolved by the client.",
         "tags": [
           "pages"
         ]
@@ -2824,6 +2904,7 @@
     },
     "/{dynamic_album_id}": {
       "get": {
+        "description": "The one-segment matcher returns `index.html` when the captured segment starts\nwith `album-`; the prefix is the only server-side check and no album record\nis read. Any other one-segment top-level path answers 404 with the JSON error\nbody the shared error type produces.\n\nCorner cases: Multi-segment paths are left to the rank-11 catch-all. Among the\none-segment page and asset routes mounted at the same rank, this matcher comes\nfirst in mount order, so a request for `/videos`, `/favicon.ico`,\n`/registerSW.js` or `/serviceWorker.js` is answered here and 404s.\n\nErrors: 404 captured segment does not start with `album-`.",
         "operationId": "album_page",
         "parameters": [
           {
@@ -2843,7 +2924,7 @@
             "description": "Not found"
           }
         },
-        "summary": "Serve the SPA for a dynamic album id, and `404` for anything else.",
+        "summary": "Serve the SPA shell for a one-segment album path, 404 for anything else.",
         "tags": [
           "pages"
         ]
@@ -2851,7 +2932,7 @@
     },
     "/{path}": {
       "get": {
-        "description": "Paths matching `/album/<asset-id>` validate the album exists before serving\nthe SPA; invalid album IDs return 404. Rank 11 ensures specific\nroutes (assets at rank 10, API, pages) take priority.",
+        "description": "Returns `index.html` for every path no other route matches. A path starting\nwith `album/` is checked first: the remainder must be an existing album\nrecord in the metadata database.\n\nCorner cases: Rank 11 puts this route last, so the page routes and the API\nroutes take precedence over it. The album check covers the `album/` prefix\nonly; any other multi-segment path gets the shell without a database read.\n\nErrors: 404 `/album/<album-id>` names no album record — 500 metadata\ndatabase read, blocking task, or shell file failure.",
         "operationId": "spa_fallback",
         "parameters": [
           {
@@ -2874,7 +2955,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Catch-all SPA fallback — serves index.html for valid Vue Router routes.",
+        "summary": "Serve the SPA shell for unmatched paths, verifying album paths first.",
         "tags": [
           "pages"
         ]

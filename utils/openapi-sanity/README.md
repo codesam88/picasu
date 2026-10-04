@@ -148,10 +148,12 @@ accepted spellings and a JSON route.
 ### P1 — The declared success statuses are the handler's
 
 The success comes from the return type: a fallible return (a `Result` or one of
-the tree's `type X = Result<…>` aliases) contributes its payload's success;
-`Redirect` is 302; a `Status` return is every `Status::` constant in its body;
-anything else is 200. A success the handler cannot produce is a finding, and a
-`Status` constant outside the Rocket table is an `unreadable_status` finding.
+the tree's `type X = Result<…>` aliases) contributes its payload's success; a
+`Status` return is every `Status::` constant in its body; a `Redirect` return is
+every constructor in its body (`Redirect::to` is 303 See Other, `Redirect::found`
+is 302); anything else is 200. A success the handler cannot produce is a
+finding, and an unknown `Status::` constant or `Redirect::` constructor is an
+`unreadable_status` finding.
 
 **Tests:** `p1_a_success_status_the_handler_never_returns_fails`
 (`p1_status_return_missing.rs`), `p1_a_redirect_declared_as_200_fails`

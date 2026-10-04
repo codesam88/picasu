@@ -80,7 +80,13 @@ async fn serve_file(filename: &str) -> AppResult<FrontendResponse> {
     }
 }
 
-/// Serve the SPA entry point.
+/// Serve the SPA shell; the client router opens the timeline.
+///
+/// Returns `index.html` — the embedded asset in a build with
+/// `embed-frontend`, otherwise `<web_root>/index.html` from the app config —
+/// the same shell every page route returns. The Vue Router root record
+/// redirects `/` to `/timeline` in the browser, so no server-side redirect is
+/// issued here.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -93,7 +99,12 @@ pub async fn redirect_to_photo() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA at `/login`; the SPA itself asks for a password.
+/// Serve the SPA shell where the sign-in page is rendered.
+///
+/// Returns `index.html`, the shell every page route returns. The `login`
+/// client route renders the password prompt, which posts the entered password
+/// to the authentication API, so this route answers an authenticated session
+/// with the same shell it gives an anonymous one.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -106,11 +117,15 @@ pub async fn login() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Redirect to `/login`.
+/// Redirect to the sign-in page.
+///
+/// Answers 303 See Other with a `Location: /login` header and an empty body.
+/// The client that follows the redirect receives the SPA shell from the
+/// sign-in page route, which renders the password prompt.
 #[utoipa::path(
         tag = "pages",
         responses(
-            (status = 302, description = "Redirect to /login"),
+            (status = 303, description = "Redirect to /login"),
         )
     )
 ]
@@ -119,7 +134,15 @@ pub fn redirect_to_login() -> Redirect {
     Redirect::to(uri!("/login"))
 }
 
-/// Answer `401` for the SPA path a rejected token ends on.
+/// Answer the 401 status a rejected sign-in lands on.
+///
+/// Returns the status alone — no body and no `Location` header — so the
+/// browser renders its own error page for it.
+///
+/// Corner cases: Every request to this path gets that status; the SPA shell
+/// is never returned here.
+///
+/// Errors: 401 always returned, whatever the request carries.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -132,7 +155,12 @@ pub fn unauthorized() -> Status {
     Status::Unauthorized
 }
 
-/// Serve the SPA timeline page.
+/// Serve the SPA shell for the timeline page.
+///
+/// Returns `index.html` for the `timeline` client route, the shell every page
+/// route returns. The timeline's rows, albums and scrollbar come from the
+/// separate `/get/...` API routes that read the metadata database, so this
+/// route performs no lookup of its own.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -145,7 +173,15 @@ pub async fn timeline() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA at a timeline view path; the SPA resolves the view.
+/// Serve the SPA shell for a timeline view path resolved by the client.
+///
+/// Returns `index.html` for `/timeline/view/<path..>` at any depth. The
+/// captured path is bound and discarded: the client router resolves the view
+/// (`view/:assetId`) from the URL and then reads the asset through the API
+/// routes, so the server performs no lookup.
+///
+/// Corner cases: Every path below `/timeline/view/` gets the shell, including
+/// one the client router cannot resolve into an asset id.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -159,7 +195,15 @@ pub async fn timeline_view(path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA albums page.
+/// Serve the SPA shell for the albums page.
+///
+/// Returns the shared `index.html` shell for the `albums` client route. The
+/// album list itself comes from the albums API route, which reads the album
+/// index, so this route performs no lookup of its own.
+///
+/// Corner cases: An album URL has a different shape — `/album/<album-id>` —
+/// and is matched by the rank-11 catch-all, which verifies that the album
+/// exists before returning the same shell.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -172,7 +216,14 @@ pub async fn albums() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA at an albums view path; the SPA resolves the view.
+/// Serve the SPA shell for an albums view path resolved by the client.
+///
+/// Returns `index.html` for `/albums/view/<path..>` at any depth. The
+/// captured path is bound and discarded; the client router resolves the view
+/// (`view/:assetId`) from the URL, so the server performs no lookup.
+///
+/// Corner cases: Every path below `/albums/view/` gets the shell, including
+/// one the client router cannot resolve into an asset id.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -186,7 +237,19 @@ pub async fn albums_view(path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA for a dynamic album id, and `404` for anything else.
+/// Serve the SPA shell for a one-segment album path, 404 for anything else.
+///
+/// The one-segment matcher returns `index.html` when the captured segment starts
+/// with `album-`; the prefix is the only server-side check and no album record
+/// is read. Any other one-segment top-level path answers 404 with the JSON error
+/// body the shared error type produces.
+///
+/// Corner cases: Multi-segment paths are left to the rank-11 catch-all. Among the
+/// one-segment page and asset routes mounted at the same rank, this matcher comes
+/// first in mount order, so a request for `/videos`, `/favicon.ico`,
+/// `/registerSW.js` or `/serviceWorker.js` is answered here and 404s.
+///
+/// Errors: 404 captured segment does not start with `album-`.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -204,7 +267,15 @@ pub async fn album_page(dynamic_album_id: String) -> AppResult<FrontendResponse>
     }
 }
 
-/// Serve the SPA at a share path, which the share token in the URL opens.
+/// Serve the SPA shell for a share path.
+///
+/// Returns `index.html` for `/share/<path..>` at any depth. The captured path is
+/// bound and discarded; the client route splits `<albumId>-<shareId>` out of the
+/// URL and resolves the pair through the share API, so the server performs no
+/// lookup.
+///
+/// Corner cases: Every path below `/share/` gets the shell, including one the
+/// client router cannot split into an album and share id.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -218,7 +289,11 @@ pub async fn share(path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA trash page.
+/// Serve the SPA shell for the trash page.
+///
+/// Returns the shared `index.html` shell for the `trashed` client route. The
+/// trashed content the page shows is read through the separate API routes, so
+/// this route performs no lookup of its own.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -231,7 +306,14 @@ pub async fn trashed() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA at a trash view path; the SPA resolves the view.
+/// Serve the SPA shell for a trash view path resolved by the client.
+///
+/// Returns `index.html` for `/trashed/view/<path..>` at any depth. The captured
+/// path is bound and discarded; the client router resolves the view
+/// (`view/:assetId`) from the URL, so the server performs no lookup.
+///
+/// Corner cases: Every path below `/trashed/view/` gets the shell, including one
+/// the client router cannot resolve into an asset id.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -245,7 +327,12 @@ pub async fn trashed_view(path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA videos page.
+/// Serve the SPA shell for the videos page.
+///
+/// Returns the shared `index.html` shell for the `videos` client route — the
+/// embedded asset in a build with `embed-frontend`, otherwise
+/// `<web_root>/index.html`. The video list itself comes from the separate API
+/// routes, so this route performs no lookup of its own.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -258,7 +345,14 @@ pub async fn videos() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA at a videos view path; the SPA resolves the view.
+/// Serve the SPA shell for a videos view path resolved by the client.
+///
+/// Returns `index.html` for `/videos/view/<path..>` at any depth. The captured
+/// path is bound and discarded; the client router resolves the view
+/// (`view/:assetId`) from the URL, so the server performs no lookup.
+///
+/// Corner cases: Every path below `/videos/view/` gets the shell, including one
+/// the client router cannot resolve into an asset id.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -272,7 +366,11 @@ pub async fn videos_view(path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA tags page.
+/// Serve the SPA shell for the tags page.
+///
+/// Returns the shared `index.html` shell for the `tags` client route. The tag
+/// list the page shows comes from the tags API route, so this route performs no
+/// lookup of its own.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -285,7 +383,11 @@ pub async fn tags() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA links page.
+/// Serve the SPA shell for the links page.
+///
+/// Returns the shared `index.html` shell for the `links` client route. The path
+/// is fixed and carries no parameters, so this route performs no lookup of its
+/// own.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -298,7 +400,11 @@ pub async fn links() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA config page.
+/// Serve the SPA shell for the configuration page.
+///
+/// Returns the shared `index.html` shell for the `config` client route. The
+/// configuration the page shows is fetched separately from `/get/config`; this
+/// route returns the shell and no configuration data.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -311,7 +417,13 @@ pub async fn config() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
-/// Serve the SPA settings page.
+/// Serve the SPA shell for the settings path.
+///
+/// Returns the same `index.html` as the other page routes, from the embedded
+/// asset or from `<web_root>/index.html`.
+///
+/// Corner cases: The client route table has no `/setting` record, so the shell
+/// loads and the client has no view to render for that path.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -325,10 +437,19 @@ pub async fn setting() -> AppResult<FrontendResponse> {
 }
 
 /// Serve the favicon.
+///
+/// Returns `favicon.ico` from the frontend build — the embedded asset in a
+/// build with `embed-frontend`, otherwise `<web_root>/favicon.ico` — with the
+/// content type guessed from the file extension.
+///
+/// Errors: 404 frontend build without the embedded asset — 500 open of
+/// `<web_root>/favicon.ico` failed.
 #[utoipa::path(
         tag = "pages",
         responses(
             (status = 200, description = "Favicon file"),
+            (status = 404, description = "Not found"),
+            (status = 500, description = "Internal error"),
         )
     )
 ]
@@ -338,10 +459,20 @@ pub async fn favicon() -> AppResult<FrontendResponse> {
 }
 
 /// Serve the service worker registration script.
+///
+/// Returns `registerSW.js` from the frontend build — the embedded asset in a
+/// build with `embed-frontend`, otherwise `<web_root>/registerSW.js` — with the
+/// content type guessed from the `.js` extension. The browser calls it to
+/// register `/serviceWorker.js`.
+///
+/// Errors: 404 frontend build without the embedded asset — 500 open of
+/// `<web_root>/registerSW.js` failed.
 #[utoipa::path(
         tag = "pages",
         responses(
             (status = 200, description = "Service worker registration script"),
+            (status = 404, description = "Not found"),
+            (status = 500, description = "Internal error"),
         )
     )
 ]
@@ -351,10 +482,20 @@ pub async fn sregister_sw() -> AppResult<FrontendResponse> {
 }
 
 /// Serve the service worker script.
+///
+/// Returns `serviceWorker.js` from the frontend build — the embedded asset in a
+/// build with `embed-frontend`, otherwise `<web_root>/serviceWorker.js` — with
+/// the content type guessed from the `.js` extension. The script the browser
+/// executes for this origin installs a `fetch` listener.
+///
+/// Errors: 404 frontend build without the embedded asset — 500 open of
+/// `<web_root>/serviceWorker.js` failed.
 #[utoipa::path(
         tag = "pages",
         responses(
             (status = 200, description = "Service worker script"),
+            (status = 404, description = "Not found"),
+            (status = 500, description = "Internal error"),
         )
     )
 ]
@@ -372,11 +513,18 @@ pub async fn service_worker() -> AppResult<FrontendResponse> {
         )
     )
 ]
-/// Catch-all SPA fallback — serves index.html for valid Vue Router routes.
+/// Serve the SPA shell for unmatched paths, verifying album paths first.
 ///
-/// Paths matching `/album/<asset-id>` validate the album exists before serving
-/// the SPA; invalid album IDs return 404. Rank 11 ensures specific
-/// routes (assets at rank 10, API, pages) take priority.
+/// Returns `index.html` for every path no other route matches. A path starting
+/// with `album/` is checked first: the remainder must be an existing album
+/// record in the metadata database.
+///
+/// Corner cases: Rank 11 puts this route last, so the page routes and the API
+/// routes take precedence over it. The album check covers the `album/` prefix
+/// only; any other multi-segment path gets the shell without a database read.
+///
+/// Errors: 404 `/album/<album-id>` names no album record — 500 metadata
+/// database read, blocking task, or shell file failure.
 #[get("/<path..>", rank = 11)]
 pub async fn spa_fallback(path: PathBuf) -> AppResult<FrontendResponse> {
     let path_str = path.display().to_string();
