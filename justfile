@@ -294,13 +294,15 @@ precommit:
         exit 0
     fi
 
-    echo "[ precommit ] On '$branch' — format/lint enforced; run tests at your disgression."
+    echo "[ precommit ] On '$branch' — format/lint enforced; targeted checks/tests run for changed areas."
     if echo "$changed" | grep -q '^backend/'; then
         just backend-check
         just openapi-check
     fi
     if echo "$changed" | grep -q '^utils/'; then
         just utils-check
+    fi
+    if echo "$changed" | grep -qE '^(backend|utils)/'; then
         just utils-test
     fi
     if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$|utils/.*\.md$)'; then

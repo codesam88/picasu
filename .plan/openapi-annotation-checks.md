@@ -41,9 +41,10 @@ enforces the rule today, which is the question a reader of this table usually ha
 | A7  | the annotation sets neither `summary` nor `description`                                                                        | enforced       | `utils/openapi-sanity`                                                                |
 | C1  | a `GuardResult<…>` argument has its rejection propagated                                                                       | enforced       | `utils/openapi-sanity`                                                                |
 | C1b | a plain `Guard…` argument needs nothing in the body and is never reported                                                      | enforced       | `utils/openapi-sanity`                                                                |
-| B1  | every declared `params(...)` name corresponds to a route segment or query binding                                              | specified      | section B — not built                                                                 |
-| B2  | a declared parameter's `required` equals `!argument_is_option`                                                                 | specified      | section B — not built                                                                 |
-| B3  | a declared `request_body` schema equals the type the route's `data = "…"` binds                                                | specified      | section B — not built                                                                 |
+| B1  | every declared `params(...)` name corresponds to a route segment or query binding                                              | enforced       | `utils/openapi-sanity` — inline tuple form only, see section B                        |
+| B2  | a declared parameter's `required` equals `!argument_is_option`                                                                 | enforced       | `utils/openapi-sanity` — utoipa has no `required` key, see section B                  |
+| B3  | a declared `request_body` schema equals the type the route's `data = "…"` binds                                                | enforced       | `utils/openapi-sanity` — `Value` declares no constraint, see section B                |
+| B4  | a `Form<…>` binding declares `multipart/form-data`                                                                             | enforced       | `utils/openapi-sanity` — found two form bodies declared as JSON                       |
 | C2  | every `pub fn generate_*_routes()` is mounted in `router/builder.rs`                                                           | specified      | section C — not built                                                                 |
 | M1  | every `POST`/`PUT` route carries `GuardReadOnlyMode`                                                                           | specified      | section M — not built                                                                 |
 | M2  | a route carrying the mode guard documents a `405`                                                                              | specified      | section M — not built                                                                 |
@@ -58,6 +59,7 @@ enforces the rule today, which is the question a reader of this table usually ha
 | P1  | a handler's documented success status matches what it returns (204 for no body)                                                | spike          | spike first: measure the return-type analysis cost and report before writing the rule |
 | V1  | a credential comparison is constant-time                                                                                       | review-only    | no checker can see it — "Review rules" below                                          |
 | Q1  | are these five routes deliberately public?                                                                                     | open question  | the backend, not this plan — the answer makes D7 writable                             |
+| Q2  | should `POST /get/prefetch` publish its filter grammar as a schema, or describe it in prose?                                   | open question  | `.plan/bug-prefetch-request-body.md` — a public-API decision, not a tool rule         |
 
 ### What the deleted checker covered, and what covers it now
 
@@ -265,11 +267,113 @@ same change that decides which way it goes.
 The invariant: **the route wins, and anything the annotation restates must agree
 with it.** This is the residue `rocket_extras` leaves, and it is source-only.
 
-| #   | assertion                                                                                                                         | why nothing else enforces it                                                            |
-| --- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| B1  | every declared `params(...)` name corresponds to a route segment (`<name>`, `in: path`) or query binding (`?<name>`, `in: query`) | utoipa merges declared parameters into the derived document without checking they exist |
-| B2  | a declared parameter's `required` equals `!argument_is_option` for the handler argument of that name                              | same                                                                                    |
-| B3  | a declared `request_body` schema equals the type the route's `data = "..."` binds                                                 | utoipa takes the declared schema and never compares it to the route's binding           |
+| #   | assertion                                                                                                                         | why nothing else enforces it                                                                              |
+| --- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| B1  | every declared `params(...)` name corresponds to a route segment (`<name>`, `in: path`) or query binding (`?<name>`, `in: query`) | utoipa merges declared parameters into the derived document without checking they exist                   |
+| B2  | a declared parameter's `required` equals `!argument_is_option` for the handler argument of that name                              | same                                                                                                      |
+| B3  | a declared `request_body` schema equals the type the route's `data = "..."` binds                                                 | utoipa takes the declared schema and never compares it to the route's binding                             |
+| B4  | a `Form<…>` binding declares `multipart/form-data`                                                                                | utoipa guesses `application/json` for a named non-primitive type, and nothing in the route says otherwise |
+
+B1–B4 are enforced by `utils/openapi-sanity`, beside A and C1. The measures and
+limits below are what they were calibrated against and what they do not read. Both
+were established by measuring the tree before writing either rule.
+
+**Measured 2026-10-03, before a rule was written (no source changed):**
+
+| fact                                                                | count  |
+| ------------------------------------------------------------------- | ------ |
+| annotated handlers in `backend/src/router`                          | 63     |
+| annotations declaring `params(…)`                                   | **1**  |
+| … of those, the inline `("name" = Type, Location, …)` form          | **1**  |
+| … of those, `params(SomeQueryStruct)` or a struct mixed with tuples | **0**  |
+| `#[derive(IntoParams)]` anywhere in `backend/` or `frontend/`       | **0**  |
+| annotations declaring a `request_body`                              | **24** |
+| … declaring `request_body = Type`                                   | **24** |
+| … declaring `inline(…)`, a `[T]` array or a `content = …` group     | **0**  |
+| … where the declared type is exactly what `data = "…"` parses       | **21** |
+| declared parameters read by B1/B2 (pinned)                          | **1**  |
+| declared parameters _not_ readable in the inline form (pinned)      | **0**  |
+| declared request bodies read by B3/B4 (pinned)                      | **24** |
+
+#### B1/B2 read the inline tuple form, and the gap is pinned rather than assumed
+
+utoipa accepts two spellings for a parameter in `params(…)`: the inline tuple
+`("name" = Type, Location, …)` and a struct — `params(SomeQueryStruct)`, or a
+struct mixed with tuples. The struct hides the name, the location and the type
+behind a type the tool would have to resolve across files (find the
+`#[derive(IntoParams)]`, read its fields, apply its `#[param(…)]` overrides). No
+type in this repository derives `IntoParams`, so a resolver would ship untested
+against real code.
+
+**The gap is not left silent.** Every `params(…)` entry the rules cannot read is
+counted in `HandlerSummary::unread_parameters`, and `the_router_tree_is_clean`
+pins that count at **0**. The first struct form to reach an annotation makes the
+pin fail, so the decision — build the resolver, or renegotiate the limit — happens
+in review rather than as a quiet narrowing of B1 and B2.
+`only_the_inline_parameter_form_is_read` pins the parsing itself.
+
+A declared parameter whose location is neither `Path` nor `Query` is outside B1
+too: a header or cookie is named nowhere in a Rocket route attribute, so there is
+no route binding for it to disagree with.
+
+#### B2 compares optionalities, because utoipa has no `required` key
+
+The rule as specified reads "a declared parameter's `required`", and **utoipa 5.5
+has no such key**: `("x" = String, Query, required = true)` is rejected by the
+macro as an unknown attribute (`unexpected attribute: required, expected any of:
+style, explode, allow_reserved, …`) — verified by compiling it against this
+repository's own backend. The documented `required` is derived from the _declared
+type_ alone: `Required::from(!type_tree.is_option())` in `utoipa-gen`'s
+`src/path/parameter.rs`.
+
+So the two optionalities that have to agree are the declared type's and the
+handler argument's, and B2 compares those. That is the comparison the rule
+describes, one step earlier, and it is non-tautological in both directions: a
+declared `Option<T>` on a `T` argument tells a client it may omit a parameter the
+route requires, and a declared `T` on an `Option<T>` argument tells it must send
+one the route does without. The tool's module docs name the utoipa version and the
+source line this rests on, so an upgrade that adds `required` is visible rather
+than silent.
+
+#### B3's two limits, and why each is a statement rather than an exemption
+
+- **`request_body = Value` declares no constraint and is not compared.** It is
+  utoipa's "any body" — both spellings publish an empty schema — so it says
+  nothing a route could contradict. The asymmetry is deliberate: the other
+  direction is still a finding, so `request_body = SomeType` on a route binding
+  `Json<Value>` is reported. `a_body_the_route_parses_is_accepted` pins the limit.
+- **A `Form<…>` binding is not compared.** `UploadForm<'r>` and
+  `RegenerateThumbnailForm<'r>` carry `TempFile<'r>` and a lifetime, so there is
+  no schema type an annotation could name and B3 has nothing to compare. What can
+  be checked about a form body is the media type, which is B4.
+- Types are compared by the **last segment** of their path, which is the name
+  utoipa publishes the schema under, so `crate::model::album::SetAlbumTitle` and
+  `SetAlbumTitle` agree.
+
+`POST /get/prefetch` is what the first limit leaves standing: it declares
+`serde_json::Value` over a `Json<Expression>` binding, so B3 does not fire and the
+document is under-specified rather than wrong. That gap is **Q2**, in
+`.plan/bug-prefetch-request-body.md` — a public-API decision, not a tool rule.
+
+#### B4 found the two media types, and both were fixed in the change that wrote it
+
+The measure pointed the other way from what was expected: B3 was going to be the
+rule with findings, and **B4 is the one that fires**. Two routes bind a `Form<…>`
+and declared `request_body = Value`, which utoipa published as `application/json`
+with an empty schema — a multipart upload endpoint documented as a JSON one. Both
+annotations were fixed in this change:
+
+| site                                                | was                    | now                                                                    |
+| --------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------- |
+| `backend/src/router/post/post_upload.rs:153`        | `request_body = Value` | `request_body(content_type = "multipart/form-data", content = Object)` |
+| `backend/src/router/put/regenerate_thumbnail.rs:33` | `request_body = Value` | `request_body(content_type = "multipart/form-data", content = Object)` |
+
+The document's diff is exactly those two media types — `multipart/form-data` with
+`{"type": "object"}` in place of `application/json` with `{}` — and nothing else in
+`backend/openapi.json` moved. The schema is an untyped object because itemising
+the fields would need a `ToSchema` impl for a struct holding a `TempFile`, which
+is out of scope for this rule; that belongs in whichever change gives the form a
+schema.
 
 ### C — the handler body
 
@@ -529,7 +633,7 @@ in one tool.
 in `e1ec74da` because it does the same job — a source-level gate on these
 annotations — but it is a new tool with a new rule set. None of that crate's rules
 come back: no tag policy, no `AUTH_POLICY` table, no route-set rules, no
-source/spec comparison. Its rule set is this plan, and of it only A1–A7 and the
+source/spec comparison. Its rule set is this plan, and of it A1–A7, B1–B4 and the
 handler-body rules of section C are implemented.
 
 ### Sequencing and acceptance
@@ -538,7 +642,8 @@ handler-body rules of section C are implemented.
    ships with a mutation test that fails when the rule is removed.
 2. **A1–A6** as one module: mechanical, calibrated against the tree, and they
    fail the branch if any of the 63 annotations regresses.
-3. **B1–B3**, then **D1–D6** — the `security(...)`-versus-extension question is
+3. **B1–B4 landed** (see the progress note below), then **D1–D6** — the
+   `security(...)`-versus-extension question is
    settled (see the decision above), so what they wait on is the schemes being
    registered in `ApiDoc` and the scheme-location open decision. **M1, M3, M4**
    land with them — all three are green today — and **M2 lands with the 16
@@ -557,6 +662,49 @@ enforced here and which are review-time, so the boundary is written down rather
 than remembered.
 
 ## Progress
+
+### 2026-10-03 — B1–B4 landed, and B4 found the two media types (uncommitted, for review)
+
+Increment 3 of the sequencing: the four rules of section B, in the same tool and
+the same attribute walk as A and C1. **The measure changed the plan twice**, and
+both changes are recorded above under section B.
+
+- **B2 has no `required` to read.** utoipa 5.5 rejects `required` in a parameter
+  tuple as an unknown attribute (compiled against this backend to confirm), and
+  derives the documented `required` from the declared type. B2 therefore compares
+  the declared type's optionality with the handler argument's — the same
+  comparison the rule describes, one step earlier, and non-tautological in both
+  directions.
+- **B4 exists because the measure found something B1–B3 do not describe.** Two
+  routes bind a `Form<…>` and declared `request_body = Value`, so the document
+  published `application/json` for two multipart upload endpoints. Both
+  annotations now declare `request_body(content_type = "multipart/form-data",
+content = Object)`, and `backend/openapi.json` moved in exactly those two
+  places.
+- **B3's limits are statements, not exemptions.** `request_body = Value` declares
+  no constraint, so it is not compared — while a _named_ type on a route binding
+  `Json<Value>` still is. A `Form<…>` binding is not compared, because a payload
+  carrying `TempFile<'r>` has no schema type to name.
+- **`POST /get/prefetch` is Q2.** Its `serde_json::Value` over a `Json<Expression>`
+  binding is not a B3 finding under the `Value` limit, but the document is
+  under-specified: a generated client cannot know what a valid prefetch body is.
+  It is `.plan/bug-prefetch-request-body.md`, a public-API decision between
+  publishing the filter grammar as a schema and describing it in prose.
+
+**B1 and B2 are silent on the tree, B3 is silent, and B4's two findings were
+fixed in this change.** The run over `backend/src/router` reports no findings in
+63 annotated handlers. Mutation evidence, one rule at a time: removing B1 fails
+`a_parameter_the_route_does_not_bind_fails`, B2 fails
+`a_declared_optionality_the_argument_disagrees_with_fails`, B3 fails
+`a_body_the_route_does_not_parse_fails`, B4 fails
+`a_form_body_without_multipart_fails`, and each rule's conforming counterpart
+stays green throughout.
+
+Three new pins, because a scan that quietly reads less must fail rather than
+report a clean tree: **1** declared parameter read, **0** declared parameters in a
+form B1/B2 cannot read (the pin that forces the `IntoParams` decision), and **24**
+declared request bodies. The count of unread parameters is the one worth keeping
+an eye on: it is zero today and must stay zero until someone builds the resolver.
 
 ### 2026-10-02 — the rule index, the `security` decision, and two calibrations
 

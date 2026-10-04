@@ -150,7 +150,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
 /// Upload files, optionally into a presigned album, and index them.
 #[utoipa::path(
         tag = "upload",
-        request_body = Value,
+        request_body(content_type = "multipart/form-data", content = Object),
         params(
             ("auto_rename" = Option<bool>, Query, description = "When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error."),
         ),
