@@ -32,7 +32,22 @@ pub struct PartialUpdateConfigRequest {
     pub auth_key: Option<String>,
 }
 
-/// Update the server configuration with the posted fields.
+/// Patch the server configuration with the posted fields.
+///
+/// Every field is optional and a field absent from the body keeps its current
+/// value. The only validation is on `uploadFolder`, which must be a relative
+/// path free of `..` components; on success `config.toml` is rewritten, the
+/// in-memory configuration is replaced and the filesystem watcher is reloaded.
+///
+/// Corner cases: `authKey` is trimmed, and clearing or replacing it moves JWT
+/// signing onto a new key, invalidating every token issued under the previous
+/// one. `uploadFolder` and `maxUploadSize` take an empty string to reset to
+/// their defaults, `uploads` and `100MiB`. `address` and `port` are stored but
+/// the listener is not rebound, so they take effect only after a restart.
+///
+/// Errors: 400 `uploadFolder` is absolute or contains `..`, or the body cannot
+/// be parsed — 401 missing or invalid admin credentials; share tokens are not
+/// accepted — 405 read-only mode — 500 config write failure.
 #[utoipa::path(
         tag = "config",
         request_body = PartialUpdateConfigRequest,
@@ -131,7 +146,21 @@ pub struct UpdatePasswordRequest {
     pub old_password: Option<String>,
 }
 
-/// Change the account password.
+/// Change or clear the account password.
+///
+/// `oldPassword` is compared verbatim against the stored password, and
+/// `password` supplies the new one, which is trimmed before it is stored. Only
+/// the password moves — `authKey` is untouched — so tokens already signed with
+/// it stay valid across the change.
+///
+/// Corner cases: an omitted or blank `password` clears the password, after
+/// which any input to the sign-in operation is accepted. Because `oldPassword`
+/// is compared verbatim against the stored value, it must be omitted rather
+/// than sent empty while no password is set.
+///
+/// Errors: 400 `oldPassword` does not match the stored password, or the body
+/// cannot be parsed — 401 missing or invalid admin credentials; share tokens
+/// are not accepted — 405 read-only mode — 500 config write failure.
 #[utoipa::path(
         tag = "config",
         request_body = UpdatePasswordRequest,

@@ -6,7 +6,18 @@ use crate::openapi_components::Unauthorized;
 use crate::router::auth::Claims;
 use crate::router::{AppError, AppResult, ErrorKind};
 
-/// Sign in with the account password and return a JWT.
+/// Sign in with the account password and return a 14-day admin JWT.
+///
+/// The posted password is trimmed and compared against the configured one; a
+/// match returns the signed admin token as a JSON string. Tokens are signed
+/// with `authKey`, or with a secret generated once per process when `authKey`
+/// is unset, so changing `authKey` invalidates every token issued under the
+/// previous one.
+///
+/// Corner cases: While no password is configured, sign-in succeeds without
+/// one: every input, including an empty string, is accepted.
+///
+/// Errors: 401 password does not match the configured one.
 #[utoipa::path(
         tag = "auth",
         request_body = String,

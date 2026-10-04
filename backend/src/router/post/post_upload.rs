@@ -147,7 +147,29 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
     Ok(target_dir)
 }
 
-/// Upload files, optionally into a presigned album, and index them.
+/// Upload media files into an album or the upload folder and index each one.
+///
+/// With a target album the files land in that album's own directory; without
+/// one they land in the configured `uploadFolder` below `imagePath`, which
+/// becomes its own top-level album. Each file is written to its final location
+/// and indexed before the response returns.
+///
+/// Corner cases: Credentials may be admin or share — a share is accepted when
+/// it sets `showUpload`, is unexpired, matches `x-share-password` and names
+/// the same album as `presigned_album_id_opt`. `on_conflict` defaults to
+/// `rename`, which suffixes a collision `-001`, `-002`, …; `skip` discards that
+/// part without writing or indexing it, and any other value is a 400. Every
+/// part is validated before the first file is written, so a rejected name, an
+/// extension outside the image or video whitelist, or a
+/// `file`/`lastModified` count mismatch aborts the batch with a 400 and leaves
+/// nothing behind. The stored extension always comes from the part's
+/// `Content-Type` rather than the client filename, and a file the indexing
+/// pipeline cannot decode is removed again and reported as a 400.
+///
+/// Errors: 400 unknown `on_conflict`, unsupported or mismatched file type,
+/// rejected filename, count mismatch, missing `imagePath`, or an undecodable
+/// file — 401 missing or invalid admin or share credentials — 405 read-only
+/// mode — 500 storage failure.
 #[utoipa::path(
         tag = "upload",
         request_body(content_type = "multipart/form-data", content = Object),

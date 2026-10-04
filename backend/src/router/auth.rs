@@ -610,7 +610,20 @@ pub struct RenewHashTokenReturn {
     pub token: String,
 }
 
-/// Exchange an expired hash token for a fresh one.
+/// Exchange an expired image-serving token for a freshly issued one.
+///
+/// The submitted token is decoded with expiration checking disabled, so an
+/// expired but correctly signed token is accepted. The returned token keeps
+/// the original `hash`, `assetId` and `allowOriginal` claims and expires 300
+/// seconds after it is issued.
+///
+/// Corner cases: The request must also carry a valid, unexpired prefetch
+/// timestamp bearer token, and the `timestamp` claim of the submitted token
+/// must match it — renewing only extends the lifetime of the same snapshot.
+///
+/// Errors: 400 unusable request body — 401 unverifiable signature, mismatched
+/// `timestamp`, or a missing or invalid timestamp bearer token — 500 internal
+/// failure.
 #[utoipa::path(
         tag = "auth",
         request_body = RenewHashToken,
@@ -888,7 +901,20 @@ pub struct RenewTimestampTokenReturn {
     pub token: String,
 }
 
-/// Exchange an expired timestamp (prefetch) token for a fresh one.
+/// Exchange an expired prefetch timestamp token for a freshly issued one.
+///
+/// Accepts share credentials (`x-album-id` + `x-share-id` headers or
+/// `albumId` + `shareId` query parameters) or an admin JWT cookie. The
+/// submitted token is decoded with expiration checking disabled and reissued
+/// with its original snapshot `timestamp` and resolved share intact, expiring
+/// 300 seconds later.
+///
+/// Corner cases: Re-renewing keeps addressing the same snapshot, so only the
+/// expiry changes and the underlying data is not re-read.
+///
+/// Errors: 400 only one of the share credential header or query pair given —
+/// 401 missing or invalid credentials, or an unverifiable token signature —
+/// 500 internal failure.
 #[utoipa::path(
         tag = "auth",
         request_body = RenewTimestampToken,

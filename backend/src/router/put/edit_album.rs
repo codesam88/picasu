@@ -94,7 +94,20 @@ pub struct SetAlbumCover {
     pub cover_asset_id: ArrayString<64>,
 }
 
-/// Updates the cover image of a specific album.
+/// Set the cover image of an album.
+///
+/// `albumId` must resolve to an album record and `coverAssetId` to an existing
+/// record. The album's `cover` becomes `coverAssetId` and its `thumbhash` is
+/// overwritten with the cover's, and the in-memory tree is rebuilt before the
+/// call returns.
+///
+/// Corner cases: the cover's kind is never checked, so any asset can serve as
+/// the cover, and no `.albuminfo.xmp` sidecar is written, so the new cover is
+/// stored in the database only.
+///
+/// Errors: 400 `albumId` names a media record — 401 missing or invalid admin
+/// credentials; share tokens are not accepted — 404 `albumId` or `coverAssetId`
+/// names no record — 405 read-only mode — 500 storage failure.
 #[utoipa::path(
         tag = "albums",
         request_body = SetAlbumCover,
@@ -201,12 +214,19 @@ pub struct SetAlbumTitle {
     pub title: Option<String>,
 }
 
-/// Updates the display title of a specific album.
+/// Set the display title of an album.
 ///
-/// Sets both the raw display `title` and `custom_title` (the value actually
-/// persisted to `.albuminfo.xmp` by `write_sidecar_for`). Clearing the title
-/// (`title: None`) falls back `title` to the directory-derived default for
-/// dir-albums, so the sidecar-freezing bug can't reappear via this path.
+/// `albumId` names the album to edit and `title` its new display title. Both
+/// the raw display `title` and `custom_title`, the value written to the album's
+/// `.albuminfo.xmp` sidecar, take the submitted value, and the in-memory tree
+/// is rebuilt before the call returns.
+///
+/// Corner cases: `title: null` clears `custom_title` and falls `title` back to
+/// the directory-derived default, so a cleared title leaves no empty string
+/// behind.
+///
+/// Errors: 400 malformed body — 401 missing or invalid admin or share
+/// credentials — 405 read-only mode — 500 storage failure.
 #[utoipa::path(
         tag = "albums",
         request_body = SetAlbumTitle,

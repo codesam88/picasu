@@ -185,11 +185,12 @@ exit, so the failing phase's own diagnostics are what the run shows:
    committed document with the ruleset in `.spectral.yaml` (stock
    `spectral:oas` plus baseline overrides, each with a reason). Spectral exits
    nonzero on errors; warnings are reported but do not fail the gate. Current
-   baseline is 0 errors and 53 warnings: 51 `operation-description` (handlers
-   with summary-only doc comments — the description backfill), one
-   `path-params` (the rank-disambiguated `/{dynamic_album_id}` vs `/{path}`
-   SPA fallbacks), and one `operation-success-response` (`GET /unauthorized`
-   answers `401` by design).
+   baseline is 0 errors and 2 warnings, both by design: `path-params` (the
+   rank-disambiguated `/{dynamic_album_id}` vs `/{path}` SPA fallbacks) and
+   `operation-success-response` (`GET /unauthorized` answers `401` by design).
+   The 51 `operation-description` warnings that the phase opened with were
+   cleared by backfilling every handler's doc comment with a second paragraph —
+   the doc comment is where utoipa reads `description` from.
 4. **`openapi-routes-match`** — the route-set phase, `picasu --check-openapi` run
    against a build configured like the shipped one. This is the only check that
    can prove the route-set half of the invariant, and it is pinned to the release
@@ -216,23 +217,23 @@ Three of the four phases compare the document. The source phase checks the
 annotations themselves, because a handful of things about an annotation are wrong
 in a way the document cannot show:
 
-| Rule | Assertion                                                                      | Why the document cannot show it                                                                                               |
-| ---- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| A1   | no `path = "…"` and no bare verb token in the annotation                       | `rocket_extras` derives both from the route attribute, so a restatement is a second copy of a fact nothing compares           |
-| A2   | `responses(…)` is present and has at least one entry                           | utoipa invents no response, so an operation with none documents nothing it can answer                                         |
-| A3   | exactly one `tag = "…"`, from the table in [Tag conventions](#tag-conventions) | a missing or unknown tag files the operation outside every section of the reference                                           |
-| A4   | the handler carries a doc comment                                              | `summary` and `description` are derived from it, so a handler without one is a complete-looking operation with no text        |
-| A5   | the doc comment's first paragraph is one line                                  | it is the `summary`, and the reference renders the `summary` as a heading — a newline inside a heading splits it              |
-| A6   | no `operation_id = "…"`                                                        | utoipa derives it from the function name; a hand-set one is the only name nothing compares                                    |
-| A7   | no `summary = "…"` and no `description = "…"`                                  | utoipa derives both from the doc comment; a hand-set one is the same prose written twice, with nothing comparing them         |
-| B1   | every declared `params(…)` name is a `<segment>` or `?<name>` the route binds  | utoipa merges declared parameters into the derived document without checking that the route reads them                        |
-| B2   | a declared parameter's documented `required` matches the handler argument      | utoipa derives `required` from the declared type and never looks at the argument the route binds                              |
-| B3   | a declared `request_body` names the type the route's `data = "…"` parses       | utoipa takes the declared schema and never compares it to what Rocket parses                                                  |
-| B4   | a `Form<…>` binding declares `multipart/form-data`                             | utoipa guesses `application/json` for a named non-primitive type, so a multipart endpoint was published as a JSON one         |
-| P1   | the declared success statuses are the handler's — return type and body consts  | the document repeats whatever the annotation declares, with nothing that knows `Redirect` is 302 or `Status::Accepted` is 202 |
-| P2   | every literal outcome status of a signature guard is declared                  | guard behavior lives in `FromRequest` impls; the document never sees them                                                     |
-| P3   | every body `ErrorKind::` maps to a declared status                             | the `http_status` mapping lives in `error.rs`; the document is generated from the annotation, not the handler                 |
-| P4   | every declared status is one the handler can answer (universe check)           | a declared code outside the handler's universe is a lie only source can disprove                                              |
+| Rule | Assertion                                                                      | Why the document cannot show it                                                                                                   |
+| ---- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| A1   | no `path = "…"` and no bare verb token in the annotation                       | `rocket_extras` derives both from the route attribute, so a restatement is a second copy of a fact nothing compares               |
+| A2   | `responses(…)` is present and has at least one entry                           | utoipa invents no response, so an operation with none documents nothing it can answer                                             |
+| A3   | exactly one `tag = "…"`, from the table in [Tag conventions](#tag-conventions) | a missing or unknown tag files the operation outside every section of the reference                                               |
+| A4   | the handler carries a doc comment                                              | `summary` and `description` are derived from it, so a handler without one is a complete-looking operation with no text            |
+| A5   | the doc comment's first paragraph is one line                                  | it is the `summary`, and the reference renders the `summary` as a heading — a newline inside a heading splits it                  |
+| A6   | no `operation_id = "…"`                                                        | utoipa derives it from the function name; a hand-set one is the only name nothing compares                                        |
+| A7   | no `summary = "…"` and no `description = "…"`                                  | utoipa derives both from the doc comment; a hand-set one is the same prose written twice, with nothing comparing them             |
+| B1   | every declared `params(…)` name is a `<segment>` or `?<name>` the route binds  | utoipa merges declared parameters into the derived document without checking that the route reads them                            |
+| B2   | a declared parameter's documented `required` matches the handler argument      | utoipa derives `required` from the declared type and never looks at the argument the route binds                                  |
+| B3   | a declared `request_body` names the type the route's `data = "…"` parses       | utoipa takes the declared schema and never compares it to what Rocket parses                                                      |
+| B4   | a `Form<…>` binding declares `multipart/form-data`                             | utoipa guesses `application/json` for a named non-primitive type, so a multipart endpoint was published as a JSON one             |
+| P1   | the declared success statuses are the handler's — return type and body consts  | the document repeats whatever the annotation declares, with nothing that knows `Redirect::to` is 303 or `Status::Accepted` is 202 |
+| P2   | every literal outcome status of a signature guard is declared                  | guard behavior lives in `FromRequest` impls; the document never sees them                                                         |
+| P3   | every body `ErrorKind::` maps to a declared status                             | the `http_status` mapping lives in `error.rs`; the document is generated from the annotation, not the handler                     |
+| P4   | every declared status is one the handler can answer (universe check)           | a declared code outside the handler's universe is a lie only source can disprove                                                  |
 
 `docs/openapi-generator.md` is where the tag vocabulary is written down, and
 `utils/openapi-sanity/src/lib.rs` holds the tool's copy of it (`TAGS`); the two

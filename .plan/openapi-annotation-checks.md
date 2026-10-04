@@ -249,8 +249,10 @@ knowledge as B2's `Option`.
 
 `success_of` reads the return type: a fallible return (a `Result` type or an
 alias of one — aliases are derived from `type X = Result<…>` declarations in the
-scanned sources) contributes the success of its payload; `Redirect` is 302;
-`Status` is every `Status::` constant the body returns; anything else is 200.
+scanned sources) contributes the success of its payload; `Status` is every
+`Status::` constant the body returns; `Redirect` is every constructor the body
+calls (`Redirect::to` is 303, `Redirect::found` is 302, and so on); anything
+else is 200.
 An unreadable status constant is a finding. Declared success is compared for
 equality, so a handler answering 202 that declares 200 both misses 202 (P1) and
 declares an impossible 200 (P4).
@@ -297,6 +299,16 @@ orphaned `FileEntry` stripped in `openapi_public.rs`
 `operation-description` (description backfill), `path-params` on the
 rank-disambiguated SPA fallbacks (warn), `operation-success-response` on the
 intentional always-`401` `GET /unauthorized`.
+
+2026-10-04 (later): the `operation-description` backlog cleared. All 51
+handlers got a real second doc paragraph written from the code (auth models,
+defaults, conflict semantics, side effects); baseline is now 0 errors, 2
+warnings — `path-params` and `operation-success-response`, both by design and
+documented above. The backfill also surfaced a real defect: `redirect_to_login`
+declared `302` while Rocket's `Redirect::to` answers `303` See Other. P1 now
+derives a `Redirect` return's success from the constructor the body calls
+(`to`→303, `found`→302, `temporary`→307, `permanent`→308, `moved`→301)
+instead of assuming 302; the annotation now declares 303.
 
 The first concrete rule is parameter documentation: every published path or query
 parameter needs a description, and a parameter with a closed value set should name

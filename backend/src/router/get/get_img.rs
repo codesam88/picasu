@@ -34,7 +34,20 @@ impl<'r> Responder<'r, 'static> for CompressedFileResponse<'static> {
     }
 }
 
-/// Serve the compressed thumbnail of a hashed asset.
+/// Serve the compressed thumbnail or preview of a hashed asset.
+///
+/// Resolves the requested path under `DATA_HOME/object/compressed` and serves
+/// `.jpg` in a single response or `.mp4` as a range-capable stream pinned to
+/// `video/mp4`.
+///
+/// Corner cases: one image-serving token authorizes exactly one file — its
+/// `hash` claim must equal the id in the last path segment. Any extension other
+/// than `.jpg` or `.mp4`, and a path without an extension, are rejected as
+/// invalid input.
+///
+/// Errors: 400 unsupported or missing file extension — 401 no valid admin or
+/// share credentials, or no image-serving token for this file — 500 the
+/// compressed file could not be opened.
 #[utoipa::path(
         tag = "serving",
         responses(
@@ -103,10 +116,18 @@ pub async fn compressed_file(
 
 /// Serve the original file from its current location under `imagePath`.
 ///
-/// There is no copy of it under `DATA_HOME`; `IMAGE_HOME` is the single,
-/// authoritative copy. The route's `<file_path..>` segment is
-/// `<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via
-/// `ASSET_BY_ID`.
+/// There is no copy under `DATA_HOME`: `imagePath` holds the single
+/// authoritative copy. The last path segment is `<id>.<ext>`, where `id` is the
+/// asset ID, and the record for that ID names the location the file is streamed
+/// from.
+///
+/// Corner cases: resolving is by asset ID alone — there is no hash fallback —
+/// and the image-serving token must both grant original access and name this
+/// asset in its `asset_id` claim.
+///
+/// Errors: 400 the path carries no usable asset id — 401 no valid admin or
+/// share credentials, or no image-serving token granting original access —
+/// 404 unknown asset id — 500 the asset record or the file could not be read.
 #[utoipa::path(
         tag = "serving",
         responses(

@@ -67,12 +67,29 @@ pub enum AssignOutcome {
     Skipped,
 }
 
-/// Move the asset identified by `asset_id` into the album's directory on disk.
+/// Move one asset, or one album directory, into another album.
 ///
-/// The directory is resolved from the asset's physical path; the stored path and
-/// the album membership are updated and the conflict outcome is reported. Returns
-/// 400 if the file is missing at the asset's path (stale record — re-index first)
-/// or the destination album is a manual album.
+/// `assetId` addresses the asset record and `albumId` the destination album,
+/// whose directory is resolved from the album directory cache. Only the file at
+/// the asset's own path moves, never hash-matched duplicates: the stored path
+/// and album membership are rewritten to match, an album moves as its whole
+/// directory tree with every descendant record's path rewritten, and a `.xmp`
+/// sidecar rides along with the file. The destination album's stats are
+/// refreshed and the query-cache version bumped before the response returns, so
+/// the next prefetch already reflects the move.
+///
+/// Corner cases: `onConflict` is required and has no default — `skip` leaves an
+/// existing destination untouched and reports `skipped`, `rename` lands under a
+/// suffixed name and reports `renamedFrom`, a plain move reports `moved`. An
+/// asset already sitting in the destination directory reports `moved` without
+/// anything being rewritten, and an album moved into itself or into one of its
+/// own sub-albums is rejected. Compressed thumbnails and videos are keyed by
+/// content hash, not by path, so no derivative moves or is invalidated.
+///
+/// Errors: 400 unknown asset or album id, a source path or album directory that
+/// no longer exists, or a destination album that has no directory — 401 missing
+/// or invalid admin credentials; share tokens are not accepted — 405 read-only
+/// mode — 500 storage failure.
 #[utoipa::path(
         tag = "albums",
         request_body = AssignAlbumData,

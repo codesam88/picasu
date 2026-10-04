@@ -27,7 +27,24 @@ pub struct RegenerateThumbnailForm<'r> {
     pub frame: TempFile<'r>,
 }
 
-/// Regenerate the thumbnail of an image within an uploaded frame.
+/// Replace an asset's compressed thumbnail with an uploaded frame.
+///
+/// The multipart body carries the `asset_id` and the `frame` file, and the
+/// frame is written to the asset's compressed-thumbnail path,
+/// `object/compressed/<first two characters of the asset id>/<asset_id>.jpg`,
+/// overwriting whatever was there. `thumbhash`, `phash` and `updatedAt` are
+/// recomputed and flushed.
+///
+/// Corner cases: the frame is written before the record is looked up, so a
+/// request naming an unknown id still leaves the file behind. The recomputed
+/// hashes are derived from the original file on disk rather than from the
+/// frame, and the stored dimensions, EXIF and `.albuminfo.xmp` sidecar are
+/// left untouched.
+///
+/// Errors: 400 malformed multipart body or an `asset_id` longer than 64 bytes —
+/// 401 missing or invalid admin credentials; share tokens are not accepted —
+/// 404 `asset_id` names no asset record — 405 read-only mode — 500 frame write,
+/// decode, or storage failure.
 #[utoipa::path(
         tag = "assets",
         request_body(content_type = "multipart/form-data", content = Object),

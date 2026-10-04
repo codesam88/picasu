@@ -12,18 +12,22 @@ use crate::process::transitor::compose_by_asset_id;
 use crate::router::auth::GuardTimestamp;
 use crate::router::{AppResult, GuardResult};
 
-/// Full metadata detail for a single asset, composed from its identity and its stored metadata payload.
+/// Serve the full metadata of a single asset.
 ///
-/// This is the detail-side counterpart of `get-data`: list rows only carry
-/// lean identity fields (tags / EXIF / description / rating are stripped in
-/// Phase 14), so the sidebar, detail view, and edit prefill fetch the full
-/// `AbstractData` view here on demand. The wire shape is unchanged:
-/// identity fields come from the record, metadata fields from the payload.
+/// List rows carry only lean identity fields, so the detail view, sidebar and
+/// edit prefill fetch the complete asset here. The wire shape is unchanged:
+/// identity fields come from the asset's identity record, metadata fields from
+/// its stored payload.
 ///
-/// Auth and share parity follow `get-data`: a `GuardTimestamp` bearer token
-/// (prefetch token) is required, and when the token resolves to a share with
-/// `show_metadata: false` the metadata fields are cleared before responding so
-/// a share that hides metadata cannot leak it through this route.
+/// Corner cases: `timestamp` is required and must equal the prefetch token's
+/// `timestamp` claim. When the token resolves to a share with
+/// `show_metadata: false`, the metadata fields — including the stored path —
+/// are cleared before responding, so a share that hides metadata cannot leak it
+/// here.
+///
+/// Errors: 400 invalid `asset_id` — 401 missing, invalid, or mismatched
+/// prefetch token — 404 unknown `asset_id` — 500 the asset record could not be
+/// composed.
 #[utoipa::path(
         tag = "assets",
         responses(

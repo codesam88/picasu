@@ -16,6 +16,18 @@ pub struct ExportEntry {
 }
 
 /// Export the whole tree as JSON.
+///
+/// Applies no album, share or trash filtering. Streams a JSON array of
+/// `{key, value}` entries — one per stored metadata row composed with its
+/// identity record — served as `application/octet-stream`.
+///
+/// Corner cases: the response starts before iteration, so rows whose identity
+/// record is missing or unparsable are skipped silently and the array may be
+/// incomplete; a failure to start iterating answers with an `{"error":…}` body
+/// instead of the array.
+///
+/// Errors: 400 invalid input — 401 no valid admin credentials — 500 the tables
+/// could not be opened.
 #[utoipa::path(
         tag = "timeline",
         responses(

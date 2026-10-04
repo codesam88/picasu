@@ -32,7 +32,20 @@ pub struct ConfigResponse {
     pub has_auth_key: bool,
 }
 
-/// Serve the configuration a client needs; a share token is enough.
+/// Serve the client-visible server configuration.
+///
+/// Returns the values a client needs to drive the other operations: address
+/// and port, the image library root (`imagePath`), `uploadFolder`,
+/// `maxUploadSize`, `readOnlyMode`, `disableImg`, `fsNotifyWatcher`,
+/// `normalizeUploadFilenames`, `validateUploadContent`,
+/// `useClientTimestampInfo`, plus `hasPassword` and `hasAuthKey`.
+///
+/// Corner cases: secrets are never returned — `hasPassword` and `hasAuthKey`
+/// only report whether a password or an auth key is configured. `imagePath` is
+/// the absolute library root and serializes as `null` when it is unset.
+///
+/// Errors: 400 half-supplied share credentials or an id that is not an album —
+/// 401 no valid admin or share credentials.
 #[utoipa::path(
         tag = "config",
         responses(
@@ -68,7 +81,13 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
     Ok(Json(response))
 }
 
-/// Export the whole server configuration as JSON.
+/// Export the full server configuration as JSON.
+///
+/// Returns the complete serialized configuration, including `password` and
+/// `authKey` in plaintext whenever they are set, so the response has to be
+/// handled as a secret. `webRoot` is the only field never serialized.
+///
+/// Errors: 400 invalid input — 401 no valid admin credentials.
 #[utoipa::path(
         tag = "config",
         responses(

@@ -274,7 +274,27 @@ fn execute_prefetch_logic(
     Ok(json)
 }
 
-/// Evaluate a timeline/list query, keep the result as a snapshot, and return its id.
+/// Evaluate a list query, snapshot its result, and return the snapshot id.
+///
+/// The optional JSON filter body selects the assets to include; results are
+/// cached by expression, `locate` and tree version, so an identical query
+/// reuses the snapshot that already exists. The response carries the snapshot
+/// `timestamp`, the row count, the `locateTo` index, a new prefetch bearer
+/// token valid for 300 seconds, and the resolved share when the query ran for
+/// one. That token and timestamp are what the row, data and scroll bar
+/// operations require.
+///
+/// Corner cases: the filter body is optional, and a body the server cannot
+/// parse is treated as absent and selects the whole tree. For a share the
+/// album filter is combined with the supplied expression, and a share that
+/// hides metadata additionally rewrites the filter so metadata-derived
+/// conditions (tag, path, camera make or model) can never match. `locate`
+/// names the asset whose row index comes back as `locateTo`, which is `null`
+/// when that asset is not in the result.
+///
+/// Errors: 400 half-supplied share credentials or an id that is not an album —
+/// 401 no valid admin or share credentials — 500 the tree could not be read or
+/// the snapshot could not be stored.
 #[utoipa::path(
         tag = "timeline",
         request_body = serde_json::Value,

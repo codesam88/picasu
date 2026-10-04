@@ -976,6 +976,9 @@ pub struct AnnotatedHandler {
     /// Every `Status::K` constant in the handler body, in source order. P1
     /// reads them only when the return type is `Status`.
     pub body_status_consts: Vec<Located<String>>,
+    /// Every `Redirect::constructor` call in the handler body, in source
+    /// order. P1 reads them only when the return type is `Redirect`.
+    pub body_redirect_ctors: Vec<Located<String>>,
 }
 
 impl AnnotatedHandler {
@@ -1224,7 +1227,7 @@ pub fn annotated_handlers(file: &str, source: &str, parsed: &syn::File) -> Vec<A
                 syn::ReturnType::Default => "()".to_owned(),
                 syn::ReturnType::Type(_, ty) => type_text(ty),
             };
-            let (body_error_kinds, body_status_consts) = body_signals(handler, source);
+            let signals = body_signals(handler, source);
             AnnotatedHandler {
                 file: file.to_owned(),
                 name: handler.sig.ident.to_string(),
@@ -1240,8 +1243,9 @@ pub fn annotated_handlers(file: &str, source: &str, parsed: &syn::File) -> Vec<A
                 arguments,
                 route: route_attribute(handler),
                 return_type,
-                body_error_kinds,
-                body_status_consts,
+                body_error_kinds: signals.error_kinds,
+                body_status_consts: signals.status_consts,
+                body_redirect_ctors: signals.redirect_ctors,
             }
         })
         .collect()
@@ -1253,23 +1257,35 @@ pub fn handlers_in_file(file: &str, source: &str) -> Result<Vec<AnnotatedHandler
     Ok(annotated_handlers(file, source, &parsed))
 }
 
-/// The `ErrorKind::` and `Status::` signals written in a handler's body, with
-/// the line each appears on.
+/// The pattern signals read from one handler's body, in source order.
+struct BodySignals {
+    /// `ErrorKind::K` literals, which P3 maps through the app-error map.
+    error_kinds: Vec<Located<String>>,
+    /// `Status::K` constants, which P1 reads for a `Status` return.
+    status_consts: Vec<Located<String>>,
+    /// `Redirect::constructor` calls, which P1 reads for a `Redirect` return.
+    redirect_ctors: Vec<Located<String>>,
+}
+
+/// The `ErrorKind::`, `Status::` and `Redirect::` signals written in a
+/// handler's body, each with the line it appears on.
 ///
 /// Read from the source text between the block's line bounds, with comments and
 /// string literals blanked out first (positions preserved), so a mention inside
 /// prose cannot count as a signal. A pattern inside a raw string containing
 /// quotes could blank past its end — no such string carries one of these
 /// patterns today, and the consequence is a missed signal, not a false one.
-fn body_signals(handler: &ItemFn, source: &str) -> (Vec<Located<String>>, Vec<Located<String>>) {
+fn body_signals(handler: &ItemFn, source: &str) -> BodySignals {
     let start = handler.block.span().start().line;
     let end = handler.block.span().end().line;
     let text = line_slice(source, start, end);
     let code = blank_strings_and_comments(text);
     let offset_line = start.saturating_sub(1);
-    let kinds = patterns_in(&code, "ErrorKind::", offset_line);
-    let statuses = patterns_in(&code, "Status::", offset_line);
-    (kinds, statuses)
+    BodySignals {
+        error_kinds: patterns_in(&code, "ErrorKind::", offset_line),
+        status_consts: patterns_in(&code, "Status::", offset_line),
+        redirect_ctors: patterns_in(&code, "Redirect::", offset_line),
+    }
 }
 
 /// Every `prefix`-followed identifier in `code`, with the 1-based line it sits
@@ -2122,13 +2138,31 @@ fn generic_payload(text: &str) -> Option<String> {
     (close > open).then(|| text[open + 1..close].to_owned())
 }
 
+/// The status a Rocket `Redirect` constructor produces.
+///
+/// An external-crate semantic, held as one table beside [`rocket_status_code`]
+/// because the status is not written in this repository's source — it lives in
+/// the constructor. A constructor outside the table is an `unreadable_status`
+/// finding rather than a guess.
+fn redirect_ctor_code(name: &str) -> Option<u16> {
+    Some(match name {
+        "moved" => 301,
+        "found" => 302,
+        "to" => 303,
+        "temporary" => 307,
+        "permanent" => 308,
+        _ => return None,
+    })
+}
+
 /// P1 — the success statuses the handler can answer, or why they cannot be
 /// read.
 ///
-/// A fallible return contributes its payload's success; `Redirect` is 302;
-/// `Status` is every `Status::` constant its body returns; anything else is
-/// 200. The "anything else" is the rule's documented limit: an exotic responder
-/// that is not 200 would need this match extended.
+/// A fallible return contributes its payload's success; `Status` is every
+/// `Status::` constant its body returns; `Redirect` is every constructor its
+/// body calls (`Redirect::to` is 303, not 302); anything else is 200. The
+/// "anything else" is the rule's documented limit: an exotic responder that is
+/// not 200 would need this match extended.
 fn success_statuses(
     handler: &AnnotatedHandler,
     derivations: &Derivations,
@@ -2139,7 +2173,30 @@ fn success_statuses(
         handler.return_type.clone()
     };
     match path_head(&payload) {
-        "Redirect" => Ok(BTreeSet::from([302])),
+        "Redirect" => {
+            if handler.body_redirect_ctors.is_empty() {
+                return Err(format!(
+                    "{} returns Redirect, and its body has no Redirect:: constructor to read",
+                    handler.name
+                ));
+            }
+            let mut codes = BTreeSet::new();
+            for constructor in &handler.body_redirect_ctors {
+                match redirect_ctor_code(&constructor.value) {
+                    Some(code) => {
+                        codes.insert(code);
+                    }
+                    None => {
+                        return Err(format!(
+                            "{} returns Redirect, and Redirect::{} is not a Redirect \
+                             constructor this tool knows",
+                            handler.name, constructor.value
+                        ));
+                    }
+                }
+            }
+            Ok(codes)
+        }
         "Status" => {
             if handler.body_status_consts.is_empty() {
                 return Err(format!(

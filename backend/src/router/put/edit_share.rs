@@ -22,7 +22,20 @@ pub struct EditShare {
     share: Share,
 }
 
-/// Replace the share of an album.
+/// Create or replace one of an album's share entries.
+///
+/// The submitted `share` object is stored under the key `share.url`, replacing
+/// any entry already held under that key, so a share is edited by posting a
+/// complete object and every capability and field takes its submitted value
+/// rather than the existing one. The payload is never checked against the
+/// album, no `.albuminfo.xmp` sidecar is written, and the in-memory tree is
+/// rebuilt before the call returns.
+///
+/// Corner cases: an `albumId` that holds no album row is a silent no-op that
+/// still answers 200.
+///
+/// Errors: 400 malformed body — 401 missing or invalid admin credentials; share
+/// tokens are not accepted — 405 read-only mode — 500 storage failure.
 #[utoipa::path(
         tag = "albums",
         request_body = EditShare,
@@ -93,7 +106,19 @@ pub struct DeleteShare {
     share_id: ArrayString<64>,
 }
 
-/// Delete one share of an album.
+/// Remove one share from an album.
+///
+/// `albumId` names the album and `shareId` the entry to drop from its share
+/// list. The removal is committed to the album's stored share list, no
+/// `.albuminfo.xmp` sidecar is written, and the in-memory tree is rebuilt
+/// before the call returns.
+///
+/// Corner cases: removing a share that is not present, or addressing an
+/// `albumId` that holds no album row, is a silent no-op that still answers 200
+/// rather than a 404.
+///
+/// Errors: 400 malformed body — 401 missing or invalid admin credentials; share
+/// tokens are not accepted — 405 read-only mode — 500 storage failure.
 #[utoipa::path(
         tag = "albums",
         request_body = DeleteShare,

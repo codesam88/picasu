@@ -13,7 +13,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-/// List the tags the tree knows.
+/// List every tag in the tree with the number of assets carrying it.
+///
+/// Counts every stored tag in the tree together with how many assets carry it,
+/// so the result covers assets outside the snapshot or share a client happens
+/// to be viewing.
+///
+/// Corner cases: the counts are accumulated in parallel, so the order of the
+/// returned list is unspecified and not stable between calls.
+///
+/// Errors: 400 invalid input — 401 no valid admin credentials.
 #[utoipa::path(
         tag = "timeline",
         responses(
@@ -47,7 +56,18 @@ pub struct AlbumInfo {
     pub parent_album_id: Option<String>,
 }
 
-/// List the albums the tree knows.
+/// List every album the metadata tree knows.
+///
+/// Returns one entry per album with `albumId`, `albumName`, the album's
+/// `shareList` share definitions, `dirPath` and `parentAlbumId`.
+///
+/// Corner cases: `dirPath` is reported relative to the configured `imagePath`
+/// so clients never handle the absolute library location, falling back to the
+/// absolute path for albums outside that root; `parentAlbumId` names the direct
+/// parent directory album and is `null` for top-level dir albums and all
+/// manually created albums.
+///
+/// Errors: 401 no valid admin credentials.
 #[utoipa::path(
         tag = "albums",
         responses(

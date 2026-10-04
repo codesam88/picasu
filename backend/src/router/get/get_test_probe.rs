@@ -67,7 +67,18 @@ fn probe_enabled() -> bool {
     false
 }
 
-/// Test-only probe: report one asset's stored record and the path it resolves to.
+/// Report one asset's stored record and the path it resolves to.
+///
+/// Returns the asset's identity (`assetId`) and its file entry as composed from
+/// the stored record — the value a client reads as the asset's `path`. Albums
+/// have no file entry and report `path` as `null`.
+///
+/// Corner cases: the route is mounted only in test builds, and even then it
+/// answers 404 unless the test bootstrap opted in, so API scenarios can observe
+/// the stored path where the HTTP surface exposes none.
+///
+/// Errors: 400 invalid `asset_id` — 401 no valid admin credentials — 404 the
+/// probe is not enabled or no record exists — 500 the record could not be read.
 #[utoipa::path(
         tag = "internal",
         responses(
@@ -132,11 +143,18 @@ pub fn probe_record(
     Ok(Json(TestRecordProbe { asset_id, path }))
 }
 
-/// Test-only probe: list the `asset_id` members of a `DUPE_INDEX` content-hash group.
+/// List the members of a content-hash duplicate group in test builds.
 ///
-/// Returns an empty list when no group exists for `hash`, so scenarios can
-/// assert both presence and absence of members. Disabled (404) unless the test
-/// bootstrap opted in via `enable_test_probe`.
+/// Returns the `assetId` of every member of the duplicate group filed under
+/// `hash`, which the HTTP surface otherwise leaves invisible. A `hash` with no
+/// group answers with an empty list, so a scenario can assert absence as well
+/// as presence.
+///
+/// Corner cases: the route is mounted only in test builds, and even then it
+/// answers 404 unless the test bootstrap opted in.
+///
+/// Errors: 401 no valid admin credentials — 404 the probe is not enabled — 500
+/// the group could not be read.
 #[utoipa::path(
         tag = "internal",
         responses(

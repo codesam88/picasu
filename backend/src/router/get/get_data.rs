@@ -40,12 +40,20 @@ fn map_snapshot_read_error(err: SnapshotReadError) -> AppError {
 
 /// Serve one page of timeline/list rows for a snapshot timestamp.
 ///
-/// Phase 14 lean read path: media rows are built from the snapshot's
-/// `ReducedData` plus the lean `ASSET_BY_ID` record — no per-row
-/// `METADATA_TABLE` (payload) read, and no tags/EXIF/description on the
-/// payload (those are served by `GET /get/metadata/{assetId}`).
-/// Album rows still read `METADATA_TABLE` because tiles need their stored
-/// title/cover/counts, composed with the album's `AssetRecord`.
+/// Returns the rows in the half-open index range `[start, end)` of the snapshot
+/// named by `timestamp`. Media rows carry identity and timing fields only, so
+/// tags, EXIF, description and rating come from the single-asset metadata
+/// operation; album rows additionally carry their stored title, cover and
+/// counts, which their tiles render.
+///
+/// Corner cases: `end` is clamped to the snapshot length, and a range that
+/// starts past it answers with an empty array rather than an error. Each row's
+/// timestamp is the snapshot's own sort date, so a media row keeps its
+/// EXIF-derived date.
+///
+/// Errors: 400 unknown or expired snapshot id — 401 missing, invalid, or
+/// mismatched prefetch token — 500 the snapshot or an asset record could not be
+/// read.
 #[utoipa::path(
         tag = "timeline",
         responses(
@@ -177,7 +185,20 @@ pub async fn get_data(
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?
 }
 
-/// Serve one row of a snapshot by its index.
+/// Serve the display layout of one batched row of a snapshot.
+///
+/// `index` addresses a batch of 20 consecutive snapshot entries. The response
+/// reports the batch's `start` / `end` offsets plus each entry's display width
+/// and height and nothing else — no asset data — so a virtualized grid can
+/// reserve space before it fetches the rows themselves.
+///
+/// Corner cases: an `index` beyond the snapshot's last batch is a server-side
+/// fault rather than an empty row, and the last batch of a snapshot shorter
+/// than 20 entries is reported with `end` past the snapshot length.
+///
+/// Errors: 400 unknown or expired snapshot id — 401 missing, invalid, or
+/// mismatched prefetch token — 500 the snapshot could not be read or the row
+/// index is out of bounds.
 #[utoipa::path(
         tag = "timeline",
         responses(
@@ -209,6 +230,13 @@ pub async fn get_rows(
 }
 
 /// Serve the scroll bar positions of a snapshot.
+///
+/// Returns one entry per year/month boundary in snapshot order, each naming the
+/// `index` of the first entry in that bucket, so scroll bar positions map onto
+/// dates without loading any rows.
+///
+/// Errors: 400 unknown or expired snapshot id — 401 missing, invalid, or
+/// mismatched prefetch token.
 #[utoipa::path(
         tag = "timeline",
         responses(
