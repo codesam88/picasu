@@ -24,6 +24,7 @@ pub struct RotateImageRequest {
     pub asset_id: String,
 }
 
+/// Rotate an image and regenerate what depends on its orientation.
 #[utoipa::path(
         tag = "assets",
         request_body = RotateImageRequest,

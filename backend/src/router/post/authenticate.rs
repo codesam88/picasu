@@ -6,6 +6,7 @@ use crate::openapi_components::Unauthorized;
 use crate::router::auth::Claims;
 use crate::router::{AppError, AppResult, ErrorKind};
 
+/// Sign in with the account password and return a JWT.
 #[utoipa::path(
         tag = "auth",
         request_body = String,

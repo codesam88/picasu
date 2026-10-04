@@ -5,6 +5,7 @@ use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
 
+/// Report the state of the running album-indexing job.
 #[utoipa::path(
         tag = "index",
         responses(

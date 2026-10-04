@@ -21,9 +21,10 @@ pub struct IndexImageRequest {
     album: Option<String>,
 }
 
-/// Walk a directory under `IMAGE_HOME` and index all media files in the
-/// background.  `album` is a path relative to `IMAGE_HOME` — use `"/"` for
-/// the root.  Status can be polled via `GET /get/index/status`.
+/// Walk a directory under `IMAGE_HOME` and index all media files in the background.
+///
+/// `album` is a path relative to `IMAGE_HOME` — use `"/"` for the root. Status
+/// can be polled via `GET /get/index/status`.
 #[utoipa::path(
         tag = "index",
         request_body = IndexAlbumRequest,
@@ -45,8 +46,9 @@ pub fn index_album_handler(
     Ok(Status::Accepted)
 }
 
-/// Index a single image by its path relative to `IMAGE_HOME`.  Runs in the
-/// background; returns `202 Accepted` immediately.
+/// Index a single image by its path relative to `IMAGE_HOME`.
+///
+/// Runs in the background; returns `202 Accepted` immediately.
 #[utoipa::path(
         tag = "index",
         request_body = IndexImageRequest,

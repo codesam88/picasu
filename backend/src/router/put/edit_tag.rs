@@ -27,6 +27,7 @@ pub struct EditTagsData {
     timestamp: i64,
 }
 
+/// Add and remove tags on the listed assets, and return the resulting tag list.
 #[utoipa::path(
         tag = "assets",
         request_body = EditTagsData,

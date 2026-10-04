@@ -25,6 +25,7 @@ pub struct EditFlagsData {
     is_trashed: Option<bool>,
 }
 
+/// Move assets to the trash, or restore them.
 #[utoipa::path(
         tag = "assets",
         request_body = EditFlagsData,

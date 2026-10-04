@@ -176,6 +176,7 @@ pub async fn get_data(
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?
 }
 
+/// Serve one row of a snapshot by its index.
 #[utoipa::path(
         tag = "timeline",
         responses(
@@ -205,6 +206,7 @@ pub async fn get_rows(
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?
 }
 
+/// Serve the scroll bar positions of a snapshot.
 #[utoipa::path(
         tag = "timeline",
         responses(

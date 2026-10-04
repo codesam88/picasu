@@ -80,6 +80,7 @@ async fn serve_file(filename: &str) -> AppResult<FrontendResponse> {
     }
 }
 
+/// Serve the SPA entry point.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -92,6 +93,7 @@ pub async fn redirect_to_photo() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA at `/login`; the SPA itself asks for a password.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -104,6 +106,7 @@ pub async fn login() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Redirect to `/login`.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -116,6 +119,7 @@ pub fn redirect_to_login() -> Redirect {
     Redirect::to(uri!("/login"))
 }
 
+/// Answer `401` for the SPA path a rejected token ends on.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -128,6 +132,7 @@ pub fn unauthorized() -> Status {
     Status::Unauthorized
 }
 
+/// Serve the SPA timeline page.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -140,6 +145,7 @@ pub async fn timeline() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA at a timeline view path; the SPA resolves the view.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -153,6 +159,7 @@ pub async fn timeline_view(path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA albums page.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -165,6 +172,7 @@ pub async fn albums() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA at an albums view path; the SPA resolves the view.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -178,6 +186,7 @@ pub async fn albums_view(path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA for a dynamic album id, and `404` for anything else.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -195,6 +204,7 @@ pub async fn album_page(dynamic_album_id: String) -> AppResult<FrontendResponse>
     }
 }
 
+/// Serve the SPA at a share path, which the share token in the URL opens.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -208,6 +218,7 @@ pub async fn share(path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA trash page.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -220,6 +231,7 @@ pub async fn trashed() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA at a trash view path; the SPA resolves the view.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -233,6 +245,7 @@ pub async fn trashed_view(path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA videos page.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -245,6 +258,7 @@ pub async fn videos() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA at a videos view path; the SPA resolves the view.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -258,6 +272,7 @@ pub async fn videos_view(path: PathBuf) -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA tags page.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -270,6 +285,7 @@ pub async fn tags() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA links page.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -282,6 +298,7 @@ pub async fn links() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA config page.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -294,6 +311,7 @@ pub async fn config() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA settings page.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -306,6 +324,7 @@ pub async fn setting() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the favicon.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -318,6 +337,7 @@ pub async fn favicon() -> AppResult<FrontendResponse> {
     serve_file("favicon.ico").await
 }
 
+/// Serve the service worker registration script.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -330,6 +350,7 @@ pub async fn sregister_sw() -> AppResult<FrontendResponse> {
     serve_file("registerSW.js").await
 }
 
+/// Serve the service worker script.
 #[utoipa::path(
         tag = "pages",
         responses(
@@ -350,6 +371,7 @@ pub async fn service_worker() -> AppResult<FrontendResponse> {
     )
 ]
 /// Catch-all SPA fallback — serves index.html for valid Vue Router routes.
+///
 /// Paths matching `/album/<asset-id>` validate the album exists before serving
 /// the SPA; invalid album IDs return 404. Rank 11 ensures specific
 /// routes (assets at rank 10, API, pages) take priority.

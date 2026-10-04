@@ -610,6 +610,7 @@ pub struct RenewHashTokenReturn {
     pub token: String,
 }
 
+/// Exchange an expired hash token for a fresh one.
 #[utoipa::path(
         tag = "auth",
         request_body = RenewHashToken,
@@ -886,6 +887,7 @@ pub struct RenewTimestampTokenReturn {
     pub token: String,
 }
 
+/// Exchange an expired timestamp (prefetch) token for a fresh one.
 #[utoipa::path(
         tag = "auth",
         request_body = RenewTimestampToken,

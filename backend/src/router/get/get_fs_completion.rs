@@ -32,6 +32,7 @@ fn absolutize(p: &Path) -> PathBuf {
     }
 }
 
+/// Complete a filesystem path for the path-completion field.
 #[utoipa::path(
         tag = "config",
         responses(

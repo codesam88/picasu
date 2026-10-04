@@ -22,6 +22,7 @@ pub struct EditShare {
     share: Share,
 }
 
+/// Replace the share of an album.
 #[utoipa::path(
         tag = "albums",
         request_body = EditShare,
@@ -90,6 +91,7 @@ pub struct DeleteShare {
     share_id: ArrayString<64>,
 }
 
+/// Delete one share of an album.
 #[utoipa::path(
         tag = "albums",
         request_body = DeleteShare,

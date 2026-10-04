@@ -1,19 +1,346 @@
-//! The scan the annotation rules will be reported through, checked against the
-//! real router tree.
+//! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! This increment is the tool rather than a rule set. The rules of
-//! `.plan/openapi-annotation-checks.md` land in later increments and live in the
-//! crate's `lib.rs`, so the CLI and these tests check the same code.
+//! Two sections of `.plan/openapi-annotation-checks.md` are checked here: **A**,
+//! the seven rules about the annotation's own shape, and **B**, the four rules
+//! about what the annotation declares against what the route already says.
+//! Security rules are deliberately deferred until runtime security tests exist.
 //!
-//! What is pinned here is the walk's coverage rather than a rule's verdict. A
-//! scan that silently stopped finding annotations — a broken file walk, a
-//! swallowed parse error — would run every later rule over a tree it never
-//! looked at while still reporting clean, so the count is pinned against the
-//! real tree now, while there is nothing else it could hide behind.
+//! Why these belong in the gate. Each of them reads a fact that exists only in
+//! source, and each is invisible in the document: the document is generated *from*
+//! the annotations, so it cannot disagree with them, and the route table is
+//! assembled by a macro. A restated path, a missing `responses(…)`, a tag outside
+//! the vocabulary, a handler with no doc comment, a summary wrapped over two lines
+//! and a hand-set `operation_id` all produce a document that looks complete while
+//! carrying a wrong, missing or unsortable field — and the doc comment case
+//! produced 49 operations with no `summary` before the rule existed.
+//!
+//! So the rules run as their own phase of `just openapi-check` rather than as a
+//! build warning nothing reads, and they live in the crate's `lib.rs` so the CLI
+//! and these tests check the same code.
+//!
+//! Fixtures live in `tests/fixtures/openapi_annotations/` as ordinary `.rs`
+//! files. They are deliberately *not* modules of the crate: they are snippets for
+//! the parser, not code to compile, so nothing declares them. Each is pulled in
+//! with `include_str!`, so a renamed or deleted fixture breaks the build instead
+//! of quietly skipping a test.
+//!
+//! Every rule has a fixture that must produce its finding, a conforming
+//! counterpart that must produce none, and a run over the real backend router
+//! tree that must stay silent. Removing a check fails a named test rather than
+//! turning the gate green.
+//!
 
 use std::path::{Path, PathBuf};
 
-use openapi_sanity::{render, scan_source_root};
+use openapi_sanity::{Finding, TAGS, findings_in_source, render, scan_source_root};
+
+/// Every rule over one source file, for the fixtures below.
+///
+/// A fixture that does not parse is a broken test, not a finding, so the error
+/// ends the test here rather than being reported as one.
+fn check_source(name: &str, source: &str) -> Vec<Finding> {
+    findings_in_source(name, source).unwrap_or_else(|error| panic!("{error}"))
+}
+
+// ── Fixtures ──────────────────────────────────────────────────────────────────
+
+const RESTATED_ROUTE: &str = include_str!("fixtures/openapi_annotations/a1_restated_route.rs");
+const ROUTE_ONLY: &str = include_str!("fixtures/openapi_annotations/a1_conforming.rs");
+const NO_RESPONSES: &str = include_str!("fixtures/openapi_annotations/a2_missing_responses.rs");
+const RESPONSES_DECLARED: &str = include_str!("fixtures/openapi_annotations/a2_conforming.rs");
+const BAD_TAGS: &str =
+    include_str!("fixtures/openapi_annotations/a3_tag_outside_the_vocabulary.rs");
+const VOCABULARY_TAGS: &str = include_str!("fixtures/openapi_annotations/a3_conforming.rs");
+const NO_DOC_COMMENT: &str = include_str!("fixtures/openapi_annotations/a4_missing_doc_comment.rs");
+const DOC_COMMENTED: &str = include_str!("fixtures/openapi_annotations/a4_conforming.rs");
+const SPLIT_SUMMARY: &str = include_str!("fixtures/openapi_annotations/a5_multi_line_summary.rs");
+const EMPTY_SUMMARY: &str = include_str!("fixtures/openapi_annotations/a5_empty_summary.rs");
+const ONE_LINE_SUMMARY: &str = include_str!("fixtures/openapi_annotations/a5_conforming.rs");
+const HAND_SET_ID: &str = include_str!("fixtures/openapi_annotations/a6_hand_set_operation_id.rs");
+const DERIVED_ID: &str = include_str!("fixtures/openapi_annotations/a6_conforming.rs");
+const HAND_SET_PROSE: &str = include_str!("fixtures/openapi_annotations/a7_hand_set_prose.rs");
+const DERIVED_PROSE: &str = include_str!("fixtures/openapi_annotations/a7_conforming.rs");
+
+// ── Section A — the annotation's shape ─────────────────────────────────────────
+//
+// Every rule has a fixture that must produce its finding and a conforming
+// counterpart that must produce none. The conforming fixture is not decoration:
+// a rule satisfied by flagging every annotation would pass the first test and is
+// caught by the second.
+//
+// The findings are pinned as whole rendered strings, line included, so a rule
+// that starts reporting somewhere else — or stops reporting at all — fails a
+// named test rather than changing the gate's output quietly.
+
+/// A1: `rocket_extras` derives the path and the verb from the route attribute,
+/// so either restated in the annotation is a second copy of a fact nothing
+/// compares.
+#[test]
+fn a_restated_path_or_verb_fails() {
+    let findings = check_source("a1_restated_route.rs", RESTATED_ROUTE);
+
+    assert_eq!(
+        render(&findings),
+        "a1_restated_route.rs:8: restated_path: the annotation declares path = \
+         \"/get/widget\", but rocket_extras derives the path from the route \
+         attribute, so a restatement can only be a duplicate that can rot\na1_restated_route.rs:18: \
+         restated_verb: the annotation names the verb get as a bare argument, but \
+         rocket_extras derives the verb from the route attribute, so a restatement \
+         can only be a duplicate that can rot\na1_restated_route.rs:32: restated_trace_verb: \
+         the annotation names the verb trace as a bare argument, but rocket_extras \
+         derives the verb from the route attribute, so a restatement can only be a \
+         duplicate that can rot",
+        "each restatement is a finding, at the line it is written on; `trace` is in the \
+         list because utoipa accepts it as a bare verb token"
+    );
+}
+
+/// The conforming counterpart: the same two handlers with the annotation saying
+/// only what the route attribute cannot.
+#[test]
+fn a_route_annotation_free_of_restatement_is_accepted() {
+    let findings = check_source("a1_conforming.rs", ROUTE_ONLY);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "an annotation that repeats neither the path nor the verb must be silent"
+    );
+}
+
+/// A2: utoipa invents no response, so an absent `responses(…)` documents nothing
+/// the operation can answer. An empty `responses()` is the same defect and is
+/// reported as its own text, because it reads as though responses were considered.
+#[test]
+fn a_missing_or_empty_responses_fails() {
+    let findings = check_source("a2_missing_responses.rs", NO_RESPONSES);
+
+    assert_eq!(
+        render(&findings),
+        "a2_missing_responses.rs:7: no_responses: the annotation declares no responses, \
+         and utoipa invents no response, so the operation documents nothing it can \
+         answer\na2_missing_responses.rs:12: empty_responses: the annotation declares \
+         responses() with no entry, and utoipa invents no response, so the operation \
+         documents nothing it can answer",
+        "the absent declaration and the empty one are both findings, and the absent \
+         one is anchored at the signature because there is no token to point at"
+    );
+}
+
+/// The conforming counterpart: one response and two responses are both enough.
+#[test]
+fn one_declared_response_is_enough() {
+    let findings = check_source("a2_conforming.rs", RESPONSES_DECLARED);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "the rule asks that the operation document what it can answer, not every status"
+    );
+}
+
+/// A3: the tag is what the generated reference groups by, and the vocabulary is
+/// the closed list in `docs/openapi-generator.md` ("Tag conventions").
+///
+/// All three failure shapes are in one fixture: no tag, a tag outside the
+/// vocabulary, and two tags of which both are inside it.
+#[test]
+fn a_tag_outside_the_vocabulary_fails() {
+    let findings = check_source("a3_tag_outside_the_vocabulary.rs", BAD_TAGS);
+
+    assert_eq!(
+        render(&findings),
+        "a3_tag_outside_the_vocabulary.rs:8: no_tag: the annotation declares no tag, so \
+         the operation is filed nowhere in the generated reference; take one from the \
+         vocabulary in docs/openapi-generator.md \"Tag conventions\"\n\
+         a3_tag_outside_the_vocabulary.rs:14: unknown_tag: the annotation declares the tag \
+         \"data\", which is not one of the 10 in docs/openapi-generator.md \"Tag \
+         conventions\" (albums, assets, auth, config, index, internal, pages, serving, \
+         timeline, upload); a tag outside the vocabulary files the operation outside every \
+         section of the reference\n\
+         a3_tag_outside_the_vocabulary.rs:24: two_tags: the annotation declares 2 tags \
+         (\"assets\", \"timeline\"), but the house rule is exactly one tag per operation, \
+         so the reference would file it under all of them",
+        "a missing tag, an unknown tag and a repeated tag are three different defects"
+    );
+}
+
+/// Every tag of the vocabulary is accepted, so A3 is a closed list and not a
+/// preference for the tags that happen to be in use.
+///
+/// The fixture cannot carry all nine without becoming a wall of text, so the
+/// second half of this test builds its source from [`TAGS`] itself: a tag added
+/// to the vocabulary is then accepted by construction, and a tag *removed* from
+/// it fails, which is the direction that matters. Without it, a tenth tag could
+/// be added to the constant and stay unchecked by the suite.
+#[test]
+fn every_tag_of_the_vocabulary_is_accepted() {
+    let fixture = check_source("a3_conforming.rs", VOCABULARY_TAGS);
+    assert_eq!(
+        render(&fixture),
+        "",
+        "one tag of the vocabulary is enough, and `auth` is one of them"
+    );
+
+    let source = TAGS
+        .iter()
+        .enumerate()
+        .map(|(index, tag)| {
+            format!(
+                "/// Widget page {index}.\n#[utoipa::path(\n    tag = \"{tag}\",\n    \
+                 responses((status = 200, description = \"Ok\"))\n)]\n\
+                 #[get(\"/get/widget-{index}\")]\n\
+                 pub async fn widget_{index}() -> AppResult<Json<Widget>> {{\n    Ok(Json(Widget))\n}}\n"
+            )
+        })
+        .collect::<String>();
+
+    let findings = check_source("every_tag.rs", &source);
+    assert_eq!(
+        render(&findings),
+        "",
+        "every tag in the vocabulary must be accepted:\n{}",
+        render(&findings)
+    );
+}
+
+/// A4: `summary` and `description` are derived from the doc comment, so a
+/// handler without one is an operation with no text in the reference — and the
+/// document still looks complete.
+#[test]
+fn a_handler_without_a_doc_comment_fails() {
+    let findings = check_source("a4_missing_doc_comment.rs", NO_DOC_COMMENT);
+
+    assert_eq!(
+        render(&findings),
+        "a4_missing_doc_comment.rs:10: undocumented_widget: the handler carries no doc \
+         comment, and summary and description are derived from it, so the operation \
+         reaches the generated reference with neither",
+        "an annotated handler with nothing above it documents nothing in the reference"
+    );
+}
+
+/// The conforming counterpart: a doc comment in any shape satisfies A4. The shape
+/// of its first paragraph is A5's business, not this rule's.
+#[test]
+fn a_doc_commented_handler_is_accepted() {
+    let findings = check_source("a4_conforming.rs", DOC_COMMENTED);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "A4 asks for a comment, not for a particular one"
+    );
+}
+
+/// A5: utoipa derives `summary` from the doc comment's first paragraph and
+/// `widdershins` renders the summary as the reference's heading, so a paragraph
+/// of more than one line puts a newline inside a markdown heading.
+///
+/// This defect was measured in this repository's own document: six of its
+/// operations had a multi-line summary before the rule existed.
+#[test]
+fn a_multi_line_summary_fails() {
+    let findings = check_source("a5_multi_line_summary.rs", SPLIT_SUMMARY);
+
+    assert_eq!(
+        render(&findings),
+        "a5_multi_line_summary.rs:7: multi_line_summary: the doc comment's first paragraph \
+         must be one line, and it is the operation's summary, which the reference renders \
+         as a heading; a heading must be one line, and this paragraph is 2 line(s)",
+        "the finding is anchored at the second line of the paragraph, which is where the \
+         heading stops being a heading"
+    );
+}
+
+#[test]
+fn an_empty_summary_fails() {
+    let findings = check_source("a5_empty_summary.rs", EMPTY_SUMMARY);
+
+    assert_eq!(
+        render(&findings),
+        "a5_empty_summary.rs:4: empty_summary: the doc comment's first paragraph is empty, \
+         so utoipa has no summary text to render",
+        "a doc attribute with no text must not satisfy the one-line-summary rule"
+    );
+}
+
+/// The conforming counterpart: a one-line first paragraph followed by a blank doc
+/// line and a description wrapped over several. Only the first paragraph is the
+/// summary, so wrapping the rest is what paragraphs are for.
+#[test]
+fn a_one_line_summary_with_a_wrapped_description_is_accepted() {
+    let findings = check_source("a5_conforming.rs", ONE_LINE_SUMMARY);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "the rule bounds the summary, not the whole doc comment"
+    );
+}
+
+/// A6: utoipa derives `operation_id` from the function name, and every other name
+/// in the document is derived the same way or compared against the mount table.
+/// A hand-set one is the name nothing compares.
+#[test]
+fn a_hand_set_operation_id_fails() {
+    let findings = check_source("a6_hand_set_operation_id.rs", HAND_SET_ID);
+
+    assert_eq!(
+        render(&findings),
+        "a6_hand_set_operation_id.rs:8: widget: the annotation sets operation_id = \
+         \"getWidget\", which utoipa otherwise derives from the function name; a hand-set \
+         one is the only name in the document that nothing compares",
+        "a hand-set operation id is a finding, at the line it is written on"
+    );
+}
+
+/// The conforming counterpart: no `operation_id`, so the name is derived and
+/// every consumer of it compares it.
+#[test]
+fn a_derived_operation_id_is_accepted() {
+    let findings = check_source("a6_conforming.rs", DERIVED_ID);
+
+    assert_eq!(render(&findings), "");
+}
+
+/// A7: utoipa derives `summary` from the doc comment's first paragraph and
+/// `description` from the rest, so a hand-set one is the same prose twice, with
+/// nothing comparing the copies.
+///
+/// A7 is what makes A5's premise true. While an annotation may set `summary`,
+/// "the first paragraph *is* the summary" does not hold, and A5 would be
+/// reporting a defect the document does not have.
+#[test]
+fn a_hand_set_summary_or_description_fails() {
+    let findings = check_source("a7_hand_set_prose.rs", HAND_SET_PROSE);
+
+    assert_eq!(
+        render(&findings),
+        "a7_hand_set_prose.rs:9: hand_set_prose: the annotation sets summary = \"Move a \
+         widget into an album\", which utoipa otherwise derives from the doc comment; a \
+         hand-set one is prose written twice beside itself, and nothing compares the two \
+         copies\na7_hand_set_prose.rs:10: hand_set_prose: the annotation sets description \
+         = \"Moves the widget into the album directory on disk.\", which utoipa otherwise \
+         derives from the doc comment; a hand-set one is prose written twice beside itself, \
+         and nothing compares the two copies",
+        "each override is its own finding, at the line it is written on"
+    );
+}
+
+/// The conforming counterpart: the doc comment says all of it, and the
+/// per-response `description` is left alone — it is how a status code's text is
+/// written, not something utoipa derives.
+#[test]
+fn a_derived_summary_and_description_are_accepted() {
+    let findings = check_source("a7_conforming.rs", DERIVED_PROSE);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "a per-response description is not a hand-set operation description"
+    );
+}
 
 // ── The real tree ─────────────────────────────────────────────────────────────
 
@@ -30,28 +357,32 @@ fn router_tree() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../backend/src/router")
 }
 
-/// The walk over the real router tree.
+/// Every rule over the real router tree, which has to be silent.
 ///
-/// This is the half that pins the scan's coverage, so the rules added later
-/// cannot pass by running over a tree the walk never reached.
+/// This is the half that proves the rules against the tree rather than against
+/// snippets, and the half that pins the scan's coverage so the two cannot drift
+/// apart silently. Its name does not name a rule on purpose: a test called after
+/// one rule would read as coverage of that rule when it is the run that says
+/// whether the whole rule set holds.
 #[test]
-fn the_scan_sees_every_annotation_in_the_router_tree() {
+fn the_router_tree_is_clean() {
     let report = scan_source_root(&router_tree()).expect("the router tree must be readable");
-
     assert!(
         report.files_scanned > 1,
         "the scan must see the whole router tree, saw {} file(s)",
         report.files_scanned
     );
+
     assert_eq!(
         report.handlers.len(),
         ANNOTATIONS_IN_ROUTER,
         "the scan must see every annotation in backend/src/router"
     );
+
     assert_eq!(
         render(&report.findings),
         "",
-        "no rule is implemented yet, so the tree must be silent:\n{}",
+        "every rule must hold across the tree:\n{}",
         render(&report.findings)
     );
 }

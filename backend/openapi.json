@@ -1053,6 +1053,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA entry point.",
         "tags": [
           "pages"
         ]
@@ -1066,6 +1067,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA albums page.",
         "tags": [
           "pages"
         ]
@@ -1089,6 +1091,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA at an albums view path; the SPA resolves the view.",
         "tags": [
           "pages"
         ]
@@ -1102,6 +1105,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA config page.",
         "tags": [
           "pages"
         ]
@@ -1131,6 +1135,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Delete the listed assets: each file and its sidecar are removed from disk.",
         "tags": [
           "assets"
         ]
@@ -1144,6 +1149,7 @@
             "description": "Favicon file"
           }
         },
+        "summary": "Serve the favicon.",
         "tags": [
           "pages"
         ]
@@ -1170,6 +1176,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Serve the configuration a client needs; a share token is enough.",
         "tags": [
           "config"
         ]
@@ -1196,6 +1203,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Export the whole server configuration as JSON.",
         "tags": [
           "config"
         ]
@@ -1222,6 +1230,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "List the albums the tree knows.",
         "tags": [
           "albums"
         ]
@@ -1301,6 +1310,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Export the whole tree as JSON.",
         "tags": [
           "timeline"
         ]
@@ -1347,6 +1357,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Serve one row of a snapshot by its index.",
         "tags": [
           "timeline"
         ]
@@ -1387,6 +1398,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Serve the scroll bar positions of a snapshot.",
         "tags": [
           "timeline"
         ]
@@ -1416,6 +1428,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "List the tags the tree knows.",
         "tags": [
           "timeline"
         ]
@@ -1442,6 +1455,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Report the state of the running album-indexing job.",
         "tags": [
           "index"
         ]
@@ -1481,7 +1495,7 @@
             "description": "Unknown asset_id"
           }
         },
-        "summary": "Full metadata detail for a single asset, composed at the edge from the\nasset's identity `AssetRecord` and its stored `METADATA_TABLE` payload.",
+        "summary": "Full metadata detail for a single asset, composed from its identity and its stored metadata payload.",
         "tags": [
           "assets"
         ]
@@ -1518,6 +1532,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Complete a filesystem path for the path-completion field.",
         "tags": [
           "config"
         ]
@@ -1562,6 +1577,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Evaluate a timeline/list query, keep the result as a snapshot, and return its id.",
         "tags": [
           "timeline"
         ]
@@ -1575,6 +1591,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA links page.",
         "tags": [
           "pages"
         ]
@@ -1588,6 +1605,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA at `/login`; the SPA itself asks for a password.",
         "tags": [
           "pages"
         ]
@@ -1617,6 +1635,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Serve the compressed thumbnail of a hashed asset.",
         "tags": [
           "serving"
         ]
@@ -1624,6 +1643,7 @@
     },
     "/object/imported/{file_path}": {
       "get": {
+        "description": "There is no copy of it under `DATA_HOME`; `IMAGE_HOME` is the single,\nauthoritative copy. The route's `<file_path..>` segment is\n`<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via\n`ASSET_BY_ID`.",
         "operationId": "imported_file",
         "parameters": [
           {
@@ -1646,7 +1666,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "summary": "Serve the original file directly from its current location under\n`imagePath` — there is no copy of it under `DATA_HOME`; `IMAGE_HOME` is\nthe single, authoritative copy. The route's `<file_path..>` segment is\n`<prefix>/<id>.<ext>` where `id` is the `asset_id`. Resolves via\n`ASSET_BY_ID`.",
+        "summary": "Serve the original file from its current location under `imagePath`.",
         "tags": [
           "serving"
         ]
@@ -1680,6 +1700,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Sign in with the account password and return a JWT.",
         "tags": [
           "auth"
         ]
@@ -1709,6 +1730,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Replace the server configuration with the posted one.",
         "tags": [
           "config"
         ]
@@ -1716,6 +1738,7 @@
     },
     "/post/create_dir_album": {
       "post": {
+        "description": "Returns the new album's ID.",
         "operationId": "create_dir_album",
         "requestBody": {
           "content": {
@@ -1745,7 +1768,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "summary": "Create a new subdirectory under an existing dir-album's directory and\nregister it as a new album. Returns the new album's ID.",
+        "summary": "Create a new subdirectory under an existing dir-album's directory and register it as a new album.",
         "tags": [
           "albums"
         ]
@@ -1782,6 +1805,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Create a share link for an album and return it.",
         "tags": [
           "albums"
         ]
@@ -1789,6 +1813,7 @@
     },
     "/post/index/album": {
       "post": {
+        "description": "`album` is a path relative to `IMAGE_HOME` — use `\"/\"` for the root. Status\ncan be polled via `GET /get/index/status`.",
         "operationId": "index_album_handler",
         "requestBody": {
           "content": {
@@ -1811,7 +1836,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "summary": "Walk a directory under `IMAGE_HOME` and index all media files in the\nbackground.  `album` is a path relative to `IMAGE_HOME` — use `\"/\"` for\nthe root.  Status can be polled via `GET /get/index/status`.",
+        "summary": "Walk a directory under `IMAGE_HOME` and index all media files in the background.",
         "tags": [
           "index"
         ]
@@ -1839,6 +1864,7 @@
     },
     "/post/index/image": {
       "post": {
+        "description": "Runs in the background; returns `202 Accepted` immediately.",
         "operationId": "index_image_handler",
         "requestBody": {
           "content": {
@@ -1861,7 +1887,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "summary": "Index a single image by its path relative to `IMAGE_HOME`.  Runs in the\nbackground; returns `202 Accepted` immediately.",
+        "summary": "Index a single image by its path relative to `IMAGE_HOME`.",
         "tags": [
           "index"
         ]
@@ -1929,6 +1955,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Exchange an expired hash token for a fresh one.",
         "tags": [
           "auth"
         ]
@@ -1965,6 +1992,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Exchange an expired timestamp (prefetch) token for a fresh one.",
         "tags": [
           "auth"
         ]
@@ -1972,7 +2000,7 @@
     },
     "/put/assign_album": {
       "put": {
-        "description": "Moves the file identified by asset_id into the album directory on disk, updates stored path and album membership, and reports the conflict outcome. Returns 400 when the file is missing at the asset's path (stale record) or the destination is a manual album.",
+        "description": "The directory is resolved from the asset's physical path; the stored path and\nthe album membership are updated and the conflict outcome is reported. Returns\n400 if the file is missing at the asset's path (stale record — re-index first)\nor the destination album is a manual album.",
         "operationId": "assign_album",
         "requestBody": {
           "content": {
@@ -2002,7 +2030,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "summary": "Move an asset into an album",
+        "summary": "Move the asset identified by `asset_id` into the album's directory on disk.",
         "tags": [
           "albums"
         ]
@@ -2032,6 +2060,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Update the server configuration with the posted fields.",
         "tags": [
           "config"
         ]
@@ -2061,6 +2090,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Change the account password.",
         "tags": [
           "config"
         ]
@@ -2090,6 +2120,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Delete one share of an album.",
         "tags": [
           "albums"
         ]
@@ -2119,6 +2150,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Move assets to the trash, or restore them.",
         "tags": [
           "assets"
         ]
@@ -2148,6 +2180,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Rate assets 0–5, or clear the rating with `null`.",
         "tags": [
           "assets"
         ]
@@ -2177,6 +2210,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Replace the share of an album.",
         "tags": [
           "albums"
         ]
@@ -2216,6 +2250,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Add and remove tags on the listed assets, and return the resulting tag list.",
         "tags": [
           "assets"
         ]
@@ -2243,6 +2278,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Regenerate the thumbnail of an image within an uploaded frame.",
         "tags": [
           "assets"
         ]
@@ -2272,6 +2308,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Rotate an image and regenerate what depends on its orientation.",
         "tags": [
           "assets"
         ]
@@ -2362,6 +2399,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Set the user-defined description of an asset, or clear it with `null`.",
         "tags": [
           "albums"
         ]
@@ -2375,6 +2413,7 @@
             "description": "Redirect to /login"
           }
         },
+        "summary": "Redirect to `/login`.",
         "tags": [
           "pages"
         ]
@@ -2388,6 +2427,7 @@
             "description": "Service worker registration script"
           }
         },
+        "summary": "Serve the service worker registration script.",
         "tags": [
           "pages"
         ]
@@ -2401,6 +2441,7 @@
             "description": "Service worker script"
           }
         },
+        "summary": "Serve the service worker script.",
         "tags": [
           "pages"
         ]
@@ -2414,6 +2455,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA settings page.",
         "tags": [
           "pages"
         ]
@@ -2437,6 +2479,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA at a share path, which the share token in the URL opens.",
         "tags": [
           "pages"
         ]
@@ -2450,6 +2493,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA tags page.",
         "tags": [
           "pages"
         ]
@@ -2463,6 +2507,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA timeline page.",
         "tags": [
           "pages"
         ]
@@ -2486,6 +2531,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA at a timeline view path; the SPA resolves the view.",
         "tags": [
           "pages"
         ]
@@ -2499,6 +2545,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA trash page.",
         "tags": [
           "pages"
         ]
@@ -2522,6 +2569,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA at a trash view path; the SPA resolves the view.",
         "tags": [
           "pages"
         ]
@@ -2535,6 +2583,7 @@
             "description": "Unauthorized status"
           }
         },
+        "summary": "Answer `401` for the SPA path a rejected token ends on.",
         "tags": [
           "pages"
         ]
@@ -2589,6 +2638,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
+        "summary": "Upload files, optionally into a presigned album, and index them.",
         "tags": [
           "upload"
         ]
@@ -2602,6 +2652,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA videos page.",
         "tags": [
           "pages"
         ]
@@ -2625,6 +2676,7 @@
             "description": "SPA page (HTML)"
           }
         },
+        "summary": "Serve the SPA at a videos view path; the SPA resolves the view.",
         "tags": [
           "pages"
         ]
@@ -2651,6 +2703,7 @@
             "description": "Not found"
           }
         },
+        "summary": "Serve the SPA for a dynamic album id, and `404` for anything else.",
         "tags": [
           "pages"
         ]
@@ -2658,6 +2711,7 @@
     },
     "/{path}": {
       "get": {
+        "description": "Paths matching `/album/<asset-id>` validate the album exists before serving\nthe SPA; invalid album IDs return 404. Rank 11 ensures specific\nroutes (assets at rank 10, API, pages) take priority.",
         "operationId": "spa_fallback",
         "parameters": [
           {
@@ -2674,7 +2728,7 @@
             "description": "SPA fallback — serves index.html for Vue Router routes"
           }
         },
-        "summary": "Catch-all SPA fallback — serves index.html for valid Vue Router routes.\nPaths matching `/album/<asset-id>` validate the album exists before serving\nthe SPA; invalid album IDs return 404. Rank 11 ensures specific\nroutes (assets at rank 10, API, pages) take priority.",
+        "summary": "Catch-all SPA fallback — serves index.html for valid Vue Router routes.",
         "tags": [
           "pages"
         ]

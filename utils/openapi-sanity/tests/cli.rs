@@ -1,11 +1,9 @@
 //! The CLI contract the gate recipe depends on.
 //!
-//! What is checked here is the reporting and exit-code contract around the scan,
-//! including the coverage floor — the run has to fail when the scan saw too
-//! little to stand behind a "clean", because a narrowed walk and a clean tree
-//! produce the same report. The rules arrive in later increments; this file tests
-//! the tool they will be reported through, so there is nothing here that needs a
-//! fixture with findings in it yet.
+//! The rules are checked in `openapi_annotations.rs`; what is checked here is the
+//! reporting and exit-code contract around them, including the coverage floor —
+//! the run has to fail when the scan saw too little to stand behind a "clean",
+//! because a narrowed walk and a clean tree produce the same report.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -17,6 +15,11 @@ const BINARY: &str = env!("CARGO_BIN_EXE_openapi-sanity");
 /// rather than from the working directory a test happens to run in.
 fn router_tree() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../backend/src/router")
+}
+
+/// The fixture tree, which has findings in it.
+fn fixture_tree() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/openapi_annotations")
 }
 
 /// Run the CLI over `source_root` with `args` after them, from the workspace root
@@ -110,6 +113,45 @@ fn a_tree_below_the_floor_fails() {
     assert!(
         reported.contains("a narrowed file walk is the likely cause"),
         "the message must point at the walk rather than at the source: {reported}"
+    );
+}
+
+/// Coverage outranks findings: a short scan's findings are not the news, because
+/// they only describe the part of the tree that was reached.
+#[test]
+fn a_short_scan_reports_coverage_rather_than_findings() {
+    let output = run(&fixture_tree(), &["--expect-at-least", "60"]);
+
+    assert!(!output.status.success());
+    let reported = stderr(&output);
+    assert!(
+        reported.contains("fewer than the expected minimum of 60"),
+        "{reported}"
+    );
+    assert!(
+        !reported.contains("no_responses"),
+        "findings from a short scan must not be reported as the failure: {reported}"
+    );
+}
+
+/// Without a floor the tool reports what it saw and nothing more — the floor is
+/// opt-in, and it is the recipe that supplies it.
+#[test]
+fn findings_still_report_the_observed_count() {
+    let output = run(&fixture_tree(), &[]);
+
+    assert!(!output.status.success());
+    let reported = stderr(&output);
+    assert!(
+        reported.contains("no_responses"),
+        "the findings themselves still reach the console: {reported}"
+    );
+    assert!(
+        reported.contains(
+            "finding(s) across 22 annotated handler(s) under \
+             utils/openapi-sanity/tests/fixtures/openapi_annotations",
+        ),
+        "the summary keeps the observed count: {reported}"
     );
 }
 

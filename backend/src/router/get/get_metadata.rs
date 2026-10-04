@@ -12,8 +12,7 @@ use crate::process::transitor::compose_by_asset_id;
 use crate::router::auth::GuardTimestamp;
 use crate::router::{AppResult, GuardResult};
 
-/// Full metadata detail for a single asset, composed at the edge from the
-/// asset's identity `AssetRecord` and its stored `METADATA_TABLE` payload.
+/// Full metadata detail for a single asset, composed from its identity and its stored metadata payload.
 ///
 /// This is the detail-side counterpart of `get-data`: list rows only carry
 /// lean identity fields (tags / EXIF / description / rating are stripped in
