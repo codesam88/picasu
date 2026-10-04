@@ -93,23 +93,23 @@ frontend-build-maybe:
 frontend-audit:
     cd frontend && npm audit --omit=dev
 
-# ── Utils (snapfab, paste) ────────────────────────────────────────────────────
+# ── Utils (snapfab, paste, openapi-sanity) ────────────────────────────────────
 
 # cargo fmt on utils/ crates
 [group('utils')]
 utils-format:
-    cargo fmt -p snapfab -p paste
+    cargo fmt -p snapfab -p paste -p openapi-sanity
 
 # cargo fmt --check + cargo clippy on utils/ crates
 [group('utils')]
 utils-check:
-    cargo fmt --check -p snapfab -p paste
-    cargo clippy -p snapfab -p paste -- -D warnings -A clippy::unwrap_used
+    cargo fmt --check -p snapfab -p paste -p openapi-sanity
+    cargo clippy -p snapfab -p paste -p openapi-sanity -- -D warnings -A clippy::unwrap_used
 
 # cargo test on utils/ crates
 [group('utils')]
 utils-test:
-    cargo test -p snapfab
+    cargo test -p snapfab -p openapi-sanity
 
 # ── Tooling ─────────────────────────────────────────────────────────────────────
 
@@ -119,21 +119,16 @@ openapi-gen:
     RUST_MIN_STACK=16777216 cargo run --package picasu -- --dump-openapi > backend/openapi.json
     @echo "wrote backend/openapi.json"
 
-# Two phases, in order: `openapi-json-match` diffs the committed document against
-# a fresh generation, and `openapi-routes-match` compares the routes the product
-# build mounts with the same document. A dependency that fails stops the recipe,
-# so any phase failing fails this one with that phase's diagnostics on stderr.
-#
-# Check that OpenAPI json matches routes registered in backend server
+# Run all OpenAPI checks.
 [group('utils')]
-openapi-check: openapi-json-match openapi-routes-match
+openapi-check: openapi-sanity openapi-json-match openapi-routes-match
 
-# Route-set parity: Match output of runtime Rocket route() output against
-# last generated openapi.json output, ensuring that all routes are documented.
-# Pinned to the feature set the release ships, so the build doing the
-# checking is the build that ships — a feature-gated route only exists in the
-# table of a build that has the feature. It embeds the frontend bundle, hence
-# the build dependency.
+# Check source-level OpenAPI annotation conventions.
+[group('utils')]
+openapi-sanity:
+    cargo run --quiet -p openapi-sanity -- --source-root "{{justfile_directory()}}/backend/src/router" --expect-at-least 60
+
+# Compare mounted Rocket routes with documented OpenAPI operations.
 [group('utils')]
 [private]
 openapi-routes-match: frontend-build-maybe
@@ -306,6 +301,7 @@ precommit:
     fi
     if echo "$changed" | grep -q '^utils/'; then
         just utils-check
+        just utils-test
     fi
     if echo "$changed" | grep -qE '^(\.plan/|docs/|[^/]+\.md$|utils/.*\.md$)'; then
         just plan-lint
