@@ -678,7 +678,6 @@ fn the_router_tree_is_clean() {
         ANNOTATIONS_IN_ROUTER,
         "the scan must see every annotation in backend/src/router"
     );
-
     assert_eq!(
         (declared_parameters, unread_parameters, request_bodies),
         DECLARATION_INVENTORY,
