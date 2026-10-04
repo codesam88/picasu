@@ -65,13 +65,16 @@
 //! lists only `200` and `400` is a document that describes an operation which
 //! cannot fail the way it fails.
 //!
-//! A8's second branch is the one thing here that is not a flat assertion. Rocket
-//! binds a route's `?<name>` to a handler argument of the same name, so a query
-//! parameter can occupy a guard's canonical name — and `?<timestamp>` occupies it in
-//! **every** signature that binds `GuardTimestamp`. Where the canonical name is
-//! taken, the binding must still carry it as a word-part. That is an exception with
-//! a condition rather than an exemption with a hole, and it is counted: see
-//! [`HandlerSummary::taken_name_bindings`].
+//! A8 has **no escape hatch, on purpose.** It is tempting to let a guard binding be
+//! something other than its class's canonical name when another parameter of the
+//! same signature already has that name — and `?<timestamp>` colliding with
+//! `GuardTimestamp` is exactly the case that temptation arrives with. The rule does
+//! not allow it, because a name a finding cannot quote is a guard the tool has
+//! stopped being able to name: a binding that satisfies "contains `timestamp`
+//! somewhere" is not a binding a finding can point a reader at. The collision is
+//! harmonised in source instead — the guard binding is `guard_timestamp`, the public
+//! query parameter keeps `timestamp` — because a binding name is local to its
+//! handler and renaming one costs nothing outside Rust.
 //!
 //! Why the shape rules belong in the gate. Every one of them is invisible in the
 //! generated document, because the document is generated *from* the annotation: a
@@ -277,9 +280,20 @@ const ROUTE_VERBS: [&str; 7] = ["get", "post", "put", "delete", "patch", "head",
 /// rejects with `401` because it rejects a caller who cannot prove who they are.
 /// The names in the middle column are the convention A8 enforces, and the
 /// reasoning is in the plan file.
+///
+/// **`GuardTimestamp` is `guard_timestamp`, not the prefix-stripped `timestamp`,** and
+/// it is the one row that keeps the `Guard` prefix. The other six take the type name
+/// without it: `GuardShare` → `share`, `GuardReadOnlyMode` → `read_only_mode`.
+/// Stripping here would give `timestamp`, which four handlers already bind as a
+/// `?<timestamp>` query parameter — the client's clock — beside the guard that
+/// authenticates the timestamp token, and both were once called "timestamp". The
+/// query parameter's name is public API and stays; the guard binding, which is local
+/// to the handler, keeps the prefix so it says what it is. See
+/// `guard_bindings_named_after_class` for why the rule has no branch that lets a
+/// guard be called something else when the obvious name is occupied.
 pub const GUARD_CLASSES: [(&str, &str, u16); 7] = [
     ("GuardAuth", "auth", 401),
-    ("GuardTimestamp", "timestamp", 401),
+    ("GuardTimestamp", "guard_timestamp", 401),
     ("GuardHash", "hash", 401),
     ("GuardHashOriginal", "hash_original", 401),
     ("GuardShare", "share", 401),
@@ -1128,34 +1142,6 @@ impl AnnotatedHandler {
             .count()
     }
 
-    /// Does some parameter of this signature other than `guard` already carry the
-    /// canonical name of `guard`'s class?
-    ///
-    /// This is what decides which of A8's two branches a binding is judged by. The
-    /// comparison drops a leading underscore from both sides, because `_timestamp`
-    /// occupies `timestamp` just as surely as `timestamp` does.
-    pub fn canonical_name_is_taken(&self, guard: &GuardBinding) -> bool {
-        let Some(class) = guard.class else {
-            return false;
-        };
-        self.arguments.iter().any(|argument| {
-            argument.ident != guard.ident && argument.ident.trim_start_matches('_') == class.binding
-        })
-    }
-
-    /// How many of this handler's guard bindings are judged by A8's taken-name
-    /// branch rather than its free-name one.
-    ///
-    /// Pinned in the scan so that the exception is a recorded count rather than a
-    /// rule that has quietly stopped applying: see
-    /// [`HandlerSummary::taken_name_bindings`].
-    pub fn taken_name_bindings(&self) -> usize {
-        self.guards
-            .iter()
-            .filter(|guard| self.canonical_name_is_taken(guard))
-            .count()
-    }
-
     /// The handler argument called `name`, if it binds one.
     pub fn argument(&self, name: &str) -> Option<&HandlerArgument> {
         self.arguments
@@ -1307,12 +1293,6 @@ pub struct HandlerSummary {
     /// Pinned against `guard_bindings`, so a guard class neither rule can classify
     /// fails a test instead of going unchecked.
     pub classified_guards: usize,
-    /// How many bindings A8 judges by its **taken-name** branch, because another
-    /// parameter of the same signature already holds the canonical name. Pinned
-    /// like `unread_parameters`: today all four are the `?<timestamp>` collision
-    /// in `get_data.rs` and `get_metadata.rs`, so a count that moves means a route
-    /// changed and the amendment's scope has to be looked at again.
-    pub taken_name_bindings: usize,
     /// How many parameters the annotation declares in the form B1 and B2 read.
     pub declared_parameters: usize,
     /// How many parameters the annotation declares in a form they do not read.
@@ -2165,8 +2145,7 @@ fn guard_results_propagate(handler: &AnnotatedHandler) -> Vec<Finding> {
         .collect()
 }
 
-/// A8 — every guard binding is named after its guard class, and carries the class
-/// name as a word where another parameter already has it.
+/// A8 — every guard binding is named exactly the canonical name for its guard class.
 ///
 /// A guard parameter's name is what a reader scans for when asking "which guard
 /// is this, and does the handler use its value", and it is the only handle this
@@ -2175,36 +2154,38 @@ fn guard_results_propagate(handler: &AnnotatedHandler) -> Vec<Finding> {
 /// answers both questions wrongly at a glance — it looks like the token guard, and
 /// it is the share guard.
 ///
-/// **The name, exactly, when it is free.** The canonical name for a class is the
-/// middle column of [`GUARD_CLASSES`] — `auth`, `read_only_mode`, `hash`,
-/// `hash_original`, `share`, `upload`, `timestamp` — and where no other parameter
-/// of the signature has it, the binding must be exactly that.
+/// **One rule, with no branch that lets a guard be called something else.** An
+/// earlier version had a second branch: where the canonical name was already taken
+/// by another parameter of the same signature, the binding was allowed to carry the
+/// class name as a word-part. That branch is gone, deliberately. A rule that accepts
+/// two shapes for one fact has findings that must hedge, and the hedge is what makes
+/// a guard stop being nameable — a binding that satisfies "contains `timestamp`
+/// somewhere" is not a binding a finding can quote back to the reader who has to go
+/// and look.
 ///
-/// **The name as a word, where it is taken.** Rocket binds a route's `?<name>` to a
-/// handler argument of the same name, so a query parameter can occupy the canonical
-/// name. `GuardTimestamp` collides with `?<timestamp>` in **every** signature in
-/// this repository that binds the class, which is why the second branch exists at
-/// all: with the canonical name unavailable, the binding must still carry it as a
-/// **word-part**. The match ignores underscores and case, so for a canonical
-/// `timestamp` the names `timestamp`, `timestamp_guard` and `guard_timestamp` all
-/// satisfy the rule while `auth` — this repository's own mistake at
-/// `backend/src/router/get/get_data.rs:191` and `:221` — does not. It is a
-/// word-part test rather than a prefix or a suffix test, so no arrangement of
-/// words passes that does not say which guard it is.
+/// The branch was not hypothetical. `?<timestamp>` is bound in every signature in
+/// this repository that binds a `GuardTimestamp`, so the name the table first
+/// carried for that class — the prefix-stripped `timestamp` — was occupied 100% of
+/// the time, and the branch existed to accommodate it. **The collision was this
+/// repository's own naming, not a constraint of Rocket.** `get_data` carries two
+/// different timestamps in one signature: the guard binding is the auth token, and
+/// `timestamp: i64` is the client-supplied query value. Both were called
+/// "timestamp". The fix belongs in the source, so the class keeps the prefix the
+/// other six strip — the binding is `guard_timestamp` — and the query parameter
+/// keeps the public name because it has to. A binding name is local to its handler:
+/// renaming seventeen of them moved `backend/openapi.json` not one byte.
 ///
-/// The branch is a statement about one structural collision, not an escape: a
-/// binding whose canonical name is **taken** and which carries none of the class
-/// name is still a finding, and `a_canonical_name_already_taken_still_needs_the_class_name`
-/// pins that. The count of taken-name bindings is pinned in the scan
-/// ([`HandlerSummary::taken_name_bindings`]) so that a future change to those four
-/// signatures — a route losing its `?<timestamp>`, say — fails a test rather than
-/// leaving an exception nobody has looked at.
+/// **So if a future route's own parameter takes a guard's canonical name, the fix
+/// is to harmonise one of the two names in source**, most often the guard, since the
+/// parameter is usually the public half. This rule provides no branch, no exemption
+/// list and no suffix convention for that case, because each of those is a way for a
+/// guard to end up called something a finding cannot name.
 ///
 /// `_`-prefixing is the tree's spelling for a guard whose value the handler never
-/// uses (`_auth: GuardAuth`), so a leading underscore is stripped before the name
-/// is read. It is only right on a binding that is **not** propagated: an underscore
-/// on a guard the body hands on with `?` says the value is discarded, which is the
-/// opposite of what the body does.
+/// uses (`_auth: GuardAuth`), so a leading underscore is stripped before the
+/// comparison. It is only right on a binding that is **not** propagated: an
+/// underscore on a guard the body hands on with `?` says the value is discarded,
+/// which is the opposite of what the body does.
 ///
 /// **Scope: the guard types of [`GUARD_CLASSES`].** A plain Rocket guard whose
 /// name does not start with `Guard` is not a binding this tool classifies at all,
@@ -2222,72 +2203,26 @@ fn guard_bindings_named_after_class(handler: &AnnotatedHandler) -> Vec<Finding> 
             let name = guard.ident.as_str();
             let canonical = class.binding;
             let bare = name.strip_prefix('_').unwrap_or(name);
-
             // A leading underscore is the discarded-value spelling, so it is only
             // right on a binding the body never propagates.
             let underscore_is_right =
                 bare.len() == name.len() || !matches!(handler.body_use(name), Use::Propagated);
-
-            // Two branches, and which one applies is a fact about the signature
-            // rather than a choice the rule makes per binding: where the
-            // canonical name is free the binding must be exactly it, and where
-            // another parameter already has it the binding must still carry it
-            // as a word.
-            let taken = handler.canonical_name_is_taken(guard);
-            let named_after_class = if taken {
-                carries_class_name(bare, canonical)
-            } else {
-                bare == canonical
-            };
-            if underscore_is_right && named_after_class {
+            if underscore_is_right && bare == canonical {
                 return None;
             }
-
-            let text = if taken {
-                format!(
-                    "the guard binding \"{name}\" carries none of its guard class's name: it \
-                     binds {}, whose name is \"{canonical}\", and another parameter in this \
-                     signature is already called \"{canonical}\", so the binding still has to \
-                     carry \"{canonical}\" as a word — \"{canonical}_guard\" and \
-                     \"guard_{canonical}\" both do, and \"{name}\" does not",
-                    guard.guard_type
-                )
-            } else {
-                format!(
+            Some(Finding::at(
+                &handler.file,
+                guard.span.start().line,
+                &handler.name,
+                &format!(
                     "the guard binding \"{name}\" is not named after its guard class: it binds \
                      {}, whose binding is called \"{canonical}\", and the name is what a reader \
                      of the handler, or of any finding this tool reports about it, uses to say \
                      which guard this is",
                     guard.guard_type
-                )
-            };
-            Some(Finding::at(
-                &handler.file,
-                guard.span.start().line,
-                &handler.name,
-                &text,
+                ),
             ))
         })
-        .collect()
-}
-
-/// Does `name` carry `canonical` as a word-part?
-///
-/// Underscores are dropped from both sides and case is ignored, so `guard_timestamp`
-/// and `timestamp_guard` both carry `timestamp` and neither carries `auth`. This is
-/// a containment test rather than a prefix or a suffix one on purpose: what A8
-/// requires is that the name _says which guard it is_, and any arrangement of words
-/// around the class name says it.
-fn carries_class_name(name: &str, canonical: &str) -> bool {
-    fold_case_words(name).contains(&fold_case_words(canonical))
-}
-
-/// A name with its underscores removed and its letters lowercased, so that the two
-/// spellings of the same word compare equal.
-fn fold_case_words(name: &str) -> String {
-    name.chars()
-        .filter(|character| *character != '_')
-        .flat_map(char::to_lowercase)
         .collect()
 }
 
@@ -2443,7 +2378,6 @@ pub fn scan_source_root(source_root: &Path) -> Result<TreeReport, ScanError> {
                 plain_guards: handler.guards.len() - handler.fallible_guards().count(),
                 guard_bindings: handler.guards.len(),
                 classified_guards: handler.classified_guards(),
-                taken_name_bindings: handler.taken_name_bindings(),
                 declared_parameters: handler.annotation.params.len(),
                 unread_parameters: handler.annotation.unread_params,
                 request_bodies: usize::from(handler.annotation.request_body.is_some()),

@@ -22,14 +22,14 @@
 #[get("/get/c3-every-credential-class")]
 pub fn every_credential_class(
     auth: GuardResult<GuardAuth>,
-    timestamp: GuardResult<GuardTimestamp>,
+    guard_timestamp: GuardResult<GuardTimestamp>,
     share: GuardResult<GuardShare>,
     upload: GuardResult<GuardUpload>,
     hash: GuardResult<GuardHash>,
     hash_original: GuardResult<GuardHashOriginal>,
 ) -> AppResult<Json<Widget>> {
     let _ = auth?;
-    let _ = timestamp?;
+    let _ = guard_timestamp?;
     let _ = share?;
     let _ = upload?;
     let _ = hash?;

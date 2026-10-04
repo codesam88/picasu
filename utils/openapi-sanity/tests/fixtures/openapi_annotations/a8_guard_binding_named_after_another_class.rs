@@ -51,7 +51,7 @@ pub fn rename(mode: GuardResult<GuardReadOnlyMode>) -> AppResult<Status> {
     )
 )]
 #[get("/get/a8-underscore-on-propagated")]
-pub fn discarded_timestamp(_timestamp: GuardResult<GuardTimestamp>) -> AppResult<Json<Widget>> {
-    let claims = _timestamp?;
+pub fn discarded_timestamp(_guard_timestamp: GuardResult<GuardTimestamp>) -> AppResult<Json<Widget>> {
+    let claims = _guard_timestamp?;
     Ok(Json(Widget::from(claims)))
 }

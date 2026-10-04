@@ -9,9 +9,9 @@
 #[get("/get/dropped")]
 pub async fn dropped_guard_result(
     auth: GuardResult<GuardAuth>,
-    timestamp: GuardResult<GuardTimestamp>,
+    guard_timestamp: GuardResult<GuardTimestamp>,
 ) -> AppResult<()> {
     let _ = auth;
-    let _ = timestamp?;
+    let _ = guard_timestamp?;
     Ok(())
 }

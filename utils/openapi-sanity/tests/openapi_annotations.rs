@@ -50,13 +50,13 @@
 //! tree that must stay silent. Removing a check fails a named test rather than
 //! turning the gate green.
 //!
-//! **A8 has two branches and both are exercised.** The second exists because Rocket
-//! binds `?<timestamp>` to a handler argument of the same name, so
-//! `GuardTimestamp` cannot take its canonical name in any signature in this
-//! repository. Where the canonical name is taken the binding must still carry it as
-//! a word-part; where it is taken *and* the binding carries none of it, that is a
-//! finding — which is what keeps the branch from being an exemption. The four
-//! bindings that take the branch are counted and pinned.
+//! **A8 has no branch and no escape hatch:** a guard binding must be named exactly
+//! the canonical name for its guard class, even where another parameter of the same
+//! signature already holds that name. `?<timestamp>` and `GuardTimestamp` collided in
+//! four handlers and both were called "timestamp"; the guard binding is now
+//! `guard_timestamp` and the query parameter keeps the public name. A binding name is
+//! local to its handler, so that cost nothing outside Rust — which is the precedent
+//! for harmonising a future collision the same way rather than widening the rule.
 //!
 //! Two shapes are not named by C1 and had no precedent in the tree. They are
 //! pinned as tests below rather than left to be inferred from the walker, and
@@ -129,8 +129,6 @@ const FORM_WITH_MULTIPART: &str = include_str!("fixtures/openapi_annotations/b4_
 
 const MISNAMED_GUARD_BINDINGS: &str =
     include_str!("fixtures/openapi_annotations/a8_guard_binding_named_after_another_class.rs");
-const CANONICAL_NAME_TAKEN: &str =
-    include_str!("fixtures/openapi_annotations/a8_canonical_name_taken.rs");
 const GUARD_BINDINGS_AFTER_CLASS: &str =
     include_str!("fixtures/openapi_annotations/a8_conforming.rs");
 const MISSING_REJECTION_STATUS: &str =
@@ -870,43 +868,12 @@ fn a_guard_binding_named_after_another_class_fails() {
          is called \"read_only_mode\", and the name is what a reader of the handler, or of any \
          finding this tool reports about it, uses to say which guard this is\n\
          a8_guard_binding_named_after_another_class.rs:54: discarded_timestamp: the guard binding \
-         \"_timestamp\" is not named after its guard class: it binds \
-         GuardResult<GuardTimestamp>, whose binding is called \"timestamp\", and the name is what \
-         a reader of the handler, or of any finding this tool reports about it, uses to say which \
-         guard this is",
+         \"_guard_timestamp\" is not named after its guard class: it binds \
+         GuardResult<GuardTimestamp>, whose binding is called \"guard_timestamp\", and the name is \
+         what a reader of the handler, or of any finding this tool reports about it, uses to say \
+         which guard this is",
         "the rule names the class and the name it expects, and an underscore only excuses a \
          binding whose value the body never propagates"
-    );
-}
-
-/// A8's second branch: the canonical name is taken and the binding still has to
-/// carry the class name as a word.
-///
-/// The amendment exists because Rocket binds `?<timestamp>` to a handler argument
-/// called `timestamp`, so `GuardTimestamp` cannot take its canonical name in any
-/// signature in this repository. The match ignores underscores and case, so the
-/// fixture carries three accepted spellings — `guard_timestamp`,
-/// `timestamp_guard`, and a class name surrounded by other words — and one
-/// rejected one.
-///
-/// **The rejected handler is what keeps this from being an exemption.** Without
-/// it the branch would be indistinguishable from "any name is fine when the
-/// canonical name is taken", and `taken_name_bindings` would keep reporting four
-/// in the scan without anything checking them. It is asserted here rather than
-/// only asserted in a comment.
-#[test]
-fn a_canonical_name_already_taken_still_needs_the_class_name() {
-    let findings = check_source("a8_canonical_name_taken.rs", CANONICAL_NAME_TAKEN);
-
-    assert_eq!(
-        render(&findings),
-        "a8_canonical_name_taken.rs:64: taken_canonical_name_not_carried: the guard binding \
-         \"auth\" carries none of its guard class's name: it binds GuardResult<GuardTimestamp>, \
-         whose name is \"timestamp\", and another parameter in this signature is already called \
-         \"timestamp\", so the binding still has to carry \"timestamp\" as a word — \
-         \"timestamp_guard\" and \"guard_timestamp\" both do, and \"auth\" does not",
-        "a taken canonical name is not a free pass: a binding that says nothing about the guard \
-         it binds is a finding, while all three spellings that carry the class name are silent"
     );
 }
 
@@ -1045,21 +1012,6 @@ const GUARD_INVENTORY: (usize, usize) = (52, 9);
 /// fails open is not.
 const GUARD_CLASS_INVENTORY: (usize, usize) = (61, 61);
 
-/// How many guard bindings A8 judges by its **taken-name** branch, because another
-/// parameter of the same signature already holds the canonical name.
-///
-/// This follows the `unread_parameters` pattern: an exception recorded as a
-/// **count** rather than implemented as a mechanism, so it shows up in the scan's
-/// own output and a change to it fails a test. All four are the same structural
-/// collision — `?<timestamp>` occupying `timestamp` in `get_data.rs:60,191,221`
-/// and `get_metadata.rs:38` — and all four are bound as `guard_timestamp`.
-///
-/// A count that moves means a route changed shape: a `?<timestamp>` went away, so
-/// the branch should no longer apply, or a fifth signature collided, so the
-/// amendment has a new case to look at. Either way it is a test failure rather
-/// than an exception that quietly stopped applying.
-const TAKEN_NAME_BINDINGS: usize = 4;
-
 /// The declaration inventory section B was calibrated against: one declared
 /// parameter, all of them the inline `("name" = Type, Location, …)` form, and 24
 /// declared request bodies.
@@ -1116,11 +1068,6 @@ fn the_router_tree_is_clean() {
         .iter()
         .map(|handler| handler.classified_guards)
         .sum();
-    let taken_name_bindings: usize = report
-        .handlers
-        .iter()
-        .map(|handler| handler.taken_name_bindings)
-        .sum();
     let declared_parameters: usize = report
         .handlers
         .iter()
@@ -1156,21 +1103,12 @@ fn the_router_tree_is_clean() {
          the two counts part company and this fails rather than the rule going quietly blind"
     );
     assert_eq!(
-        taken_name_bindings, TAKEN_NAME_BINDINGS,
-        "the number of guard bindings whose canonical name is taken by another parameter in the \
-         same signature moved. Today all {TAKEN_NAME_BINDINGS} are the `?<timestamp>` collision \
-         in get_data.rs and get_metadata.rs, all bound as `guard_timestamp`, which is what A8's \
-         taken-name branch is for. A count that moves means a route changed shape — a \
-         `?<timestamp>` went away, or a fifth signature collided — so the amendment's scope has \
-         to be looked at rather than left applying to a case nobody has read"
-    );
-    assert_eq!(
         (declared_parameters, unread_parameters, request_bodies),
         DECLARATION_INVENTORY,
-        "the tree's declaration inventory moved. `unread_parameters` must stay 0 while \
-         B1 and B2 read the inline tuple form only: the first `IntoParams` struct in an \
-         annotation needs either a resolver or a renegotiated limit, and a non-zero count \
-         fails here rather than narrowing the rules quietly"
+        "the tree's declaration inventory moved. `unread_parameters` must stay 0 while B1 and B2 \
+         read the inline tuple form only: the first `IntoParams` struct in an annotation needs \
+         either a resolver or a renegotiated limit, and a non-zero count fails here rather than \
+         narrowing the rules quietly"
     );
     assert_eq!(
         render(&report.findings),

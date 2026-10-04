@@ -1,15 +1,13 @@
 // The conforming counterpart of A8: every guard class of `GUARD_CLASSES` bound
 // under the name that class expects, in the three spellings the tree uses.
 //
-// - `token`/`timestamp`/`share`/`upload`/`hash`/`hash_original`/`read_only_mode`
+// - `auth`/`guard_timestamp`/`share`/`upload`/`hash`/`hash_original`/`read_only_mode`
 //   are the expected names, for a fallible guard and for a plain one;
 // - `_share` is a plain guard whose value the handler never uses, which is the
 //   tree's spelling and the one the leading underscore is allowed for;
 // - `read_only_mode` next to `_auth` is the mutating-route shape the tree uses
 //   throughout: a discarded token guard and a propagated mode guard.
 //
-// A handler binding the same class twice is also shown (`share` beside `share`),
-// because A8 reads each binding rather than each class.
 
 /// Read one widget behind a token, a share or a presigned upload.
 #[utoipa::path(
@@ -22,14 +20,14 @@
 #[get("/get/a8-every-class")]
 pub fn every_class(
     auth: GuardResult<GuardAuth>,
-    timestamp: GuardResult<GuardTimestamp>,
+    guard_timestamp: GuardResult<GuardTimestamp>,
     share: GuardResult<GuardShare>,
     upload: GuardResult<GuardUpload>,
     hash: GuardResult<GuardHash>,
     hash_original: GuardResult<GuardHashOriginal>,
 ) -> AppResult<Json<Widget>> {
     let _ = auth?;
-    let _ = timestamp?;
+    let _ = guard_timestamp?;
     let _ = share?;
     let _ = upload?;
     let _ = hash?;
