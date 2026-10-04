@@ -1,8 +1,10 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Section A of `.plan/openapi-annotation-checks.md` is implemented here: the
-//! seven rules about the annotation's own shape. The parameter-agreement (B) and
-//! the guard, security (D, M) and mode rules are separate increments.
+//! Two sections of `.plan/openapi-annotation-checks.md` are implemented here:
+//! **section A**, the seven rules about the annotation's own shape, and **section
+//! B**, the four rules about what the annotation declares against what the route
+//! already says. Guard and security semantics are deliberately deferred to a
+//! separate increment with runtime tests.
 //!
 //! # What this crate holds, and what it must not
 //!
@@ -26,6 +28,17 @@
 //!
 //! # Why the rules belong in the gate
 //!
+//! Why the parameter rules belong in the gate. `rocket_extras` reads the route
+//! attribute, so the *route* wins: it supplies the path, the verb, and a derived
+//! parameter and request body for every argument the handler binds. What an
+//! annotation declares on top of that is merged in, and utoipa compares none of
+//! it against what it just derived — so an annotation can advertise a parameter
+//! no route reads, an optionality the route does not have, a body type the route
+//! never parses, or a JSON media type for a form endpoint. Each of those is a
+//! document that is wrong in a way no generated client can detect before the
+//! call fails, and none of them shows up as anything in the document itself.
+//!
+
 //! Why the shape rules belong in the gate. Every one of them is invisible in the
 //! generated document, because the document is generated *from* the annotation: a
 //! restated path, a missing `responses(…)`, a tag outside the vocabulary, a
@@ -45,8 +58,46 @@
 //! 1. which functions carry a `#[utoipa::path]` annotation,
 //! 2. what the annotation declares ([`Annotation`]),
 //! 3. what the handler's doc comment says ([`Located`] lines, and the paragraph
-//!    utoipa turns into `summary`).
+//!    utoipa turns into `summary`),
+//! 4. what the route attribute binds ([`Route`]: its path segments, its query
+//!    names and its `data = "…"` body argument),
+//! 5. what each handler argument's type is ([`HandlerArgument`]), which is where
+//!    an `Option`, a `Json<…>`, a `Data<…>` and a `Form<…>` are told apart.
 //!
+//! # What section B does not cover, and why
+//!
+//! B1 and B2 read a **declared parameter's** name, location and type. utoipa
+//! accepts two spellings for a parameter in `params(…)`, and only one is read:
+//!
+//! - The **inline tuple** — `("name" = Type, Query, description = "…")` — is
+//!   read directly, and is the only form this repository uses.
+//! - The **struct** — `params(SomeQueryStruct)`, or a struct mixed with tuples —
+//!   hides the name, the location and the type behind a type the tool would have
+//!   to resolve across files (find the `#[derive(IntoParams)]`, read its fields,
+//!   apply its `#[param(…)]` overrides). No type in this repository derives
+//!   `IntoParams`, so a resolver would ship untested against real code, and the
+//!   entries are **counted rather than skipped**: [`Annotation::unread_params`]
+//!   carries how many a scan could not read, `the_router_tree_is_clean` pins
+//!   that count, and the first struct form to appear fails the pin rather than
+//!   silently narrowing the rule.
+//!
+//! Two further limits are properties of utoipa's grammar rather than choices:
+//!
+//! - **A declared parameter has no `required` key.** utoipa 5.5's parameter
+//!   feature list rejects it as an unknown attribute, and derives the documented
+//!   `required` from the declared type alone (`!is_option`). So B2 compares the
+//!   declared type's optionality with the handler argument's, which is what the
+//!   document's `required` ends up saying either way.
+//! - **A `Form<…>` binding has no schema type an annotation could name.** The
+//!   payload carries `TempFile<'r>` and a lifetime, so B3 has nothing to compare
+//!   and does not compare it. B4 covers what it *can* check — that the media type
+//!   is `multipart/form-data` rather than utoipa's default.
+//!
+//! B1 also skips a declared parameter whose location is neither `Path` nor
+//! `Query`: a header or cookie is not named anywhere in a Rocket route
+//! attribute, so there is no route binding for it to disagree with.
+//!
+
 //! # What section A does not cover
 //!
 //! The rules assert the *absence* of three spellings utoipa also accepts, each of
@@ -74,7 +125,7 @@ use std::path::{Path, PathBuf};
 
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use syn::spanned::Spanned;
-use syn::{Attribute, Expr, ItemFn, Lit, Meta};
+use syn::{Attribute, Expr, FnArg, GenericArgument, ItemFn, Lit, Meta, Pat, PathArguments, Type};
 
 /// The closed tag vocabulary of `docs/openapi-generator.md` ("Tag conventions"),
 /// which A3 enforces.
@@ -114,6 +165,71 @@ pub const TAGS: [&str; 10] = [
 const RESTATED_VERBS: [&str; 9] = [
     "get", "post", "put", "delete", "head", "options", "patch", "trace", "route",
 ];
+
+/// The Rocket verbs a route attribute can be written with, which is how a route
+/// attribute is told from any other attribute on a handler.
+///
+/// A separate list from [`RESTATED_VERBS`] on purpose: that one is what utoipa's
+/// `HttpMethod` accepts as a bare argument inside an annotation, and it holds
+/// `trace` and `route`, which a Rocket route attribute is never written with.
+/// This one is what `#[get]` / `#[post]` / … is.
+const ROUTE_VERBS: [&str; 7] = ["get", "post", "put", "delete", "patch", "head", "options"];
+
+/// Where a declared parameter is read from — utoipa's `ParameterIn`.
+///
+/// Only [`ParameterLocation::Path`] and [`ParameterLocation::Query`] are
+/// checked, because only those two are named anywhere in a Rocket route
+/// attribute. A header or cookie has no spelling in the route, so B1 has
+/// nothing to compare it against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParameterLocation {
+    /// `<segment>` in the route's path.
+    Path,
+    /// `?<name>` in the route's query part.
+    Query,
+    /// `<header>` in the request.
+    Header,
+    /// `<cookie>` in the request.
+    Cookie,
+}
+
+/// One parameter an annotation declares inline: `("name" = Type, Query, …)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredParameter {
+    /// The declared name, which is the key the document publishes.
+    pub name: String,
+    /// Where the annotation says it is read from.
+    pub location: ParameterLocation,
+    /// The declared type as written (`Option<bool>`, `String`).
+    pub declared_type: String,
+    /// Whether the declared type is an `Option<…>`, which is — for lack of any
+    /// `required` key in utoipa's grammar — exactly what makes the document call
+    /// the parameter optional.
+    pub declared_optional: bool,
+    /// The line the parameter is written on.
+    pub line: usize,
+}
+
+/// What a `request_body` declaration puts in the document's schema.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclaredBody {
+    /// `request_body = Type` — the named type, which is what B3 compares with
+    /// the route's binding.
+    Type(String),
+    /// A declaration whose schema this tool does not read: `inline(…)`, a
+    /// `[T]` array, `Option<…>`, or the `request_body(content = …)` group form.
+    Unreadable,
+}
+
+impl DeclaredBody {
+    /// The declared type as written, if the declaration names one.
+    pub fn type_name(&self) -> Option<&str> {
+        match self {
+            Self::Type(name) => Some(name),
+            Self::Unreadable => None,
+        }
+    }
+}
 
 /// One reported problem, rendered as `path:line: identity: what is wrong`.
 ///
@@ -177,14 +293,13 @@ impl<T> Located<T> {
 }
 
 /// What a `#[utoipa::path(…)]` annotation declares, read far enough for the
-/// shape rules of section A.
+/// shape rules of section A and the declaration rules of section B.
 ///
-/// Only the four things A1–A3 and A6 assert on are kept. Parsed from the
-/// attribute's own token stream rather than through `syn::Meta`, so a value this
-/// crate does not model — a request body, an extension, a response schema — is
-/// skipped over instead of rejected: the annotation grammar belongs to utoipa, and
-/// a rule that could not parse a legal annotation would report a tree it never
-/// understood.
+/// Only what a rule asserts on is kept. Parsed from the attribute's own token
+/// stream rather than through `syn::Meta`, so a value this crate does not model —
+/// an extension, a response schema — is skipped over instead of rejected: the
+/// annotation grammar belongs to utoipa, and a rule that could not parse a legal
+/// annotation would report a tree it never understood.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Annotation {
     /// `path = "…"`, with the line it is written on.
@@ -205,6 +320,20 @@ pub struct Annotation {
     /// How many entries `responses(…)` declares, or `None` when the annotation
     /// declares no `responses(…)` at all — a different defect from an empty one.
     pub responses: Option<Located<usize>>,
+    /// Every parameter `params(…)` declares in the inline tuple form. The struct
+    /// form is not read; see [`Annotation::unread_params`].
+    pub params: Vec<DeclaredParameter>,
+    /// How many `params(…)` entries are in a form the rules cannot read. Counted
+    /// rather than skipped, so that the first one to appear fails a coverage pin
+    /// instead of quietly narrowing B1 and B2.
+    pub unread_params: usize,
+    /// `request_body`, with the line it is written on, or `None` when the
+    /// annotation declares none.
+    pub request_body: Option<Located<DeclaredBody>>,
+    /// The media type the `request_body` names explicitly, either
+    /// `request_body(content_type = "…")` or a `request_body(content(… = …))`
+    /// group. `None` means the annotation names none and utoipa guesses one.
+    pub body_content_type: Option<Located<String>>,
 }
 
 impl Annotation {
@@ -218,7 +347,8 @@ impl Annotation {
             return Self::default();
         };
         let mut annotation = Self::default();
-        let mut tokens = list.tokens.clone().into_iter();
+        let mut cursor = list.tokens.clone().into_iter();
+        let tokens = &mut cursor;
 
         while let Some(tree) = tokens.next() {
             let TokenTree::Ident(ident) = &tree else {
@@ -231,13 +361,34 @@ impl Annotation {
             match tokens.next() {
                 // `name = value`
                 Some(TokenTree::Punct(punct)) if punct.as_char() == '=' => {
-                    let value = match tokens.next() {
-                        Some(TokenTree::Literal(literal)) => literal_text(&literal),
-                        // A non-literal value (an operation id built from a const,
-                        // say) is still a declaration; what it says does not matter
-                        // to a rule that only asks whether it is there.
-                        _ => String::new(),
-                    };
+                    // The value runs to the next top-level comma, which is more
+                    // than one token for a path (`serde_json::Value`) or a
+                    // generic argument list.
+                    let mut rest = tokens.clone();
+                    let mut value = String::new();
+                    let mut value_is_group = false;
+                    for tree in rest.by_ref() {
+                        match &tree {
+                            TokenTree::Punct(punct) if punct.as_char() == ',' => break,
+                            TokenTree::Group(group) => {
+                                value_is_group = matches!(
+                                    group.delimiter(),
+                                    Delimiter::Parenthesis | Delimiter::Bracket
+                                );
+                                value.push_str(&group.to_string());
+                            }
+                            tree => match tree {
+                                // A string literal is read as its text, not as
+                                // its source spelling, so a tag is `albums`
+                                // rather than `"albums"`.
+                                TokenTree::Literal(literal) => {
+                                    value.push_str(&literal_text(literal))
+                                }
+                                tree => value.push_str(&tree.to_string()),
+                            },
+                        }
+                    }
+                    *tokens = rest;
                     // Read at the top level only. `description` is also the key of
                     // a response entry, and those live inside the `responses(…)`
                     // group, which the arm below never looks into — so A7 cannot
@@ -264,14 +415,37 @@ impl Annotation {
                                 .get_or_insert_with(|| Located::new(value, line));
                         }
                         "tag" => annotation.tags.push(Located::new(value, line)),
+                        // `request_body = Type` names a schema; `inline(…)`, a
+                        // `[T]` array and `Option<…>` are declarations whose
+                        // schema this crate does not read.
+                        "request_body" => {
+                            let body = if value_is_group || head_segment(&value) == "Option" {
+                                DeclaredBody::Unreadable
+                            } else {
+                                // A type path is written `serde_json :: Value`;
+                                // the spaces are the token stream's, not the
+                                // reader's.
+                                DeclaredBody::Type(value.replace(' ', ""))
+                            };
+                            annotation
+                                .request_body
+                                .get_or_insert_with(|| Located::new(body, line));
+                        }
                         _ => {}
                     }
                 }
                 // `name(…)`
                 Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Parenthesis => {
-                    if name == "responses" {
-                        annotation.responses =
-                            Some(Located::new(entries_in(&group.stream()), line));
+                    match name.as_str() {
+                        "responses" => {
+                            annotation.responses =
+                                Some(Located::new(entries_in(&group.stream()), line));
+                        }
+                        "params" => read_params(&group.stream(), &mut annotation),
+                        "request_body" => {
+                            read_request_body_group(&group.stream(), line, &mut annotation)
+                        }
+                        _ => {}
                     }
                 }
                 // `name` — a bare token, which for a verb is the restatement A1
@@ -293,6 +467,158 @@ impl Annotation {
 /// The text of a string literal token, without its quotes.
 fn literal_text(literal: &proc_macro2::Literal) -> String {
     literal.to_string().trim_matches('"').to_owned()
+}
+
+/// Read `params(…)`: every inline `("name" = Type, Location, …)` entry becomes a
+/// [`DeclaredParameter`], and every entry in any other form is counted as
+/// unread.
+///
+/// The two forms are told apart the way utoipa tells them apart — an entry that
+/// is parenthesised is a tuple, anything else is a type to resolve — which is why
+/// a struct form is counted rather than guessed at. See [`Annotation::unread_params`]
+/// for why that count is a coverage pin and not a silent skip.
+fn read_params(stream: &TokenStream, annotation: &mut Annotation) {
+    for entry in split_entries(stream) {
+        let mut trees = entry.into_iter();
+        let Some(TokenTree::Group(tuple)) = trees.next() else {
+            annotation.unread_params += 1;
+            continue;
+        };
+        let line = tuple.span().start().line;
+
+        // `"name" = Type` is the first entry; the location is the next one, and
+        // whatever follows that is a feature (`description`, `example`, …).
+        let fields = split_entries(&tuple.stream());
+        let mut head = fields
+            .first()
+            .map_or_else(TokenStream::new, Clone::clone)
+            .into_iter();
+        let Some(TokenTree::Literal(name)) = head.next() else {
+            annotation.unread_params += 1;
+            continue;
+        };
+        let declared = head
+            .filter(|tree| !matches!(tree, TokenTree::Punct(punct) if punct.as_char() == '='))
+            .map(|tree| tree.to_string())
+            .collect::<Vec<_>>()
+            .join("")
+            .replace(' ', "");
+        let location = fields
+            .get(1)
+            .map(|field| field.to_string())
+            .and_then(|field| {
+                parameter_location(field.split_whitespace().next().unwrap_or_default())
+            });
+        let Some(location) = location else {
+            annotation.unread_params += 1;
+            continue;
+        };
+        annotation.params.push(DeclaredParameter {
+            name: literal_text(&name),
+            location,
+            declared_optional: type_is_optional(&declared),
+            declared_type: declared,
+            line,
+        });
+    }
+}
+
+/// utoipa's `ParameterIn` as the token it is written with. `None` for anything
+/// else, which puts the entry outside what B1 and B2 can read.
+fn parameter_location(token: &str) -> Option<ParameterLocation> {
+    match token {
+        "Path" => Some(ParameterLocation::Path),
+        "Query" => Some(ParameterLocation::Query),
+        "Header" => Some(ParameterLocation::Header),
+        "Cookie" => Some(ParameterLocation::Cookie),
+        _ => None,
+    }
+}
+
+/// Read `request_body(…)`: the media type it names explicitly, and a body whose
+/// schema is a `content = …` value this crate does not read.
+///
+/// `content_type = "…"` names the media type on its own; the group form,
+/// `content("mime" = Schema)`, names it as the key of each media-type entry. Both
+/// spellings are read, because both say the same thing and utoipa rejects the
+/// combination of the two.
+fn read_request_body_group(stream: &TokenStream, line: usize, annotation: &mut Annotation) {
+    annotation
+        .request_body
+        .get_or_insert_with(|| Located::new(DeclaredBody::Unreadable, line));
+
+    for entry in split_entries(stream) {
+        let mut trees = entry.into_iter();
+        let Some(TokenTree::Ident(key)) = trees.next() else {
+            continue;
+        };
+        let key_line = key.span().start().line;
+        // `content_type = "mime"` names the media type on its own; the group form,
+        // `content(Schema = "mime")`, names it inside the `content` argument.
+        let media_type = match key.to_string().as_str() {
+            "content_type" => trees.find_map(|tree| match tree {
+                TokenTree::Literal(literal) => Some(literal_text(&literal)),
+                _ => None,
+            }),
+            "content" => trees.find_map(|tree| match tree {
+                TokenTree::Group(group) => first_literal(&group.stream()),
+                _ => None,
+            }),
+            _ => None,
+        };
+        if let Some(media_type) = media_type {
+            annotation
+                .body_content_type
+                .get_or_insert_with(|| Located::new(media_type, key_line));
+        }
+    }
+}
+
+/// The text of the first string literal anywhere in these tokens, descending into
+/// groups.
+///
+/// utoipa's group form nests its media type inside a per-entry parenthesis —
+/// `content((Object = "multipart/form-data"))` — so the depth is not fixed and
+/// the only honest reading is the first literal at whatever depth it sits.
+fn first_literal(stream: &TokenStream) -> Option<String> {
+    stream.clone().into_iter().find_map(|tree| match tree {
+        TokenTree::Literal(literal) => Some(literal_text(&literal)),
+        TokenTree::Group(group) => first_literal(&group.stream()),
+        _ => None,
+    })
+}
+
+/// Split a group into its comma-separated entries, the way utoipa parses
+/// `params(…)`, `responses(…)` and `extensions(…)`.
+///
+/// Angle brackets nest, so a comma inside a generic argument list — `("x" =
+/// HashMap<String, u32>, Query)` — does not end the entry. Nothing else needs
+/// tracking: every other delimiter reaches `syn` as a group, and a comma inside
+/// one is already part of that group.
+fn split_entries(stream: &TokenStream) -> Vec<TokenStream> {
+    let mut entries = Vec::new();
+    let mut current = TokenStream::new();
+    let mut depth: usize = 0;
+    for tree in stream.clone() {
+        if let TokenTree::Punct(punct) = &tree {
+            match punct.as_char() {
+                '<' => depth += 1,
+                '>' => depth = depth.saturating_sub(1),
+                ',' if depth == 0 => {
+                    if !current.is_empty() {
+                        entries.push(std::mem::take(&mut current));
+                    }
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        current.extend(Some(tree));
+    }
+    if !current.is_empty() {
+        entries.push(current);
+    }
+    entries
 }
 
 /// How many comma-separated entries a group holds, ignoring empty ones — the
@@ -345,6 +671,186 @@ fn doc_comment(handler: &ItemFn) -> Vec<Located<String>> {
         .collect()
 }
 
+/// Is a type as written an `Option<…>`?
+///
+/// The test is on the last path segment rather than on a prefix, so both
+/// `Option<T>` and `std::option::Option<T>` are optional, but a type merely named
+/// `OptionalThing` is not.
+fn type_is_optional(text: &str) -> bool {
+    head_segment(text).rsplit("::").next() == Some("Option")
+}
+
+/// The outermost type name of a type as written: `Json<CreateAlbum>` is `Json`,
+/// `serde_json::Value` is `serde_json::Value`.
+fn head_segment(text: &str) -> &str {
+    text.split('<').next().unwrap_or(text).trim()
+}
+
+/// What a handler argument's type says the request body is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BodyBinding {
+    /// `Json<T>` or `Data<T>`, optionally through an `Option` — a JSON body the
+    /// route parses into `T`.
+    Json(String),
+    /// `Form<T>`, optionally through an `Option` or a `Result<Form<T>, Errors>` —
+    /// a `multipart/form-data` body.
+    Form(String),
+    /// Not a body binding: a guard, a plain query argument, or a type these rules
+    /// do not read.
+    None,
+}
+
+/// Read the body a handler argument's type binds.
+///
+/// `Option<…>` and a `Result<…>` are peeled because both appear around a body
+/// guard in Rocket — `Option<Json<T>>` for an optional body, and
+/// `Result<Form<T>, Errors<'_>>` for a form Rocket may fail to parse — and the
+/// guard underneath is what says what the body is.
+pub fn body_binding(type_as_written: &str) -> BodyBinding {
+    let text = type_as_written.replace(' ', "");
+    let head = head_segment(&text);
+    let payload = text
+        .split_once('<')
+        .map(|(_, rest)| rest.trim_end_matches('>'))
+        .unwrap_or_default();
+
+    match head {
+        "Option" | "Result" => body_binding(payload),
+        "Json" | "Data" => BodyBinding::Json(payload.to_owned()),
+        "Form" => BodyBinding::Form(payload.to_owned()),
+        _ => BodyBinding::None,
+    }
+}
+
+/// One handler argument of an annotated handler, with the type as written.
+///
+/// Every typed argument is kept, not only the guards: B2 compares a declared
+/// parameter against the argument of the same name, and that argument need not be
+/// a guard.
+#[derive(Debug, Clone)]
+pub struct HandlerArgument {
+    /// The parameter name.
+    pub ident: String,
+    /// The type as written (`Option<bool>`, `Json<CreateDirAlbumData>`).
+    pub ty: String,
+    /// Where the parameter is written in the signature.
+    pub span: proc_macro2::Span,
+}
+
+impl HandlerArgument {
+    /// Is the argument an `Option<…>`?
+    pub fn is_optional(&self) -> bool {
+        type_is_optional(&self.ty)
+    }
+
+    /// What request body this argument binds, if any.
+    pub fn body(&self) -> BodyBinding {
+        body_binding(&self.ty)
+    }
+}
+
+/// What a handler's route attribute binds: the path it serves, the names its
+/// path and query parts bind, and the argument its body comes from.
+///
+/// Read from the same attribute utoipa reads it from, which is the whole point:
+/// the route is what the annotation is checked against, so it has to be the same
+/// route rather than a re-derivation of it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Route {
+    /// The route path as written, e.g. `/albums/<id>?<locate>`.
+    pub path: Option<Located<String>>,
+    /// The `<segment>` names of the path part, a trailing `..` removed.
+    pub path_segments: Vec<String>,
+    /// The `?<name>` names of the query part, a trailing `..` removed.
+    pub query: Vec<String>,
+    /// The argument `data = "<name>"` binds the body to.
+    pub data: Option<Located<String>>,
+}
+
+/// Is this attribute a Rocket route attribute — `#[get("…")]`, `#[post("…", …)]`?
+fn is_route_attribute(attribute: &Attribute) -> bool {
+    attribute
+        .path()
+        .get_ident()
+        .is_some_and(|ident| ROUTE_VERBS.contains(&ident.to_string().as_str()))
+}
+
+/// Read the route attribute of a handler, or `None` when it carries none.
+fn route_attribute(handler: &ItemFn) -> Option<Route> {
+    let attribute = handler
+        .attrs
+        .iter()
+        .find(|attribute| is_route_attribute(attribute))?;
+    let Meta::List(list) = &attribute.meta else {
+        return None;
+    };
+    let mut trees = list.tokens.clone().into_iter();
+    let line = list.span().start().line;
+
+    // `#[get("/path", data = "<body>")]`: the path is the first literal, and
+    // every other argument is a `key = value` pair.
+    let Some(TokenTree::Literal(path)) = trees.next() else {
+        return None;
+    };
+    let path = literal_text(&path);
+    let (segments, query) = route_names(&path);
+
+    let mut data = None;
+    while let Some(tree) = trees.next() {
+        // Commas separate the arguments; a route attribute writes them after the
+        // path, and the path may be followed by several of them.
+        let TokenTree::Ident(key) = &tree else {
+            continue;
+        };
+        let key_line = key.span().start().line;
+        if key != "data" {
+            continue;
+        }
+        // `data = "<argument>"`: the binding is a string literal, and the angle
+        // brackets around the name are part of the literal, not tokens.
+        if matches!(trees.next(), Some(TokenTree::Punct(punct)) if punct.as_char() == '=')
+            && let Some(TokenTree::Literal(name)) = trees.next()
+        {
+            let name = literal_text(&name);
+            data = Some(Located::new(
+                name.trim_matches(['<', '>']).to_owned(),
+                key_line,
+            ));
+        }
+    }
+
+    Some(Route {
+        path: Some(Located::new(path, line)),
+        path_segments: segments,
+        query,
+        data,
+    })
+}
+
+/// The `<segment>` names of a route path and the `?<name>` names of its query.
+///
+/// A partial-segment name is written `<name..>`; the `..` is Rocket's marker and
+/// not part of the name the handler binds, so it is dropped. Anything after a
+/// `?` is the query part, and a literal beside a dynamic name (`?<a>foo`) still
+/// binds `a`.
+fn route_names(path: &str) -> (Vec<String>, Vec<String>) {
+    let (head, tail) = path.split_once('?').unwrap_or((path, ""));
+    let segments = dynamic_names(head.split('/'));
+    let query = dynamic_names(tail.split('&'));
+    (segments, query)
+}
+
+/// Every `<name>` in these fragments, with Rocket's `..` marker removed.
+fn dynamic_names<'a>(fragments: impl Iterator<Item = &'a str>) -> Vec<String> {
+    fragments
+        .filter_map(|fragment| {
+            let start = fragment.find('<')? + 1;
+            let end = fragment[start..].find('>')? + start;
+            Some(fragment[start..end].trim_end_matches('.').to_owned())
+        })
+        .collect()
+}
+
 /// A function carrying a `#[utoipa::path]` annotation, with its annotation, doc
 /// comment and route arguments resolved.
 ///
@@ -363,9 +869,32 @@ pub struct AnnotatedHandler {
     /// The line the signature is written on. Private because it exists only to
     /// anchor a finding about the handler as a whole.
     sig_line: usize,
+
+    /// Every typed argument of the signature, guards included.
+    pub arguments: Vec<HandlerArgument>,
+    /// What the route attribute binds, or `None` when the handler carries no
+    /// route attribute.
+    pub route: Option<Route>,
 }
 
 impl AnnotatedHandler {
+    /// The handler argument called `name`, if it binds one.
+    pub fn argument(&self, name: &str) -> Option<&HandlerArgument> {
+        self.arguments
+            .iter()
+            .find(|argument| argument.ident == name)
+    }
+
+    /// The request body the route binds, as `(the argument's type, the body)`.
+    ///
+    /// `None` when the route declares no `data = "…"` argument, when the named
+    /// argument is not one of the signature's, or when the argument binds no body.
+    pub fn route_body(&self) -> Option<&HandlerArgument> {
+        let data = self.route.as_ref()?.data.as_ref()?;
+        let argument = self.argument(&data.value)?;
+        (!matches!(argument.body(), BodyBinding::None)).then_some(argument)
+    }
+
     /// How many lines the doc comment's first paragraph runs, which is the text
     /// utoipa derives `summary` from.
     ///
@@ -483,12 +1012,91 @@ pub struct HandlerSummary {
     pub file: String,
     /// The function name.
     pub name: String,
+
+    /// How many parameters the annotation declares in the form B1 and B2 read.
+    pub declared_parameters: usize,
+    /// How many parameters the annotation declares in a form they do not read.
+    /// Pinned so that the first `IntoParams` struct in the tree fails a test
+    /// rather than quietly narrowing the rules.
+    pub unread_parameters: usize,
+    /// How many request bodies the annotation declares.
+    pub request_bodies: usize,
 }
 
 /// Does this attribute spell `#[utoipa::path(...)]`?
 fn is_utoipa_path(attribute: &Attribute) -> bool {
     let segments = &attribute.path().segments;
     segments.len() == 2 && segments[0].ident == "utoipa" && segments[1].ident == "path"
+}
+
+/// The last path segment of a type, when the type is written as a path.
+///
+/// `Option<GuardAuth>` is not a path type and yields `None`; `GuardResult<X>` is
+/// read from its head segment, which is all the rules need.
+fn type_head_segment(ty: &Type) -> Option<&syn::Ident> {
+    match ty {
+        Type::Path(path) => path.path.segments.last().map(|s| &s.ident),
+        _ => None,
+    }
+}
+
+/// Render a type as written, so a finding names the guard rather than a
+/// position in a signature: `GuardResult<GuardAuth>`, `GuardAuth`.
+fn type_text(ty: &Type) -> String {
+    let Type::Path(path) = ty else {
+        return type_head_segment(ty).map_or_else(|| "?".to_owned(), ToString::to_string);
+    };
+    if path.qself.is_some() {
+        return "?".to_owned();
+    }
+    let head: Vec<String> = path
+        .path
+        .segments
+        .iter()
+        .map(|segment| segment.ident.to_string())
+        .collect();
+    let payload = match path.path.segments.last().map(|s| &s.arguments) {
+        Some(PathArguments::AngleBracketed(arguments)) => arguments.args.iter().find_map(|arg| {
+            if let GenericArgument::Type(inner) = arg {
+                Some(inner)
+            } else {
+                None
+            }
+        }),
+        _ => None,
+    };
+    match payload {
+        Some(inner) => format!("{}<{}>", head.join("::"), type_text(inner)),
+        None => head.join("::"),
+    }
+}
+
+/// Read every typed argument of one function's signature.
+///
+/// Patterns that are not a plain name are skipped: a handler that destructures
+/// its parameters binds nothing a rule can name, and it cannot be one of this
+/// repository's handlers.
+fn handler_arguments(handler: &ItemFn) -> Vec<HandlerArgument> {
+    handler
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|arg| match arg {
+            FnArg::Typed(typed) => Some((typed.pat.as_ref(), &typed.ty)),
+            FnArg::Receiver(_) => None,
+        })
+        .filter_map(|(pat, ty)| {
+            let ident = match pat {
+                Pat::Ident(pat_ident) => &pat_ident.ident,
+                _ => return None,
+            };
+            Some(HandlerArgument {
+                ident: ident.to_string(),
+                ty: type_text(ty),
+                span: pat.span(),
+            })
+        })
+        .collect()
 }
 
 /// Collect the `#[utoipa::path]`-annotated functions of a parsed file.
@@ -501,23 +1109,29 @@ pub fn annotated_handlers(file: &str, parsed: &syn::File) -> Vec<AnnotatedHandle
             _ => None,
         })
         .filter(|handler| handler.attrs.iter().any(is_utoipa_path))
-        .map(|handler| AnnotatedHandler {
-            file: file.to_owned(),
-            name: handler.sig.ident.to_string(),
-            annotation: Annotation::parse(
-                handler
-                    .attrs
-                    .iter()
-                    .find(|attribute| is_utoipa_path(attribute))
-                    .expect("the handler was filtered on carrying this attribute"),
-            ),
-            doc: doc_comment(handler),
-            sig_line: handler.sig.span().start().line,
+        .map(|handler| {
+            let arguments = handler_arguments(handler);
+            AnnotatedHandler {
+                file: file.to_owned(),
+                name: handler.sig.ident.to_string(),
+                annotation: Annotation::parse(
+                    handler
+                        .attrs
+                        .iter()
+                        .find(|attribute| is_utoipa_path(attribute))
+                        .expect("the handler was filtered on carrying this attribute"),
+                ),
+                doc: doc_comment(handler),
+                sig_line: handler.sig.span().start().line,
+
+                arguments,
+                route: route_attribute(handler),
+            }
         })
         .collect()
 }
 
-/// Parse one source file and return its `#[utoipa::path]`-annotated functions
+/// Parse one source file and return its `#[utoipa::path]`-annotated functions.
 pub fn handlers_in_file(file: &str, source: &str) -> Result<Vec<AnnotatedHandler>, syn::Error> {
     let parsed: syn::File = syn::parse_file(source)?;
     Ok(annotated_handlers(file, &parsed))
@@ -779,11 +1393,8 @@ fn no_hand_set_prose(handler: &AnnotatedHandler) -> Vec<Finding> {
     findings
 }
 
-/// A1 to A7 of section A, then C1: every rule over one handler, in a fixed
-/// order so a report reads the same way twice.
-///
-/// C1b contributes nothing here for the reason given on
-/// [`findings_in_source`].
+/// A1 to A7 of section A and B1 to B4 of section B: every rule over one handler,
+/// in a fixed order so a report reads the same way twice.
 fn rules_over(handler: &AnnotatedHandler) -> Vec<Finding> {
     [
         restated_route(handler),
@@ -793,8 +1404,231 @@ fn rules_over(handler: &AnnotatedHandler) -> Vec<Finding> {
         one_line_summary(handler),
         no_hand_set_operation_id(handler),
         no_hand_set_prose(handler),
+        declared_parameters_bind(handler),
+        declared_optionality_agrees(handler),
+        declared_body_matches_binding(handler),
+        form_body_declares_multipart(handler),
     ]
     .concat()
+}
+
+/// B1 — every declared parameter's name is one the route actually binds.
+///
+/// `rocket_extras` derives a parameter for every argument the route binds, and
+/// merges whatever the annotation declares on top. Nothing checks the other
+/// direction, so an annotation can declare a parameter no route reads and the
+/// document advertises it: a generated client sends it, the server ignores it.
+///
+/// A header or cookie is out of scope — a Rocket route attribute names neither,
+/// so there is nothing to disagree with. So is a handler that carries no route
+/// attribute at all: it is not mounted, which `--check-openapi` reports, and a
+/// rule here would send the reader to a parameter instead.
+fn declared_parameters_bind(handler: &AnnotatedHandler) -> Vec<Finding> {
+    handler
+        .annotation
+        .params
+        .iter()
+        .filter_map(|declared| {
+            let route = handler.route.as_ref()?;
+            let (bound, written) = match declared.location {
+                ParameterLocation::Path => (&route.path_segments, "path"),
+                ParameterLocation::Query => (&route.query, "query"),
+                ParameterLocation::Header | ParameterLocation::Cookie => return None,
+            };
+            if bound.iter().any(|name| name == &declared.name) {
+                return None;
+            }
+            let path = route
+                .path
+                .as_ref()
+                .map_or_else(String::new, |path| path.value.clone());
+            Some(Finding::at(
+                &handler.file,
+                declared.line,
+                &handler.name,
+                &format!(
+                    "the annotation declares the {written} parameter \"{}\", but the route \
+                     binds no such {written} parameter: {}",
+                    declared.name,
+                    describe_route(path, written)
+                ),
+            ))
+        })
+        .collect()
+}
+
+/// What the route says its `{written}` part is, in the words a reader needs.
+fn describe_route(path: String, written: &str) -> String {
+    let (head, tail) = path.split_once('?').unwrap_or((&path, ""));
+    match written {
+        "path" => format!("its path is \"{head}\""),
+        _ => match tail.is_empty() {
+            true => format!("its path \"{head}\" declares no query part"),
+            false => format!("its query part is \"?{tail}\""),
+        },
+    }
+}
+
+/// B2 — a declared parameter's documented `required` agrees with the handler
+/// argument it names.
+///
+/// utoipa 5.5 has no `required` key in a parameter tuple — it rejects the
+/// attribute as unknown — and derives the documented `required` from the declared
+/// type alone: `Option<…>` is optional, anything else is required. So the two
+/// optionalities that have to agree are the declared type's and the handler
+/// argument's, and this compares them.
+///
+/// The dangerous direction is a declared `Option<T>` on a `T` argument: the
+/// document says a caller may omit it, the route will not parse without it.
+fn declared_optionality_agrees(handler: &AnnotatedHandler) -> Vec<Finding> {
+    handler
+        .annotation
+        .params
+        .iter()
+        .filter_map(|declared| {
+            let argument = handler.argument(&declared.name)?;
+            if argument.is_optional() == declared.declared_optional {
+                return None;
+            }
+            Some(Finding::at(
+                &handler.file,
+                declared.line,
+                &handler.name,
+                &format!(
+                    "the annotation declares the parameter \"{}\" as {}, which utoipa documents \
+                     as {}, but the handler binds it as {}, so the document and the route \
+                     disagree about whether a caller may omit it",
+                    declared.name,
+                    declared.declared_type,
+                    if declared.declared_optional {
+                        "not required"
+                    } else {
+                        "required"
+                    },
+                    argument.ty
+                ),
+            ))
+        })
+        .collect()
+}
+
+/// B3 — a declared `request_body` names the type the route's `data = "…"` binds.
+///
+/// The declaration is the document's claim and the binding is what Rocket
+/// parses; utoipa takes the declaration and never compares the two, so an
+/// annotation can advertise a body the route will reject every time.
+///
+/// Two stated limits, both properties of utoipa's grammar rather than choices:
+///
+/// - A **`Form<…>` binding is not compared.** Its payload carries `TempFile<'r>`
+///   and a lifetime, so no schema type names it. B4 checks what can be checked
+///   about a form body — the media type.
+/// - **`request_body = Value` declares no constraint** and is not compared. It
+///   is utoipa's "any body" and says nothing a route could contradict, so
+///   comparing it would only reject a deliberate looseness. The other direction
+///   is still a finding: naming a concrete type on a route that binds `Json<Value>`
+///   is a claim about what the route parses, and it is false.
+///
+/// Types are compared by the last segment of their path, which is the name
+/// utoipa publishes them under — see [`schema_name`].
+fn declared_body_matches_binding(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let Some(binding) = handler.route_body() else {
+        return Vec::new();
+    };
+    let BodyBinding::Json(bound) = binding.body() else {
+        return Vec::new();
+    };
+    let Some(declared) = &handler.annotation.request_body else {
+        return Vec::new();
+    };
+    let Some(name) = declared.value.type_name() else {
+        return Vec::new();
+    };
+    if declares_any_body(name) || schema_name(name) == schema_name(&bound) {
+        return Vec::new();
+    }
+    vec![Finding::at(
+        &handler.file,
+        declared.line,
+        &handler.name,
+        &format!(
+            "the annotation declares request_body = {name}, but the route binds the body as \
+             Json<{bound}>, so the document advertises a schema the route never parses"
+        ),
+    )]
+}
+
+/// Does a declared request-body type say "any body"?
+///
+/// utoipa turns `Value` and `serde_json::Value` into an empty schema, which is the
+/// specification's way of saying the body is unconstrained. A custom type whose
+/// name merely ends in `Value` still has a concrete schema and is compared.
+fn declares_any_body(type_as_written: &str) -> bool {
+    matches!(
+        type_as_written,
+        "Value" | "serde_json::Value" | "::serde_json::Value"
+    )
+}
+
+/// The name a type contributes to the document.
+///
+/// utoipa keys a component schema by the last segment of the type path, so
+/// `crate::model::album::SetAlbumTitle` and `SetAlbumTitle` publish the same
+/// schema and B3 compares them as the same type. Nothing in the tree has two
+/// types that share a last segment and differ otherwise.
+fn schema_name(type_as_written: &str) -> &str {
+    let head = head_segment(type_as_written);
+    head.rsplit("::").next().unwrap_or(head)
+}
+
+/// B4 — a `Form<…>` binding declares `multipart/form-data`.
+///
+/// A form endpoint takes `multipart/form-data`, and utoipa guesses
+/// `application/json` for every named type that is not a primitive — so an
+/// annotation that leaves the media type unsaid documents a JSON body for a route
+/// that parses a multipart upload, and a generated client sends JSON to it. This
+/// is the one rule of section B that fires on the real tree.
+///
+/// The rule asks the annotation to name the media type rather than reproducing
+/// utoipa's guess: the guess is a list of cases (byte arrays are
+/// `application/octet-stream`, primitives are `text/plain`), and reimplementing it
+/// here would make this crate a second utoipa to keep in step. Anything but an
+/// explicit `multipart/form-data` is a finding, and so is a form route with no
+/// `request_body` at all.
+fn form_body_declares_multipart(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let Some(binding) = handler.route_body() else {
+        return Vec::new();
+    };
+    let BodyBinding::Form(form) = binding.body() else {
+        return Vec::new();
+    };
+    if handler
+        .annotation
+        .body_content_type
+        .as_ref()
+        .is_some_and(|declared| declared.value == "multipart/form-data")
+    {
+        return Vec::new();
+    }
+
+    let declared = match &handler.annotation.request_body {
+        Some(declared) => match declared.value.type_name() {
+            Some(name) => format!("request_body = {name}"),
+            None => "a request_body schema this tool does not read".to_owned(),
+        },
+        None => "no request body at all".to_owned(),
+    };
+    vec![Finding::at(
+        &handler.file,
+        handler.signature_line(),
+        &handler.name,
+        &format!(
+            "the route binds a form (Form<{form}>), so its body is multipart/form-data, but the \
+             annotation declares {declared} and names no multipart/form-data media type, which \
+             utoipa documents as application/json; a generated client would send JSON to a form \
+             endpoint"
+        ),
+    )]
 }
 
 /// Every annotation rule over one source file: sections A and B.
@@ -869,6 +1703,10 @@ pub fn scan_source_root(source_root: &Path) -> Result<TreeReport, ScanError> {
             report.handlers.push(HandlerSummary {
                 file: handler.file.clone(),
                 name: handler.name.clone(),
+
+                declared_parameters: handler.annotation.params.len(),
+                unread_parameters: handler.annotation.unread_params,
+                request_bodies: usize::from(handler.annotation.request_body.is_some()),
             });
         }
     }
