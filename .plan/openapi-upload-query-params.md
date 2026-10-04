@@ -5,32 +5,19 @@ priority: low
 area: backend
 ---
 
-Document the `/upload` query parameters in the utoipa schema. Raised in PR \#17 review (2026-09-07); `openapi-backfill`
-is closed, so this drift is untracked.
+Document the `/upload` query parameters in the generated OpenAPI document.
 
-## Context
+## Final state
 
-`#[utoipa::path]` on `backend/src/router/post/post_upload.rs:146-155` documents no query parameters at all
-(`request_body = Value`, generic responses). The route signature declares three:
-`presigned_album_id_opt`, `on_conflict`, and (new in PR \#17) `auto_rename`. `on_conflict` predates this PR
-(`ef27af1d`), so the drift is pre-existing; the PR added one more undocumented, user-facing flag.
+All three parameters the route binds are published in `backend/openapi.json`:
+`auto_rename`, `on_conflict`, and `presigned_album_id_opt`. `rocket_extras` derives
+them from the route attribute, so `#[utoipa::path]` only needs an inline entry when
+it adds a description. `auto_rename` has one, including its default and the 400
+rejection when sanitization is disabled.
 
-Per `openapi-backfill.md` (status done, "3 of ~65 routes annotated"), the spec is considered backfilled despite the
-widespread absence of annotations — so nothing currently tracks these missing params.
+The plan originally listed `replace` as an `on_conflict` value. The route accepts
+`skip` and `rename` only, defaulting to `rename`; any other value is a 400.
 
-## Tasks
-
-- [ ] Add `params(...)` entries (or full `request_body` schema) for `presigned_album_id_opt`, `on_conflict`,
-      `auto_rename` on the `/upload` route, including valid values (`on_conflict`: skip|rename|replace; `auto_rename`:
-      bool) and the note that `auto_rename=false` rejects unsanitizable names.
-- [ ] Decide whether to document just this route or widen the scope back to a general OpenAPI backfill pass; if the
-      latter, reopen `openapi-backfill.md`.
-
-## Progress (2026-09-08)
-
-`auto_rename` done in PR \#17 (utoipa 5 `params(("auto_rename" = Option<bool>, Query, description = ...))`, confirmed
-in a `--dump-openapi` run). `presigned_album_id_opt` and `on_conflict` remain undocumented — pre-existing drift, kept
-out of PR scope.
-
-- 2026-09-24: Closed. `auto_rename` already documented. Remaining work (`presigned_album_id_opt`, `on_conflict` query
-  params on `POST /upload`) folded into `openapi-contract-hardening.md`.
+Descriptions for the two remaining parameters, and for most other published
+parameters, are carried as document-linting work in
+`openapi-annotation-checks.md`.

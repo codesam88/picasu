@@ -208,6 +208,15 @@ Add a separate document-linter phase for OpenAPI validity and document-only
 conventions. Keep its configuration and rules distinct from source annotation
 checks and mounted-route parity.
 
+The first concrete rule is parameter documentation: every published path or query
+parameter needs a description, and a parameter with a closed value set should name
+those values. `rocket_extras` derives the parameter list from the route attribute,
+so satisfying this rule means declaring an inline parameter entry to carry the
+description. Current calibration is 22 published parameters of which 21 have no
+description; `auto_rename` on `POST /upload` is the only documented one. Decide
+whether the rule belongs to the document linter or to a source rule before
+implementing it, since the check and the fix are not in the same place.
+
 ## Execution and acceptance
 
 `openapi-sanity` is the first phase of `just openapi-check`, scanning
