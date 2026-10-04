@@ -651,19 +651,6 @@
         }
       ]
     },
-    "apiWaitIndex": {
-      "type": "object",
-      "properties": {
-        "wait_index": {
-          "type": "boolean",
-          "const": true
-        }
-      },
-      "required": [
-        "wait_index"
-      ],
-      "additionalProperties": false
-    },
     "apiMintTimestampToken": {
       "type": "object",
       "properties": {
