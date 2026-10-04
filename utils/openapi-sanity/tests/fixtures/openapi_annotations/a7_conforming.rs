@@ -19,3 +19,5 @@
 pub async fn derived_prose() -> AppResult<Json<Widget>> {
     Ok(Json(Widget))
 }
+
+type AppResult<T> = Result<T, AppError>;

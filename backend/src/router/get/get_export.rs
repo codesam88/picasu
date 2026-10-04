@@ -22,6 +22,7 @@ pub struct ExportEntry {
             (status = 200, description = "Export data as JSON"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 500, description = "Internal error"),
         )
     )
 ]

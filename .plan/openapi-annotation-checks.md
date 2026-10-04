@@ -17,24 +17,27 @@ artifact check, or runtime route check enforces them.
 
 ## Rule index
 
-| ID  | Requirement                                                             | Status    | Owner / scope                      |
-| --- | ----------------------------------------------------------------------- | --------- | ---------------------------------- |
-| A1  | Do not restate the route path or bare HTTP verb in the annotation.      | enforced  | `openapi-sanity`                   |
-| A2  | Declare at least one response.                                          | enforced  | `openapi-sanity`                   |
-| A3  | Declare exactly one tag from the documented vocabulary.                 | enforced  | `openapi-sanity`                   |
-| A4  | Add a doc comment to each annotated handler.                            | enforced  | `openapi-sanity`                   |
-| A5  | Give the doc comment a non-empty, one-line first paragraph.             | enforced  | `openapi-sanity`                   |
-| A6  | Do not set `operation_id` manually.                                     | enforced  | `openapi-sanity`                   |
-| A7  | Do not set operation-level `summary` or `description` manually.         | enforced  | `openapi-sanity`                   |
-| B1  | Each declared path/query parameter name must be bound by the route.     | enforced  | Inline `params(…)` tuples only     |
-| B2  | Declared and handler parameter types must agree on optionality.         | enforced  | Inline `params(…)` tuples only     |
-| B3  | A declared request-body schema must match the route's parsed body type. | enforced  | Named JSON/data body types         |
-| B4  | Form routes must declare `multipart/form-data`.                         | enforced  | `openapi-sanity`                   |
-| A9  | Analyze legal utoipa spellings or fail closed on unsupported syntax.    | specified | Annotation grammar coverage        |
-| C2  | Identify generated route groups that are not mounted.                   | specified | Improve route-parity diagnostics   |
-| R1  | Place `POST` routes under `/post/`, unless explicitly excepted.         | planned   | Route naming convention            |
-| S1  | Use the `pages` tag only for handlers in `router/get/get_page.rs`.      | planned   | Tag/route-family convention        |
-| P1  | Match documented success status to the handler's response behavior.     | spike     | Measure return-type analysis first |
+| ID  | Requirement                                                             | Status    | Owner / scope                                                    |
+| --- | ----------------------------------------------------------------------- | --------- | ---------------------------------------------------------------- |
+| A1  | Do not restate the route path or bare HTTP verb in the annotation.      | enforced  | `openapi-sanity`                                                 |
+| A2  | Declare at least one response.                                          | enforced  | `openapi-sanity`                                                 |
+| A3  | Declare exactly one tag from the documented vocabulary.                 | enforced  | `openapi-sanity`                                                 |
+| A4  | Add a doc comment to each annotated handler.                            | enforced  | `openapi-sanity`                                                 |
+| A5  | Give the doc comment a non-empty, one-line first paragraph.             | enforced  | `openapi-sanity`                                                 |
+| A6  | Do not set `operation_id` manually.                                     | enforced  | `openapi-sanity`                                                 |
+| A7  | Do not set operation-level `summary` or `description` manually.         | enforced  | `openapi-sanity`                                                 |
+| B1  | Each declared path/query parameter name must be bound by the route.     | enforced  | Inline `params(…)` tuples only                                   |
+| B2  | Declared and handler parameter types must agree on optionality.         | enforced  | Inline `params(…)` tuples only                                   |
+| B3  | A declared request-body schema must match the route's parsed body type. | enforced  | Named JSON/data body types                                       |
+| B4  | Form routes must declare `multipart/form-data`.                         | enforced  | `openapi-sanity`                                                 |
+| A9  | Analyze legal utoipa spellings or fail closed on unsupported syntax.    | specified | Annotation grammar coverage                                      |
+| C2  | Identify generated route groups that are not mounted.                   | specified | Improve route-parity diagnostics                                 |
+| R1  | Place `POST` routes under `/post/`, unless explicitly excepted.         | planned   | Route naming convention                                          |
+| S1  | Use the `pages` tag only for handlers in `router/get/get_page.rs`.      | planned   | Tag/route-family convention                                      |
+| P1  | Documented success status matches the handler's response behavior.      | enforced  | Return-type and body-const analysis                              |
+| P2  | Statuses a signature guard can answer are declared.                     | enforced  | `FromRequest` impls in the scanned tree                          |
+| P3  | Statuses from body `ErrorKind::` literals are declared.                 | enforced  | `AppError::http_status` mapping read from `backend/src/error.rs` |
+| P4  | Every declared status is one the handler can answer.                    | enforced  | Universe check (zero false positives)                            |
 
 ## A — annotation shape
 
@@ -162,11 +165,23 @@ counts so a narrowed scan or newly unsupported parameter form fails:
 | Unreadable declared parameters                 |            0 |
 | Declared request bodies                        |           24 |
 | Declared body types matching the route binding |           21 |
+| Dynamic guard names (computed outcome status)  |            1 |
+| Unreadable declared statuses                   |            0 |
 
-All A1–A7 and B1–B4 checks pass over the router tree with zero findings. The 21
-matching request bodies exclude the deliberately unconstrained `Value` body and
-the two form bodies whose schema is not compared; B4 checks those two form routes'
-media types.
+All A1–A7, B1–B4 and P1–P4 checks pass over the router tree with zero findings.
+The 21 matching request bodies exclude the deliberately unconstrained `Value`
+body and the two form bodies whose schema is not compared; B4 checks those two
+form routes' media types. The dynamic guard pin is `GuardShare` (its outcome
+status comes from `err.http_status()`).
+
+Enforcing P1–P4 surfaced 65 findings across 27 files, all fixed in the same
+change: 19 handlers missing 405 behind `GuardReadOnlyMode`, 32 missing 500 from
+body `ErrorKind` literals, 6 missing 404, the two test probes missing 401, the
+two `Status::Accepted` album-index handlers declaring 200 instead of 202, and
+one impossible 400 removed from the infallible, bindingless
+`get_album_index_status`. The two exotic return shapes
+(`AppResult<(ContentType, String)>`, `AppResult<ByteStream![…]>`) fall under
+P1's documented "anything else is 200" limit.
 
 ## Planned work
 
@@ -196,11 +211,73 @@ Require handlers in `router/get/get_page.rs` to use `pages`; handlers in other
 router modules must not use it. Current calibration is 22 page handlers tagged
 `pages` and zero other handlers using that tag.
 
-### P1 — response status
+## P — response statuses
 
-Determine whether source analysis can reliably compare an operation's documented
-success status with its handler response, including no-content responses. Measure
-return-type analysis cost and false-positive risk before specifying enforcement.
+The route attribute and handler are the source of truth for what an operation
+can answer; `responses(…)` is the annotation's claim about it. Section P checks
+the claim in both directions, from source only: the document is generated from
+the annotation, so it cannot disagree with it and is the wrong place to look.
+Spectral's document lint covers document-level rules; these read Rust.
+
+Two derived inputs, both read from source rather than copied (the A3 lesson):
+
+- **Guard statuses** — for every `impl FromRequest for G` under the source root,
+  the literal statuses in its `Outcome::Error((Status::…)` and
+  `Outcome::Forward(Status::…)` arms. An arm whose status is computed rather
+  than literal (`err.http_status()`) marks `G` dynamic: it contributes nothing
+  to required sets, and the set of dynamic guard names is pinned so a new one
+  fails a test rather than narrowing silently. Today: `GuardShare` is the only
+  dynamic guard.
+- **Error-kind map** — `enum ErrorKind` variants and the `http_status()` match
+  read from a file the recipe passes with `--app-error-map`
+  (default `backend/src/error.rs`): named arms directly, unlisted variants
+  through the `_` arm. A body kind that is not a variant of that enum is a
+  finding, not a guess.
+
+The `rocket::http::Status` → code table (Accepted → 202 and so on) is a fact of
+the Rocket crate, held as one commented constant — the same class of external
+knowledge as B2's `Option`.
+
+| Rule | Required set must be declared                          | Declared must be in the universe                                                         |
+| ---- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| P1   | success status(es) from the return type                | success statuses                                                                         |
+| P2   | literal statuses of guards named in the signature      | guard statuses                                                                           |
+| P3   | statuses of `ErrorKind::` literals in the handler body | body-kind statuses                                                                       |
+| P4   | —                                                      | ∪ (fallible ? every `http_status` code : ∅) ∪ ({400} if the route binds data or a query) |
+
+### P1 — success status
+
+`success_of` reads the return type: a fallible return (a `Result` type or an
+alias of one — aliases are derived from `type X = Result<…>` declarations in the
+scanned sources) contributes the success of its payload; `Redirect` is 302;
+`Status` is every `Status::` constant the body returns; anything else is 200.
+An unreadable status constant is a finding. Declared success is compared for
+equality, so a handler answering 202 that declares 200 both misses 202 (P1) and
+declares an impossible 200 (P4).
+
+### P2 — guard statuses
+
+Each argument type's identifiers are looked up in the guard table; the union of
+their literal statuses must appear in `responses(…)`. Signature-only: no body
+reading.
+
+### P3 — body error kinds
+
+Every `ErrorKind::K` literal in the body maps through the error map and must be
+declared. Body-local only: a status a helper can raise is deliberately not
+required — requiring it would need call-graph analysis, and the honest limit is
+recorded here rather than approximated.
+
+### P4 — declared statuses must be possible (universe check)
+
+`declared \ universe` is a finding. The universe over-approximates on purpose —
+success ∪ guards ∪ body kinds ∪ (fallible ? all `http_status` codes : ∅) ∪
+({400} when the route binds a data body or query, because Rocket rejects those
+before the handler runs) — so helper-raised error codes never flag, which is
+what keeps this direction false-positive-free. What it does catch: a success
+code the handler never returns, an error code on an infallible route with no
+bindings (the measured `get_album_index_status` declaring 400), and codes
+outside every set (418, 207, …).
 
 ### OpenAPI document linting
 

@@ -39,6 +39,8 @@ fn absolutize(p: &Path) -> PathBuf {
             (status = 200, description = "Filesystem path completion", body = FsCompletion),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 404, description = "Not found"),
+            (status = 500, description = "Internal error"),
         )
     )
 ]

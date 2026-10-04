@@ -5,7 +5,7 @@ annotations and compares declared parameters and request bodies with the Rocket
 route and handler signature beside them. It scans Rust source; it does not
 validate generated OpenAPI documents or runtime behavior.
 
-The checker implements **A1–A7 and B1–B4** from
+The checker implements **A1–A7, B1–B4 and P1–P4** from
 [`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md).
 The rule index below summarizes each check and points to its regression tests.
 
@@ -145,6 +145,63 @@ spellings for declaring the media type are accepted.
 `a_form_body_naming_multipart_is_accepted` (`b4_conforming.rs`) covers both
 accepted spellings and a JSON route.
 
+### P1 — The declared success statuses are the handler's
+
+The success comes from the return type: a fallible return (a `Result` or one of
+the tree's `type X = Result<…>` aliases) contributes its payload's success;
+`Redirect` is 302; a `Status` return is every `Status::` constant in its body;
+anything else is 200. A success the handler cannot produce is a finding, and a
+`Status` constant outside the Rocket table is an `unreadable_status` finding.
+
+**Tests:** `p1_a_success_status_the_handler_never_returns_fails`
+(`p1_status_return_missing.rs`), `p1_a_redirect_declared_as_200_fails`
+(`p1_redirect_missing.rs`), `p1_an_unreadable_success_status_fails`
+(`p1_unreadable_status.rs`), and the conforming counterparts
+(`p1_status_return_conforming.rs`).
+
+### P2 — Guard outcome statuses are declared
+
+Every `impl FromRequest for G` under the source root contributes the literal
+`Status::` values of its `Outcome::Error(…)` and `Outcome::Forward(…)` arms; a
+guard named in a handler's signature must have those codes declared. An arm
+whose status is computed (`err.http_status()`) makes the guard _dynamic_: it
+requires nothing, and the tree test pins the dynamic set (currently
+`GuardShare`) so a new one is a decision, not a silent skip.
+
+**Tests:** `p2_a_guard_status_missing_from_responses_fails`
+(`p2_guard_missing.rs`), `p2_a_declared_guard_status_is_accepted`
+(`p2_guard_conforming.rs`), `p2_a_dynamic_guard_requires_nothing`
+(`p2_dynamic_guard_conforming.rs`).
+
+### P3 — Body error kinds are declared
+
+Every `ErrorKind::K` literal in the handler body is translated through the
+app-error map (`--app-error-map`, default `backend/src/error.rs`: the enum
+variants plus the `http_status` match) and its status must be declared. A kind
+the map does not declare is an `unknown_error_kind` finding — a typo is
+reported, not guessed at. Only body-local literals count; a status a helper can
+raise is deliberately not required.
+
+**Tests:** `p3_a_body_error_kind_missing_from_responses_fails`
+(`p3_kind_missing.rs`), `p3_a_declared_body_error_kind_is_accepted`
+(`p3_kind_conforming.rs`), `p3_an_error_kind_the_map_does_not_know_fails`
+(`p3_unknown_kind.rs`).
+
+### P4 — Every declared status is one the handler can answer
+
+`declared \ universe` is a finding, where the universe is success ∪ guards ∪
+body kinds ∪ (fallible ? every `http_status` code : ∅) ∪ ({400} when the route
+binds a body or query, because Rocket can reject those before the handler
+runs). The universe over-approximates on purpose: helper-raised codes stay
+inside it, which is what keeps this direction free of false positives, while a
+success the handler never returns, an error code on a bindingless infallible
+route, and codes outside every set (418, 207, …) still flag.
+
+**Tests:** `p4_an_impossible_declared_status_fails` (`p4_exotic_status.rs`),
+`p4_an_undeclarable_status_on_a_bindingless_route_fails`
+(`p4_impossible_route_400.rs`), and the conforming counterparts
+(`p4_universe_conforming.rs`, `p4_route_400_conforming.rs`).
+
 ## Supported syntax and limits
 
 - B1/B2 read inline parameter tuples such as `("name" = Type, Query, …)`. A
@@ -158,6 +215,15 @@ accepted spellings and a JSON route.
 - A9 grammar coverage is not complete. The current parser does not analyze
   `method(GET)`, `tags([…])`, `context_path`, or every grouped/otherwise unreadable
   value. Treat those spellings as unchecked until A9 is implemented.
+- P1 treats any return shape other than `Redirect`, `Status` or a fallible
+  payload as a 200 success. Rocket's non-200 responders are handled; a future
+  exotic responder extends that match.
+- P2 derives guard statuses from literal `Status::` values in `FromRequest`
+  outcome arms. A guard with computed statuses (dynamic) requires nothing, and
+  `the_router_tree_is_clean` pins the dynamic set.
+- P3 reads only `ErrorKind::` literals in the handler's own body. Codes raised
+  inside helpers are not required — they stay covered by the P4 universe
+  instead.
 - Route coverage, generated-document consistency, document validity, and runtime
   behavior are owned by other tools or tests. This checker only analyzes source
   annotations and route attributes.
@@ -167,14 +233,18 @@ accepted spellings and a JSON route.
 ```sh
 cargo run -p openapi-sanity                                  # backend/src/router
 cargo run -p openapi-sanity -- --source-root path/to/tree   # select a source root
+cargo run -p openapi-sanity -- --app-error-map path/to/file # select the ErrorKind map
 cargo run -p openapi-sanity -- --expect-at-least 60         # require a scan floor
 ```
 
 The default source root is `backend/src/router`, relative to the workspace root.
-`--source-root` selects another tree. `--expect-at-least` sets a minimum number
-of annotated handlers; the checker fails below that floor rather than reporting
-a potentially partial scan as clean. The gate sets the floor to 60 for a tree
-currently containing 63 handlers.
+`--source-root` selects another tree. `--app-error-map` selects the file P3
+reads the `ErrorKind` → `http_status` mapping from (default
+`backend/src/error.rs`); an unreadable or unrecognizable map exits 2 rather than
+guessing. `--expect-at-least` sets a minimum number of annotated handlers; the
+checker fails below that floor rather than reporting a potentially partial scan
+as clean. The gate sets the floor to 60 for a tree currently containing 63
+handlers.
 
 Findings are written as `file:line: handler: message`. For example:
 
@@ -189,9 +259,11 @@ and `2` means the input could not be read or parsed.
 
 The rule fixtures are in `tests/fixtures/openapi_annotations/` and are loaded
 with `include_str!`. Every implemented rule has a failing case; checks with a
-valid counterpart also test that conforming source is accepted. The
-`the_router_tree_is_clean` test runs all checks over `backend/src/router`, pins
-63 handlers and the B1/B2/B3 inventory, and requires zero findings.
+valid counterpart also test that conforming source is accepted. The app-error
+map for the fixture tests is `tests/fixtures/app_error_map.rs`, shaped like
+`backend/src/error.rs`. The `the_router_tree_is_clean` test runs all checks
+over `backend/src/router`, pins 63 handlers, the B1/B2/B3 inventory and the
+dynamic-guard set, and requires zero findings.
 
 Run the tool's tests with:
 

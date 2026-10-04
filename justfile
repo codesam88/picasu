@@ -131,7 +131,7 @@ openapi-lint:
 # Check source-level OpenAPI annotation conventions.
 [group('utils')]
 openapi-sanity:
-    cargo run --quiet -p openapi-sanity -- --source-root "{{justfile_directory()}}/backend/src/router" --expect-at-least 60
+    cargo run --quiet -p openapi-sanity -- --source-root "{{justfile_directory()}}/backend/src/router" --app-error-map "{{justfile_directory()}}/backend/src/error.rs" --expect-at-least 60
 
 # Compare mounted Rocket routes with documented OpenAPI operations.
 [group('utils')]

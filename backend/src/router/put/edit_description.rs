@@ -33,6 +33,8 @@ pub struct SetUserDefinedDescription {
             (status = 200, description = "Description updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
+            (status = 500, description = "Internal error"),
         )
     )
 ]

@@ -19,9 +19,18 @@ use openapi_sanity::{TreeReport, render, scan_source_root};
 /// instead, so that running it from a subdirectory checks the same tree.
 const DEFAULT_SOURCE_ROOT: &str = "backend/src/router";
 
+/// The `ErrorKind` → `http_status` mapping P3 reads, by default.
+///
+/// Same working-directory contract as [`DEFAULT_SOURCE_ROOT`]; the gate recipe
+/// passes an absolute path instead.
+const DEFAULT_APP_ERROR_MAP: &str = "backend/src/error.rs";
+
 /// How the run was asked for.
 struct Options {
     source_root: PathBuf,
+    /// The file defining the `ErrorKind` variants and their `http_status`
+    /// mapping, which section P translates body kinds through.
+    app_error_map: PathBuf,
     /// A floor on the annotated handlers the scan must see for its "clean" to
     /// mean anything. `None` when the run was not given one.
     expect_at_least: Option<usize>,
@@ -42,7 +51,8 @@ fn main() -> ExitCode {
 fn run(args: impl Iterator<Item = String>) -> Result<ExitCode, String> {
     let options = options(args)?;
 
-    let report = scan_source_root(&options.source_root).map_err(|error| error.to_string())?;
+    let report = scan_source_root(&options.source_root, &options.app_error_map)
+        .map_err(|error| error.to_string())?;
     Ok(exit_code(&report, &options))
 }
 
@@ -102,21 +112,24 @@ fn workspace_root() -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-/// Read the flags: `--source-root <dir>` and `--expect-at-least <n>`, the latter
-/// defaulting to no floor.
+/// Read the flags: `--source-root <dir>`, `--app-error-map <file>` and
+/// `--expect-at-least <n>`, the latter defaulting to no floor.
 ///
-/// Written out rather than pulled from an argument-parsing crate: there are two
+/// Written out rather than pulled from an argument-parsing crate: there are three
 /// flags, and a dependency for them would be more surface than the flags.
 fn options(args: impl Iterator<Item = String>) -> Result<Options, String> {
-    let usage =
-        "usage: openapi-sanity [--source-root <dir>] [--expect-at-least <annotated-handlers>]";
+    let usage = "usage: openapi-sanity [--source-root <dir>] [--app-error-map <file>] \
+                 [--expect-at-least <annotated-handlers>]";
     let mut source_root = PathBuf::from(DEFAULT_SOURCE_ROOT);
+    let mut app_error_map = PathBuf::from(DEFAULT_APP_ERROR_MAP);
     let mut expect_at_least = None;
     let mut args = args.peekable();
 
     while let Some(arg) = args.next() {
         if let Some(value) = flag_value(&arg, "--source-root", &mut args)? {
             source_root = PathBuf::from(value);
+        } else if let Some(value) = flag_value(&arg, "--app-error-map", &mut args)? {
+            app_error_map = PathBuf::from(value);
         } else if let Some(value) = flag_value(&arg, "--expect-at-least", &mut args)? {
             expect_at_least = Some(
                 value
@@ -130,6 +143,7 @@ fn options(args: impl Iterator<Item = String>) -> Result<Options, String> {
 
     Ok(Options {
         source_root,
+        app_error_map,
         expect_at_least,
     })
 }

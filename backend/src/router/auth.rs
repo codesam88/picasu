@@ -618,6 +618,7 @@ pub struct RenewHashTokenReturn {
             (status = 200, description = "Hash token renewed", body = RenewHashTokenReturn),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 500, description = "Internal error"),
         )
     )
 ]
@@ -895,6 +896,7 @@ pub struct RenewTimestampTokenReturn {
             (status = 200, description = "Timestamp token renewed", body = RenewTimestampTokenReturn),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 500, description = "Internal error"),
         )
     )
 ]

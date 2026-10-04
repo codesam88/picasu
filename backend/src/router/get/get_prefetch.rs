@@ -282,6 +282,7 @@ fn execute_prefetch_logic(
             (status = 200, description = "Prefetch result", body = PrefetchReturn),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 500, description = "Internal error"),
         )
     )
 ]

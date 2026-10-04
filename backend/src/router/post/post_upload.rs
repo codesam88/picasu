@@ -158,6 +158,8 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
             (status = 200, description = "Upload successful"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 405, description = "Read-only mode"),
+            (status = 500, description = "Internal error"),
         )
     )
 ]

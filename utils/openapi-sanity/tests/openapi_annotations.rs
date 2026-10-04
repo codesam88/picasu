@@ -1,9 +1,13 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Two sections of `.plan/openapi-annotation-checks.md` are checked here: **A**,
-//! the seven rules about the annotation's own shape, and **B**, the four rules
-//! about what the annotation declares against what the route already says.
-//! Security rules are deliberately deferred until runtime security tests exist.
+//! Three sections of `.plan/openapi-annotation-checks.md` are checked here:
+//! **A**, the seven rules about the annotation's own shape; **B**, the four
+//! rules about what the annotation declares against what the route already
+//! says; and **P**, the four rules comparing `responses(…)` with what the
+//! handler can answer — from the return type and body constants (P1), the
+//! `FromRequest` impls in the scanned tree (P2), the `ErrorKind` map read from
+//! an app-error-map source (P3), and a deliberately over-approximating universe
+//! for the declared-side check (P4).
 //!
 //! Why these belong in the gate. Each of them reads a fact that exists only in
 //! source, and each is invisible in the document: the document is generated *from*
@@ -39,10 +43,15 @@ use openapi_sanity::{
 /// Every rule over one source file, for the fixtures below.
 ///
 /// A fixture that does not parse is a broken test, not a finding, so the error
-/// ends the test here rather than being reported as one.
+/// ends the test here rather than being reported as one. The app-error map is
+/// one shared input: P3 reads the `ErrorKind` → `http_status` mapping from it
+/// the way the gate reads `backend/src/error.rs`.
 fn check_source(name: &str, source: &str) -> Vec<Finding> {
-    findings_in_source(name, source).unwrap_or_else(|error| panic!("{error}"))
+    findings_in_source(name, source, APP_ERROR_MAP).unwrap_or_else(|error| panic!("{error}"))
 }
+
+/// The P3 input, shaped like `backend/src/error.rs`.
+const APP_ERROR_MAP: &str = include_str!("fixtures/app_error_map.rs");
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +88,28 @@ const PARSED_BODY: &str = include_str!("fixtures/openapi_annotations/b3_conformi
 const FORM_WITHOUT_MULTIPART: &str =
     include_str!("fixtures/openapi_annotations/b4_form_body_without_multipart.rs");
 const FORM_WITH_MULTIPART: &str = include_str!("fixtures/openapi_annotations/b4_conforming.rs");
+
+const STATUS_RETURN_MISSING: &str =
+    include_str!("fixtures/openapi_annotations/p1_status_return_missing.rs");
+const STATUS_RETURN_CONFORMING: &str =
+    include_str!("fixtures/openapi_annotations/p1_status_return_conforming.rs");
+const REDIRECT_MISSING: &str = include_str!("fixtures/openapi_annotations/p1_redirect_missing.rs");
+const UNREADABLE_STATUS: &str =
+    include_str!("fixtures/openapi_annotations/p1_unreadable_status.rs");
+const GUARD_MISSING: &str = include_str!("fixtures/openapi_annotations/p2_guard_missing.rs");
+const GUARD_CONFORMING: &str = include_str!("fixtures/openapi_annotations/p2_guard_conforming.rs");
+const DYNAMIC_GUARD_CONFORMING: &str =
+    include_str!("fixtures/openapi_annotations/p2_dynamic_guard_conforming.rs");
+const KIND_MISSING: &str = include_str!("fixtures/openapi_annotations/p3_kind_missing.rs");
+const KIND_CONFORMING: &str = include_str!("fixtures/openapi_annotations/p3_kind_conforming.rs");
+const UNKNOWN_KIND: &str = include_str!("fixtures/openapi_annotations/p3_unknown_kind.rs");
+const EXOTIC_STATUS: &str = include_str!("fixtures/openapi_annotations/p4_exotic_status.rs");
+const UNIVERSE_CONFORMING: &str =
+    include_str!("fixtures/openapi_annotations/p4_universe_conforming.rs");
+const ROUTE_400_CONFORMING: &str =
+    include_str!("fixtures/openapi_annotations/p4_route_400_conforming.rs");
+const IMPOSSIBLE_ROUTE_400: &str =
+    include_str!("fixtures/openapi_annotations/p4_impossible_route_400.rs");
 
 // ── Section A — the annotation's shape ─────────────────────────────────────────
 //
@@ -612,6 +643,190 @@ pub fn get_asset(asset_id: String) -> AppResult<Json<Asset>> {
 }
 "#;
 
+// ── Section P — response statuses ─────────────────────────────────────────────
+//
+// Section P compares `responses(…)` with what the handler can answer, derived
+// from source only: the return type and body constants for the success, the
+// `FromRequest` impls in the scanned tree for guards, and the `ErrorKind` map
+// for body errors. Required sets are precise (local signals only); the P4
+// universe over-approximates so that helper-raised codes never flag.
+
+/// P1: the handler's success is `Status::Accepted`, so the declared 200 both
+/// misses 202 and declares something impossible.
+#[test]
+fn p1_a_success_status_the_handler_never_returns_fails() {
+    let findings = check_source("p1_status_return_missing.rs", STATUS_RETURN_MISSING);
+
+    assert_eq!(
+        render(&findings),
+        "p1_status_return_missing.rs:9: success_status: start_index can answer 202, but \
+         responses() does not declare it\np1_status_return_missing.rs:9: declared_status: \
+         responses() declares 200, but nothing this handler can answer is 200",
+        "the missing success is a P1 finding and the impossible 200 a P4 finding, both at \
+         the line they are written on"
+    );
+}
+
+/// The conforming counterpart: the declared success is the one returned.
+#[test]
+fn p1_a_returned_success_status_is_accepted() {
+    let findings = check_source("p1_status_return_conforming.rs", STATUS_RETURN_CONFORMING);
+
+    assert_eq!(render(&findings), "");
+}
+
+/// P1 over the return type rather than a body constant: `Redirect` answers 302.
+#[test]
+fn p1_a_redirect_declared_as_200_fails() {
+    let findings = check_source("p1_redirect_missing.rs", REDIRECT_MISSING);
+
+    assert_eq!(
+        render(&findings),
+        "p1_redirect_missing.rs:7: success_status: redirect_to_login can answer 302, but \
+         responses() does not declare it\np1_redirect_missing.rs:7: declared_status: \
+         responses() declares 200, but nothing this handler can answer is 200",
+        "a Redirect's success is 302, and 200 is not among the handler's answers"
+    );
+}
+
+/// P1 fail-closed: a `Status` constant this tool cannot map is an explicit
+/// finding, and P4 stays quiet while the success is unreadable.
+#[test]
+fn p1_an_unreadable_success_status_fails() {
+    let findings = check_source("p1_unreadable_status.rs", UNREADABLE_STATUS);
+
+    assert_eq!(
+        render(&findings),
+        "p1_unreadable_status.rs:11: unreadable_status: teapot returns Status, and \
+         Status::Teapot is not a Status constant this tool knows",
+        "one finding for the unreadable constant; no stale-status finding on top"
+    );
+}
+
+/// P2: the guard's `FromRequest` impl answers 405 on a locked server, and the
+/// annotation does not declare it.
+#[test]
+fn p2_a_guard_status_missing_from_responses_fails() {
+    let findings = check_source("p2_guard_missing.rs", GUARD_MISSING);
+
+    assert_eq!(
+        render(&findings),
+        "p2_guard_missing.rs:26: guard_status: GuardLocked can answer 405, but responses() \
+         does not declare it",
+        "the guard's literal outcome status must be declared"
+    );
+}
+
+/// The conforming counterpart: the guard's status is declared.
+#[test]
+fn p2_a_declared_guard_status_is_accepted() {
+    let findings = check_source("p2_guard_conforming.rs", GUARD_CONFORMING);
+
+    assert_eq!(render(&findings), "");
+}
+
+/// P2's scope limit: a computed outcome status makes the guard dynamic, and a
+/// dynamic guard requires nothing — the alternative is following helpers this
+/// tool does not read. The set of dynamic guards is pinned by the tree test.
+#[test]
+fn p2_a_dynamic_guard_requires_nothing() {
+    let findings = check_source("p2_dynamic_guard_conforming.rs", DYNAMIC_GUARD_CONFORMING);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "a guard whose status comes from err.http_status() is not a status this tool \
+         can require, and must not invent one"
+    );
+}
+
+/// P3: the body raises `ErrorKind::NotFound`, which `http_status` maps to 404.
+#[test]
+fn p3_a_body_error_kind_missing_from_responses_fails() {
+    let findings = check_source("p3_kind_missing.rs", KIND_MISSING);
+
+    assert_eq!(
+        render(&findings),
+        "p3_kind_missing.rs:9: body_kind_status: delete_widget raises ErrorKind::NotFound, \
+         which answers 404, but responses() does not declare it",
+        "the status the app-error map gives the kind must be declared"
+    );
+}
+
+/// The conforming counterpart: the mapped status is declared.
+#[test]
+fn p3_a_declared_body_error_kind_is_accepted() {
+    let findings = check_source("p3_kind_conforming.rs", KIND_CONFORMING);
+
+    assert_eq!(render(&findings), "");
+}
+
+/// P3 fail-closed: a kind the map does not declare is a finding at the
+/// occurrence, not a status to guess.
+#[test]
+fn p3_an_error_kind_the_map_does_not_know_fails() {
+    let findings = check_source("p3_unknown_kind.rs", UNKNOWN_KIND);
+
+    assert_eq!(
+        render(&findings),
+        "p3_unknown_kind.rs:18: unknown_error_kind: delete_widget raises \
+         ErrorKind::Databse, which is not a variant of the ErrorKind enum in the \
+         app-error map",
+        "a typo'd kind is reported where it is written"
+    );
+}
+
+/// P4: 418 is outside every set the universe is built from.
+#[test]
+fn p4_an_impossible_declared_status_fails() {
+    let findings = check_source("p4_exotic_status.rs", EXOTIC_STATUS);
+
+    assert_eq!(
+        render(&findings),
+        "p4_exotic_status.rs:11: declared_status: responses() declares 418, but nothing \
+         this handler can answer is 418",
+        "a declared status no success, guard, body kind or AppError mapping can produce \
+         is a finding"
+    );
+}
+
+/// P4's false-positive guard: 400 with no body literal, raised by a helper the
+/// tool does not follow, stays inside the fallible universe.
+#[test]
+fn p4_a_helper_raised_code_inside_the_universe_is_accepted() {
+    let findings = check_source("p4_universe_conforming.rs", UNIVERSE_CONFORMING);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "the universe over-approximates on purpose: absence of a body literal cannot \
+         prove the handler never answers 400"
+    );
+}
+
+/// P4: a route with a query binding can answer 400 before this non-fallible
+/// handler runs — Rocket fails the conversion itself.
+#[test]
+fn p4_a_query_route_may_declare_400() {
+    let findings = check_source("p4_route_400_conforming.rs", ROUTE_400_CONFORMING);
+
+    assert_eq!(render(&findings), "");
+}
+
+/// P4: the measured tree case — an infallible handler, a route with no bindings,
+/// declaring 400. Nothing can produce it.
+#[test]
+fn p4_an_undeclarable_status_on_a_bindingless_route_fails() {
+    let findings = check_source("p4_impossible_route_400.rs", IMPOSSIBLE_ROUTE_400);
+
+    assert_eq!(
+        render(&findings),
+        "p4_impossible_route_400.rs:10: declared_status: responses() declares 400, but \
+         nothing this handler can answer is 400",
+        "no data, no query, no fallibility, no guard, no body kind: 400 is a lie"
+    );
+}
+
 // ── The real tree ─────────────────────────────────────────────────────────────
 
 /// How many `#[utoipa::path]` annotations the router tree carries today.
@@ -641,6 +856,16 @@ fn router_tree() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../backend/src/router")
 }
 
+/// The app-error map P3 reads, next to the router tree it describes.
+fn app_error_map() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../backend/src/error.rs")
+}
+
+/// The guards whose outcome status is computed rather than written as a
+/// `Status` constant, pinned so a new one fails here instead of silently
+/// requiring nothing.
+const DYNAMIC_GUARDS: [&str; 1] = ["GuardShare"];
+
 /// Every rule over the real router tree, which has to be silent.
 ///
 /// This is the half that proves the rules against the tree rather than against
@@ -650,7 +875,8 @@ fn router_tree() -> PathBuf {
 /// whether the whole rule set holds.
 #[test]
 fn the_router_tree_is_clean() {
-    let report = scan_source_root(&router_tree()).expect("the router tree must be readable");
+    let report = scan_source_root(&router_tree(), &app_error_map())
+        .expect("the router tree and the app-error map must be readable");
     assert!(
         report.files_scanned > 1,
         "the scan must see the whole router tree, saw {} file(s)",
@@ -685,6 +911,12 @@ fn the_router_tree_is_clean() {
          B1 and B2 read the inline tuple form only: the first `IntoParams` struct in an \
          annotation needs either a resolver or a renegotiated limit, and a non-zero count \
          fails here rather than narrowing the rules quietly"
+    );
+    assert_eq!(
+        report.dynamic_guards, DYNAMIC_GUARDS,
+        "the dynamic-guard set moved. A guard whose outcome status is computed requires \
+         nothing from P2, so each new one needs an explicit decision here rather than a \
+         quiet narrowing"
     );
     assert_eq!(
         render(&report.findings),
