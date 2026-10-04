@@ -53,7 +53,11 @@ pub fn strip_test_only_endpoints(spec: &mut serde_json::Value) {
         .and_then(|c| c.get_mut("schemas"))
         .and_then(|s| s.as_object_mut())
     {
-        schemas.retain(|key, _| key != "TestRecordProbe" && key != "DupeGroupMember");
+        // `FileEntry` is only reachable from probe responses; without it the
+        // public document carries an orphaned component (`oas3-unused-component`).
+        schemas.retain(|key, _| {
+            key != "TestRecordProbe" && key != "DupeGroupMember" && key != "FileEntry"
+        });
     }
 }
 

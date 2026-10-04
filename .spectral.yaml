@@ -1,0 +1,25 @@
+# OpenAPI document lint (Spectral).
+#
+# Phase 3 of `just openapi-check`: lints the committed `backend/openapi.json`
+# against the stock `spectral:oas` ruleset. Spectral exits nonzero on errors;
+# warnings are reported but do not fail the gate (baseline mode).
+#
+# This file holds document-only rules. Source annotation rules live in
+# `utils/openapi-sanity`, route-set parity in `picasu --check-openapi`.
+# Fixes for findings land in the generator (`backend/src/openapi*.rs`,
+# handler doc comments) or as a targeted entry below with a reason — never
+# as a forked copy of the stock ruleset.
+extends: "spectral:oas"
+
+# Baseline overrides. Each entry names a rule that does not apply to this
+# document and says why, so re-enabling it is a one-line deletion.
+rules:
+  # The `/{dynamic_album_id}` and `/{path}` SPA fallbacks template the same
+  # position. Rocket disambiguates them by rank at runtime
+  # (`router/get/get_page.rs`), but the document is genuinely ambiguous to
+  # generated clients, so this stays visible as a warning.
+  path-params: warn
+
+  # Picasu is self-hosted: there is no single canonical server URL to
+  # advertise. Clients use the host they were served from.
+  oas3-api-servers: off
