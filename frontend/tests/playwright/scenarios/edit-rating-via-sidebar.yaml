@@ -46,9 +46,13 @@ steps:
           type: success
           contains: Rating saved
 
-  # Sidecar must reflect the new rating
+  # Sidecar must reflect the new rating. This flow creates the sidecar from
+  # scratch (the seeded photo has none), and xmpkit serializes a simple
+  # property on a fresh packet as an attribute of rdf:Description — measured
+  # against this branch's writer, which is why the expectation is the
+  # attribute form rather than an <xmp:Rating> element.
   - when:
       - wait.ms: 200
     assert:
       - file.contains: ratingtest/pool/img01.xmp
-        text: <xmp:Rating>3</xmp:Rating>
+        text: xmp:Rating="3"

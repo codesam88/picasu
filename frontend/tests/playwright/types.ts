@@ -63,12 +63,20 @@ export const GivenPhotoRaw = z
 export const GivenSourceFile = z
   .object({
     source_file: z.string().min(1),
+    /// Id of a pinned fixture in `utils/snapfab/capabilities.json`. The
+    /// binary-safe alternative to `format` for the formats snapfab cannot
+    /// encode (TIFF, WebP, MP4, MOV); `source_file` stays the uploaded name.
+    fixture: z.string().min(1).optional(),
     format: z.enum(['jpeg', 'png']).optional(),
     width: z.number().int().positive().optional(),
     height: z.number().int().positive().optional(),
     id_as: VarName.optional()
   })
   .strict()
+  .refine((value) => !(value.fixture && value.format), {
+    message:
+      'source_file takes either `fixture` (pinned manifest bytes) or `format` (snapfab-generated), not both'
+  })
 
 export const GivenItem = z.union([
   GivenDirAlbum,
