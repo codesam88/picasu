@@ -15,6 +15,7 @@ frontend/config.ts
 # Ignore build and generated files that should not be version-controlled
 frontend/dist
 frontend/node_modules
+frontend/*.tsbuildinfo
 /target/
 
 # `just run`'s dev sandbox (data dir + test galleries, see docs/config.md)
