@@ -66,8 +66,8 @@ Every task lives as a markdown file in `.plan/<slug>.md` with YAML frontmatter. 
 
 - **Discover work:** Use `plan list` lists all tasks and prefer items with priority => high and status => in-progress or open
 - **Step back / plan:** Consider items with status => `backlog` or `idea` when considering next big steps
-- **Create:** copy `.plan/.TEMPLATE.md` to `.plan/<slug>.md` and consider contained instructions to build the task.
-- **Update:** update 'status' to reflect status. append progress notes at the bottom (newest first). Do not rewrite history.
+- **Create:** use `.plan/.TEMPLATE.md` and contained instructions for new task `.plan/<slug>.md`
+- **Update:** set `status` to match reality, and append refinements and decisions while keeping the task concise — focused on the problem, the goal, and the implementation steps. The file is a working spec, not a running log: fold updates into those sections instead of accumulating progress notes; anything longer than a decision line belongs in a commit message or the docs.
 - **Complete:** set `status: done` when finished. Do not delete the file.
 - **Block:** set `status: blocked` and note the blocker in the body.
 - **Validate:** run `just plan-lint` to check; `just plan-format` to auto-format.
