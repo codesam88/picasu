@@ -22,14 +22,3 @@ the write key or document why both keys coincide.
 
 The handler's new doc comment records the write path exactly as coded and makes
 no claim about reachability.
-
-## Status values
-
-| status        | meaning                                                     |
-| ------------- | ----------------------------------------------------------- |
-| `idea`        | aspirational — not fully settled, not ready to start        |
-| `backlog`     | accepted but deferred — consider when stepping back to plan |
-| `open`        | ready to be picked up                                       |
-| `in-progress` | actively being worked on                                    |
-| `blocked`     | cannot proceed; note the blocker in the body                |
-| `done`        | completed                                                   |
