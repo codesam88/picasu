@@ -1,0 +1,53 @@
+name: an album title edit whose sidecar cannot be written leaves the cache alone
+# The album half of the same contract. An album's metadata lives in
+# `.albuminfo.xmp` inside the album's own directory and the edit runs inside the
+# album's database transaction, so the failure has to abort that transaction
+# too — otherwise a read-only album directory would leave the title in the cache
+# and nowhere else, and the album would re-derive its displayed name from the
+# directory on the next index while the UI still shows the user's.
+#
+# The title is asserted in the cache as well as in the file, because on this
+# path the two are updated together: the payload insert happens after the
+# sidecar write, inside the transaction the write failure must abort.
+given:
+  - dir_album: /e2e_ro_album
+    id_as: $album_id
+  - raw_file: /e2e_ro_album/.albuminfo.xmp
+    content: |
+      <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+        xmlns:dc="http://purl.org/dc/elements/1.1/"
+        xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+        <dc:title><rdf:Alt><rdf:li xml:lang="x-default">e2e_seed_album_title</rdf:li></rdf:Alt></dc:title>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+      <?xpacket end="w"?>
+when:
+  - call: POST /get/prefetch
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - chmod:
+      path: /e2e_ro_album
+      octal: "0500"
+  - call: PUT /put/set_album_title
+    raw_body: '{"albumId":"${album_id}","title":"e2e_chosen_name"}'
+    then:
+      - response.status: 500
+  - chmod:
+      path: /e2e_ro_album
+      octal: "0755"
+  - call: GET /get/metadata/${album_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.customTitle: e2e_seed_album_title
+  - file.contains: /e2e_ro_album/.albuminfo.xmp
+    text: e2e_seed_album_title
+  - file.not_contains: /e2e_ro_album/.albuminfo.xmp
+    text: e2e_chosen_name
