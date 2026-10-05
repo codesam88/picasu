@@ -1,0 +1,49 @@
+name: the video duration field is never populated while ffprobe's duration is
+# Pins a known data-model defect so it cannot change silently.
+#
+# `VideoMetadata::duration` is declared, serialized as the top-level `duration`
+# of a video's detail response, and set to `0.0` by `VideoMetadata::new`. No
+# code path assigns it: the video pipeline fills `exif_vec` from ffprobe, sets
+# width/height from `generate_video_width_height`, and generates the thumbnail —
+# but never writes `duration` back. `video_duration()` in `process::video` does
+# read a duration from ffprobe, but only to choose a thumbnail target bitrate.
+#
+# So the real value is present in the response and unreachable through the field
+# that is named for it: `exifVec.duration` is ffprobe's `format=duration` line
+# ("1.000000" for the pinned one-second fixture) while `duration` is 0.0.
+#
+# This is a data-model bug, not a fallback decision, so nothing here changes
+# behaviour. Whether `duration` should be populated, removed, or derived at
+# serialization time is a separate decision; the assertion below is the red test
+# that decision would start from.
+#
+# Requires ffprobe on PATH, which the CI toolchain installs for the video
+# scenarios.
+given:
+  - fixture:
+      source: mp4-48x32-ffprobe
+      destination: /e2e_video_duration/clip.mp4
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.ext: mp4
+  # The defect: the field named for it is zero.
+  - response.json.duration: 0.0
+  # The value ffprobe actually reported, in the map the API calls `exifVec`.
+  - response.json.exifVec.duration: "1.000000"
+  # The rest of the video detail is unaffected, so the gap is confined to this
+  # one field.
+  - response.json.width: 48
+  - response.json.height: 32
+  - response.json.exifVec.codec_name: h264
+  - thumb_exists: $photo

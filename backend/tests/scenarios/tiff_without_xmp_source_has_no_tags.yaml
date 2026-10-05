@@ -1,0 +1,24 @@
+name: tiff without any xmp source has no tags
+# Negative control for `tiff_metadata_exif_dimensions_thumbnail`: the pinned TIFF
+# carries no XMP packet and no sidecar is placed next to it, so nothing about TIFF
+# indexing may require a tag source. It also proves the tags asserted there came
+# from the sidecar file rather than from anything the TIFF bytes supplied.
+# The PNG counterpart is `png_without_xmp_source_has_no_tags`.
+given:
+  - fixture:
+      source: tiff-48x32-exif
+      destination: /e2e_tiff_noxmp/photo.tif
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.tags: []

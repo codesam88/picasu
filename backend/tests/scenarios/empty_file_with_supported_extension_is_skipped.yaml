@@ -1,0 +1,35 @@
+name: empty file with a supported extension is skipped without failing the index
+# Negative case: a zero-byte file named `.jpg`.
+#
+# Expected outcome, and why it is the contract rather than an accident: content
+# classification is by leading bytes only (`classify_media_file` →
+# `detect_from_path`). A zero-byte file matches no signature, so it is
+# `SkipReason::UnrecognizedContent` and is dropped *before* it is matched, let
+# alone decoded. It therefore never reaches the decoder and cannot fail. The
+# scan walks it (`scanned` counts every file it sees) but does not match it, and
+# the job still finishes `completed` with no failures.
+#
+# This is the same path as random bytes under a supported extension, which
+# `index_ignores_unrecognized_file_without_failure.yaml` already pins; the empty
+# file is the degenerate case of it, with not even a leading byte to disagree
+# with. An empty file is *not* removed — only the upload path deletes content it
+# cannot index, a filesystem scan leaves what it finds alone. Because the file
+# is never matched, it also cannot produce an asset record
+# (`unindexable_media_leaves_no_asset_record` pins that consequence).
+given:
+  - photo: /e2e_empty_file/valid.jpg
+    tags:
+      - e2e_empty_valid
+  - raw_file: /e2e_empty_file/empty.jpg
+    content: ""
+when:
+  - call: GET /get/index/status
+then:
+  - response.status: 200
+  - response.json.state: completed
+  - response.json.scanned: 2
+  - response.json.matched: 1
+  - response.json.processed: 1
+  - response.json.failed: 0
+  - file_exists: e2e_empty_file/empty.jpg
+  - file_exists: e2e_empty_file/valid.jpg

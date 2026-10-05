@@ -1,0 +1,28 @@
+name: mp4 without any xmp source has no tags
+# Negative control for `mp4_ffprobe_metadata_dimensions_thumbnail`. The pinned
+# mp4 fixture carries no Adobe XMP `uuid` box and no XMP markup whatsoever, and
+# no sidecar is placed next to it, so the tags asserted there cannot have come
+# from the container bytes — they came from `clip.xmp` alone. Nothing about mp4
+# indexing may start depending on an embedded packet the fixture does not have.
+# The mov counterpart is `mov_without_xmp_source_has_no_tags`.
+given:
+  - fixture:
+      source: mp4-48x32-ffprobe
+      destination: /e2e_mp4_noxmp/clip.mp4
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.tags: []
+  # ffprobe still supplies the container metadata: dropping the XMP source does
+  # not change where any exifVec field comes from.
+  - "response.json.exifVec.TAG:major_brand": isom
