@@ -8,6 +8,9 @@ mod fixtures;
 mod backend_api;
 
 #[cfg(test)]
+mod scenario_schema;
+
+#[cfg(test)]
 mod torn_thumbnail;
 
 #[cfg(test)]
