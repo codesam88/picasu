@@ -60,11 +60,24 @@ mime_guess = "2.0.5"
 utoipa = { version = "5", features = ["rocket_extras"] }
 utoipauto = "0.3.1"
 unicode-normalization = "0.1.25"
+xmpkit = { version = "0.1.6", default-features = false, features = [
+  "jpeg",
+  "png",
+  "tiff",
+  "webp",
+  "mpeg4",
+  "mutli-thread",
+] }
 infer = "0.22.0"
 
 [dev-dependencies]
 tempfile = "3"
 serde_yaml = "0.9"
+# Validates tests/scenarios/**.yaml against tests/schema.json. `default-features`
+# is off on purpose: the schema only ever uses local `#/definitions/…` JSON
+# pointers, so the crate's remote/file resolvers (and the reqwest + rustls they
+# pull in) would be dead weight in a dev-dependency.
+jsonschema = { version = "0.58", default-features = false }
 snapfab = { version = "0.1", path = "../utils/snapfab" }
 openapi-sanity = { version = "0.1", path = "../utils/openapi-sanity" }
 
