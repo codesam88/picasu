@@ -51,6 +51,9 @@ export default tseslint.config(
   },
   {
     files: ['playwright.config.ts', 'tests/**/*.ts'],
+    plugins: {
+      '@typescript-eslint': tseslint.plugin
+    },
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
@@ -65,7 +68,13 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-non-null-assertion': 'off',
-      'no-redeclare': 'off'
+      'no-redeclare': 'off',
+      // The base rule reads TypeScript type positions as real bindings, so a
+      // named parameter in a function *type* (`draw: (attempt: number) => …`)
+      // is reported as an unused variable. Swap in the TypeScript-aware rule,
+      // which understands them, as the `src/**` block above already does.
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }]
     }
   },
   prettierConfig

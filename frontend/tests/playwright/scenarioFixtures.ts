@@ -10,10 +10,16 @@ export const test = base.extend<ScenarioFixtures>({
   backendPaths: [
     async ({ browser: _browser }, use) => {
       void _browser
-      const paths = createPaths()
+      const paths = await createPaths()
       const handle = await startBackend(paths)
-      await use(paths)
-      await handle.stop()
+      // `use` does not reject when the test itself fails — the fixture body
+      // runs to the end either way — but it does reject if a sibling fixture
+      // or the runner errors, and the backend must not outlive that.
+      try {
+        await use(paths)
+      } finally {
+        await handle.stop()
+      }
     },
     { scope: 'test' }
   ],
