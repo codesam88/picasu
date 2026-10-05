@@ -1,6 +1,7 @@
 [Overview](index.md)
 
 - [Design Goals](design.md)
+- [Authentication](auth.md)
 - [Configuration](config.md)
 - [Linux Build](linux.md)
 - [Frontend](frontend.md)
