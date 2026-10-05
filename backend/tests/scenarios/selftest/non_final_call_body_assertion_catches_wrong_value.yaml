@@ -1,0 +1,22 @@
+name: a non-final call's body assertion is checked, not only its status
+# Regression pin for the harness defect where a `call:` that was not the last
+# in `when:` ran only its `response.status*` assertions: every other form in
+# its `then:` block (`response.json.*`, `array_where`, `file_exists`, ...) was
+# parsed and dropped, so a scenario could carry body assertions that never
+# executed and still pass.
+#
+# The deliberately wrong value below belongs to the FIRST call's response, and
+# the status assertion beside it is correct — so this scenario passes under a
+# harness that checks statuses for every call and bodies only for the last.
+# The selftest asserts the opposite: the scenario must panic.
+given:
+  - empty: true
+when:
+  - call: GET /get/get-albums
+    then:
+      - response.status: 200
+      # deliberately wrong: an empty library has no albums.
+      - response.json.length: 999
+  - call: GET /get/get-albums
+then:
+  - response.status: 200

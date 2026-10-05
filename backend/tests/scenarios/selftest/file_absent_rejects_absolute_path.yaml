@@ -1,0 +1,17 @@
+name: file_absent rejects an absolute path instead of passing vacuously
+# Regression pin for the harness defect where a `file_absent`/`file_exists`
+# path was joined onto `image_home` after stripping one leading `/`. An
+# absolute path — which is what `${data_path}` interpolates to — therefore
+# resolved under `<image_home>/<absolute path>/…`, a location that cannot
+# exist, and the assertion passed no matter what the handler under test did.
+#
+# The file named here really is absent, so under the old joining this scenario
+# would pass and the selftest would fail: a passing assertion that cannot fail.
+# The harness now rejects an absolute result outright, so this one panics.
+given:
+  - empty: true
+when:
+  - call: GET /get/get-albums
+then:
+  - response.status: 200
+  - file_absent: "${data_path}/e2e_absent_guard/photo.jpg"
