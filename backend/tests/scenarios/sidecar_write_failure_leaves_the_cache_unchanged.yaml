@@ -1,0 +1,73 @@
+name: a tag edit whose sidecar cannot be written leaves the cache alone
+# The file plus its sidecar is the source of truth; `METADATA_TABLE` is a cache
+# of it. A sidecar write that fails must therefore fail the edit, because the
+# alternative — storing the payload anyway — leaves the cache claiming an edit
+# that is in no file, and the next reindex reverts it with nothing in between to
+# say so.
+#
+# The failure is injected the way an operator would meet it: the photo's own
+# directory is made read-only, so neither the sidecar write's temp-file step nor
+# its rename can land. Measured to reach the handler as a real write error
+# (the writer is `process::xmp_write`, an in-process xmpkit packet written
+# through temp-file + rename — no child process to fail, only the filesystem).
+#
+# The edit both adds and removes a tag, so each half of "unchanged" is
+# assertable on its own: the cache still holds the seeded tag (the removal was
+# not stored) and does not hold the added one (the addition was not stored).
+given:
+  - photo: /e2e_ro_tag/photo.jpg
+    id_as: $photo
+    asset_id_as: $asset_id
+  - raw_file: /e2e_ro_tag/photo.xmp
+    content: |
+      <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+        xmlns:dc="http://purl.org/dc/elements/1.1/"
+        xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+        <dc:subject><rdf:Bag><rdf:li>e2e_seed_tag</rdf:li></rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+      <?xpacket end="w"?>
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      ts: response.prefetch.timestamp
+      idx: response.prefetch.locateTo
+  - chmod:
+      path: /e2e_ro_tag
+      octal: "0500"
+  - call: PUT /put/edit_tag
+    raw_body: '{"indexArray":[${idx}],"addTagsArray":["e2e_added"],"removeTagsArray":["e2e_seed_tag"],"timestamp":${ts}}'
+    then:
+      - response.status: 500
+  # Restored before the assertions, and by the harness even if this scenario
+  # fails: a read-only directory would make the shared reset unable to wipe
+  # the image tree for every scenario after this one.
+  - chmod:
+      path: /e2e_ro_tag
+      octal: "0755"
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+    then:
+      - response.status: 200
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  # The cache still holds exactly the tags the index read from the sidecar.
+  - response.json.tags:
+      contains: e2e_seed_tag
+  - response.json.tags:
+      not_contains: e2e_added
+  # And the sidecar is the packet the seed wrote: no half of the edit landed.
+  - file.contains: /e2e_ro_tag/photo.xmp
+    text: e2e_seed_tag
+  - file.not_contains: /e2e_ro_tag/photo.xmp
+    text: e2e_added

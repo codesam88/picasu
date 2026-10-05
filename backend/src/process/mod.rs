@@ -6,6 +6,7 @@ pub mod misc;
 pub mod path;
 pub mod rebuild;
 pub mod sanitize;
+pub mod sidecar_edit;
 pub mod thumbnail;
 pub mod transitor;
 pub mod video;
