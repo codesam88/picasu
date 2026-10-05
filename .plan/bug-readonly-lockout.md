@@ -102,3 +102,18 @@ Tests first, each one a named case rather than a sweep:
 7. `just openapi-gen` produces a reviewed diff, `just openapi-check` is green,
    and the frontend toggle is exercised by a scenario if the existing suite can
    reach it — otherwise say so rather than claiming coverage.
+
+### Progress: 2026-10-04 — premise corrected, scope widened
+
+The claim above that lifting read-only "requires a restart ... or a config file
+edit" is **wrong**: `POST /post/config/import` (`post/import_config.rs`) takes
+only `GuardAuth` and replaces the whole `AppConfig` through
+`AppConfig::update`, including `read_only_mode`. Verified against a running
+instance: with the mode on, `PUT /put/config` correctly answered 405 while a
+single `POST /post/config/import` carrying `"readOnlyMode": false` answered 200
+and mutations were accepted again.
+
+Consequence for the decided fix: the re-auth guard must cover **import_config**
+too, not only a new disable endpoint — otherwise a captured admin token defeats
+the re-authentication requirement through the side door. Recorded as finding F9
+in `docs/auth.md`.
