@@ -216,7 +216,10 @@ XMP uses RDF/XML. Multiple schemas coexist in a single packet:
 
 ## 5. Cross-Format Field Mapping
 
-When multiple systems carry the same semantic field, they should agree. Below is the canonical mapping for the backend.
+When multiple systems carry the same semantic field, they should agree. Below
+is the reference mapping across the four systems. It is format guidance, not
+an implemented fallback chain: the backend reads XMP (tags, description,
+rating, title) and EXIF (`exifVec` display values), and never reads IPTC.
 
 ### Title
 
@@ -322,34 +325,45 @@ When multiple systems carry the same semantic field, they should agree. Below is
 
 ### Reading priority
 
-For any given file, we first check EXIF and IPTC. Any existing XMP
-header fields will override corresponding EXIF/IPTC fields. And an XMP sidecar file
-will in turn override those.
+For any given file the backend reads two systems. EXIF is read in-process
+with `kamadak-exif` (PRIMARY IFD, display-value strings) and surfaced as the
+API's `exifVec`. XMP is read with `xmpkit`: the sidecar (`photo.xmp`) when one
+exists, else the packet embedded in the file — and when a sidecar exists it is
+authoritative, suppressing the file's own XMP even if the sidecar turns out to
+be unreadable. Tags, description and rating come from XMP only, and `dc:title`
+in an album's `.albuminfo.xmp` overrides that album's display name. IPTC IIM
+and PNG text chunks are not read; they are recorded as unsupported in the
+capability manifest (`utils/snapfab/capabilities.json`).
 
-Whenever metadata is changed via the API/frontend, the backend will
-create/update a corresponding sidecar XMP file. In addition, we may add an
-option to directly write the metadata back to the original images (IPTC/XMP only).
+Video metadata is probed with `ffprobe`
+(`process::exif::generate_exif_for_video`), and video thumbnails and
+compression use `ffmpeg` — external binaries that are runtime prerequisites
+(see `docs/linux.md`).
+
+Whenever metadata is changed via the API/frontend, the backend
+creates or updates the corresponding sidecar XMP file — an atomic temp file +
+rename through `xmpkit`'s serializer, preserving any properties it does not
+manage. Media files themselves are never rewritten: sidecars are the only
+metadata this backend writes.
 
 ### Implementation notes
 
 - **EXIF dates** use format `YYYY:MM:DD HH:MM:SS` (with colons in the date portion).
 - **XMP dates** use ISO 8601 (`YYYY-MM-DDTHH:MM:SS[±HH:MM]`). Normalise to a common internal representation.
-- **IPTC dates** use `YYYYMMDD` (no time component). Combine with `TimeCreated` if available.
 - **IPTC IIM** max lengths are historic; XMP has no such limit for the same semantic field.
-- **Keywords**: deduplicate across XMP and IPTC sources. Case-insensitive deduplication is recommended.
+- **Keywords**: deduplicate within the XMP source in use. Case-insensitive deduplication is recommended.
 - **LangAlt** fields (XMP `dc:title`, `dc:description`): prefer `x-default` variant, fall back to first available language.
 - **Sidecar discovery**: for file `path/to/photo.ext`, check for `path/to/photo.xmp`. This follows Adobe/Lightroom convention.
 
 ### Rust crate references
 
-| Task                         | Crate          | Notes                                                                 |
-| ---------------------------- | -------------- | --------------------------------------------------------------------- |
-| Read EXIF                    | `kamadak-exif` | Pure Rust, supports JPEG/TIFF/PNG                                     |
-| Read/write EXIF              | `little_exif`  | Used by test-image generator                                          |
-| Read/write XMP               | `xmpkit`       | Pure Rust, supports the full XMP data model                           |
-| Read/write XMP (lightweight) | `xmp-writer`   | Write-only, good for generating XMP                                   |
-| Read IPTC IIM                | `iptc`         | Pure Rust, supports JPEG                                              |
-| General metadata             | `rexiv2`       | GObject/Exiv2 wrapper, reads EXIF+IPTC+XMP; requires system libgexiv2 |
+| Task                                     | Tool                   | Notes                                                                                                                |
+| ---------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Read EXIF (backend)                      | `kamadak-exif`         | Pure Rust; PRIMARY-IFD display strings become the API's `exifVec`                                                    |
+| Read and write XMP (backend)             | `xmpkit`               | Sidecars read with `XmpMeta::parse`, embedded packets with `XmpFile::open`; sidecars written with `serialize_packet` |
+| Video metadata and thumbnails (backend)  | `ffprobe` / `ffmpeg`   | External binaries spawned at runtime; install per `docs/linux.md`                                                    |
+| Write fixture metadata (`utils/snapfab`) | `exiftool`             | Dev/test tool only (`just install-exiftool`); the backend never spawns it                                            |
+| Evaluated, not used                      | `xmp-writer`, `rexiv2` | Earlier candidates; neither is a dependency                                                                          |
 
 ### exiv2 tag reference (for debugging)
 

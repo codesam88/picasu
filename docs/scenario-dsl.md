@@ -2,8 +2,8 @@
 
 Semi-formal spec and authoring guide for spec-driven E2E testing.
 
-Two scenario types share the `given:` vocabulary but have disjoint
-`when:`/`assert:` verb sets:
+Two scenario types with overlapping `given:` vocabularies and disjoint
+`when:`/assertion verb sets (`then:` for API scenarios, `assert:` for UI):
 
 - **API scenarios** (`backend/tests/scenarios/*.yaml`) — compiled
   at build time into Rocket `local::Client` tests via `build.rs`. Test
@@ -14,10 +14,19 @@ Two scenario types share the `given:` vocabulary but have disjoint
 
 ## Common structure
 
-Every scenario file is a YAML document with one required top-level key
-and several optional:
+Every scenario file is a YAML document with required and optional
+top-level keys. The API type answers to `then:`, the UI type to
+`assert:` (or `steps:`):
 
 ```yaml
+# API scenario:
+name: Human-readable name for the scenario
+given: # optional — fixture definitions
+  - ...
+when: ...
+then: ... # required key; may be an empty list
+
+# UI scenario:
 name: Human-readable name for the scenario
 covers: # optional — see § Coverage intent
   api:
@@ -26,43 +35,118 @@ covers: # optional — see § Coverage intent
     - textbox/Password
 given: # optional — fixture definitions
   - ...
-# Either flat when/assert (single-step):
-when: ...
+when: ... # or `steps:` for interleaved when/assert pairs
 assert: ...
-# Or multi-step:
-steps:
-  - when: ...
-    assert: ...
 ```
 
 ## `given:` vocabulary (shared)
 
 Each entry in `given:` seeds state. Some forms may bind a result to
-`id_as` for later reference in `when:` bodies and `assert:` assertions.
-Variables are interpolated as `${variable_name}` in string values across
-all verb blocks.
+`id_as` for later reference in `when:` bodies and `then:`/`assert:`
+assertions. Variables are interpolated as `${variable_name}` in string values
+across all verb blocks.
 
-| Form                | Description                                     | Available in |
-| ------------------- | ----------------------------------------------- | ------------ |
-| `empty: true`       | No-op; signals intent to start from clean state | API, UI      |
-| `dir_album: <path>` | Create a directory album on disk                | API, UI      |
-| `photo: <path>`     | Write a minimal JPEG to the image store         | API, UI      |
-| `remove: <path>`    | Remove a file from the image store              | API, UI      |
-| `config: { ... }`   | Set backend config via HTTP API                 | UI only      |
+| Form                     | Description                                                   | Available in |
+| ------------------------ | ------------------------------------------------------------- | ------------ |
+| `empty: true`            | No-op; signals intent to start from clean state               | API, UI      |
+| `dir_album: <path>`      | Create a directory album on disk                              | API, UI      |
+| `photo: <path>`          | Generate a JPEG/PNG (`format:`) into the image store          | API, UI      |
+| `remove: <path>`         | Remove a file from the image store                            | API, UI      |
+| `config: { ... }`        | Set backend config (accepted fields differ per harness)       | API, UI      |
+| `raw_file: <path>`       | Write UTF-8 text (`content:`) to a path                       | API          |
+| `fixture: { ... }`       | Copy a checked-in manifest fixture into the image store       | API          |
+| `random_media: <path>`   | Write the format the run's seed selected (needs `randomize:`) | API          |
+| `duplicate_of: { ... }`  | Byte-identical copy of a file placed earlier in `given:`      | API          |
+| `truncate_file: { ... }` | Keep only the first `bytes` bytes of a given-phase file       | API          |
+| `patch_file: { ... }`    | Hex find/replace in a given-phase file (same-length patterns) | API          |
+| `photo_raw: <path>`      | Place a generated image without triggering an index scan      | UI           |
+| `source_file: <path>`    | Place a file _outside_ `IMAGE_HOME` for the browser to upload | UI           |
+| `move: <path>` + `to`    | Move a file within the image store                            | UI           |
 
 Optional modifier fields:
 
-| Field                  | Applies to       | Description                               |
-| ---------------------- | ---------------- | ----------------------------------------- |
-| `id_as: <name>`        | dir_album, photo | Binds result to `${name}`                 |
-| `tags: [<tag>, ...]`   | photo            | Sets photo tags                           |
-| `exif_date: <string>`  | photo            | Sets `DateTimeOriginal`                   |
-| `color: [<r>,<g>,<b>]` | photo            | Sets pixel colour (decoded fixtures only) |
+| Field                  | Applies to                                                | Description                                                                |
+| ---------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `id_as: <name>`        | dir_album, photo, fixture, random_media, source_file (UI) | Binds a discovered identity to `${name}` (see note below)                  |
+| `asset_id_as: <name>`  | photo, fixture, random_media (API)                        | Binds the API asset id to `${name}`                                        |
+| `tags: [<tag>, ...]`   | photo                                                     | Sets photo tags                                                            |
+| `exif_date: <string>`  | photo                                                     | Sets `DateTimeOriginal`                                                    |
+| `color: [<r>,<g>,<b>]` | photo (API)                                               | Sets pixel colour (decoded fixtures only)                                  |
+| `width` / `height`     | photo, photo_raw, source_file                             | Generated image dimensions                                                 |
+| `format: jpeg\|png`    | photo, photo_raw, source_file                             | Generated image format (default `jpeg`); mutually exclusive with `fixture` |
+| `content: <text>`      | raw_file                                                  | File contents (default empty)                                              |
 
-### `config:` (UI only)
+What `id_as` binds depends on the form and the harness: the album id for
+`dir_album`; the content hash for API `photo`/`fixture`/`random_media`; the
+asset id for UI `photo`; and the placed source path for UI `source_file`.
 
-Sets backend runtime configuration via the HTTP API before the browser
-interacts with the page. Accepted fields:
+`truncate_file` and `patch_file` are byte transforms over files an earlier
+`given:` item created, applied after generation and before the scan — a
+corruption derives from a real file instead of a hand-built blob. `patch_file`
+requires the find/replace patterns to be equal length and the pattern to be
+present, so a corruption cannot be a silent no-op.
+
+### `randomize:` (API only)
+
+Opt a scenario into seeded format selection. It then runs **once per seed** in
+the named set, and each pass materialises `random_media` in the format that seed
+resolves to. The seed randomises the _input_; the assertions stay the same for
+every seed, so they may only assert what holds for every eligible format.
+
+```yaml
+randomize:
+  seeds: ci # a set name from backend/tests/seeds.json; defaults to `ci`
+given:
+  - random_media: /e2e_rand_meta/asset # written as asset.<ext>, e.g. asset.tif
+    id_as: $photo
+    asset_id_as: $asset_id
+  - raw_file: /e2e_rand_meta/asset.xmp # sidecar XMP works for every format
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.ext: ${ext}
+  - file_exists: e2e_rand_meta/asset.${ext}
+```
+
+`random_media` binds three variables for the rest of the scenario: `${format}`
+(the selected format's name), `${ext}` (its canonical extension, which is
+appended to the path), and `${mime}` (its content type from the capability
+manifest, for an `upload` step's `content_type`).
+
+Selection is a filter over `utils/snapfab/capabilities.json`: a format is a
+candidate only with a _verified fixture_ (generated by snapfab, or a pinned
+fixture that resolves) and no expected failure beyond `none`. The format and
+its fixture are recorded per seed in `backend/tests/seeds.json`
+(`resolvesTo`), and a test fails if a recorded seed no longer resolves to the
+format recorded for it.
+
+| Source                       | Effect                                                 |
+| ---------------------------- | ------------------------------------------------------ |
+| scenario's `randomize.seeds` | The set that runs. Default `ci`.                       |
+| `PICASU_RANDOM_SEEDS=<set>`  | Run that set instead (e.g. `nightly`).                 |
+| `PICASU_RANDOM_SEEDS=1,5`    | Run exactly those seeds, to replay a reported failure. |
+
+Each pass prints its seed and resolved format, and a failure repeats them in the
+panic message:
+
+```
+[randomized] <scenario> run 3/6: seed=2 format=tiff ext=tif source=pinned fixture=tiff-48x32-exif
+```
+
+### `config:` (API and UI)
+
+Sets backend runtime configuration before the calls or the browser run.
+The API harness accepts `read_only_mode`, `fs_notify_watcher`,
+`validate_upload_content` and `use_client_timestamp_info`; the UI harness
+additionally accepts `password` and `auth_key`:
 
 ```yaml
 - config:
@@ -85,25 +169,72 @@ The runtime interpreter lives in `src/tests/backend_api.rs`. Run with
 when:
   call: <method> <path> # e.g. "PUT /put/assign_album"
   body: <json-value> # request body; `${var}` interpolation
+  raw_body: <string> # literal request body; wins over `body`
+  headers: { Authorization: "Bearer ${token}" } # extra request headers
   auth: <true|false> # default true; attaches admin auth cookie
+  then: [...] # inline assertions (list); on the last step the top-level `then:` applies
+  capture: { var: response.json.<path> } # bind response fields for later steps
+  calc: { var: "${other}+1" } # numeric offset expression
+  id_as: $name # content hash, resolved after this call by `discover_path:`
+  asset_id_as: $name # API asset id, resolved the same way
 ```
 
-`call` is validated against `openapi.json` for operation existence at
-build time.
+A scenario file's structure and every verb it uses are validated against
+`backend/tests/schema.json` (see § Schema validation).
 
-### `assert:` — assertions (one or more)
+### `then:` — assertions (one or more)
 
-| Form                            | Assertion                     |
-| ------------------------------- | ----------------------------- |
-| `response.status: <code>`       | HTTP status code              |
-| `response.<json-path>: <value>` | JSON body field matches value |
-| `response.<json-path> exists`   | JSON body field is present    |
-| `response.<json-path> absent`   | JSON body field is absent     |
-| `file_exists: <path>`           | File exists on disk           |
-| `file_absent: <path>`           | File does not exist on disk   |
+The scenario's top-level `then:` asserts the last `when:` step's response; a
+non-final step asserts its own inline `then:` (see below). The same forms are
+valid in both places:
 
-`<json-path>` is a dot-separated path into the response JSON, e.g.
-`prefetch.locateTo` or `prefetch.timestamp`.
+| Form                                               | Assertion                                            |
+| -------------------------------------------------- | ---------------------------------------------------- |
+| `response.status: <code>`                          | HTTP status code                                     |
+| `response.status_not: <code>`                      | HTTP status is not this code                         |
+| `response.header.<name>: <value>`                  | Response header equals value                         |
+| `response.json.<path>: <value>`                    | JSON body field equals value (`${var}` interpolated) |
+| `response.json.<path>: not_null`                   | JSON body field is present and not `null`            |
+| `response.json.<path>: {contains: <v>}`            | Array field contains value                           |
+| `response.json.<path>: {not_contains: <v>}`        | Array field does not contain value                   |
+| `response.json.<path>: {all_absolute: true}`       | Every element of the array is an absolute path       |
+| `array_min_counts: {<tag>: <n>}`                   | Response tag array holds ≥ `n` entries for `<tag>`   |
+| `array_where: {where: …, expect: present\|absent}` | An element matching `where` is (not) present         |
+| `compare: {<path>: {<op>: <n>}}`                   | Integer comparison; `<`, `<=`, `>` or `>=`           |
+| `file_exists: <path>`                              | File exists on disk                                  |
+| `file_absent: <path>`                              | File does not exist on disk                          |
+| `file.contains: <path>` + `text`                   | File's text contains `text`                          |
+| `file.not_contains: <path>` + `text`               | File's text does not contain `text`                  |
+| `thumb_exists: $<hash>` / `thumb_absent: $<hash>`  | The generated thumbnail exists / does not            |
+| `serve_image_ok: $<hash>`                          | The compressed image route serves a JPEG             |
+
+Body assertions must use the `response.json.` prefix: `backend_api.rs`
+dispatches a body assertion only for a key that starts with it, so a bare
+`response.<path>` in a `then:` list would be read and silently dropped —
+and the schema must not admit a form that asserts nothing. The path allows
+`:` and `-` inside segments (ffprobe-derived video keys are literally named
+e.g. `TAG:major_brand`) and `[n]` for array indices.
+
+`not_null` and the `contains`/`not_contains`/`all_absolute` objects are
+**form markers**, not values. `not_contains` is the only way to say "the cache
+is unchanged" about an edit that _removes_ a value: asserting that the old
+value is still there would pass for a cache that stored both the removal and
+the addition.
+
+`${var}` interpolation applies to `response.json.` values and to `file_*`
+paths, so a randomized scenario can assert on the selected format's extension.
+
+`file_exists`, `file_absent`, `file.contains` and `file.not_contains` take an
+**IMAGE_HOME-relative** path with an optional leading `/`. A path that
+interpolates to an _absolute_ one (typically `${data_path}/…`) is rejected:
+joined onto IMAGE_HOME it would resolve to a location that cannot exist, which
+makes `file_absent` pass and `file_exists` meaningless.
+
+`serve_image_ok: $<hash>` fetches
+`GET /object/compressed/<hash[0:2]>/<hash>.jpg` — the route the frontend uses —
+and requires 200, an `image/jpeg` content type and JPEG bytes. The variable is
+the content hash `id_as` binds; token issuance for that route is covered by
+`token_hash_compressed_serving.yaml`.
 
 ### Multi-step chains
 
@@ -111,11 +242,13 @@ Use multiple scenarios or a multi-step `when:` block:
 
 ```yaml
 when:
-  - call: PUT /put/assign_album
-    body: { assetId: "${photo}", albumId: "${album}" }
-    capture: response
+  - call: POST /get/prefetch?locate=${photo}
+    then:
+      - response.status: 200
+      - response.json.prefetch.timestamp: not_null
+    capture:
+      ts: response.prefetch.timestamp
   - call: GET /get/get-albums
-    auth: true
 ```
 
 ### Minting a timestamp token (`mint_timestamp_token`)
@@ -146,6 +279,59 @@ request targets so expiry, not a claim mismatch, is the rejection reason);
 `exp_offset` is seconds relative to now (`300`, the app default, when
 omitted). A mint produces no HTTP response, so it cannot be the last item
 of `when:` — nothing for `then:` to assert against.
+
+A `call:` (or `upload:`) that is **not** the last one asserts its own inline
+`then:` block, and every form in it runs — status, `response.json.*`,
+`array_min_counts`, `array_where`, `compare`, `file_*`, `thumb_*`,
+`serve_image_ok`. The last step is asserted by the scenario's top-level
+`then:`. An inline `then:` is evaluated before the same step's `capture` and
+`calc` feed the variables, so it cannot depend on a value the response it
+asserts produced; a `then:` that is not a list of assertions is a hard error
+rather than something to read and drop.
+
+A `call:` may also bind a discovered identity with `id_as` (content hash) or
+`asset_id_as` (API asset id), both resolved by the following `discover_path` —
+and each works on its own; `asset_id_as` does not require `id_as`.
+
+### `when:` — upload
+
+An `upload:` step posts a multipart upload through the same interface the UI
+uses:
+
+```yaml
+when:
+  - upload:
+      file: /e2e_upload/src/photo.jpg # IMAGE_HOME-relative source placed by `given:`
+      filename: photo.jpg # name the server sees; defaults to the source's name
+      target_album: "${album}" # optional; album id or path
+      content_type: image/jpeg # optional; defaults to image/jpeg
+      on_conflict: rename # or `skip`
+```
+
+`file` is required; `auth` defaults to true; like `call:`, a non-final
+`upload:` may carry an inline `then:`, `capture`, `id_as`/`asset_id_as` +
+`discover_path`.
+
+### `when:` verbs that change state
+
+Beyond `call:` and `upload:`, a step may act on the filesystem. The
+path-taking verbs accept IMAGE_HOME-relative paths with an optional leading
+`/`:
+
+| Verb                                  | Effect                                                         |
+| ------------------------------------- | -------------------------------------------------------------- |
+| `wait_index: true`                    | Block until the running album index settles (on `completed`)   |
+| `write_file: <path>` + `content`      | Write UTF-8 text to a path                                     |
+| `duplicate_of: {source, destination}` | Copy a file's bytes                                            |
+| `chmod: {path, octal}`                | Change a path's POSIX permissions, `octal` in `chmod` spelling |
+
+`wait_index` accepts only `true`: a scan that settles in any other state
+panics the harness while it waits. To damage a file _before_ the indexer sees
+it, use the `given:`-phase byte transforms `truncate_file`/`patch_file` —
+`write_file` writes UTF-8 text, which matches no media signature and is
+therefore skipped before any file is ever matched. `chmod` is how a scenario
+watches the server meet a filesystem that refuses a read or a write (Unix
+only).
 
 ### Escape-hatch policy (API)
 
@@ -201,10 +387,16 @@ text/icon-based verbs below.
 | `click.text: <text>`                      | Click an album card by its chip label (uses `.parent` container)              |
 | `click.icon: <icon-class>`                | Click a button by Material Design Icon class (e.g. `mdi-information-outline`) |
 | `click.first`                             | Click the first grid image (`.desktop-small-image`) in the active overlay     |
+| `click.select_first: true`                | Click the first grid image's hover action icon (opens the batch menu)         |
+| `click.testid: <id>`                      | Click element by Playwright `data-testid`                                     |
 | `fill: <role>/<label>, value: <value>`    | Type into an input                                                            |
 | `select: <role>/<label>, option: <label>` | Choose from listbox/select                                                    |
 | `submit`                                  | Submit the current form                                                       |
+| `keyboard: <key>`                         | Press a key (e.g. `Tab`, `Escape`)                                            |
+| `browser.back: true`                      | Browser history back                                                          |
 | `wait.ms: <milliseconds>`                 | Pause execution (use sparingly — prefer auto-waiting assertions)              |
+| `upload.files: {trigger, files}`          | Click `trigger` to open the file chooser, then attach `files`                 |
+| `set.auto_rename: <bool>`                 | Set the auto-rename switch in the upload-options dialog                       |
 
 New interactions → extend the vocabulary with a new verb. No raw-TypeScript
 escape hatch.
@@ -293,12 +485,32 @@ in this document and the interpreter in `interpreter.ts`.
 
 The DSL has separate JSON Schemas at
 `backend/tests/schema.json` (API) and
-`frontend/tests/playwright/schema.json` (UI). All scenario files
-are validated at load/compile time — a schema mismatch is a hard error.
+`frontend/tests/playwright/schema.json` (UI). A schema mismatch is a hard error
+in both.
 
-API scenarios are validated at build time by `build.rs`. UI scenarios are
-validated at runtime by `loadScenarios.ts` via the Zod `UiScenario`
-schema in `types.ts`.
+**API scenarios are validated by a test.**
+`backend/src/tests/scenario_schema.rs` compiles `backend/tests/schema.json` as
+the draft it declares (`2020-12`) and validates every YAML file under
+`backend/tests/scenarios/`, `selftest/` included, against it, under
+`cargo test -p picasu`. The YAML is parsed as data and never executed, so the
+check is static and costs no backend process. Three further tests keep the
+schema honest rather than merely present: one checks it compiles as the dialect
+it declares; one feeds it documents it must reject, so "every scenario
+validates" cannot be satisfied by a schema that accepts everything; one
+asserts the response-assertion forms listed above stay expressible, so a
+tightened schema fails instead of the corpus.
+
+`build.rs` does **not** validate the scenarios. It enumerates
+`tests/scenarios/*.yaml` and `tests/scenarios/selftest/*.yaml` to generate one
+`#[test]` per file, and the interpreter reads each file at run time.
+
+The API check is a lower bound on the interpreter's acceptance, not an equality:
+a form the schema allows and the interpreter silently ignores — a misspelled
+`then:` key, for instance — passes validation. That class of gap is pinned by a
+scenario instead, in `backend/tests/scenarios/selftest/`.
+
+UI scenarios are validated at runtime by `loadScenarios.ts` via the Zod
+`UiScenario` schema in `types.ts`.
 
 ## Idempotency and isolation
 
