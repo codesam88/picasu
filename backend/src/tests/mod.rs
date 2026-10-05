@@ -11,6 +11,9 @@ mod backend_api;
 mod scenario_schema;
 
 #[cfg(test)]
+mod seeds;
+
+#[cfg(test)]
 mod torn_thumbnail;
 
 #[cfg(test)]
