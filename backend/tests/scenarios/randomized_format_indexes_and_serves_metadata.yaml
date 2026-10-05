@@ -1,0 +1,73 @@
+name: seeded random format indexes and serves its metadata
+# One randomized pass of a format-independent flow, repeated once per seed in the
+# `ci` set. The seed picks the *input*; the assertions below are the same for
+# every format that can be picked, which is what makes the pass meaningful:
+#
+#   random_media         the format the seed selected. jpeg/png are generated,
+#                        tiff/webp/mp4/mov are copied from the pinned fixture the
+#                        capability manifest names for them. The file is written
+#                        as `asset.<ext>`, where `<ext>` is the format's canonical
+#                        extension — the only thing `${ext}` knows, so the
+#                        scenario never names a format itself.
+#   asset.xmp            a sidecar next to the file, in every format. Sidecar XMP
+#                        is the one metadata source every format entry in the
+#                        capability manifest claims (`xmp: [sidecar]`), and its
+#                        discovery is format-independent: `discover_sidecar` in
+#                        `process/xmp.rs` replaces the media file's extension with
+#                        `xmp` and asks whether that file exists, so no format is
+#                        named and no byte of the media is inspected. The packet
+#                        inside it is parsed by xmpkit, like every other packet.
+#   ${ext}               the selected format's extension, bound by the harness.
+#                        Asserting `ext` ties the API response to the selection
+#                        without hard-coding a format.
+#
+# What is *not* asserted, on purpose: the extension beyond `${ext}`, the
+# dimensions beyond being non-zero (generated formats are rendered at the
+# harness default, pinned fixtures are 48x32), and any metadata field, because
+# those differ per format. The per-format contracts are the deterministic
+# scenarios (`tiff_metadata_exif_dimensions_thumbnail`,
+# `mp4_ffprobe_metadata_dimensions_thumbnail`, and their siblings); this scenario
+# exists to catch the format-independent path itself.
+#
+# A red run reports its seed and format:
+# `PICASU_RANDOM_SEEDS=<seed> cargo test -p picasu scenario_<this file>`.
+randomize:
+  seeds: ci
+given:
+  - random_media: /e2e_rand_meta/asset
+    id_as: $photo
+    asset_id_as: $asset_id
+  - raw_file: /e2e_rand_meta/asset.xmp
+    content: |
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_rand_meta_sidecar_alpine</rdf:li>
+      <rdf:li>e2e_rand_meta_sidecar_winter</rdf:li>
+      </rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.ext: ${ext}
+  - compare:
+      response.json.width: { ">": 0 }
+      response.json.height: { ">": 0 }
+  - response.json.tags:
+      contains: e2e_rand_meta_sidecar_alpine
+  - response.json.tags:
+      contains: e2e_rand_meta_sidecar_winter
+  - thumb_exists: $photo
+  - file_exists: e2e_rand_meta/asset.${ext}
+  - file_exists: e2e_rand_meta/asset.xmp

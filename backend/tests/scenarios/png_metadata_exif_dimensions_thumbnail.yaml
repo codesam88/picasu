@@ -1,0 +1,34 @@
+name: png exif dimensions and thumbnail reach the metadata detail
+# The capability manifest declares PNG as `exif: [embedded]`: kamadak-exif reads
+# the eXIf chunk the fixture writer puts in a generated PNG. This pins the
+# positive half of that contract on a real generated PNG: EXIF is read back out
+# of the file, the decoded dimensions are the ones the fixture was rendered at,
+# and a thumbnail is generated on disk. The generated PNG carries no XMP packet
+# (the writer only writes one for a tagged fixture), so no tag source is
+# involved here; the sidecar path on PNG is `png_sidecar_xmp_tags`.
+# The JPEG counterpart of this path is `photo_tags_reflect_injected_metadata_b`.
+given:
+  - photo: /e2e_png_meta/photo.png
+    format: png
+    width: 96
+    height: 64
+    exif_date: "2024:05:06 07:08:09"
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - response.json.ext: png
+  - response.json.width: 96
+  - response.json.height: 64
+  - response.json.exifVec.DateTimeOriginal: "2024-05-06 07:08:09"
+  - thumb_exists: $photo
+  - file_exists: e2e_png_meta/photo.png

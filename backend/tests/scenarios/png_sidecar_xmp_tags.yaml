@@ -1,0 +1,32 @@
+name: png sidecar xmp keywords become tags
+# Sidecar XMP is one of the two XMP sources the capability manifest claims for
+# PNG (`xmp: [embedded, sidecar]`), and it is the one a *generated* PNG can
+# have: the writer puts an XMP packet in a file only when the fixture carries
+# tags, so this PNG's own bytes carry none and the sidecar is the only source.
+# The sidecar keywords have to reach the tag index on their own — sidecar
+# discovery in `process::xmp` swaps the media file's extension for `xmp` and
+# asks whether that file exists, with no format dispatch, so the same path
+# serves the JPEG case in `photo_tags_reflect_injected_metadata_b`.
+# The negative control is `png_without_xmp_source_has_no_tags`.
+given:
+  - photo: /e2e_png_sidecar/photo.png
+    format: png
+  - raw_file: /e2e_png_sidecar/photo.xmp
+    content: |
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_png_sidecar_alpine</rdf:li>
+      <rdf:li>e2e_png_sidecar_winter</rdf:li>
+      </rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+when:
+  - call: GET /get/get-tags
+then:
+  - response.status: 200
+  - array_min_counts:
+      e2e_png_sidecar_alpine: 1
+      e2e_png_sidecar_winter: 1

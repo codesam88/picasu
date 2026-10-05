@@ -1,0 +1,26 @@
+name: Upload of mp4 bytes named .mov stays accepted with validate_upload_content off
+# Mirrors the established permissive pair
+# (`upload_misnamed_png_claimed_rejected` / `upload_misnamed_content_allowed_when_validation_off`)
+# for the video case. It exists to pin that the flag is *not* what makes
+# `upload_mp4_bytes_named_mov_is_tolerated_within_the_isobmff_family` pass:
+# mp4 and mov share a container family, so the mismatch branch is never reached
+# and disabling content validation changes nothing about the outcome. A scenario
+# that turned this into a rejection would mean the isobmff family sharing had
+# been removed, which is a different product decision.
+given:
+  - dir_album: /e2e_up_mp4_named_mov_off/target
+    id_as: $album
+  - fixture:
+      source: mp4-48x32-ffprobe
+      destination: /e2e_up_mp4_named_mov_off/src/clip.mp4
+  - config:
+      validate_upload_content: false
+when:
+  - upload:
+      file: /e2e_up_mp4_named_mov_off/src/clip.mp4
+      filename: clip.mov
+      target_album: "${album}"
+      content_type: video/quicktime
+then:
+  - response.status: 200
+  - file_exists: e2e_up_mp4_named_mov_off/target/clip.mov

@@ -1,0 +1,57 @@
+name: Upload of mp4 bytes declared as video/quicktime is tolerated inside the isobmff family
+# The case that needed a binary video fixture. It is NOT rejected, and that is
+# the current contract rather than an oversight: `process/format.rs` shares
+# extensions within a container family, because a declared container cannot be
+# told apart from the detected brand by content alone. `infer` reports the `isom`
+# brand as `mp4` and `qt  ` as `mov`, the upload path derives the claimed type
+# from the MIME type (`video/quicktime` -> `mov`, Rocket's own mapping), and both
+# live in family `isobmff`. mp4 bytes named `.mov` are therefore family siblings,
+# not a mismatch, so `validate_upload_content` — on by default here — has nothing
+# to reject. `format.rs::container_sharing_families_are_accepted_across_brands`
+# is the unit-level half of this contract.
+#
+# What a user gets is pinned here: 200, the bytes stored under the *claimed*
+# `.mov` extension (the stored extension is never taken from the client
+# filename — it comes from the MIME type), and a record whose ffprobe metadata
+# still reports `TAG:major_brand=isom`. That brand is the only place the real
+# container survives indexing, because ffprobe's `format_name` covers mp4, mov
+# and m4v alike.
+# The flag-off counterpart is `upload_mp4_bytes_named_mov_allowed_when_validation_off`.
+# The image mislabel pair is `upload_misnamed_png_claimed_rejected` /
+# `upload_misnamed_content_allowed_when_validation_off`, where the two containers
+# are not family siblings and the label really is rejected.
+given:
+  - dir_album: /e2e_up_mp4_named_mov/target
+    id_as: $album
+  - fixture:
+      source: mp4-48x32-ffprobe
+      destination: /e2e_up_mp4_named_mov/src/clip.mp4
+when:
+  - upload:
+      file: /e2e_up_mp4_named_mov/src/clip.mp4
+      filename: clip.mov
+      target_album: "${album}"
+      content_type: video/quicktime
+    asset_id_as: $asset_id
+    discover_path: e2e_up_mp4_named_mov/target/clip.mov
+  - call: POST /get/prefetch?locate=${asset_id}
+    capture:
+      token: response.token
+      ts: response.prefetch.timestamp
+  - call: GET /get/metadata/${asset_id}?timestamp=${ts}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token}"
+then:
+  - response.status: 200
+  - file_exists: e2e_up_mp4_named_mov/target/clip.mov
+  # The record carries the claimed extension, not the detected one.
+  - response.json.ext: mov
+  - response.json.type: video
+  - response.json.width: 48
+  - response.json.height: 32
+  # ...while ffprobe still reports the real container, read from the `ftyp` box.
+  - "response.json.exifVec.TAG:major_brand": isom
+  - response.json.exifVec.format_name: "mov,mp4,m4a,3gp,3g2,mj2"
+  # No XMP in the bytes and no sidecar placed, so nothing supplies tags.
+  - response.json.tags: []

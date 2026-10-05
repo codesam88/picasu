@@ -1,0 +1,35 @@
+name: unindexable media leaves no asset record behind
+# The asset-row consequence of `truncated_image_fails_only_its_own_index` and
+# `truncated_video_fails_only_its_own_index`.
+#
+# `index_task` publishes a record with a detached `FlushTreeTask` insert only
+# after the metadata pipeline has returned `Ok`. A file that fails mid-pipeline
+# therefore never reaches the insert, and nothing about it is observable through
+# the API afterwards: a `POST /get/prefetch` located by absolute path resolves
+# to zero rows.
+#
+# The path is the only way to name a file here. List rows deliberately carry no
+# path (Phase 14 strips it), so this is the one lookup that can ask "is this
+# specific file an asset?" and get an answer.
+#
+# If a future change publishes the record before the metadata pipeline runs,
+# this fails: the truncated file would become a visible asset with no
+# dimensions and no thumbnail.
+given:
+  - photo: /e2e_no_record/valid.jpg
+    tags:
+      - e2e_no_record_valid
+  - photo: /e2e_no_record/truncated.jpg
+  - truncate_file:
+      path: /e2e_no_record/truncated.jpg
+      bytes: 100
+when:
+  - call: GET /get/index/status
+    then:
+      - response.status: 200
+  - call: POST /get/prefetch
+    body:
+      Path: "${data_path}/e2e_no_record/truncated.jpg"
+then:
+  - response.status: 200
+  - response.json.prefetch.dataLength: 0

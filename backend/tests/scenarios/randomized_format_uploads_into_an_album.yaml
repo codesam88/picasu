@@ -1,0 +1,57 @@
+name: seeded random format uploads into an album and enters the index
+# The upload leg of the randomized matrix, once per seed in the `ci` set. The
+# file is placed by `random_media` (the seed decides the format) and uploaded
+# through the real multipart endpoint, which is where content identification,
+# filename sanitisation and album assignment happen.
+#
+# What is asserted is the same for every eligible format:
+#
+#   response.status: 200     the endpoint accepted the file. This is the
+#                           format-dependent part of upload in one assertion: a
+#                           file whose content contradicts its declared content
+#                           type is rejected here (upload content-type
+#                           validation, Iteration 5b of
+#                           `.plan/exif-xmp-rs-engine.md`), and `${mime}` carries
+#                           the capability manifest's MIME so the request never
+#                           lies about the content it is sending.
+#   album dataLength >= 2    after a re-index the target album holds the
+#                           `dir_album` placeholder plus the uploaded copy, so
+#                           the file joined the index the way any other file does.
+#
+# What is deliberately *not* asserted: the stored filename. `save_file` derives
+# the stored extension from the request's Content-Type, not from the format's
+# canonical extension, so a JPEG lands as `.jpeg` while the format's manifest
+# extension is `jpg` — naming that path in a format-independent assertion would
+# need a MIME-to-extension table the harness does not own. Nor are the response
+# body's per-format fields, dimensions, or the conflict/auto-rename naming
+# asserted, which depend on the uploaded name rather than on the format.
+# Uploading an already-indexed file is the `reupload_identifies_trashed_content`
+# contract (path-primary identity: a new path is a new asset), which is why the
+# source file stays in place instead of being removed after the scan.
+randomize:
+  seeds: ci
+given:
+  - dir_album: /e2e_rand_up/target
+    id_as: $album
+  - random_media: /e2e_rand_up/src/asset
+    id_as: $photo
+    asset_id_as: $asset_id
+when:
+  - upload:
+      file: /e2e_rand_up/src/asset.${ext}
+      content_type: "${mime}"
+      target_album: "${album}"
+    then:
+      - response.status: 200
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_rand_up"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: POST /get/prefetch
+    body:
+      Album: "${album}"
+then:
+  - response.status: 200
+  - compare:
+      response.json.prefetch.dataLength: { ">=": 2 }
