@@ -8,7 +8,7 @@ use crate::tasks::runtime::WORKER_RAYON_POOL;
 use crate::{
     error::handle_error,
     model::abstract_data::AbstractData,
-    process::index::{process_image_info, process_video_info},
+    process::index::process_media_info,
     tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
 };
 use mini_executor::Task;
@@ -66,24 +66,21 @@ fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
     info!("indexing {} {hash}: {path}", abstract_data.ext_type());
 
     let is_image = abstract_data.is_image();
-    if is_image {
-        if let Err(e) = process_image_info(&mut abstract_data) {
-            debug!("Failed image data dump: {abstract_data:#?}");
-            return Err(e).context(format!(
-                "failed to process image metadata pipeline. Hash: {}, Path: {}",
-                abstract_data.hash(),
-                path
-            ));
-        }
-    } else {
-        if let Err(e) = process_video_info(&mut abstract_data) {
-            debug!("Failed video data dump: {abstract_data:#?}");
-            return Err(e).context(format!(
-                "failed to process video metadata pipeline. Hash: {}, Path: {}",
-                abstract_data.hash(),
-                path
-            ));
-        }
+    // One shared pipeline for both orchestration modes: the incremental index
+    // here, the filesystem rebuild in `crate::process::rebuild`.
+    if let Err(e) = process_media_info(&mut abstract_data) {
+        debug!(
+            "Failed {} data dump: {abstract_data:#?}",
+            abstract_data.ext_type()
+        );
+        return Err(e).context(format!(
+            "failed to process {} metadata pipeline. Hash: {}, Path: {}",
+            abstract_data.ext_type(),
+            abstract_data.hash(),
+            path
+        ));
+    }
+    if !is_image {
         abstract_data.set_pending(true);
     }
 

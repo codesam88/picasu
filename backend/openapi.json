@@ -1983,7 +1983,7 @@
     },
     "/post/rebuild": {
       "post": {
-        "description": "Clears `ASSET_BY_PATH`, `ASSET_BY_ID` and `DUPE_INDEX`, walks the image\nroot and repopulates them, then rewrites `METADATA_TABLE` from the fresh\nrecords. The response carries the rebuild stats and is returned only after\nan in-memory tree refresh, so it does not race a following prefetch or\nget-data call.\n\nCorner cases: Rows are rewritten wholesale rather than merged: the rebuild\nassigns new `asset_id`s, so rows keyed by the previous ids must not remain.\n\nErrors: 400 malformed request — 401 missing or invalid credentials —\n405 read-only mode — 500 `imagePath` unset, or a failure while walking the\nimage root or writing the tables.",
+        "description": "Clears `ASSET_BY_PATH`, `ASSET_BY_ID`, `DUPE_INDEX` and `METADATA_TABLE`,\nwalks the image root, and repopulates all four: identity from the walk,\nmetadata through the same pipeline the incremental indexer runs. The\nresponse carries the rebuild stats and is returned only after an\nin-memory tree refresh, so it does not race a following prefetch or\nget-data call.\n\nCorner cases: Rows are rebuilt rather than merged: the rebuild assigns\nnew `asset_id`s, so rows keyed by the previous ids must not remain. A\nfile whose metadata pipeline fails keeps its identity, logs the failure,\nand does not stop the walk.\n\nErrors: 400 malformed request — 401 missing or invalid credentials —\n405 read-only mode — 500 `imagePath` unset, or a failure while walking the\nimage root or writing the tables.",
         "operationId": "rebuild_handler",
         "responses": {
           "200": {
@@ -2009,7 +2009,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Rebuild the asset tables from the filesystem under `IMAGE_HOME`.",
+        "summary": "Rebuild the asset tables and metadata cache from the filesystem under `IMAGE_HOME`.",
         "tags": [
           "index"
         ]

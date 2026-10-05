@@ -1,4 +1,6 @@
+use crate::model::abstract_data::AbstractData;
 use crate::process::dir_album::{get_album_id_for_dir, get_or_create_dir_album};
+use crate::process::index::process_media_info;
 use crate::storage::files::get_resolved_image_home;
 use crate::tasks::{
     INDEX_COORDINATOR,
@@ -7,7 +9,7 @@ use crate::tasks::{
         video::VideoTask,
     },
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use arrayvec::ArrayString;
 use dashmap::DashSet;
 use log::warn;
@@ -64,6 +66,45 @@ async fn ensure_dir_albums(file_path: &std::path::Path) -> Option<ArrayString<64
         }
     }
     deepest_album_id
+}
+
+/// Build a fully processed `AbstractData` for one media file: identity from what
+/// the caller already resolved (path, content hash, album membership), and
+/// metadata plus derived data from the shared [`process_media_info`] pipeline.
+///
+/// This is the rebuild side of that pipeline's two orchestration modes. The
+/// incremental index (`index_image`) resolves identity through the
+/// open/hash/deduplicate tasks and reaches the same [`process_media_info`] call
+/// via [`IndexTask`]; the filesystem rebuild resolves identity from its own
+/// filesystem walk and comes through here. What differs between the modes is
+/// only how identity is obtained and how the result is persisted — the EXIF
+/// read, the sidecar precedence rules and the hash/thumbnail derivation exist
+/// once, so a rebuilt asset cannot be described by different rules than an
+/// indexed one.
+///
+/// A video is marked `pending`: this pipeline produces its thumbnail, hashes and
+/// EXIF, but not its compressed form, which is the separate [`VideoTask`]. That
+/// matches what [`IndexTask`] does, so a rebuilt video carries the same state an
+/// indexed one does; the compressed form is left to the normal video path.
+pub fn index_media_file(
+    path: &Path,
+    hash: ArrayString<64>,
+    album_id: Option<ArrayString<64>>,
+) -> Result<AbstractData> {
+    let mut data = AbstractData::new(path, hash)?;
+
+    if let Some(id) = album_id {
+        data.set_album(Some(id));
+    }
+
+    process_media_info(&mut data)
+        .with_context(|| format!("metadata pipeline failed for {}", path.display()))?;
+
+    if data.is_video() {
+        data.set_pending(true);
+    }
+
+    Ok(data)
 }
 
 /// Index a single image file.
