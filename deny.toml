@@ -4,12 +4,15 @@ targets = []
 [advisories]
 version = 2
 ignore = [
-    # quick-xml <0.41.0 has quadratic attribute checking and unbounded namespace
-    # allocation. Both require crafted XML with many attributes/declarations on a
-    # single tag. quick-xml is only pulled in via little_exif -> snapfab, which is
-    # a dev-dependency used for test fixtures — the vulnerable code paths are not
-    # reachable with untrusted input. little_exif 0.6.23 (latest) pins
-    # quick-xml ^0.37.5; no upgrade path exists upstream yet.
+    # quick-xml <0.41.0 has quadratic duplicate-attribute checking on a start
+    # tag (RUSTSEC-2026-0194) and unbounded namespace-declaration allocation in
+    # NsReader (RUSTSEC-2026-0195); both are denial-of-service shaped and need
+    # a single start tag carrying a very large number of attributes or
+    # declarations. The tree carries quick-xml 0.40.1, pulled in by xmpkit
+    # 0.1.6 (its dependency requirement is `^0.40`), so there is no upgrade
+    # until xmpkit ships a release on >=0.41. xmpkit parses the XMP packets
+    # the backend reads from indexed media files and sidecars. Revisit when
+    # xmpkit bumps quick-xml.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
     # h2 <0.4.16 accepts unbounded empty DATA frames (resource-exhaustion DoS,
