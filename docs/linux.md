@@ -16,13 +16,30 @@ This will create a folder called `./picasu`.
 
 Make sure the following software is installed on your system:
 
-- **ffmpeg**: Install via your system's package manager. For Ubuntu, use APT:
+- **ffmpeg**: Required at runtime for video files — the backend shells out to
+  `ffmpeg` (thumbnail, compression) and `ffprobe` (dimensions, container
+  metadata), which ship with it. Install via your system's package manager.
+  For Ubuntu, use APT:
 
   ```bash
   sudo apt update && sudo apt install -y ffmpeg
   ```
 
   For other Linux distributions, use the appropriate package manager (e.g., `dnf`, `yum`, `pacman`) and find the corresponding package name for installation.
+
+- **ExifTool** (development and tests only): snapfab (`utils/snapfab`), the
+  fixture generator behind the test suite, writes fixture metadata with
+  `exiftool`. The backend itself reads and writes metadata in-process
+  (kamadak-exif + xmpkit) and never spawns it, so running the app does not
+  need ExifTool — `cargo test -p snapfab` (part of `just test`) does.
+  Install the pinned release without root:
+
+  ```bash
+  just install-exiftool
+  ```
+
+  or use your distribution's package (Debian/Ubuntu:
+  `sudo apt install libimage-exiftool-perl`).
 
 - **Rust**: Install Rust using the official installer:
 
