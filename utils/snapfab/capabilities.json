@@ -1,0 +1,254 @@
+{
+  "schemaVersion": 1,
+  "fixtures": [
+    {
+      "id": "jpeg-48x32-iptc",
+      "path": "utils/snapfab/fixtures/jpeg/picasu-jpeg-48x32-iptc.jpg",
+      "sha256": "5f6e34f3b3c6355ecb3995df4992b31c2e1cbb41dafd573ec394b7cbe44e0520",
+      "origin": "generated",
+      "source": "Generated for picasu, not taken from an upstream project. ImageMagick writes the pixels and ExifTool writes the IIM record; neither writes an XMP packet, which is what makes the file an IIM-only case. Exact commands, run from the repository root: `magick -size 48x32 gradient:'#204060-#c0d0e0' -strip -quality 92 utils/snapfab/fixtures/jpeg/picasu-jpeg-48x32-iptc.jpg` followed by `exiftool -overwrite_original -q -IPTC:ObjectName='An IIM-only object name' -IPTC:Caption-Abstract='An IIM-only caption' -IPTC:Keywords=e2e_jpeg_iptc_alpine -IPTC:Keywords=e2e_jpeg_iptc_winter -IPTC:By-line='A. Fixture' -IPTC:City=Fixtureville -IPTC:CopyrightNotice='(c) 2024 picasu test fixtures' utils/snapfab/fixtures/jpeg/picasu-jpeg-48x32-iptc.jpg`. Re-running both reproduces the recorded SHA-256 exactly. `-strip` keeps an EXIF block out, and ExifTool's JPEG writer adds only the APP13 Photoshop image-resource block holding the IIM record (8BIM resource 0x0404): there is no APP1 XMP block and no `<?xpacket?>` markup anywhere in the file. Under decision 6 of `.plan/exif-xmp-rs-engine.md` the backend reads none of the IIM record, so this fixture is the coverage case for the manifest's recorded `iptc:embedded` exclusion, not for a claim.",
+      "version": "picasu fixture revision 1; ImageMagick 7.1.2-18 Q16 x86_64 23822 and ExifTool 13.59 (pure Perl)",
+      "license": "MIT (picasu repository LICENSE); no ImageMagick or ExifTool code is redistributed, only its output",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "thumbnail": "generated",
+        "xmp": "none; the file carries no XMP packet and no sidecar, so the API sees no tags, description or rating from it",
+        "exif": "none; the file carries no EXIF block, so the API returns an empty exifVec for it (measured: kamadak-exif reports `No Exif data found in JPEG`)",
+        "iptc": "an IIM record is present in the file (APP13 image resource 0x0404) but the backend does not read IPTC (decision 6): `iptc:embedded` is recorded unsupported and no API field comes from it"
+      },
+      "intendedFailureClass": "none"
+    },
+    {
+      "id": "png-48x32-xmp-text",
+      "path": "utils/snapfab/fixtures/png/picasu-png-48x32-xmp-text.png",
+      "sha256": "f739401ce63dc6ee447c55765719d9a19461208eed897788dfafdd8486526b4a",
+      "origin": "generated",
+      "source": "Constructed for picasu, not taken from upstream: a 48x32 8-bit RGB PNG written chunk by chunk by the script checked in beside it, so no image encoder was involved and the bytes depend only on that script and the Python standard library. Exact command, run from the repository root: `python3 utils/snapfab/fixtures/png/generate_picasu-png-48x32-xmp-text.py utils/snapfab/fixtures/png/picasu-png-48x32-xmp-text.png`. Re-running it reproduces the recorded SHA-256 byte for byte. Pixels are the same buffer as the TIFF and WebP fixtures (R = x*255/47, G = y*255/31, B = 128). Chunk order is IHDR, three tEXt chunks (Description, Comment, Source), one iTXt chunk with the keyword `XML:com.adobe.xmp`, compression flag 1 and compression method 0, then IDAT and IEND. The packet is therefore deflate-compressed in the file: neither `<?xpacket` nor `dc:subject` appears in the bytes, and a reader has to inflate it. On this branch that reader refuses: xmpkit returns `Compressed XMP in PNG not yet supported` (Iteration 0 of `.plan/exif-xmp-rs-engine.md`), so this fixture pins the compressed case as *not covered* — the `png xmp: [embedded]` claim follows the measurement on the uncompressed packet and is backed by `png-48x32-xmp-plain`, not by this file. ExifTool 13.59 cannot produce this case: it writes a PNG's XMP packet into an uncompressed iTXt chunk and writes no tEXt chunk of its own choosing, hence the script.",
+      "version": "picasu fixture revision 1; python3 3.14.4 with zlib 1.3.1, standard library only",
+      "license": "MIT (picasu repository LICENSE)",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "thumbnail": "generated",
+        "exif": "none; the file carries no eXIf chunk, so the API returns an empty exifVec for it",
+        "xmp": "not readable on this branch: the packet sits in a deflate-compressed iTXt chunk, which xmpkit refuses (Compressed XMP in PNG not yet supported), and there is no sidecar — the API sees no tags, description or rating from this file",
+        "text": "tEXt chunks (Description, Comment, Source) are present in the file but not read (decision 6): `text:embedded` is recorded unsupported"
+      },
+      "intendedFailureClass": "none"
+    },
+    {
+      "id": "png-48x32-xmp-plain",
+      "path": "utils/snapfab/fixtures/png/picasu-png-48x32-xmp-plain.png",
+      "sha256": "f699ae00c393394ce07ad10d7bd52f52225cc04c3442d30d96a3ace4c3edd46d",
+      "origin": "generated",
+      "source": "Constructed for picasu, not taken from upstream: a bare 48x32 8-bit RGB PNG (IHDR, IDAT, IEND, no text chunks) written chunk by chunk by the script checked in beside it, then ExifTool writes the XMP packet. Exact commands, run from the repository root: `python3 utils/snapfab/fixtures/png/generate_picasu-png-48x32-xmp-plain.py utils/snapfab/fixtures/png/picasu-png-48x32-xmp-plain.png` followed by `exiftool -overwrite_original -q -XMP-dc:Subject+=e2e_png_plain_alpine -XMP-dc:Subject+=e2e_png_plain_winter -XMP-dc:Description='A caption from the plain iTXt packet' -XMP-xmp:Rating=4 utils/snapfab/fixtures/png/picasu-png-48x32-xmp-plain.png`. Re-running both reproduces the recorded SHA-256 exactly (measured). ExifTool 13.59 writes a PNG's XMP packet into an *uncompressed* iTXt chunk — the compression flag after the `XML:com.adobe.xmp` keyword is 0 — and that uncompressed form is exactly what xmpkit reads (Iteration 0 of `.plan/exif-xmp-rs-engine.md`: uncompressed iTXt ✓, compressed ✗), which makes this the fixture behind the manifest's `png xmp: [embedded]` claim. Pixels are the same buffer as the sibling fixtures (R = x*255/47, G = y*255/31, B = 128).",
+      "version": "picasu fixture revision 1; python3 3.14.4 with zlib 1.3.1 (base PNG) and ExifTool 13.59 (pure Perl, XMP packet)",
+      "license": "MIT (picasu repository LICENSE); no ExifTool code is redistributed, only its output",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "thumbnail": "generated",
+        "tags": "e2e_png_plain_alpine, e2e_png_plain_winter",
+        "description": "A caption from the plain iTXt packet",
+        "rating": "4",
+        "exif": "none; the file carries no eXIf chunk, so the API returns an empty exifVec for it (measured: kamadak-exif reports `No Exif data found in PNG`)"
+      },
+      "intendedFailureClass": "none"
+    },
+    {
+      "id": "tiff-48x32-exif",
+      "path": "utils/snapfab/fixtures/tiff/picasu-tiff-48x32-exif.tif",
+      "sha256": "0081378c866e5aea79818e3bdba2dd040c7906590de60dec0c8d2dcbea2611e9",
+      "origin": "synthetic",
+      "source": "Constructed for picasu, not taken from upstream: a 48x32 uncompressed RGB classic TIFF written field by field (little-endian header, IFD0 plus an Exif sub-IFD, one strip, 72 dpi). Pixels are the formula R = x*255/47, G = y*255/31, B = 128. DateTime is 2024:05:06 07:08:09 in IFD0, and DateTimeOriginal/DateTimeDigitized carry the same stamp in the Exif sub-IFD. No image encoder was involved, so the bytes depend only on that description. Measured on this branch: kamadak-exif reports all three dates dash-separated under its own tag names (`DateTime`, `DateTimeOriginal`, `DateTimeDigitized`), the sub-IFD fields counting as PRIMARY in the filter `process::exif` applies.",
+      "version": "picasu fixture revision 1; python3 3.14 standard library only",
+      "license": "MIT (picasu repository LICENSE)",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "exif.ifd0.DateTime": "2024-05-06 07:08:09",
+        "exif.exif.DateTimeOriginal": "2024-05-06 07:08:09",
+        "exif.exif.DateTimeDigitized": "2024-05-06 07:08:09",
+        "thumbnail": "generated",
+        "xmp": "sidecar only; the file carries no XMP packet (the format's `xmp: [embedded]` claim is an Iteration 0 measurement, not this fixture)"
+      },
+      "intendedFailureClass": "none"
+    },
+    {
+      "id": "webp-48x32-exif",
+      "path": "utils/snapfab/fixtures/webp/picasu-webp-48x32-exif.webp",
+      "sha256": "355e477b26a3c8237d5c4d9a24592da0da23be80ba727688c30db1e85e817185",
+      "origin": "generated",
+      "source": "Constructed for picasu from the same 48x32 RGB buffer as the TIFF fixture (R = x*255/47, G = y*255/31, B = 128). The buffer is encoded losslessly into a VP8L bitstream and muxed as extended format: VP8X with the Exif flag set, an EXIF chunk holding the TIFF block of the TIFF fixture verbatim as a bare TIFF stream, then the VP8L chunk. That layout is what upstream kamadak-exif ships in its own tests/exif.webp, whose EXIF chunk likewise holds a bare TIFF block with no JPEG `Exif\\0\\0` identifier — and kamadak-exif reads this file's dates on this branch (measured: `DateTime`, `DateTimeOriginal`, `DateTimeDigitized`, dash-separated). The pixel data round-trips byte for byte.",
+      "version": "picasu fixture revision 1; VP8L bitstream from ImageMagick 7.1.2-18 (libwebp 1.5.0) via `magick -define webp:lossless=true -quality 100`",
+      "license": "MIT (picasu repository LICENSE); no libwebp code is redistributed, only its output",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "exif.riff_chunk.DateTime": "2024-05-06 07:08:09",
+        "exif.riff_chunk.DateTimeOriginal": "2024-05-06 07:08:09",
+        "exif.riff_chunk.DateTimeDigitized": "2024-05-06 07:08:09",
+        "thumbnail": "generated",
+        "xmp": "sidecar only; the file carries no XMP packet (the format's `xmp: [embedded]` claim is an Iteration 0 measurement, not this fixture)"
+      },
+      "intendedFailureClass": "none"
+    },
+    {
+      "id": "mp4-48x32-ffprobe",
+      "path": "utils/snapfab/fixtures/mp4/picasu-mp4-48x32-ffprobe.mp4",
+      "sha256": "24060c6a582dfc9c292a211c793ddf832c1848af4db027da81fde397fd411f6d",
+      "origin": "generated",
+      "source": "Generated for picasu, not taken from an upstream project. One 48x32 solid-colour frame at 1 fps from the lavfi `color` source, H.264 High profile in an ISO-BMFF file, no audio. Exact command, run from the repository root: `ffmpeg -nostdin -hide_banner -loglevel error -y -f lavfi -i color=c=0x204060:s=48x32:r=1:d=1 -frames:v 1 -c:v libx264 -preset veryfast -crf 30 -pix_fmt yuv420p -map_metadata -1 -fflags +bitexact -flags:v +bitexact -f mp4 utils/snapfab/fixtures/mp4/picasu-mp4-48x32-ffprobe.mp4`. The bytes are pinned by `-frames:v 1` (fixed content), `-map_metadata -1` (no inherited tags), and `-fflags +bitexact -flags:v +bitexact` (no creation_time, no encoder string); re-running the command reproduces the recorded SHA-256 exactly. ffmpeg's `-metadata` was deliberately NOT used: it writes iTunes-style `udta`/`ilst` tags, not the Adobe XMP `uuid` box, so the file carries no XMP packet at all. No Adobe XMP `uuid` box (`uuid` + BE7ACFCB-97A9-42E8-9C71-999491E3AFAC) and no XMP markup is present, which is why `xmp:embedded` is recorded as unsupported rather than unclaimed-and-assumed.",
+      "version": "picasu fixture revision 1; ffmpeg 8.0.1-3ubuntu2 (ffprobe 8.0.1-3ubuntu2) with libx264, Ubuntu build",
+      "license": "MIT (picasu repository LICENSE); no ffmpeg code is redistributed, only its output",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "ffprobe.format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "ffprobe.format_long_name": "QuickTime / MOV",
+        "ffprobe.nb_streams": "1",
+        "ffprobe.codec_name": "h264",
+        "ffprobe.codec_type": "video",
+        "ffprobe.codec_tag_string": "avc1",
+        "ffprobe.pix_fmt": "yuv420p",
+        "ffprobe.TAG:major_brand": "isom",
+        "ffprobe.TAG:handler_name": "VideoHandler",
+        "thumbnail": "generated",
+        "xmp": "sidecar only; the file carries no uuid-box XMP packet",
+        "exif": "none; the exifVec the API returns for a video is ffprobe output, not EXIF"
+      },
+      "intendedFailureClass": "none"
+    },
+    {
+      "id": "mov-48x32-ffprobe",
+      "path": "utils/snapfab/fixtures/mov/picasu-mov-48x32-ffprobe.mov",
+      "sha256": "3d8816480c10bc41cf14e966e782ab6de8bb7aadd8c681568ba858cbd77ee65f",
+      "origin": "generated",
+      "source": "Generated for picasu, not taken from an upstream project. The same 48x32 solid-colour frame as the mp4 fixture, muxed by the QuickTime writer instead of the ISO-BMFF one: identical command except `-f mov` and the output path. Exact command, run from the repository root: `ffmpeg -nostdin -hide_banner -loglevel error -y -f lavfi -i color=c=0x204060:s=48x32:r=1:d=1 -frames:v 1 -c:v libx264 -preset veryfast -crf 30 -pix_fmt yuv420p -map_metadata -1 -fflags +bitexact -flags:v +bitexact -f mov utils/snapfab/fixtures/mov/picasu-mov-48x32-ffprobe.mov`. Re-running reproduces the recorded SHA-256 exactly. The only structural difference from the mp4 fixture is the `ftyp` major brand (`qt  ` instead of `isom`); ffprobe reports the same `format_name` for both, so the brand read from the box is the only field that tells the two files apart. No Adobe XMP `uuid` box and no XMP markup is present.",
+      "version": "picasu fixture revision 1; ffmpeg 8.0.1-3ubuntu2 (ffprobe 8.0.1-3ubuntu2) with libx264, Ubuntu build",
+      "license": "MIT (picasu repository LICENSE); no ffmpeg code is redistributed, only its output",
+      "expectedMetadata": {
+        "width": "48",
+        "height": "32",
+        "ffprobe.format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+        "ffprobe.format_long_name": "QuickTime / MOV",
+        "ffprobe.nb_streams": "1",
+        "ffprobe.codec_name": "h264",
+        "ffprobe.codec_type": "video",
+        "ffprobe.codec_tag_string": "avc1",
+        "ffprobe.pix_fmt": "yuv420p",
+        "ffprobe.TAG:major_brand": "qt  ",
+        "ffprobe.TAG:handler_name": "VideoHandler",
+        "thumbnail": "generated",
+        "xmp": "sidecar only; the file carries no uuid-box XMP packet",
+        "exif": "none; the exifVec the API returns for a video is ffprobe output, not EXIF"
+      },
+      "intendedFailureClass": "none"
+    }
+  ],
+  "formats": [
+    {
+      "format": "jpeg",
+      "extensions": ["jpg", "jpeg", "jfif", "jpe"],
+      "contentSignature": {
+        "offset": 0,
+        "bytesHex": "ffd8ff",
+        "mime": "image/jpeg"
+      },
+      "metadataFields": {
+        "exif": ["embedded"],
+        "xmp": ["embedded", "sidecar"]
+      },
+      "unsupportedMetadataFields": ["iptc:embedded"],
+      "expectedFailureClasses": ["none"],
+      "fixtureSource": "generated",
+      "pinnedFixtures": ["jpeg-48x32-iptc"]
+    },
+    {
+      "format": "png",
+      "extensions": ["png"],
+      "contentSignature": {
+        "offset": 0,
+        "bytesHex": "89504e470d0a1a0a",
+        "mime": "image/png"
+      },
+      "metadataFields": {
+        "exif": ["embedded"],
+        "xmp": ["embedded", "sidecar"]
+      },
+      "unsupportedMetadataFields": ["text:embedded"],
+      "expectedFailureClasses": ["none"],
+      "fixtureSource": "generated",
+      "pinnedFixtures": ["png-48x32-xmp-text", "png-48x32-xmp-plain"]
+    },
+    {
+      "format": "tiff",
+      "extensions": ["tif", "tiff"],
+      "contentSignature": {
+        "offset": 0,
+        "bytesHex": "49492a00",
+        "mime": "image/tiff"
+      },
+      "metadataFields": {
+        "exif": ["embedded"],
+        "xmp": ["embedded", "sidecar"]
+      },
+      "unsupportedMetadataFields": [],
+      "expectedFailureClasses": ["none"],
+      "fixtureSource": "pinned",
+      "pinnedFixtures": ["tiff-48x32-exif"]
+    },
+    {
+      "format": "webp",
+      "extensions": ["webp"],
+      "contentSignature": {
+        "offset": 8,
+        "bytesHex": "57454250",
+        "mime": "image/webp"
+      },
+      "metadataFields": {
+        "exif": ["embedded"],
+        "xmp": ["embedded", "sidecar"]
+      },
+      "unsupportedMetadataFields": [],
+      "expectedFailureClasses": ["none"],
+      "fixtureSource": "pinned",
+      "pinnedFixtures": ["webp-48x32-exif"]
+    },
+    {
+      "format": "mp4",
+      "extensions": ["mp4"],
+      "contentSignature": {
+        "offset": 4,
+        "bytesHex": "6674797069736f6d",
+        "mime": "video/mp4"
+      },
+      "metadataFields": {
+        "container": ["probe"],
+        "xmp": ["sidecar"]
+      },
+      "unsupportedMetadataFields": ["exif:embedded", "xmp:embedded"],
+      "expectedFailureClasses": ["none"],
+      "fixtureSource": "pinned",
+      "pinnedFixtures": ["mp4-48x32-ffprobe"]
+    },
+    {
+      "format": "mov",
+      "extensions": ["mov"],
+      "contentSignature": {
+        "offset": 4,
+        "bytesHex": "6674797071742020",
+        "mime": "video/quicktime"
+      },
+      "metadataFields": {
+        "container": ["probe"],
+        "xmp": ["sidecar"]
+      },
+      "unsupportedMetadataFields": ["exif:embedded", "xmp:embedded"],
+      "expectedFailureClasses": ["none"],
+      "fixtureSource": "pinned",
+      "pinnedFixtures": ["mov-48x32-ffprobe"]
+    }
+  ]
+}
