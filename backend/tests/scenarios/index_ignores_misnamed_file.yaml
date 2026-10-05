@@ -1,0 +1,24 @@
+name: album index does not index a file whose content does not match its extension
+# A file on disk whose bytes contradict its extension is not something this
+# application can process, so the scan skips it instead of indexing bytes under
+# an extension that misdescribes them.
+given:
+  - dir_album: /e2e_misnamed/parent
+    id_as: $album
+  - photo: /e2e_misnamed/parent/valid.jpg
+  # PNG bytes stored under a .jpg name: the extension promises JPEG, the
+  # content is not.
+  - photo: /e2e_misnamed/parent/wrong.jpg
+    format: png
+when:
+  - call: POST /post/index/album
+    raw_body: '{"album": "/e2e_misnamed"}'
+    then:
+      - response.status: 202
+  - wait_index: true
+  - call: POST /get/prefetch
+    raw_body: '{"Path": "${data_path}/e2e_misnamed/parent/wrong.jpg"}'
+then:
+  - response.status: 200
+  # Nothing was indexed for the misnamed path.
+  - response.json.prefetch.dataLength: 0
