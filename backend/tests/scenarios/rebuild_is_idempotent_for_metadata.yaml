@@ -1,0 +1,105 @@
+name: a second rebuild leaves observable metadata unchanged
+# Rebuild is defined as clear-then-reconstruct, so running it twice must not
+# change what the API reports. That is not free: rebuild assigns a fresh random
+# `asset_id` to every asset and clears `METADATA_TABLE`, so the second pass
+# re-derives every payload from the file and its sidecar. If the pipeline
+# composed metadata *onto* whatever the previous pass stored — unioning tags
+# into an existing set, keeping a previously read description, reusing a
+# dimension — the second rebuild would differ from the first and this scenario
+# would catch it.
+#
+# Rebuild assigns a new id per pass, so the two responses cannot be compared by
+# id. They are compared field by field instead: the scalars the fixture pins
+# (`width`, `height`, `rating`) are asserted at their known values, and the
+# values that are not knowable ahead of time — the sidecar caption and the
+# fixture's `Software` string, whose renderer suffix varies — are captured from
+# the first rebuild and compared exactly against the second. A pass that lost or
+# altered metadata fails on the fixed assertions; a pass that derived it
+# differently fails on the captured ones.
+#
+# The watcher is disabled so the second rebuild's result cannot be attributed to
+# an asynchronous reindex triggered by the first.
+#
+# The file's own embedded keyword is asserted absent, and it is here for a
+# second reason beyond the contract: the point of the scenario is that the
+# *second* pass derives what the first did. A union rule is exactly the kind of
+# thing that would look stable here while being wrong elsewhere, so the tag set
+# is pinned to one source. The complete-authority rule is Iteration 1 of
+# `.plan/exif-xmp-rs-engine.md`: a sidecar that exists is the whole record for
+# the managed fields, so the image's own embedded `dc:subject` is not the
+# asset's tags.
+given:
+  - photo: /e2e_rebuild_twice/photo.jpg
+    tags:
+      - e2e_rebuild_twice_embedded
+    id_as: $photo
+  - config:
+      fs_notify_watcher: false
+  - raw_file: /e2e_rebuild_twice/photo.xmp
+    content: |
+      <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+        xmlns:dc="http://purl.org/dc/elements/1.1/"
+        xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_rebuild_twice_sidecar</rdf:li>
+      </rdf:Bag></dc:subject>
+      <dc:description><rdf:Alt>
+      <rdf:li xml:lang="x-default">Caption for the twice-rebuilt photo</rdf:li>
+      </rdf:Alt></dc:description>
+      <xmp:Rating>2</xmp:Rating>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+      <?xpacket end="w"?>
+when:
+  # First rebuild.
+  - call: POST /post/rebuild
+    then:
+      - response.status: 200
+    asset_id_as: $first_asset
+    discover_path: e2e_rebuild_twice/photo.jpg
+  - call: POST /get/prefetch?locate=${first_asset}
+    capture:
+      token1: response.token
+      ts1: response.prefetch.timestamp
+  # Capture paths are rooted at the response body itself — `process_capture`
+  # strips `response.`, not `response.json.` — so `response.description` here
+  # reads the same field the final `response.json.description` assertion does.
+  - call: GET /get/metadata/${first_asset}?timestamp=${ts1}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token1}"
+    capture:
+      caption1: response.description
+      software1: response.exifVec.Software
+  # Second rebuild over the same filesystem state.
+  - call: POST /post/rebuild
+    then:
+      - response.status: 200
+    asset_id_as: $second_asset
+    discover_path: e2e_rebuild_twice/photo.jpg
+  - call: POST /get/prefetch?locate=${second_asset}
+    capture:
+      token2: response.token
+      ts2: response.prefetch.timestamp
+  - call: GET /get/metadata/${second_asset}?timestamp=${ts2}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token2}"
+then:
+  - response.status: 200
+  # Identity is reissued, so the two passes are genuinely distinct.
+  - response.json.width: 2
+  - response.json.height: 2
+  - response.json.rating: 2
+  # Captured from the first rebuild and reproduced exactly by the second.
+  - response.json.description: "${caption1}"
+  - response.json.exifVec.Software: "${software1}"
+  - response.json.tags:
+      contains: e2e_rebuild_twice_sidecar
+  - response.json.tags:
+      not_contains: e2e_rebuild_twice_embedded
+  - thumb_exists: $photo

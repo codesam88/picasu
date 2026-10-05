@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::model::asset::{AssetKind, AssetRecord, canonicalize_path};
-use crate::model::media::is_valid_media_file;
+use crate::model::media::{MediaOutcome, classify_media_file};
 use crate::process::hash::blake3_hasher;
 use crate::storage::asset_store;
 
@@ -22,12 +22,24 @@ pub struct RebuildStats {
 /// Perform a clean filesystem rebuild starting from empty asset tables.
 ///
 /// Walks `image_root` recursively, creating one `AssetRecord` per physical
-/// directory (as an album) and one per valid media file.  Computes content
-/// hashes for media files and populates `DUPE_INDEX` without merging records.
+/// directory (as an album) and one per valid media file, computing content
+/// hashes and populating `DUPE_INDEX` without merging records. Then, for every
+/// discovered media file, runs the same metadata pipeline the incremental
+/// indexer runs ([`crate::workflow::index_media_file`]) and stores the result
+/// in `METADATA_TABLE`.
 ///
-/// The rebuild is idempotent: it clears the asset tables first, then
-/// repopulates them from the filesystem.  The filesystem is the source of
-/// truth.
+/// `METADATA_TABLE` is cleared with the identity tables, and it has to be:
+/// rebuild reissues a random `asset_id` for every asset, so a row keyed by a
+/// previous id is unreachable through the API but would otherwise sit in the
+/// table indefinitely. Clearing it also means a rebuild is a genuine
+/// re-derivation rather than a merge — a payload that a previous index wrote is
+/// never the reason a rebuilt asset has metadata.
+///
+/// A file the metadata pipeline rejects costs only itself: the error is logged
+/// with the path, the walk continues, and the file keeps its identity record
+/// with no metadata row. The rebuild is therefore idempotent for observable
+/// metadata — identity reissued and metadata re-derived from the same
+/// filesystem state yields the same result.
 pub fn rebuild_from_filesystem(image_root: &Path) -> Result<RebuildStats> {
     if !image_root.is_dir() {
         anyhow::bail!(
@@ -36,8 +48,10 @@ pub fn rebuild_from_filesystem(image_root: &Path) -> Result<RebuildStats> {
         );
     }
 
-    // Clear the new tables.
+    // Clear the identity/duplicate tables *and* the metadata cache. The
+    // metadata rows are keyed by the asset ids this run is about to replace.
     clear_asset_tables()?;
+    clear_metadata_table()?;
 
     let mut stats = RebuildStats::default();
 
@@ -62,80 +76,30 @@ pub fn rebuild_from_filesystem(image_root: &Path) -> Result<RebuildStats> {
         let path = entry.path();
 
         if entry.file_type().is_dir() {
-            // Create an album asset for every directory under image_root,
-            // including the root itself.
-            let canonical = canonicalize_path(path, image_root);
-            let canonical_str = canonical.to_string_lossy().into_owned();
-
-            // Skip if already exists (shouldn't after clear, but be safe).
-            if asset_store::get_asset_id_by_path(&canonical_str)?.is_some() {
-                continue;
+            if create_album_asset(path, image_root)? {
+                stats.albums_created += 1;
             }
-
-            let record = AssetRecord::new_album(canonical_str);
-            asset_store::insert_asset(&record)
-                .with_context(|| format!("Failed to insert album asset for {}", path.display()))?;
-            stats.albums_created += 1;
         } else if entry.file_type().is_file() {
-            if !is_valid_media_file(path) {
+            if let MediaOutcome::Skip(reason) = classify_media_file(path) {
+                info!("Ignoring unrecognized file {}: {reason:?}", path.display());
                 stats.unsupported_skipped += 1;
                 continue;
             }
 
-            let canonical = canonicalize_path(path, image_root);
-            let canonical_str = canonical.to_string_lossy().into_owned();
-
-            let kind = if is_image_extension(path) {
-                AssetKind::Image
-            } else {
-                AssetKind::Video
-            };
-
-            // Compute content hash.
-            let file = fs::File::open(path)
-                .with_context(|| format!("Failed to open media file {}", path.display()))?;
-            let hash = match blake3_hasher(file) {
-                Ok(h) => Some(h),
-                Err(e) => {
-                    warn!("Failed to hash {}: {e}", path.display());
-                    stats.hash_errors += 1;
-                    None
-                }
-            };
-
-            // Get file metadata.
-            let md = fs::metadata(path)
-                .with_context(|| format!("Failed to read metadata for {}", path.display()))?;
-            let file_size = md.len();
-            let modified = md.modified().map_or(0, |t| {
-                let millis = t
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis();
-                i64::try_from(millis).unwrap_or(0)
-            });
-
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
-
-            let mut record =
-                AssetRecord::new_media(kind, canonical_str, hash, file_size, ext, modified);
-
-            // Derive album membership from parent directory.
-            if let Some(parent) = path.parent() {
-                let parent_canonical = canonicalize_path(parent, image_root);
-                let parent_str = parent_canonical.to_string_lossy().into_owned();
-                if let Some(album_id) = asset_store::get_asset_id_by_path(&parent_str)? {
-                    record.album_id = Some(album_id);
-                }
-            }
-
-            asset_store::insert_asset(&record)
-                .with_context(|| format!("Failed to insert media asset for {}", path.display()))?;
+            let outcome = create_media_asset(path, image_root)?;
+            stats.hash_errors += usize::from(outcome.hash_failed);
             stats.media_created += 1;
+
+            // The identity record now exists, so the shared metadata pipeline
+            // can run over the file. Identity and metadata are deliberately
+            // separate steps: the walk must stay an accurate picture of the
+            // filesystem even when one file's bytes cannot be read.
+            if let Err(err) = outcome.metadata_result {
+                warn!(
+                    "Rebuild could not derive metadata for {}: {err:#}",
+                    path.display()
+                );
+            }
         }
     }
 
@@ -145,6 +109,134 @@ pub fn rebuild_from_filesystem(image_root: &Path) -> Result<RebuildStats> {
     );
 
     Ok(stats)
+}
+
+/// Create the album asset for one directory, returning `false` when the
+/// directory already has one (which cannot happen after the tables are cleared,
+/// but the walk visits the image root itself and symlink targets can repeat).
+fn create_album_asset(path: &Path, image_root: &Path) -> Result<bool> {
+    let canonical = canonicalize_path(path, image_root);
+    let canonical_str = canonical.to_string_lossy().into_owned();
+
+    if asset_store::get_asset_id_by_path(&canonical_str)?.is_some() {
+        return Ok(false);
+    }
+
+    let record = AssetRecord::new_album(canonical_str);
+    asset_store::insert_asset(&record)
+        .with_context(|| format!("Failed to insert album asset for {}", path.display()))?;
+
+    // An album's payload carries only title/cover/count fields, which a
+    // directory walk does not carry. The row exists so a rebuilt album composes
+    // the same way an indexed one does; the directory album task fills the rest
+    // on its next pass.
+    store_album_metadata(&record)?;
+
+    Ok(true)
+}
+
+/// What one media file contributed to a rebuild: whether its content hash could
+/// be read, and the outcome of running the metadata pipeline over it.
+struct RebuiltMedia {
+    hash_failed: bool,
+    metadata_result: Result<()>,
+}
+
+/// Create the identity record for one media file, then run the shared metadata
+/// pipeline over it.
+///
+/// Both outcomes are returned rather than propagated: a file whose content hash
+/// cannot be read, or whose metadata pipeline fails, still gets an accurate
+/// identity record, and the caller turns the failure into a diagnostic.
+fn create_media_asset(path: &Path, image_root: &Path) -> Result<RebuiltMedia> {
+    let canonical = canonicalize_path(path, image_root);
+    let canonical_str = canonical.to_string_lossy().into_owned();
+
+    let kind = if is_image_extension(path) {
+        AssetKind::Image
+    } else {
+        AssetKind::Video
+    };
+
+    // Compute content hash.
+    let file = fs::File::open(path)
+        .with_context(|| format!("Failed to open media file {}", path.display()))?;
+    let (hash, hash_failed) = match blake3_hasher(file) {
+        Ok(h) => (Some(h), false),
+        Err(e) => {
+            warn!("Failed to hash {}: {e}", path.display());
+            (None, true)
+        }
+    };
+
+    // Get file metadata.
+    let md = fs::metadata(path)
+        .with_context(|| format!("Failed to read metadata for {}", path.display()))?;
+    let file_size = md.len();
+    let modified = md.modified().map_or(0, |t| {
+        let millis = t
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        i64::try_from(millis).unwrap_or(0)
+    });
+
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    let mut record = AssetRecord::new_media(kind, canonical_str, hash, file_size, ext, modified);
+
+    // Derive album membership from parent directory. The walk is depth-first and
+    // visits a directory before its entries, so the parent album is already
+    // registered.
+    if let Some(parent) = path.parent() {
+        let parent_canonical = canonicalize_path(parent, image_root);
+        let parent_str = parent_canonical.to_string_lossy().into_owned();
+        if let Some(album_id) = asset_store::get_asset_id_by_path(&parent_str)? {
+            record.album_id = Some(album_id);
+        }
+    }
+
+    asset_store::insert_asset(&record)
+        .with_context(|| format!("Failed to insert media asset for {}", path.display()))?;
+
+    Ok(RebuiltMedia {
+        hash_failed,
+        metadata_result: index_media_metadata(path, &record),
+    })
+}
+
+/// Run the shared metadata pipeline for one rebuilt media asset and store the
+/// payload under the identity record's own `asset_id`.
+///
+/// The identity record is written by the walk and is not touched here: this only
+/// fills the metadata half, through the same
+/// [`crate::process::transitor::store_metadata_record`] the edit and index write
+/// paths use, so a rebuilt payload is stored the same way an indexed one is.
+fn index_media_metadata(path: &Path, record: &AssetRecord) -> Result<()> {
+    let Some(hash) = record.content_hash else {
+        // A file whose content hash could not be read has no identity to
+        // process against, and inventing one would put it in a false duplicate
+        // group. Report it as a failure rather than skip it silently.
+        anyhow::bail!("content hash unavailable, so there is nothing to process");
+    };
+
+    let data = crate::workflow::index_media_file(path, hash, record.album_id)?;
+
+    crate::process::transitor::store_metadata_record(record.asset_id.as_str(), &data, None)
+}
+
+/// Store the metadata payload for a rebuilt album.
+///
+/// Identity lives on the `AssetRecord`; this is the metadata-only half, derived
+/// the same way [`crate::process::transitor::asset_record_to_abstract_data`]
+/// projects an album onto the wire.
+fn store_album_metadata(record: &AssetRecord) -> Result<()> {
+    let data = crate::process::transitor::asset_record_to_abstract_data(record);
+    crate::process::transitor::store_metadata_record(record.asset_id.as_str(), &data, None)
 }
 
 /// Clear all three asset tables.
@@ -184,6 +276,40 @@ fn clear_one_table(
     Ok(())
 }
 
+/// Clear the metadata table.
+///
+/// Separate from [`clear_one_table`] because `METADATA_TABLE` is typed
+/// `<&str, MetadataRecord>` while the three identity/duplicate tables are
+/// `<&str, &str>`.
+fn clear_metadata_table() -> Result<()> {
+    use crate::storage::db::{METADATA_TABLE, TREE};
+    use redb::ReadableTable;
+
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .context("begin write for metadata table clear")?;
+    {
+        let table = txn
+            .open_table(METADATA_TABLE)
+            .context("open metadata table for clear")?;
+        let keys: Vec<String> = table
+            .iter()
+            .context("iterate metadata table")?
+            .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
+            .collect();
+        drop(table);
+        let mut table = txn
+            .open_table(METADATA_TABLE)
+            .context("reopen metadata table for clear")?;
+        for key in &keys {
+            table.remove(key.as_str()).context("remove metadata key")?;
+        }
+    }
+    txn.commit().context("commit metadata table clear")?;
+    Ok(())
+}
+
 /// Returns `true` if `path` is inside an internal Picasu data directory
 /// (e.g., `object/`, `db/`).
 fn is_internal_entry(path: &Path) -> bool {
@@ -198,7 +324,8 @@ fn is_image_extension(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
         .is_some_and(|ext| {
-            crate::constant::VALID_IMAGE_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str())
+            crate::process::format::kind_for_extension(&ext.to_ascii_lowercase())
+                == Some(crate::process::format::MediaKind::Image)
         })
 }
 
@@ -207,6 +334,7 @@ mod tests {
     use super::*;
     use crate::storage::db::TREE;
     use crate::tests::bootstrap::*;
+    use std::path::PathBuf;
 
     fn ensure_asset_tables() {
         let _ = &*TEST_ENV;
@@ -550,5 +678,237 @@ mod tests {
         // Cleanup.
         clear_asset_tables().unwrap();
         fs::remove_dir_all(&image_home.join("a")).unwrap();
+    }
+
+    // ── Metadata pipeline ──
+
+    fn clear_all_tables() {
+        clear_asset_tables().expect("clear asset tables");
+        clear_metadata_table().expect("clear METADATA_TABLE");
+    }
+
+    /// Every `METADATA_TABLE` key, as owned strings.
+    fn metadata_table_keys() -> Vec<String> {
+        use crate::storage::db::{METADATA_TABLE, TREE};
+        use redb::{ReadableDatabase, ReadableTable};
+
+        let txn = TREE
+            .in_disk
+            .begin_read()
+            .expect("begin read METADATA_TABLE");
+        let table = txn.open_table(METADATA_TABLE).expect("open METADATA_TABLE");
+        table
+            .iter()
+            .expect("iterate METADATA_TABLE")
+            .filter_map(|row| row.ok().map(|(k, _)| k.value().to_string()))
+            .collect()
+    }
+
+    /// A directory under the shared `image_home`, removed when the test ends
+    /// whether it passed or not.
+    ///
+    /// Every rebuild test walks the whole of `image_home` and asserts on
+    /// counts, so the tests are also asserting that the one before it cleaned
+    /// up. A panic that skipped the cleanup would fail the next dozen of them
+    /// with a count mismatch, hiding the failure that actually happened.
+    struct AlbumDir(PathBuf);
+
+    impl AlbumDir {
+        fn under_image_home(name: &str) -> Self {
+            let path = test_image_home().join(name);
+            fs::create_dir_all(&path).unwrap_or_else(|e| panic!("create {}: {e}", path.display()));
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for AlbumDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn make_jpeg(dir: &Path, name: &str) -> PathBuf {
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(dir.join(name).to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            // Above snapfab's `minimal` threshold (width and height both <= 4
+            // switch to a fixed 2x2 renderer), so the requested size is the
+            // size the file actually decodes to. A test that asserts the stored
+            // dimensions against the spec needs a spec the spec controls.
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+        dir.join(name)
+    }
+
+    /// A JPEG whose header identifies it as one but whose bytes stop before the
+    /// image data completes. `classify_media_file` indexes it (the extension
+    /// names a supported format and the leading bytes carry its signature), so
+    /// it reaches the metadata pipeline and is rejected there — which is the
+    /// per-file failure this test needs.
+    fn make_truncated_jpeg(dir: &Path, name: &str) -> PathBuf {
+        let path = make_jpeg(dir, name);
+        let bytes = fs::read(&path).expect("read generated jpeg");
+        fs::write(&path, &bytes[..100]).expect("truncate jpeg");
+        path
+    }
+
+    /// Rebuild must run the metadata pipeline, not just reissue identity: the
+    /// stored payload for a rebuilt image carries the dimensions the pipeline
+    /// decoded and the EXIF map it read, not the defaults a payload-less
+    /// record composes to.
+    #[test]
+    fn rebuild_writes_metadata_derived_from_the_file() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        ensure_asset_tables();
+        clear_all_tables();
+
+        let image_home = test_image_home();
+        let album_dir = AlbumDir::under_image_home("rebuild_metadata");
+        let photo = make_jpeg(album_dir.path(), "photo.jpg");
+
+        let stats = rebuild_from_filesystem(&image_home).expect("rebuild");
+        assert_eq!(stats.media_created, 1);
+
+        let asset_id = asset_store::get_asset_id_by_path(&photo.to_string_lossy())
+            .expect("lookup path")
+            .expect("rebuilt asset exists");
+        let payload = crate::process::transitor::load_metadata_record(asset_id.as_str())
+            .expect("read stored metadata")
+            .expect("rebuild must store a metadata row for the rebuilt asset");
+
+        let data = crate::model::metadata_record::compose_abstract_data(
+            &asset_store::get_asset_by_id(asset_id.as_str())
+                .expect("read record")
+                .expect("record exists"),
+            Some(&payload),
+        );
+        assert_eq!(data.width(), 8, "width must come from the decoded file");
+        assert_eq!(data.height(), 8, "height must come from the decoded file");
+        assert!(
+            data.exif_vec().is_some_and(|exif| !exif.is_empty()),
+            "rebuild must store the EXIF map the pipeline read"
+        );
+        assert!(
+            data.hash().as_str().contains(|c: char| c != '0'),
+            "rebuild must store the content hash the walk computed"
+        );
+
+        clear_all_tables();
+    }
+
+    /// A file the pipeline rejects must cost only itself. The healthy file
+    /// beside it is still processed and the identity walk still covers both —
+    /// an unprocessable file is a fact about one file and not about the
+    /// rebuild.
+    #[test]
+    fn a_pipeline_failure_costs_only_its_own_file() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        ensure_asset_tables();
+        clear_all_tables();
+
+        let image_home = test_image_home();
+        let album_dir = AlbumDir::under_image_home("rebuild_partial_failure");
+        let good = make_jpeg(album_dir.path(), "good.jpg");
+        let broken = make_truncated_jpeg(album_dir.path(), "broken.jpg");
+
+        let stats = rebuild_from_filesystem(&image_home).expect("rebuild must not abort");
+
+        assert_eq!(
+            stats.media_created, 2,
+            "identity is issued by the walk, independently of the pipeline"
+        );
+
+        // The healthy file is fully processed despite its neighbour's failure.
+        let good_id = asset_store::get_asset_id_by_path(&good.to_string_lossy())
+            .expect("lookup path")
+            .expect("good.jpg was indexed");
+        let good_payload = crate::process::transitor::load_metadata_record(good_id.as_str())
+            .expect("read stored metadata")
+            .expect("good.jpg must have a metadata row");
+
+        // The failed file keeps its identity record but has no metadata row.
+        let broken_id = asset_store::get_asset_id_by_path(&broken.to_string_lossy())
+            .expect("lookup path")
+            .expect("broken.jpg was indexed");
+        assert!(
+            crate::process::transitor::load_metadata_record(broken_id.as_str())
+                .expect("read stored metadata")
+                .is_none(),
+            "a file the pipeline rejected must not leave a default payload behind"
+        );
+
+        assert_eq!(
+            good_payload.tags().len(),
+            0,
+            "an untagged fixture has no tags; the row is a real payload, not a stub"
+        );
+
+        clear_all_tables();
+    }
+
+    /// Rebuild reissues `asset_id`s, so the `METADATA_TABLE` rows keyed by the
+    /// previous ids are unreachable by construction. This pins that they are
+    /// actually gone rather than merely unreferenced: a row left behind is
+    /// invisible through the API but still occupies the table forever, and it
+    /// would resurface if an id were ever reused.
+    #[test]
+    fn rebuild_leaves_no_metadata_row_for_a_superseded_asset_id() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        ensure_asset_tables();
+        clear_all_tables();
+
+        let image_home = test_image_home();
+        let album_dir = AlbumDir::under_image_home("rebuild_stale_rows");
+        let photo = make_jpeg(album_dir.path(), "photo.jpg");
+
+        // A first pass, so a populated table with real ids exists.
+        let first = rebuild_from_filesystem(&image_home).expect("first rebuild");
+        let first_id = asset_store::get_asset_id_by_path(&photo.to_string_lossy())
+            .expect("lookup path")
+            .expect("asset exists")
+            .to_string();
+        assert!(
+            metadata_table_keys().contains(&first_id),
+            "the first rebuild must store a row under its own id"
+        );
+
+        let second = rebuild_from_filesystem(&image_home).expect("second rebuild");
+        assert_eq!(second.media_created, first.media_created);
+
+        let keys = metadata_table_keys();
+        assert!(
+            !keys.contains(&first_id),
+            "the superseded id {first_id} must not keep a metadata row: {keys:?}"
+        );
+
+        // One row per rebuilt asset: the image plus the two album directories
+        // (the image home and `rebuild_stale_rows`).
+        let assets = asset_store::get_all_assets().expect("read assets");
+        assert_eq!(
+            keys.len(),
+            assets.len(),
+            "every rebuilt asset needs a row and no other key may survive"
+        );
+        for record in &assets {
+            assert!(
+                keys.contains(&record.asset_id.to_string()),
+                "asset {} has no metadata row",
+                record.asset_id
+            );
+        }
+
+        clear_all_tables();
     }
 }

@@ -1,0 +1,102 @@
+name: rebuild drops the stored metadata payload and re-derives it
+# The metadata table is a cache; the file and its sidecar are the source of
+# truth. Rebuild clears the identity, duplicate and metadata tables, so a payload
+# written by an earlier index is unreachable by construction — the rebuilt asset
+# carries a *new* random `asset_id`, and the row keyed by the old one is never
+# read again. What the rebuilt asset reports must therefore be derived from the
+# inputs as they stand at rebuild time.
+#
+# The sidecar is rewritten between the given index and the rebuild, exactly as
+# an external editor would, and the rebuild must report the keyword that is in
+# the file now. It cannot come from the first index: that one stored
+# `..._sidecar_v1`, under an `asset_id` that no longer exists.
+#
+# This is the rebuild counterpart of an index that re-reads the same inputs, and
+# it is the assertion that distinguishes "rebuild re-ran the metadata pipeline"
+# from "rebuild left the cache alone": with the table left in place the old
+# keyword is what the detail would still report.
+#
+# The watcher is disabled so the reindex it would trigger on the sidecar write
+# cannot produce the v2 keyword on the rebuild's behalf.
+#
+# The file's own embedded keyword is asserted absent, which is the
+# complete-authority rule: Iteration 1 of `.plan/exif-xmp-rs-engine.md` reads a
+# sidecar that exists as the whole record for the managed fields, so the image's
+# own embedded `dc:subject` is not the asset's tags.
+given:
+  - photo: /e2e_rebuild_stale/photo.jpg
+    tags:
+      - e2e_rebuild_stale_embedded
+    id_as: $photo
+    asset_id_as: $indexed_asset
+  - config:
+      fs_notify_watcher: false
+  - raw_file: /e2e_rebuild_stale/photo.xmp
+    content: |
+      <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+        xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_rebuild_stale_sidecar_v1</rdf:li>
+      </rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+      <?xpacket end="w"?>
+when:
+  # The first index has stored v1. Prove it, so this scenario cannot pass by a
+  # fixture that simply never carried the keyword.
+  - call: POST /get/prefetch?locate=${indexed_asset}
+    capture:
+      token0: response.token
+      ts0: response.prefetch.timestamp
+  - call: GET /get/metadata/${indexed_asset}?timestamp=${ts0}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token0}"
+    then:
+      - response.status: 200
+      - response.json.tags:
+          contains: e2e_rebuild_stale_sidecar_v1
+  # Rewrite the sidecar's keyword between the index and the rebuild.
+  - write_file: /e2e_rebuild_stale/photo.xmp
+    content: |
+      <?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+      <x:xmpmeta xmlns:x="adobe:ns:meta/">
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+      <rdf:Description rdf:about=""
+        xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <dc:subject><rdf:Bag>
+      <rdf:li>e2e_rebuild_stale_sidecar_v2</rdf:li>
+      </rdf:Bag></dc:subject>
+      </rdf:Description>
+      </rdf:RDF>
+      </x:xmpmeta>
+      <?xpacket end="w"?>
+  - call: POST /post/rebuild
+    then:
+      - response.status: 200
+    asset_id_as: $rebuilt_asset
+    discover_path: e2e_rebuild_stale/photo.jpg
+  - call: POST /get/prefetch?locate=${rebuilt_asset}
+    capture:
+      token1: response.token
+      ts1: response.prefetch.timestamp
+  - call: GET /get/metadata/${rebuilt_asset}?timestamp=${ts1}
+    auth: false
+    headers:
+      Authorization: "Bearer ${token1}"
+then:
+  - response.status: 200
+  # Re-derived from the sidecar as it stands now.
+  - response.json.tags:
+      contains: e2e_rebuild_stale_sidecar_v2
+  - response.json.tags:
+      not_contains: e2e_rebuild_stale_embedded
+  # The whole payload was re-derived, not partially patched: the fields that
+  # come from the raw file's own bytes are back too.
+  - response.json.width: 2
+  - response.json.height: 2
+  - response.json.exifVec.Software: not_null

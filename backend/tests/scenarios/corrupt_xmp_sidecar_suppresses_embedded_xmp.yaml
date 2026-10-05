@@ -1,0 +1,57 @@
+name: a corrupt XMP sidecar suppresses the file's own embedded XMP
+# Sidecar precedence as pinned by Iteration 1 of
+# `.plan/exif-xmp-rs-engine.md`: **when a sidecar exists it is the complete
+# authority for the managed fields** — `tags`, `description`, `rating`, `title`
+# come from the sidecar alone, and a field it does not carry is empty. This
+# file is the unreadable-sidecar corner of that rule.
+#
+# The contract predates this branch's engine swap: the byte-scan reader already
+# resolved the sidecar first and never fell back to the file's own packet.
+# Iteration 1 kept the same precedence through a real parser — a sidecar that
+# fails to parse yields an empty `XmpData`, and the file's embedded packet is
+# not consulted as a fallback. What the corrupt sidecar *holds* is withheld too:
+# its keyword never reaches the tags even though its bytes carry it.
+#
+# The price is visible in this very scenario and is accepted: a file with a
+# corrupt sidecar indexes with no tags and no description, even though its own
+# bytes carry both. `write_sidecar_for` would replace such a sidecar on the
+# app's next edit, so the state is not durable for an app-managed asset — it is
+# the observable outcome for a file the app has never touched, which is the only
+# way such a sidecar normally arises.
+#
+# The positive control is `sidecar_xmp_is_authoritative_over_embedded_xmp`: same
+# two files, readable sidecar, sidecar keyword present and embedded keyword
+# absent. Together they show the outcome comes from the sidecar's content
+# quality, not from the embedded packet being unreadable in the first place.
+#
+# Also asserted: a corrupt sidecar does not fail the index. The file is
+# readable, so the job is `completed` with no failures — the contract is about
+# which values are read, not about whether the asset indexes at all.
+given:
+  - photo: /e2e_corrupt_xmp/photo.jpg
+    tags:
+      - e2e_corrupt_xmp_embedded
+  - raw_file: /e2e_corrupt_xmp/photo.xmp
+    content: |
+      <x:xmpmeta><rdf:RDF><dc:subject><rdf:Bag>
+      <rdf:li>e2e_corrupt_xmp_unclosed
+when:
+  - call: GET /get/index/status
+    then:
+      - response.status: 200
+  - call: GET /get/get-tags
+then:
+  - response.status: 200
+  # The XMP source is the corrupt sidecar, so nothing it holds is indexed.
+  - array_where:
+      where:
+        tag: e2e_corrupt_xmp_unclosed
+      expect: absent
+  # The image's own embedded keyword is not indexed either. snapfab's JPEG
+  # writer puts `e2e_corrupt_xmp_embedded` in an embedded XMP packet, but a
+  # sidecar that exists is the record for `tags` and a record that yields
+  # nothing means no tags.
+  - array_where:
+      where:
+        tag: e2e_corrupt_xmp_embedded
+      expect: absent
