@@ -250,12 +250,13 @@ pub fn get_or_create_dir_album(dir_path: PathBuf) -> Result<ArrayString<64>> {
 // ── internal helpers ───────────────────────────────────────────────────────────
 
 /// Read `.albuminfo.xmp` from `dir_path` if present, for hydrating a dir-album's
-/// initial metadata. Returns default (empty) data if the file is absent or
-/// unreadable — the caller falls back to path-derived defaults in that case.
+/// initial metadata. Returns default (empty) data if the file is absent,
+/// unreadable, or not a well-formed XMP packet — the caller falls back to
+/// path-derived defaults in that case.
 fn read_albuminfo(dir_path: &Path) -> crate::process::xmp::XmpData {
     let sidecar = dir_path.join(".albuminfo.xmp");
     match std::fs::read(&sidecar) {
-        Ok(bytes) => crate::process::xmp::extract_xmp_data(&bytes),
+        Ok(bytes) => crate::process::xmp::extract_xmp_data_from_packet(&bytes),
         Err(_) => crate::process::xmp::XmpData::default(),
     }
 }

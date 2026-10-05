@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use xmpkit::{XmpFile, XmpMeta, XmpValue, ns};
 
 /// Metadata extracted from a file's XMP packet or sidecar.
 #[derive(Debug, Default)]
@@ -12,25 +13,22 @@ pub struct XmpData {
     pub title: Option<String>,
 }
 
-/// Extract XMP metadata from raw bytes (file contents or sidecar content).
+/// Extract XMP metadata from raw packet bytes (`.xmp` / `.albuminfo.xmp` content).
 ///
-/// Handles the fields the app manages:
-/// - `dc:subject`   → tags (`rdf:Bag` of `rdf:li`)
-/// - `dc:description` → description (`rdf:Alt` of `rdf:li`)
-/// - `xmp:Rating`   → rating (plain integer text node)
-/// - `dc:title`     → title (`rdf:Alt` of `rdf:li`)
+/// This is the seam for callers that already hold sidecar bytes (e.g.
+/// `read_albuminfo`); callers with a file path use [`extract_xmp_data_from_file`].
 ///
-/// Limitations: only handles uncompressed, contiguous XMP packets.
-/// Compact XMP (namespace shorthand, RDF attribute syntax) may not be matched.
-pub fn extract_xmp_data(bytes: &[u8]) -> XmpData {
-    XmpData {
-        tags: extract_bag_field(bytes, b"<dc:subject>", b"</dc:subject>"),
-        description: extract_alt_text(bytes, b"<dc:description>", b"</dc:description>"),
-        // Parse as i32 to handle negative values (e.g. -1 = "rejected"); clamp to None.
-        rating: extract_simple_integer(bytes, b"<xmp:Rating>", b"</xmp:Rating>")
-            .and_then(|v| u8::try_from(v).ok().filter(|&r| r <= 5)),
-        title: extract_alt_text(bytes, b"<dc:title>", b"</dc:title>"),
-    }
+/// The packet goes through [`XmpMeta::parse`] — sidecar packets never go
+/// through `XmpFile::open` (xmpkit's packet-in-file scan cannot find them,
+/// see the Iteration 0 spike). Invalid UTF-8 or a parse error yields empty
+/// `XmpData`.
+pub fn extract_xmp_data_from_packet(bytes: &[u8]) -> XmpData {
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return XmpData::default();
+    };
+    XmpMeta::parse(text)
+        .map(|meta| normalize(&meta))
+        .unwrap_or_default()
 }
 
 /// Return the `.xmp` sidecar path alongside `path` if it exists.
@@ -46,107 +44,113 @@ pub fn discover_sidecar(path: &Path) -> Option<PathBuf> {
 
 /// Read `path` (or its `.xmp` sidecar if one exists) and extract XMP metadata.
 /// Returns default empty data on read errors.
+///
+/// Sidecar precedence: when a sidecar exists it is authoritative — its bytes
+/// are read and parsed through [`XmpMeta::parse`], and *any* failure (unreadable
+/// file, invalid UTF-8, parse error) yields empty `XmpData` without falling
+/// back to the file's own XMP. Without a sidecar the embedded packet is read
+/// via `XmpFile::open`; open errors, carriers xmpkit cannot handle, and files
+/// without XMP all yield empty `XmpData`.
 pub fn extract_xmp_data_from_file(path: &Path) -> XmpData {
-    // Prefer sidecar over embedded: sidecar is the write-back target
-    // (Area 3) so it is always authoritative when present.
-    let source = discover_sidecar(path).unwrap_or_else(|| path.to_path_buf());
-    match std::fs::read(&source) {
-        Ok(bytes) => extract_xmp_data(&bytes),
+    if let Some(sidecar) = discover_sidecar(path) {
+        let Ok(text) = std::fs::read_to_string(&sidecar) else {
+            return XmpData::default();
+        };
+        return XmpMeta::parse(&text)
+            .map(|meta| normalize(&meta))
+            .unwrap_or_default();
+    }
+    let mut file = XmpFile::new();
+    match file.open(path) {
+        Ok(()) => file.get_xmp().map(normalize).unwrap_or_default(),
         Err(_) => XmpData::default(),
     }
 }
 
 // ── Internals ─────────────────────────────────────────────────────────────────
 
-/// Extract all `<rdf:li>` text children of `element_open..element_close`.
-/// Used for `dc:subject` (Bag of keywords).
-fn extract_bag_field(bytes: &[u8], open: &[u8], close: &[u8]) -> HashSet<String> {
-    let mut result = HashSet::new();
-    let Some(open_pos) = find_subslice(bytes, open) else {
-        return result;
-    };
-    let inner_start = open_pos + open.len();
-    let Some(close_offset) = find_subslice(&bytes[inner_start..], close) else {
-        return result;
-    };
-    let inner = &bytes[inner_start..inner_start + close_offset];
-    let Ok(inner_text) = std::str::from_utf8(inner) else {
-        return result;
-    };
-    collect_rdf_li(inner_text, &mut result);
-    result
+/// Normalize xmpkit's values for the four managed fields into `XmpData`.
+///
+/// Shapes observed with xmpkit 0.1.6: containers (`rdf:Bag`, `rdf:Alt`) arrive
+/// as `XmpValue::Array([String])`; compact/attribute-form values arrive as a
+/// plain `XmpValue::String` (subject comma-joined); `xmp:Rating` arrives as a
+/// numeric `String`.
+fn normalize(meta: &XmpMeta) -> XmpData {
+    XmpData {
+        tags: tags_from_subject(meta.get_property(ns::DC, "subject")),
+        description: text_from_property(meta.get_property(ns::DC, "description")),
+        rating: rating_from_property(meta.get_property(ns::XMP, "Rating")),
+        title: text_from_property(meta.get_property(ns::DC, "title")),
+    }
 }
 
-/// Extract the first `<rdf:li>` text child of `element_open..element_close`.
-/// Used for `dc:description` (Alt-text with language alternatives).
-fn extract_alt_text(bytes: &[u8], open: &[u8], close: &[u8]) -> Option<String> {
-    let open_pos = find_subslice(bytes, open)?;
-    let inner_start = open_pos + open.len();
-    let close_offset = find_subslice(&bytes[inner_start..], close)?;
-    let inner = &bytes[inner_start..inner_start + close_offset];
-    let inner_text = std::str::from_utf8(inner).ok()?;
-
-    // Try rdf:Alt > rdf:li first
-    let mut items = HashSet::new();
-    collect_rdf_li(inner_text, &mut items);
-    if let Some(item) = items.into_iter().next() {
-        let trimmed = item.trim().to_owned();
-        if !trimmed.is_empty() {
-            return Some(trimmed);
+/// `dc:subject` → tags. `Array` items are flattened as-is; a plain `String`
+/// (compact form) is split on commas, trimmed, empty parts dropped.
+fn tags_from_subject(value: Option<XmpValue>) -> HashSet<String> {
+    let mut tags = HashSet::new();
+    match value {
+        Some(XmpValue::Array(items)) => {
+            for item in items {
+                if let XmpValue::String(s) = item {
+                    let s = s.trim();
+                    if !s.is_empty() {
+                        tags.insert(s.to_owned());
+                    }
+                }
+            }
         }
-    }
-
-    // Fallback: plain text content (e.g. <dc:description>text</dc:description>)
-    let trimmed = inner_text.trim().to_owned();
-    if !trimmed.is_empty() {
-        return Some(trimmed);
-    }
-    None
-}
-
-/// Extract a plain integer from a simple text-node element.
-/// Used for `xmp:Rating`.
-fn extract_simple_integer(bytes: &[u8], open: &[u8], close: &[u8]) -> Option<i32> {
-    let open_pos = find_subslice(bytes, open)?;
-    let inner_start = open_pos + open.len();
-    let close_offset = find_subslice(&bytes[inner_start..], close)?;
-    let inner = &bytes[inner_start..inner_start + close_offset];
-    let text = std::str::from_utf8(inner).ok()?.trim();
-    text.parse::<i32>().ok()
-}
-
-/// Walk `<rdf:li ...>…</rdf:li>` entries in `text`, adding trimmed non-empty
-/// values to `out`.
-fn collect_rdf_li(text: &str, out: &mut HashSet<String>) {
-    let mut rest = text;
-    while let Some(li_start) = rest.find("<rdf:li") {
-        let from_li = &rest[li_start..];
-        let Some(tag_end) = from_li.find('>') else {
-            break;
-        };
-        let content = &from_li[tag_end + 1..];
-        let Some(li_end) = content.find("</rdf:li>") else {
-            break;
-        };
-        let value = content[..li_end].trim();
-        if !value.is_empty() {
-            out.insert(value.to_owned());
+        Some(XmpValue::String(s)) => {
+            for part in s.split(',') {
+                let part = part.trim();
+                if !part.is_empty() {
+                    tags.insert(part.to_owned());
+                }
+            }
         }
-        rest = &content[li_end + "</rdf:li>".len()..];
+        _ => {}
+    }
+    tags
+}
+
+/// `dc:description` / `dc:title` → first element of an `Array` (document
+/// order, e.g. the first `rdf:li` of an `rdf:Alt`) or the plain `String`.
+/// Empty/absent → `None`.
+fn text_from_property(value: Option<XmpValue>) -> Option<String> {
+    let text = match value? {
+        XmpValue::Array(items) => match items.into_iter().next()? {
+            XmpValue::String(s) => s,
+            _ => return None,
+        },
+        XmpValue::String(s) => s,
+        _ => return None,
+    };
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_owned())
     }
 }
 
-/// Find the first occurrence of `needle` in `haystack` (raw byte scan).
-fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
-    if needle.is_empty() || haystack.len() < needle.len() {
+/// `xmp:Rating` → 0–5. The value parses as `i32` (to admit negatives such as
+/// -1 = "rejected"), then goes through `u8::try_from` and the ≤ 5 filter —
+/// the same clamp rule the byte-scan used (negative → None, 6 → None).
+fn rating_from_property(value: Option<XmpValue>) -> Option<u8> {
+    let XmpValue::String(raw) = value? else {
         return None;
-    }
-    haystack.windows(needle.len()).position(|w| w == needle)
+    };
+    raw.trim()
+        .parse::<i32>()
+        .ok()
+        .and_then(|v| u8::try_from(v).ok())
+        .filter(|&r| r <= 5)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Fixtures ──────────────────────────────────────────────────────────────
 
     fn xmp_full(keywords: &[&str], description: &str, rating: i32) -> String {
         let items: String = keywords
@@ -196,10 +200,63 @@ mod tests {
         )
     }
 
+    /// Compact/attribute-form packet: every managed field is an RDF attribute
+    /// on `<rdf:Description>`, no child elements at all.
+    const COMPACT_PACKET: &str = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/"
+                 xmlns:xmp="http://ns.adobe.com/xap/1.0/"
+                 dc:subject="c_one,c_two"
+                 dc:description="Compact description"
+                 dc:title="Compact title"
+                 xmp:Rating="5"/>
+</rdf:RDF>
+</x:xmpmeta>"#;
+
+    /// Malformed packet: `<dc:title>` is closed by `</dc:RDF>`, so the XML is
+    /// not well-formed even though earlier sibling elements are intact.
+    const MALFORMED_PACKET: &str = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+<dc:subject><rdf:Bag><rdf:li>leaked</rdf:li></rdf:Bag></dc:subject>
+<dc:description><rdf:Alt><rdf:li xml:lang="x-default">Partial description</rdf:li></rdf:Alt></dc:description>
+<xmp:Rating>4</xmp:Rating>
+<dc:title><rdf:Alt><rdf:li xml:lang="x-default">Partial title</rdf:li></rdf:Alt></dc:RDF>
+</rdf:Description>
+</rdf:RDF>
+</x:xmpmeta>"#;
+
+    /// Hand-built JPEG: SOI + one APP1 XMP segment + EOI. No exiftool needed.
+    fn jpeg_with_app1_xmp(packet: &str) -> Vec<u8> {
+        const XMP_NS: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
+        let mut payload = XMP_NS.to_vec();
+        payload.extend_from_slice(packet.as_bytes());
+        let len = u16::try_from(payload.len() + 2).expect("APP1 payload fits in one segment");
+        let mut jpeg = vec![0xFF, 0xD8]; // SOI
+        jpeg.extend_from_slice(&[0xFF, 0xE1]); // APP1
+        jpeg.extend_from_slice(&len.to_be_bytes());
+        jpeg.extend_from_slice(&payload);
+        jpeg.extend_from_slice(&[0xFF, 0xD9]); // EOI
+        jpeg
+    }
+
+    fn assert_all_empty(data: &XmpData) {
+        assert!(
+            data.tags.is_empty(),
+            "expected no tags, got {:?}",
+            data.tags
+        );
+        assert_eq!(data.description, None);
+        assert_eq!(data.rating, None);
+        assert_eq!(data.title, None);
+    }
+
+    // ── Managed-field extraction (ported intents) ─────────────────────────────
+
     #[test]
     fn extracts_all_fields() {
         let xmp = xmp_full(&["sunset", "travel"], "A beautiful sunset", 4);
-        let data = extract_xmp_data(xmp.as_bytes());
+        let data = extract_xmp_data_from_packet(xmp.as_bytes());
         assert_eq!(
             data.tags,
             HashSet::from(["sunset".to_string(), "travel".to_string()])
@@ -211,14 +268,22 @@ mod tests {
     #[test]
     fn rating_out_of_range_is_none() {
         let xmp = xmp_full(&[], "", 6);
-        let data = extract_xmp_data(xmp.as_bytes());
+        let data = extract_xmp_data_from_packet(xmp.as_bytes());
+        assert_eq!(data.rating, None);
+    }
+
+    #[test]
+    fn rating_negative_is_none() {
+        // -1 = "rejected" in some tools; clamp rule: i32 → u8 → ≤ 5.
+        let xmp = xmp_full(&[], "", -1);
+        let data = extract_xmp_data_from_packet(xmp.as_bytes());
         assert_eq!(data.rating, None);
     }
 
     #[test]
     fn missing_fields_are_empty_or_none() {
         let xmp = xmp_packet_with_keywords(&["family"]);
-        let data = extract_xmp_data(xmp.as_bytes());
+        let data = extract_xmp_data_from_packet(xmp.as_bytes());
         assert_eq!(data.tags, HashSet::from(["family".to_string()]));
         assert_eq!(data.description, None);
         assert_eq!(data.rating, None);
@@ -227,7 +292,7 @@ mod tests {
     #[test]
     fn extracts_keywords_from_dc_subject_bag() {
         let xmp = xmp_packet_with_keywords(&["family", "vacation"]);
-        let data = extract_xmp_data(xmp.as_bytes());
+        let data = extract_xmp_data_from_packet(xmp.as_bytes());
         assert_eq!(
             data.tags,
             HashSet::from(["family".to_string(), "vacation".to_string()])
@@ -235,39 +300,169 @@ mod tests {
     }
 
     #[test]
-    fn finds_packet_embedded_inside_arbitrary_container_bytes() {
-        let xmp = xmp_packet_with_keywords(&["sunset"]);
-        let mut bytes = b"\xff\xd8\xff\xe0JFIF garbage binary prefix".to_vec();
-        bytes.extend_from_slice(xmp.as_bytes());
-        bytes.extend_from_slice(b"more binary jpeg scan data\xff\xd9");
-        let data = extract_xmp_data(&bytes);
-        assert_eq!(data.tags, HashSet::from(["sunset".to_string()]));
+    fn returns_empty_when_input_is_not_an_xmp_packet() {
+        let data = extract_xmp_data_from_packet(b"\xff\xd8\xff plain jpeg, no xmp");
+        assert_all_empty(&data);
     }
 
     #[test]
-    fn returns_empty_set_when_no_xmp_packet_present() {
-        let data = extract_xmp_data(b"\xff\xd8\xff plain jpeg, no xmp");
-        assert!(data.tags.is_empty());
+    fn returns_empty_from_file_when_carrier_has_no_xmp() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let plain = dir.path().join("photo.jpg");
+        std::fs::write(&plain, b"\xff\xd8\xff plain jpeg, no xmp")
+            .expect("failed to write fixture");
+        let data = extract_xmp_data_from_file(&plain);
+        assert_all_empty(&data);
     }
 
     #[test]
     fn returns_empty_set_when_dc_subject_is_absent_or_empty() {
         let xmp = xmp_packet_with_keywords(&[]);
-        let data = extract_xmp_data(xmp.as_bytes());
+        let data = extract_xmp_data_from_packet(xmp.as_bytes());
         assert!(data.tags.is_empty());
     }
 
     #[test]
     fn extracts_title() {
         let xmp = xmp_with_title("My Album");
-        let data = extract_xmp_data(xmp.as_bytes());
+        let data = extract_xmp_data_from_packet(xmp.as_bytes());
         assert_eq!(data.title.as_deref(), Some("My Album"));
     }
 
     #[test]
     fn title_is_none_when_absent() {
         let xmp = xmp_packet_with_keywords(&["family"]);
-        let data = extract_xmp_data(xmp.as_bytes());
+        let data = extract_xmp_data_from_packet(xmp.as_bytes());
         assert_eq!(data.title, None);
+    }
+
+    // ── New-behavior pins (xmpkit read) ───────────────────────────────────────
+
+    #[test]
+    fn compact_attribute_form_yields_managed_fields() {
+        let data = extract_xmp_data_from_packet(COMPACT_PACKET.as_bytes());
+        assert_eq!(
+            data.tags,
+            HashSet::from(["c_one".to_string(), "c_two".to_string()])
+        );
+        assert_eq!(data.description.as_deref(), Some("Compact description"));
+        assert_eq!(data.title.as_deref(), Some("Compact title"));
+        assert_eq!(data.rating, Some(5));
+    }
+
+    #[test]
+    fn malformed_packet_yields_all_fields_empty() {
+        let data = extract_xmp_data_from_packet(MALFORMED_PACKET.as_bytes());
+        assert_all_empty(&data);
+    }
+
+    #[test]
+    fn unreadable_packet_bytes_yield_empty() {
+        // `read_albuminfo` hands raw file bytes to the packet seam; content
+        // that is not valid UTF-8 must not produce partial data.
+        let mut bytes = vec![0xFF, 0xFE, 0x00];
+        bytes.extend_from_slice(
+            b"<dc:subject><rdf:Bag><rdf:li>ghost</rdf:li></rdf:Bag></dc:subject>",
+        );
+        let data = extract_xmp_data_from_packet(&bytes);
+        assert_all_empty(&data);
+    }
+
+    #[test]
+    fn sidecar_wins_over_embedded_and_embedded_reads_when_sidecar_absent() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let photo = dir.path().join("photo.jpg");
+        let sidecar = dir.path().join("photo.xmp");
+
+        let embedded = format!(
+            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/">
+<dc:subject><rdf:Bag><rdf:li>emb_one</rdf:li></rdf:Bag></dc:subject>
+<dc:description><rdf:Alt><rdf:li xml:lang="x-default">Embedded description</rdf:li></rdf:Alt></dc:description>
+<dc:title><rdf:Alt><rdf:li xml:lang="x-default">Embedded title</rdf:li></rdf:Alt></dc:title>
+<xmp:Rating>2</xmp:Rating>
+</rdf:Description>
+</rdf:RDF>
+</x:xmpmeta>"#
+        );
+        std::fs::write(&photo, jpeg_with_app1_xmp(&embedded)).expect("failed to write jpeg");
+        std::fs::write(&sidecar, COMPACT_PACKET).expect("failed to write sidecar");
+
+        // Sidecar present → its values win over the embedded packet.
+        let data = extract_xmp_data_from_file(&photo);
+        assert_eq!(
+            data.tags,
+            HashSet::from(["c_one".to_string(), "c_two".to_string()])
+        );
+        assert_eq!(data.description.as_deref(), Some("Compact description"));
+        assert_eq!(data.title.as_deref(), Some("Compact title"));
+        assert_eq!(data.rating, Some(5));
+
+        // Sidecar absent → the embedded packet is read.
+        std::fs::remove_file(&sidecar).expect("failed to remove sidecar");
+        let data = extract_xmp_data_from_file(&photo);
+        assert_eq!(data.tags, HashSet::from(["emb_one".to_string()]));
+        assert_eq!(data.description.as_deref(), Some("Embedded description"));
+        assert_eq!(data.title.as_deref(), Some("Embedded title"));
+        assert_eq!(data.rating, Some(2));
+    }
+
+    #[test]
+    fn compressed_png_itxt_is_unsupported_and_yields_empty() {
+        // Iteration 0 verdict: xmpkit refuses PNG iTXt with `compression_flag=1`
+        // ("Compressed XMP in PNG not yet supported") → unclaimed, not a gap —
+        // main's byte-scan never read real compressed content either. The seam
+        // must return empty for such carriers, never partial data. The fixture
+        // keeps the packet as plain bytes so the old byte-scan behavior
+        // (scanning raw file bytes regardless of the flag) stays observable.
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let png_path = dir.path().join("photo.png");
+        let packet = xmp_packet_with_keywords(&["hidden"]);
+        std::fs::write(&png_path, png_with_compressed_itxt_xmp(&packet))
+            .expect("failed to write fixture");
+        let data = extract_xmp_data_from_file(&png_path);
+        assert_all_empty(&data);
+    }
+
+    // ── PNG fixture builder (no image crates needed) ──────────────────────────
+
+    fn crc32(bytes: &[u8]) -> u32 {
+        let mut crc = 0xFFFF_FFFFu32;
+        for &b in bytes {
+            crc ^= u32::from(b);
+            for _ in 0..8 {
+                crc = if crc & 1 != 0 {
+                    (crc >> 1) ^ 0xEDB8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        !crc
+    }
+
+    /// Minimal PNG carrying one XMP `iTXt` chunk with `compression_flag=1`
+    /// (signature + IHDR + iTXt + IEND, valid CRCs).
+    fn png_with_compressed_itxt_xmp(packet: &str) -> Vec<u8> {
+        fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
+            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+            out.extend_from_slice(kind);
+            out.extend_from_slice(data);
+            let mut crc_input = kind.to_vec();
+            crc_input.extend_from_slice(data);
+            out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
+        }
+        let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+        chunk(&mut png, b"IHDR", &[0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]);
+        let mut itxt = b"XML:com.adobe.xmp\0".to_vec();
+        itxt.push(1); // compression_flag = 1 (compressed)
+        itxt.push(0); // compression method
+        itxt.push(0); // empty language tag
+        itxt.push(0); // empty translated keyword
+        itxt.extend_from_slice(packet.as_bytes());
+        chunk(&mut png, b"iTXt", &itxt);
+        chunk(&mut png, b"IEND", &[]);
+        png
     }
 }
