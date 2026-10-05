@@ -12,4 +12,4 @@ when:
 then:
   - response.status: 400
   - response.json.kind: "InvalidInput"
-  - response.json.message: "Uploaded content is not recognized as jpeg"
+  - response.json.message: "Uploaded file \"garbage.jpg\" is not recognized as jpeg"
