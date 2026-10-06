@@ -46,8 +46,11 @@ pub struct DupeGroupMember {
 /// The registration is gated separately: `generate_get_routes()` appends the
 /// probes under `#[cfg(test)]`, so non-test builds mount no `/get/test/` route
 /// at all. The handlers and their `#[utoipa::path]` annotations stay compiled
-/// in every build because `build.rs` generation is cfg-blind and the spec keeps
-/// the probe paths.
+/// in every build because `#[utoipauto(paths = …)]` names every `__path_*` item
+/// it finds, so that item has to exist outside `cfg(test)` too. The generated
+/// document does carry the probe paths;
+/// `openapi_public::strip_test_only_endpoints` removes them before the spec is
+/// written.
 #[cfg(test)]
 static PROBE_REQUESTED: AtomicBool = AtomicBool::new(false);
 

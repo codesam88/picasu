@@ -1,11 +1,13 @@
 //! Contract parity between the mounted Rocket routes and the public OpenAPI
 //! spec.
 //!
-//! The spec is generated from two sources that are not the runtime route table:
-//! `build.rs` scans `routes![]` invocations, and utoipa reads the
-//! `#[utoipa::path]` annotations. A handler can therefore be mounted and
-//! documented nowhere (or documented and no longer mounted) without any build or
-//! test failure. These tests compare the two views of the API directly.
+//! The spec is generated from two things that are not the runtime route table:
+//! `#[utoipauto(paths = …)]` in `crate::openapi` collects every
+//! `#[utoipa::path]` annotation under `backend/src/router`, and the
+//! `generate_*_routes()` helpers decide which groups `build_rocket()` mounts. A
+//! handler can therefore be mounted and documented nowhere (or documented and no
+//! longer mounted) without any build or test failure. These tests compare the two
+//! views of the API directly.
 //!
 //! `--check-openapi` is the load-bearing route-set check: it runs the same
 //! comparison over the mount table of a build configured like the shipped one,
@@ -138,8 +140,8 @@ fn every_mounted_route_is_documented() {
     assert!(
         undocumented.is_empty(),
         "mounted routes missing from the public spec:\n{}\n\
-         Fix: add a `#[utoipa::path]` annotation to the handler and make sure its \
-         module is scanned by `backend/build.rs`.",
+         Fix: add a `#[utoipa::path]` annotation to the handler. \
+         `#[utoipauto(paths = …)]` already scans all of `backend/src/router`.",
         undocumented
     );
 }
@@ -356,13 +358,14 @@ fn self_check_detects_a_method_mismatch() {
 // ── Shared 401 response component ─────────────────────────────────────────────
 //
 // Every operation that can answer 401 must reference the single
-// `Unauthorized` component registered by `backend/build.rs`, so the meaning of
-// a 401 is documented once instead of drifting per route.
+// `Unauthorized` component registered by `backend/src/openapi.rs`, so the
+// meaning of a 401 is documented once instead of drifting per route.
 //
-// Which operations *can* answer 401 is not decided here — nothing in the
-// repository decides it any more. What the document must satisfy is checked:
-// the component is registered, and every 401 is a `$ref` to it rather than an
-// inlined literal.
+// Which operations *can* answer 401 is decided elsewhere and not re-derived
+// here: `openapi-sanity`'s P2 reads the guards in each handler signature and
+// requires their outcome statuses to be declared. What the document must
+// satisfy is checked below: the component is registered, and every 401 is a
+// `$ref` to it rather than an inlined literal.
 
 /// Parse the public spec.
 fn public_spec() -> serde_json::Value {
@@ -388,8 +391,9 @@ fn spec_registers_the_shared_unauthorized_response() {
     let unauthorized = spec["components"]["responses"]["Unauthorized"]
         .as_object()
         .expect(
-            "components.responses.Unauthorized is not registered — `backend/build.rs` must emit \
-             `components(responses(Unauthorized))` and import `crate::openapi_components::Unauthorized`",
+            "components.responses.Unauthorized is not registered — \
+             `backend/src/openapi.rs` must declare `components(responses(Unauthorized))` \
+             and import `crate::openapi_components::Unauthorized`",
         );
     let description = unauthorized
         .get("description")

@@ -124,17 +124,22 @@ playwright-report/results.json`).
 ### OpenAPI spec generator and coverage tracing
 
 Derives an OpenAPI 3.1 spec from `#[utoipa::path]` annotations on route
-handlers. `build.rs` checks every handler registered in the `routes![]` macro
-for an annotation and prints `cargo:warning=` for any missing during every
-build. `just openapi-check` diffs the committed artifact against a fresh
-generation and runs `picasu --check-openapi`, which compares the routes a
-shipped-shaped build mounts against that artifact.
+handlers. `#[utoipauto(paths = …)]` in `backend/src/openapi.rs` collects the
+annotations; `build.rs` writes the YAML scenario tests and inspects no route.
+`just openapi-check` runs four phases: `openapi-sanity` over the annotations and
+the route attributes beside them, a diff of the committed artifact against a
+fresh generation, Spectral over the document, and `picasu --check-openapi`,
+which compares the routes a shipped-shaped build mounts against that artifact.
 
 The route-set half of the contract is therefore enforced: a mounted public route
-missing from the spec, and a spec operation no build mounts, both fail. What is
-not enforced is the document-only half — that authentication and error responses
-are documented, that operation tags follow a vocabulary, and that string-valued
-identifiers use the correct semantics. Those are review-time properties today.
+missing from the spec, and a spec operation no build mounts, both fail. The
+annotation half is enforced as well — the response statuses a handler can answer,
+the parameter and body declarations against the route, the tag vocabulary and
+the doc-comment provenance of summaries are checked by `openapi-sanity`. Still
+review-time: parameter descriptions (21 of the 22 published parameters have none),
+the security schemes (none are registered), and the semantics of string-valued
+identifiers. The first two are tracked in
+`.plan/openapi-annotation-checks.md`.
 
 See `docs/openapi-generator.md` for the full design, and
 `docs/openapi-reference.md` for the rendered reference.

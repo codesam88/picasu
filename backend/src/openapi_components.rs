@@ -2,8 +2,8 @@
 //!
 //! Components live here so that one contract detail (for example the `401`
 //! behavior of every guarded route) is documented in exactly one place.
-//! [`crate::openapi`] registers them via `components(responses(...))` — the
-//! registration list is emitted by `backend/build.rs`.
+//! [`crate::openapi`] registers them via the `components(responses(...))` entry
+//! in its `#[openapi(...)]` attribute.
 
 /// The shared `401 Unauthorized` response, referenced from `#[utoipa::path]`
 /// annotations as `(status = 401, response = Unauthorized)`.

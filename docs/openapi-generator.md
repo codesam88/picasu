@@ -262,16 +262,36 @@ rather than quietly narrowing the rules. B3 states two limits rather than
 exempting itself from them: `request_body = Value` declares no constraint, and a
 `Form<…>` payload has no schema type an annotation could name. An out-of-contract operation is
 therefore not an exception to A3 but an entry in its vocabulary — `internal`, for
-the test-only probes, whose operations
-[`openapi_public`](../../backend/src/openapi_public.rs) strips from the committed
-artifact. Every other rule applies to them too, because the contract tests read
-the _full_ spec rather than the public one: their responses (A2) and their doc
-comments (A4) are still read.
+the test-only probes. Those operations are removed from the committed artifact by
+[`openapi_public`](../../backend/src/openapi_public.rs), which matches their
+`/get/test/` prefix rather than the tag; the tag labels them for readers. Every other rule applies to them too, because the source gate reads
+the annotations themselves in `backend/src/router` and never consults the
+document: their responses (A2) and their doc comments (A4) are still checked,
+while the document-level phases never see those operations.
 
-Three spellings utoipa also accepts are still review-time, and the boundary is
-deliberate: `method(GET)` is the parenthesised verb form of A1, `tags([…])` is a
-list form of A3, and `context_path` is a base-path form of A1. No annotation uses
-any of them.
+Three spellings utoipa also accepts are not analyzed by the source gate, so they
+pass A1 and A3 unchecked: `method(GET)` is the parenthesised verb form of A1,
+`tags([…])` is a list form of A3, and `context_path` is a base-path form of A1.
+No annotation uses any of them. They are open work, tracked as the A9 step in
+[`.plan/openapi-annotation-checks.md`](../.plan/openapi-annotation-checks.md),
+which closes them by failing on any annotation form the parser does not model.
+
+### What the document does not say yet
+
+Two gaps in the published artifact, both open work tracked in
+[`.plan/openapi-annotation-checks.md`](../.plan/openapi-annotation-checks.md):
+
+- **Parameter descriptions.** The document publishes 22 parameters and describes
+  one of them (`POST /upload :: auto_rename`). The other 21 carry a name and a
+  schema and nothing else. Operation `description` and parameter `description`
+  are different fields: all 61 operations are described, because a handler's doc
+  comment supplies it. A parameter gets one only when the annotation passes
+  `params(…)`, which is also where the path/query binding override lives.
+- **Security schemes.** The document registers no `securitySchemes`, and none of
+  the 61 operations declares `security`. A generated client cannot tell that an
+  operation requires authentication. The guards are visible in source — the
+  handler signatures are what P2 reads — but nothing yet states the policy in the
+  artifact.
 
 ## Route-set parity (`--check-openapi`)
 
@@ -319,9 +339,12 @@ The `/get/test/` probes are registered only in test builds (a `#[cfg(test)]`
 extension of `generate_get_routes()`), which is what the route-set rule requires:
 the public document never carried them, so a shipped build that mounted them
 would fail the gate. The handlers and their annotations stay compiled in every
-build, because `build.rs` generation is cfg-blind and the spec keeps the probe
-paths. `backend/tests/probe_registration.rs` observes that from an integration
-test, which is the only vantage point outside `cfg(test)`.
+build, because `#[utoipauto(paths = …)]` names every `__path_*` item it finds and
+that item has to exist outside `cfg(test)` too; the probe paths reach the generated
+document and are removed from the published one by
+`openapi_public::strip_test_only_endpoints`. `backend/tests/probe_registration.rs`
+observes that from an integration test, which is the only vantage point outside
+`cfg(test)`.
 
 ### Feature-dependent routes
 

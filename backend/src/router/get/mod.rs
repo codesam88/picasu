@@ -12,8 +12,8 @@ pub mod get_metadata;
 pub mod get_page;
 pub mod get_prefetch;
 // The probe handlers are registered only in test builds (see
-// `generate_get_routes`); outside them they stay compiled — the cfg-blind
-// generator and the spec need them — but nothing mounts or calls them.
+// `generate_get_routes`); outside them they stay compiled — `#[utoipauto]` names
+// their `__path_*` items unconditionally — but nothing mounts or calls them.
 #[cfg_attr(not(test), allow(dead_code))]
 pub mod get_test_probe;
 
@@ -22,7 +22,8 @@ pub mod get_test_probe;
 /// The `/get/test/` probes are appended only in test builds: `routes!` takes
 /// paths alone, so the gate is a `#[cfg(test)]`-gated extension of the list
 /// rather than a `#[cfg]` on an entry. Handlers and annotations stay
-/// unconditional so `build.rs` generation and the spec keep the probe paths.
+/// unconditional so `#[utoipauto]` can name their `__path_*` items; the probe
+/// paths are stripped from the published document afterwards.
 pub fn generate_get_routes() -> Vec<Route> {
     #[cfg_attr(not(test), allow(unused_mut))]
     let mut routes = routes![

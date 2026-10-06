@@ -1,13 +1,12 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Three sections of `.plan/openapi-annotation-checks.md` are implemented here:
+//! Fifteen rules from `.plan/openapi-annotation-checks.md` are implemented here:
 //! **section A**, the seven rules about the annotation's own shape; **section
 //! B**, the four rules about what the annotation declares against what the route
 //! already says; and **section P**, the four rules about response statuses —
-//! what the handler can answer versus what `responses(…)` claims. Documenting
-//! the operations with a security *scheme* remains deferred to a separate
-//! increment with runtime security tests; P2 reads only the outcome statuses a
-//! guard's `FromRequest` impl writes.
+//! what the handler can answer versus what `responses(…)` claims. What remains
+//! open in that plan — including that no rule reads a `security(…)` or a
+//! registered scheme — is listed under "Known gaps" in this crate's README.
 //!
 //! # What this crate holds, and what it must not
 //!

@@ -6,8 +6,13 @@ route and handler signature beside them. It scans Rust source; it does not
 validate generated OpenAPI documents or runtime behavior.
 
 The checker implements **A1–A7, B1–B4 and P1–P4** from
-[`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md).
-The rule index below summarizes each check and points to its regression tests.
+[`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md),
+which is the implementation record: it holds the per-rule rationale, the grammar
+each rule can read and the limits it states. This file is the user-facing companion
+— what each check enforces, what a finding looks like, and which test covers it, so
+it is worth reading the test list to see what a claimed check actually catches. The
+plan is authoritative where the two differ. What is not checked yet is under
+[Known gaps](#known-gaps).
 
 ## Checks
 
@@ -166,9 +171,11 @@ finding, and an unknown `Status::` constant or `Redirect::` constructor is an
 Every `impl FromRequest for G` under the source root contributes the literal
 `Status::` values of its `Outcome::Error(…)` and `Outcome::Forward(…)` arms; a
 guard named in a handler's signature must have those codes declared. An arm
-whose status is computed (`err.http_status()`) makes the guard _dynamic_: it
-requires nothing, and the tree test pins the dynamic set (currently
-`GuardShare`) so a new one is a decision, not a silent skip.
+whose status is computed (`err.http_status()`) makes the guard _dynamic_: the
+computed code requires nothing, its literal codes still do, and the tree test
+pins the dynamic set (currently `GuardShare`) so a new one is a decision, not a
+silent skip. A signature ident with no entry in the guard table is skipped
+without a finding — see the limits below.
 
 **Tests:** `p2_a_guard_status_missing_from_responses_fails`
 (`p2_guard_missing.rs`), `p2_a_declared_guard_status_is_accepted`
@@ -216,19 +223,44 @@ route, and codes outside every set (418, 207, …) still flag.
   types with the same final name cannot be distinguished by this check.
 - A9 grammar coverage is not complete. The current parser does not analyze
   `method(GET)`, `tags([…])`, `context_path`, or every grouped/otherwise unreadable
-  value. Treat those spellings as unchecked until A9 is implemented.
+  value, and skips them silently rather than reporting them — so those spellings
+  walk past A1 and A3. Tracked as an open step in the plan.
 - P1 treats any return shape other than `Redirect`, `Status` or a fallible
   payload as a 200 success. Rocket's non-200 responders are handled; a future
   exotic responder extends that match.
 - P2 derives guard statuses from literal `Status::` values in `FromRequest`
-  outcome arms. A guard with computed statuses (dynamic) requires nothing, and
-  `the_router_tree_is_clean` pins the dynamic set.
+  outcome arms. A guard with a computed status still requires its literal
+  statuses; only the computed one requires nothing, and
+  `the_router_tree_is_clean` pins the dynamic set so a new computed status is a
+  decision rather than a silent widening.
+- **P2 and P4 skip a signature guard they cannot resolve** — an ident absent from
+  the guard table is `continue`d, not reported. A crate alias such as
+  `GuardResult` is expected here, but so is a guard whose `FromRequest` impl moved
+  outside `--source-root`. Nothing counts the skips. All eight impls currently sit
+  in `backend/src/router/auth.rs`, inside the scanned tree; move one and P2 goes
+  quiet with no finding. Tracked as an open step in the plan.
 - P3 reads only `ErrorKind::` literals in the handler's own body. Codes raised
   inside helpers are not required — they stay covered by the P4 universe
   instead.
 - Route coverage, generated-document consistency, document validity, and runtime
   behavior are owned by other tools or tests. This checker only analyzes source
   annotations and route attributes.
+
+## Known gaps
+
+The rule set is complete for the grammar it reads, and the gaps below are open
+work rather than defects in what is built. Each is an item in
+[`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md)
+with its status:
+
+- The three annotation spellings listed above pass A1 and A3 unchecked.
+- An unresolved signature guard is skipped by P2 and P4 without a finding.
+- Two calibration rows the plan states are not enforced by the tree test: the
+  declared body types that matched their route binding, and the dynamic-guard
+  count. Only the handler count, the declaration inventory and the dynamic-guard
+  name set are pinned.
+- No rule covers `security(...)` or `securitySchemes`. The committed document
+  declares neither, so no operation states that it requires authentication.
 
 ## Run it
 

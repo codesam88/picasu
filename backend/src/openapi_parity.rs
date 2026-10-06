@@ -1,10 +1,13 @@
 //! The route-set parity gate behind the binary's `--check-openapi` flag.
 //!
 //! The spec is generated from two things that are not the runtime route table:
-//! `build.rs` scans `routes![]` invocations and utoipa reads the
-//! `#[utoipa::path]` annotations. A handler can therefore be mounted and
-//! documented nowhere, or documented and no longer mounted, without a build or
-//! a test failure. This module is the check that can see it, because it reads
+//! with the `rocket_extras` feature utoipa derives path, verb and parameters
+//! from the `#[get]` / `#[post]` / … attribute beside each `#[utoipa::path]`
+//! annotation, and `#[utoipauto(paths = …)]` collects those items from
+//! `backend/src/router`; separately, the `generate_*_routes()` helpers decide
+//! which groups `build_rocket()` mounts. A handler can therefore be mounted and
+//! documented nowhere, or documented and no longer mounted, without a build or a
+//! test failure. This module is the check that can see it, because it reads
 //! Rocket's own mount table from a real `build_rocket()` and the **committed**
 //! `openapi.json` from disk — the artifact the review made its claim about,
 //! rather than the compiled-in copy the code would agree with by construction.
