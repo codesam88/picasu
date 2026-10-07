@@ -43,9 +43,12 @@ The `.plan/` directory tracks pending and completed work. Run `plan list` to vie
 - Before claiming success, run the applicable automated checks, inspect the
   final diff and status, and report any checks or quality gates that remain
   unavailable. Successful test suite run does not replace quality checks.
-- When done, provide a summary of the change and give a chance to review or course correct. Commit only on request.
-- Commit messages should include a summary of what was changed and why. Do not include verbose examples or documentation. Only large commits may contain lists of changes.
-- Update code-level documentation where applicable. Refrain from including verbose examples and documentation without request.
+- When done, provide a summary of the change. When on a feature branch,
+  commit in reasonable steps.
+- Commit messages should include a summary of what was changed and why.
+  Do not include verbose examples or documentation.
+- Update code-level documentation where applicable.
+  Do not include verbose examples and documentation without request.
 
 ## Task Management (.plan)
 
@@ -67,8 +70,8 @@ Every task lives as a markdown file in `.plan/<slug>.md` with YAML frontmatter. 
 - **Discover work:** Use `plan list` lists all tasks and prefer items with priority => high and status => in-progress or open
 - **Step back / plan:** Consider items with status => `backlog` or `idea` when considering next big steps
 - **Create:** use `.plan/.TEMPLATE.md` and contained instructions for new task `.plan/<slug>.md`
-- **Update:** set `status` to match reality, and append refinements and decisions while keeping the task concise — focused on the problem, the goal, and the implementation steps. The file is a working spec, not a running log: fold updates into those sections instead of accumulating progress notes; anything longer than a decision line belongs in a commit message or the docs.
-- **Complete:** set `status: done` when finished. Do not delete the file.
+- **Update:** set `status` to match reality, and append refinements and decisions while keeping the task concise — focused on the problem, the goal, and the implementation steps. Treat a task file as WIP spec, folding updates into those sections or extending as appropriate.
+  **Complete:** set `status: done` when finished. Do not delete the file.
 - **Block:** set `status: blocked` and note the blocker in the body.
 - **Validate:** run `just plan-lint` to check; `just plan-format` to auto-format.
 
