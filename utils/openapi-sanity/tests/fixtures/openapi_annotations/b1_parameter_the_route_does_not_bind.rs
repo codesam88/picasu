@@ -31,7 +31,7 @@ pub fn prefetch(locate: Option<String>) -> AppResult<Json<PrefetchReturn>> {
 #[utoipa::path(
         tag = "assets",
         params(
-            ("asset_id" = String, Path),
+            ("asset_id" = String, Path, description = "Asset to read"),
             ("album_id" = String, Path),
         ),
         responses(

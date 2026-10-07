@@ -217,23 +217,24 @@ Three of the four phases compare the document. The source phase checks the
 annotations themselves, because a handful of things about an annotation are wrong
 in a way the document cannot show:
 
-| Rule | Assertion                                                                      | Why the document cannot show it                                                                                                   |
-| ---- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| A1   | no `path = "…"` and no bare verb token in the annotation                       | `rocket_extras` derives both from the route attribute, so a restatement is a second copy of a fact nothing compares               |
-| A2   | `responses(…)` is present and has at least one entry                           | utoipa invents no response, so an operation with none documents nothing it can answer                                             |
-| A3   | exactly one `tag = "…"`, from the table in [Tag conventions](#tag-conventions) | a missing or unknown tag files the operation outside every section of the reference                                               |
-| A4   | the handler carries a doc comment                                              | `summary` and `description` are derived from it, so a handler without one is a complete-looking operation with no text            |
-| A5   | the doc comment's first paragraph is one line                                  | it is the `summary`, and the reference renders the `summary` as a heading — a newline inside a heading splits it                  |
-| A6   | no `operation_id = "…"`                                                        | utoipa derives it from the function name; a hand-set one is the only name nothing compares                                        |
-| A7   | no `summary = "…"` and no `description = "…"`                                  | utoipa derives both from the doc comment; a hand-set one is the same prose written twice, with nothing comparing them             |
-| B1   | every declared `params(…)` name is a `<segment>` or `?<name>` the route binds  | utoipa merges declared parameters into the derived document without checking that the route reads them                            |
-| B2   | a declared parameter's documented `required` matches the handler argument      | utoipa derives `required` from the declared type and never looks at the argument the route binds                                  |
-| B3   | a declared `request_body` names the type the route's `data = "…"` parses       | utoipa takes the declared schema and never compares it to what Rocket parses                                                      |
-| B4   | a `Form<…>` binding declares `multipart/form-data`                             | utoipa guesses `application/json` for a named non-primitive type, so a multipart endpoint was published as a JSON one             |
-| P1   | the declared success statuses are the handler's — return type and body consts  | the document repeats whatever the annotation declares, with nothing that knows `Redirect::to` is 303 or `Status::Accepted` is 202 |
-| P2   | every literal outcome status of a signature guard is declared                  | guard behavior lives in `FromRequest` impls; the document never sees them                                                         |
-| P3   | every body `ErrorKind::` maps to a declared status                             | the `http_status` mapping lives in `error.rs`; the document is generated from the annotation, not the handler                     |
-| P4   | every declared status is one the handler can answer (universe check)           | a declared code outside the handler's universe is a lie only source can disprove                                                  |
+| Rule | Assertion                                                                           | Why the document cannot show it                                                                                                                     |
+| ---- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1   | no `path = "…"` and no bare verb token in the annotation                            | `rocket_extras` derives both from the route attribute, so a restatement is a second copy of a fact nothing compares                                 |
+| A2   | `responses(…)` is present and has at least one entry                                | utoipa invents no response, so an operation with none documents nothing it can answer                                                               |
+| A3   | exactly one `tag = "…"`, from the table in [Tag conventions](#tag-conventions)      | a missing or unknown tag files the operation outside every section of the reference                                                                 |
+| A4   | the handler carries a doc comment                                                   | `summary` and `description` are derived from it, so a handler without one is a complete-looking operation with no text                              |
+| A5   | the doc comment's first paragraph is one line                                       | it is the `summary`, and the reference renders the `summary` as a heading — a newline inside a heading splits it                                    |
+| A6   | no `operation_id = "…"`                                                             | utoipa derives it from the function name; a hand-set one is the only name nothing compares                                                          |
+| A7   | no `summary = "…"` and no `description = "…"`                                       | utoipa derives both from the doc comment; a hand-set one is the same prose written twice, with nothing comparing them                               |
+| B1   | every declared `params(…)` name is a `<segment>` or `?<name>` the route binds       | utoipa merges declared parameters into the derived document without checking that the route reads them                                              |
+| B2   | a declared parameter's documented `required` matches the handler argument           | utoipa derives `required` from the declared type and never looks at the argument the route binds                                                    |
+| B3   | a declared `request_body` names the type the route's `data = "…"` parses            | utoipa takes the declared schema and never compares it to what Rocket parses                                                                        |
+| B4   | a `Form<…>` binding declares `multipart/form-data`                                  | utoipa guesses `application/json` for a named non-primitive type, so a multipart endpoint was published as a JSON one                               |
+| B5   | every `<segment>` / `?<name>` the route binds resolves to a `params(…)` description | a parameter publishes with a name and a schema and nothing to explain either, because the description reaches the document only from the annotation |
+| P1   | the declared success statuses are the handler's — return type and body consts       | the document repeats whatever the annotation declares, with nothing that knows `Redirect::to` is 303 or `Status::Accepted` is 202                   |
+| P2   | every literal outcome status of a signature guard is declared                       | guard behavior lives in `FromRequest` impls; the document never sees them                                                                           |
+| P3   | every body `ErrorKind::` maps to a declared status                                  | the `http_status` mapping lives in `error.rs`; the document is generated from the annotation, not the handler                                       |
+| P4   | every declared status is one the handler can answer (universe check)                | a declared code outside the handler's universe is a lie only source can disprove                                                                    |
 
 `utils/openapi-sanity/tags.json` is where the tag vocabulary is written down —
 one entry per tag, name and description — and this document's Tag conventions
@@ -249,14 +250,15 @@ for P3 — the `error.rs` mapping the recipe passes with `--app-error-map`. None
 of them holds a route path, a config value, a feature name or a backend constant
 as a copy, and that is deliberate: a copied fact is a second place to forget,
 whereas reading the fact from source keeps it true for as long as the source is.
-B1–B4 read the route attribute on the handler they are already reading — the
+B1–B5 read the route attribute on the handler they are already reading — the
 same attribute utoipa reads it from. P2 derives its guard table from the tree's
 own `FromRequest` impls at scan time, and P3 parses `backend/src/error.rs` at
 run time; the app-error map's variants and arms are read, never mirrored.
 
-B1 and B2 read a declared parameter's name, location and type, and they read the
+B1, B2 and B5 read a declared parameter's name, location, type and description,
+and they read the
 inline tuple form `("name" = Type, Location, …)` only. The struct form —
-`params(SomeQueryStruct)` — hides all three behind a type, and **no type in this
+`params(SomeQueryStruct)` — hides all of them behind a type, and **no type in this
 repository derives `IntoParams`**, so the tool counts those entries instead of
 reading them and pins the count at zero: the first one to appear fails a test
 rather than quietly narrowing the rules. B3 states two limits rather than
@@ -279,20 +281,20 @@ which closes them by failing on any annotation form the parser does not model.
 
 ### What the document does not say yet
 
-Two gaps in the published artifact, both open work tracked in
+One gap in the published artifact, open work tracked in
 [`.plan/openapi-annotation-checks.md`](../.plan/openapi-annotation-checks.md):
 
-- **Parameter descriptions.** The document publishes 22 parameters and describes
-  one of them (`POST /upload :: auto_rename`). The other 21 carry a name and a
-  schema and nothing else. Operation `description` and parameter `description`
-  are different fields: all 61 operations are described, because a handler's doc
-  comment supplies it. A parameter gets one only when the annotation passes
-  `params(…)`, which is also where the path/query binding override lives.
 - **Security schemes.** The document registers no `securitySchemes`, and none of
   the 61 operations declares `security`. A generated client cannot tell that an
   operation requires authentication. The guards are visible in source — the
   handler signatures are what P2 reads — but nothing yet states the policy in the
   artifact.
+
+Parameter descriptions are no longer a gap: B5 requires every bound parameter to
+carry one, and all 22 published parameters now do. Operation `description` and
+parameter `description` are different fields — all 61 operations carry the
+former from the handler's doc comment, and the latter comes only from
+`params(…)`.
 
 ## Route-set parity (`--check-openapi`)
 

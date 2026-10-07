@@ -7,7 +7,8 @@
 /// its id.
 #[utoipa::path(
     tag = "assets",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok")),
+    params(("id" = String, Path, description = "Widget to fetch")),
 )]
 #[get("/get/widget/<id>")]
 pub async fn multi_line_summary() -> AppResult<Json<Widget>> {

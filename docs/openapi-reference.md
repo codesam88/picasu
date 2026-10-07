@@ -2779,10 +2779,10 @@ composed.
 
 <h3 id="serve-the-full-metadata-of-a-single-asset.-parameters">Parameters</h3>
 
-| Name      | In    | Type           | Required | Description |
-| --------- | ----- | -------------- | -------- | ----------- |
-| asset_id  | path  | string         | true     | none        |
-| timestamp | query | integer(int64) | true     | none        |
+| Name      | In    | Type           | Required | Description                                     |
+| --------- | ----- | -------------- | -------- | ----------------------------------------------- |
+| asset_id  | path  | string         | true     | Asset to read the full metadata for             |
+| timestamp | query | integer(int64) | true     | Must equal the prefetch token's timestamp claim |
 
 <h3 id="serve-the-full-metadata-of-a-single-asset.-responses">Responses</h3>
 
@@ -4304,9 +4304,9 @@ matched no directory — 500 the directory could not be read.
 
 <h3 id="complete-a-filesystem-directory-path-for-the-path-completion-field.-parameters">Parameters</h3>
 
-| Name | In    | Type   | Required | Description |
-| ---- | ----- | ------ | -------- | ----------- |
-| path | query | string | false    | none        |
+| Name | In    | Type   | Required | Description                                                                              |
+| ---- | ----- | ------ | -------- | ---------------------------------------------------------------------------------------- |
+| path | query | string | false    | Directory path prefix to complete; absent or blank lists the roots and working directory |
 
 > Example responses
 
@@ -5959,9 +5959,9 @@ compressed file could not be opened.
 
 <h3 id="serve-the-compressed-thumbnail-or-preview-of-a-hashed-asset.-parameters">Parameters</h3>
 
-| Name      | In   | Type   | Required | Description |
-| --------- | ---- | ------ | -------- | ----------- |
-| file_path | path | string | true     | none        |
+| Name      | In   | Type   | Required | Description                                                                            |
+| --------- | ---- | ------ | -------- | -------------------------------------------------------------------------------------- |
+| file_path | path | string | true     | Path of the file below DATA_HOME/object/compressed; the extension must be .jpg or .mp4 |
 
 <h3 id="serve-the-compressed-thumbnail-or-preview-of-a-hashed-asset.-responses">Responses</h3>
 
@@ -6108,9 +6108,9 @@ share credentials, or no image-serving token granting original access —
 
 <h3 id="serve-the-original-file-from-its-current-location-under-`imagepath`.-parameters">Parameters</h3>
 
-| Name      | In   | Type   | Required | Description |
-| --------- | ---- | ------ | -------- | ----------- |
-| file_path | path | string | true     | none        |
+| Name      | In   | Type   | Required | Description                                                          |
+| --------- | ---- | ------ | -------- | -------------------------------------------------------------------- |
+| file_path | path | string | true     | Path of the original below imagePath; the last segment is <id>.<ext> |
 
 <h3 id="serve-the-original-file-from-its-current-location-under-`imagepath`.-responses">Responses</h3>
 
@@ -6138,13 +6138,13 @@ Grid/list data: prefetch, rows, scrollbar, tag list, export
 
 ```shell
 # You can also use wget
-curl -X GET /get/get-data?end=0&start=0&timestamp=0 \
+curl -X GET /get/get-data?timestamp=0&start=0&end=0 \
   -H 'Accept: application/json'
 
 ```
 
 ```http
-GET /get/get-data?end=0&start=0&timestamp=0 HTTP/1.1
+GET /get/get-data?timestamp=0&start=0&end=0 HTTP/1.1
 
 Accept: application/json
 
@@ -6155,7 +6155,7 @@ const headers = {
   Accept: "application/json",
 };
 
-fetch("/get/get-data?end=0&start=0&timestamp=0", {
+fetch("/get/get-data?timestamp=0&start=0&end=0", {
   method: "GET",
 
   headers: headers,
@@ -6178,9 +6178,9 @@ headers = {
 
 result = RestClient.get '/get/get-data',
   params: {
-  'end' => 'integer',
+  'timestamp' => 'integer(int64)',
 'start' => 'integer',
-'timestamp' => 'integer(int64)'
+'end' => 'integer'
 }, headers: headers
 
 p JSON.parse(result)
@@ -6194,7 +6194,7 @@ headers = {
 }
 
 r = requests.get('/get/get-data', params={
-  'end': '0',  'start': '0',  'timestamp': '0'
+  'timestamp': '0',  'start': '0',  'end': '0'
 }, headers = headers)
 
 print(r.json())
@@ -6233,7 +6233,7 @@ try {
 ```
 
 ```java
-URL obj = new URL("/get/get-data?end=0&start=0&timestamp=0");
+URL obj = new URL("/get/get-data?timestamp=0&start=0&end=0");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
 con.setRequestMethod("GET");
 int responseCode = con.getResponseCode();
@@ -6293,11 +6293,11 @@ read.
 
 <h3 id="serve-one-page-of-timeline/list-rows-for-a-snapshot-timestamp.-parameters">Parameters</h3>
 
-| Name      | In    | Type           | Required | Description |
-| --------- | ----- | -------------- | -------- | ----------- |
-| end       | query | integer        | true     | none        |
-| start     | query | integer        | true     | none        |
-| timestamp | query | integer(int64) | true     | none        |
+| Name      | In    | Type           | Required | Description                                                        |
+| --------- | ----- | -------------- | -------- | ------------------------------------------------------------------ |
+| timestamp | query | integer(int64) | true     | Snapshot to read, identified by the timestamp returned by prefetch |
+| start     | query | integer        | true     | First row index of the requested range (inclusive)                 |
+| end       | query | integer        | true     | Row index to stop at (exclusive), clamped to the snapshot length   |
 
 > Example responses
 
@@ -6643,10 +6643,10 @@ index is out of bounds.
 
 <h3 id="serve-the-display-layout-of-one-batched-row-of-a-snapshot.-parameters">Parameters</h3>
 
-| Name      | In    | Type           | Required | Description |
-| --------- | ----- | -------------- | -------- | ----------- |
-| index     | query | integer        | true     | none        |
-| timestamp | query | integer(int64) | true     | none        |
+| Name      | In    | Type           | Required | Description                                                        |
+| --------- | ----- | -------------- | -------- | ------------------------------------------------------------------ |
+| index     | query | integer        | true     | Batch to lay out, addressing 20 consecutive snapshot entries       |
+| timestamp | query | integer(int64) | true     | Snapshot to read, identified by the timestamp returned by prefetch |
 
 > Example responses
 
@@ -6832,9 +6832,9 @@ mismatched prefetch token.
 
 <h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-parameters">Parameters</h3>
 
-| Name      | In    | Type           | Required | Description |
-| --------- | ----- | -------------- | -------- | ----------- |
-| timestamp | query | integer(int64) | true     | none        |
+| Name      | In    | Type           | Required | Description                                                        |
+| --------- | ----- | -------------- | -------- | ------------------------------------------------------------------ |
+| timestamp | query | integer(int64) | true     | Snapshot to read, identified by the timestamp returned by prefetch |
 
 > Example responses
 
@@ -7235,10 +7235,10 @@ null
 
 <h3 id="evaluate-a-list-query,-snapshot-its-result,-and-return-the-snapshot-id.-parameters">Parameters</h3>
 
-| Name   | In    | Type   | Required | Description |
-| ------ | ----- | ------ | -------- | ----------- |
-| locate | query | string | false    | none        |
-| body   | body  | any    | true     | none        |
+| Name   | In    | Type   | Required | Description                                  |
+| ------ | ----- | ------ | -------- | -------------------------------------------- |
+| locate | query | string | false    | Asset whose row index comes back as locateTo |
+| body   | body  | any    | true     | none                                         |
 
 > Example responses
 
@@ -7447,9 +7447,9 @@ mode — 500 storage failure.
 
 | Name                   | In    | Type    | Required | Description                                                                                                                                                                                                                                                                                                                                                                       |
 | ---------------------- | ----- | ------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| presigned_album_id_opt | query | string  | false    | Target album id (at most 64 bytes); without it files land in the configured upload folder                                                                                                                                                                                                                                                                                         |
+| on_conflict            | query | string  | false    | Conflict policy for an existing target file: rename (default; suffixes -001, -002, …) or skip; any other value is a 400                                                                                                                                                                                                                                                           |
 | auto_rename            | query | boolean | false    | When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error. |
-| on_conflict            | query | string  | false    | none                                                                                                                                                                                                                                                                                                                                                                              |
-| presigned_album_id_opt | query | string  | false    | none                                                                                                                                                                                                                                                                                                                                                                              |
 | body                   | body  | object  | true     | none                                                                                                                                                                                                                                                                                                                                                                              |
 
 <h3 id="upload-media-files-into-an-album-or-the-upload-folder-and-index-each-one.-responses">Responses</h3>
@@ -7864,9 +7864,9 @@ one the client router cannot resolve into an asset id.
 
 <h3 id="serve-the-spa-shell-for-an-albums-view-path-resolved-by-the-client.-parameters">Parameters</h3>
 
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| path | path | string | true     | none        |
+| Name | In   | Type   | Required | Description                                                                           |
+| ---- | ---- | ------ | -------- | ------------------------------------------------------------------------------------- |
+| path | path | string | true     | View path below /albums/view/; served the SPA shell and resolved by the client router |
 
 <h3 id="serve-the-spa-shell-for-an-albums-view-path-resolved-by-the-client.-responses">Responses</h3>
 
@@ -9073,9 +9073,9 @@ client router cannot split into an album and share id.
 
 <h3 id="serve-the-spa-shell-for-a-share-path.-parameters">Parameters</h3>
 
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| path | path | string | true     | none        |
+| Name | In   | Type   | Required | Description                                                                       |
+| ---- | ---- | ------ | -------- | --------------------------------------------------------------------------------- |
+| path | path | string | true     | Share path below /share/; the client router splits the album and share id from it |
 
 <h3 id="serve-the-spa-shell-for-a-share-path.-responses">Responses</h3>
 
@@ -9477,9 +9477,9 @@ one the client router cannot resolve into an asset id.
 
 <h3 id="serve-the-spa-shell-for-a-timeline-view-path-resolved-by-the-client.-parameters">Parameters</h3>
 
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| path | path | string | true     | none        |
+| Name | In   | Type   | Required | Description                                                                             |
+| ---- | ---- | ------ | -------- | --------------------------------------------------------------------------------------- |
+| path | path | string | true     | View path below /timeline/view/; served the SPA shell and resolved by the client router |
 
 <h3 id="serve-the-spa-shell-for-a-timeline-view-path-resolved-by-the-client.-responses">Responses</h3>
 
@@ -9748,9 +9748,9 @@ the client router cannot resolve into an asset id.
 
 <h3 id="serve-the-spa-shell-for-a-trash-view-path-resolved-by-the-client.-parameters">Parameters</h3>
 
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| path | path | string | true     | none        |
+| Name | In   | Type   | Required | Description                                                                            |
+| ---- | ---- | ------ | -------- | -------------------------------------------------------------------------------------- |
+| path | path | string | true     | View path below /trashed/view/; served the SPA shell and resolved by the client router |
 
 <h3 id="serve-the-spa-shell-for-a-trash-view-path-resolved-by-the-client.-responses">Responses</h3>
 
@@ -10155,9 +10155,9 @@ the client router cannot resolve into an asset id.
 
 <h3 id="serve-the-spa-shell-for-a-videos-view-path-resolved-by-the-client.-parameters">Parameters</h3>
 
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| path | path | string | true     | none        |
+| Name | In   | Type   | Required | Description                                                                           |
+| ---- | ---- | ------ | -------- | ------------------------------------------------------------------------------------- |
+| path | path | string | true     | View path below /videos/view/; served the SPA shell and resolved by the client router |
 
 <h3 id="serve-the-spa-shell-for-a-videos-view-path-resolved-by-the-client.-responses">Responses</h3>
 
@@ -10300,9 +10300,9 @@ Errors: 404 captured segment does not start with `album-`.
 
 <h3 id="serve-the-spa-shell-for-a-one-segment-album-path,-404-for-anything-else.-parameters">Parameters</h3>
 
-| Name             | In   | Type   | Required | Description |
-| ---------------- | ---- | ------ | -------- | ----------- |
-| dynamic_album_id | path | string | true     | none        |
+| Name             | In   | Type   | Required | Description                                             |
+| ---------------- | ---- | ------ | -------- | ------------------------------------------------------- |
+| dynamic_album_id | path | string | true     | One-segment path served only when it starts with album- |
 
 <h3 id="serve-the-spa-shell-for-a-one-segment-album-path,-404-for-anything-else.-responses">Responses</h3>
 
@@ -10445,9 +10445,9 @@ database read, blocking task, or shell file failure.
 
 <h3 id="serve-the-spa-shell-for-unmatched-paths,-verifying-album-paths-first.-parameters">Parameters</h3>
 
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| path | path | string | true     | none        |
+| Name | In   | Type   | Required | Description                                                                                             |
+| ---- | ---- | ------ | -------- | ------------------------------------------------------------------------------------------------------- |
+| path | path | string | true     | Remaining unmatched path served with the SPA shell; album/ paths are checked against the database first |
 
 <h3 id="serve-the-spa-shell-for-unmatched-paths,-verifying-album-paths-first.-responses">Responses</h3>
 

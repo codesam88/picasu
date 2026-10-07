@@ -17,9 +17,9 @@
 #[utoipa::path(
         tag = "assets",
         params(
-            ("page" = String, Query),
-            ("limit" = Option<u64>, Query),
-            ("locate" = String, Query),
+            ("page" = String, Query, description = "Page number to read"),
+            ("limit" = Option<u64>, Query, description = "Rows to return"),
+            ("locate" = String, Query, description = "Timeline position to start at"),
         ),
         responses(
             (status = 200, description = "Ok"),

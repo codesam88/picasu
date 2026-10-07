@@ -30,6 +30,10 @@ use crate::router::{AppResult, GuardResult};
 /// composed.
 #[utoipa::path(
         tag = "assets",
+        params(
+            ("asset_id" = &str, Path, description = "Asset to read the full metadata for"),
+            ("timestamp" = i64, Query, description = "Must equal the prefetch token's timestamp claim"),
+        ),
         responses(
             (status = 200, description = "Full metadata record for the asset"),
             (status = 404, description = "Unknown asset_id"),

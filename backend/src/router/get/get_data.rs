@@ -56,6 +56,11 @@ fn map_snapshot_read_error(err: SnapshotReadError) -> AppError {
 /// read.
 #[utoipa::path(
         tag = "timeline",
+        params(
+            ("timestamp" = i64, Query, description = "Snapshot to read, identified by the timestamp returned by prefetch"),
+            ("start" = usize, Query, description = "First row index of the requested range (inclusive)"),
+            ("end" = usize, Query, description = "Row index to stop at (exclusive), clamped to the snapshot length"),
+        ),
         responses(
             (status = 200, description = "Data by timestamp range", body = Vec<DataBaseTimestampReturn>),
             (status = 400, description = "Invalid input"),
@@ -201,6 +206,10 @@ pub async fn get_data(
 /// index is out of bounds.
 #[utoipa::path(
         tag = "timeline",
+        params(
+            ("index" = usize, Query, description = "Batch to lay out, addressing 20 consecutive snapshot entries"),
+            ("timestamp" = i64, Query, description = "Snapshot to read, identified by the timestamp returned by prefetch"),
+        ),
         responses(
             (status = 200, description = "Row data", body = Row),
             (status = 400, description = "Invalid input"),
@@ -239,6 +248,9 @@ pub async fn get_rows(
 /// mismatched prefetch token.
 #[utoipa::path(
         tag = "timeline",
+        params(
+            ("timestamp" = i64, Query, description = "Snapshot to read, identified by the timestamp returned by prefetch"),
+        ),
         responses(
             (status = 200, description = "Scroll bar data", body = Vec<ScrollBarData>),
             (status = 400, description = "Invalid input"),

@@ -60,6 +60,9 @@ pub fn renew_hash_token(token_request: Json<RenewHashToken>) -> AppResult<Json<S
 /// Prefetch a timeline page.
 #[utoipa::path(
         tag = "timeline",
+        params(
+            ("locate" = Option<String>, Query, description = "Timeline position to start at"),
+        ),
         request_body = serde_json::Value,
         responses(
             (status = 200, description = "Ok"),
@@ -75,6 +78,9 @@ pub fn prefetch(query_data: Option<Json<Expression>>) -> AppResult<Json<Prefetch
 /// Upload files.
 #[utoipa::path(
         tag = "upload",
+        params(
+            ("auto_rename" = Option<bool>, Query, description = "Rename an existing file instead of failing"),
+        ),
         request_body(content_type = "multipart/form-data", content = Object),
         responses(
             (status = 200, description = "Ok"),

@@ -72,6 +72,7 @@ or listed as open work.
 | B2  | Declared and handler parameter types must agree on optionality.         | enforced | Inline `params(…)` tuples only                          |
 | B3  | A declared request-body schema must match the route's parsed body type. | enforced | Named JSON/data body types                              |
 | B4  | Form routes must declare `multipart/form-data`.                         | enforced | `openapi-sanity`                                        |
+| B5  | Every parameter the route binds is described in `params(…)`.            | enforced | Inline `params(…)` tuples only                          |
 | P1  | Documented success status matches the handler's response behavior.      | enforced | Return-type and body-const analysis                     |
 | P2  | Statuses a signature guard can answer are declared.                     | enforced | `FromRequest` impls in the scanned tree                 |
 | P3  | Statuses from body `ErrorKind::` literals are declared.                 | enforced | `AppError::http_status` map from `backend/src/error.rs` |
@@ -127,22 +128,23 @@ per-response `description`, which describes one response instead of the operatio
 
 ## B — declarations against the route
 
-The route attribute and handler signature are the source of truth. B1–B4 check
+The route attribute and handler signature are the source of truth. B1–B5 check
 whether declarations added by `#[utoipa::path]` agree with those source facts.
 
-| ID  | Requirement                                                             | Reading                                                                                                    |
-| --- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| B1  | Every declared path/query parameter is bound by the route.              | Path names match `<name>` segments, query names `?<name>` bindings. Headers and cookies are out of scope.  |
-| B2  | Declared optionality matches the handler argument.                      | utoipa 5.5 has no `required` key; it derives it from the declared type. Both disagreement directions fail. |
-| B3  | A named request-body schema matches the route's `data = "…"` body type. | Compared by last path segment, as utoipa publishes component names.                                        |
-| B4  | A form body declares `multipart/form-data`.                             | A missing body or another media type is a finding. utoipa's guessing rules are not reimplemented.          |
+| ID  | Requirement                                                             | Reading                                                                                                                                                                         |
+| --- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B1  | Every declared path/query parameter is bound by the route.              | Path names match `<name>` segments, query names `?<name>` bindings. Headers and cookies are out of scope.                                                                       |
+| B2  | Declared optionality matches the handler argument.                      | utoipa 5.5 has no `required` key; it derives it from the declared type. Both disagreement directions fail.                                                                      |
+| B3  | A named request-body schema matches the route's `data = "…"` body type. | Compared by last path segment, as utoipa publishes component names.                                                                                                             |
+| B4  | A form body declares `multipart/form-data`.                             | A missing body or another media type is a finding. utoipa's guessing rules are not reimplemented.                                                                               |
+| B5  | Every path/query name the route binds resolves to a described entry.    | Iterates the route's bindings, not the declarations: a missing tuple entry or an empty `description = "…"` is a finding, anchored at the declaration or at the route attribute. |
 
-**B1/B2 parameter syntax.** The checker reads inline tuples such as
+**B1/B2/B5 parameter syntax.** The checker reads inline tuples such as
 `("name" = Type, Query, …)`. A struct-style `params(SomeQueryStruct)` entry is
 counted as _unreadable_ rather than skipped, and the tree test pins that count at
 zero, so the first `IntoParams` struct in the tree fails a test instead of
-quietly narrowing B1 and B2. `only_the_inline_parameter_form_is_read` covers the
-parser; supporting the struct form means resolving its fields and overrides.
+quietly narrowing B1, B2 and B5. `only_the_inline_parameter_form_is_read` covers
+the parser; supporting the struct form means resolving its fields and overrides.
 
 **B2 — optionality.** utoipa 5.5 rejects `required = …` in a parameter tuple: it
 derives the published value from the declared type, where `Option<T>` is optional
@@ -158,11 +160,24 @@ claim about what the route parses. A `Form<…>` payload is not schema-compared
 because its `TempFile<'r>` fields have no nameable schema; B4 covers its media
 type instead. Schema forms the parser cannot read belong to A9, not to "verified".
 
+**B5 — parameter descriptions.** `rocket_extras` derives a parameter for every
+name the route binds, so a bound parameter publishes whether or not the
+annotation mentions it, and its description reaches the document only from
+`description = "…"` in the tuple. B5 iterates the route's bindings — not the
+declarations — looks each name up among the inline tuples, and reports a binding
+whose entry is missing or whose description is empty. Anchors follow the same
+split B1 uses: the declaration's line when an entry exists without a
+description, the route attribute when no entry mentions the parameter. Headers
+and cookies stay out of scope for the reason B1 gives: a Rocket route attribute
+binds none. A description on a declaration the route does not bind changes
+nothing; that remains B1's finding.
+
 **Fixtures.** `b1_parameter_the_route_does_not_bind.rs` / `b1_conforming.rs`;
 `b2_optionality_the_argument_disagrees_with.rs`,
 `b2_qualified_optionality_agrees.rs` / `b2_conforming.rs`;
 `b3_body_the_route_does_not_parse.rs`, `b3_value_suffix_is_not_unconstrained.rs` /
-`b3_conforming.rs`; `b4_form_body_without_multipart.rs` / `b4_conforming.rs`.
+`b3_conforming.rs`; `b4_form_body_without_multipart.rs` / `b4_conforming.rs`;
+`b5_bound_parameter_is_undescribed.rs` / `b5_conforming.rs`.
 
 ## P — response statuses
 
@@ -234,14 +249,14 @@ tree:
 | Fact                                           | Pinned value |
 | ---------------------------------------------- | -----------: |
 | Annotated handlers                             |           63 |
-| Readable inline declared parameters            |            1 |
+| Readable inline declared parameters            |           24 |
 | Unreadable declared parameters                 |            0 |
 | Declared request bodies                        |           24 |
 | Declared body types matching the route binding |           21 |
 | Dynamic guard names (computed outcome status)  |            1 |
 | Resolved `FromRequest` guards                  |            8 |
 
-All A1–A7, B1–B4 and P1–P4 run over the tree with zero findings. The 21 matching
+All A1–A7, B1–B5 and P1–P4 run over the tree with zero findings. The 21 matching
 bodies are the 24 declarations less the unconstrained `Value` body and the two form
 bodies whose schema is not compared — B4 checks those two form routes' media type
 instead. The dynamic guard is `GuardShare`.
@@ -256,6 +271,13 @@ Enforcing P1–P4 surfaced 65 findings across 27 files, all fixed in the same ch
 `ErrorKind` literals, 6 missing 404, the two test probes missing 401, the two
 `Status::Accepted` album-index handlers declaring 200 instead of 202, and one
 impossible 400 removed from the infallible, bindingless `get_album_index_status`.
+
+Enforcing B5 surfaced 23 findings across 8 files, all fixed in the same change:
+every bound parameter whose tuple entry was missing or undescribed. Each of the
+18 handlers gained the `params(…)` entries for its bindings, written from the
+handler's own documentation, and the regenerated `backend/openapi.json` gained
+exactly the 21 descriptions the public document was missing (the two `internal`
+probe parameters are stripped from it) with no schema or `required` change.
 
 ## Document-level state
 
@@ -278,9 +300,14 @@ surfaced a real defect: `redirect_to_login` declared `302` while Rocket's
 `Redirect::to` answers `303`, which is why P1 derives a `Redirect` success from the
 constructor the body calls rather than assuming 302.
 
-Parameter descriptions were the next rule proposed for the document layer and are
-open work below. The check and the fix are not in the same place, which is why the
-ownership decision is still open.
+Parameter descriptions were the next rule proposed for the document layer, and
+the ownership question that held them up is settled in favour of the source
+gate: B5 flags a bound parameter whose tuple entry is missing or undescribed,
+the text lives in the annotation's `params(…)` tuple, and the document is where
+the result is read. A document-side check would be checking the output against
+its own input — the document is generated from these annotations — and Spectral
+has no stock rule for parameter descriptions. All 22 published parameters now
+carry one.
 
 ## Steps
 
@@ -290,7 +317,7 @@ ownership decision is still open.
 | 2   | P2 — pin how many signature guards resolved, so an unresolved guard fails instead of being skipped                                 | done   |
 | 3   | Pin the 21 declared body types matching the route binding, and the dynamic-guard count                                             | done   |
 | 4   | Check the facts the checker states: the tag vocabulary's mirrors, and the utoipa/Rocket assumptions against the generated artifact | done   |
-| 5   | Decide the owner of the parameter-description rule, then document the 21 undescribed published parameters                          | open   |
+| 5   | Decide the owner of the parameter-description rule, then document the 21 undescribed published parameters                          | done   |
 | 6   | Security schemes — ownership settled: declarations derive from the `authz-check` policy artifact                                   | moved  |
 | 7   | Guard rejection propagation — moved to `authz-check` component 2                                                                   | moved  |
 
@@ -333,14 +360,17 @@ vocabulary. That file already reads the public spec for parity and uniqueness, s
 this is the same mechanism. A dependency bump that changes a derivation then fails
 a named test.
 
-**5 — parameter descriptions.** The document publishes 22 parameters and describes
-one, `POST /upload :: auto_rename`; the other 21 carry a name and a schema and
-nothing else. `rocket_extras` derives the list from the route attribute and utoipa
-takes a description only from `params(…)`, so each fix is a `params(…)` entry —
-exactly one `params(` exists in the tree today. A parameter with a closed value set
-should also name those values. Decide the owner first: Spectral detects, the source
-gate pins the count, and the fix lives in the annotation. Operation `description`
-is a different field and is done — all 61 operations carry a summary and a
+**5 — parameter descriptions.** Done, with the source gate as the owner. B5
+flags every route-bound parameter whose inline tuple entry is missing or lacks
+`description = "…"` (`b5_bound_parameter_is_undescribed.rs` /
+`b5_conforming.rs`), and `DECLARATION_INVENTORY` pins the tree at 24 declared
+parameters so the reader's coverage cannot shrink quietly. The fix lives in each
+annotation: all 23 undescribed bindings — the 21 published parameters plus the
+two `internal` probe parameters — gained descriptions written from the handler's
+own documentation, and `just openapi-gen` produced a spec whose only change is
+those 21 descriptions. A parameter with a closed value set names the values
+(`POST /upload :: on_conflict`: `rename`, `skip`). Operation `description` is a
+different field and was already done — all 61 operations carry a summary and a
 description.
 
 **6 — security schemes (moved to `authz-check`).** The document registers no

@@ -9,7 +9,8 @@
 /// entry, which is the answer a caller can act on.
 #[utoipa::path(
     tag = "assets",
-    responses((status = 200, description = "Ok"))
+    responses((status = 200, description = "Ok")),
+    params(("id" = String, Path, description = "Widget to fetch")),
 )]
 #[get("/get/widget/<id>")]
 pub async fn one_line_summary() -> AppResult<Json<Widget>> {

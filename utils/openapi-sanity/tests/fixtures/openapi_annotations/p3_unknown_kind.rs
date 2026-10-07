@@ -10,6 +10,9 @@ type AppResult<T> = Result<T, AppError>;
     responses(
         (status = 200, description = "Deleted"),
         (status = 401, description = "Unauthorized"),
+    ),
+    params(
+        ("id" = String, Path, description = "Widget to delete"),
     )
 )]
 #[delete("/delete/widget/<id>")]

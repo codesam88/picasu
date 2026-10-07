@@ -6,8 +6,8 @@
 #[utoipa::path(
         tag = "assets",
         params(
-            ("timestamp" = Option<u64>, Query),
-            ("limit" = u64, Query),
+            ("timestamp" = Option<u64>, Query, description = "Snapshot to read"),
+            ("limit" = u64, Query, description = "Rows to return"),
         ),
         responses(
             (status = 200, description = "Ok"),
