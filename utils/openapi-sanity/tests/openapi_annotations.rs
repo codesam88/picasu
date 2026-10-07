@@ -1,7 +1,7 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
 //! Three sections of `.plan/openapi-annotation-checks.md` are checked here:
-//! **A**, the seven rules about the annotation's own shape; **B**, the four
+//! **A**, the seven rules about the annotation's own shape; **B**, the five
 //! rules about what the annotation declares against what the route already
 //! says; and **P**, the four rules comparing `responses(…)` with what the
 //! handler can answer — from the return type and body constants (P1), the
@@ -88,6 +88,9 @@ const PARSED_BODY: &str = include_str!("fixtures/openapi_annotations/b3_conformi
 const FORM_WITHOUT_MULTIPART: &str =
     include_str!("fixtures/openapi_annotations/b4_form_body_without_multipart.rs");
 const FORM_WITH_MULTIPART: &str = include_str!("fixtures/openapi_annotations/b4_conforming.rs");
+const UNDESCRIBED_PARAMETER: &str =
+    include_str!("fixtures/openapi_annotations/b5_bound_parameter_is_undescribed.rs");
+const DESCRIBED_PARAMETERS: &str = include_str!("fixtures/openapi_annotations/b5_conforming.rs");
 
 const STATUS_RETURN_MISSING: &str =
     include_str!("fixtures/openapi_annotations/p1_status_return_missing.rs");
@@ -622,8 +625,8 @@ fn a_form_body_naming_multipart_is_accepted() {
 
 /// The two forms `params(…)` takes, told apart the way utoipa tells them apart.
 ///
-/// This is the coverage that makes B1 and B2's scope limit a decision rather than
-/// an accident: the struct form is *counted*, not skipped, and
+/// This is the coverage that makes B1, B2 and B5's scope limit a decision rather
+/// than an accident: the struct form is *counted*, not skipped, and
 /// `the_router_tree_is_clean` pins the count at zero. The day a
 /// `#[derive(IntoParams)]` struct reaches an annotation, that pin fails and the
 /// resolver either gets built or the limit gets renegotiated — it does not fail
@@ -696,6 +699,48 @@ pub fn get_asset(asset_id: String) -> AppResult<Json<Asset>> {
     Ok(Json(Asset::default()))
 }
 "#;
+
+/// B5: `rocket_extras` publishes a parameter for every name the route binds,
+/// annotation or not, and a description reaches the document only from
+/// `description = "…"` in the tuple. An undescribed parameter ships anyway — as
+/// a name and a type with nothing to explain either.
+///
+/// Both spellings anchor differently, which is why both are in one fixture: the
+/// declaration's own line when a `params(…)` entry exists without a
+/// description, the route attribute when no entry mentions the parameter at all.
+#[test]
+fn a_bound_parameter_without_a_description_fails() {
+    let findings = check_source(
+        "b5_bound_parameter_is_undescribed.rs",
+        UNDESCRIBED_PARAMETER,
+    );
+
+    assert_eq!(
+        render(&findings),
+        "b5_bound_parameter_is_undescribed.rs:11: prefetch: the route binds the query parameter \
+         \"locate\", but the annotation's params(…) gives it no description: a bound parameter's \
+         description reaches the document only through description = \"…\"\n\
+         b5_bound_parameter_is_undescribed.rs:32: get_asset: the route binds the path parameter \
+         \"asset_id\", but the annotation's params(…) gives it no description: a bound parameter's \
+         description reaches the document only through description = \"…\"",
+        "both anchors are checked: the declaration's line when one exists, the route attribute \
+         when none does"
+    );
+}
+
+/// The conforming counterpart: descriptions in both locations, on a route whose
+/// parameter name comes from a partial segment rather than a whole one.
+#[test]
+fn every_bound_parameter_carries_a_description() {
+    let findings = check_source("b5_conforming.rs", DESCRIBED_PARAMETERS);
+
+    assert_eq!(
+        render(&findings),
+        "",
+        "a bound parameter with a non-empty description must be silent, including one bound \
+         by a `<name..>` partial segment"
+    );
+}
 
 // ── Section P — response statuses ─────────────────────────────────────────────
 //
@@ -826,7 +871,7 @@ fn p3_an_error_kind_the_map_does_not_know_fails() {
 
     assert_eq!(
         render(&findings),
-        "p3_unknown_kind.rs:18: unknown_error_kind: delete_widget raises \
+        "p3_unknown_kind.rs:21: unknown_error_kind: delete_widget raises \
          ErrorKind::Databse, which is not a variant of the ErrorKind enum in the \
          app-error map",
         "a typo'd kind is reported where it is written"
@@ -893,19 +938,19 @@ fn p4_an_undeclarable_status_on_a_bindingless_route_fails() {
 /// reporting a clean tree it never looked at. Update it with the annotation.
 const ANNOTATIONS_IN_ROUTER: usize = 63;
 
-/// The declaration inventory section B was calibrated against: one declared
-/// parameter, all of them the inline `("name" = Type, Location, …)` form, and 24
+/// The declaration inventory section B was calibrated against: 24 declared
+/// parameters, all of them the inline `("name" = Type, Location, …)` form, and 24
 /// declared request bodies.
 ///
-/// The three numbers do three different jobs. The first is a floor on what B1 and
-/// B2 read, so a walk that stopped finding `params(…)` fails instead of reporting a
-/// clean tree. The second is what keeps the scope limit honest: it is **zero**, and
-/// the first `#[derive(IntoParams)]` struct to reach an annotation makes it
-/// non-zero, which fails this test rather than narrowing B1 and B2 without a
-/// decision. The third is what keeps B3 and B4 honest: a scan that stopped reading
-/// `request_body` would find nothing to compare and report the same emptiness as a
-/// clean tree.
-const DECLARATION_INVENTORY: (usize, usize, usize) = (1, 0, 24);
+/// The three numbers do three different jobs. The first is a floor on what B1, B2
+/// and B5 read, so a walk that stopped finding `params(…)` fails instead of
+/// reporting a clean tree. The second is what keeps the scope limit honest: it is
+/// **zero**, and the first `#[derive(IntoParams)]` struct to reach an annotation
+/// makes it non-zero, which fails this test rather than narrowing B1, B2 and B5
+/// without a decision. The third is what keeps B3 and B4 honest: a scan that
+/// stopped reading `request_body` would find nothing to compare and report the
+/// same emptiness as a clean tree.
+const DECLARATION_INVENTORY: (usize, usize, usize) = (24, 0, 24);
 
 /// How many of those declared request bodies B3 actually compares against a
 /// route binding — the tree's 24 declarations less the one `request_body = Value`
@@ -995,7 +1040,7 @@ fn the_router_tree_is_clean() {
         (declared_parameters, unread_parameters, request_bodies),
         DECLARATION_INVENTORY,
         "the tree's declaration inventory moved. `unread_parameters` must stay 0 while \
-         B1 and B2 read the inline tuple form only: the first `IntoParams` struct in an \
+         B1, B2 and B5 read the inline tuple form only: the first `IntoParams` struct in an \
          annotation needs either a resolver or a renegotiated limit, and a non-zero count \
          fails here rather than narrowing the rules quietly"
     );

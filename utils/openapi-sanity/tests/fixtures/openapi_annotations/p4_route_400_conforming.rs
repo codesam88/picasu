@@ -7,6 +7,9 @@
     responses(
         (status = 200, description = "Ok"),
         (status = 400, description = "Bad limit"),
+    ),
+    params(
+        ("limit" = usize, Query, description = "Rows to count"),
     )
 )]
 #[get("/get/widget-count?<limit>")]

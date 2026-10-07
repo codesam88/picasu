@@ -5,8 +5,8 @@
 #[utoipa::path(
     tag = "assets",
     params(
-        ("declared_qualified" = std::option::Option<u64>, Query),
-        ("argument_qualified" = Option<u64>, Query),
+        ("declared_qualified" = std::option::Option<u64>, Query, description = "Declared with a qualified Option"),
+        ("argument_qualified" = Option<u64>, Query, description = "Declared with a bare Option"),
     ),
     responses((status = 200, description = "Ok"))
 )]

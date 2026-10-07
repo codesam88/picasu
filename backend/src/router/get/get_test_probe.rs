@@ -84,6 +84,9 @@ fn probe_enabled() -> bool {
 /// probe is not enabled or no record exists — 500 the record could not be read.
 #[utoipa::path(
         tag = "internal",
+        params(
+            ("asset_id" = &str, Path, description = "Asset to read the stored record and resolved path for"),
+        ),
         responses(
             (status = 200, description = "Test-only record probe with the asset's path", body = TestRecordProbe),
             (status = 400, description = "Invalid asset_id"),
@@ -160,6 +163,9 @@ pub fn probe_record(
 /// the group could not be read.
 #[utoipa::path(
         tag = "internal",
+        params(
+            ("hash" = &str, Path, description = "Content hash whose duplicate-group members are listed"),
+        ),
         responses(
             (status = 200, description = "Test-only probe: members of a DUPE_INDEX content-hash group", body = Vec<DupeGroupMember>),
             (status = 404, description = "Probe disabled"),

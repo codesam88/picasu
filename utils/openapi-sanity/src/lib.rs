@@ -1,8 +1,8 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Fifteen rules from `.plan/openapi-annotation-checks.md` are implemented here:
+//! Sixteen rules from `.plan/openapi-annotation-checks.md` are implemented here:
 //! **section A**, the seven rules about the annotation's own shape; **section
-//! B**, the four rules about what the annotation declares against what the route
+//! B**, the five rules about what the annotation declares against what the route
 //! already says; and **section P**, the four rules about response statuses —
 //! what the handler can answer versus what `responses(…)` claims. What remains
 //! open in that plan — including that no rule reads a `security(…)` or a
@@ -76,7 +76,8 @@
 //!
 //! # What section B does not cover, and why
 //!
-//! B1 and B2 read a **declared parameter's** name, location and type. utoipa
+//! B1, B2 and B5 read a **declared parameter's** name, location, type and
+//! description. utoipa
 //! accepts two spellings for a parameter in `params(…)`, and only one is read:
 //!
 //! - The **inline tuple** — `("name" = Type, Query, description = "…")` — is
@@ -242,6 +243,12 @@ pub struct DeclaredParameter {
     /// `required` key in utoipa's grammar — exactly what makes the document call
     /// the parameter optional.
     pub declared_optional: bool,
+    /// The `description = "…"` the tuple carries, if any.
+    ///
+    /// A bound parameter's description reaches the document only from here —
+    /// `rocket_extras` supplies the name, the location and the schema, but it
+    /// reads no annotation — which is what B5 checks.
+    pub description: Option<String>,
     /// The line the parameter is written on.
     pub line: usize,
 }
@@ -379,7 +386,7 @@ pub struct Annotation {
     pub params: Vec<DeclaredParameter>,
     /// How many `params(…)` entries are in a form the rules cannot read. Counted
     /// rather than skipped, so that the first one to appear fails a coverage pin
-    /// instead of quietly narrowing B1 and B2.
+    /// instead of quietly narrowing B1, B2 and B5.
     pub unread_params: usize,
     /// `request_body`, with the line it is written on, or `None` when the
     /// annotation declares none.
@@ -568,18 +575,35 @@ fn read_params(stream: &TokenStream, annotation: &mut Annotation) {
             annotation.unread_params += 1;
             continue;
         };
+        // Whatever follows the location is a feature (`description = "…"`,
+        // `example = …`, …); B5 reads the first `description` key among them.
+        let description = fields.iter().skip(2).find_map(|field| {
+            let trees = field.clone().into_iter().collect::<Vec<_>>();
+            let index = trees.iter().position(
+                |tree| matches!(tree, TokenTree::Ident(ident) if ident == "description"),
+            )?;
+            match (trees.get(index + 1), trees.get(index + 2)) {
+                (Some(TokenTree::Punct(eq)), Some(TokenTree::Literal(value)))
+                    if eq.as_char() == '=' =>
+                {
+                    Some(literal_text(value))
+                }
+                _ => None,
+            }
+        });
         annotation.params.push(DeclaredParameter {
             name: literal_text(&name),
             location,
             declared_optional: type_is_optional(&declared),
             declared_type: declared,
+            description,
             line,
         });
     }
 }
 
 /// utoipa's `ParameterIn` as the token it is written with. `None` for anything
-/// else, which puts the entry outside what B1 and B2 can read.
+/// else, which puts the entry outside what B1, B2 and B5 can read.
 fn parameter_location(token: &str) -> Option<ParameterLocation> {
     match token {
         "Path" => Some(ParameterLocation::Path),
@@ -1172,7 +1196,7 @@ pub struct HandlerSummary {
     pub tag: Option<String>,
     /// The handler arguments in signature order: `(name, is_optional)`.
     pub arguments: Vec<(String, bool)>,
-    /// How many parameters the annotation declares in the form B1 and B2 read.
+    /// How many parameters the annotation declares in the form B1, B2 and B5 read.
     pub declared_parameters: usize,
     /// How many parameters the annotation declares in a form they do not read.
     /// Pinned so that the first `IntoParams` struct in the tree fails a test
@@ -1632,7 +1656,7 @@ fn no_hand_set_prose(handler: &AnnotatedHandler) -> Vec<Finding> {
     findings
 }
 
-/// A1 to A7 of section A and B1 to B4 of section B: every rule over one handler,
+/// A1 to A7 of section A and B1 to B5 of section B: every rule over one handler,
 /// in a fixed order so a report reads the same way twice.
 fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
     [
@@ -1647,6 +1671,7 @@ fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Find
         declared_optionality_agrees(handler),
         declared_body_matches_binding(handler),
         form_body_declares_multipart(handler),
+        bound_parameters_are_described(handler),
         // Section P, in rule order: P1's finding must precede P4's when both
         // anchor the same line, which is what a success-code mismatch produces.
         success_statuses_declared(handler, derivations),
@@ -1888,6 +1913,66 @@ fn form_body_declares_multipart(handler: &AnnotatedHandler) -> Vec<Finding> {
              endpoint"
         ),
     )]
+}
+
+/// B5 — every parameter the route binds is described by the annotation.
+///
+/// `rocket_extras` publishes a parameter for every name the route attribute
+/// binds — each path segment and each `?<name>` — whether or not `params(…)`
+/// mentions it, and a bound parameter's description reaches the document only
+/// from `description = "…"` in its tuple. So a bound name the annotation does
+/// not describe ships anyway: a generated client sees a name and a schema with
+/// nothing to explain either.
+///
+/// The finding anchors at the declaration when one exists, because that line is
+/// where the description is missing, and at the route attribute when none does.
+/// Header and cookie parameters are out of scope for the reason B1 gives: no
+/// route attribute spells them, so there is nothing to compare against.
+fn bound_parameters_are_described(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let Some(route) = handler.route.as_ref() else {
+        return Vec::new();
+    };
+    let bindings = route
+        .path_segments
+        .iter()
+        .map(|name| (name, ParameterLocation::Path, "path"))
+        .chain(
+            route
+                .query
+                .iter()
+                .map(|name| (name, ParameterLocation::Query, "query")),
+        );
+    bindings
+        .filter_map(|(name, location, written)| {
+            let declared = handler
+                .annotation
+                .params
+                .iter()
+                .find(|declared| declared.name == *name && declared.location == location);
+            if declared.is_some_and(|declared| {
+                declared
+                    .description
+                    .as_deref()
+                    .is_some_and(|description| !description.trim().is_empty())
+            }) {
+                return None;
+            }
+            let line = match declared {
+                Some(declared) => declared.line,
+                None => route.path.as_ref()?.line,
+            };
+            Some(Finding::at(
+                &handler.file,
+                line,
+                &handler.name,
+                &format!(
+                    "the route binds the {written} parameter \"{name}\", but the annotation's \
+                     params(…) gives it no description: a bound parameter's description reaches \
+                     the document only through description = \"…\""
+                ),
+            ))
+        })
+        .collect()
 }
 
 // ── Section P — response statuses ─────────────────────────────────────────────

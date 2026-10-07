@@ -297,6 +297,9 @@ fn execute_prefetch_logic(
 /// the snapshot could not be stored.
 #[utoipa::path(
         tag = "timeline",
+        params(
+            ("locate" = Option<String>, Query, description = "Asset whose row index comes back as locateTo"),
+        ),
         request_body = serde_json::Value,
         responses(
             (status = 200, description = "Prefetch result", body = PrefetchReturn),

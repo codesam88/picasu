@@ -1058,6 +1058,7 @@
         "operationId": "albums_view",
         "parameters": [
           {
+            "description": "View path below /albums/view/; served the SPA shell and resolved by the client router",
             "in": "path",
             "name": "path",
             "required": true,
@@ -1243,15 +1244,17 @@
         "operationId": "get_data",
         "parameters": [
           {
+            "description": "Snapshot to read, identified by the timestamp returned by prefetch",
             "in": "query",
-            "name": "end",
+            "name": "timestamp",
             "required": true,
             "schema": {
-              "minimum": 0,
+              "format": "int64",
               "type": "integer"
             }
           },
           {
+            "description": "First row index of the requested range (inclusive)",
             "in": "query",
             "name": "start",
             "required": true,
@@ -1261,11 +1264,12 @@
             }
           },
           {
+            "description": "Row index to stop at (exclusive), clamped to the snapshot length",
             "in": "query",
-            "name": "timestamp",
+            "name": "end",
             "required": true,
             "schema": {
-              "format": "int64",
+              "minimum": 0,
               "type": "integer"
             }
           }
@@ -1330,6 +1334,7 @@
         "operationId": "get_rows",
         "parameters": [
           {
+            "description": "Batch to lay out, addressing 20 consecutive snapshot entries",
             "in": "query",
             "name": "index",
             "required": true,
@@ -1339,6 +1344,7 @@
             }
           },
           {
+            "description": "Snapshot to read, identified by the timestamp returned by prefetch",
             "in": "query",
             "name": "timestamp",
             "required": true,
@@ -1381,6 +1387,7 @@
         "operationId": "get_scroll_bar",
         "parameters": [
           {
+            "description": "Snapshot to read, identified by the timestamp returned by prefetch",
             "in": "query",
             "name": "timestamp",
             "required": true,
@@ -1479,6 +1486,7 @@
         "operationId": "get_metadata",
         "parameters": [
           {
+            "description": "Asset to read the full metadata for",
             "in": "path",
             "name": "asset_id",
             "required": true,
@@ -1487,6 +1495,7 @@
             }
           },
           {
+            "description": "Must equal the prefetch token's timestamp claim",
             "in": "query",
             "name": "timestamp",
             "required": true,
@@ -1525,6 +1534,7 @@
         "operationId": "get_fs_completion",
         "parameters": [
           {
+            "description": "Directory path prefix to complete; absent or blank lists the roots and working directory",
             "in": "query",
             "name": "path",
             "required": false,
@@ -1569,6 +1579,7 @@
         "operationId": "prefetch",
         "parameters": [
           {
+            "description": "Asset whose row index comes back as locateTo",
             "in": "query",
             "name": "locate",
             "required": false,
@@ -1648,6 +1659,7 @@
         "operationId": "compressed_file",
         "parameters": [
           {
+            "description": "Path of the file below DATA_HOME/object/compressed; the extension must be .jpg or .mp4",
             "in": "path",
             "name": "file_path",
             "required": true,
@@ -1682,6 +1694,7 @@
         "operationId": "imported_file",
         "parameters": [
           {
+            "description": "Path of the original below imagePath; the last segment is <id>.<ext>",
             "in": "path",
             "name": "file_path",
             "required": true,
@@ -2669,6 +2682,7 @@
         "operationId": "share",
         "parameters": [
           {
+            "description": "Share path below /share/; the client router splits the album and share id from it",
             "in": "path",
             "name": "path",
             "required": true,
@@ -2724,6 +2738,7 @@
         "operationId": "timeline_view",
         "parameters": [
           {
+            "description": "View path below /timeline/view/; served the SPA shell and resolved by the client router",
             "in": "path",
             "name": "path",
             "required": true,
@@ -2764,6 +2779,7 @@
         "operationId": "trashed_view",
         "parameters": [
           {
+            "description": "View path below /trashed/view/; served the SPA shell and resolved by the client router",
             "in": "path",
             "name": "path",
             "required": true,
@@ -2804,15 +2820,16 @@
         "operationId": "upload",
         "parameters": [
           {
-            "description": "When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error.",
+            "description": "Target album id (at most 64 bytes); without it files land in the configured upload folder",
             "in": "query",
-            "name": "auto_rename",
+            "name": "presigned_album_id_opt",
             "required": false,
             "schema": {
-              "type": "boolean"
+              "type": "string"
             }
           },
           {
+            "description": "Conflict policy for an existing target file: rename (default; suffixes -001, -002, …) or skip; any other value is a 400",
             "in": "query",
             "name": "on_conflict",
             "required": false,
@@ -2821,11 +2838,12 @@
             }
           },
           {
+            "description": "When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error.",
             "in": "query",
-            "name": "presigned_album_id_opt",
+            "name": "auto_rename",
             "required": false,
             "schema": {
-              "type": "string"
+              "type": "boolean"
             }
           }
         ],
@@ -2883,6 +2901,7 @@
         "operationId": "videos_view",
         "parameters": [
           {
+            "description": "View path below /videos/view/; served the SPA shell and resolved by the client router",
             "in": "path",
             "name": "path",
             "required": true,
@@ -2908,6 +2927,7 @@
         "operationId": "album_page",
         "parameters": [
           {
+            "description": "One-segment path served only when it starts with album-",
             "in": "path",
             "name": "dynamic_album_id",
             "required": true,
@@ -2936,6 +2956,7 @@
         "operationId": "spa_fallback",
         "parameters": [
           {
+            "description": "Remaining unmatched path served with the SPA shell; album/ paths are checked against the database first",
             "in": "path",
             "name": "path",
             "required": true,

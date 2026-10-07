@@ -5,7 +5,7 @@ annotations and compares declared parameters and request bodies with the Rocket
 route and handler signature beside them. It scans Rust source; it does not
 validate generated OpenAPI documents or runtime behavior.
 
-The checker implements **A1–A7, B1–B4 and P1–P4** from
+The checker implements **A1–A7, B1–B5 and P1–P4** from
 [`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md),
 which is the implementation record: it holds the per-rule rationale, the grammar
 each rule can read and the limits it states. This file is the user-facing companion
@@ -154,6 +154,25 @@ spellings for declaring the media type are accepted.
 `a_form_body_naming_multipart_is_accepted` (`b4_conforming.rs`) covers both
 accepted spellings and a JSON route.
 
+### B5 — Describe every parameter the route binds
+
+`rocket_extras` publishes a parameter for every name the route binds, annotation
+or not, so a parameter ships in the document even when the annotation says
+nothing about it — and a parameter's description reaches the document only from
+`description = "…"` in the annotation's `params(…)` tuple. Every path or query
+name the route binds must therefore resolve to a tuple entry carrying a
+non-empty description. A tuple entry without a description is a finding
+anchored at the declaration; a binding no entry mentions is a finding anchored
+at the route attribute.
+
+**Tests:** `a_bound_parameter_without_a_description_fails`
+(`b5_bound_parameter_is_undescribed.rs`) covers both anchors in one fixture.
+`every_bound_parameter_carries_a_description` (`b5_conforming.rs`) covers
+described bindings, including one bound by a `<name..>` partial segment. The run
+over `backend/src/router` must stay silent, and `DECLARATION_INVENTORY` pins
+that tree's 24 declared parameters so a `params(…)` reader that stops finding
+entries fails a test instead of reporting a clean tree.
+
 ### P1 — The declared success statuses are the handler's
 
 The success comes from the return type: a fallible return (a `Result` or one of
@@ -295,7 +314,7 @@ with `include_str!`. Every implemented rule has a failing case; checks with a
 valid counterpart also test that conforming source is accepted. The app-error
 map for the fixture tests is `tests/fixtures/app_error_map.rs`, shaped like
 `backend/src/error.rs`. The `the_router_tree_is_clean` test runs all checks
-over `backend/src/router`, pins 63 handlers, the B1/B2/B3 inventory, the
+over `backend/src/router`, pins 63 handlers, the B1–B5 inventory, the
 compared-body count, and the dynamic- and resolved-guard sets, and requires
 zero findings.
 

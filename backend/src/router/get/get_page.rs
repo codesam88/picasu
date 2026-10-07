@@ -184,6 +184,9 @@ pub async fn timeline() -> AppResult<FrontendResponse> {
 /// one the client router cannot resolve into an asset id.
 #[utoipa::path(
         tag = "pages",
+        params(
+            ("path" = PathBuf, Path, description = "View path below /timeline/view/; served the SPA shell and resolved by the client router"),
+        ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
@@ -226,6 +229,9 @@ pub async fn albums() -> AppResult<FrontendResponse> {
 /// one the client router cannot resolve into an asset id.
 #[utoipa::path(
         tag = "pages",
+        params(
+            ("path" = PathBuf, Path, description = "View path below /albums/view/; served the SPA shell and resolved by the client router"),
+        ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
@@ -252,6 +258,9 @@ pub async fn albums_view(path: PathBuf) -> AppResult<FrontendResponse> {
 /// Errors: 404 captured segment does not start with `album-`.
 #[utoipa::path(
         tag = "pages",
+        params(
+            ("dynamic_album_id" = String, Path, description = "One-segment path served only when it starts with album-"),
+        ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
             (status = 404, description = "Not found"),
@@ -278,6 +287,9 @@ pub async fn album_page(dynamic_album_id: String) -> AppResult<FrontendResponse>
 /// client router cannot split into an album and share id.
 #[utoipa::path(
         tag = "pages",
+        params(
+            ("path" = PathBuf, Path, description = "Share path below /share/; the client router splits the album and share id from it"),
+        ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
@@ -316,6 +328,9 @@ pub async fn trashed() -> AppResult<FrontendResponse> {
 /// the client router cannot resolve into an asset id.
 #[utoipa::path(
         tag = "pages",
+        params(
+            ("path" = PathBuf, Path, description = "View path below /trashed/view/; served the SPA shell and resolved by the client router"),
+        ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
@@ -355,6 +370,9 @@ pub async fn videos() -> AppResult<FrontendResponse> {
 /// the client router cannot resolve into an asset id.
 #[utoipa::path(
         tag = "pages",
+        params(
+            ("path" = PathBuf, Path, description = "View path below /videos/view/; served the SPA shell and resolved by the client router"),
+        ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
         )
@@ -506,6 +524,9 @@ pub async fn service_worker() -> AppResult<FrontendResponse> {
 
 #[utoipa::path(
         tag = "pages",
+        params(
+            ("path" = PathBuf, Path, description = "Remaining unmatched path served with the SPA shell; album/ paths are checked against the database first"),
+        ),
         responses(
             (status = 200, description = "SPA fallback — serves index.html for Vue Router routes"),
             (status = 500, description = "Internal error"),
