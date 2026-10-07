@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: backend
@@ -59,25 +59,25 @@ or listed as open work.
 
 ## Rule index
 
-| ID  | Requirement                                                             | Status   | Scope                                                   |
-| --- | ----------------------------------------------------------------------- | -------- | ------------------------------------------------------- |
-| A1  | Do not restate the route path or bare HTTP verb in the annotation.      | enforced | `openapi-sanity`                                        |
-| A2  | Declare at least one response.                                          | enforced | `openapi-sanity`                                        |
-| A3  | Declare exactly one tag from the `tags.json` vocabulary.                | enforced | `openapi-sanity`                                        |
-| A4  | Add a doc comment to each annotated handler.                            | enforced | `openapi-sanity`                                        |
-| A5  | Give the doc comment a non-empty, one-line first paragraph.             | enforced | `openapi-sanity`                                        |
-| A6  | Do not set `operation_id` manually.                                     | enforced | `openapi-sanity`                                        |
-| A7  | Do not set operation-level `summary` or `description` manually.         | enforced | `openapi-sanity`                                        |
-| B1  | Each declared path/query parameter name must be bound by the route.     | enforced | Inline `params(…)` tuples only                          |
-| B2  | Declared and handler parameter types must agree on optionality.         | enforced | Inline `params(…)` tuples only                          |
-| B3  | A declared request-body schema must match the route's parsed body type. | enforced | Named JSON/data body types                              |
-| B4  | Form routes must declare `multipart/form-data`.                         | enforced | `openapi-sanity`                                        |
-| B5  | Every parameter the route binds is described in `params(…)`.            | enforced | Inline `params(…)` tuples only                          |
-| P1  | Documented success status matches the handler's response behavior.      | enforced | Return-type and body-const analysis                     |
-| P2  | Statuses a signature guard can answer are declared.                     | enforced | `FromRequest` impls in the scanned tree                 |
-| P3  | Statuses from body `ErrorKind::` literals are declared.                 | enforced | `AppError::http_status` map from `backend/src/error.rs` |
-| P4  | Every declared status is one the handler can answer.                    | enforced | Universe check, over-approximating                      |
-| A9  | Analyze legal utoipa spellings or fail closed on unsupported syntax.    | open     | Annotation grammar coverage                             |
+| ID  | Requirement                                                               | Status   | Scope                                                   |
+| --- | ------------------------------------------------------------------------- | -------- | ------------------------------------------------------- |
+| A1  | Do not restate the route path or bare HTTP verb in the annotation.        | enforced | `openapi-sanity`                                        |
+| A2  | Declare at least one response.                                            | enforced | `openapi-sanity`                                        |
+| A3  | Declare exactly one tag from the `tags.json` vocabulary.                  | enforced | `openapi-sanity`                                        |
+| A4  | Add a doc comment to each annotated handler.                              | enforced | `openapi-sanity`                                        |
+| A5  | Give the doc comment a non-empty, one-line first paragraph.               | enforced | `openapi-sanity`                                        |
+| A6  | Do not set `operation_id` manually.                                       | enforced | `openapi-sanity`                                        |
+| A7  | Do not set operation-level `summary` or `description` manually.           | enforced | `openapi-sanity`                                        |
+| B1  | Each declared path/query parameter name must be bound by the route.       | enforced | Inline `params(…)` tuples only                          |
+| B2  | Declared and handler parameter types must agree on optionality.           | enforced | Inline `params(…)` tuples only                          |
+| B3  | A declared request-body schema must match the route's parsed body type.   | enforced | Named JSON/data body types                              |
+| B4  | Form routes must declare `multipart/form-data`.                           | enforced | `openapi-sanity`                                        |
+| B5  | Every parameter the route binds is described in `params(…)`.              | enforced | Inline `params(…)` tuples only                          |
+| P1  | Documented success status matches the handler's response behavior.        | enforced | Return-type and body-const analysis                     |
+| P2  | Statuses a signature guard can answer are declared.                       | enforced | `FromRequest` impls in the scanned tree                 |
+| P3  | Statuses from body `ErrorKind::` literals are declared.                   | enforced | `AppError::http_status` map from `backend/src/error.rs` |
+| P4  | Every declared status is one the handler can answer.                      | enforced | Universe check, over-approximating                      |
+| A9  | Fail closed on every top-level annotation form the parser does not model. | enforced | `openapi-sanity`                                        |
 
 ## A — annotation shape
 
@@ -85,15 +85,16 @@ These rules reject annotation properties that cannot appear elsewhere in the
 generated document as inconsistencies, because the document is generated from
 the annotation itself. Nothing downstream re-derives them from the route.
 
-| ID  | Requirement                                                | Reading                                                                    |
-| --- | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
-| A1  | No `path = "…"` and no bare verb.                          | `rocket_extras` derives both from the route attribute.                     |
-| A2  | `responses(…)` is present and non-empty.                   | Missing and empty are distinct findings.                                   |
-| A3  | Exactly one tag from `tags.json`.                          | No route-based exemptions; `internal` marks unpublished operations.        |
-| A4  | A doc comment is present.                                  | `summary` and `description` are derived from it.                           |
-| A5  | The first doc-comment paragraph contains text on one line. | Later paragraphs may wrap.                                                 |
-| A6  | No operation-level `operation_id`.                         | utoipa derives it from the function name.                                  |
-| A7  | No operation-level `summary` or `description`.             | Per-response `description` is allowed and is not derived from the handler. |
+| ID  | Requirement                                                | Reading                                                                     |
+| --- | ---------------------------------------------------------- | --------------------------------------------------------------------------- |
+| A1  | No `path = "…"` and no bare verb.                          | `rocket_extras` derives both from the route attribute.                      |
+| A2  | `responses(…)` is present and non-empty.                   | Missing and empty are distinct findings.                                    |
+| A3  | Exactly one tag from `tags.json`.                          | No route-based exemptions; `internal` marks unpublished operations.         |
+| A4  | A doc comment is present.                                  | `summary` and `description` are derived from it.                            |
+| A5  | The first doc-comment paragraph contains text on one line. | Later paragraphs may wrap.                                                  |
+| A6  | No operation-level `operation_id`.                         | utoipa derives it from the function name.                                   |
+| A7  | No operation-level `summary` or `description`.             | Per-response `description` is allowed and is not derived from the handler.  |
+| A9  | No unmodeled top-level annotation form.                    | An argument no rule reads becomes an `unsupported_annotation_form` finding. |
 
 **A1 — route facts.** The route attribute supplies the path and HTTP verb; the
 annotation must not repeat either as `path = "…"` or as a bare method token. Each
@@ -118,13 +119,29 @@ operation-level `summary` and `description` come from the doc comment. Manual
 overrides duplicate those facts without a comparison point. A7 does not reject a
 per-response `description`, which describes one response instead of the operation.
 
+**A9 — grammar residue.** The annotation grammar belongs to utoipa. The parser
+records every top-level argument it does not model — `method(GET)` (the
+parenthesised verb form of A1), `tags([…])` (the list form of A3),
+`context_path` (a base-path form of A1), a `security(…)` group, or any other
+`name = value` or `name(…)` spelling with no rule behind it — and the rule
+reports each at its own line, so no enforced rule can be walked past by a
+spelling no rule reads. A `request_body = …` value whose schema cannot be read
+(`Option<…>`, `inline(…)`, a list type) is reported here instead of sitting in a
+clean report as verified by nothing. Bare tokens are out of scope: utoipa
+rejects an identifier outside its own list at compile time. The
+`request_body(content_type = …, content = …)` group form is read by B4 and stays
+silent; a form payload has no nameable schema, which B3 states as a limit rather
+than a verification.
+
 **Fixtures.** `a1_restated_route.rs` / `a1_conforming.rs`;
 `a2_missing_responses.rs` / `a2_conforming.rs`;
 `a3_tag_outside_the_vocabulary.rs` / `a3_conforming.rs`;
 `a4_missing_doc_comment.rs` / `a4_conforming.rs`;
 `a5_empty_summary.rs`, `a5_multi_line_summary.rs` / `a5_conforming.rs`;
 `a6_hand_set_operation_id.rs` / `a6_conforming.rs`;
-`a7_hand_set_prose.rs` / `a7_conforming.rs`.
+`a7_hand_set_prose.rs` / `a7_conforming.rs`; `a9_unsupported_annotation_form.rs`
+(no conforming counterpart: no new spelling was added to support, so the failing
+fixture is the section's A9 fixture).
 
 ## B — declarations against the route
 
@@ -256,7 +273,7 @@ tree:
 | Dynamic guard names (computed outcome status)  |            1 |
 | Resolved `FromRequest` guards                  |            8 |
 
-All A1–A7, B1–B5 and P1–P4 run over the tree with zero findings. The 21 matching
+All A1–A7, A9, B1–B5 and P1–P4 run over the tree with zero findings. The 21 matching
 bodies are the 24 declarations less the unconstrained `Value` body and the two form
 bodies whose schema is not compared — B4 checks those two form routes' media type
 instead. The dynamic guard is `GuardShare`.
@@ -278,6 +295,12 @@ every bound parameter whose tuple entry was missing or undescribed. Each of the
 handler's own documentation, and the regenerated `backend/openapi.json` gained
 exactly the 21 descriptions the public document was missing (the two `internal`
 probe parameters are stripped from it) with no schema or `required` change.
+
+Enforcing A9 required no backend change: no annotation in the tree uses an
+unmodeled form, and the calibration rows above held exactly — 63 handlers, zero
+findings. The fixture-tree pins moved with it: `b3_conforming.rs` no longer
+carries an `Option<…>` body (that spelling is A9's finding now), and the cli
+tree gained the two `a9_unsupported_annotation_form.rs` handlers.
 
 ## Document-level state
 
@@ -313,7 +336,7 @@ carry one.
 
 | #   | Step                                                                                                                               | Status |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| 1   | A9 — fail closed on every annotation form the parser does not model                                                                | open   |
+| 1   | A9 — fail closed on every annotation form the parser does not model                                                                | done   |
 | 2   | P2 — pin how many signature guards resolved, so an unresolved guard fails instead of being skipped                                 | done   |
 | 3   | Pin the 21 declared body types matching the route binding, and the dynamic-guard count                                             | done   |
 | 4   | Check the facts the checker states: the tag vocabulary's mirrors, and the utoipa/Rocket assumptions against the generated artifact | done   |
@@ -321,13 +344,20 @@ carry one.
 | 6   | Security schemes — ownership settled: declarations derive from the `authz-check` policy artifact                                   | moved  |
 | 7   | Guard rejection propagation — moved to `authz-check` component 2                                                                   | moved  |
 
-**1 — A9 grammar coverage.** `method(GET)`, `tags([…])` and `context_path` are legal
-utoipa spellings the parser skips, so they pass A1 and A3 silently. That is the one
-place an enforced rule can be walked past. Fail closed instead: any top-level
-annotation argument the parser does not model becomes an
-`unsupported_annotation_form` finding at its own line, alongside a failing fixture
-and a conforming counterpart for each newly supported spelling. Request-body forms
-the parser cannot read route here too, rather than being treated as verified by B3.
+**1 — A9 grammar coverage.** Done. The parser records every top-level argument it
+does not model — `method(GET)`, `tags([…])`, `context_path`, a `security(…)`
+group, and any other `name = value` or `name(…)` spelling without a rule behind
+it — and `unsupported_annotation_form` reports each at its own line, so no
+enforced rule can be walked past by a spelling no rule reads. A `request_body =
+…` value whose schema cannot be read (`Option<…>`, `inline(…)`, a list type) is
+reported here rather than passing as verified by B3. Bare tokens are
+utoipa-rejected at compile time and are out of scope. No new spelling was added
+to support, so the failing fixture `a9_unsupported_annotation_form.rs` is the
+section's A9 fixture; the `request_body(…)` group form is read by B4 and stays
+silent, and `b3_conforming.rs` no longer carries an `Option<…>` body. No backend
+annotation uses an unmodeled form: the calibration tree is unchanged at 63
+handlers with zero findings, and the fixture-tree pins moved to 66 annotated
+handlers (floor 67).
 
 **2 — P2 guard coverage.** `guard_codes.get(ident)` returning `None` skips the guard
 in both P2 and P4 (`lib.rs:2297`, `lib.rs:2408`), and nothing counts the skips. The
