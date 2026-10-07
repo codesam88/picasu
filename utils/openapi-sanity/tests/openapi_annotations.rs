@@ -37,7 +37,7 @@
 use std::path::{Path, PathBuf};
 
 use openapi_sanity::{
-    Finding, TAGS, findings_in_source, handlers_in_file, render, scan_source_root,
+    Finding, findings_in_source, handlers_in_file, render, scan_source_root, vocabulary,
 };
 
 /// Every rule over one source file, for the fixtures below.
@@ -190,7 +190,7 @@ fn one_declared_response_is_enough() {
 }
 
 /// A3: the tag is what the generated reference groups by, and the vocabulary is
-/// the closed list in `docs/openapi-generator.md` ("Tag conventions").
+/// the closed list in `tags.json`.
 ///
 /// All three failure shapes are in one fixture: no tag, a tag outside the
 /// vocabulary, and two tags of which both are inside it.
@@ -202,12 +202,11 @@ fn a_tag_outside_the_vocabulary_fails() {
         render(&findings),
         "a3_tag_outside_the_vocabulary.rs:8: no_tag: the annotation declares no tag, so \
          the operation is filed nowhere in the generated reference; take one from the \
-         vocabulary in docs/openapi-generator.md \"Tag conventions\"\n\
+         vocabulary in utils/openapi-sanity/tags.json\n\
          a3_tag_outside_the_vocabulary.rs:14: unknown_tag: the annotation declares the tag \
-         \"data\", which is not one of the 10 in docs/openapi-generator.md \"Tag \
-         conventions\" (albums, assets, auth, config, index, internal, pages, serving, \
-         timeline, upload); a tag outside the vocabulary files the operation outside every \
-         section of the reference\n\
+         \"data\", which is not one of the 10 in utils/openapi-sanity/tags.json (auth, \
+         albums, assets, config, index, serving, timeline, upload, pages, internal); a tag \
+         outside the vocabulary files the operation outside every section of the reference\n\
          a3_tag_outside_the_vocabulary.rs:24: two_tags: the annotation declares 2 tags \
          (\"assets\", \"timeline\"), but the house rule is exactly one tag per operation, \
          so the reference would file it under all of them",
@@ -218,11 +217,11 @@ fn a_tag_outside_the_vocabulary_fails() {
 /// Every tag of the vocabulary is accepted, so A3 is a closed list and not a
 /// preference for the tags that happen to be in use.
 ///
-/// The fixture cannot carry all nine without becoming a wall of text, so the
-/// second half of this test builds its source from [`TAGS`] itself: a tag added
-/// to the vocabulary is then accepted by construction, and a tag *removed* from
-/// it fails, which is the direction that matters. Without it, a tenth tag could
-/// be added to the constant and stay unchecked by the suite.
+/// The fixture cannot carry all ten without becoming a wall of text, so the
+/// second half of this test builds its source from [`vocabulary`] itself: a tag
+/// added to the vocabulary is then accepted by construction, and a tag *removed*
+/// from it fails, which is the direction that matters. Without it, an eleventh
+/// tag could be added to `tags.json` and stay unchecked by the suite.
 #[test]
 fn every_tag_of_the_vocabulary_is_accepted() {
     let fixture = check_source("a3_conforming.rs", VOCABULARY_TAGS);
@@ -232,10 +231,11 @@ fn every_tag_of_the_vocabulary_is_accepted() {
         "one tag of the vocabulary is enough, and `auth` is one of them"
     );
 
-    let source = TAGS
+    let source = vocabulary()
         .iter()
         .enumerate()
         .map(|(index, tag)| {
+            let tag = tag.name.as_str();
             format!(
                 "/// Widget page {index}.\n#[utoipa::path(\n    tag = \"{tag}\",\n    \
                  responses((status = 200, description = \"Ok\"))\n)]\n\
@@ -251,6 +251,60 @@ fn every_tag_of_the_vocabulary_is_accepted() {
         "",
         "every tag in the vocabulary must be accepted:\n{}",
         render(&findings)
+    );
+}
+
+/// The tag vocabulary has one source — `tags.json` — and the "Tag conventions"
+/// table in the guide is its mirror: this test reads the table back and holds it
+/// to the source, name and subject both, so neither can drift alone. The Example
+/// column is illustrative and unchecked.
+///
+/// The table is compared in order: it is the reading order of the section, and
+/// `tags.json` is written in the same order.
+#[test]
+fn the_docs_tag_table_mirrors_the_vocabulary() {
+    let docs = include_str!("../../../docs/openapi-generator.md");
+    let section = docs
+        .split_once("## Tag conventions")
+        .expect("the generator guide still has a Tag conventions section")
+        .1
+        .split("\n## ")
+        .next()
+        .expect("a split always yields its first part");
+
+    let table: Vec<(&str, &str)> = section
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim().strip_prefix('|')?;
+            let mut cells = rest.split('|');
+            let name = cells.next()?.trim();
+            let subject = cells.next()?.trim();
+            Some((name.strip_prefix('`')?.strip_suffix('`')?, subject))
+        })
+        .collect();
+
+    let names: Vec<&str> = vocabulary()
+        .iter()
+        .map(|entry| entry.name.as_str())
+        .collect();
+    let subjects: Vec<&str> = vocabulary()
+        .iter()
+        .map(|entry| entry.description.as_str())
+        .collect();
+
+    assert_eq!(
+        table.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
+        names,
+        "the table and tags.json must name the same tags in the same order"
+    );
+    assert_eq!(
+        table
+            .iter()
+            .map(|(_, subject)| *subject)
+            .collect::<Vec<_>>(),
+        subjects,
+        "each Subject cell must be the tags.json description — tags.json is the source \
+         of the vocabulary and this table its checked mirror"
     );
 }
 
@@ -853,6 +907,16 @@ const ANNOTATIONS_IN_ROUTER: usize = 63;
 /// clean tree.
 const DECLARATION_INVENTORY: (usize, usize, usize) = (1, 0, 24);
 
+/// How many of those declared request bodies B3 actually compares against a
+/// route binding — the tree's 24 declarations less the one `request_body = Value`
+/// (unconstrained, not comparable) and the two form bodies (no nameable schema).
+///
+/// Without this row B3's comparisons could shrink to nothing — every declaration
+/// unreadable, or every binding non-`Json` — and the tree would still report
+/// clean. Under a clean tree a comparison is also a match, so 21 compares both
+/// that B3 ran and that its results held.
+const BODIES_COMPARED: usize = 21;
+
 /// The backend's router tree, resolved from this crate's manifest directory
 /// rather than from the working directory a test happens to run in.
 fn router_tree() -> PathBuf {
@@ -868,6 +932,21 @@ fn app_error_map() -> PathBuf {
 /// `Status` constant, pinned so a new one fails here instead of silently
 /// requiring nothing.
 const DYNAMIC_GUARDS: [&str; 1] = ["GuardShare"];
+
+/// Every guard the scan resolves — each `impl FromRequest for G` under the
+/// source root — in the scan's sorted order, pinned so a guard whose impl moves
+/// out of the tree fails here instead of silently dropping out of P2 and P4
+/// (which both look the guard up by name and skip what they do not find).
+const RESOLVED_GUARDS: [&str; 8] = [
+    "GuardAuth",
+    "GuardHash",
+    "GuardHashOriginal",
+    "GuardReadOnlyMode",
+    "GuardShare",
+    "GuardTimestamp",
+    "GuardUpload",
+    "TimestampGuardModified",
+];
 
 /// Every rule over the real router tree, which has to be silent.
 ///
@@ -901,6 +980,11 @@ fn the_router_tree_is_clean() {
         .iter()
         .map(|handler| handler.request_bodies)
         .sum();
+    let bodies_compared: usize = report
+        .handlers
+        .iter()
+        .map(|handler| handler.bodies_compared)
+        .sum();
 
     assert_eq!(
         report.handlers.len(),
@@ -916,10 +1000,22 @@ fn the_router_tree_is_clean() {
          fails here rather than narrowing the rules quietly"
     );
     assert_eq!(
+        bodies_compared, BODIES_COMPARED,
+        "B3's comparison count moved. The declaration inventory can hold while every \
+         comparison quietly stops happening — unreadable declarations or non-`Json` \
+         bindings — so the count of comparisons actually performed is pinned separately"
+    );
+    assert_eq!(
         report.dynamic_guards, DYNAMIC_GUARDS,
         "the dynamic-guard set moved. A guard whose outcome status is computed requires \
          nothing from P2, so each new one needs an explicit decision here rather than a \
          quiet narrowing"
+    );
+    assert_eq!(
+        report.resolved_guards, RESOLVED_GUARDS,
+        "the resolved-guard set moved. P2 and P4 look guards up by name and skip what \
+         they do not find, so a `FromRequest` impl leaving the tree must fail here \
+         rather than quietly narrowing both rules"
     );
     assert_eq!(
         render(&report.findings),
