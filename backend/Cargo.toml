@@ -66,6 +66,7 @@ infer = "0.22.0"
 tempfile = "3"
 serde_yaml = "0.9"
 snapfab = { version = "0.1", path = "../utils/snapfab" }
+openapi-sanity = { version = "0.1", path = "../utils/openapi-sanity" }
 
 [features]
 embed-frontend = []

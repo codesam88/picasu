@@ -19,10 +19,19 @@
 //! Anything intentionally outside the documented contract is listed in
 //! [`is_outside_contract`] with a reason, so adding an undocumented route is a
 //! deliberate, reviewable act rather than an omission.
+//!
+//! The document is also checked against the source it was generated from — the
+//! handler behind each operation, the signature behind a parameter's `required`,
+//! the status behind a redirect, the vocabulary behind the global tags.
+//! Generation copies those facts across without comparing them, so a copy that
+//! drifted would fail neither route-set check above nor `openapi-sanity`, which
+//! checks annotations and not the document.
 
 use std::collections::{HashMap, HashSet};
-use std::sync::MutexGuard;
+use std::path::Path;
+use std::sync::{MutexGuard, OnceLock};
 
+use openapi_sanity::{HandlerSummary, TreeReport, scan_source_root, vocabulary};
 use rocket::http::Method;
 
 use crate::openapi_public::{is_test_only_path, public_json};
@@ -441,5 +450,185 @@ fn unauthorized_response_is_referenced_not_inlined() {
         "operations must reference the shared Unauthorized component instead of \
          inlining a duplicate response literal:\n{}",
         violations.join("\n")
+    );
+}
+
+// ── Document ↔ source facts ───────────────────────────────────────────────────
+//
+// The document is generated from the annotations, and generation copies facts
+// across without comparing them: the handler behind an operation, the
+// optionality behind a parameter's `required`, the status behind a redirect,
+// the vocabulary behind the global tags. `openapi-sanity` checks the
+// annotations; the tests below check the document's copies against the source.
+
+/// The annotated handler behind a public operation: `(handler, operation)`.
+type Sourced<'a> = (&'a HandlerSummary, &'a serde_json::Value);
+
+/// The shipped router tree, scanned once for the tests below.
+///
+/// The scan reads source files only, so — unlike `public_json` — it needs no
+/// [`lock_state`], and a `OnceLock` keeps the parse cost at one run.
+fn annotated_tree() -> &'static TreeReport {
+    static REPORT: OnceLock<TreeReport> = OnceLock::new();
+    REPORT.get_or_init(|| {
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+        scan_source_root(&manifest.join("src/router"), &manifest.join("src/error.rs"))
+            .unwrap_or_else(|error| {
+                panic!(
+                    "the shipped router tree must scan: {}: {}",
+                    error.file, error.message
+                )
+            })
+    })
+}
+
+/// Every public operation paired with the annotated handler behind it.
+///
+/// `#[utoipauto]` collects the annotations under `src/router` and
+/// `openapi_public` drops what it excludes, so each remaining operation comes
+/// from exactly one handler: a lookup that finds none or several is a broken
+/// pairing, and the tests below must not skip over it.
+fn source_pairs(spec: &serde_json::Value) -> Vec<Sourced<'_>> {
+    let mut pairs = Vec::new();
+    for (path, item) in spec["paths"].as_object().expect("spec paths object") {
+        for (method, operation) in item.as_object().expect("path item object") {
+            let matches: Vec<&HandlerSummary> = annotated_tree()
+                .handlers
+                .iter()
+                .filter(|handler| {
+                    handler.verb.as_deref() == Some(method.as_str())
+                        && handler
+                            .path
+                            .as_ref()
+                            .is_some_and(|route_path| to_spec_path(route_path) == *path)
+                })
+                .collect();
+            let [handler] = matches.as_slice() else {
+                panic!(
+                    "{method} {path}: expected one annotated handler, found {}: {}",
+                    matches.len(),
+                    matches
+                        .iter()
+                        .map(|handler| handler.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            };
+            pairs.push((*handler, operation));
+        }
+    }
+    pairs
+}
+
+/// utoipa derives `operationId` from the handler it generates the operation
+/// from, and generated clients name their methods after it. Nothing else in the
+/// pipeline re-checks the derivation, so a rename that missed one side would
+/// silently rename one client method.
+#[test]
+fn every_operation_id_is_the_handler_name() {
+    let spec = public_spec();
+    for (handler, operation) in source_pairs(&spec) {
+        assert_eq!(
+            operation["operationId"].as_str(),
+            Some(handler.name.as_str()),
+            "operationId must be the handler name for {} {}",
+            handler.verb.as_deref().unwrap_or("?"),
+            handler.path.as_deref().unwrap_or("?"),
+        );
+    }
+}
+
+/// A parameter's `required` is what clients validate against, and utoipa derives
+/// it from the handler argument the `rocket_extras` feature reads — the route
+/// wins, exactly as it does at runtime. The source gate checks declared
+/// parameters against the signature; this checks what the document published,
+/// derived parameters included.
+#[test]
+fn published_parameters_agree_with_the_signature() {
+    let spec = public_spec();
+    for (handler, operation) in source_pairs(&spec) {
+        let parameters = operation["parameters"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        for parameter in parameters {
+            let name = parameter["name"]
+                .as_str()
+                .expect("every parameter is named");
+            let required = parameter["required"].as_bool().unwrap_or(false);
+            let optional = handler
+                .arguments
+                .iter()
+                .find(|(argument, _)| argument.as_str() == name)
+                .map(|(_, optional)| *optional)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{name}: published by the document but bound by no \
+                         argument of {}",
+                        handler.name
+                    )
+                });
+            assert_eq!(
+                required,
+                !optional,
+                "{}: parameter {name} is published with required={required}, but the \
+                 signature marks the argument {}",
+                handler.name,
+                if optional { "optional" } else { "required" },
+            );
+        }
+    }
+}
+
+/// `redirect_to_login` answers `303 See Other`, a status that comes from the
+/// handler's return type and never from the annotation alone. The chain from
+/// signature to annotation is gated in `openapi-sanity` (P1); this holds its
+/// end — what the document publishes.
+#[test]
+fn the_redirect_operation_publishes_see_other() {
+    let spec = public_spec();
+    let (_, operation) = source_pairs(&spec)
+        .into_iter()
+        .find(|(handler, _)| handler.name == "redirect_to_login")
+        .expect("redirect_to_login must be published");
+    assert!(
+        !operation["responses"]["303"].is_null(),
+        "redirect_to_login answers 303 See Other and the document must publish it; \
+         the document declares responses {}",
+        operation["responses"]
+    );
+}
+
+/// The global tags are the document's sections; `tags.json` is the vocabulary
+/// A3 holds annotations to. Two lists meant to be one — an operation carrying a
+/// tag the document has no section for, or a section no annotation can reach —
+/// fail here, where both are in the same room.
+#[test]
+fn the_document_sections_are_the_vocabulary() {
+    let spec = public_spec();
+    let sections: Vec<(String, String)> = spec["tags"]
+        .as_array()
+        .expect("the document declares global tags")
+        .iter()
+        .map(|tag| {
+            (
+                tag["name"]
+                    .as_str()
+                    .expect("every global tag is named")
+                    .to_owned(),
+                tag["description"]
+                    .as_str()
+                    .expect("every global tag describes its section")
+                    .to_owned(),
+            )
+        })
+        .collect();
+    let declared: Vec<(String, String)> = vocabulary()
+        .iter()
+        .map(|entry| (entry.name.clone(), entry.description.clone()))
+        .collect();
+    assert_eq!(
+        sections, declared,
+        "the document's global tags must be tags.json, in the same order"
     );
 }

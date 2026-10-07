@@ -553,7 +553,12 @@ that empties a check fails a named test instead of quietly passing:
   directions, plus the `x-picasu-feature` pins.
 - `openapi_contract.rs` drives the mounted-route comparison, the `operationId`
   uniqueness check, the exclusion list, and the shared `401` response component
-  over both the real document and deliberately mutated copies of it.
+  over both the real document and deliberately mutated copies of it. It also
+  asserts the generator's derivations against the committed artifact: every
+  `operationId` equals its handler name, each published parameter's `required`
+  agrees with the handler argument's optionality, the `Redirect::to` route
+  publishes `303`, and the document's global tags are the `tags.json`
+  vocabulary.
 - `backend/tests/probe_registration.rs` observes the `cfg(test)`-gated probe
   registration from outside `cfg(test)`.
 - [`utils/openapi-sanity`](../../utils/openapi-sanity/README.md) drives every
@@ -594,7 +599,7 @@ uncaught. Both were diagnostics, never failures.
 | [`backend/src/openapi_parity.rs`](../../backend/src/openapi_parity.rs) | —                   | The `--check-openapi` route-set gate and its asymmetric rule                               |
 | [`backend/src/spec_path.rs`](../../backend/src/spec_path.rs)           | —                   | The Rocket-to-`OpenAPI` path translation, in one place                                     |
 | [`backend/src/main.rs`](../../backend/src/main.rs)                     | —                   | `--dump-openapi` and `--check-openapi`                                                     |
-| `backend/src/tests/openapi_contract.rs`                                | —                   | Mounted-route / spec parity self-checks                                                    |
+| `backend/src/tests/openapi_contract.rs`                                | —                   | Mounted-route / spec parity self-checks, and generator-derivation pins                     |
 | `backend/src/tests/openapi_parity.rs`                                  | —                   | The asymmetric rule over fixtures, and the feature-marker pins                             |
 | `backend/tests/probe_registration.rs`                                  | —                   | The `/get/test/` probe registration gate, seen from outside `cfg(test)`                    |
 | `backend/build.rs`                                                     | —                   | Writes the YAML scenario tests into `OUT_DIR`                                              |

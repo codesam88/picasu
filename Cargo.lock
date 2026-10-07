@@ -2438,6 +2438,7 @@ dependencies = [
  "mime_guess",
  "mini_executor",
  "notify",
+ "openapi-sanity",
  "path-clean",
  "rand 0.10.3",
  "rayon",
