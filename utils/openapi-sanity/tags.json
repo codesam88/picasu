@@ -1,0 +1,42 @@
+[
+  {
+    "name": "auth",
+    "description": "Authentication and token renewal"
+  },
+  {
+    "name": "albums",
+    "description": "Albums and shares: creation, assignment, covers, titles, descriptions, share links"
+  },
+  {
+    "name": "assets",
+    "description": "Per-asset metadata and editing: flags, rating, tags, rotation, thumbnails, deletion"
+  },
+  {
+    "name": "config",
+    "description": "Server configuration: read, write, password, export/import, path completion"
+  },
+  {
+    "name": "index",
+    "description": "Filesystem indexing jobs and full rebuild"
+  },
+  {
+    "name": "serving",
+    "description": "Media byte delivery (compressed and original files)"
+  },
+  {
+    "name": "timeline",
+    "description": "Grid/list data: prefetch, rows, scrollbar, tag list, export"
+  },
+  {
+    "name": "upload",
+    "description": "File upload"
+  },
+  {
+    "name": "pages",
+    "description": "SPA HTML page routes served from `router/get/get_page.rs`"
+  },
+  {
+    "name": "internal",
+    "description": "Operations outside the published API (stripped from this document)"
+  }
+]

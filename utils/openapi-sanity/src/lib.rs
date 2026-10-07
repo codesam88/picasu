@@ -25,8 +25,9 @@
 //! A3 briefly carried the backend's contract-exclusion prefixes so the test-only
 //! probes could be exempt, and the honest resolution was a vocabulary entry
 //! (`internal`) rather than a copy of a path list. The one convention this crate
-//! copies rather than read is recorded with a comment saying where the prose is:
-//! `TAGS` mirrors a table in `docs/openapi-generator.md`.
+//! does not read out of source is stated in `tags.json`, whose two mirrors — the
+//! guide's table and the spec's global tags — are checked against the file by
+//! tests.
 //!
 //! # Why the rules belong in the gate
 //!
@@ -119,10 +120,10 @@
 //!   only, and no annotation uses it.
 //! - `context_path` sets a base path on the annotation; A1 rejects `path = "…"`.
 //!
-//! A3's vocabulary is [`TAGS`], which is this repository's copy of the table in
-//! `docs/openapi-generator.md` ("Tag conventions"). It is duplicated here rather
-//! than read from the document because the tool checks source and the document is
-//! a generated review artifact; the two must be changed together.
+//! A3's vocabulary is [`TAGS_JSON`] (`tags.json`): one file states each tag's
+//! name and description, the guide's "Tag conventions" table and the spec's
+//! global tags mirror it, and a test holds each mirror to the file, so the three
+//! change together.
 //!
 //! The residue shrank with the work: `trace` moved from unenforced to
 //! `RESTATED_VERBS` once it was noticed that utoipa's `HttpMethod` accepts it as
@@ -131,19 +132,33 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use syn::spanned::Spanned;
 use syn::{Attribute, Expr, FnArg, GenericArgument, ItemFn, Lit, Meta, Pat, PathArguments, Type};
 
-/// The closed tag vocabulary of `docs/openapi-generator.md` ("Tag conventions"),
-/// which A3 enforces.
+/// One entry of the tag vocabulary: the name an annotation declares and the
+/// description the published document and the guide's Subject column carry.
+#[derive(serde::Deserialize)]
+pub struct TagEntry {
+    /// The tag as `tag = "…"` spells it.
+    pub name: String,
+    /// The subject the spec's global tags and the guide's table publish for it.
+    pub description: String,
+}
+
+/// The tag vocabulary as the repository states it: `tags.json`, which A3 enforces.
 ///
-/// This is the repository's copy of that table. It is duplicated here rather
-/// than parsed out of the document because the document is a review artifact
-/// generated from these annotations — reading it from here would make the rule
-/// check the document with the document. Adding a subject means changing the
-/// table in the document and this constant in the same change.
+/// This file is the single source. The "Tag conventions" table in
+/// `docs/openapi-generator.md` and the spec's global `tags(...)` are its two
+/// mirrors, each checked against it by a test, so neither can drift alone.
+/// Neither mirror can be the source itself: the spec is generated from these
+/// annotations, and the guide documents the spec — reading the vocabulary out of
+/// either would check published output against its own input.
+///
+/// Adding a subject means changing this file and both mirrors in the same
+/// change; the mirrors' tests say so.
 ///
 /// `internal` is the one entry that names a group the generated reference never
 /// renders: the operations outside the published API. Today those are the
@@ -154,10 +169,22 @@ use syn::{Attribute, Expr, FnArg, GenericArgument, ItemFn, Lit, Meta, Pat, PathA
 /// with a way round it, and a tag in a list is a fact a reader of the source can
 /// see. Nothing in this crate decides *which* routes are internal — the backend
 /// owns that — so the entry carries a name, not a rule about paths.
-pub const TAGS: [&str; 10] = [
-    "albums", "assets", "auth", "config", "index", "internal", "pages", "serving", "timeline",
-    "upload",
-];
+pub const TAGS_JSON: &str = include_str!("../tags.json");
+
+/// The parsed [`TAGS_JSON`], for A3 and for the tests that hold the mirrors to it.
+///
+/// # Panics
+///
+/// Panics on first use if `tags.json` is not the array of `name`/`description`
+/// objects it is documented to be: a malformed vocabulary file must fail every
+/// consumer loudly rather than quietly accept no tags at all.
+pub fn vocabulary() -> &'static [TagEntry] {
+    static PARSED: OnceLock<Vec<TagEntry>> = OnceLock::new();
+    PARSED.get_or_init(|| {
+        serde_json::from_str(TAGS_JSON)
+            .expect("tags.json must be an array of name/description objects")
+    })
+}
 
 /// Bare verb tokens a `#[utoipa::path]` argument must not name, which A1
 /// rejects.
@@ -849,6 +876,11 @@ impl HandlerArgument {
 /// route rather than a re-derivation of it.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Route {
+    /// The route attribute's verb, e.g. `get` in `#[get("/path")]`.
+    ///
+    /// The token [`is_route_attribute`] matched, kept so a consumer of the
+    /// parsed route can name the HTTP method without re-reading the attribute.
+    pub verb: Option<String>,
     /// The route path as written, e.g. `/albums/<id>?<locate>`.
     pub path: Option<Located<String>>,
     /// The `<segment>` names of the path part, a trailing `..` removed.
@@ -876,6 +908,8 @@ fn route_attribute(handler: &ItemFn) -> Option<Route> {
     let Meta::List(list) = &attribute.meta else {
         return None;
     };
+    // `is_route_attribute` only matched a verb ident, so this is always a name.
+    let verb = attribute.path().get_ident().map(ToString::to_string);
     let mut trees = list.tokens.clone().into_iter();
     let line = list.span().start().line;
 
@@ -912,6 +946,7 @@ fn route_attribute(handler: &ItemFn) -> Option<Route> {
     }
 
     Some(Route {
+        verb,
         path: Some(Located::new(path, line)),
         path_segments: segments,
         query,
@@ -1054,6 +1089,13 @@ pub struct TreeReport {
     /// literal `Status` constant, sorted — the P2 scope limit, pinned by the
     /// router-tree test so a new one is a decision rather than a silent skip.
     pub dynamic_guards: Vec<String>,
+    /// Every guard the scan resolved an `impl FromRequest for …` for, sorted.
+    ///
+    /// P2 and P4 look guards up by name and skip what they do not find, so a
+    /// guard whose impl moves out of the scanned tree would narrow both rules
+    /// without a finding. The router-tree test pins this set so the move fails
+    /// a named assertion instead.
+    pub resolved_guards: Vec<String>,
 }
 
 impl TreeReport {
@@ -1112,13 +1154,24 @@ impl fmt::Display for CoverageShortfall {
 }
 
 /// What a handler contributes to a [`TreeReport`]: its source location and name,
-/// plus the declaration counts used by the annotation checks.
+/// the route it serves, the tag and arguments its operation publishes, and the
+/// declaration counts used by the annotation checks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HandlerSummary {
     /// Path the source was read from.
     pub file: String,
     /// The function name.
     pub name: String,
+    /// The route attribute's verb as written, e.g. `get` — `None` when the
+    /// handler carries no route attribute.
+    pub verb: Option<String>,
+    /// The route attribute's path as written, e.g. `/albums/<id>?<locate>` —
+    /// `None` when the handler carries no route attribute.
+    pub path: Option<String>,
+    /// The annotation's first tag — the section the reference files it under.
+    pub tag: Option<String>,
+    /// The handler arguments in signature order: `(name, is_optional)`.
+    pub arguments: Vec<(String, bool)>,
     /// How many parameters the annotation declares in the form B1 and B2 read.
     pub declared_parameters: usize,
     /// How many parameters the annotation declares in a form they do not read.
@@ -1127,6 +1180,13 @@ pub struct HandlerSummary {
     pub unread_parameters: usize,
     /// How many request bodies the annotation declares.
     pub request_bodies: usize,
+    /// How many of those declarations B3 compares against the route binding.
+    ///
+    /// Declarations that are not comparable — `request_body = Value`, a form
+    /// body, a binding that is not `Json` — do not count. Pinned in the
+    /// router-tree test so B3's comparisons cannot shrink to nothing while the
+    /// declaration count holds: under a clean tree, compared == matched.
+    pub bodies_compared: usize,
 }
 
 /// Does this attribute spell `#[utoipa::path(...)]`?
@@ -1388,13 +1448,13 @@ fn responses_declared(handler: &AnnotatedHandler) -> Vec<Finding> {
     }
 }
 
-/// A3 — exactly one `tag`, and it is one of [`TAGS`].
+/// A3 — exactly one `tag`, and it is one of [`vocabulary`]'s.
 ///
 /// The tag is what the generated reference groups operations by, so a missing or
 /// misspelled one files the operation nowhere a reader looks. The vocabulary is
-/// the table in `docs/openapi-generator.md` ("Tag conventions"), which this
-/// repository copies into [`TAGS`]; the tool owns the list because a document
-/// linter is not adopted.
+/// [`TAGS_JSON`], one file this crate reads; the guide's "Tag conventions" table
+/// and the spec's global tags are its mirrors, checked against it by tests. The
+/// tool owns the list because a document linter is not adopted.
 ///
 /// The rule is absolute: every annotated operation declares one tag, with no
 /// exemptions for routes the published document drops. `internal` is how such an
@@ -1409,21 +1469,31 @@ fn one_vocabulary_tag(handler: &AnnotatedHandler) -> Vec<Finding> {
             handler.signature_line(),
             &handler.name,
             "the annotation declares no tag, so the operation is filed nowhere in the \
-             generated reference; take one from the vocabulary in docs/openapi-generator.md \
-             \"Tag conventions\"",
+             generated reference; take one from the vocabulary in \
+             utils/openapi-sanity/tags.json",
         )],
-        [tag] if TAGS.contains(&tag.value.as_str()) => Vec::new(),
+        [tag]
+            if vocabulary()
+                .iter()
+                .any(|entry| entry.name == tag.value.as_str()) =>
+        {
+            Vec::new()
+        }
         [tag] => vec![Finding::at(
             &handler.file,
             tag.line,
             &handler.name,
             &format!(
                 "the annotation declares the tag \"{}\", which is not one of the {} in \
-                 docs/openapi-generator.md \"Tag conventions\" ({}); a tag outside the \
-                 vocabulary files the operation outside every section of the reference",
+                 utils/openapi-sanity/tags.json ({}); a tag outside the vocabulary \
+                 files the operation outside every section of the reference",
                 tag.value,
-                TAGS.len(),
-                TAGS.join(", ")
+                vocabulary().len(),
+                vocabulary()
+                    .iter()
+                    .map(|entry| entry.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
         )],
         tags => vec![Finding::at(
@@ -1687,6 +1757,29 @@ fn declared_optionality_agrees(handler: &AnnotatedHandler) -> Vec<Finding> {
         .collect()
 }
 
+/// The comparison B3 performs for one handler: the declaration's line and type
+/// name, and the type the route binds, when the two are comparable at all.
+///
+/// `None` means there is nothing to compare: no route body, a non-`Json`
+/// binding (a form body has no nameable schema; B4 checks its media type), no
+/// declaration, a declaration the parser cannot read as a type name, or
+/// `request_body = Value`, which declares no constraint. Both
+/// [`declared_body_matches_binding`] and [`HandlerSummary::bodies_compared`]
+/// read this one function, so the check and its coverage pin cannot disagree
+/// about what counts as a comparison.
+fn comparable_body(handler: &AnnotatedHandler) -> Option<(usize, String, String)> {
+    let binding = handler.route_body()?;
+    let BodyBinding::Json(bound) = binding.body() else {
+        return None;
+    };
+    let declared = handler.annotation.request_body.as_ref()?;
+    let name = declared.value.type_name()?;
+    if declares_any_body(name) {
+        return None;
+    }
+    Some((declared.line, name.to_owned(), bound))
+}
+
 /// B3 — a declared `request_body` names the type the route's `data = "…"` binds.
 ///
 /// The declaration is the document's claim and the binding is what Rocket
@@ -1707,24 +1800,15 @@ fn declared_optionality_agrees(handler: &AnnotatedHandler) -> Vec<Finding> {
 /// Types are compared by the last segment of their path, which is the name
 /// utoipa publishes them under — see [`schema_name`].
 fn declared_body_matches_binding(handler: &AnnotatedHandler) -> Vec<Finding> {
-    let Some(binding) = handler.route_body() else {
+    let Some((line, name, bound)) = comparable_body(handler) else {
         return Vec::new();
     };
-    let BodyBinding::Json(bound) = binding.body() else {
-        return Vec::new();
-    };
-    let Some(declared) = &handler.annotation.request_body else {
-        return Vec::new();
-    };
-    let Some(name) = declared.value.type_name() else {
-        return Vec::new();
-    };
-    if declares_any_body(name) || schema_name(name) == schema_name(&bound) {
+    if schema_name(&name) == schema_name(&bound) {
         return Vec::new();
     }
     vec![Finding::at(
         &handler.file,
-        declared.line,
+        line,
         &handler.name,
         &format!(
             "the annotation declares request_body = {name}, but the route binds the body as \
@@ -2672,6 +2756,7 @@ pub fn scan_source_root(source_root: &Path, app_error_map: &Path) -> Result<Tree
         handlers: Vec::new(),
         findings: std::mem::take(&mut derivations.findings),
         dynamic_guards: derivations.dynamic_guards.iter().cloned().collect(),
+        resolved_guards: derivations.guard_codes.keys().cloned().collect(),
     };
 
     // Pass two: every rule over every annotated handler.
@@ -2681,9 +2766,21 @@ pub fn scan_source_root(source_root: &Path, app_error_map: &Path) -> Result<Tree
             report.handlers.push(HandlerSummary {
                 file: handler.file.clone(),
                 name: handler.name.clone(),
+                verb: handler.route.as_ref().and_then(|route| route.verb.clone()),
+                path: handler
+                    .route
+                    .as_ref()
+                    .and_then(|route| route.path.as_ref().map(|path| path.value.clone())),
+                tag: handler.annotation.tags.first().map(|tag| tag.value.clone()),
+                arguments: handler
+                    .arguments
+                    .iter()
+                    .map(|argument| (argument.ident.clone(), argument.is_optional()))
+                    .collect(),
                 declared_parameters: handler.annotation.params.len(),
                 unread_parameters: handler.annotation.unread_params,
                 request_bodies: usize::from(handler.annotation.request_body.is_some()),
+                bodies_compared: usize::from(comparable_body(&handler).is_some()),
             });
         }
     }

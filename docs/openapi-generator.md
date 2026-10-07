@@ -235,9 +235,10 @@ in a way the document cannot show:
 | P3   | every body `ErrorKind::` maps to a declared status                             | the `http_status` mapping lives in `error.rs`; the document is generated from the annotation, not the handler                     |
 | P4   | every declared status is one the handler can answer (universe check)           | a declared code outside the handler's universe is a lie only source can disprove                                                  |
 
-`docs/openapi-generator.md` is where the tag vocabulary is written down, and
-`utils/openapi-sanity/src/lib.rs` holds the tool's copy of it (`TAGS`); the two
-are changed together. Everything else in the table is a rule with no
+`utils/openapi-sanity/tags.json` is where the tag vocabulary is written down —
+one entry per tag, name and description — and this document's Tag conventions
+table and the spec's global tags are its mirrors, checked against the file by
+tests; the three change together. Everything else in the table is a rule with no
 document-side equivalent, which is why they live in the tool and not in a linter
 for the document — the document is generated _from_ these annotations, so a
 linter would be checking the output against its own input.
@@ -400,8 +401,8 @@ operations by, so the vocabulary stays small and subject-oriented.
 | `serving`  | Media byte delivery (compressed and original files)                                 | `GET /object/imported/{file_path}` |
 | `timeline` | Grid/list data: prefetch, rows, scrollbar, tag list, export                         | `GET /get/get-data`                |
 | `upload`   | File upload                                                                         | `POST /upload`                     |
-| `pages`    | SPA HTML page routes served from `router/get/get_page.rs` (serve `index.html`)      | `GET /login`                       |
-| `internal` | Operations outside the published API — the test-only probes                         | `GET /get/test/record/{asset_id}`  |
+| `pages`    | SPA HTML page routes served from `router/get/get_page.rs`                           | `GET /login`                       |
+| `internal` | Operations outside the published API (stripped from this document)                  | `GET /get/test/record/{asset_id}`  |
 
 `pages` is reserved for the SPA page routes in `router/get/get_page.rs`; the data
 API lives under `/delete/`, `/get/`, `/object/`, `/post/`, `/put/` and `/upload`
@@ -409,11 +410,13 @@ and takes a subject from the table.
 
 This table **is** a checked rule: A3 of the source gate holds every annotation to
 exactly one tag from it, and the gate fails the build on a tag that is not in the
-list. The list the tool checks is `TAGS` in `utils/openapi-sanity/src/lib.rs` —
-a copy of this table, not a parse of it, because the document is generated from
-these annotations and reading the vocabulary back out of it would check the
-output against its own input. **Adding a subject means changing this table and
-that constant in the same change.**
+list. The list the tool checks lives in `utils/openapi-sanity/tags.json`, which
+also carries each tag's description; this table and the spec's global tags are
+its mirrors, and a test holds each mirror to the file. The file, not a published
+artifact, is the source: the spec is generated from these annotations, so reading
+the vocabulary back out of it would check the output against its own input.
+**Adding a subject means changing `tags.json` and both mirrors in the same
+change.**
 
 `internal` names the operations **outside the published API**, which today are
 the test-only probes under `/get/test/`. `openapi_public` strips those from the

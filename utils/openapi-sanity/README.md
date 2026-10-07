@@ -46,15 +46,19 @@ counterpart.
 
 ### A3 — Declare exactly one vocabulary tag
 
-Each annotation must declare one `tag = "…"` from [`TAGS`](src/lib.rs), matching
-the “Tag conventions” table in [`docs/openapi-generator.md`](../../docs/openapi-generator.md).
-The ten tags are `albums`, `assets`, `auth`, `config`, `index`, `internal`,
-`pages`, `serving`, `timeline`, and `upload`. Use `internal` for operations not
-published in the API reference; there are no route-based exceptions.
+Each annotation must declare one `tag = "…"` from the vocabulary in
+[`tags.json`](tags.json), which the “Tag conventions” table in
+[`docs/openapi-generator.md`](../../docs/openapi-generator.md) and the spec's
+global tags mirror. The ten tags are `auth`, `albums`, `assets`, `config`,
+`index`, `serving`, `timeline`, `upload`, `pages`, and `internal`. Use
+`internal` for operations not published in the API reference; there are no
+route-based exceptions.
 
 **Tests:** `a_tag_outside_the_vocabulary_fails`
 (`a3_tag_outside_the_vocabulary.rs`) covers no tag, an unknown tag, and multiple
-tags. `every_tag_of_the_vocabulary_is_accepted` checks every entry in `TAGS`.
+tags. `every_tag_of_the_vocabulary_is_accepted` checks every entry in
+`tags.json`, and `the_docs_tag_table_mirrors_the_vocabulary` holds the guide's
+table to it.
 
 ### A4 — Add a doc comment
 
@@ -235,10 +239,10 @@ route, and codes outside every set (418, 207, …) still flag.
   decision rather than a silent widening.
 - **P2 and P4 skip a signature guard they cannot resolve** — an ident absent from
   the guard table is `continue`d, not reported. A crate alias such as
-  `GuardResult` is expected here, but so is a guard whose `FromRequest` impl moved
-  outside `--source-root`. Nothing counts the skips. All eight impls currently sit
-  in `backend/src/router/auth.rs`, inside the scanned tree; move one and P2 goes
-  quiet with no finding. Tracked as an open step in the plan.
+  `GuardResult` is expected here. What is not expected is a guard whose
+  `FromRequest` impl moved outside `--source-root`: `TreeReport.resolved_guards`
+  exposes what resolved and the tree test pins the eight names, so a moved impl
+  fails `the_router_tree_is_clean` instead of quietening P2.
 - P3 reads only `ErrorKind::` literals in the handler's own body. Codes raised
   inside helpers are not required — they stay covered by the P4 universe
   instead.
@@ -254,11 +258,6 @@ work rather than defects in what is built. Each is an item in
 with its status:
 
 - The three annotation spellings listed above pass A1 and A3 unchecked.
-- An unresolved signature guard is skipped by P2 and P4 without a finding.
-- Two calibration rows the plan states are not enforced by the tree test: the
-  declared body types that matched their route binding, and the dynamic-guard
-  count. Only the handler count, the declaration inventory and the dynamic-guard
-  name set are pinned.
 - No rule covers `security(...)` or `securitySchemes`. The committed document
   declares neither, so no operation states that it requires authentication.
 
@@ -296,8 +295,9 @@ with `include_str!`. Every implemented rule has a failing case; checks with a
 valid counterpart also test that conforming source is accepted. The app-error
 map for the fixture tests is `tests/fixtures/app_error_map.rs`, shaped like
 `backend/src/error.rs`. The `the_router_tree_is_clean` test runs all checks
-over `backend/src/router`, pins 63 handlers, the B1/B2/B3 inventory and the
-dynamic-guard set, and requires zero findings.
+over `backend/src/router`, pins 63 handlers, the B1/B2/B3 inventory, the
+compared-body count, and the dynamic- and resolved-guard sets, and requires
+zero findings.
 
 Run the tool's tests with:
 
