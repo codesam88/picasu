@@ -226,6 +226,7 @@ in a way the document cannot show:
 | A5   | the doc comment's first paragraph is one line                                       | it is the `summary`, and the reference renders the `summary` as a heading — a newline inside a heading splits it                                    |
 | A6   | no `operation_id = "…"`                                                             | utoipa derives it from the function name; a hand-set one is the only name nothing compares                                                          |
 | A7   | no `summary = "…"` and no `description = "…"`                                       | utoipa derives both from the doc comment; a hand-set one is the same prose written twice, with nothing comparing them                               |
+| A9   | no top-level annotation form the checker does not model                             | a spelling no rule reads would walk past every check, so A9 reports it at its own line instead of claiming a check that never ran                   |
 | B1   | every declared `params(…)` name is a `<segment>` or `?<name>` the route binds       | utoipa merges declared parameters into the derived document without checking that the route reads them                                              |
 | B2   | a declared parameter's documented `required` matches the handler argument           | utoipa derives `required` from the declared type and never looks at the argument the route binds                                                    |
 | B3   | a declared `request_body` names the type the route's `data = "…"` parses            | utoipa takes the declared schema and never compares it to what Rocket parses                                                                        |
@@ -272,12 +273,12 @@ the annotations themselves in `backend/src/router` and never consults the
 document: their responses (A2) and their doc comments (A4) are still checked,
 while the document-level phases never see those operations.
 
-Three spellings utoipa also accepts are not analyzed by the source gate, so they
-pass A1 and A3 unchecked: `method(GET)` is the parenthesised verb form of A1,
+Three spellings utoipa also accepts are rejected by the source gate as forms it
+does not model — `method(GET)` is the parenthesised verb form of A1,
 `tags([…])` is a list form of A3, and `context_path` is a base-path form of A1.
-No annotation uses any of them. They are open work, tracked as the A9 step in
-[`.plan/openapi-annotation-checks.md`](../.plan/openapi-annotation-checks.md),
-which closes them by failing on any annotation form the parser does not model.
+A9 fails closed on them: none of the reading rules would see them, so a clean
+report would claim a check that never ran. No backend annotation uses any of
+them.
 
 ### What the document does not say yet
 

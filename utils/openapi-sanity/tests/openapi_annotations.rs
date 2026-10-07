@@ -1,7 +1,7 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
 //! Three sections of `.plan/openapi-annotation-checks.md` are checked here:
-//! **A**, the seven rules about the annotation's own shape; **B**, the five
+//! **A**, the eight rules about the annotation's own shape; **B**, the five
 //! rules about what the annotation declares against what the route already
 //! says; and **P**, the four rules comparing `responses(…)` with what the
 //! handler can answer — from the return type and body constants (P1), the
@@ -71,6 +71,8 @@ const HAND_SET_ID: &str = include_str!("fixtures/openapi_annotations/a6_hand_set
 const DERIVED_ID: &str = include_str!("fixtures/openapi_annotations/a6_conforming.rs");
 const HAND_SET_PROSE: &str = include_str!("fixtures/openapi_annotations/a7_hand_set_prose.rs");
 const DERIVED_PROSE: &str = include_str!("fixtures/openapi_annotations/a7_conforming.rs");
+const UNMODELED_FORMS: &str =
+    include_str!("fixtures/openapi_annotations/a9_unsupported_annotation_form.rs");
 
 const UNBOUND_PARAMETER: &str =
     include_str!("fixtures/openapi_annotations/b1_parameter_the_route_does_not_bind.rs");
@@ -449,6 +451,41 @@ fn a_derived_summary_and_description_are_accepted() {
     );
 }
 
+/// A9: the annotation grammar belongs to utoipa, and a form this crate does not
+/// read reaches no rule at all — `method`, `tags` and `context_path` are matched
+/// by utoipa's own parser beside the spellings section A reads, so an annotation
+/// carrying them would be reported checked without any rule having seen them.
+/// An `Option<…>` body is the same defect from the other side: B3 skips what it
+/// cannot compare, which leaves the declaration unreported rather than verified.
+///
+/// Bare tokens are out of scope by construction: utoipa rejects an identifier
+/// outside its own list at compile time, so a compiling annotation cannot carry
+/// one, and the compile gate is where that rejection belongs.
+#[test]
+fn an_unsupported_annotation_form_fails() {
+    let findings = check_source("a9_unsupported_annotation_form.rs", UNMODELED_FORMS);
+
+    assert_eq!(
+        render(&findings),
+        "a9_unsupported_annotation_form.rs:11: unsupported_annotation_form: the annotation \
+         passes `method`, a top-level argument this checker does not read; an unmodeled \
+         argument reaches no rule, so a clean report would claim a check that never ran\n\
+         a9_unsupported_annotation_form.rs:12: unsupported_annotation_form: the annotation \
+         passes `tags`, a top-level argument this checker does not read; an unmodeled \
+         argument reaches no rule, so a clean report would claim a check that never ran\n\
+         a9_unsupported_annotation_form.rs:13: unsupported_annotation_form: the annotation \
+         passes `context_path`, a top-level argument this checker does not read; an \
+         unmodeled argument reaches no rule, so a clean report would claim a check that \
+         never ran\n\
+         a9_unsupported_annotation_form.rs:27: unsupported_annotation_form: the annotation \
+         declares `request_body = Option<RenewHashToken>`, a spelling this checker cannot \
+         read a schema from; B3 skips a body it cannot compare, so the unreadable \
+         declaration would go unreported",
+        "each unmodeled form is a finding at the line it is written on: three top-level \
+         arguments and one body spelling, one identity"
+    );
+}
+
 // ── Section B — what the annotation declares against what the route says ───────
 //
 // The invariant of this section is that **the route wins**: `rocket_extras` reads
@@ -576,10 +613,11 @@ fn a_custom_type_ending_in_value_is_still_compared() {
     );
 }
 
-/// The conforming counterpart, and the three shapes B3 states it does not compare:
-/// the same type spelled with a module path, a schema it does not read
-/// (`Option<…>`), `request_body = Value` as "any body", and a `Form<…>` binding,
-/// which has no schema type an annotation could name.
+/// The conforming counterpart, and the shapes B3 states it does not compare:
+/// the same type spelled with a module path, `request_body = Value` as "any
+/// body", and a `Form<…>` binding, which has no schema type an annotation could
+/// name. An `Option<…>` declaration used to be a fourth shape here; it is A9's
+/// finding now, checked in `an_unsupported_annotation_form_fails`.
 #[test]
 fn a_body_the_route_parses_is_accepted() {
     let findings = check_source("b3_conforming.rs", PARSED_BODY);

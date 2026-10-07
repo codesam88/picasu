@@ -5,7 +5,7 @@ annotations and compares declared parameters and request bodies with the Rocket
 route and handler signature beside them. It scans Rust source; it does not
 validate generated OpenAPI documents or runtime behavior.
 
-The checker implements **A1–A7, B1–B5 and P1–P4** from
+The checker implements **A1–A7, A9, B1–B5 and P1–P4** from
 [`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md),
 which is the implementation record: it holds the per-rule rationale, the grammar
 each rule can read and the limits it states. This file is the user-facing companion
@@ -133,8 +133,9 @@ utoipa's component names.
 body and are not compared. Other names—including custom names ending in `Value`—
 are concrete schemas. `Form<…>` bodies are not schema-compared because their
 `TempFile<'r>` payloads have no schema type the annotation can name; B4 checks the
-media type. Request-body forms the parser cannot read are not verified and are
-part of the grammar limitation below.
+media type. Request-body assign values the parser cannot read — `Option<…>`,
+`inline(…)`, a list type — are reported by A9 at their own line instead of
+passing as verified by B3.
 
 **Tests:** `a_body_the_route_does_not_parse_fails`
 (`b3_body_the_route_does_not_parse.rs`) covers mismatched schemas.
@@ -244,10 +245,11 @@ route, and codes outside every set (418, 207, …) still flag.
   parameters with Rocket route bindings.
 - B3 compares JSON/data schema names by their final path segment. Distinct Rust
   types with the same final name cannot be distinguished by this check.
-- A9 grammar coverage is not complete. The current parser does not analyze
-  `method(GET)`, `tags([…])`, `context_path`, or every grouped/otherwise unreadable
-  value, and skips them silently rather than reporting them — so those spellings
-  walk past A1 and A3. Tracked as an open step in the plan.
+- A9 fails closed on top-level annotation forms the parser does not model:
+  `method(GET)`, `tags([…])`, `context_path`, a `security(…)` group and an
+  unreadable `request_body = …` value are findings, never silent skips
+  (`a9_unsupported_annotation_form.rs`). The `request_body(content_type = …)`
+  group form is read by B4 and stays silent.
 - P1 treats any return shape other than `Redirect`, `Status` or a fallible
   payload as a 200 success. Rocket's non-200 responders are handled; a future
   exotic responder extends that match.
@@ -276,9 +278,10 @@ work rather than defects in what is built. Each is an item in
 [`.plan/openapi-annotation-checks.md`](../../.plan/openapi-annotation-checks.md)
 with its status:
 
-- The three annotation spellings listed above pass A1 and A3 unchecked.
-- No rule covers `security(...)` or `securitySchemes`. The committed document
-  declares neither, so no operation states that it requires authentication.
+- No rule interprets `security(...)` or `securitySchemes`. A9 fails closed on
+  the spelling, so an annotation that declares one stops a clean report; the
+  committed document declares neither, and deriving the policy from the
+  authz-check artifact is plan step 6.
 
 ## Run it
 
