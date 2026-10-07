@@ -41,15 +41,17 @@ by meeting three conditions:
 - where the repository states the same fact elsewhere, a check keeps the two in
   agreement, so the duplication is a verified mirror instead of a drift risk.
 
-The checker states two kinds of fact today, and neither yet meets the third
-condition. [`TAGS`] mirrors a table in `docs/openapi-generator.md` with nothing
-asserting they agree; the Rocket `Status` → code table and the verb token sets
-record crate behaviour a dependency bump could change silently. Both are open work
-below, alongside the third-party assumptions the rules rest on — that utoipa derives
-`operation_id` from the function name and `required` from `Option`, and that
-`Redirect::to` answers 303. Those assumptions are best turned into assertions over
-the generated artifact, where a behaviour change fails a named test instead of
-quietly invalidating a rule.
+The checker states two kinds of fact today. The tag vocabulary lives in
+`utils/openapi-sanity/tags.json`, one file A3 reads; the places that publish it —
+the "Tag conventions" table in `docs/openapi-generator.md` and the spec's global
+`tags(…)` — are mirrors held to that file by tests, meeting the third condition
+directly. The Rocket `Status` → code table and the verb token sets still record
+crate behaviour a dependency bump could change silently, without a mirror to catch
+it. The third-party assumptions — that utoipa derives `operation_id` from the
+function name and `required` from `Option`, and that `Redirect::to` answers 303 —
+are asserted over the generated artifact in
+`backend/src/tests/openapi_contract.rs`, where a behaviour change fails a named
+test instead of quietly invalidating a rule.
 
 **A rule that cannot see its subject must say so.** Skipping silently turns a
 narrowed check into a clean report. Every limit below is either enforced by a pin
@@ -61,7 +63,7 @@ or listed as open work.
 | --- | ----------------------------------------------------------------------- | -------- | ------------------------------------------------------- |
 | A1  | Do not restate the route path or bare HTTP verb in the annotation.      | enforced | `openapi-sanity`                                        |
 | A2  | Declare at least one response.                                          | enforced | `openapi-sanity`                                        |
-| A3  | Declare exactly one tag from the documented vocabulary.                 | enforced | `openapi-sanity`                                        |
+| A3  | Declare exactly one tag from the `tags.json` vocabulary.                | enforced | `openapi-sanity`                                        |
 | A4  | Add a doc comment to each annotated handler.                            | enforced | `openapi-sanity`                                        |
 | A5  | Give the doc comment a non-empty, one-line first paragraph.             | enforced | `openapi-sanity`                                        |
 | A6  | Do not set `operation_id` manually.                                     | enforced | `openapi-sanity`                                        |
@@ -86,7 +88,7 @@ the annotation itself. Nothing downstream re-derives them from the route.
 | --- | ---------------------------------------------------------- | -------------------------------------------------------------------------- |
 | A1  | No `path = "…"` and no bare verb.                          | `rocket_extras` derives both from the route attribute.                     |
 | A2  | `responses(…)` is present and non-empty.                   | Missing and empty are distinct findings.                                   |
-| A3  | Exactly one tag from `TAGS`.                               | No route-based exemptions; `internal` marks unpublished operations.        |
+| A3  | Exactly one tag from `tags.json`.                          | No route-based exemptions; `internal` marks unpublished operations.        |
 | A4  | A doc comment is present.                                  | `summary` and `description` are derived from it.                           |
 | A5  | The first doc-comment paragraph contains text on one line. | Later paragraphs may wrap.                                                 |
 | A6  | No operation-level `operation_id`.                         | utoipa derives it from the function name.                                  |
@@ -102,8 +104,8 @@ an empty `responses()` to the annotation. At least one response suffices; the ru
 prescribes no status codes.
 
 **A3 — tags.** Every annotation has exactly one `tag = "…"` from the ten entries in
-`TAGS`, which is a copy of the table in `docs/openapi-generator.md`. No
-route-specific exception exists.
+`tags.json`, the single source whose mirrors — the docs table and the spec's global
+tags — are checked against it by tests. No route-specific exception exists.
 
 **A4/A5 — handler documentation.** A4 requires a doc comment. A5 requires text in
 its first paragraph and requires that paragraph to occupy one source line. That
@@ -237,14 +239,17 @@ tree:
 | Declared request bodies                        |           24 |
 | Declared body types matching the route binding |           21 |
 | Dynamic guard names (computed outcome status)  |            1 |
+| Resolved `FromRequest` guards                  |            8 |
 
 All A1–A7, B1–B4 and P1–P4 run over the tree with zero findings. The 21 matching
 bodies are the 24 declarations less the unconstrained `Value` body and the two form
 bodies whose schema is not compared — B4 checks those two form routes' media type
 instead. The dynamic guard is `GuardShare`.
 
-The pinned rows are asserted by the test except the last two, which the plan states
-and the test does not yet enforce; both are open work below.
+Every row is asserted by `the_router_tree_is_clean`: the declaration counts in one
+inventory, `bodies_compared` as a count, and the guard names as sorted sets
+(`DYNAMIC_GUARDS`, `RESOLVED_GUARDS`), so a row the prose once carried alone now
+fails a test if it drifts.
 
 Enforcing P1–P4 surfaced 65 findings across 27 files, all fixed in the same change:
 19 handlers missing 405 behind `GuardReadOnlyMode`, 32 missing 500 from body
@@ -279,15 +284,15 @@ ownership decision is still open.
 
 ## Steps
 
-| #   | Step                                                                                                                                | Status |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| 1   | A9 — fail closed on every annotation form the parser does not model                                                                 | open   |
-| 2   | P2 — pin how many signature guards resolved, so an unresolved guard fails instead of being skipped                                  | open   |
-| 3   | Pin the 21 declared body types matching the route binding, and the dynamic-guard count                                              | open   |
-| 4   | Check the facts the checker states: `TAGS` against the docs table, and the utoipa/Rocket assumptions against the generated artifact | open   |
-| 5   | Decide the owner of the parameter-description rule, then document the 21 undescribed published parameters                           | open   |
-| 6   | Security schemes — ownership settled: declarations derive from the `authz-check` policy artifact                                    | moved  |
-| 7   | Guard rejection propagation — moved to `authz-check` component 2                                                                    | moved  |
+| #   | Step                                                                                                                               | Status |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| 1   | A9 — fail closed on every annotation form the parser does not model                                                                | open   |
+| 2   | P2 — pin how many signature guards resolved, so an unresolved guard fails instead of being skipped                                 | done   |
+| 3   | Pin the 21 declared body types matching the route binding, and the dynamic-guard count                                             | done   |
+| 4   | Check the facts the checker states: the tag vocabulary's mirrors, and the utoipa/Rocket assumptions against the generated artifact | done   |
+| 5   | Decide the owner of the parameter-description rule, then document the 21 undescribed published parameters                          | open   |
+| 6   | Security schemes — ownership settled: declarations derive from the `authz-check` policy artifact                                   | moved  |
+| 7   | Guard rejection propagation — moved to `authz-check` component 2                                                                   | moved  |
 
 **1 — A9 grammar coverage.** `method(GET)`, `tags([…])` and `context_path` are legal
 utoipa spellings the parser skips, so they pass A1 and A3 silently. That is the one
@@ -302,26 +307,31 @@ in both P2 and P4 (`lib.rs:2297`, `lib.rs:2408`), and nothing counts the skips. 
 guards resolve today only because all eight `FromRequest` impls happen to sit in
 `backend/src/router/auth.rs`, inside `--source-root`. A crate alias such as
 `GuardResult` is expected to be skipped; a guard whose impl moved out of the tree is
-not. Move one and P2 goes quiet with no finding. Pin the resolved set the way the
-dynamic set is pinned.
+not. Move one and P2 goes quiet with no finding. Done: `TreeReport.resolved_guards`
+exposes the resolved set and `RESOLVED_GUARDS` pins it, so a moved impl fails
+`the_router_tree_is_clean`.
 
 **3 — calibration rows.** `HandlerSummary` carries declaration counts only. It has
 no counter for bodies actually compared against a binding, so B3's comparisons can
 shrink to nothing — every declaration unreadable, or every binding non-`Json` — and
 the 21 row still holds in prose. The dynamic-guard row is pinned as a name set but
-not as a count. Both need one field each on `HandlerSummary`.
+not as a count. Done: `HandlerSummary.bodies_compared` counts the comparisons, and
+`the_router_tree_is_clean` pins it at 21; the dynamic and resolved guard sets pin
+their rows as name sets.
 
-**4 — stated facts.** Two gaps against the three conditions above, both cheap to
-close. `TAGS` and the "Tag conventions" table in `docs/openapi-generator.md` are
-kept in agreement by a test that reads the document and compares the vocabulary —
-that turns the acknowledged copy into a checked mirror, and a new tag can no longer
-be added to one and forgotten in the other. The third-party assumptions are better
-expressed as assertions over the generated artifact than as prose: that every
-operation's `operationId` equals its handler name (A6's premise), that a published
-parameter's `required` matches the `Option`-ness of the handler argument (B2's), and
-that a `Redirect::to` handler publishes 303 (P1's). `backend/src/tests/openapi_contract.rs`
-already reads the public spec for parity and uniqueness, so this is the same
-mechanism. A dependency bump that changes a derivation then fails a named test.
+**4 — stated facts.** Done, with a slightly wider shape than first sketched. The
+vocabulary moved to `utils/openapi-sanity/tags.json`, the one file A3 reads; the
+"Tag conventions" table in `docs/openapi-generator.md` and the spec's global
+`tags(…)` are its mirrors, each held to the file by a test, so a new tag can no
+longer be added to one place and forgotten elsewhere. The third-party assumptions
+are assertions over the generated artifact in
+`backend/src/tests/openapi_contract.rs`: that every operation's `operationId`
+equals its handler name (A6's premise), that a published parameter's `required`
+matches the optionality of the handler argument (B2's), that a `Redirect::to`
+handler publishes 303 (P1's), and that the document's global tags are the
+vocabulary. That file already reads the public spec for parity and uniqueness, so
+this is the same mechanism. A dependency bump that changes a derivation then fails
+a named test.
 
 **5 — parameter descriptions.** The document publishes 22 parameters and describes
 one, `POST /upload :: auto_rename`; the other 21 carry a name and a schema and
