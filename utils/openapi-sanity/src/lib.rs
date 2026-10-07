@@ -1,12 +1,13 @@
 //! Source-level checks on the `#[utoipa::path]` annotations.
 //!
-//! Sixteen rules from `.plan/openapi-annotation-checks.md` are implemented here:
-//! **section A**, the seven rules about the annotation's own shape; **section
-//! B**, the five rules about what the annotation declares against what the route
-//! already says; and **section P**, the four rules about response statuses —
-//! what the handler can answer versus what `responses(…)` claims. What remains
-//! open in that plan — including that no rule reads a `security(…)` or a
-//! registered scheme — is listed under "Known gaps" in this crate's README.
+//! Seventeen rules from `.plan/openapi-annotation-checks.md` are implemented
+//! here: **section A**, the eight rules about the annotation's own shape;
+//! **section B**, the five rules about what the annotation declares against what
+//! the route already says; and **section P**, the four rules about response
+//! statuses — what the handler can answer versus what `responses(…)` claims.
+//! What remains open in that plan — including that no rule interprets a
+//! `security(…)` scheme, though A9 fails closed on the spelling itself — is
+//! listed under "Known gaps" in this crate's README.
 //!
 //! # What this crate holds, and what it must not
 //!
@@ -110,16 +111,22 @@
 //!
 //! # What section A does not cover
 //!
-//! The rules assert the *absence* of three spellings utoipa also accepts, each of
-//! which restates something the route attribute already says. They match the
-//! spellings the plan enumerates, so a residue stays and is review-time rather
-//! than gated:
+//! Four spellings utoipa accepts beside the ones section A reads are not shape
+//! rules here; A9 fails closed on each instead, because an annotation carrying
+//! one would otherwise reach no rule at all:
 //!
 //! - `method(GET)` is the parenthesised verb spelling; A1 rejects only the bare
 //!   tokens in `RESTATED_VERBS`.
 //! - `tags(["a", "b"])` sets tags in one list; A3 counts `tag = "…"` occurrences
-//!   only, and no annotation uses it.
+//!   only.
 //! - `context_path` sets a base path on the annotation; A1 rejects `path = "…"`.
+//! - `security(…)` declares a policy no rule interprets yet; the spelling is
+//!   recorded until the authz-check plan derives the schemes.
+//!
+//! An unreadable `request_body = …` value is the declaration-side counterpart:
+//! [`declared_body_matches_binding`] states it does not compare a schema it
+//! cannot read, and A9 reports the declaration so it cannot sit in a clean
+//! report as verified by nothing.
 //!
 //! A3's vocabulary is [`TAGS_JSON`] (`tags.json`): one file states each tag's
 //! name and description, the guide's "Tag conventions" table and the spec's
@@ -262,6 +269,12 @@ pub enum DeclaredBody {
     /// A declaration whose schema this tool does not read: `inline(…)`, a
     /// `[T]` array, `Option<…>`, or the `request_body(content = …)` group form.
     Unreadable,
+    /// A `request_body = …` value whose spelling this crate does not model —
+    /// `Option<…>`, `inline(…)`, `[T]`. Unlike [`Self::Unreadable`], which the
+    /// group form also reaches and which B4 reads a media type from, this one
+    /// is a finding of its own: A9 reports it rather than letting B3 skip a
+    /// body it never compared.
+    Unsupported(String),
 }
 
 impl DeclaredBody {
@@ -269,7 +282,7 @@ impl DeclaredBody {
     pub fn type_name(&self) -> Option<&str> {
         match self {
             Self::Type(name) => Some(name),
-            Self::Unreadable => None,
+            Self::Unreadable | Self::Unsupported(_) => None,
         }
     }
 }
@@ -388,6 +401,16 @@ pub struct Annotation {
     /// rather than skipped, so that the first one to appear fails a coverage pin
     /// instead of quietly narrowing B1, B2 and B5.
     pub unread_params: usize,
+    /// Top-level arguments the parser did not model, with the line each is
+    /// written on: `method(…)`, `tags([…])`, `context_path = …` and every other
+    /// argument outside the modeled grammar.
+    ///
+    /// Recorded rather than dropped so A9 can fail closed on them — an argument
+    /// this crate does not read reaches no rule, and a clean report would claim
+    /// a check that never ran. Bare tokens are not recorded: utoipa rejects an
+    /// identifier outside its own list at compile time, so a compiling
+    /// annotation cannot carry one.
+    pub unsupported: Vec<Located<String>>,
     /// `request_body`, with the line it is written on, or `None` when the
     /// annotation declares none.
     pub request_body: Option<Located<DeclaredBody>>,
@@ -477,11 +500,13 @@ impl Annotation {
                         }
                         "tag" => annotation.tags.push(Located::new(value, line)),
                         // `request_body = Type` names a schema; `inline(…)`, a
-                        // `[T]` array and `Option<…>` are declarations whose
-                        // schema this crate does not read.
+                        // `[T]` array and `Option<…>` are spellings whose
+                        // schema this crate cannot read — recorded as
+                        // unsupported so A9 reports them instead of leaving B3
+                        // to skip a body it never compared.
                         "request_body" => {
                             let body = if value_is_group || head_segment(&value) == "Option" {
-                                DeclaredBody::Unreadable
+                                DeclaredBody::Unsupported(value)
                             } else {
                                 // A type path is written `serde_json :: Value`;
                                 // the spaces are the token stream's, not the
@@ -492,7 +517,9 @@ impl Annotation {
                                 .request_body
                                 .get_or_insert_with(|| Located::new(body, line));
                         }
-                        _ => {}
+                        // Anything else is a top-level argument utoipa may
+                        // accept that this crate does not read; recorded for A9.
+                        _ => annotation.unsupported.push(Located::new(name, line)),
                     }
                 }
                 // `name(…)`
@@ -507,7 +534,10 @@ impl Annotation {
                         "request_body" => {
                             read_request_body_group(&group.stream(), line, &mut annotation)
                         }
-                        _ => {}
+                        // `method(GET)`, `tags([…])`, `security(…)` and the
+                        // rest: legal utoipa spellings outside the modeled
+                        // grammar, recorded for A9 rather than dropped.
+                        _ => annotation.unsupported.push(Located::new(name, line)),
                     }
                 }
                 // `name` — a bare token, which for a verb is the restatement A1
@@ -1656,8 +1686,66 @@ fn no_hand_set_prose(handler: &AnnotatedHandler) -> Vec<Finding> {
     findings
 }
 
-/// A1 to A7 of section A and B1 to B5 of section B: every rule over one handler,
-/// in a fixed order so a report reads the same way twice.
+/// A9 — fail closed on every annotation form the parser does not model.
+///
+/// The annotation grammar belongs to utoipa, and [`Annotation::parse`] reads it
+/// far enough for the shape rules — a spelling it does not model would reach no
+/// rule at all, so section A would report a check it never performed. The parser
+/// therefore records the top-level arguments it skips instead of dropping them,
+/// and this rule reports each at its own line: `method(…)`, `tags([…])` and
+/// `context_path` are spellings utoipa's own parser accepts beside the ones
+/// section A reads, so an annotation carrying them must not pass as checked.
+///
+/// A `request_body = …` value whose schema cannot be read is reported here too,
+/// where [`declared_body_matches_binding`] skips it in silence — the declaration
+/// would otherwise sit inside a clean report, compared by nothing. The
+/// `request_body(…)` group form is not a finding: its media type is read (B4
+/// checks it), and a form payload has no nameable schema to compare, which B3
+/// states as a limit rather than a verification.
+///
+/// Bare tokens are not flagged: utoipa rejects an identifier outside its own
+/// list at compile time, so a compiling annotation cannot carry one, and that
+/// rejection belongs to the compile gate.
+fn unsupported_annotation_form(handler: &AnnotatedHandler) -> Vec<Finding> {
+    let annotation = &handler.annotation;
+    let mut findings: Vec<_> = annotation
+        .unsupported
+        .iter()
+        .map(|argument| {
+            Finding::at(
+                &handler.file,
+                argument.line,
+                "unsupported_annotation_form",
+                &format!(
+                    "the annotation passes `{}`, a top-level argument this checker does not \
+                     read; an unmodeled argument reaches no rule, so a clean report would \
+                     claim a check that never ran",
+                    argument.value
+                ),
+            )
+        })
+        .collect();
+    if let Some(Located {
+        value: DeclaredBody::Unsupported(spelling),
+        line,
+    }) = &annotation.request_body
+    {
+        findings.push(Finding::at(
+            &handler.file,
+            *line,
+            "unsupported_annotation_form",
+            &format!(
+                "the annotation declares `request_body = {spelling}`, a spelling this checker \
+                 cannot read a schema from; B3 skips a body it cannot compare, so the \
+                 unreadable declaration would go unreported"
+            ),
+        ));
+    }
+    findings
+}
+
+/// A1 to A7 and A9 of section A and B1 to B5 of section B: every rule over one
+/// handler, in a fixed order so a report reads the same way twice.
 fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Finding> {
     [
         restated_route(handler),
@@ -1667,6 +1755,7 @@ fn rules_over(handler: &AnnotatedHandler, derivations: &Derivations) -> Vec<Find
         one_line_summary(handler),
         no_hand_set_operation_id(handler),
         no_hand_set_prose(handler),
+        unsupported_annotation_form(handler),
         declared_parameters_bind(handler),
         declared_optionality_agrees(handler),
         declared_body_matches_binding(handler),

@@ -1,16 +1,18 @@
-// The conforming counterpart of B3, and the three shapes the rule states it does
-// not compare:
+// The conforming counterpart of B3, and the shapes the rule states it does not
+// compare:
 //
 // - `create_dir_album` declares exactly the type the route parses — the happy
 //   path;
 // - `set_album_title` spells the same schema with a module path, which utoipa
 //   publishes under the last segment, so it agrees;
-// - `refresh_tokens` declares `Option<RenewHashToken>`, whose schema this tool
-//   does not read;
 // - `prefetch` declares `Value`, which is utoipa's "any body" and constrains
 //   nothing the route could contradict;
 // - `upload` binds a `Form<…>`, which has no schema type an annotation could
 //   name, and declares its media type as B4 requires.
+//
+// An `Option<…>` declaration used to be a fifth shape here; it is now A9's
+// finding instead of a silent skip, and lives in
+// `a9_unsupported_annotation_form.rs`.
 
 /// Create a directory album.
 #[utoipa::path(
@@ -40,21 +42,6 @@ pub fn create_dir_album(json_data: Json<CreateDirAlbumData>) -> AppResult<String
 pub fn set_album_title(set_album_title: Json<SetAlbumTitle>) -> AppResult<()> {
     let _ = set_album_title;
     Ok(())
-}
-
-/// Renew the hash token.
-#[utoipa::path(
-        tag = "auth",
-        request_body = Option<RenewHashToken>,
-        responses(
-            (status = 200, description = "Ok"),
-        )
-    )
-]
-#[post("/post/renew-hash-token", format = "json", data = "<token_request>")]
-pub fn renew_hash_token(token_request: Json<RenewHashToken>) -> AppResult<Json<String>> {
-    let _ = token_request;
-    Ok(Json(String::new()))
 }
 
 /// Prefetch a timeline page.

@@ -123,12 +123,12 @@ fn a_tree_below_the_floor_fails() {
 /// they only describe the part of the tree that was reached.
 #[test]
 fn a_short_scan_reports_coverage_rather_than_findings() {
-    let output = run(&fixture_tree(), &["--expect-at-least", "66"]);
+    let output = run(&fixture_tree(), &["--expect-at-least", "67"]);
 
     assert!(!output.status.success());
     let reported = stderr(&output);
     assert!(
-        reported.contains("fewer than the expected minimum of 66"),
+        reported.contains("fewer than the expected minimum of 67"),
         "{reported}"
     );
     assert!(
@@ -151,7 +151,7 @@ fn findings_still_report_the_observed_count() {
     );
     assert!(
         reported.contains(
-            "finding(s) across 65 annotated handler(s) under \
+            "finding(s) across 66 annotated handler(s) under \
              utils/openapi-sanity/tests/fixtures/openapi_annotations",
         ),
         "the summary keeps the observed count: {reported}"
