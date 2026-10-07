@@ -49,6 +49,16 @@ this adds rule families over the policy artifact:
   unclassified (the F9 failure mode);
 - guard completeness: every mutating `#[post]`/`#[put]`/`#[delete]` carries
   `GuardReadOnlyMode` and the policy's guards (F9);
+- rejection propagation: every `GuardResult<…>` binding's rejection must be
+  propagated (`?` or equivalent) — `let _ = auth;` leaves the route enforcing
+  nothing while the OpenAPI document still declares its status (proven incident
+  `.plan/bug-get-rows-auth-guard-discarded.md`; moved here from
+  `.plan/openapi-annotation-checks.md` step 7). Distinct from claims
+  consumption below, which assumes the rejection already propagated; route–policy
+  parity does not catch it either, since a handler with the right signature set
+  that discards its rejection passes the signature comparison. Shares
+  `openapi-sanity`'s signature-argument parsing — build the use-site analysis
+  once, not in both tools;
 - claims consumption: a `GuardShare` handler whose inputs name an external
   resource must read the guard's claims — `let _ = auth?` before a
   body-targeted write is a finding (F3);
