@@ -286,8 +286,8 @@ ownership decision is still open.
 | 3   | Pin the 21 declared body types matching the route binding, and the dynamic-guard count                                              | open   |
 | 4   | Check the facts the checker states: `TAGS` against the docs table, and the utoipa/Rocket assumptions against the generated artifact | open   |
 | 5   | Decide the owner of the parameter-description rule, then document the 21 undescribed published parameters                           | open   |
-| 6   | Decide the owner of the security-scheme rule, then register schemes and declare `security(...)` per operation                       | open   |
-| 7   | Check that a `GuardResult<…>` binding has its rejection propagated                                                                  | open   |
+| 6   | Security schemes — ownership settled: declarations derive from the `authz-check` policy artifact                                    | moved  |
+| 7   | Guard rejection propagation — moved to `authz-check` component 2                                                                    | moved  |
 
 **1 — A9 grammar coverage.** `method(GET)`, `tags([…])` and `context_path` are legal
 utoipa spellings the parser skips, so they pass A1 and A3 silently. That is the one
@@ -333,21 +333,30 @@ gate pins the count, and the fix lives in the annotation. Operation `description
 is a different field and is done — all 61 operations carry a summary and a
 description.
 
-**6 — security schemes.** The document registers no `securitySchemes` and none of the
-61 operations declares `security`, so a generated client cannot tell that an
-operation requires authentication. Scheme registration is a document fact in
-`backend/src/openapi.rs`; the guard-class to scheme-name mapping is a stated
-project table like `TAGS`, and under this plan it earns its place by meeting the
-three conditions above rather than by avoiding them. Both directions are checkable
-against the eight `FromRequest` impls. This belongs to the document layer rather
-than to section P, and `.plan/authz-check.md` (`backlog`, `high`) already claims the
-guard-modelling territory — settle ownership before building.
+**6 — security schemes (moved to `authz-check`).** The document registers no
+`securitySchemes` and none of the 61 operations declares `security`, so a
+generated client cannot tell that an operation requires authentication.
+Ownership is settled: `authz-check` component 1's policy artifact states the
+required guard set per route, so under the derive-don't-restate principle the
+document's `security(...)` declarations should be generated from that artifact
+plus registered schemes, not maintained here as a second stated guard-class→
+scheme table checked against the `FromRequest` impls. Registering the schemes
+themselves is a document fact in `backend/src/openapi.rs` and stays with the
+generator; the mapping and its check are `authz-check` work.
 
-**7 — guard propagation.** `GuardResult<GuardAuth>` is a parameter in 18 handler
-signatures. A `let _ = auth;` discards the rejection, so the route enforces nothing
-while the document declares `401`. This had a proven incident
-(`.plan/bug-get-rows-auth-guard-discarded.md`, `done`) and nothing checks it now. The
-argument parsing P2 already does is the whole mechanism.
+**7 — guard propagation (moved to `authz-check` component 2).**
+`GuardResult<GuardAuth>` is a parameter in 18 handler
+signatures. A `let _ = auth;` discards the rejection, so the route enforces
+nothing while the document declares `401`. This had a proven incident
+(`.plan/bug-get-rows-auth-guard-discarded.md`, `done`) and nothing checks it now.
+It is a guard-enforcement property rather than an annotation fact, so the rule
+belongs to `authz-check`'s guard-completeness family — but `authz-check` does
+not yet cover it: its claims-consumption rule (F3) assumes the rejection already
+propagated, and route–policy parity compares signature guard sets, so a handler
+with the right signature that discards its rejection passes both. The rule must
+be added to component 2 explicitly or it falls between the two plans. The
+argument parsing P2 already does is the mechanism; build it once, in whichever
+tool implements the rule, rather than in both.
 
 ## Not doing
 
