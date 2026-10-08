@@ -109,38 +109,24 @@ pub fn index_media_file(
 
 /// Index a single image file.
 ///
-/// `src` — path relative to `IMAGE_HOME`.
-/// `dst` — optional target album directory path (also relative to `IMAGE_HOME`).
-///         If provided, the file is recorded under that album; otherwise the
-///         album is resolved from `src`'s parent directory.
+/// `src` — path relative to `IMAGE_HOME`. The album is resolved from `src`'s
+/// parent directory.
 ///
 /// If the content hash is already known, the file still gets its own
 /// path-primary record — records are never merged. Duplicate content is
 /// grouped via `DUPE_INDEX` only.
-pub async fn index_image(src: &Path, dst: Option<&Path>) -> Result<()> {
+pub async fn index_image(src: &Path) -> Result<()> {
     let image_root =
         get_resolved_image_home().ok_or_else(|| anyhow::anyhow!("IMAGE_HOME not configured"))?;
 
     let path = image_root.join(src).clean();
-
-    let dst_album_id = match dst {
-        Some(dst_path) => {
-            let abs_dst = image_root.join(dst_path);
-            Some(
-                tokio::task::spawn_blocking(move || get_or_create_dir_album(abs_dst))
-                    .await?
-                    .map_err(|e| anyhow::anyhow!("Failed to ensure dst album: {e}"))?,
-            )
-        }
-        None => None,
-    };
 
     let already_known_album_id = path.parent().and_then(get_album_id_for_dir);
     let resolved_dir_album_id = match already_known_album_id {
         Some(id) => Some(id),
         None => ensure_dir_albums(&path).await,
     };
-    let album_id_opt = dst_album_id.or(resolved_dir_album_id);
+    let album_id_opt = resolved_dir_album_id;
 
     let file = INDEX_COORDINATOR
         .execute_waiting(OpenFileTask::new(path.clone()))
