@@ -32,9 +32,9 @@ report mismatches, and — after user review — optionally repair them.
 
 ### Single entry point for all indexing
 
-`crate::workflow::index_image(src: &Path, dst: Option<&Path>)` in
+`crate::workflow::index_image(src: &Path)` in
 `backend/src/workflow/mod.rs` is called by **everything**: album_index,
-the filesystem watcher, `POST /post/index/image`, and post_upload.
+the filesystem watcher, and post_upload.
 There is no separate `index_for_watch` function.
 
 ### Task chain for a new file (pre-path-primary)
@@ -74,7 +74,7 @@ hash, then the second unique hash gets its own guard.
 
 `backend/src/tasks/batcher/start_watcher.rs`: `notify` crate, recursive watch.
 1-second **per-path** debounce (`DEBOUNCE_POOL: Mutex<HashMap<PathBuf, Instant>>`).
-After debounce fires → `index_image(relative, None)`. No per-path processing lock.
+After debounce fires → `index_image(relative)`. No per-path processing lock.
 Multiple paths run fully concurrently.
 
 ### Persistence (pre-path-primary)

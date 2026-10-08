@@ -10,7 +10,7 @@ confirming and deciding.
 
 ## Context
 
-`post_upload.rs:254-266`: if `crate::workflow::index_image(relative_src, None)` returns `Err`, the just-written file is
+`post_upload.rs:254-266`: if `crate::workflow::index_image(relative_src)` returns `Err`, the just-written file is
 removed and a 400 is returned. The doc comment justifies this only for a "never-indexed" file, but
 `workflow::index_image` (`workflow/mod.rs:78`) returns `anyhow::Error` from every stage — `OpenFileTask`, `HashTask`,
 `DeduplicateTask`, `IndexTask`, `VideoTask` — including `ErrorKind::Internal` (coordinator join, DB) failures that can

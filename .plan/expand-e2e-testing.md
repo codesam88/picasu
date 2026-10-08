@@ -15,7 +15,7 @@ Expand e2e testing for API and UI
 - [ ] `config_read_endpoints` — `GET /get/config` and `GET /get/config/export` smoke test
 - [ ] `edit_flags_then_verify` — prefetch → capture index → `PUT /put/edit_flags` → verify flag change
 - [ ] `delete_data` — prefetch → `DELETE /delete/delete-data` → verify file absent
-- [ ] `index_image_single` — `POST /post/index/image` → 202
+- [ ] `index_album` — `POST /post/index/album` → 202
 - [ ] `cancel_album_index` — `POST /post/index/cancel` → 200
 - [ ] `get_index_status` — `GET /get/index/status` → 200 + JSON status
 - [ ] `get_rows_get_scroll_bar` — prefetch → `GET /get/get-rows`/`get-scroll-bar` with Bearer token
