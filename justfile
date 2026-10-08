@@ -231,7 +231,7 @@ setup-dev: install-dev
 # Install plan tool from tablethat (pinned version)
 [group('global')]
 install-plan:
-    cargo install --git https://github.com/tedsamhain/tablethat --rev df81155
+    cargo install --git https://github.com/tedsamhain/tablethat --rev 7853459
 
 # Pinned ExifTool distribution for local development installs.
 #
@@ -300,7 +300,6 @@ install-exiftool:
 # Install dev tools
 [group('global')]
 install-dev: install-plan install-exiftool
-    cargo install sccache
     cargo install cargo-deny
     npm ci --prefix frontend
 
