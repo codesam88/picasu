@@ -703,10 +703,10 @@
           "resolvedShareOpt": {
             "oneOf": [
               {
-                "type": "null"
+                "$ref": "#/components/schemas/ResolvedShare"
               },
               {
-                "$ref": "#/components/schemas/ResolvedShare"
+                "type": "null"
               }
             ]
           },
