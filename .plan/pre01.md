@@ -34,8 +34,8 @@ The remaining release work falls into four categories:
 | #   | Item                                    | Ticket                                   | Status                                     |
 | --- | --------------------------------------- | ---------------------------------------- | ------------------------------------------ |
 | A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | open — needs repro + root cause            |
-| A2  | Flag edits don't write sidecars         | `edit-flags-sidecar-writeback.md`        | open — needs trash XMP mapping decision    |
-| B1  | EXIF/XMP read for non-JPEG containers   | `test-exif-xmp-handling.md`              | open — JPEG covered; PNG/TIFF/MP4 gap      |
+| A2  | Flag edits don't write sidecars         | — (ticket removed, see below)            | open — needs trash XMP mapping decision    |
+| B1  | EXIF/XMP read for non-JPEG containers   | — (ticket removed)                       | done — per-format scenarios on main        |
 | B2  | UI bugs (Escape/back, lightbox, theme)  | `ui-refinement.md`                       | open — bug checklist only; 4/21 done       |
 | B3  | Parent-only albums have no thumbnail    | `bug-parent-album-no-thumbnail.md`       | done — descendant cover fallback           |
 | C1  | License / SPDX / OSSF review            | `license-and-ossf-review.md`             | idea — promote to open, run before tagging |
@@ -53,21 +53,38 @@ file-lifecycle work already shipped (delete-from-disk, watcher Remove handling).
 reproduction and root-cause investigation before estimate is reliable.
 
 **A2 — Trashed doesn't write an XMP sidecar.**
-_What:_ `PUT /put/edit_flags` updates the database but never calls `write_sidecar_for`,
-unlike tag, description, rating, and album-title edits. Decide how `is_trashed` maps to
-XMP, then call the writer. _Why critical:_ flag editing is exposed in the UI (delete /
+_What:_ `PUT /put/edit_flags` is the only metadata edit not routed through
+`commit_metadata_edits`; `edit_tag`, `edit_description`, `edit_rating` and `edit_album` all
+are (pinned by `xmp_sidecar_written_on_edit_tag_z1.yaml`,
+`sidecar_write_failure_blocks_a_rating_edit.yaml`). Trash is owned by
+`AssetRecord.is_trashed` and handed separately to `store_metadata_record`, so no file on
+disk changes. Fixing it needs three things the original ticket did not state: an XMP
+mapping for trash (no standard key represents a trash state), a new managed property in
+`write_sidecar_for` — now an xmpkit read-modify-write over `dc:subject`, `dc:description`,
+`xmp:Rating` and album-only `dc:title` — and applying the flag to the composed view first,
+because `compose_by_asset_id` returns the pre-edit value while the contract writes
+sidecars before the store phase. Still open: whether trash belongs in the sidecar at all,
+given it lives on `AssetRecord` and not in the `METADATA_TABLE` payload the contract calls
+the cache of file + sidecar. _Why critical:_ flag editing is exposed in the UI (delete /
 restore menu items), so this is the one editable surface that fails the release rule.
-Small scope: one call site + one mapping decision. (Favorite and archived were removed
-with the branch that dropped those fields, so only trash remains to map.)
+(Favorite and archived were removed with the branch that dropped those fields, so only
+trash remains to map. Ticket file removed 2026-10-08 as outdated; the finding is retained
+here.)
 
 ### B. Metadata & UI
 
 **B1 — Non-JPEG XMP read coverage.**
-_What:_ XMP extraction (`xmp.rs`) is unit-tested only against JPEG-style packets; XMP/IPTC
-packet placement differs per container (PNG zTXt/iTXt, TIFF, MP4 uuid box). Add one test
-per representative container. _Why:_ "metadata read from files" is a core release promise;
-today it is only demonstrably true for JPEG. Video-pipeline coverage needs
-`ffmpeg`/`ffprobe` and may be split off if unavailable in CI.
+_Done._ Main now carries real-fixture metadata scenarios for PNG, TIFF, WebP, MP4 and MOV
+(`png_metadata_exif_dimensions_thumbnail`, `tiff_…`, `webp_…`, `mp4_ffprobe_…`,
+`mov_ffprobe_…`), each paired with a `*_without_xmp_source_has_no_tags` negative, plus
+corrupt EXIF/XMP cases and seeded randomized format runs driven by
+`utils/snapfab/capabilities.json`. Extraction is `extract_xmp_data_from_packet` /
+`extract_xmp_data_from_file` (`backend/src/process/xmp.rs`), no longer a substring scan;
+`ffmpeg`/`ffprobe` absence is pinned by
+`video_metadata_requires_a_working_ffmpeg_and_ffprobe`. _Residual:_ video extensions
+outside the matrix (gif, webm, mkv, avi, flv, wmv, mpeg) have unit-level detection coverage
+only; IPTC-IIM and MP4 UUID-box XMP are unclaimed; PNG embedded XMP is pinned as not
+extracted. Ticket file removed 2026-10-08.
 
 **B2 — UI bug pass.**
 _What:_ the bug checklist in `ui-refinement.md` — Escape/back navigation, lightbox
@@ -126,8 +143,6 @@ for the five pure-function targets, snapfab migration.
 | File                                     | Status | Item |
 | ---------------------------------------- | ------ | ---- |
 | `bug-delete-album-restores-subalbums.md` | open   | A1   |
-| `edit-flags-sidecar-writeback.md`        | open   | A2   |
-| `test-exif-xmp-handling.md`              | open   | B1   |
 | `ui-refinement.md`                       | open   | B2   |
 | `bug-parent-album-no-thumbnail.md`       | open   | B3   |
 | `license-and-ossf-review.md`             | idea   | C1   |
