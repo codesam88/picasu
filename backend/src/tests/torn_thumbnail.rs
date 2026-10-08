@@ -12,14 +12,13 @@
 //! posts nothing on that path, so the tile stays blank for good.
 //!
 //! Both halves are driven through HTTP: reader threads poll
-//! `/object/compressed/...` while the main thread re-indexes the same asset
-//! through `POST /post/index/image`.
+//! `/object/compressed/...` while the main thread re-indexes the album that
+//! holds the photo through `POST /post/index/album`.
 
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
 
 use rocket::http::{ContentType, Header, Status};
 use rocket::local::blocking::Client;
@@ -31,6 +30,7 @@ use crate::router::auth::ClaimsHash;
 use crate::tests::bootstrap::{
     TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state, test_image_home,
 };
+use crate::tests::fixtures::wait_for_album_index;
 
 /// Photo indexed for this test, relative to `IMAGE_HOME`.
 const PHOTO_REL: &str = "torn_thumb/album/photo.jpg";
@@ -39,8 +39,8 @@ const PHOTO_REL: &str = "torn_thumb/album/photo.jpg";
 const ROUNDS: usize = 6;
 /// Reader threads hammering the serving endpoint for the whole test.
 const READERS: usize = 2;
-/// How long to wait for one re-index round to rewrite the thumbnail.
-const ROUND_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long to wait for one re-index job to report `completed`.
+const INDEX_TIMEOUT_MS: u64 = 30_000;
 
 /// A complete JPEG starts with the SOI marker and ends with the EOI marker.
 /// A body cut short by a concurrent truncate cannot end with EOI, because the
@@ -57,18 +57,27 @@ fn auth_header(token: &str) -> Header<'static> {
     Header::new("Authorization", format!("Bearer {token}"))
 }
 
-/// Ask the backend to re-index `relative` through `POST /post/index/image`,
-/// the same handler the production client uses.
-fn post_index_image(client: &Client, relative: &str) {
+/// The `IMAGE_HOME`-relative album directory that holds [`PHOTO_REL`].
+fn photo_album() -> String {
+    Path::new(PHOTO_REL)
+        .parent()
+        .expect("PHOTO_REL must sit in a directory")
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Ask the backend to re-index `album` through `POST /post/index/album`, the
+/// same handler the production client uses.
+fn post_index_album(client: &Client, album: &str) {
     let resp = client
-        .post("/post/index/image")
+        .post("/post/index/album")
         .header(ContentType::JSON)
-        .body(serde_json::json!({ "image": relative }).to_string())
+        .body(serde_json::json!({ "album": album }).to_string())
         .dispatch();
     assert_eq!(
         resp.status(),
         Status::Accepted,
-        "POST /post/index/image must accept the request"
+        "POST /post/index/album must accept the request"
     );
 }
 
@@ -77,35 +86,44 @@ fn thumbnail_signature(path: &Path) -> Option<(std::time::SystemTime, u64)> {
     Some((meta.modified().ok()?, meta.len()))
 }
 
-/// Block until the re-index round has rewritten the thumbnail and the write
-/// has finished, so every round provably produced one complete file for the
-/// readers to race against.
+/// Block until the job started for this round reports `completed`, then require
+/// the round to have produced one complete thumbnail for the readers to race
+/// against.
 ///
-/// Completeness has to be judged from the bytes, not the signature:
-/// `save_with_format` creates (and truncates) the destination *before* it
-/// encodes and flushes in chunks, so right after the file appears it is empty
-/// or partial, and its size can sit still for longer than any settle window.
-/// A complete JPEG can only exist once the write finished, because the EOI
-/// marker is emitted last.
-fn wait_for_rewrite(path: &Path, before: Option<(std::time::SystemTime, u64)>, round: usize) {
-    let deadline = Instant::now() + ROUND_TIMEOUT;
-    loop {
-        // Order matters: only inspect the bytes once the signature has moved
-        // on. Reading them the other way round can see the previous, complete
-        // file while the signature already reflects the new truncate, which
-        // would report the round as finished while the write is still running.
-        let signature = thumbnail_signature(path);
-        if signature.is_some()
-            && signature != before
-            && std::fs::read(path).is_ok_and(|bytes| is_complete_jpeg(&bytes))
-        {
-            return;
-        }
-        if Instant::now() > deadline {
-            panic!("round {round}: thumbnail was not rewritten within {ROUND_TIMEOUT:?}");
-        }
-        std::thread::sleep(Duration::from_millis(2));
-    }
+/// `GET /get/index/status` settles on `completed` only after every per-file
+/// handle of the job has been joined, and a handle holds its file's
+/// `ProcessingGuard` until `index_image` returns — so `completed` implies the
+/// write finished. A signature-based wait could not say that: it observed the
+/// filesystem, where a finished write looks identical to a write still in
+/// flight.
+///
+/// Both the signature and the bytes are still checked, because the assertion's
+/// purpose is that the round provably rewrote the file. Completeness has to be
+/// judged from the bytes, not the signature — `save_with_format` creates (and
+/// truncates) the destination *before* it encodes and flushes in chunks, so
+/// mid-write the signature can already differ while the file is empty or
+/// partial. A complete JPEG can only exist once the write finished, because the
+/// EOI marker is emitted last.
+fn assert_round_rewrote_thumbnail(
+    path: &Path,
+    before: Option<(std::time::SystemTime, u64)>,
+    round: usize,
+) {
+    let now = thumbnail_signature(path);
+    assert!(
+        now.is_some() && now != before,
+        "round {round}: the album index reported completion but the thumbnail signature \
+         did not move (before={before:?}, now={now:?})"
+    );
+
+    let bytes = std::fs::read(path)
+        .unwrap_or_else(|e| panic!("round {round}: read thumbnail {}: {e}", path.display()));
+    assert!(
+        is_complete_jpeg(&bytes),
+        "round {round}: thumbnail is not a complete JPEG — {} bytes \
+         (before={before:?}, now={now:?})",
+        bytes.len()
+    );
 }
 
 #[test]
@@ -149,8 +167,10 @@ fn compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated() {
         data_path.join(format!("object/compressed/{}/{}.jpg", &hash[..2], hash))
     };
     let before_first = thumbnail_signature(&thumb_path);
-    post_index_image(&client, PHOTO_REL);
-    wait_for_rewrite(&thumb_path, before_first, 0);
+    let album = photo_album();
+    post_index_album(&client, &album);
+    wait_for_album_index(&client, INDEX_TIMEOUT_MS);
+    assert_round_rewrote_thumbnail(&thumb_path, before_first, 0);
 
     let hash =
         blake3_hasher(std::fs::File::open(&photo_abs).expect("open photo")).expect("hash photo");
@@ -217,8 +237,9 @@ fn compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated() {
 
     for round in 1..=ROUNDS {
         let before = thumbnail_signature(&thumb_path);
-        post_index_image(&client, PHOTO_REL);
-        wait_for_rewrite(&thumb_path, before, round);
+        post_index_album(&client, &album);
+        wait_for_album_index(&client, INDEX_TIMEOUT_MS);
+        assert_round_rewrote_thumbnail(&thumb_path, before, round);
     }
 
     stop.store(true, Ordering::Release);

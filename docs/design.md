@@ -85,9 +85,9 @@ surfaces require the others to be regenerated or checked together.
 
 - Basic functions:
 
-  - Single image indexing via `index_image(src, dst)`
+  - Single image indexing via `index_image(src)`
     - src path relative to `IMAGE_HOME`
-    - dst path is optionally assigned target folder (album) relative to `IMAGE_HOME`
+    - the album is always resolved from the file's parent directory
 
   - Folder indexing via `index_path(src)`
     - src path must be relative to `IMAGE_HOME`

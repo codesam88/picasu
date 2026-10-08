@@ -146,7 +146,7 @@ fn submit_to_debounce_pool(path: PathBuf) {
         {
             match classify_media_file(&path) {
                 MediaOutcome::Index => {
-                    if let Err(e) = crate::workflow::index_image(relative, None).await {
+                    if let Err(e) = crate::workflow::index_image(relative).await {
                         handle_error(e);
                     }
                 }

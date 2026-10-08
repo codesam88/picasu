@@ -8,17 +8,10 @@ use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::actor::album_index::{cancel_album_index, index_album};
-use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct IndexAlbumRequest {
     album: String,
-}
-
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
-pub struct IndexImageRequest {
-    image: String,
-    album: Option<String>,
 }
 
 /// Index every media file under a directory tree in the background.
@@ -55,47 +48,6 @@ pub fn index_album_handler(
 ) -> AppResult<Status> {
     let _ = read_only?;
     index_album(&req.into_inner().album)?;
-    Ok(Status::Accepted)
-}
-
-/// Index a single image by its path relative to `IMAGE_HOME`.
-///
-/// The request returns as soon as the indexing task is spawned, so it reports
-/// only that the work was started. `image` is the path below `IMAGE_HOME`,
-/// and `album` optionally overrides the album the image is filed under.
-///
-/// Corner cases: The task runs detached from the request, so an indexing
-/// failure is logged rather than returned and leaves no entry in
-/// `GET /get/index/status`, which tracks album-index jobs only.
-///
-/// Errors: 400 unusable request body — 401 missing or invalid credentials —
-/// 405 read-only mode.
-#[utoipa::path(
-        tag = "index",
-        request_body = IndexImageRequest,
-        responses(
-            (status = 202, description = "Image indexing started"),
-            (status = 400, description = "Invalid input"),
-            (status = 401, response = Unauthorized),
-            (status = 405, description = "Read-only mode"),
-        )
-    )
-]
-#[post("/post/index/image", data = "<req>")]
-pub fn index_image_handler(
-    _auth: GuardAuth,
-    read_only: GuardResult<GuardReadOnlyMode>,
-    req: Json<IndexImageRequest>,
-) -> AppResult<Status> {
-    let _ = read_only?;
-    let inner = req.into_inner();
-    let src = PathBuf::from(inner.image);
-    let dst = inner.album.map(PathBuf::from);
-    rocket::tokio::spawn(async move {
-        if let Err(e) = crate::workflow::index_image(&src, dst.as_deref()).await {
-            log::error!("index_image failed: {e}");
-        }
-    });
     Ok(Status::Accepted)
 }
 

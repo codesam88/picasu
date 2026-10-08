@@ -571,23 +571,6 @@
         ],
         "type": "object"
       },
-      "IndexImageRequest": {
-        "properties": {
-          "album": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "image": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "image"
-        ],
-        "type": "object"
-      },
       "OnConflict": {
         "description": "Filename-collision strategy for moves and uploads: `skip` leaves an\nexisting destination untouched (the source stays put, outcome `skipped`);\n`rename` lands the file under a unique suffixed name (outcome\n`renamedFrom`). Required on assign with no default; upload defaults to\n`rename`.",
         "enum": [
@@ -1942,40 +1925,6 @@
           }
         },
         "summary": "Request cancellation of the running album index job.",
-        "tags": [
-          "index"
-        ]
-      }
-    },
-    "/post/index/image": {
-      "post": {
-        "description": "The request returns as soon as the indexing task is spawned, so it reports\nonly that the work was started. `image` is the path below `IMAGE_HOME`,\nand `album` optionally overrides the album the image is filed under.\n\nCorner cases: The task runs detached from the request, so an indexing\nfailure is logged rather than returned and leaves no entry in\n`GET /get/index/status`, which tracks album-index jobs only.\n\nErrors: 400 unusable request body — 401 missing or invalid credentials —\n405 read-only mode.",
-        "operationId": "index_image_handler",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/IndexImageRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "description": "Image indexing started"
-          },
-          "400": {
-            "description": "Invalid input"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "405": {
-            "description": "Read-only mode"
-          }
-        },
-        "summary": "Index a single image by its path relative to `IMAGE_HOME`.",
         "tags": [
           "index"
         ]

@@ -31,10 +31,6 @@ export const startAlbumIndex = async (album?: string): Promise<void> => {
   await axios.post('/post/index/album', { album: album ?? '/' })
 }
 
-export const startImageIndex = async (image: string, album?: string): Promise<void> => {
-  await axios.post('/post/index/image', { image, album })
-}
-
 export const getAlbumIndexStatus = async (): Promise<AlbumIndexStatus> => {
   const response = await axios.get<AlbumIndexStatus>('/get/index/status')
   return response.data

@@ -285,7 +285,7 @@ pub async fn upload(
             .map_err(|_| {
                 AppError::new(ErrorKind::Internal, "Uploaded file path outside IMAGE_HOME")
             })?;
-        if let Err(index_error) = crate::workflow::index_image(relative_src, None).await {
+        if let Err(index_error) = crate::workflow::index_image(relative_src).await {
             // A mid-pipeline failure can occur after a partial commit: the
             // uploaded file is only safely removable when no index record
             // references it. Only a content-decode failure guarantees that,

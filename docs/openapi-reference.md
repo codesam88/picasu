@@ -5457,191 +5457,6 @@ Errors: 400 malformed request — 401 missing or invalid credentials —
 This operation does not require authentication
 </aside>
 
-## Index a single image by its path relative to `IMAGE_HOME`.
-
-<a id="opIdindex_image_handler"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X POST /post/index/image \
-  -H 'Content-Type: application/json'
-
-```
-
-```http
-POST /post/index/image HTTP/1.1
-
-Content-Type: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "album": "string",
-  "image": "string"
-}';
-const headers = {
-  'Content-Type':'application/json'
-};
-
-fetch('/post/index/image',
-{
-  method: 'POST',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json'
-}
-
-result = RestClient.post '/post/index/image',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json'
-}
-
-r = requests.post('/post/index/image', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('POST','/post/index/image', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/post/index/image");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("POST");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/post/index/image", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`POST /post/index/image`
-
-The request returns as soon as the indexing task is spawned, so it reports
-only that the work was started. `image` is the path below `IMAGE_HOME`,
-and `album` optionally overrides the album the image is filed under.
-
-Corner cases: The task runs detached from the request, so an indexing
-failure is logged rather than returned and leaves no entry in
-`GET /get/index/status`, which tracks album-index jobs only.
-
-Errors: 400 unusable request body — 401 missing or invalid credentials —
-405 read-only mode.
-
-> Body parameter
-
-```json
-{
-  "album": "string",
-  "image": "string"
-}
-```
-
-<h3 id="index-a-single-image-by-its-path-relative-to-`image_home`.-parameters">Parameters</h3>
-
-| Name | In   | Type                                          | Required | Description |
-| ---- | ---- | --------------------------------------------- | -------- | ----------- |
-| body | body | [IndexImageRequest](#schemaindeximagerequest) | true     | none        |
-
-<h3 id="index-a-single-image-by-its-path-relative-to-`image_home`.-responses">Responses</h3>
-
-| Status | Meaning                                                                 | Description                                                                                | Schema |
-| ------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 202    | [Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)           | Image indexing started                                                                     | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)        | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)         | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5) | Read-only mode                                                                             | None   |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Rebuild the asset tables and metadata cache from the filesystem under `IMAGE_HOME`.
 
 <a id="opIdrebuild_handler"></a>
@@ -7254,7 +7069,19 @@ null
     "locateTo": 0,
     "timestamp": 0
   },
-  "resolvedShareOpt": {},
+  "resolvedShareOpt": {
+    "albumId": "string",
+    "albumTitle": "string",
+    "share": {
+      "description": "string",
+      "exp": 0,
+      "password": "string",
+      "showDownload": true,
+      "showMetadata": true,
+      "showUpload": true,
+      "url": "string"
+    }
+  },
   "token": "string"
 }
 ```
@@ -11024,27 +10851,6 @@ silent about what happened to the selected item.
 | ----- | ------ | -------- | ------------ | ----------- |
 | album | string | true     | none         | none        |
 
-<h2 id="tocS_IndexImageRequest">IndexImageRequest</h2>
-<!-- backwards compatibility -->
-<a id="schemaindeximagerequest"></a>
-<a id="schema_IndexImageRequest"></a>
-<a id="tocSindeximagerequest"></a>
-<a id="tocsindeximagerequest"></a>
-
-```json
-{
-  "album": "string",
-  "image": "string"
-}
-```
-
-### Properties
-
-| Name  | Type        | Required | Restrictions | Description |
-| ----- | ----------- | -------- | ------------ | ----------- |
-| album | string,null | false    | none         | none        |
-| image | string      | true     | none         | none        |
-
 <h2 id="tocS_OnConflict">OnConflict</h2>
 <!-- backwards compatibility -->
 <a id="schemaonconflict"></a>
@@ -11151,7 +10957,19 @@ existing destination untouched (the source stays put, outcome `skipped`);
     "locateTo": 0,
     "timestamp": 0
   },
-  "resolvedShareOpt": {},
+  "resolvedShareOpt": {
+    "albumId": "string",
+    "albumTitle": "string",
+    "share": {
+      "description": "string",
+      "exp": 0,
+      "password": "string",
+      "showDownload": true,
+      "showMetadata": true,
+      "showUpload": true,
+      "url": "string"
+    }
+  },
   "token": "string"
 }
 ```
@@ -11165,15 +10983,15 @@ existing destination untouched (the source stays put, outcome `skipped`);
 
 oneOf
 
-| Name          | Type | Required | Restrictions | Description |
-| ------------- | ---- | -------- | ------------ | ----------- |
-| » _anonymous_ | null | false    | none         | none        |
-
-xor
-
 | Name          | Type                                  | Required | Restrictions | Description |
 | ------------- | ------------------------------------- | -------- | ------------ | ----------- |
 | » _anonymous_ | [ResolvedShare](#schemaresolvedshare) | false    | none         | none        |
+
+xor
+
+| Name          | Type | Required | Restrictions | Description |
+| ------------- | ---- | -------- | ------------ | ----------- |
+| » _anonymous_ | null | false    | none         | none        |
 
 continued
 
