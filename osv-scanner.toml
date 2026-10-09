@@ -1,0 +1,22 @@
+# Waivers for the OpenSSF Scorecard `Vulnerabilities` check, which queries OSV
+# and does not read deny.toml. cargo-deny covers these in deny.toml [advisories];
+# keep both files in sync when an advisory is added or lifted.
+#
+# osv-scanner resolves this config relative to the lockfile in this directory.
+# Validated with osv-scanner v2.6.0: all four entries filter, scan ends clean.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0194"
+reason = "quick-xml 0.40.1 via xmpkit 0.1.6, which requires ^0.40; no upstream upgrade until xmpkit ships >=0.41. Quadratic duplicate-attribute check needs one start tag with a very large attribute count. See deny.toml."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0195"
+reason = "quick-xml 0.40.1 via xmpkit 0.1.6, which requires ^0.40; no upstream upgrade until xmpkit ships >=0.41. Unbounded namespace allocation needs one start tag with a very large declaration count. See deny.toml."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0258"
+reason = "h2 0.3.27 via hyper 0.14 / rocket_http 0.5.1; fix is >=0.4.16 only and rocket 0.5.1 has no hyper 1.x path. Rocket negotiates HTTP/2 only over TLS (ALPN h2) and this server runs plaintext, so the h2 code path is never active. Revisit when rocket moves to hyper 1.x or TLS is added. See deny.toml."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0436"
+reason = "paste is unmaintained, but the tree does not use the crates.io release: utils/paste-shim is a local path dependency (publish=false) of the same name delegating to pastey, the maintained fork. OSV matches the advisory on name+version; no unfixed code is shipped."

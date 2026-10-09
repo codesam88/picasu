@@ -1,0 +1,7 @@
+# Waiver for the OpenSSF Scorecard `Vulnerabilities` check, which queries OSV
+# and does not read package.json audits. This advisory is dev-only tooling.
+# Validated with osv-scanner v2.6.0: the entry filters, scan ends clean.
+
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+reason = "braces ReDoS, pulled in via @stoplight/spectral-cli (devDependencies only) as micromatch -> braces. Spectral is the OpenAPI linter run in CI/docs-check; not part of the shipped frontend bundle or the server binary."
