@@ -11,6 +11,32 @@ pub struct XmpData {
     pub rating: Option<u8>,
     /// `dc:title`. Used for the album display name override.
     pub title: Option<String>,
+    /// Soft-delete state, from the app's own `picasu:Trashed` marker. Stored
+    /// in the sidecar so a database rebuild from the filesystem keeps trashed
+    /// assets trashed; absent marker means not trashed.
+    pub trashed: bool,
+}
+
+/// The app's own XMP namespace, for properties no standard namespace has a
+/// key for. `Trashed` lives here: soft-delete is application state, not photo
+/// metadata, and putting it in `dc:` or `xmp:` would claim a standard meaning.
+pub const NS_PICASU: &str = "http://picasu.app/xmp/1.0/";
+
+/// Prefix `NS_PICASU` is written with.
+pub const NS_PICASU_PREFIX: &str = "picasu";
+
+/// Register [`NS_PICASU`] with xmpkit's namespace registry.
+///
+/// xmpkit resolves a namespace by prefix or URI and refuses to write a
+/// property in a namespace it does not know, and the registry is per thread,
+/// so this runs before each write rather than once per process. Registering
+/// the same pair twice is a no-op; a genuine failure (another component
+/// owning the `picasu` prefix) leaves the write path reporting a
+/// `BadSchema` error, which surfaces as an IO error to the caller.
+pub fn ensure_picasu_namespace_registered() {
+    if let Err(err) = xmpkit::register_namespace(NS_PICASU, NS_PICASU_PREFIX) {
+        log::warn!("could not register the picasu XMP namespace: {err}");
+    }
 }
 
 /// Extract XMP metadata from raw packet bytes (`.xmp` / `.albuminfo.xmp` content).
@@ -69,7 +95,7 @@ pub fn extract_xmp_data_from_file(path: &Path) -> XmpData {
 
 // ── Internals ─────────────────────────────────────────────────────────────────
 
-/// Normalize xmpkit's values for the four managed fields into `XmpData`.
+/// Normalize xmpkit's values for the managed fields into `XmpData`.
 ///
 /// Shapes observed with xmpkit 0.1.6: containers (`rdf:Bag`, `rdf:Alt`) arrive
 /// as `XmpValue::Array([String])`; compact/attribute-form values arrive as a
@@ -81,6 +107,7 @@ fn normalize(meta: &XmpMeta) -> XmpData {
         description: text_from_property(meta.get_property(ns::DC, "description")),
         rating: rating_from_property(meta.get_property(ns::XMP, "Rating")),
         title: text_from_property(meta.get_property(ns::DC, "title")),
+        trashed: trashed_from_property(meta.get_property(NS_PICASU, "Trashed")),
     }
 }
 
@@ -144,6 +171,25 @@ fn rating_from_property(value: Option<XmpValue>) -> Option<u8> {
         .ok()
         .and_then(|v| u8::try_from(v).ok())
         .filter(|&r| r <= 5)
+}
+
+/// `picasu:Trashed` → soft-delete state.
+///
+/// The app writes `XmpValue::Boolean`, but a packet written by hand or by a
+/// future tool arrives as text, so `true`/`True`/`1` count as marked. Only a
+/// marked packet reads as trashed: everything else — absent, `false`, a stray
+/// string — reads as not trashed, because "not marked" is the state an
+/// untouched asset must be in.
+fn trashed_from_property(value: Option<XmpValue>) -> bool {
+    match value {
+        Some(XmpValue::Boolean(value)) => value,
+        Some(XmpValue::String(raw)) => {
+            let raw = raw.trim();
+            raw.eq_ignore_ascii_case("true") || raw == "1"
+        }
+        Some(XmpValue::Integer(value)) => value != 0,
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -249,6 +295,38 @@ mod tests {
         assert_eq!(data.description, None);
         assert_eq!(data.rating, None);
         assert_eq!(data.title, None);
+        assert!(!data.trashed, "expected not trashed");
+    }
+
+    /// A packet carrying the picasu-trash marker as attribute-form Boolean
+    /// (`picasu:Trashed="true"`), beside a managed field so the packet is not
+    /// otherwise empty.
+    fn xmp_with_trashed_attribute(trashed: bool) -> String {
+        format!(
+            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+ <rdf:Description xmlns:picasu="http://picasu.app/xmp/1.0/"
+                  xmlns:dc="http://purl.org/dc/elements/1.1/"
+                  picasu:Trashed="{trashed}">
+ <dc:subject><rdf:Bag><rdf:li>sunset</rdf:li></rdf:Bag></dc:subject>
+ </rdf:Description>
+ </rdf:RDF>
+ </x:xmpmeta>"#
+        )
+    }
+
+    /// The element form (`<picasu:Trashed>true</picasu:Trashed>`), which a
+    /// hand-written packet more likely carries.
+    fn xmp_with_trashed_element(value: &str) -> String {
+        format!(
+            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+ <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+ <rdf:Description xmlns:picasu="http://picasu.app/xmp/1.0/">
+ <picasu:Trashed>{value}</picasu:Trashed>
+ </rdf:Description>
+ </rdf:RDF>
+ </x:xmpmeta>"#
+        )
     }
 
     // ── Managed-field extraction (ported intents) ─────────────────────────────
@@ -263,6 +341,49 @@ mod tests {
         );
         assert_eq!(data.description.as_deref(), Some("A beautiful sunset"));
         assert_eq!(data.rating, Some(4));
+    }
+
+    // ── Trash-state extraction ───────────────────────────────────────────────
+
+    #[test]
+    fn trashed_marker_reads_back_as_trashed() {
+        let data = extract_xmp_data_from_packet(xmp_with_trashed_attribute(true).as_bytes());
+        assert!(data.trashed);
+        assert_eq!(
+            data.tags,
+            HashSet::from(["sunset".to_string()]),
+            "reading the trash marker must not disturb the managed fields"
+        );
+    }
+
+    #[test]
+    fn untrashed_marker_reads_back_as_untrashed() {
+        let data = extract_xmp_data_from_packet(xmp_with_trashed_attribute(false).as_bytes());
+        assert!(!data.trashed);
+    }
+
+    /// The forms a hand- or externally-written packet takes: element text
+    /// `true`, and the other spellings XMP booleans allow. Anything that is
+    /// not one of them — including `false` and a non-boolean string — reads
+    /// as not trashed, because "trashed" is the marked state.
+    #[test]
+    fn trashed_marker_tolerates_human_written_values() {
+        for value in ["true", "True", "1"] {
+            let data = extract_xmp_data_from_packet(xmp_with_trashed_element(value).as_bytes());
+            assert!(data.trashed, "{value} must read as trashed");
+        }
+        for value in ["false", "False", "0", "yes", "banana"] {
+            let data = extract_xmp_data_from_packet(xmp_with_trashed_element(value).as_bytes());
+            assert!(!data.trashed, "{value} must read as not trashed");
+        }
+    }
+
+    /// The marker's absence is the normal state, so an untouched packet (or a
+    /// sidecar written before this property existed) reads as not trashed.
+    #[test]
+    fn absent_marker_reads_as_untrashed() {
+        let data = extract_xmp_data_from_packet(xmp_full(&["sunset"], "desc", 3).as_bytes());
+        assert!(!data.trashed);
     }
 
     #[test]

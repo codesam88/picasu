@@ -24,7 +24,7 @@ The remaining release work falls into four categories:
 
 | Category                | What it covers                                      | Items      |
 | ----------------------- | --------------------------------------------------- | ---------- |
-| **A. Correctness**      | Behavior that is wrong or violates the release rule | A2         |
+| **A. Correctness**      | Behavior that is wrong or violates the release rule | —          |
 | **B. Metadata & UI**    | Completing the metadata promise; visible polish     | B1, B2, B3 |
 | **C. Release hygiene**  | Legal/licensing gate before tagging                 | C1         |
 | **D. Confidence tests** | Tests that pin down shipped behavior                | D1         |
@@ -34,7 +34,7 @@ The remaining release work falls into four categories:
 | #   | Item                                    | Ticket                                   | Status                                     |
 | --- | --------------------------------------- | ---------------------------------------- | ------------------------------------------ |
 | A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | done — fix + e2e coverage on main          |
-| A2  | Flag edits don't write sidecars         | — (ticket removed, see below)            | open — needs trash XMP mapping decision    |
+| A2  | Flag edits don't write sidecars         | `bug-trash-sidecar-durability.md`        | done — trash marker durable in sidecar     |
 | B1  | EXIF/XMP read for non-JPEG containers   | — (ticket removed)                       | done — per-format scenarios on main        |
 | B2  | UI bugs (Escape/back, lightbox, theme)  | `ui-refinement.md`                       | open — bug checklist only; 4/21 done       |
 | B3  | Parent-only albums have no thumbnail    | `bug-parent-album-no-thumbnail.md`       | done — descendant cover fallback           |
@@ -58,23 +58,19 @@ ticket: `remove_dir_all` failures are swallowed, so an fs-level failure would
 still produce this symptom silently.
 
 **A2 — Trashed doesn't write an XMP sidecar.**
-_What:_ `PUT /put/edit_flags` is the only metadata edit not routed through
-`commit_metadata_edits`; `edit_tag`, `edit_description`, `edit_rating` and `edit_album` all
-are (pinned by `xmp_sidecar_written_on_edit_tag_z1.yaml`,
-`sidecar_write_failure_blocks_a_rating_edit.yaml`). Trash is owned by
-`AssetRecord.is_trashed` and handed separately to `store_metadata_record`, so no file on
-disk changes. Fixing it needs three things the original ticket did not state: an XMP
-mapping for trash (no standard key represents a trash state), a new managed property in
-`write_sidecar_for` — now an xmpkit read-modify-write over `dc:subject`, `dc:description`,
-`xmp:Rating` and album-only `dc:title` — and applying the flag to the composed view first,
-because `compose_by_asset_id` returns the pre-edit value while the contract writes
-sidecars before the store phase. Still open: whether trash belongs in the sidecar at all,
-given it lives on `AssetRecord` and not in the `METADATA_TABLE` payload the contract calls
-the cache of file + sidecar. _Why critical:_ flag editing is exposed in the UI (delete /
-restore menu items), so this is the one editable surface that fails the release rule.
-(Favorite and archived were removed with the branch that dropped those fields, so only
-trash remains to map. Ticket file removed 2026-10-08 as outdated; the finding is retained
-here.)
+_Fixed 2026-10-09_ (`bug-trash-sidecar-durability.md`). `PUT /put/edit_flags`
+now routes through `commit_metadata_edits`: the trash flag is applied to the
+composed view, written to the sidecar as the managed `picasu:Trashed`
+property, and only then stored on the record — the same write-then-store
+contract `edit_tag`/`edit_rating` follow. Restore deletes the property. The
+flag is durable in the sidecar, so a `POST /post/rebuild` (or losing
+`DATA_HOME`) keeps trashed items trashed instead of silently undeleting them;
+`process/index.rs`, `dir_album.rs` and `rebuild.rs` compose it back at index
+time. Pinned by `trash_state_survives_rebuild.yaml` and the xmp read/write
+module tests; backend suite 458 green. _Why it was critical:_ flag editing is
+exposed in the UI (delete / restore menu items), and DB-only trash state
+violated the design doc's "generated state is rebuildable from the
+filesystem" rule — the release rule's correctness half.
 
 ### B. Metadata & UI
 
@@ -148,6 +144,7 @@ for the five pure-function targets, snapfab migration.
 | File                                     | Status | Item |
 | ---------------------------------------- | ------ | ---- |
 | `bug-delete-album-restores-subalbums.md` | done   | A1   |
+| `bug-trash-sidecar-durability.md`        | done   | A2   |
 | `ui-refinement.md`                       | open   | B2   |
 | `bug-parent-album-no-thumbnail.md`       | open   | B3   |
 | `license-and-ossf-review.md`             | idea   | C1   |

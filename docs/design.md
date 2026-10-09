@@ -59,6 +59,12 @@ an optional, app-specific helper stored next to a directory; it customizes the
 presentation of that folder but does not define the folder, its membership, or
 its identity. Losing or rebuilding `.albuminfo` must not lose photos.
 
+User state that the filesystem cannot express on its own — today the trash
+flag — is a managed property in the sidecar (`picasu:Trashed`, alongside the
+app's other managed properties), so it is rebuilt with the record instead of
+dying with the database cache. The database remains a cache of the file plus
+its sidecar for those fields; it is never the only copy.
+
 Database updates and filesystem operations are not one atomic transaction. A
 journal records the intended filesystem operation and its progress; startup
 recovery and indexing rebuild or reconcile generated state from the repository.
@@ -131,6 +137,17 @@ surfaces require the others to be regenerated or checked together.
 - A selected file may be deleted explicitly. The file and its sidecar are
   removed only after confirmation. Generated records and thumbnails may remain
   only as temporary cleanup state; the filesystem is authoritative.
+
+- Deletion is two phases. **Delete** is a soft delete: it sets the trash flag
+  and moves the item into the trash view, and the file stays on disk so the
+  deletion is recoverable. **Permanently Delete** removes the file and its
+  sidecar. The trash flag is durable — the app writes it into the sidecar as
+  the managed `picasu:Trashed` property (albums record it in
+  `.albuminfo.xmp`), and a rebuild reads it back, because the filesystem
+  cannot otherwise express "the file is still here on purpose". Only an
+  item whose file is gone is deleted outright; trashing never deletes, and
+  a rebuild of generated state never resurrects a file but does keep a
+  trashed file trashed.
 
 - Moving a directory into a target with the same child name is a single
   `fs::rename` operation. `skip` leaves both source and target untouched.

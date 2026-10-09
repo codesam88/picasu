@@ -50,6 +50,13 @@ pub fn process_image_info(abstract_data: &mut AbstractData) -> Result<()> {
     if abstract_data.rating().is_none() {
         abstract_data.set_rating(xmp.rating);
     }
+    // Soft-delete state is durable in the sidecar, so an index/rebuild that
+    // re-creates records from the filesystem keeps trashed items trashed.
+    // It only ever sets the flag: no marker means not trashed, and a rebuild
+    // must not silently un-trash what the flag says.
+    if xmp.trashed {
+        abstract_data.set_trashed(true);
+    }
 
     // Decode image to DynamicImage
     let mut dynamic_image = generate_dynamic_image(abstract_data)
@@ -92,6 +99,13 @@ pub fn process_video_info(abstract_data: &mut AbstractData) -> Result<()> {
     }
     if abstract_data.rating().is_none() {
         abstract_data.set_rating(xmp.rating);
+    }
+    // Soft-delete state is durable in the sidecar, so an index/rebuild that
+    // re-creates records from the filesystem keeps trashed items trashed.
+    // It only ever sets the flag: no marker means not trashed, and a rebuild
+    // must not silently un-trash what the flag says.
+    if xmp.trashed {
+        abstract_data.set_trashed(true);
     }
 
     // Get logical dimensions and fix if rotated

@@ -1,5 +1,6 @@
 use crate::model::abstract_data::AbstractData;
 use crate::process::sanitize::is_valid_xml_char;
+use crate::process::xmp::{NS_PICASU, ensure_picasu_namespace_registered};
 use log::warn;
 use std::collections::HashSet;
 use std::io;
@@ -28,6 +29,12 @@ enum TitleEdit<'a> {
 ///   default in `metadata.title` must never be baked into the sidecar, or
 ///   it would freeze and survive a later directory rename instead of being
 ///   re-derived from the new name.
+/// - `picasu:Trashed` (soft-delete state) for all types, present only while
+///   the item is trashed: a rebuild reads the flag back from the sidecar, so
+///   deleting the database undeletes only the cache, not the user's intent.
+///   Restoring removes the property, for the same delete-on-clear reason
+///   `custom_title: None` removes `dc:title` — "no marker" must keep meaning
+///   "never was in the trash".
 ///
 /// The write is a read-modify-write through xmpkit: the existing packet is
 /// read with [`XmpMeta::parse`], only the managed fields above are set, and
@@ -74,6 +81,7 @@ pub fn write_sidecar_for(abstract_data: &AbstractData) -> io::Result<()> {
         abstract_data.description(),
         abstract_data.rating(),
         title,
+        abstract_data.is_trashed(),
     )?;
     let content = meta.serialize_packet().map_err(|e| xmp_error_to_io(&e))?;
     write_sidecar_content(&sidecar, &content)
@@ -119,7 +127,7 @@ fn load_sidecar(sidecar: &Path) -> io::Result<XmpMeta> {
     }
 }
 
-/// Set the four managed fields on `meta`, leaving every other property in
+/// Set the managed fields on `meta`, leaving every other property in
 /// the packet untouched. Absent managed values remove their property — the
 /// same "omitted fields are not written" contract the old packet formatter
 /// had, now expressed as delete-on-clear instead of leave-out-on-build.
@@ -129,6 +137,7 @@ fn apply_managed_fields(
     description: Option<&str>,
     rating: Option<u8>,
     title: TitleEdit<'_>,
+    trashed: bool,
 ) -> io::Result<()> {
     // `dc:subject`: the exact new tag set. The bag is replaced wholesale, so
     // a tag removed in the edit cannot resurface from the previous packet.
@@ -160,6 +169,20 @@ fn apply_managed_fields(
         None => meta
             .delete_property(ns::XMP, "Rating")
             .map_err(|e| xmp_error_to_io(&e))?,
+    }
+
+    // `picasu:Trashed`: the soft-delete flag, the one managed property in a
+    // namespace of the app's own. Present while trashed, deleted on restore
+    // — restoring writes `false` nowhere, because an absent property is what
+    // "not in the trash" means to the read path (see `trashed_from_property`).
+    if trashed {
+        ensure_picasu_namespace_registered();
+        meta.set_property(NS_PICASU, "Trashed", XmpValue::Boolean(true))
+            .map_err(|e| xmp_error_to_io(&e))?;
+    } else if meta.has_property(NS_PICASU, "Trashed") {
+        ensure_picasu_namespace_registered();
+        meta.delete_property(NS_PICASU, "Trashed")
+            .map_err(|e| xmp_error_to_io(&e))?;
     }
     Ok(())
 }
@@ -221,7 +244,7 @@ mod tests {
     use crate::model::image::{ImageCombined, ImageMetadata};
     use crate::model::object::{ObjectSchema, ObjectType};
     use crate::model::response::FileEntry;
-    use crate::process::xmp::{XmpData, extract_xmp_data_from_packet};
+    use crate::process::xmp::{NS_PICASU, XmpData, extract_xmp_data_from_packet};
     use arrayvec::ArrayString;
     use xmpkit::{XmpMeta, XmpValue, ns};
 
@@ -310,6 +333,97 @@ mod tests {
             meta.get_property(ns::IPTC_CORE, "Location"),
             Some(XmpValue::String("Alps".to_string())),
             "Iptc4xmpCore:Location was dropped or altered"
+        );
+    }
+
+    // ── Soft-delete marker ─────────────────────────────────────────────────────
+
+    /// Trash state must survive a database rebuild, which the design doc's
+    /// "generated state is rebuildable from the filesystem" rule requires, so
+    /// the flag is written into the sidecar as a managed property: present
+    /// when the item is trashed. Managed-field semantics still hold — the
+    /// unmanaged (foreign) properties survive alongside it.
+    #[test]
+    fn trashed_item_writes_the_trash_marker() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let photo = dir.path().join("photo.jpg");
+        let sidecar = dir.path().join("photo.xmp");
+        std::fs::write(&sidecar, FOREIGN_PACKET).expect("failed to seed sidecar");
+
+        let mut image = make_image(&photo, &["kept"], Some("kept description"), Some(4));
+        image.set_trashed(true);
+        write_sidecar_for(&image).expect("failed to write sidecar");
+
+        assert!(
+            written_data(&sidecar).trashed,
+            "the write path's output must read back as trashed through the production reader"
+        );
+        let meta = read_meta(&sidecar);
+        assert!(
+            meta.has_property(NS_PICASU, "Trashed"),
+            "the trash marker must be in the packet, in the picasu namespace"
+        );
+        assert_eq!(
+            meta.get_property(NS_PICASU, "Trashed"),
+            Some(XmpValue::String("True".to_string())),
+            "xmpkit 0.1.6 serializes a Boolean as the XMP wire form and reads \
+             it back as a String, so the packet value is 'True' — the app's \
+             own reader accepts it (see trashed_from_property)"
+        );
+        assert_foreign_properties_survive(&meta);
+    }
+
+    /// Restoring is the mirror image: an absent marker means not trashed, so a
+    /// restore must *remove* the property rather than write `false` into it —
+    /// otherwise the sidecar of every restored asset carries trash history
+    /// forever, and "no marker" stops meaning "never was in the trash".
+    #[test]
+    fn restored_item_drops_the_trash_marker() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let photo = dir.path().join("photo.jpg");
+        let sidecar = dir.path().join("photo.xmp");
+        let seeded = FOREIGN_PACKET
+            .replace(
+                "xmlns:dc=\"http://purl.org/dc/elements/1.1/\"",
+                "xmlns:dc=\"http://purl.org/dc/elements/1.1/\"\n  xmlns:picasu=\"http://picasu.app/xmp/1.0/\"",
+            )
+            .replace(
+                "<xmp:Rating>2</xmp:Rating>",
+                "<xmp:Rating>2</xmp:Rating>\n  <picasu:Trashed>true</picasu:Trashed>",
+            );
+        std::fs::write(&sidecar, seeded).expect("failed to seed trashed sidecar");
+        assert!(
+            written_data(&sidecar).trashed,
+            "the premise: the seeded sidecar reads as trashed"
+        );
+
+        let image = make_image(&photo, &["kept"], None, None);
+        assert!(!image.is_trashed(), "the premise: the item is restored");
+        write_sidecar_for(&image).expect("failed to write sidecar");
+
+        assert!(!written_data(&sidecar).trashed);
+        assert!(
+            !read_meta(&sidecar).has_property(NS_PICASU, "Trashed"),
+            "restore must delete the marker, not set it to false"
+        );
+        assert_foreign_properties_survive(&read_meta(&sidecar));
+    }
+
+    /// The common case leaves no trace: writing any field of an untrashed
+    /// item must not introduce the picasu property (or the namespace).
+    #[test]
+    fn untrashed_item_writes_no_trash_marker() {
+        let dir = tempfile::tempdir().expect("failed to create temp dir");
+        let photo = dir.path().join("photo.jpg");
+        let sidecar = dir.path().join("photo.xmp");
+
+        let image = make_image(&photo, &["kept"], None, None);
+        write_sidecar_for(&image).expect("failed to write sidecar");
+
+        assert!(!written_data(&sidecar).trashed);
+        assert!(
+            !read_meta(&sidecar).has_property(NS_PICASU, "Trashed"),
+            "an untrashed item's sidecar must not claim it is trashed"
         );
     }
 
@@ -573,6 +687,37 @@ mod tests {
             assert_eq!(data.description.as_deref(), Some("A lovely trip"));
             assert_eq!(data.tags, HashSet::from(["vacation".to_string()]));
             assert_eq!(data.rating, Some(4));
+        }
+
+        /// Albums carry their sidecar at `.albuminfo.xmp`, and a trashed album
+        /// must record the state there or a rebuild restores the album to the
+        /// albums view with its children.
+        #[test]
+        fn trashed_dir_album_writes_the_marker_in_albuminfo() {
+            let dir = tempfile::tempdir().expect("failed to create temp dir");
+            let mut album = make_dir_album(
+                dir.path().to_string_lossy().into_owned(),
+                Some("Vacation 2024".to_string()),
+            );
+            album.set_trashed(true);
+
+            write_sidecar_for(&album).expect("failed to write album sidecar");
+
+            let sidecar_path = dir.path().join(".albuminfo.xmp");
+            let data = written_data(&sidecar_path);
+            assert!(
+                data.trashed,
+                "the album sidecar must record the trashed album"
+            );
+            assert!(
+                read_meta(&sidecar_path).has_property(NS_PICASU, "Trashed"),
+                "the marker must be in .albuminfo.xmp, in the picasu namespace"
+            );
+            assert_eq!(
+                data.title.as_deref(),
+                Some("Vacation 2024"),
+                "the managed album fields are unaffected by the marker"
+            );
         }
 
         /// Regression test: editing a field other than title (rating/tags/

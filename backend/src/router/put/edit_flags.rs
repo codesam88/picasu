@@ -1,7 +1,8 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::model::abstract_data::AbstractData;
 use crate::openapi_components::Unauthorized;
-use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
+use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
+use crate::process::transitor::index_to_asset_id;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
@@ -28,8 +29,12 @@ pub struct EditFlagsData {
 /// Set or clear the trash flag on the listed assets.
 ///
 /// `indexArray` addresses the assets in the snapshot named by `timestamp`, and
-/// a sent `isTrashed` value lands on each asset's own record; no file on disk
-/// is touched. Every album that lost or regained a member is refreshed in the
+/// a sent `isTrashed` value lands on each asset's own record *and* on its XMP
+/// sidecar as the `picasu:Trashed` marker: the record is a cache, so without
+/// the marker a rebuild from the filesystem would bring trashed files back as
+/// normal assets. A restore removes the marker. The sidecar is written before
+/// the record, and a write that cannot land fails the request without storing
+/// anything. Every album that lost or regained a member is refreshed in the
 /// background, so its counts may still be catching up when the call returns.
 ///
 /// Corner cases: the removed `isFavorite` and `isArchived` keys are still
@@ -61,8 +66,10 @@ pub async fn edit_flags(
     let _ = auth?;
     let _ = read_only_mode?;
 
-    // Check if trashed flag is being modified
-    let is_trashed_involved = json_data.is_trashed.is_some();
+    // The flag goes to disk as well as to the record, so the edit runs through
+    // the shared write-then-store contract: every sidecar lands first, and only
+    // then is every record stored. Nothing is half-applied.
+    let is_trashed = json_data.is_trashed;
 
     let affected_album_ids =
         tokio::task::spawn_blocking(move || -> Result<HashSet<ArrayString<64>>, AppError> {
@@ -70,7 +77,7 @@ pub async fn edit_flags(
                 .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
 
             let mut affected_album_ids = HashSet::new();
-            let mut data_to_store: Vec<(ArrayString<64>, AbstractData)> = Vec::new();
+            let mut items: Vec<EditedItem> = Vec::new();
 
             for &index in &json_data.index_array {
                 let asset_id = index_to_asset_id(&tree_snapshot, index).or_raise(|| {
@@ -80,26 +87,37 @@ pub async fn edit_flags(
                     )
                 })?;
 
-                if let Some(abstract_data) = compose_by_asset_id(&asset_id)
-                    .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
+                if let Some(abstract_data) =
+                    crate::process::transitor::compose_by_asset_id(&asset_id)
+                        .or_raise(|| (ErrorKind::Database, "Failed to get data"))?
                 {
-                    // If trashed is involved, record the album this data belongs to
-                    if is_trashed_involved && let Some(album_id) = abstract_data.album() {
+                    // A trash change is the only kind that moves members between
+                    // albums' visible sets.
+                    if is_trashed.is_some()
+                        && let Some(album_id) = abstract_data.album()
+                    {
                         affected_album_ids.insert(album_id);
                     }
 
-                    // The trash flag is owned by AssetRecord and passed
-                    // through the store call; there are no payload flags left
-                    // to apply on the composed view.
-
-                    data_to_store.push((asset_id, abstract_data));
+                    // The composed view still holds the pre-edit flag. The
+                    // sidecar is written from this view, so the new value has
+                    // to be applied here — writing it as composed would record
+                    // the old state.
+                    if let Some(trashed) = is_trashed {
+                        let mut edited = abstract_data;
+                        edited.set_trashed(trashed);
+                        items.push(EditedItem {
+                            asset_id,
+                            data: edited,
+                        });
+                    }
                 }
             }
 
-            for (asset_id, data) in &data_to_store {
-                store_metadata_record(asset_id, data, json_data.is_trashed)
-                    .or_raise(|| (ErrorKind::Database, "Failed to store metadata"))?;
-            }
+            commit_metadata_edits(&items, |asset_id: &ArrayString<64>, data: &AbstractData| {
+                crate::process::transitor::store_metadata_record(asset_id, data, is_trashed)
+                    .or_raise(|| (ErrorKind::Database, "Failed to store metadata"))
+            })?;
 
             Ok(affected_album_ids)
         })
