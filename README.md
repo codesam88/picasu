@@ -46,6 +46,9 @@ See [docs/config.md](docs/config.md) for the full reference.
 
 ## Development & Contributing
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute — when to open an
+issue first and what a pull request should contain.
+
 First-time setup on a fresh clone:
 
 ```bash
