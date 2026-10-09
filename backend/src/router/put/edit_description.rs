@@ -35,13 +35,14 @@ pub struct SetUserDefinedDescription {
 /// alongside the admin JWT cookie.
 ///
 /// Corner cases: the share's `showMetadata` flag is not consulted, so a share
-/// without metadata rights may still write a description. An index whose asset
-/// record no longer exists is skipped and still answers 200, and a failed
-/// sidecar write is logged rather than failing the request.
+/// without metadata rights may still write a description, but a share may only
+/// target assets that belong to its own album — any other asset is refused. An
+/// index whose asset record no longer exists is skipped and still answers 200,
+/// and a failed sidecar write is logged rather than failing the request.
 ///
 /// Errors: 400 malformed body — 401 missing or invalid admin or share
-/// credentials — 405 read-only mode — 500 unknown snapshot, out-of-range index,
-/// or storage failure.
+/// credentials — 403 a share targeting another album's asset — 405 read-only
+/// mode — 500 unknown snapshot, out-of-range index, or storage failure.
 #[utoipa::path(
         tag = "albums",
         request_body = SetUserDefinedDescription,
@@ -49,6 +50,7 @@ pub struct SetUserDefinedDescription {
             (status = 200, description = "Description updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Share targeting another album's asset"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
         )
@@ -63,8 +65,10 @@ pub async fn set_user_defined_description(
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     set_user_defined_description: Json<SetUserDefinedDescription>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let auth = auth?;
     let _ = read_only_mode?;
+    // A share may only edit assets in its own album; admin (no share) any.
+    let share_album = auth.claims.get_share().map(|share| share.album_id);
     tokio::task::spawn_blocking(move || -> Result<(), AppError> {
         let tree_snapshot = open_tree_snapshot_table(set_user_defined_description.timestamp)
             .or_raise(|| (ErrorKind::Database, "Failed to open tree snapshot"))?;
@@ -83,6 +87,17 @@ pub async fn set_user_defined_description(
         if let Some(mut abstract_data) = compose_by_asset_id(&asset_id)
             .or_raise(|| (ErrorKind::Database, "Failed to get data from table"))?
         {
+            // Bind the write to the caller's share: a share targeting another
+            // album's asset is refused. Admin (no share) is unrestricted.
+            if let Some(album) = share_album
+                && abstract_data.album() != Some(album)
+            {
+                return Err(AppError::new(
+                    ErrorKind::PermissionDenied,
+                    "Share cannot edit another album's asset",
+                ));
+            }
+
             let description = set_user_defined_description
                 .description
                 .as_deref()

@@ -46,11 +46,17 @@ patterns:
   short-lived _snapshot_ token, which in turn mints per-asset _serving_ tokens.
   Each tier is scoped to one artifact (a query snapshot, a single file) and
   expires in minutes, so a leaked token has a small blast radius.
-- **Request guards as the sole enforcement points.** Authorization is not
-  checked inside handler bodies; it is declared as Rocket request guards
-  (`FromRequest` impls) on each route. A route either composes the right guards
-  or it is open — there is no third path. This makes the guard list on each
-  handler the auditable authorization manifest of the API.
+- **Request guards as the enforcement points.** Authorization is declared as
+  Rocket request guards (`FromRequest` impls) on each route. Every guarded
+  handler takes its guard wrapped in `GuardResult<T>` (`= Result<T, AppError>`),
+  so a failed guard is caught and the handler propagates it with `?`; the guard
+  list plus that propagation is the auditable authorization manifest of the
+  API. A `GuardResult` binding whose rejection is not propagated leaves the
+  route enforcing nothing, which is why the propagation is machine-checked (see
+  `.plan/authz-check.md`). Guards that carry a resolved share (`GuardShare`,
+  `GuardTimestamp`) are consumed as the witness: handlers derive the operation's
+  target from the guard's claims rather than from the request body, so a share
+  cannot act on another album (Findings F2–F4, now fixed).
 
 Guests authenticate as **capability URLs**: the share's `albumId` + `shareId`
 (traveling in headers or query parameters, plus an optional password header)
@@ -92,15 +98,16 @@ with the default bind address.
 
 ### The three token types
 
-| Type              | Claims                                                 | TTL   | Minted by                        | Consumed by                                                |
-| ----------------- | ------------------------------------------------------ | ----- | -------------------------------- | ---------------------------------------------------------- |
-| `Claims`          | `role` (Admin / Share(resolved)), `exp`                | 14 d  | login, share resolution          | `GuardAuth`, `GuardShare` (cookie fallback), `GuardUpload` |
-| `ClaimsTimestamp` | `resolvedShareOpt`, `timestamp`, `exp`                 | 300 s | `POST /get/prefetch`             | `GuardTimestamp`, `TimestampGuardModified`                 |
-| `ClaimsHash`      | `allowOriginal`, `hash`, `assetId`, `timestamp`, `exp` | 300 s | every row of `GET /get/get-data` | `GuardHash`, `GuardHashOriginal`                           |
+| Type              | Claims                                                               | TTL   | Minted by                        | Consumed by                                                |
+| ----------------- | -------------------------------------------------------------------- | ----- | -------------------------------- | ---------------------------------------------------------- |
+| `Claims`          | `role` (Admin / Share(resolved)), `exp`, `typ: admin`                | 14 d  | login, share resolution          | `GuardAuth`, `GuardShare` (cookie fallback), `GuardUpload` |
+| `ClaimsTimestamp` | `resolvedShareOpt`, `timestamp`, `exp`, `typ: snapshot`              | 300 s | `POST /get/prefetch`             | `GuardTimestamp`, `TimestampGuardModified`                 |
+| `ClaimsHash`      | `allowOriginal`, `hash`, `assetId`, `timestamp`, `exp`, `typ: asset` | 300 s | every row of `GET /get/get-data` | `GuardHash`, `GuardHashOriginal`                           |
 
-All three are plain JWTs signed with the same `auth_key`. Notably, **no `typ`
-or `aud` claim distinguishes them** — type is inferred only from the decode
-target the guard happens to use. This is the root cause of Finding F1.
+All three are plain JWTs signed with the same `auth_key`. Each carries a `typ`
+claim and is decoded through a typed entry point that rejects a mismatched
+`typ`; the claims structs also set `deny_unknown_fields`, so the three
+cross-type decode paths fail closed (see Finding F1, now fixed).
 
 ### Share resolution
 
@@ -188,7 +195,7 @@ higher.
 
 ### Findings
 
-#### F1 — JWT claim type confusion lets any share bypass its own policy (High, reproduced)
+#### F1 — JWT claim type confusion lets any share bypass its own policy (High, reproduced — fixed)
 
 `ClaimsHash` and `ClaimsTimestamp` are indistinguishable to the decoder: both
 are HS256 tokens under the same key, neither carries a `typ` claim, and serde
@@ -217,7 +224,7 @@ hiding — is bypassable by the share itself. **Fix:** add a `typ` claim
 (`admin` / `snapshot` / `asset`) to each token type and reject mismatches at
 decode; optionally decode with `deny_unknown_fields`.
 
-#### F2 — `get-metadata` is not scoped to the share's album (Medium, reproduced)
+#### F2 — `get-metadata` is not scoped to the share's album (Medium, reproduced — fixed)
 
 A share on AlbumB holding a valid `ClaimsTimestamp` fetched AlbumA's asset by
 ID and received its full metadata (path included). Authorization on this route
@@ -228,7 +235,7 @@ read any asset's metadata. **Fix:** resolve the token's `resolvedShareOpt` and
 verify the requested `asset_id` belongs to that album before composing the
 record.
 
-#### F3 — Share-guarded write endpoints do not bind the caller to the target (High, reproduced)
+#### F3 — Share-guarded write endpoints do not bind the caller to the target (High, reproduced — fixed)
 
 Two routes accept `GuardShare` but then take their target from the request body
 without comparing it to the authenticated share's album:
@@ -249,7 +256,7 @@ design note, documented in the route itself: description writes do not consult
 `auth.claims.get_share()` and reject any body `albumId`/snapshot that does not
 belong to it.
 
-#### F4 — Token renewal is not bound to the presenter's share (Medium, reproduced)
+#### F4 — Token renewal is not bound to the presenter's share (Medium, reproduced — fixed)
 
 `POST /post/renew-timestamp-token` validates that the _presenter_ holds any
 valid share (`GuardShare`) and that the submitted token is
@@ -387,12 +394,16 @@ SAMEORIGIN`, `Permissions-Policy`), and `GuardReadOnlyMode` blocks mutations
 
 ### Recommendations, prioritized
 
-1. Add `typ` claims and reject cross-type decoding (F1) — a few lines in
-   `Claims*` constructors plus validation, closes the only finding that lets a
-   guest exceed their own policy.
-2. Bind the two share-guarded write routes to the caller's album (F3).
-3. Album-scope `get-metadata` (F2) and bind renewal to the presenter's share
-   with share re-validation (F4).
+1. ~~Add `typ` claims and reject cross-type decoding (F1)~~ — done: each claims
+   type carries a `typ` claim and is decoded through `decode_typed`, with
+   `deny_unknown_fields` on the claims structs.
+2. ~~Bind the two share-guarded write routes to the caller's album (F3)~~ —
+   done: `set_album_title` and `set_user_defined_description` derive the target
+   from `GuardShare::claims`.
+3. ~~Album-scope `get-metadata` (F2) and bind renewal to the presenter's share
+   with share re-validation (F4)~~ — done: `get-metadata` 404s on an asset
+   outside the share's album; renewal requires presenter share == token share
+   and re-validates the embedded share from the DB.
 4. Throttle `/post/authenticate`, compare in constant time, log the client
    address (F5); default-bind to localhost or force first-run password setup
    (F6).
@@ -402,7 +413,8 @@ SAMEORIGIN`, `Permissions-Policy`), and `GuardReadOnlyMode` blocks mutations
 6. Guard `import_config` with `GuardReadOnlyMode` (F9) — one attribute; the
    deeper re-auth requirement is already decided in `bug-readonly-lockout`.
 
-Items 1–3 are correctness fixes with no design trade-offs. Items 4–6 trade
+Items 1–3 were correctness fixes with no design trade-offs and are implemented
+(the reproductions are pinned by `backend/src/tests/authz.rs`). Items 4–6 trade
 some first-run convenience and a round trip of login plumbing against
 materially better brute-force and XSS posture; given goal 5 (self-hosted,
 trusted guests) either choice is defensible, but they should be conscious

@@ -1465,7 +1465,7 @@
     },
     "/get/metadata/{asset_id}": {
       "get": {
-        "description": "List rows carry only lean identity fields, so the detail view, sidebar and\nedit prefill fetch the complete asset here. The wire shape is unchanged:\nidentity fields come from the asset's identity record, metadata fields from\nits stored payload.\n\nCorner cases: `timestamp` is required and must equal the prefetch token's\n`timestamp` claim. When the token resolves to a share with\n`show_metadata: false`, the metadata fields — including the stored path —\nare cleared before responding, so a share that hides metadata cannot leak it\nhere.\n\nErrors: 400 invalid `asset_id` — 401 missing, invalid, or mismatched\nprefetch token — 404 unknown `asset_id` — 500 the asset record could not be\ncomposed.",
+        "description": "List rows carry only lean identity fields, so the detail view, sidebar and\nedit prefill fetch the complete asset here. The wire shape is unchanged:\nidentity fields come from the asset's identity record, metadata fields from\nits stored payload.\n\nCorner cases: `timestamp` is required and must equal the prefetch token's\n`timestamp` claim. When the token resolves to a share with\n`show_metadata: false`, the metadata fields — including the stored path —\nare cleared before responding, so a share that hides metadata cannot leak it\nhere. A share token may only read assets that belong to its own album; any\nother `asset_id` answers 404, so the route does not reveal that the id\nexists.\n\nErrors: 400 invalid `asset_id` — 401 missing, invalid, or mismatched\nprefetch token — 404 unknown `asset_id` — 500 the asset record could not be\ncomposed.",
         "operationId": "get_metadata",
         "parameters": [
           {
@@ -2007,7 +2007,7 @@
     },
     "/post/renew-timestamp-token": {
       "post": {
-        "description": "Accepts share credentials (`x-album-id` + `x-share-id` headers or\n`albumId` + `shareId` query parameters) or an admin JWT cookie. The\nsubmitted token is decoded with expiration checking disabled and reissued\nwith its original snapshot `timestamp` and resolved share intact, expiring\n300 seconds later.\n\nCorner cases: Re-renewing keeps addressing the same snapshot, so only the\nexpiry changes and the underlying data is not re-read.\n\nErrors: 400 only one of the share credential header or query pair given —\n401 missing or invalid credentials, or an unverifiable token signature —\n500 internal failure.",
+        "description": "Accepts share credentials (`x-album-id` + `x-share-id` headers or\n`albumId` + `shareId` query parameters) or an admin JWT cookie. The\nsubmitted token is decoded with expiration checking disabled and reissued\nwith its original snapshot `timestamp` and resolved share intact, expiring\n300 seconds later.\n\nA share presenter may only renew its own share's snapshot; the embedded\nshare is also re-resolved from the DB before re-issue, so a share that has\nsince been disabled or expired stops yielding refreshed tokens. An admin\npresenter may renew any snapshot, but the embedded share is still\nre-validated.\n\nCorner cases: Re-renewing keeps addressing the same snapshot, so only the\nexpiry changes and the underlying data is not re-read.\n\nErrors: 400 only one of the share credential header or query pair given —\n401 missing or invalid credentials, a token whose share differs from the\npresenter's, an expired or removed embedded share, or an unverifiable token\nsignature — 500 internal failure.",
         "operationId": "renew_timestamp_token",
         "requestBody": {
           "content": {
@@ -2481,7 +2481,7 @@
     },
     "/put/set_album_title": {
       "put": {
-        "description": "`albumId` names the album to edit and `title` its new display title. Both\nthe raw display `title` and `custom_title`, the value written to the album's\n`.albuminfo.xmp` sidecar, take the submitted value, and the in-memory tree\nis rebuilt before the call returns.\n\nCorner cases: `title: null` clears `custom_title` and falls `title` back to\nthe directory-derived default, so a cleared title leaves no empty string\nbehind.\n\nErrors: 400 malformed body — 401 missing or invalid admin or share\ncredentials — 405 read-only mode — 500 storage failure.",
+        "description": "`albumId` names the album to edit and `title` its new display title. Both\nthe raw display `title` and `custom_title`, the value written to the album's\n`.albuminfo.xmp` sidecar, take the submitted value, and the in-memory tree\nis rebuilt before the call returns.\n\nCorner cases: `title: null` clears `custom_title` and falls `title` back to\nthe directory-derived default, so a cleared title leaves no empty string\nbehind.\n\nErrors: 400 malformed body — 401 missing or invalid admin or share\ncredentials — 403 a share targeting an album other than its own —\n405 read-only mode — 500 storage failure.",
         "operationId": "set_album_title",
         "requestBody": {
           "content": {
@@ -2503,6 +2503,9 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           },
+          "403": {
+            "description": "Share targeting another album"
+          },
           "405": {
             "description": "Read-only mode"
           },
@@ -2518,7 +2521,7 @@
     },
     "/put/set_user_defined_description": {
       "put": {
-        "description": "`index` addresses the asset in the snapshot named by `timestamp`, and\n`description` replaces the field: `null` clears it, other text is\nNFC-normalized and filtered to valid XML characters. The value is written to\nthe asset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and\nthe in-memory tree is rebuilt before the call returns. Share credentials\n(`x-album-id` plus `x-share-id`, or `albumId` plus `shareId`) are accepted\nalongside the admin JWT cookie.\n\nCorner cases: the share's `showMetadata` flag is not consulted, so a share\nwithout metadata rights may still write a description. An index whose asset\nrecord no longer exists is skipped and still answers 200, and a failed\nsidecar write is logged rather than failing the request.\n\nErrors: 400 malformed body — 401 missing or invalid admin or share\ncredentials — 405 read-only mode — 500 unknown snapshot, out-of-range index,\nor storage failure.",
+        "description": "`index` addresses the asset in the snapshot named by `timestamp`, and\n`description` replaces the field: `null` clears it, other text is\nNFC-normalized and filtered to valid XML characters. The value is written to\nthe asset's `.albuminfo.xmp` sidecar on a best-effort basis, persisted, and\nthe in-memory tree is rebuilt before the call returns. Share credentials\n(`x-album-id` plus `x-share-id`, or `albumId` plus `shareId`) are accepted\nalongside the admin JWT cookie.\n\nCorner cases: the share's `showMetadata` flag is not consulted, so a share\nwithout metadata rights may still write a description, but a share may only\ntarget assets that belong to its own album — any other asset is refused. An\nindex whose asset record no longer exists is skipped and still answers 200,\nand a failed sidecar write is logged rather than failing the request.\n\nErrors: 400 malformed body — 401 missing or invalid admin or share\ncredentials — 403 a share targeting another album's asset — 405 read-only\nmode — 500 unknown snapshot, out-of-range index, or storage failure.",
         "operationId": "set_user_defined_description",
         "requestBody": {
           "content": {
@@ -2539,6 +2542,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Share targeting another album's asset"
           },
           "405": {
             "description": "Read-only mode"
