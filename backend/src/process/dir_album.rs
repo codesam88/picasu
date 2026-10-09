@@ -253,7 +253,7 @@ pub fn get_or_create_dir_album(dir_path: PathBuf) -> Result<ArrayString<64>> {
 /// initial metadata. Returns default (empty) data if the file is absent,
 /// unreadable, or not a well-formed XMP packet — the caller falls back to
 /// path-derived defaults in that case.
-fn read_albuminfo(dir_path: &Path) -> crate::process::xmp::XmpData {
+pub(crate) fn read_albuminfo(dir_path: &Path) -> crate::process::xmp::XmpData {
     let sidecar = dir_path.join(".albuminfo.xmp");
     match std::fs::read(&sidecar) {
         Ok(bytes) => crate::process::xmp::extract_xmp_data_from_packet(&bytes),
@@ -300,7 +300,9 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
         share_list: std::collections::HashMap::new(),
         dir_path: dir_path_str.clone(),
         custom_title,
-        is_trashed: false,
+        // A dir-album whose `.albuminfo.xmp` carries the trash marker comes
+        // back trashed after a rebuild, the same rule media records follow.
+        is_trashed: albuminfo.trashed,
     };
     let abstract_data = AbstractData::Album(AlbumCombined { object, metadata });
     let payload = to_metadata_record(&abstract_data);

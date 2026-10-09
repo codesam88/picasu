@@ -122,7 +122,11 @@ fn create_album_asset(path: &Path, image_root: &Path) -> Result<bool> {
         return Ok(false);
     }
 
-    let record = AssetRecord::new_album(canonical_str);
+    let mut record = AssetRecord::new_album(canonical_str);
+    // A dir-album's trash state lives in its `.albuminfo.xmp`, the same
+    // sidecar title and tags come from, so the walk can set the flag on the
+    // row it creates — a rebuilt album that was trashed stays trashed.
+    record.is_trashed = crate::process::dir_album::read_albuminfo(path).trashed;
     asset_store::insert_asset(&record)
         .with_context(|| format!("Failed to insert album asset for {}", path.display()))?;
 
@@ -226,7 +230,16 @@ fn index_media_metadata(path: &Path, record: &AssetRecord) -> Result<()> {
 
     let data = crate::workflow::index_media_file(path, hash, record.album_id)?;
 
-    crate::process::transitor::store_metadata_record(record.asset_id.as_str(), &data, None)
+    // The composed view carries what the file plus its sidecar say, so the
+    // identity record's trash flag is read-modify-written from it here: the
+    // walk that created the row could not know the flag before the sidecar
+    // was read, and the flag only survives a rebuild if it reaches the
+    // record — composition projects the record's value, not this view's.
+    crate::process::transitor::store_metadata_record(
+        record.asset_id.as_str(),
+        &data,
+        Some(data.is_trashed()),
+    )
 }
 
 /// Store the metadata payload for a rebuilt album.

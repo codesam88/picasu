@@ -257,6 +257,49 @@ impl AbstractData {
         }
     }
 
+    /// Whether the item is soft-deleted (held for recovery in the trash
+    /// view). Media carry the flag on their single file entry, albums on
+    /// their album metadata; a pruned media record has no file entry and so
+    /// reports not trashed.
+    pub fn is_trashed(&self) -> bool {
+        match self {
+            AbstractData::Image(img) => img
+                .metadata
+                .path
+                .as_ref()
+                .is_some_and(|path| path.is_trashed),
+            AbstractData::Video(vid) => vid
+                .metadata
+                .path
+                .as_ref()
+                .is_some_and(|path| path.is_trashed),
+            AbstractData::Album(alb) => alb.metadata.is_trashed,
+        }
+    }
+
+    /// Set or clear the soft-delete flag on the composed view.
+    ///
+    /// The edit handlers apply the new value here *before* the sidecar is
+    /// written, because the composed view is what `write_sidecar_for` reads:
+    /// composing fresh from storage would still hold the pre-edit flag, and
+    /// the sidecar would record the old state. A pruned media record has no
+    /// file entry to hold the flag and is left untouched.
+    pub fn set_trashed(&mut self, trashed: bool) {
+        match self {
+            AbstractData::Image(img) => {
+                if let Some(path) = img.metadata.path.as_mut() {
+                    path.is_trashed = trashed;
+                }
+            }
+            AbstractData::Video(vid) => {
+                if let Some(path) = vid.metadata.path.as_mut() {
+                    path.is_trashed = trashed;
+                }
+            }
+            AbstractData::Album(alb) => alb.metadata.is_trashed = trashed,
+        }
+    }
+
     /// Get the single album this item belongs to (None if unassigned)
     pub fn album(&self) -> Option<ArrayString<64>> {
         match self {
@@ -582,6 +625,36 @@ mod tests {
         let data = img_with_path("/Photos/20190704_153000.jpg", 0, 1);
         let ts = data.compute_timestamp(&["filename"]);
         assert!(ts > 0, "expected a positive timestamp parsed from filename");
+    }
+
+    /// The flag is app state on the composed view: media hold it on their
+    /// file entry, and a sidecar write reads it back through the same place.
+    #[test]
+    fn set_trashed_round_trips_on_media() {
+        let mut data = img_with_path("/a.jpg", 1, 1);
+        assert!(!data.is_trashed(), "a fresh record is not trashed");
+
+        data.set_trashed(true);
+        assert!(data.is_trashed());
+        assert!(
+            data.path().is_some_and(|p| p.is_trashed),
+            "the media flag lives on the file entry"
+        );
+
+        data.set_trashed(false);
+        assert!(!data.is_trashed(), "restoring clears the flag again");
+    }
+
+    /// A pruned record has no file entry to carry the flag, so trashing is a
+    /// no-op rather than a state that exists nowhere on disk.
+    #[test]
+    fn set_trashed_on_pathless_media_is_a_no_op() {
+        let mut data = img_without_path();
+        data.set_trashed(true);
+        assert!(
+            !data.is_trashed(),
+            "no file entry means nothing records the flag"
+        );
     }
 
     #[test]
