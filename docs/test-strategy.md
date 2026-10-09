@@ -186,9 +186,10 @@ the same workflows.
 
 ### Tooling caveats
 
-- **clippy `unwrap_used`**: set to `warn` globally (visible in IDEs) but
-  excluded from the `-D warnings` precommit flag until the ~140 existing
-  call sites are addressed.
+- **clippy `unwrap_used`**: enforced under `-D warnings` for the default
+  targets (lib, bin, build script). Precommit/CI clippy does not compile
+  test targets, so test-code call sites remain ungated — see
+  `clippy-unwrap-cleanup.md` for the follow-up scope.
 - **`cargo deny check`**: license and advisory audit, runs via `just audit`.
 - **`npm audit`**: runs in CI on every PR, not in precommit (too slow, some
   findings intentional via `overrides`).

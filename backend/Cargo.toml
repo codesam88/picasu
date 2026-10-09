@@ -88,6 +88,7 @@ auto-open-browser = ["dep:webbrowser"]
 [lints.clippy]
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
-# unwrap_used is set to warn so IDEs surface call sites; precommit allows it
-# via -A to avoid blocking on the ~140 existing call sites until they are addressed
+# unwrap_used is warn so IDEs surface call sites; precommit/CI escalate via
+# -D warnings, which now gates it (test targets are not compiled by clippy —
+# their call sites are follow-up work, see .plan/clippy-unwrap-cleanup.md)
 unwrap_used = { level = "warn", priority = 0 }

@@ -17,7 +17,7 @@ backend-format:
 [group('backend')]
 backend-check:
     cd backend && cargo fmt --check
-    cargo clippy -- -D warnings -A clippy::unwrap_used
+    cargo clippy -- -D warnings
 
 # cargo test
 [group('backend')]
@@ -104,7 +104,7 @@ utils-format:
 [group('utils')]
 utils-check:
     cargo fmt --check -p snapfab -p paste -p openapi-sanity
-    cargo clippy -p snapfab -p paste -p openapi-sanity -- -D warnings -A clippy::unwrap_used
+    cargo clippy -p snapfab -p paste -p openapi-sanity -- -D warnings
 
 # cargo test on utils/ crates
 [group('utils')]
