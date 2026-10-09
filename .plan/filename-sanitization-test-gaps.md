@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: medium
 area: testing
@@ -58,5 +58,11 @@ fraction/division/big-solidus and set-minus/reverse-solidus look-alikes — 9 co
 with unit tests per family (`filename_strips_slash/backslash/pipe_homoglyphs_tier2`), two `resolve_filename` tests, and
 scenario `upload_homoglyph_separator_sanitized`. Tier-2 boundary coverage extended: supplementary-plane noncharacters
 (U+1FFFE/U+1FFFF), FDD0–FDEF interior (FDE0/FDEF), LRM/RLM + bidi isolates (200E/200F/202A/2066–2069), BOM + word
-joiner (FEFF/2060). Remaining open: item 5, NFC-off backend scenario (`normalize_upload_filenames=false` with an NFD
-filename — the upload DSL cannot yet encode NFD names in the `filename` field).
+joiner (FEFF/2060).
+
+Item 5 resolved: the ticket's premise that the upload DSL cannot encode NFD filenames was wrong — YAML double-quoted
+scalars decode `\uXXXX` through `serde_yaml`, so `"cafe\u0301.jpg"` reaches the multipart as genuine NFD bytes. The only
+missing piece was the `config` given-verb (and `tests/schema.json`) not exposing `normalize_upload_filenames`; both now
+do. Scenarios `upload_nfc_on_collapses_nfd_filename` (default: NFD input → NFC on disk) and
+`upload_nfc_off_keeps_nfd_filename` (flag off: NFD preserved) pin both directions. Note: escape-bearing paths in
+`then` assertions must be double-quoted — plain YAML scalars keep `\u0301` as literal backslash text.

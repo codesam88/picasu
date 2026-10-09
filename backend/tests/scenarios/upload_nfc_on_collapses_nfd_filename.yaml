@@ -1,0 +1,17 @@
+name: Upload with default NFC normalization collapses an NFD filename onto its composed form
+# Same NFD input as upload_nfc_off_keeps_nfd_filename, but with the default
+# normalize_upload_filenames=true the stored name must be the NFC form
+# (café = cafe + combining acute composed into U+00E9).
+given:
+  - dir_album: /e2e_up_nfd_on/target
+    id_as: $album
+  - photo: /e2e_up_nfd_on/src/photo.jpg
+when:
+  - upload:
+      file: /e2e_up_nfd_on/src/photo.jpg
+      filename: "cafe\u0301.jpg"
+      target_album: "${album}"
+then:
+  - response.status: 200
+  - file_exists: /e2e_up_nfd_on/target/café.jpeg
+  - file_absent: "/e2e_up_nfd_on/target/cafe\u0301.jpeg"

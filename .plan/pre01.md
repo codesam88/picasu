@@ -31,15 +31,15 @@ The remaining release work falls into four categories:
 
 ## Status overview
 
-| #   | Item                                    | Ticket                                   | Status                                     |
-| --- | --------------------------------------- | ---------------------------------------- | ------------------------------------------ |
-| A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | done — fix + e2e coverage on main          |
-| A2  | Flag edits don't write sidecars         | `bug-trash-sidecar-durability.md`        | done — trash marker durable in sidecar     |
-| B1  | EXIF/XMP read for non-JPEG containers   | — (ticket removed)                       | done — per-format scenarios on main        |
-| B2  | UI bugs (Escape/back, lightbox, theme)  | `ui-refinement.md`                       | open — bug checklist only; 4/21 done       |
-| B3  | Parent-only albums have no thumbnail    | `bug-parent-album-no-thumbnail.md`       | done — descendant cover fallback           |
-| C1  | License / SPDX / OSSF review            | `license-and-ossf-review.md`             | idea — promote to open, run before tagging |
-| D1  | Filename sanitization corner-case tests | `filename-sanitization-test-gaps.md`     | open — behavior decisions + tests          |
+| #   | Item                                    | Ticket                                   | Status                                        |
+| --- | --------------------------------------- | ---------------------------------------- | --------------------------------------------- |
+| A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | done — fix + e2e coverage on main             |
+| A2  | Flag edits don't write sidecars         | `bug-trash-sidecar-durability.md`        | done — trash marker durable in sidecar        |
+| B1  | EXIF/XMP read for non-JPEG containers   | — (ticket removed)                       | done — per-format scenarios on main           |
+| B2  | UI bugs (Escape/back, lightbox, theme)  | `ui-refinement.md`                       | open — bug checklist only; 4/21 done          |
+| B3  | Parent-only albums have no thumbnail    | `bug-parent-album-no-thumbnail.md`       | done — descendant cover fallback              |
+| C1  | License / SPDX / OSSF review            | `license-and-ossf-review.md`             | idea — promote to open, run before tagging    |
+| D1  | Filename sanitization corner-case tests | `filename-sanitization-test-gaps.md`     | done — homoglyphs stripped, all 5 gaps closed |
 
 ## Item details (what / why)
 
@@ -94,10 +94,11 @@ impression. The polish/feature items in the same ticket (breadcrumbs, nav rework
 **not** release-scoped.
 
 **B3 — Parent-only albums show no thumbnail.**
-_What:_ albums containing only sub-albums get no cover; `AlbumCombined::self_update()`
-computes the cover from assets whose parent matches `dir_path`, and that set is empty for
-parent-only albums. Pick a descendant image instead. _Why:_ visible gap in every album
-tree; root cause is already identified, fix is local.
+_Done 2026-09-25._ `AlbumCombined::self_update()` computed the cover from assets whose
+parent matches `dir_path`, an empty set for parent-only albums; the fix picks the newest
+eligible descendant image instead, ignoring generated `.__picasu_ph__.jpg` placeholders.
+Unit coverage plus an API scenario verifying the parent album exposes the descendant
+asset as its cover.
 
 ### C. Release hygiene
 
@@ -109,12 +110,10 @@ OSSF scorecard. _Why:_ explicit pre-first-release gate; currently an `idea` — 
 ### D. Confidence tests
 
 **D1 — Filename sanitization corner-case tests.**
-_What:_ pin down `sanitize_filename` / `resolve_filename` corner cases raised in PR #17
-review: C0/DEL control characters (currently unfiltered — decide policy first), `resolve_filename`
-unit tests (generated-name fallback, `file_stem` edges, reject-message paths), fullwidth
-separators, tier-2 boundary coverage. _Why:_ filename handling is upload-path security
-surface with shipped behavior that has known untested branches; tests are cheap and the
-one policy decision (control chars) is small.
+_Fixed 2026-10-09_ (`c537652f` plus the NFC-off follow-up, closed 2026-10-09). Control characters (C0/DEL/C1) are now
+stripped by an always-on tier; separator homoglyphs (`／＼｜` and mathematical look-alikes) are stripped by tier 2.
+`resolve_filename` has direct unit tests, tier-2 boundaries are pinned, and NFC-on/off upload scenarios use YAML
+`\u` escapes to carry genuine NFD filenames. See `filename-sanitization-test-gaps.md` for the full record.
 
 ## Explicitly out of scope for v0.1
 
@@ -146,6 +145,6 @@ for the five pure-function targets, snapfab migration.
 | `bug-delete-album-restores-subalbums.md` | done   | A1   |
 | `bug-trash-sidecar-durability.md`        | done   | A2   |
 | `ui-refinement.md`                       | open   | B2   |
-| `bug-parent-album-no-thumbnail.md`       | open   | B3   |
+| `bug-parent-album-no-thumbnail.md`       | done   | B3   |
 | `license-and-ossf-review.md`             | idea   | C1   |
-| `filename-sanitization-test-gaps.md`     | open   | D1   |
+| `filename-sanitization-test-gaps.md`     | done   | D1   |

@@ -83,6 +83,12 @@ pub fn write_config(updates: &serde_json::Value) {
         {
             config.use_client_timestamp_info = val;
         }
+        if let Some(val) = obj
+            .get("normalize_upload_filenames")
+            .and_then(|v| v.as_bool())
+        {
+            config.normalize_upload_filenames = val;
+        }
     }
     // Write a copy to disk for documentation/debugging.
     use serde::Serialize;

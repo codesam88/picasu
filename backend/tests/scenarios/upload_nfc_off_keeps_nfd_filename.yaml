@@ -1,0 +1,19 @@
+name: Upload with NFC normalization off keeps an NFD filename in its decomposed form
+# The \u0301 escape decodes through serde_yaml into a real combining acute,
+# so the multipart carries a genuine macOS-style NFD name. With
+# normalize_upload_filenames=false it must reach disk uncomposed.
+given:
+  - dir_album: /e2e_up_nfd_off/target
+    id_as: $album
+  - photo: /e2e_up_nfd_off/src/photo.jpg
+  - config:
+      normalize_upload_filenames: false
+when:
+  - upload:
+      file: /e2e_up_nfd_off/src/photo.jpg
+      filename: "cafe\u0301.jpg"
+      target_album: "${album}"
+then:
+  - response.status: 200
+  - file_exists: "/e2e_up_nfd_off/target/cafe\u0301.jpeg"
+  - file_absent: /e2e_up_nfd_off/target/café.jpeg
