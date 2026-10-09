@@ -239,6 +239,9 @@
             },
             "use_client_timestamp_info": {
               "type": "boolean"
+            },
+            "normalize_upload_filenames": {
+              "type": "boolean"
             }
           },
           "additionalProperties": false

@@ -1533,6 +1533,12 @@ fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) 
                     {
                         write_config(&serde_json::json!({"use_client_timestamp_info": enabled}));
                     }
+                    if let Some(enabled) = config
+                        .get("normalize_upload_filenames")
+                        .and_then(|v| v.as_bool())
+                    {
+                        write_config(&serde_json::json!({"normalize_upload_filenames": enabled}));
+                    }
                 } else if let Some(dup) = item.get("duplicate_of") {
                     let src = dup["source"]
                         .as_str()
