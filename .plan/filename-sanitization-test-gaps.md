@@ -49,6 +49,14 @@ Items 1 and 2 resolved in PR \#17: control chars (C0 U+0000–U+001F, DEL U+007F
 the always-on control-char tier in `sanitize_filename` (`filename_strips_c0_controls`/`_del`/`_c1_controls` +
 `filename_only_controls_degrade_to_empty`); `resolve_filename` gained 11 unit tests
 (`resolve_filename_tests` module) covering the `upload` fallback stem, `file_stem` edges (`.jpg`, `..jpg`, `foo.`), the
-four `auto_rename=false` reject reasons, and control-char strip/reject. Remaining open: fullwidth/homoglyph separators
-(item 3), extended tier-2 boundary coverage (item 4), and an NFC-off backend scenario (item 5). Merged fix data point:
-`cargo test` 190 lib tests pass.
+four `auto_rename=false` reject reasons, and control-char strip/reject.
+
+## Progress (2026-10-08)
+
+Items 3 and 4 resolved: separator homoglyphs are now stripped by tier 2 (decision: fullwidth `／＼｜` plus the
+fraction/division/big-solidus and set-minus/reverse-solidus look-alikes — 9 code points in `is_forbidden_filename_char`)
+with unit tests per family (`filename_strips_slash/backslash/pipe_homoglyphs_tier2`), two `resolve_filename` tests, and
+scenario `upload_homoglyph_separator_sanitized`. Tier-2 boundary coverage extended: supplementary-plane noncharacters
+(U+1FFFE/U+1FFFF), FDD0–FDEF interior (FDE0/FDEF), LRM/RLM + bidi isolates (200E/200F/202A/2066–2069), BOM + word
+joiner (FEFF/2060). Remaining open: item 5, NFC-off backend scenario (`normalize_upload_filenames=false` with an NFD
+filename — the upload DSL cannot yet encode NFD names in the `filename` field).

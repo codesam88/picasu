@@ -77,6 +77,21 @@ fn is_forbidden_filename_char(c: char) -> bool {
     if ('\u{202A}'..='\u{202E}').contains(&c) || ('\u{2066}'..='\u{2069}').contains(&c) {
         return true;
     }
+    // Tier 2: separator homoglyphs. These render nearly identically to the
+    // real path separators (`/`, `\`) or the pipe, but pass the tier-0/1
+    // checks because they are distinct Unicode code points. They are
+    // stripped so a filename can never *look* like it escapes the album dir.
+    if matches!(
+        c,
+        // '/'-shaped: fraction slash, division slash, big solidus, fullwidth solidus
+        '\u{2044}' | '\u{2215}' | '\u{29F8}' | '\u{FF0F}'
+        // '\'-shaped: set minus, reverse solidus operator, big reverse solidus, fullwidth reverse solidus
+        | '\u{2216}' | '\u{29F5}' | '\u{29F9}' | '\u{FF3C}'
+        // '|'-shaped: fullwidth vertical line
+        | '\u{FF5C}'
+    ) {
+        return true;
+    }
     // Tier 3: control characters (C0 U+0000–U+001F, DEL U+007F, C1 U+0080–U+009F).
     if c.is_control() {
         return true;
@@ -102,7 +117,8 @@ fn is_reserved_windows_name(name: &str) -> bool {
 /// Sanitize an uploaded filename for safe storage.
 ///
 /// Tier 0/1/2/3 filtering (separators, Windows-forbidden characters, Unicode
-/// landmines, control characters) is always applied. When `normalize_nfc` is set, the name is
+/// landmines, separator homoglyphs, control characters) is always applied.
+/// When `normalize_nfc` is set, the name is
 /// NFC-normalised so macOS NFD names collapse onto their composed form.
 /// Windows reserved names get a `_` prefix so they remain recognizable.
 ///
@@ -347,6 +363,79 @@ mod tests {
         assert_eq!(r.name, "abc.jpg");
         assert!(r.stripped.contains(&'\u{200B}'));
         assert!(r.stripped.contains(&'\u{202E}'));
+    }
+
+    #[test]
+    fn filename_strips_slash_homoglyphs_tier2() {
+        // Fullwidth and mathematical look-alikes of '/': they render nearly
+        // identically to a real path separator, so they must not survive.
+        for c in ['\u{2044}', '\u{2215}', '\u{29F8}', '\u{FF0F}'] {
+            let r = s(&format!("a{c}b.jpg"), true);
+            assert_eq!(r.name, "ab.jpg", "should have stripped {c:?}");
+            assert!(r.stripped.contains(&c), "should have stripped {c:?}");
+            assert!(r.changed);
+        }
+    }
+
+    #[test]
+    fn filename_strips_backslash_homoglyphs_tier2() {
+        for c in ['\u{2216}', '\u{29F5}', '\u{29F9}', '\u{FF3C}'] {
+            let r = s(&format!("a{c}b.jpg"), true);
+            assert_eq!(r.name, "ab.jpg", "should have stripped {c:?}");
+            assert!(r.stripped.contains(&c), "should have stripped {c:?}");
+            assert!(r.changed);
+        }
+    }
+
+    #[test]
+    fn filename_strips_pipe_homoglyph_tier2() {
+        let r = s("a\u{FF5C}b.jpg", true);
+        assert_eq!(r.name, "ab.jpg");
+        assert!(r.stripped.contains(&'\u{FF5C}'));
+        assert!(r.changed);
+    }
+
+    #[test]
+    fn filename_strips_supplementary_plane_noncharacters() {
+        // The `& 0xFFFF == 0xFFFE/FFFF` mask must catch noncharacters in
+        // every plane, not just the BMP.
+        let r = s("a\u{1FFFE}b\u{1FFFF}.jpg", true);
+        assert_eq!(r.name, "ab.jpg");
+        assert!(r.stripped.contains(&'\u{1FFFE}'));
+        assert!(r.stripped.contains(&'\u{1FFFF}'));
+    }
+
+    #[test]
+    fn filename_strips_noncharacter_block_interior() {
+        // Interior of the FDD0–FDEF block, not just its first code point.
+        let r = s("a\u{FDE0}b\u{FDEF}.jpg", true);
+        assert_eq!(r.name, "ab.jpg");
+        assert!(r.stripped.contains(&'\u{FDE0}'));
+        assert!(r.stripped.contains(&'\u{FDEF}'));
+    }
+
+    #[test]
+    fn filename_strips_bidi_marks_and_isolates() {
+        // LRM/RLM (200E/200F), the LRE..RLO range start (202A), and the
+        // bidi isolate set (2066–2069).
+        let r = s(
+            "a\u{200E}b\u{200F}c\u{202A}d\u{2066}e\u{2067}f\u{2068}g\u{2069}h.jpg",
+            true,
+        );
+        assert_eq!(r.name, "abcdefgh.jpg");
+        for c in [
+            '\u{200E}', '\u{200F}', '\u{202A}', '\u{2066}', '\u{2067}', '\u{2068}', '\u{2069}',
+        ] {
+            assert!(r.stripped.contains(&c), "should have stripped {c:?}");
+        }
+    }
+
+    #[test]
+    fn filename_strips_bom_and_word_joiner() {
+        let r = s("a\u{FEFF}b\u{2060}c.jpg", true);
+        assert_eq!(r.name, "abc.jpg");
+        assert!(r.stripped.contains(&'\u{FEFF}'));
+        assert!(r.stripped.contains(&'\u{2060}'));
     }
 
     #[test]
