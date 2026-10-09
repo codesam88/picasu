@@ -11,6 +11,9 @@ mod backend_api;
 mod capabilities;
 
 #[cfg(test)]
+mod authz;
+
+#[cfg(test)]
 mod scenario_schema;
 
 #[cfg(test)]
