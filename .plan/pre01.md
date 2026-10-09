@@ -24,7 +24,7 @@ The remaining release work falls into four categories:
 
 | Category                | What it covers                                      | Items      |
 | ----------------------- | --------------------------------------------------- | ---------- |
-| **A. Correctness**      | Behavior that is wrong or violates the release rule | A1, A2     |
+| **A. Correctness**      | Behavior that is wrong or violates the release rule | A2         |
 | **B. Metadata & UI**    | Completing the metadata promise; visible polish     | B1, B2, B3 |
 | **C. Release hygiene**  | Legal/licensing gate before tagging                 | C1         |
 | **D. Confidence tests** | Tests that pin down shipped behavior                | D1         |
@@ -33,7 +33,7 @@ The remaining release work falls into four categories:
 
 | #   | Item                                    | Ticket                                   | Status                                     |
 | --- | --------------------------------------- | ---------------------------------------- | ------------------------------------------ |
-| A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | open — needs repro + root cause            |
+| A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | done — fix + e2e coverage on main          |
 | A2  | Flag edits don't write sidecars         | — (ticket removed, see below)            | open — needs trash XMP mapping decision    |
 | B1  | EXIF/XMP read for non-JPEG containers   | — (ticket removed)                       | done — per-format scenarios on main        |
 | B2  | UI bugs (Escape/back, lightbox, theme)  | `ui-refinement.md`                       | open — bug checklist only; 4/21 done       |
@@ -46,11 +46,16 @@ The remaining release work falls into four categories:
 ### A. Correctness
 
 **A1 — Deleting an album resurrects its sub-albums.**
-_What:_ deleting an album should recursively remove sub-albums and files; instead the
-physical directory survives, the next index sweep re-discovers the sub-albums, and they
-reappear under the root. _Why critical:_ reported by a user; directly contradicts the
-file-lifecycle work already shipped (delete-from-disk, watcher Remove handling). Needs
-reproduction and root-cause investigation before estimate is reliable.
+_Fixed 2026-09-25_ (`43365fc4`, closed 2026-10-09). `delete_data` now runs
+`cleanup_album_descendants` before dropping rows: descendant files/sidecars
+removed, descendant rows removed (album records carry their directory path, so
+sub-albums match `get_assets_under_path`), then `remove_dir_all` on the album
+directory — nothing is left for the sweep to re-discover. Guarded by
+`delete-parent-album-does-not-restore-child.yaml`,
+`album_delete_recursive.yaml`, `album_delete_parent_and_child_together.yaml`
+and three more, running in CI via `just test`. Residual gap recorded in the
+ticket: `remove_dir_all` failures are swallowed, so an fs-level failure would
+still produce this symptom silently.
 
 **A2 — Trashed doesn't write an XMP sidecar.**
 _What:_ `PUT /put/edit_flags` is the only metadata edit not routed through
@@ -142,7 +147,7 @@ for the five pure-function targets, snapfab migration.
 
 | File                                     | Status | Item |
 | ---------------------------------------- | ------ | ---- |
-| `bug-delete-album-restores-subalbums.md` | open   | A1   |
+| `bug-delete-album-restores-subalbums.md` | done   | A1   |
 | `ui-refinement.md`                       | open   | B2   |
 | `bug-parent-album-no-thumbnail.md`       | open   | B3   |
 | `license-and-ossf-review.md`             | idea   | C1   |
