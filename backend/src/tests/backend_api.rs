@@ -1315,6 +1315,7 @@ fn process_mint_timestamp_token(call: &Value, vars: &mut HashMap<String, String>
         resolved_share_opt: None,
         timestamp,
         exp,
+        typ: crate::router::auth::TokenType::Snapshot,
     };
     vars.insert(name.trim_start_matches('$').to_string(), claims.encode());
     true

@@ -234,7 +234,8 @@ pub struct SetAlbumTitle {
 /// behind.
 ///
 /// Errors: 400 malformed body — 401 missing or invalid admin or share
-/// credentials — 405 read-only mode — 500 storage failure.
+/// credentials — 403 a share targeting an album other than its own —
+/// 405 read-only mode — 500 storage failure.
 #[utoipa::path(
         tag = "albums",
         request_body = SetAlbumTitle,
@@ -242,6 +243,7 @@ pub struct SetAlbumTitle {
             (status = 200, description = "Album title updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Share targeting another album"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
         )
@@ -253,11 +255,21 @@ pub async fn set_album_title(
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     set_album_title: Json<SetAlbumTitle>,
 ) -> AppResult<()> {
-    let _ = auth?;
+    let auth = auth?;
     let _ = read_only_mode?;
 
     let set_album_title_inner = set_album_title.into_inner();
     let album_id = set_album_title_inner.album_id;
+
+    // A share may only edit its own album. An admin (no share) may edit any.
+    if let Some(share) = auth.claims.get_share()
+        && share.album_id != album_id
+    {
+        return Err(AppError::new(
+            ErrorKind::PermissionDenied,
+            "Share cannot edit another album",
+        ));
+    }
 
     tokio::task::spawn_blocking(move || {
         update_album(album_id, |album| {
