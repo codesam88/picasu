@@ -31,15 +31,15 @@ The remaining release work falls into four categories:
 
 ## Status overview
 
-| #   | Item                                    | Ticket                                   | Status                                        |
-| --- | --------------------------------------- | ---------------------------------------- | --------------------------------------------- |
-| A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | done — fix + e2e coverage on main             |
-| A2  | Flag edits don't write sidecars         | `bug-trash-sidecar-durability.md`        | done — trash marker durable in sidecar        |
-| B1  | EXIF/XMP read for non-JPEG containers   | — (ticket removed)                       | done — per-format scenarios on main           |
-| B2  | UI bugs (Escape/back, lightbox, theme)  | `ui-refinement.md`                       | open — bug checklist only; 4/21 done          |
-| B3  | Parent-only albums have no thumbnail    | `bug-parent-album-no-thumbnail.md`       | done — descendant cover fallback              |
-| C1  | License / SPDX / OSSF review            | `license-and-ossf-review.md`             | idea — promote to open, run before tagging    |
-| D1  | Filename sanitization corner-case tests | `filename-sanitization-test-gaps.md`     | done — homoglyphs stripped, all 5 gaps closed |
+| #   | Item                                    | Ticket                                   | Status                                                                 |
+| --- | --------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------- |
+| A1  | Delete album resurrects sub-albums      | `bug-delete-album-restores-subalbums.md` | done — fix + e2e coverage on main                                      |
+| A2  | Flag edits don't write sidecars         | `bug-trash-sidecar-durability.md`        | done — trash marker durable in sidecar                                 |
+| B1  | EXIF/XMP read for non-JPEG containers   | — (ticket removed)                       | done — per-format scenarios on main                                    |
+| B2  | UI bugs (Escape/back, lightbox, theme)  | `ui-refinement.md`                       | open — bug checklist only; 4/21 done                                   |
+| B3  | Parent-only albums have no thumbnail    | `bug-parent-album-no-thumbnail.md`       | done — descendant cover fallback                                       |
+| C1  | License / SPDX / OSSF review            | `license-and-ossf-review.md`             | in-progress — license + Security-Policy done, scorecard verify pending |
+| D1  | Filename sanitization corner-case tests | `filename-sanitization-test-gaps.md`     | done — homoglyphs stripped, all 5 gaps closed                          |
 
 ## Item details (what / why)
 
@@ -104,8 +104,16 @@ asset as its cover.
 
 **C1 — License / SPDX / OSSF scorecard review.**
 _What:_ review dependencies and repo metadata for license issues; add SPDX labels; check
-OSSF scorecard. _Why:_ explicit pre-first-release gate; currently an `idea` — promote to
-`open` when starting.
+OSSF scorecard. _Why:_ explicit pre-first-release gate.
+
+_Progress 2026-10-09._ License/SPDX side verified green (`cargo deny check`
+reports licenses ok; `npm audit --omit=dev` 0 vulnerabilities). `SECURITY.md`
+landed on main (`fc3ff60a`) — scorecard Security-Policy 0 → 10, total
+6.6 → 7.1. The scorecard's 5 Vulnerabilities findings are waived via
+`osv-scanner.toml` (`8fa6d85d` on `fix/scorecard`), pending merge and
+scorecard confirmation. Remaining: confirm the next scorecard run,
+branch-protection rule decision, signed releases before the first tag. Full
+record in `license-and-ossf-review.md`.
 
 ### D. Confidence tests
 
@@ -140,11 +148,11 @@ for the five pure-function targets, snapfab migration.
 
 ## Related plan items
 
-| File                                     | Status | Item |
-| ---------------------------------------- | ------ | ---- |
-| `bug-delete-album-restores-subalbums.md` | done   | A1   |
-| `bug-trash-sidecar-durability.md`        | done   | A2   |
-| `ui-refinement.md`                       | open   | B2   |
-| `bug-parent-album-no-thumbnail.md`       | done   | B3   |
-| `license-and-ossf-review.md`             | idea   | C1   |
-| `filename-sanitization-test-gaps.md`     | done   | D1   |
+| File                                     | Status      | Item |
+| ---------------------------------------- | ----------- | ---- |
+| `bug-delete-album-restores-subalbums.md` | done        | A1   |
+| `bug-trash-sidecar-durability.md`        | done        | A2   |
+| `ui-refinement.md`                       | open        | B2   |
+| `bug-parent-album-no-thumbnail.md`       | done        | B3   |
+| `license-and-ossf-review.md`             | in-progress | C1   |
+| `filename-sanitization-test-gaps.md`     | done        | D1   |
