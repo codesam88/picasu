@@ -713,4 +713,21 @@ mod resolve_filename_tests {
             "unexpected message: {err}"
         );
     }
+
+    #[test]
+    fn separator_homoglyph_rejects_when_auto_rename_false() {
+        let err = resolve_filename("photo\u{FF0F}cat.jpg", false, false).unwrap_err();
+        assert!(
+            err.message.contains("forbidden"),
+            "unexpected message: {err}"
+        );
+    }
+
+    #[test]
+    fn separator_homoglyph_strips_when_auto_rename_true() {
+        assert_eq!(
+            resolve_filename("photo\u{FF0F}cat.jpg", true, false).unwrap(),
+            "photocat"
+        );
+    }
 }
