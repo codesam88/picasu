@@ -23,7 +23,9 @@ use crate::router::{AppResult, GuardResult};
 /// `timestamp` claim. When the token resolves to a share with
 /// `show_metadata: false`, the metadata fields — including the stored path —
 /// are cleared before responding, so a share that hides metadata cannot leak it
-/// here.
+/// here. A share token may only read assets that belong to its own album; any
+/// other `asset_id` answers 404, so the route does not reveal that the id
+/// exists.
 ///
 /// Errors: 400 invalid `asset_id` — 401 missing, invalid, or mismatched
 /// prefetch token — 404 unknown `asset_id` — 500 the asset record could not be
@@ -52,8 +54,13 @@ pub async fn get_metadata(
     let guard_timestamp = guard_timestamp?;
     let asset_id = asset_id.to_string();
     tokio::task::spawn_blocking(move || -> Result<Json<AbstractData>, AppError> {
-        let resolved_share_opt = guard_timestamp.claims.resolved_share_opt;
-        let (_, show_metadata) = resolve_show_download_and_metadata(resolved_share_opt);
+        let share_album = guard_timestamp
+            .claims
+            .resolved_share_opt
+            .as_ref()
+            .map(|share| share.album_id);
+        let (_, show_metadata) =
+            resolve_show_download_and_metadata(guard_timestamp.claims.resolved_share_opt);
 
         let asset_id = ArrayString::<64>::from(asset_id.as_str()).map_err(|_| {
             AppError::new(
@@ -67,6 +74,14 @@ pub async fn get_metadata(
         let mut abstract_data = compose_by_asset_id(&asset_id)
             .or_raise(|| (ErrorKind::Database, "Failed to compose record"))?
             .ok_or_else(|| AppError::new(ErrorKind::NotFound, "Record not found"))?;
+
+        // A share may only read assets that belong to its own album. Answer
+        // 404, not 403, so the route does not reveal that the id exists.
+        if let Some(album) = share_album
+            && abstract_data.album() != Some(album)
+        {
+            return Err(AppError::new(ErrorKind::NotFound, "Record not found"));
+        }
 
         // Same clearing rules the list path applies: strip metadata fields
         // (including the stored path) when the share hides them.

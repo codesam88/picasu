@@ -17,11 +17,34 @@ pub enum Role {
     Share(Box<ResolvedShare>),
 }
 
+/// Discriminates the three JWT types so a token minted for one decode target
+/// cannot be replayed against another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TokenType {
+    /// Identity token: the admin session cookie.
+    Admin,
+    /// Snapshot token: prefetch's short-lived query token.
+    Snapshot,
+    /// Asset token: a per-file serving token.
+    Asset,
+}
+
+/// A claims type that declares which [`TokenType`] it may be decoded from.
+pub trait TokenKind {
+    const EXPECTED: TokenType;
+    fn token_type(&self) -> TokenType;
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct Claims {
     pub role: Role,
     pub exp: u64, // seconds since epoch
+    /// Type marker; always [`TokenType::Admin`] for identity tokens.
+    #[serde(rename = "typ")]
+    pub typ: TokenType,
 }
 
 impl Claims {
@@ -32,6 +55,7 @@ impl Claims {
         Self {
             role: Role::Admin,
             exp,
+            typ: TokenType::Admin,
         }
     }
 
@@ -42,14 +66,15 @@ impl Claims {
         Self {
             role: Role::Share(Box::new(resolved_share)),
             exp,
+            typ: TokenType::Admin,
         }
     }
     pub fn is_admin(&self) -> bool {
         matches!(self.role, Role::Admin)
     }
-    pub fn get_share(self) -> Option<ResolvedShare> {
-        match self.role {
-            Role::Share(share) => Some(*share),
+    pub fn get_share(&self) -> Option<ResolvedShare> {
+        match &self.role {
+            Role::Share(share) => Some((**share).clone()),
             Role::Admin => None,
         }
     }
@@ -71,6 +96,13 @@ impl Claims {
     }
 }
 
+impl TokenKind for Claims {
+    const EXPECTED: TokenType = TokenType::Admin;
+    fn token_type(&self) -> TokenType {
+        self.typ
+    }
+}
+
 // src/router/claims/claims_hash.rs
 use arrayvec::ArrayString;
 
@@ -83,6 +115,7 @@ use arrayvec::ArrayString;
 /// cover image's content hash in `hash` and the album's ID in `asset_id`.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ClaimsHash {
     pub allow_original: bool,
     pub hash: ArrayString<64>,
@@ -90,6 +123,9 @@ pub struct ClaimsHash {
     pub asset_id: ArrayString<64>,
     pub timestamp: i64,
     pub exp: u64,
+    /// Type marker; always [`TokenType::Asset`].
+    #[serde(rename = "typ")]
+    pub typ: TokenType,
 }
 
 impl ClaimsHash {
@@ -108,6 +144,7 @@ impl ClaimsHash {
             asset_id,
             timestamp,
             exp,
+            typ: TokenType::Asset,
         }
     }
 
@@ -127,14 +164,25 @@ impl ClaimsHash {
     }
 }
 
+impl TokenKind for ClaimsHash {
+    const EXPECTED: TokenType = TokenType::Asset;
+    fn token_type(&self) -> TokenType {
+        self.typ
+    }
+}
+
 // src/router/claims/claims_timestamp.rs
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ClaimsTimestamp {
     pub resolved_share_opt: Option<ResolvedShare>,
     pub timestamp: i64,
     pub exp: u64,
+    /// Type marker; always [`TokenType::Snapshot`].
+    #[serde(rename = "typ")]
+    pub typ: TokenType,
 }
 
 impl ClaimsTimestamp {
@@ -146,6 +194,7 @@ impl ClaimsTimestamp {
             resolved_share_opt,
             timestamp,
             exp,
+            typ: TokenType::Snapshot,
         }
     }
 
@@ -162,6 +211,13 @@ impl ClaimsTimestamp {
             &EncodingKey::from_secret(&secret_key),
         )
         .expect("Failed to generate token")
+    }
+}
+
+impl TokenKind for ClaimsTimestamp {
+    const EXPECTED: TokenType = TokenType::Snapshot;
+    fn token_type(&self) -> TokenType {
+        self.typ
     }
 }
 
@@ -259,6 +315,25 @@ pub fn my_decode_token<T: DeserializeOwned>(token: &str, validation: &Validation
     }
 }
 
+/// Decode a JWT and enforce that its `typ` claim matches the target claims
+/// type, so a token minted for one decode target cannot be replayed against
+/// another. `deny_unknown_fields` on the claims structs already rejects the
+/// cross-type shapes; this is the explicit type check on top.
+pub fn decode_typed<T>(token: &str, validation: &Validation) -> Result<T>
+where
+    T: DeserializeOwned + TokenKind,
+{
+    let claims: T = my_decode_token(token, validation)?;
+    if claims.token_type() != T::EXPECTED {
+        return Err(anyhow!(
+            "Token type mismatch: expected {:?}, found {:?}",
+            T::EXPECTED,
+            claims.token_type()
+        ));
+    }
+    Ok(claims)
+}
+
 /// Try to authenticate via JWT cookie and check if user is admin
 pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
     // If no password is set, allow access as admin
@@ -275,7 +350,7 @@ pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result
 
     if let Some(jwt_cookie) = req.cookies().get("jwt") {
         let token = jwt_cookie.value();
-        let claims = my_decode_token::<Claims>(token, validation)?;
+        let claims = decode_typed::<Claims>(token, validation)?;
         if claims.is_admin() {
             return Ok(claims);
         }
@@ -337,6 +412,38 @@ fn validate_share_access(share: &Share, req: &Request<'_>) -> Result<(), AppErro
         ));
     }
 
+    Ok(())
+}
+
+/// Re-read a share from the DB and confirm it is still live: it exists and has
+/// not expired. Used at token renewal so a share that has since been disabled
+/// or expired stops yielding refreshed capabilities.
+///
+/// The password is not re-checked here: the presenter's own `GuardShare`
+/// already validated it for the share being renewed, and an admin presenter is
+/// trusted. This is the DB-state half of re-validation.
+fn revalidate_share_record(album_id: &str, share_id: &str) -> Result<(), AppError> {
+    let read_txn = TREE.in_disk.begin_read().map_err(|e| {
+        AppError::from_err(ErrorKind::Database, e.into())
+            .context("Failed to begin read transaction")
+    })?;
+    let table = read_txn.open_table(METADATA_TABLE).map_err(|e| {
+        AppError::from_err(ErrorKind::Database, e.into()).context("Failed to open data table")
+    })?;
+    let data = table
+        .get(album_id)
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
+        .ok_or_else(|| AppError::new(ErrorKind::Auth, "Share no longer exists"))?;
+    let MetadataRecord::Album(mut album) = data.value() else {
+        return Err(AppError::new(ErrorKind::Auth, "Share no longer exists"));
+    };
+    let share = album
+        .share_list
+        .remove(share_id)
+        .ok_or_else(|| AppError::new(ErrorKind::Auth, "Share no longer exists"))?;
+    if share.exp > 0 && Utc::now().timestamp_millis() / 1000 > share.exp {
+        return Err(AppError::new(ErrorKind::Auth, "Share link expired"));
+    }
     Ok(())
 }
 
@@ -497,7 +604,7 @@ impl<'r> FromRequest<'r> for GuardHash {
             }
         };
 
-        let claims: ClaimsHash = match my_decode_token(token, &VALIDATION) {
+        let claims: ClaimsHash = match decode_typed(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => {
                 return Outcome::Error((
@@ -553,7 +660,7 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
             }
         };
 
-        let claims: ClaimsHash = match my_decode_token(token, &VALIDATION) {
+        let claims: ClaimsHash = match decode_typed(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => {
                 return Outcome::Error((
@@ -642,32 +749,22 @@ pub async fn renew_hash_token(
 ) -> AppResult<Json<RenewHashTokenReturn>> {
     tokio::task::spawn_blocking(move || {
         let expired_hash_token = token_request.into_inner().expired_hash_token;
-        let token_data = match decode::<ClaimsHash>(
-            &expired_hash_token,
-            &DecodingKey::from_secret(
-                &APP_CONFIG
-                    .get()
-                    .expect("APP_CONFIG not initialized")
-                    .read()
-                    .expect("lock poisoned")
-                    .get_jwt_secret_key(),
-            ),
-            &VALIDATION_ALLOW_EXPIRED,
-        ) {
-            Ok(data) => data,
-            Err(err) => {
-                warn!("Token renewal failed: unable to decode token. Error: {err:#?}");
-                return Err(AppError::new(
-                    ErrorKind::Auth,
-                    "Unauthorized: Invalid token",
-                ));
-            }
-        };
+        let claims: ClaimsHash =
+            match decode_typed::<ClaimsHash>(&expired_hash_token, &VALIDATION_ALLOW_EXPIRED) {
+                Ok(claims) => claims,
+                Err(err) => {
+                    warn!("Token renewal failed: unable to decode token. Error: {err:#?}");
+                    return Err(AppError::new(
+                        ErrorKind::Auth,
+                        "Unauthorized: Invalid token",
+                    ));
+                }
+            };
 
-        if token_data.claims.timestamp != auth.timestamp_decoded {
+        if claims.timestamp != auth.claims.timestamp {
             warn!(
                 "Timestamp does not match. Received: {}, Expected: {}",
-                token_data.claims.timestamp, auth.timestamp_decoded
+                claims.timestamp, auth.claims.timestamp
             );
             return Err(AppError::new(
                 ErrorKind::Auth,
@@ -675,7 +772,12 @@ pub async fn renew_hash_token(
             ));
         }
 
-        let claims = token_data.claims;
+        // Re-validate the presenter's share (if any) from the DB, so a share
+        // that has since been disabled or expired stops renewing capabilities.
+        if let Some(resolved) = &auth.claims.resolved_share_opt {
+            revalidate_share_record(&resolved.album_id, &resolved.share.url)?;
+        }
+
         let new_hash_claims = ClaimsHash::new(
             claims.hash,
             claims.asset_id,
@@ -692,8 +794,11 @@ pub async fn renew_hash_token(
     .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?
 }
 
+/// Presenter guard for hash-token renewal: a valid `ClaimsTimestamp` bearer.
+/// Carries the full claims so the handler can re-validate the presenter's
+/// share before re-issuing an asset token.
 pub struct TimestampGuardModified {
-    pub timestamp_decoded: i64,
+    pub claims: ClaimsTimestamp,
 }
 
 #[rocket::async_trait]
@@ -702,60 +807,12 @@ impl<'r> FromRequest<'r> for TimestampGuardModified {
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         let Ok(token) = extract_bearer_token(req) else {
-            // Note: We can't access `err` easily with let-else if we just unwrap Ok.
-            // But extract_bearer_token returns Result.
-            // To preserve error message we need the match, or be clever.
-            // Clippy suggestion was `let Ok(token) = ... else { ... }`
-            // But we need to use `err` in the `Outcome::Error`.
-            // Wait, if we use let-else, we lose the error variable unless we match it out.
-            // `let Ok(token) = ...` destructures Ok.
-            // If it is Err(err), the else block executes, but we don't have access to `err`.
-            // So for these cases, `manual_let_else` might be WRONG if we need the error value.
-            // But let's look at the clippy warning again.
-            // It says "this could be rewritten as `let...else`".
-            // If I rewrite it, I might lose the error context unless I re-extract it or use a different pattern.
-            // Actually, if I use `let Ok(token) = ...` I can't get the error.
-            // So I will ignore this specific instance if I need the error.
-            // BUT, wait, for `GuardHash`, line 200: `let token = match extract_bearer_token(req) { Ok(token) => token, Err(_) => return Outcome::Forward(Status::Unauthorized) };`
-            // That one (line 200) ignores the error! So that one IS valid for let-else.
-            // Lines 27-36 USE the error. So clippy shouldn't be complaining about those?
-            // Let's re-read the clippy output.
-            // Warning at `src/router/fairing/guard_hash.rs:200:9` -> This is inside `TimestampGuardModified`.
-            // Warning for `GuardHash` itself? I don't see it in the snippet I posted in thought block.
-            // Ah, I see "warning: this could be rewritten as `let...else` --> src/router/fairing/guard_hash.rs:200:9".
-            // Only line 200 is complained about!
-            // Line 27 was NOT complained about in the log I read.
-            // Okay, so I only fix line 200.
-            return match extract_bearer_token(req) {
-                Ok(token) => match my_decode_token::<ClaimsTimestamp>(token, &VALIDATION) {
-                    Ok(claims) => Outcome::Success(TimestampGuardModified {
-                        timestamp_decoded: claims.timestamp,
-                    }),
-                    Err(_) => Outcome::Forward(Status::Unauthorized),
-                },
-                Err(_) => Outcome::Forward(Status::Unauthorized),
-            };
-        };
-
-        // Wait, the code at 200 is:
-        /*
-        let token = match extract_bearer_token(req) {
-            Ok(token) => token,
-            Err(_) => return Outcome::Forward(Status::Unauthorized),
-        };
-        */
-        // I will change it to let-else.
-        let Ok(_token) = extract_bearer_token(req) else {
             return Outcome::Forward(Status::Unauthorized);
         };
-
-        let Ok(claims) = my_decode_token::<ClaimsTimestamp>(token, &VALIDATION) else {
-            return Outcome::Forward(Status::Unauthorized);
-        };
-
-        Outcome::Success(TimestampGuardModified {
-            timestamp_decoded: claims.timestamp,
-        })
+        match decode_typed::<ClaimsTimestamp>(token, &VALIDATION) {
+            Ok(claims) => Outcome::Success(TimestampGuardModified { claims }),
+            Err(_) => Outcome::Forward(Status::Unauthorized),
+        }
     }
 }
 
@@ -845,7 +902,7 @@ impl<'r> FromRequest<'r> for GuardTimestamp {
             }
         };
 
-        let claims: ClaimsTimestamp = match my_decode_token(token, &VALIDATION) {
+        let claims: ClaimsTimestamp = match decode_typed(token, &VALIDATION) {
             Ok(claims) => claims,
             Err(err) => {
                 return Outcome::Error((
@@ -909,12 +966,19 @@ pub struct RenewTimestampTokenReturn {
 /// with its original snapshot `timestamp` and resolved share intact, expiring
 /// 300 seconds later.
 ///
+/// A share presenter may only renew its own share's snapshot; the embedded
+/// share is also re-resolved from the DB before re-issue, so a share that has
+/// since been disabled or expired stops yielding refreshed tokens. An admin
+/// presenter may renew any snapshot, but the embedded share is still
+/// re-validated.
+///
 /// Corner cases: Re-renewing keeps addressing the same snapshot, so only the
 /// expiry changes and the underlying data is not re-read.
 ///
 /// Errors: 400 only one of the share credential header or query pair given —
-/// 401 missing or invalid credentials, or an unverifiable token signature —
-/// 500 internal failure.
+/// 401 missing or invalid credentials, a token whose share differs from the
+/// presenter's, an expired or removed embedded share, or an unverifiable token
+/// signature — 500 internal failure.
 #[utoipa::path(
         tag = "auth",
         request_body = RenewTimestampToken,
@@ -935,32 +999,44 @@ pub async fn renew_timestamp_token(
     auth: GuardResult<GuardShare>,
     token_request: Json<RenewTimestampToken>,
 ) -> AppResult<Json<RenewTimestampTokenReturn>> {
-    let _ = auth?;
+    let presenter = auth?;
+    let presenter_share = presenter.claims.get_share();
     tokio::task::spawn_blocking(move || {
         let token = token_request.into_inner().token;
-        let token_data = match decode::<ClaimsTimestamp>(
-            &token,
-            &DecodingKey::from_secret(
-                &APP_CONFIG
-                    .get()
-                    .expect("APP_CONFIG not initialized")
-                    .read()
-                    .expect("lock poisoned")
-                    .get_jwt_secret_key(),
-            ),
-            &VALIDATION_ALLOW_EXPIRED,
-        ) {
-            Ok(data) => data,
-            Err(err) => {
-                warn!("Token renewal failed: unable to decode token, error: {err:#?}");
+        let claims: ClaimsTimestamp =
+            match decode_typed::<ClaimsTimestamp>(&token, &VALIDATION_ALLOW_EXPIRED) {
+                Ok(claims) => claims,
+                Err(err) => {
+                    warn!("Token renewal failed: unable to decode token, error: {err:#?}");
+                    return Err(AppError::new(
+                        ErrorKind::Auth,
+                        "Unauthorized: Invalid token",
+                    ));
+                }
+            };
+
+        // Bind the submitted token's share to the presenter's share: a share
+        // presenter may only renew its own snapshot. Admin presenters may
+        // renew any, but the embedded share is still re-validated below.
+        if let Some(presenter) = &presenter_share {
+            let same = claims.resolved_share_opt.as_ref().is_some_and(|s| {
+                s.album_id == presenter.album_id && s.share.url == presenter.share.url
+            });
+            if !same {
+                warn!("Renewal share mismatch: presenter and token share differ");
                 return Err(AppError::new(
                     ErrorKind::Auth,
-                    "Unauthorized: Invalid token",
+                    "Unauthorized: Share mismatch",
                 ));
             }
-        };
+        }
 
-        let claims = token_data.claims;
+        // Re-validate the embedded share from the DB before re-issuing, so a
+        // share that has since been disabled or expired stops renewing.
+        if let Some(resolved) = &claims.resolved_share_opt {
+            revalidate_share_record(&resolved.album_id, &resolved.share.url)?;
+        }
+
         let new_claims = ClaimsTimestamp::new(claims.resolved_share_opt, claims.timestamp);
         let new_token = new_claims.encode();
 
