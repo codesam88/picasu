@@ -35,7 +35,11 @@ fn generate_scenarios_rs(backend_root: &Path) {
 
     for entry in &entries {
         let path = entry.path();
-        let stem = path.file_stem().unwrap().to_str().unwrap();
+        let stem = path
+            .file_stem()
+            .expect("scenario file has no name stem")
+            .to_str()
+            .expect("scenario file name is not valid UTF-8");
         let test_name = format!("scenario_{stem}");
         wln!("#[test]");
         wln!("fn {test_name}() {{");
@@ -57,7 +61,11 @@ fn generate_scenarios_rs(backend_root: &Path) {
 
         for entry in &selftest_entries {
             let path = entry.path();
-            let stem = path.file_stem().unwrap().to_str().unwrap();
+            let stem = path
+                .file_stem()
+                .expect("selftest file has no name stem")
+                .to_str()
+                .expect("selftest file name is not valid UTF-8");
             let test_name = format!("selftest_{stem}");
             wln!("#[test]");
             wln!("fn {test_name}() {{");
