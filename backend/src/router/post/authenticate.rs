@@ -3,7 +3,9 @@ use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use tokio::task::spawn_blocking;
 
-use crate::auth::password::PasswdFile;
+use crate::auth::password::{
+    DEFAULT_ITERATIONS, HASH_LEN, PasswdFile, PasswordHash, SALT_LEN, verify_password,
+};
 use crate::auth::users::{self, validate_user_id};
 use crate::error::ResultExt;
 use crate::model::config::APP_CONFIG;
@@ -29,24 +31,50 @@ pub enum AuthenticateRequest {
     Login(LoginRequest),
 }
 
+/// Fixed dummy hash for the unknown-user path: all-zero salt with the
+/// production iteration count, so an unknown user costs one PBKDF2 round
+/// like a wrong password and leaks no timing signal.
+fn dummy_hash() -> PasswordHash {
+    PasswordHash {
+        salt: [0u8; SALT_LEN],
+        hash: [0u8; HASH_LEN],
+        iterations: DEFAULT_ITERATIONS,
+    }
+}
+
+/// Run one PBKDF2 verification against the fixed dummy hash. Always false;
+/// exposed for tests to assert the unknown-user path pays a KDF round.
+pub(crate) fn run_dummy_verify() -> bool {
+    verify_password("dummy-unknown-user-password", &dummy_hash())
+}
+
 /// Verify `password` for `user_id` against the user and password stores and
 /// mint a user-bound 14-day JWT. Must run on a blocking thread: password
 /// hashing is CPU-heavy.
+///
+/// The password input is trimmed once and the trimmed (canonical) form is
+/// verified, matching the legacy semantics that trimmed everywhere; callers
+/// writing new passwords must store the trimmed form too so
+/// write-then-login stays consistent.
 ///
 /// # Errors
 /// Returns 401 when the user is unknown or the password is wrong, and 500
 /// when either store cannot be read.
 fn login_sync(user_id: &str, password: &str) -> AppResult<String> {
+    let canonical = password.trim();
     let record =
         users::get_user(user_id).map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
     let Some(record) = record else {
+        // Pay one KDF round so unknown users are not measurably faster
+        // than wrong passwords (user-enumeration timing oracle).
+        let _ = run_dummy_verify();
         return Err(
             AppError::new(ErrorKind::Auth, "Invalid credentials").context("Authentication failed")
         );
     };
     let store = PasswdFile::load(&users::passwd_file_path())
         .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
-    if !store.verify(user_id, password) {
+    if !store.verify(user_id, canonical) {
         return Err(
             AppError::new(ErrorKind::Auth, "Invalid credentials").context("Authentication failed")
         );
@@ -316,5 +344,30 @@ mod tests {
             .dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
         set_legacy_password(None);
+    }
+
+    #[test]
+    fn login_trims_padded_password() {
+        let _g = lock();
+        let client = setup();
+        set_legacy_password(Some("s4-trim-legacy"));
+        create_user_with_password("s4-trim-user", false, "s4-secret");
+        let resp = client
+            .post("/post/authenticate")
+            .header(ContentType::JSON)
+            .body(json!({ "userId": "s4-trim-user", "password": "  s4-secret  " }).to_string())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        set_legacy_password(None);
+    }
+
+    #[test]
+    fn unknown_user_dummy_verify_runs_pbkdf2() {
+        let start = std::time::Instant::now();
+        assert!(!super::run_dummy_verify());
+        assert!(
+            start.elapsed().as_millis() > 50,
+            "dummy verify must cost a PBKDF2 round"
+        );
     }
 }
