@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Role {
-    Admin,
+    User { id: String, admin: bool },
     Share(Box<ResolvedShare>),
 }
 
@@ -48,12 +48,14 @@ pub struct Claims {
 }
 
 impl Claims {
-    pub fn new_admin() -> Self {
+    /// Mint an identity token for `id` with the given admin flag.
+    #[must_use]
+    pub fn new_user(id: String, admin: bool) -> Self {
         #[allow(clippy::cast_sign_loss)]
         let exp = (Utc::now().timestamp_millis() / 1000) as u64 + 14 * 86_400; // 14 days
 
         Self {
-            role: Role::Admin,
+            role: Role::User { id, admin },
             exp,
             typ: TokenType::Admin,
         }
@@ -70,12 +72,12 @@ impl Claims {
         }
     }
     pub fn is_admin(&self) -> bool {
-        matches!(self.role, Role::Admin)
+        matches!(self.role, Role::User { admin: true, .. })
     }
     pub fn get_share(&self) -> Option<ResolvedShare> {
         match &self.role {
             Role::Share(share) => Some((**share).clone()),
-            Role::Admin => None,
+            Role::User { .. } => None,
         }
     }
 
@@ -258,6 +260,165 @@ mod tests {
         assert_eq!(VALIDATION.algorithms, vec![Algorithm::HS256]);
         assert_eq!(VALIDATION_ALLOW_EXPIRED.algorithms, vec![Algorithm::HS256]);
     }
+
+    #[test]
+    fn claims_new_user_round_trip_preserves_identity() {
+        use super::{Claims, decode_typed};
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        let claims = Claims::new_user("alice".to_string(), true);
+        let token = claims.encode();
+        let decoded: Claims = decode_typed(&token, &VALIDATION).expect("decode round-trip");
+        assert!(decoded.is_admin());
+        assert_eq!(decoded.typ, super::TokenType::Admin);
+        match decoded.role {
+            super::Role::User { id, admin } => {
+                assert_eq!(id, "alice");
+                assert!(admin);
+            }
+            super::Role::Share(_) => panic!("expected user role"),
+        }
+        let non_admin = Claims::new_user("bob".to_string(), false);
+        assert!(!non_admin.is_admin());
+        let token = non_admin.encode();
+        let decoded: Claims = decode_typed(&token, &VALIDATION).expect("decode round-trip");
+        assert!(!decoded.is_admin());
+    }
+
+    #[test]
+    fn legacy_admin_token_rejected_by_typed_decode() {
+        // A token minted with the old `{"admin": ...}` role shape must fail
+        // to decode as the new `Claims` (deny_unknown_fields).
+        use super::decode_typed;
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        use crate::model::config::APP_CONFIG;
+        use jsonwebtoken::{EncodingKey, Header, encode};
+        use serde::Serialize;
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct LegacyClaims {
+            role: LegacyRole,
+            exp: u64,
+            #[serde(rename = "typ")]
+            typ: super::TokenType,
+        }
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        enum LegacyRole {
+            Admin,
+        }
+        let key = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG not initialized")
+            .read()
+            .expect("lock poisoned")
+            .get_jwt_secret_key();
+        let legacy = LegacyClaims {
+            role: LegacyRole::Admin,
+            exp: 9_999_999_999,
+            typ: super::TokenType::Admin,
+        };
+        let token = encode(&Header::default(), &legacy, &EncodingKey::from_secret(&key))
+            .expect("encode legacy token");
+        let result: anyhow::Result<super::Claims> = decode_typed(&token, &VALIDATION);
+        assert!(result.is_err(), "legacy Role::Admin token must be rejected");
+    }
+
+    fn s3b_client() -> rocket::local::blocking::Client {
+        use crate::tests::bootstrap::{TEST_ENV, make_client, reset_backend_state};
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        make_client()
+    }
+
+    fn s3b_lock() -> std::sync::MutexGuard<'static, ()> {
+        use crate::tests::bootstrap::TEST_SERIAL_GUARD;
+        TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn s3b_set_legacy_password(password: Option<&str>) {
+        use crate::model::config::APP_CONFIG;
+        let mut config = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG set")
+            .write()
+            .expect("APP_CONFIG lock");
+        config.password = password.map(str::to_string);
+    }
+
+    #[test]
+    fn jwt_auth_open_mode_without_password_allows_without_cookie() {
+        let _g = s3b_lock();
+        let client = s3b_client();
+        s3b_set_legacy_password(None);
+        let resp = client.get("/get/index/status").dispatch();
+        assert_eq!(resp.status(), rocket::http::Status::Ok);
+    }
+
+    #[test]
+    fn jwt_auth_empty_store_with_password_denies_without_cookie() {
+        let _g = s3b_lock();
+        let client = s3b_client();
+        s3b_set_legacy_password(Some("s3b-secret"));
+        let resp = client.get("/get/index/status").dispatch();
+        assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
+        s3b_set_legacy_password(None);
+    }
+
+    #[test]
+    fn jwt_auth_valid_admin_user_accepted() {
+        let _g = s3b_lock();
+        let client = s3b_client();
+        s3b_set_legacy_password(Some("s3b-secret"));
+        crate::auth::users::create_user("s3b-admin-user", true).expect("create user");
+        let token = super::Claims::new_user("s3b-admin-user".to_string(), true).encode();
+        let resp = client
+            .get("/get/index/status")
+            .cookie(rocket::http::Cookie::new("jwt", token))
+            .dispatch();
+        assert_eq!(resp.status(), rocket::http::Status::Ok);
+        s3b_set_legacy_password(None);
+    }
+
+    #[test]
+    fn jwt_auth_demoted_user_rejected() {
+        let _g = s3b_lock();
+        let client = s3b_client();
+        s3b_set_legacy_password(Some("s3b-secret"));
+        crate::auth::users::create_user("s3b-demoted-user", true).expect("create user");
+        let token = super::Claims::new_user("s3b-demoted-user".to_string(), true).encode();
+        crate::auth::users::set_admin("s3b-demoted-user", false).expect("demote user");
+        let resp = client
+            .get("/get/index/status")
+            .cookie(rocket::http::Cookie::new("jwt", token))
+            .dispatch();
+        assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
+        s3b_set_legacy_password(None);
+    }
+
+    #[test]
+    fn jwt_auth_unknown_and_non_admin_users_rejected() {
+        let _g = s3b_lock();
+        let client = s3b_client();
+        s3b_set_legacy_password(Some("s3b-secret"));
+        crate::auth::users::create_user("s3b-other-user", false).expect("create user");
+        // Unknown user: store is non-empty but the id has no record.
+        let ghost = super::Claims::new_user("s3b-ghost-user".to_string(), true).encode();
+        let resp = client
+            .get("/get/index/status")
+            .cookie(rocket::http::Cookie::new("jwt", ghost))
+            .dispatch();
+        assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
+        // Non-admin user with a non-admin token.
+        let plain = super::Claims::new_user("s3b-other-user".to_string(), false).encode();
+        let resp = client
+            .get("/get/index/status")
+            .cookie(rocket::http::Cookie::new("jwt", plain))
+            .dispatch();
+        assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
+        s3b_set_legacy_password(None);
+    }
 }
 
 // src/router/fairing/auth_utils.rs
@@ -334,27 +495,47 @@ where
     Ok(claims)
 }
 
-/// Try to authenticate via JWT cookie and check if user is admin
+/// Try to authenticate via JWT cookie and check if user is admin.
+///
+/// When the user store is non-empty, the token must carry
+/// [`Role::User`] with `admin: true`, and the user record is re-read from
+/// the database on every call so demotion or removal takes effect before
+/// the token expires. When the store is empty the legacy behavior applies:
+/// with no configured password every request is open (minting an ephemeral
+/// `admin` identity); with a configured password cookie auth is denied and
+/// the caller must migrate via `POST /post/authenticate` first.
 pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
-    // If no password is set, allow access as admin
-    if APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned")
-        .password
-        .is_none()
-    {
-        return Ok(Claims::new_admin());
+    let store_non_empty = crate::auth::users::user_count().map(|count| count > 0)?;
+    if !store_non_empty {
+        // Legacy behavior preserved exactly while no users exist.
+        if APP_CONFIG
+            .get()
+            .expect("APP_CONFIG not initialized")
+            .read()
+            .expect("lock poisoned")
+            .password
+            .is_none()
+        {
+            return Ok(Claims::new_user("admin".to_string(), true));
+        }
+        return Err(anyhow!(
+            "No users exist yet; authenticate with the legacy password to migrate"
+        ));
     }
 
     if let Some(jwt_cookie) = req.cookies().get("jwt") {
         let token = jwt_cookie.value();
         let claims = decode_typed::<Claims>(token, validation)?;
-        if claims.is_admin() {
-            return Ok(claims);
+        if !claims.is_admin() {
+            return Err(anyhow!("User is not an admin"));
         }
-        return Err(anyhow!("User is not an admin"));
+        let Role::User { id, .. } = &claims.role else {
+            return Err(anyhow!("User is not an admin"));
+        };
+        match crate::auth::users::get_user(id)? {
+            Some(record) if record.admin => return Ok(claims),
+            _ => return Err(anyhow!("User is not an admin")),
+        }
     }
     Err(anyhow!("JWT not found in cookies"))
 }

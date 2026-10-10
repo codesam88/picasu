@@ -229,6 +229,17 @@
         ],
         "type": "object"
       },
+      "AuthenticateRequest": {
+        "description": "Request body for `POST /post/authenticate`: either a user login object\nor the legacy bare-string bootstrap path. Untagged so a JSON string and\na JSON object both parse on the same route.",
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "$ref": "#/components/schemas/LoginRequest"
+          }
+        ]
+      },
       "ConfigResponse": {
         "properties": {
           "address": {
@@ -568,6 +579,22 @@
         },
         "required": [
           "album"
+        ],
+        "type": "object"
+      },
+      "LoginRequest": {
+        "description": "User login body for `POST /post/authenticate`.",
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "password"
         ],
         "type": "object"
       },
@@ -1711,13 +1738,13 @@
     },
     "/post/authenticate": {
       "post": {
-        "description": "The posted password is trimmed and compared against the configured one; a\nmatch returns the signed admin token as a JSON string. Tokens are signed\nwith `authKey`, or with a secret generated once per process when `authKey`\nis unset, so changing `authKey` invalidates every token issued under the\nprevious one.\n\nCorner cases: While no password is configured, sign-in succeeds without\none: every input, including an empty string, is accepted.\n\nErrors: 401 password does not match the configured one.",
+        "description": "A `{ userId, password }` object verifies against the user and password\nstores and mints a token carrying the user's id and admin flag. A bare\nJSON string is the legacy bootstrap path: while the user store is empty\nit verifies the configured legacy password and migrates it onto user\n`admin`, and it is rejected once any user exists. Tokens are signed with\n`authKey`, or with a secret generated once per process when `authKey` is\nunset, so changing `authKey` invalidates every token issued under the\nprevious one.\n\nCorner cases: While no users exist and no legacy password is configured,\nsign-in succeeds without credentials: every parseable input is accepted\n(open first-run mode).\n\nErrors: 400 the login `userId` is empty or longer than 64 characters, or\nthe body parses as neither shape — 401 unknown user, wrong password, or\nlegacy path used after bootstrap.",
         "operationId": "authenticate",
         "requestBody": {
           "content": {
-            "text/plain": {
+            "application/json": {
               "schema": {
-                "type": "string"
+                "$ref": "#/components/schemas/AuthenticateRequest"
               }
             }
           },
@@ -1734,11 +1761,17 @@
             },
             "description": "JWT token"
           },
+          "400": {
+            "description": "Invalid input"
+          },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
           }
         },
-        "summary": "Sign in with the account password and return a 14-day admin JWT.",
+        "summary": "Sign in and return a 14-day user-bound JWT.",
         "tags": [
           "auth"
         ]
