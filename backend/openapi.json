@@ -356,6 +356,26 @@
         ],
         "type": "object"
       },
+      "CreateUserRequest": {
+        "description": "Body for `POST /post/users/create`.",
+        "properties": {
+          "admin": {
+            "type": "boolean"
+          },
+          "password": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "password",
+          "admin"
+        ],
+        "type": "object"
+      },
       "DataBaseTimestampReturn": {
         "properties": {
           "abstractData": {
@@ -944,6 +964,28 @@
         ],
         "type": "object"
       },
+      "SetUserPasswordRequest": {
+        "description": "Body for `PUT /put/users/password`.",
+        "properties": {
+          "newPassword": {
+            "type": "string"
+          },
+          "oldPassword": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "newPassword"
+        ],
+        "type": "object"
+      },
       "Share": {
         "properties": {
           "description": {
@@ -1013,6 +1055,22 @@
             ]
           }
         },
+        "type": "object"
+      },
+      "UserSummary": {
+        "description": "Summary of a user record. Password hashes are never exported.",
+        "properties": {
+          "admin": {
+            "type": "boolean"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "admin"
+        ],
         "type": "object"
       }
     }
@@ -1633,6 +1691,37 @@
         ]
       }
     },
+    "/get/users": {
+      "get": {
+        "description": "Password hashes are never exported. Admin-only: a non-admin or missing\ncredential is denied at dispatch with 401.\n\nErrors: 401 missing or invalid admin credentials; share tokens are not\naccepted — 500 storage failure.",
+        "operationId": "list_users_handler",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserSummary"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "User list"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "List all users as `{ userId, admin }` pairs ordered by id.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/links": {
       "get": {
         "description": "Returns the shared `index.html` shell for the `links` client route. The path\nis fixed and carries no parameters, so this route performs no lookup of its\nown.",
@@ -2079,6 +2168,53 @@
         ]
       }
     },
+    "/post/users/create": {
+      "post": {
+        "description": "Admin-only, except for the bootstrap exception: while the user store is\nempty an unauthenticated call succeeds and forces `admin: true`\nregardless of the body's flag. A non-admin caller — or no caller once\nany user exists — is rejected.\n\nCorner cases: The `admin` flag is honored for admin callers and forced\non for bootstrap. The password is trimmed before hashing.\n\nErrors: 400 invalid `userId` or empty password — 401 missing or invalid\ncredentials, non-admin caller, or unauthenticated call once any user\nexists — 405 read-only mode — 409 `userId` already exists — 500 storage\nfailure.",
+        "operationId": "create_user_handler",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSummary"
+                }
+              }
+            },
+            "description": "User created"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "409": {
+            "description": "User already exists"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "Create a user.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/put/assign_album": {
       "put": {
         "description": "`assetId` addresses the asset record and `albumId` the destination album,\nwhose directory is resolved from the album directory cache. Only the file at\nthe asset's own path moves, never hash-matched duplicates: the stored path\nand album membership are rewritten to match, an album moves as its whole\ndirectory tree with every descendant record's path rewritten, and a `.xmp`\nsidecar rides along with the file. The destination album's stats are\nrefreshed and the query-cache version bumped before the response returns, so\nthe next prefetch already reflects the move.\n\nCorner cases: `onConflict` is required and has no default — `skip` leaves an\nexisting destination untouched and reports `skipped`, `rename` lands under a\nsuffixed name and reports `renamedFrom`, a plain move reports `moved`. An\nasset already sitting in the destination directory reports `moved` without\nanything being rewritten, and an album moved into itself or into one of its\nown sub-albums is rejected. Compressed thumbnails and videos are keyed by\ncontent hash, not by path, so no derivative moves or is invalidated.\n\nErrors: 400 unknown asset or album id, a source path or album directory that\nno longer exists, or a destination album that has no directory — 401 missing\nor invalid admin credentials; share tokens are not accepted — 405 read-only\nmode — 500 storage failure.",
@@ -2162,7 +2298,7 @@
     },
     "/put/config/password": {
       "put": {
-        "description": "`oldPassword` is compared verbatim against the stored password, and\n`password` supplies the new one, which is trimmed before it is stored. Only\nthe password moves — `authKey` is untouched — so tokens already signed with\nit stay valid across the change.\n\nCorner cases: an omitted or blank `password` clears the password, after\nwhich any input to the sign-in operation is accepted. Because `oldPassword`\nis compared verbatim against the stored value, it must be omitted rather\nthan sent empty while no password is set.\n\nErrors: 400 `oldPassword` does not match the stored password, or the body\ncannot be parsed — 401 missing or invalid admin credentials; share tokens\nare not accepted — 405 read-only mode — 500 config write failure.",
+        "description": "This is the legacy single-password route, reworked onto the user store:\nit changes the password of the authenticated caller only. An admin may\nset their own password without `oldPassword`; a non-admin must present\nthe correct `oldPassword`. The new `password` is trimmed and must be\nnon-empty after trimming (there is no \"clear to open\": open mode is\nstore-empty only). To change another user's password, use\n`PUT /put/users/password`.\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch. A missing\n(`None`) or blank `password` is 400.\n\nErrors: 400 missing or blank `password`, or the body cannot be parsed —\n401 missing or invalid credentials, or wrong `oldPassword`; share tokens\nare not accepted — 405 read-only mode — 500 storage failure.",
         "operationId": "update_password_handler",
         "requestBody": {
           "content": {
@@ -2191,7 +2327,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Change or clear the account password.",
+        "summary": "Change the caller's own password.",
         "tags": [
           "config"
         ]
@@ -2589,6 +2725,49 @@
         "summary": "Set or clear the user-defined description of an asset.",
         "tags": [
           "albums"
+        ]
+      }
+    },
+    "/put/users/password": {
+      "put": {
+        "description": "An admin may set any user's password without the old one; a non-admin\nmay only change their own, presenting the correct `oldPassword`. The new\npassword is trimmed and must be non-empty after trimming (there is no\n\"clear to open\": open mode is store-empty only).\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch.\n\nErrors: 400 invalid `userId` or empty `newPassword` — 401 missing or\ninvalid credentials, or wrong `oldPassword` — 403 non-admin targeting\nanother user — 404 unknown `userId` — 405 read-only mode — 500 storage\nfailure.",
+        "operationId": "set_user_password_handler",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Password updated"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "Change a user's password.",
+        "tags": [
+          "auth"
         ]
       }
     },

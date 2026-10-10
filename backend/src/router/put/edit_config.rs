@@ -10,6 +10,8 @@ use crate::model::config::{APP_CONFIG, AppConfig};
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardUser;
+use crate::router::put::users_password::{caller_identity, set_password_sync};
 use crate::router::{AppResult, GuardResult};
 use serde::{Deserialize, Serialize};
 
@@ -146,21 +148,23 @@ pub struct UpdatePasswordRequest {
     pub old_password: Option<String>,
 }
 
-/// Change or clear the account password.
+/// Change the caller's own password.
 ///
-/// `oldPassword` is compared verbatim against the stored password, and
-/// `password` supplies the new one, which is trimmed before it is stored. Only
-/// the password moves — `authKey` is untouched — so tokens already signed with
-/// it stay valid across the change.
+/// This is the legacy single-password route, reworked onto the user store:
+/// it changes the password of the authenticated caller only. An admin may
+/// set their own password without `oldPassword`; a non-admin must present
+/// the correct `oldPassword`. The new `password` is trimmed and must be
+/// non-empty after trimming (there is no "clear to open": open mode is
+/// store-empty only). To change another user's password, use
+/// `PUT /put/users/password`.
 ///
-/// Corner cases: an omitted or blank `password` clears the password, after
-/// which any input to the sign-in operation is accepted. Because `oldPassword`
-/// is compared verbatim against the stored value, it must be omitted rather
-/// than sent empty while no password is set.
+/// Corner cases: Any authenticated user reaches this route (share tokens
+/// are rejected); unauthenticated callers are denied at dispatch. A missing
+/// (`None`) or blank `password` is 400.
 ///
-/// Errors: 400 `oldPassword` does not match the stored password, or the body
-/// cannot be parsed — 401 missing or invalid admin credentials; share tokens
-/// are not accepted — 405 read-only mode — 500 config write failure.
+/// Errors: 400 missing or blank `password`, or the body cannot be parsed —
+/// 401 missing or invalid credentials, or wrong `oldPassword`; share tokens
+/// are not accepted — 405 read-only mode — 500 storage failure.
 #[utoipa::path(
         tag = "config",
         request_body = UpdatePasswordRequest,
@@ -175,46 +179,130 @@ pub struct UpdatePasswordRequest {
 ]
 #[put("/put/config/password", data = "<req>")]
 pub async fn update_password_handler(
-    _auth: GuardAuth,
+    user: GuardUser,
     read_only: GuardResult<GuardReadOnlyMode>,
     req: Json<UpdatePasswordRequest>,
 ) -> AppResult<Status> {
     let _ = read_only?;
+    let (caller_id, caller_admin) = caller_identity(&user.claims);
     let req_data = req.into_inner();
-
     spawn_blocking(move || -> Result<Status, AppError> {
-        let mut current_config = APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned")
-            .clone();
-
-        if req_data.old_password != current_config.password {
-            return Err(AppError::new(
-                ErrorKind::InvalidInput,
-                "Incorrect current password",
-            ));
-        }
-
-        if let Some(pwd) = req_data.password {
-            let trimmed_pwd = pwd.trim().to_string();
-            current_config.password = if trimmed_pwd.is_empty() {
-                None
-            } else {
-                Some(trimmed_pwd)
-            };
-        } else {
-            current_config.password = None;
-        }
-
-        AppConfig::update(current_config).map_err(|e| {
-            error!("Failed to update config: {e}");
-            AppError::from_err(ErrorKind::Internal, e)
-        })?;
-
+        set_password_sync(
+            &caller_id,
+            caller_admin,
+            &caller_id,
+            req_data.old_password.as_deref(),
+            req_data.password.as_deref().unwrap_or(""),
+        )?;
         Ok(Status::Ok)
     })
     .await
     .or_raise(|| (ErrorKind::Internal, "Task join error"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use rocket::http::{ContentType, Cookie, Status};
+    use serde_json::json;
+
+    use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
+
+    fn lock() -> std::sync::MutexGuard<'static, ()> {
+        TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn setup() -> rocket::local::blocking::Client {
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        make_client()
+    }
+
+    fn cookie(id: &str, admin: bool) -> Cookie<'static> {
+        let token = crate::router::auth::Claims::new_user(id.to_string(), admin).encode();
+        Cookie::new("jwt", token)
+    }
+
+    fn seed(id: &str, admin: bool, password: Option<&str>) {
+        crate::auth::users::create_user(id, admin).expect("seed user");
+        if let Some(pw) = password {
+            let path = crate::auth::users::passwd_file_path();
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("auth dir");
+            }
+            let mut store = crate::auth::password::PasswdFile::load(&path).expect("load passwd");
+            store.set_password(id, pw).expect("set password");
+        }
+    }
+
+    fn put_legacy(
+        client: &rocket::local::blocking::Client,
+        cookie: Cookie<'static>,
+        body: &serde_json::Value,
+    ) -> Status {
+        client
+            .put("/put/config/password")
+            .cookie(cookie)
+            .header(ContentType::JSON)
+            .body(body.to_string())
+            .dispatch()
+            .status()
+    }
+
+    #[test]
+    fn legacy_admin_sets_own_password_without_old() {
+        let _g = lock();
+        let client = setup();
+        seed("s4e-root", true, Some("s4e-root-old"));
+        let status = put_legacy(
+            &client,
+            cookie("s4e-root", true),
+            &json!({ "password": "s4e-root-new" }),
+        );
+        assert_eq!(status, Status::Ok);
+        let store =
+            crate::auth::password::PasswdFile::load(&crate::auth::users::passwd_file_path())
+                .expect("load passwd");
+        assert!(store.verify("s4e-root", "s4e-root-new"));
+    }
+
+    #[test]
+    fn legacy_self_service_with_correct_old_password() {
+        let _g = lock();
+        let client = setup();
+        seed("s4e-bob", false, Some("s4e-bob-old"));
+        let status = put_legacy(
+            &client,
+            cookie("s4e-bob", false),
+            &json!({ "password": "s4e-bob-new", "oldPassword": "s4e-bob-old" }),
+        );
+        assert_eq!(status, Status::Ok);
+    }
+
+    #[test]
+    fn legacy_wrong_old_password_is_401() {
+        let _g = lock();
+        let client = setup();
+        seed("s4e-carol", false, Some("s4e-carol-old"));
+        let status = put_legacy(
+            &client,
+            cookie("s4e-carol", false),
+            &json!({ "password": "s4e-carol-new", "oldPassword": "nope" }),
+        );
+        assert_eq!(status, Status::Unauthorized);
+    }
+
+    #[test]
+    fn legacy_empty_new_password_is_400() {
+        let _g = lock();
+        let client = setup();
+        seed("s4e-root", true, None);
+        let status = put_legacy(
+            &client,
+            cookie("s4e-root", true),
+            &json!({ "password": "   " }),
+        );
+        assert_eq!(status, Status::BadRequest);
+    }
 }
