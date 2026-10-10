@@ -171,6 +171,11 @@ pub const ASSET_BY_ID: TableDefinition<&str, &str> = TableDefinition::new("asset
 /// but remain independently addressable.
 pub const DUPE_INDEX: TableDefinition<&str, &str> = TableDefinition::new("dupe_index");
 
+/// Maps user id → JSON-serialized [`crate::auth::users::UserRecord`].
+/// One row per user. Follows the same JSON-string value pattern as
+/// [`ASSET_BY_ID`].
+pub const USERS: TableDefinition<&str, &str> = TableDefinition::new("users");
+
 use anyhow::Result;
 
 pub fn open_metadata_table() -> ReadOnlyTable<&'static str, MetadataRecord> {
