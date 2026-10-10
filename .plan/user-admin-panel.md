@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: backend
@@ -83,4 +83,8 @@ visible only to users with the admin role.
 - B2 done: frontend panel + login, committed. Review caught one
   upgrade-blocking gap (legacy deployments unreachable from UI) fixed via
   login fallback (object → string → object).
-- B3 pending: openapi regen/check, full suite, this reconcile, plan `done`.
+- B3 done: openapi regen/check clean, full suite green (549 lib + all
+  targets), frontend-check/vitest green, docs touched. Outstanding
+  follow-up (not blocking): live-run the Playwright suite (new scenario +
+  hand-edited login snapshot) and optionally a `given` user-seeding verb
+  for a true toggle E2E.
