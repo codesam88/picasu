@@ -941,6 +941,22 @@
         ],
         "type": "object"
       },
+      "SetUserAdminRequest": {
+        "description": "Body for `PUT /put/users/admin`.",
+        "properties": {
+          "admin": {
+            "type": "boolean"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "admin"
+        ],
+        "type": "object"
+      },
       "SetUserDefinedDescription": {
         "properties": {
           "description": {
@@ -2725,6 +2741,49 @@
         "summary": "Set or clear the user-defined description of an asset.",
         "tags": [
           "albums"
+        ]
+      }
+    },
+    "/put/users/admin": {
+      "put": {
+        "description": "Admin-only: a non-admin, share, or missing credential is denied at\ndispatch with 401. A change that would leave zero admins is refused,\nwhether the target is the caller or the sole other admin; self-demotion\nwith another admin present succeeds (transfer). No-op same-flag writes\nsucceed without an audit line.\n\nCorner cases: Unknown `userId` names no user. The caller id is read from\nthe dispatch-validated claims, never from the body.\n\nErrors: 400 invalid `userId` — 401 missing or invalid credentials,\nnon-admin caller, or share credentials — 404 unknown `userId` — 405\nread-only mode — 409 demotion would leave zero admins — 500 storage\nfailure.",
+        "operationId": "set_user_admin_handler",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserAdminRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Admin role updated"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "409": {
+            "description": "Demotion would leave zero admins"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "Grant or revoke a user's admin role.",
+        "tags": [
+          "auth"
         ]
       }
     },
