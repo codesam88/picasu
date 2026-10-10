@@ -52,6 +52,15 @@ pub(crate) fn set_password_sync(
             "new password must not be empty",
         ));
     }
+    // Permission before existence: a non-admin targeting another id gets
+    // 403 even when the target is unknown, so the status leaks no
+    // user-enumeration signal.
+    if !caller_admin && target != caller_id {
+        return Err(AppError::new(
+            ErrorKind::PermissionDenied,
+            "cannot change another user's password",
+        ));
+    }
     let target_exists = users::get_user(&target)
         .map_err(|e| AppError::from_err(ErrorKind::Database, e))?
         .is_some();
@@ -69,12 +78,6 @@ pub(crate) fn set_password_sync(
         }
     }
     if !caller_admin {
-        if target != caller_id {
-            return Err(AppError::new(
-                ErrorKind::PermissionDenied,
-                "cannot change another user's password",
-            ));
-        }
         let presented = old_password.unwrap_or("").trim();
         let path = users::passwd_file_path();
         let store = crate::auth::password::PasswdFile::load(&path)
@@ -290,5 +293,20 @@ mod tests {
         assert_eq!(status, Status::Ok);
         let record = crate::auth::users::get_user("first").expect("get user");
         assert_eq!(record, Some(crate::auth::users::UserRecord { admin: true }));
+    }
+
+    #[test]
+    fn non_admin_targeting_unknown_user_is_403_not_404() {
+        let _g = lock();
+        let client = setup();
+        seed("s4d-bob", false, Some("s4d-bob-old"));
+        // `s4d-ghost` does not exist: permission must be checked before
+        // existence so the status leaks no user-enumeration signal.
+        let status = put_password(
+            &client,
+            cookie("s4d-bob", false),
+            &json!({ "userId": "s4d-ghost", "newPassword": "s4d-ghost-new" }),
+        );
+        assert_eq!(status, Status::Forbidden);
     }
 }
