@@ -5,6 +5,7 @@ use redb::{ReadableTable, ReadableTableMetadata};
 use std::thread;
 use std::time::Instant;
 
+pub mod auth;
 mod constant;
 mod error;
 mod frontend;
