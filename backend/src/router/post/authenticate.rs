@@ -82,33 +82,65 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<String> {
     Ok(Claims::new_user(user_id.to_string(), record.admin).encode())
 }
 
-/// Migrate the legacy single-password config into the user store: when no
-/// users exist and the trimmed input matches the configured legacy password,
-/// create user `admin` and store the password hash for it. Must run on a
-/// blocking thread: password hashing is CPU-heavy.
-///
-/// The input is trimmed once and the trimmed form is both compared and
-/// hashed, matching the previous verbatim-compare-after-trim semantics.
-///
-/// # Errors
-/// Returns 401 when the store is already non-empty (the legacy path is
-/// bootstrap-only) or when the input does not match the configured legacy
-/// password, and 500 when either store cannot be written.
-fn ensure_migrated_from_legacy(password: &str) -> AppResult<()> {
-    let non_empty = users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
-    if non_empty > 0 {
-        return Err(AppError::new(ErrorKind::Auth, "Legacy sign-in is disabled")
-            .context("Authentication failed"));
-    }
-    let trimmed = password.trim();
-    let legacy = APP_CONFIG
+/// Read the configured legacy single password, if any.
+fn legacy_password() -> Option<String> {
+    APP_CONFIG
         .get()
         .expect("APP_CONFIG not initialized")
         .read()
         .expect("lock poisoned")
         .password
-        .clone();
-    match legacy {
+        .clone()
+}
+
+/// Register `id` as the first admin with the given (already trimmed)
+/// password hash. Must run on a blocking thread: password hashing is
+/// CPU-heavy.
+///
+/// The store-emptiness re-check and the creation happen under one process
+/// lock: the redb write and the password-file write cannot share a
+/// transaction, so without the lock two concurrent bootstraps could each
+/// create a different first admin.
+///
+/// # Errors
+/// Returns 401 when the store is already non-empty (bootstrap-only), and 500
+/// when either store cannot be written.
+fn bootstrap_user(id: &str, trimmed_password: &str) -> AppResult<()> {
+    static BOOTSTRAP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = BOOTSTRAP_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let non_empty = users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
+    if non_empty > 0 {
+        return Err(AppError::new(ErrorKind::Auth, "Legacy sign-in is disabled")
+            .context("Authentication failed"));
+    }
+    users::create_user(id, true).map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
+    let path = users::passwd_file_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| AppError::from_err(ErrorKind::IO, e.into()))?;
+    }
+    let mut store = PasswdFile::load(&path).map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
+    store
+        .set_password(id, trimmed_password)
+        .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
+    Ok(())
+}
+
+/// Migrate the legacy single-password config into the user store: when no
+/// users exist and the trimmed input matches the configured legacy password,
+/// register the claimed id as the first admin. The bare-string path passes
+/// `"admin"`, preserving the previous migration target.
+///
+/// Must run on a blocking thread: password hashing is CPU-heavy.
+///
+/// # Errors
+/// Returns 401 when the store is already non-empty (the legacy path is
+/// bootstrap-only) or when the input does not match the configured legacy
+/// password, and 500 when either store cannot be written.
+fn ensure_migrated_from_legacy(user_id: &str, password: &str) -> AppResult<()> {
+    let trimmed = password.trim();
+    match legacy_password() {
         Some(expected) if !expected.is_empty() && trimmed == expected => {}
         _ => {
             return Err(
@@ -116,22 +148,16 @@ fn ensure_migrated_from_legacy(password: &str) -> AppResult<()> {
             );
         }
     }
-    users::create_user("admin", true).map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
-    let path = users::passwd_file_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| AppError::from_err(ErrorKind::IO, e.into()))?;
-    }
-    let mut store = PasswdFile::load(&path).map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
-    store
-        .set_password("admin", trimmed)
-        .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
-    Ok(())
+    bootstrap_user(user_id, trimmed)
 }
 
 /// Sign in and return a 14-day user-bound JWT.
 ///
 /// A `{ userId, password }` object verifies against the user and password
-/// stores and mints a token carrying the user's id and admin flag. A bare
+/// stores and mints a token carrying the user's id and admin flag. On a
+/// legacy deployment (empty store + configured legacy password) the first
+/// login with the legacy password registers the claimed `userId` as the
+/// first admin. A bare
 /// JSON string is the legacy bootstrap path: while the user store is empty
 /// it verifies the configured legacy password and migrates it onto user
 /// `admin`, and it is rejected once any user exists. Tokens are signed with
@@ -179,17 +205,34 @@ pub async fn authenticate(body: Json<AuthenticateRequest>) -> AppResult<Json<Str
         AuthenticateRequest::Login(login) => {
             let user_id = validate_user_id(&login.user_id)?;
             let password = login.password;
-            let token = spawn_blocking(move || login_sync(&user_id, &password))
-                .await
-                .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
+            let token = spawn_blocking(move || -> AppResult<String> {
+                // Legacy deployment (empty store + configured password):
+                // the first login with the legacy password registers the
+                // claimed id as the first admin. Otherwise the normal path
+                // below answers 401 for the unknown user.
+                if users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))? == 0
+                {
+                    let canonical = password.trim().to_string();
+                    match legacy_password() {
+                        Some(expected) if !expected.is_empty() && canonical == expected => {
+                            bootstrap_user(&user_id, &canonical)?;
+                        }
+                        _ => {}
+                    }
+                }
+                login_sync(&user_id, &password)
+            })
+            .await
+            .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
             Ok(Json(token))
         }
         AuthenticateRequest::Legacy(password) => {
             let token = spawn_blocking(move || -> AppResult<String> {
                 // The trimmed form is canonical for comparison, storage, and
-                // the follow-up verification alike.
+                // the follow-up verification alike. The bare-string path
+                // keeps the historical `"admin"` migration target.
                 let canonical = password.trim().to_string();
-                ensure_migrated_from_legacy(&canonical)?;
+                ensure_migrated_from_legacy("admin", &canonical)?;
                 login_sync("admin", &canonical)
             })
             .await
@@ -343,6 +386,74 @@ mod tests {
             .body(json!("s3d-legacy-secret").to_string())
             .dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
+        set_legacy_password(None);
+    }
+
+    #[test]
+    fn legacy_login_registers_claimed_id_as_admin() {
+        let _g = lock();
+        let client = setup();
+        set_legacy_password(Some("s3e-legacy-secret"));
+        // First login with the legacy password claims a new id: it is
+        // registered as the first admin instead of hardcoded `admin`.
+        let resp = client
+            .post("/post/authenticate")
+            .header(ContentType::JSON)
+            .body(json!({ "userId": "s3e-alice", "password": "s3e-legacy-secret" }).to_string())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        let body = resp.into_string().expect("token body");
+        let claims = decode_claims(&body);
+        match claims.role {
+            crate::router::auth::Role::User { id, admin } => {
+                assert_eq!(id, "s3e-alice");
+                assert!(admin);
+            }
+            crate::router::auth::Role::Share(_) => panic!("expected user role"),
+        }
+        let record = crate::auth::users::get_user("s3e-alice").expect("get bootstrapped user");
+        assert_eq!(record, Some(crate::auth::users::UserRecord { admin: true }));
+        // Second login goes through the normal path.
+        let resp = client
+            .post("/post/authenticate")
+            .header(ContentType::JSON)
+            .body(json!({ "userId": "s3e-alice", "password": "s3e-legacy-secret" }).to_string())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        set_legacy_password(None);
+    }
+
+    #[test]
+    fn legacy_login_wrong_password_creates_nothing() {
+        let _g = lock();
+        let client = setup();
+        set_legacy_password(Some("s3e-legacy-secret"));
+        let resp = client
+            .post("/post/authenticate")
+            .header(ContentType::JSON)
+            .body(json!({ "userId": "s3e-bob", "password": "wrong" }).to_string())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Unauthorized);
+        assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+        assert!(
+            crate::auth::users::get_user("s3e-bob")
+                .expect("get")
+                .is_none()
+        );
+        set_legacy_password(None);
+    }
+
+    #[test]
+    fn legacy_login_invalid_id_is_400() {
+        let _g = lock();
+        let client = setup();
+        set_legacy_password(Some("s3e-legacy-secret"));
+        let resp = client
+            .post("/post/authenticate")
+            .header(ContentType::JSON)
+            .body(json!({ "userId": "   ", "password": "s3e-legacy-secret" }).to_string())
+            .dispatch();
+        assert_eq!(resp.status(), Status::BadRequest);
         set_legacy_password(None);
     }
 

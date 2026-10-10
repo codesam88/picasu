@@ -4,21 +4,19 @@ This document describes Picasu's authentication system: its goals, the paradigm
 it follows, and the detailed mechanism as implemented in
 `backend/src/router/auth.rs` and the route modules. The desired properties —
 the model from which enforcement rules and tests are derived — live in
-[`authz-model.md`](authz-model.md). The final section is a
-security assessment written from an external reviewer's perspective. The
-assessment combines source review with dynamic verification against a local
-test instance (two albums, two shares, password configured); each finding is
-marked _reproduced_ or _from source_ to say which.
+[`authz-model.md`](authz-model.md). Findings from the security assessment live
+with the work that owns them (see Security assessment below); this document
+keeps the mechanism only.
 
 ## Goals
 
 Picasu is a self-hosted gallery with a deliberately small identity model. The
 design goals, in priority order:
 
-1. **One admin, many guests.** There is no user table. A single shared admin
-   password guards management operations; "users" beyond the admin exist only as
-   **share links** — capability URLs that expose one album under an explicit
-   policy.
+1. **Users, guests via shares.** Individual users sign in by id and password;
+   admin is a role held by one or more users, not a separate account. Beyond
+   users, guests exist only as **share links** — capability URLs that expose
+   one album under an explicit policy.
 2. **Shares are least-privilege by construction.** A share carries its policy
    with it — `showMetadata`, `showDownload`, `showUpload`, optional password,
    expiry — and every request through a share must be evaluable without server
@@ -68,11 +66,11 @@ resolve server-side, per request, against the stored share record.
 
 ### Secrets and token signing
 
-| Secret       | Source                                                 | Role                                                                              |
-| ------------ | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| `password`   | `[secrets]` in `config.toml`                           | admin login credential, compared verbatim (after trim)                            |
-| `auth_key`   | `[secrets]` in `config.toml`, or env `PICASU_AUTH_KEY` | HS256 key for **all** JWT types                                                   |
-| fallback key | 32 random bytes, generated once per process            | used only when `auth_key` is unset; a restart invalidates every outstanding token |
+| Secret       | Source                                                 | Role                                                                                           |
+| ------------ | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `password`   | `[secrets]` in `config.toml` (legacy)                  | bootstrap-only: migrates onto user `admin` at first legacy login; ignored once any user exists |
+| `auth_key`   | `[secrets]` in `config.toml`, or env `PICASU_AUTH_KEY` | HS256 key for **all** JWT types                                                                |
+| fallback key | 32 random bytes, generated once per process            | used only when `auth_key` is unset; a restart invalidates every outstanding token              |
 
 `AppConfig::get_jwt_secret_key` (`model/config.rs`) selects the key. All tokens
 are HS256-encoded with it; validation pins the algorithm list to `[HS256]`
@@ -96,10 +94,11 @@ attacks are excluded by construction.
    (Promotion requires re-login: the token-embedded flag gates first.)
 4. Logout (`GalleryBar.vue`) removes the cookie client-side only; the token
    remains cryptographically valid until expiry or until `auth_key` is rotated.
-5. Users are managed through `POST /post/users/create`, `GET /get/users`, and
-   `PUT /put/users/password` (admin-only, except unauthenticated creation of
-   the first user, which is forced admin). The legacy `PUT /put/config/password`
-   route now changes the caller's own password on the same store.
+5. Users are managed through `POST /post/users/create`, `GET /get/users`,
+   `PUT /put/users/password`, and `PUT /put/users/admin` (admin-only,
+   except unauthenticated creation of the first user, which is forced admin).
+   The legacy `PUT /put/config/password` route now changes the caller's own
+   password on the same store.
 
 **Open first-run mode:** while the user store is empty and no legacy password
 is set, `try_jwt_cookie_auth` returns an admin user identity without reading
@@ -110,7 +109,9 @@ default bind address.
 
 **Legacy bootstrap:** a bare JSON string body to `authenticate` is accepted
 only while the user store is empty; it verifies the legacy config `password`
-and migrates it onto user `admin`. The legacy config password is ignored once
+and migrates it onto user `admin`. The same first-login bootstrap is
+available through the object path: the first login with the legacy password
+registers the claimed `userId` as the first admin. The legacy config password is ignored once
 any user exists, and pre-migration identity tokens do not decode under the new
 `Role` shape.
 
@@ -177,16 +178,16 @@ expiry.
 
 ### Request guards (the authorization manifest)
 
-| Guard               | Accepts                                                                     | Used by                                                                                                                                                                                                                                                                            |
-| ------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GuardAuth`         | cookie of a user with the admin role (or open first-run mode)               | config write/export/import (incl. password change), user management (create/list), album cover/assign/create-dir, delete, index jobs, rebuild, rotate, regenerate thumbnail, tags/flags/rating, share create/edit, album/tag lists, fs completion, album-index status, test probes |
-| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected      | `PUT /put/users/password`, legacy `PUT /put/config/password` (caller-only writes)                                                                                                                                                                                                  |
-| `GuardShare`        | share headers/query, or cookie of a user with the admin role                | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                                                                                                                          |
-| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter | get-data, get-metadata, get-scroll-bar                                                                                                                                                                                                                                             |
-| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                 | `GET /object/compressed/...`                                                                                                                                                                                                                                                       |
-| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim               | `GET /object/imported/...`                                                                                                                                                                                                                                                         |
-| `GuardUpload`       | share with `showUpload` + matching `presigned_album_id`, or admin-role user | `POST /upload`                                                                                                                                                                                                                                                                     |
-| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                  | every mutating route                                                                                                                                                                                                                                                               |
+| Guard               | Accepts                                                                     | Used by                                                                                                                                                                                                                                                                                      |
+| ------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GuardAuth`         | cookie of a user with the admin role (or open first-run mode)               | config write/export/import (incl. password change), user management (create/list/set-admin), album cover/assign/create-dir, delete, index jobs, rebuild, rotate, regenerate thumbnail, tags/flags/rating, share create/edit, album/tag lists, fs completion, album-index status, test probes |
+| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected      | `PUT /put/users/password`, legacy `PUT /put/config/password` (caller-only writes)                                                                                                                                                                                                            |
+| `GuardShare`        | share headers/query, or cookie of a user with the admin role                | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                                                                                                                                    |
+| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter | get-data, get-metadata, get-scroll-bar                                                                                                                                                                                                                                                       |
+| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                 | `GET /object/compressed/...`                                                                                                                                                                                                                                                                 |
+| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim               | `GET /object/imported/...`                                                                                                                                                                                                                                                                   |
+| `GuardUpload`       | share with `showUpload` + matching `presigned_album_id`, or admin-role user | `POST /upload`                                                                                                                                                                                                                                                                               |
+| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                  | every mutating route                                                                                                                                                                                                                                                                         |
 
 ### Configuration surface
 
@@ -207,209 +208,39 @@ expiry.
 
 ## Security assessment
 
-**Scope and method.** Static review of `backend/src/router/auth.rs`, the route
-modules, `model/config.rs`, and the frontend login/interceptor/service-worker
-code, plus dynamic verification against a local instance on 2026-10-04: two
-albums, two shares created with `showMetadata=false`/`showDownload=false`.
-Findings marked _reproduced_ were triggered end-to-end against that instance
-with curl; findings marked _from source_ are static-analysis conclusions. No
-TLS, reverse-proxy, browser-plugin, or dependency audit was performed.
-Severities assume the self-hosted, share-guests-are-semi-trusted threat model of
-the design; in a publicly exposed deployment F1–F4 should be treated one level
-higher.
+A security assessment of this system produced findings F1–F10. The finding
+bodies live with the work that owns them, not here:
 
-### Findings
+- remediated F1–F4, with transcripts: `.plan/authz-fix.md` appendix;
+- open F5–F10, with transcripts and follow-up recommendations:
+  `.plan/auth-hardening.md`.
 
-#### F1 — JWT claim type confusion lets any share bypass its own policy (High, reproduced — fixed)
-
-`ClaimsHash` and `ClaimsTimestamp` are indistinguishable to the decoder: both
-are HS256 tokens under the same key, neither carries a `typ` claim, and serde
-ignores the extra fields while defaulting the missing `resolvedShareOpt` to
-`None` (which `resolve_show_download_and_metadata` treats as full access). A
-share viewer already receives `ClaimsHash` tokens in every `get-data` row, so
-the attack uses only tokens the share itself is legitimately given:
-
-1. **Metadata hiding bypass.** Calling `GET /get/metadata/<id>` with a
-   `ClaimsHash` as bearer instead of the timestamp token returned the full
-   `path` object (`/tmp/.../images/albumA/a.jpg`) where the legitimate token
-   correctly returned `path: null` for the same `showMetadata=false` share.
-2. **Download-hiding bypass.** Calling `GET /get/get-data` with the same
-   confused bearer made the server mint fresh tokens with `allowOriginal: true`
-   for a `showDownload=false` share; that token then fetched
-   `GET /object/imported/...` — HTTP 200, bytes identical to the original file
-   (the legitimate token never produces `allowOriginal=true`).
-3. **Unlimited renewal.** `POST /post/renew-timestamp-token` accepts a
-   `ClaimsHash` as the submitted body token and re-issues it as a
-   `ClaimsTimestamp` with `resolvedShareOpt: null`, converting a 300-second
-   asset token into a renewable full-policy token.
-
-Snapshot scoping still holds (rows remain limited to the share's album), but
-every policy flag a share is supposed to enforce — metadata hiding, download
-hiding — is bypassable by the share itself. **Fix:** add a `typ` claim
-(`admin` / `snapshot` / `asset`) to each token type and reject mismatches at
-decode; optionally decode with `deny_unknown_fields`.
-
-#### F2 — `get-metadata` is not scoped to the share's album (Medium, reproduced — fixed)
-
-A share on AlbumB holding a valid `ClaimsTimestamp` fetched AlbumA's asset by
-ID and received its full metadata (path included). Authorization on this route
-is effectively "knows a 64-character asset ID" rather than "is entitled to this
-album". Asset IDs are high-entropy, but they appear in URLs, logs, and referrer
-headers; once known, any share (subject to its own `showMetadata` flag) can
-read any asset's metadata. **Fix:** resolve the token's `resolvedShareOpt` and
-verify the requested `asset_id` belongs to that album before composing the
-record.
-
-#### F3 — Share-guarded write endpoints do not bind the caller to the target (High, reproduced — fixed)
-
-Two routes accept `GuardShare` but then take their target from the request body
-without comparing it to the authenticated share's album:
-
-- `PUT /put/set_album_title` — AlbumB's share renamed **AlbumA** (HTTP 200;
-  verified by re-reading the album list as admin). Album IDs are visible in
-  share URLs (`/share/<albumId>-<shareId>`), so they are not secret between
-  guests.
-- `PUT /put/set_user_defined_description` — AlbumA's share wrote a description
-  into an asset of AlbumB by supplying AlbumB's snapshot `timestamp` (HTTP 200,
-  write verified via metadata read). Snapshot timestamps are wall-clock
-  milliseconds; combined with the absence of rate limiting (F5), blind
-  enumeration of a time window is practical.
-
-Both are integrity violations by any share guest against any album. (Related
-design note, documented in the route itself: description writes do not consult
-`showMetadata` at all.) **Fix:** derive the target album from
-`auth.claims.get_share()` and reject any body `albumId`/snapshot that does not
-belong to it.
-
-#### F4 — Token renewal is not bound to the presenter's share (Medium, reproduced — fixed)
-
-`POST /post/renew-timestamp-token` validates that the _presenter_ holds any
-valid share (`GuardShare`) and that the submitted token is
-signature-valid-but-possibly-expired — but never checks that the submitted
-token's embedded share equals the presenter's. Verified: share1's credentials
-successfully renewed share2's timestamp token, which was re-issued with
-share2's album binding intact. Consequences:
-
-- A leaked timestamp token can be kept alive indefinitely by anyone holding any
-  other valid share credential; expiry is only a speed bump.
-- Renewal re-issues the embedded share claims **without re-running
-  `validate_share_access`**, so a share that has since been disabled, expired,
-  or had its password changed continues to yield refreshed tokens as long as
-  the token was minted beforehand.
-
-`renew-hash-token` is better bound (presenter must hold a `ClaimsTimestamp`
-whose `timestamp` claim matches) but inherits the same missing re-validation on
-repeated cycles. **Fix:** compare the submitted token's share against the
-presenter's, and re-resolve + re-validate the embedded share at renewal.
-
-#### F5 — No rate limiting or lockout on password authentication (Medium, reproduced)
-
-Sixteen consecutive wrong-password attempts on `/post/authenticate` each
-returned 401 with no backoff, no 429, and no lockout. Failures are logged —
-one `API Error: Authentication Error: Invalid password` record per attempt
-(verified: 16 records for 16 attempts) — but **without the client address**,
-which limits forensic use, and the password comparison is a non-constant-time
-`==` on `String`. For a
-single-password system exposed to a network, online guessing is the primary
-attack and nothing throttles it. **Fix:** per-source attempt throttling,
-constant-time comparison, include the remote address in failure logs (Rocket
-has it on the request). (Update: user passwords are now PBKDF2 hashes verified
-in constant time; throttling, lockout, and client-address logging remain open.)
-
-#### F6 — Fresh installs are wide open, and bind to all interfaces by default (Medium, reproduced)
-
-With `password` unset, the instance answers `GET /get/get-albums` with 200 to
-an unauthenticated request and issues an admin JWT for any password submitted;
-`DELETE /delete/delete-data` reached body validation (422, not 401). Meanwhile
-the default `address` is `0.0.0.0`. A freshly deployed gallery is therefore
-full-admin-open to the entire reachable network until someone sets a password.
-The no-password convenience is reasonable for first run; the default bind is
-what makes it dangerous. **Fix:** default to `127.0.0.1`, or force password
-setup before mutating routes become available.
-
-#### F7 — Admin session cookie is readable by JavaScript (Medium, from source)
-
-The JWT cookie is written client-side with `httpOnly: false` — the code comment
-in `LoginPage.vue` itself notes it "should be true". The SPA renders
-attacker-influenced strings (descriptions, tags, filenames); no `v-html` sink
-was found in the frontend during this review, but with a readable cookie any
-future XSS exfiltrates a 14-day admin token, and HttpOnly is the standard
-backstop for exactly that case. Related: because the server never sets the
-cookie, HttpOnly cannot be
-achieved without moving issuance server-side; `secure: true` on a default
-plain-HTTP deployment also means browsers treat the flag inconsistently outside
-localhost (not systematically tested here). SameSite=Strict is correctly set
-and is the current CSRF defense — there are no CSRF tokens. **Fix:** issue the
-cookie via `Set-Cookie` with `HttpOnly; Secure; SameSite=Strict` instead of
-returning the raw token in the body.
-
-#### F8 — Credentials stored and transported in plaintext (Medium, from source)
-
-`password` and `auth_key` sit in `config.toml` as plaintext (verified on disk),
-share passwords are stored plaintext in the album records, and passwords are
-compared verbatim. The export endpoint returns them in plaintext to any admin
-(by design, but it multiplies the value of an admin token). There is no hashing,
-so compromise of the config file or a backup is immediate and total credential
-disclosure with no time-to-rotate window. (Update: user passwords are now
-PBKDF2 hashes in a separate file, never exported; the legacy config
-`password`, `auth_key`, and share passwords remain plaintext as described.)
-**Fix:** store a slow hash of the
-password (the comparison input is small); keep `auth_key` as-is but document
-that config-file permissions are load-bearing.
-
-#### F9 — Read-only mode can be lifted through config import (Medium, reproduced)
-
-Read-only mode is meant to be a kill-switch that a bare token cannot disable:
-`PUT /put/config` carries `GuardReadOnlyMode`, so while the mode is on, the
-endpoint that would turn it off answers 405 (verified; this is also the premise
-of the open `bug-readonly-lockout` plan, which decides that lifting the mode
-must require password re-authentication, not a token). But
-`POST /post/config/import` takes only `GuardAuth` and replaces the whole
-`AppConfig` — including `readOnlyMode` — via `AppConfig::update`, with no
-read-only guard. Verified end-to-end: with the mode on, mutations returned 405
-and `PUT /put/config` was refused with 405, then a single
-`POST /post/config/import` carrying `"readOnlyMode": false` returned 200 and
-mutations were accepted again. A captured admin token (see F7) is therefore
-sufficient to disable the kill-switch before using it, which defeats the
-re-authentication decision recorded in the plan. **Fix:** attach
-`GuardReadOnlyMode` (and, per the plan, the future re-auth guard) to
-`import_config` as well.
-
-#### F10 — Bounded issues (Low)
-
-- **Authenticated media responses are marked `Cache-Control: public,
-max-age=31536000`** (`router/cache.rs` applies it to `/object` on any 2xx).
-  `public` explicitly permits _shared_ caches to store responses to
-  authorized requests (RFC 9111), so a caching reverse proxy in front of Picasu
-  could retain and re-serve media to a later unauthenticated request for the
-  same URL. **Fix:** `private` for `/object`.
-- **`extract_bearer_token` accepts `?token=` in the URL query string.**
-  Tokens in URLs leak into proxy logs, browser history, and `Referer` headers.
-  The current frontend uses the `Authorization` header exclusively; the query
-  path appears unused. **Fix:** remove it.
-- **`GET /get/config` discloses server internals to any share holder** —
-  verified response includes bind `address`/`port` and absolute `imagePath`.
-- **Original-file denial returns the wrong status.** With `allowOriginal=false`
-  the guard `Forward`s, so the request falls through to the SPA catch-all
-  instead of receiving 401 (observed: 500 on an instance without a web root; a
-  configured instance returns 200 + `index.html`). No file bytes leak — the
-  denial works — but monitoring and clients see a misleading status.
+| Finding                         | Severity | Status | Owner                     |
+| ------------------------------- | -------- | ------ | ------------------------- |
+| F1 — token type confusion       | High     | fixed  | `.plan/authz-fix.md`      |
+| F2 — `get-metadata` unscoped    | Medium   | fixed  | `.plan/authz-fix.md`      |
+| F3 — share writes unbound       | High     | fixed  | `.plan/authz-fix.md`      |
+| F4 — renewal unbound            | Medium   | fixed  | `.plan/authz-fix.md`      |
+| F5 — no rate limiting/lockout   | Medium   | open   | `.plan/auth-hardening.md` |
+| F6 — open installs bind 0.0.0.0 | Medium   | open   | `.plan/auth-hardening.md` |
+| F7 — JS-readable session cookie | Medium   | open   | `.plan/auth-hardening.md` |
+| F8 — plaintext credentials      | Medium   | open   | `.plan/auth-hardening.md` |
+| F9 — read-only lift via import  | Medium   | open   | `.plan/auth-hardening.md` |
+| F10 — bounded issues            | Low      | open   | `.plan/auth-hardening.md` |
 
 ### What holds up
 
 The architecture's core decisions verify well under attack:
 
 - **Algorithm pinning** — HS256-only validation with tests guarding it; no
-  algorithm-confusion path (F-class issues above are claim-type, not
-  algorithm-type).
+  algorithm-confusion path (the remediated F1 issue was claim-type, not algorithm-type).
 - **Snapshot binding** — `GuardTimestamp` requires the query `timestamp` to
   equal the signed claim, so a token for one snapshot cannot read another;
   cross-snapshot access did not succeed in testing.
 - **Per-asset binding** — `GuardHash` compares the URL path segment against the
   signed `hash` claim; a token minted for one asset does not serve another.
 - **Share state is re-read every request** — disabling or expiring a share takes
-  effect immediately for identity checks (though not for already-minted
-  capabilities; see F4).
+  effect immediately for identity checks (though not for already-minted capabilities — see F4 in `.plan/authz-fix.md`).
 - **Share IDs are 64-char CSPRNG values** (~330 bits) and album filtering
   happens server-side in the query expression — a share cannot widen its
   snapshot by supplying its own filter.
@@ -419,32 +250,4 @@ The architecture's core decisions verify well under attack:
   cookie.
 - **Rocket `Shield` defaults** are attached (`nosniff`, `X-Frame-Options:
 SAMEORIGIN`, `Permissions-Policy`), and `GuardReadOnlyMode` blocks mutations
-  while read-only mode is on — with the import-path caveat of F9.
-
-### Recommendations, prioritized
-
-1. ~~Add `typ` claims and reject cross-type decoding (F1)~~ — done: each claims
-   type carries a `typ` claim and is decoded through `decode_typed`, with
-   `deny_unknown_fields` on the claims structs.
-2. ~~Bind the two share-guarded write routes to the caller's album (F3)~~ —
-   done: `set_album_title` and `set_user_defined_description` derive the target
-   from `GuardShare::claims`.
-3. ~~Album-scope `get-metadata` (F2) and bind renewal to the presenter's share
-   with share re-validation (F4)~~ — done: `get-metadata` 404s on an asset
-   outside the share's album; renewal requires presenter share == token share
-   and re-validates the embedded share from the DB.
-4. Throttle `/post/authenticate`, compare in constant time, log the client
-   address (F5); default-bind to localhost or force first-run password setup
-   (F6).
-5. Move cookie issuance server-side with HttpOnly (F7); hash the stored
-   password (F8); `Cache-Control: private` on `/object` and drop `?token=`
-   (F10).
-6. Guard `import_config` with `GuardReadOnlyMode` (F9) — one attribute; the
-   deeper re-auth requirement is already decided in `bug-readonly-lockout`.
-
-Items 1–3 were correctness fixes with no design trade-offs and are implemented
-(the reproductions are pinned by `backend/src/tests/authz.rs`). Items 4–6 trade
-some first-run convenience and a round trip of login plumbing against
-materially better brute-force and XSS posture; given goal 5 (self-hosted,
-trusted guests) either choice is defensible, but they should be conscious
-decisions rather than defaults.
+  while read-only mode is on — with the import-path caveat of F9 in `.plan/auth-hardening.md`.

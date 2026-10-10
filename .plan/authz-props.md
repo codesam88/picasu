@@ -114,7 +114,9 @@ Each step is independently runnable and leaves the tree green.
 ### S0b — Model-vs-assessment review (before S3)
 
 The model was written from the code and may normalize defects as desired.
-Before deriving further tests, diff it against `docs/auth.md` findings:
+Before deriving further tests, diff it against the finding records
+(`.plan/authz-fix.md` appendix for F1–F4, `.plan/auth-hardening.md` for
+F5–F10):
 
 - `read_config ∈ holds(Share)` vs the config-disclosure finding;
 - `write_meta` requiring album membership but no `M` flag vs the

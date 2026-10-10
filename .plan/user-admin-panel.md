@@ -78,4 +78,9 @@ visible only to users with the admin role.
 
 ## Progress
 
-- (pending)
+- B1 done: `PUT /put/users/admin` + atomic `set_admin_role` + audit log,
+  committed.
+- B2 done: frontend panel + login, committed. Review caught one
+  upgrade-blocking gap (legacy deployments unreachable from UI) fixed via
+  login fallback (object → string → object).
+- B3 pending: openapi regen/check, full suite, this reconcile, plan `done`.
