@@ -974,11 +974,11 @@ fn p4_an_undeclarable_status_on_a_bindingless_route_fails() {
 /// Pinned rather than derived, so a scan that silently stops finding annotations
 /// — a broken file walk, a swallowed parse error — fails here instead of
 /// reporting a clean tree it never looked at. Update it with the annotation.
-const ANNOTATIONS_IN_ROUTER: usize = 65;
+const ANNOTATIONS_IN_ROUTER: usize = 66;
 
 /// The declaration inventory section B was calibrated against: 24 declared
 /// parameters, all of them the inline `("name" = Type, Location, …)` form, and 26
-/// declared request bodies (23 plus create-user and set-password; user-list is a bodyless GET).
+/// declared request bodies (23 plus create-user, set-password and set-admin; user-list is a bodyless GET).
 ///
 /// The three numbers do three different jobs. The first is a floor on what B1, B2
 /// and B5 read, so a walk that stopped finding `params(…)` fails instead of
@@ -988,7 +988,7 @@ const ANNOTATIONS_IN_ROUTER: usize = 65;
 /// without a decision. The third is what keeps B3 and B4 honest: a scan that
 /// stopped reading `request_body` would find nothing to compare and report the
 /// same emptiness as a clean tree.
-const DECLARATION_INVENTORY: (usize, usize, usize) = (24, 0, 25);
+const DECLARATION_INVENTORY: (usize, usize, usize) = (24, 0, 26);
 
 /// How many of those declared request bodies B3 actually compares against a
 /// route binding — the tree's 25 declarations less the one `request_body = Value`
@@ -998,7 +998,7 @@ const DECLARATION_INVENTORY: (usize, usize, usize) = (24, 0, 25);
 /// unreadable, or every binding non-`Json` — and the tree would still report
 /// clean. Under a clean tree a comparison is also a match, so 20 compares both
 /// that B3 ran and that its results held.
-const BODIES_COMPARED: usize = 22;
+const BODIES_COMPARED: usize = 23;
 
 /// The backend's router tree, resolved from this crate's manifest directory
 /// rather than from the working directory a test happens to run in.
