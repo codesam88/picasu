@@ -2,7 +2,9 @@
 
 This document describes Picasu's authentication system: its goals, the paradigm
 it follows, and the detailed mechanism as implemented in
-`backend/src/router/auth.rs` and the route modules. The final section is a
+`backend/src/router/auth.rs` and the route modules. The desired properties —
+the model from which enforcement rules and tests are derived — live in
+[`authz-model.md`](authz-model.md). The final section is a
 security assessment written from an external reviewer's perspective. The
 assessment combines source review with dynamic verification against a local
 test instance (two albums, two shares, password configured); each finding is

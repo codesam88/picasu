@@ -16,19 +16,23 @@ is the work item. Five components, in dependency order:
 ### 1. Policy artifact (semi-formal authz model)
 
 One machine-readable, reviewed-like-code file stating the whole authorization
-design:
+design. The **model itself is authored in `docs/authz-model.md`**: the
+vocabulary (principals, token types, guards, route classes) and the desired
+properties (`AUTH-1`…`AUTH-14`), each naming its enforcement mechanism and its
+derived check. This step encodes that model as data under `backend/` so the
+gate and the tests read one authority:
 
 - principals/capabilities: admin, share + its four flags, anonymous, page
   routes — in the vocabulary of routes, not prose;
 - token types: claims, TTL, mint sites, and an explicit mapping of _which
-  guard may decode which type_ (the F1 defect written down where a checker can
-  compare it against code);
+  guard may decode which type_ (the type-confusion defect written down where a
+  checker can compare it against code);
 - per-route classification: required guard set, claim-bindings implied by the
   route's inputs (which body/query fields must equal which claims fields),
   read-only applicability, share flags consulted;
 - transitions (login, prefetch, renewal, logout) with pre/post-conditions —
   e.g. renewal requires presenter share == token share plus DB re-validation
-  of the embedded share before re-issue (F4).
+  of the embedded share before re-issue.
 
 Two required properties: **authority, not documentation** — code checked
 against it in both directions (route without entry fails; guards that don't
