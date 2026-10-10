@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use redb::{ReadableDatabase, ReadableTable, ReadableTableMetadata};
 use serde::{Deserialize, Serialize};
 
+use crate::error::{AppError, ErrorKind};
 use crate::storage::db::{TREE, USERS};
 
 /// A user record stored in the `USERS` redb table, keyed by user id.
@@ -129,6 +130,28 @@ pub fn user_count() -> Result<usize> {
         Err(e) => return Err(e).context("Failed to open USERS")?,
     };
     usize::try_from(table.len()?).context("USERS row count exceeds usize")
+}
+
+/// Validate a user id: trim surrounding whitespace, then require 1..=64 chars.
+///
+/// # Errors
+/// Returns an [`AppError`] with [`ErrorKind::InvalidInput`] when the trimmed
+/// id is empty or longer than 64 characters.
+pub fn validate_user_id(id: &str) -> Result<String, AppError> {
+    let trimmed = id.trim().to_string();
+    if trimmed.is_empty() {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "user id must not be empty",
+        ));
+    }
+    if trimmed.len() > 64 {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "user id must be at most 64 characters",
+        ));
+    }
+    Ok(trimmed)
 }
 
 /// Path of the JSON password store: `<DATA_HOME>/auth/passwd.json`.
@@ -268,5 +291,32 @@ mod tests {
         // The on-disk table name is `users`; values are JSON strings like ASSET_BY_ID.
         let def: TableDefinition<'static, &'static str, &'static str> = USERS;
         assert_eq!(def.to_string(), "users<&str, &str>");
+    }
+
+    #[test]
+    fn validate_user_id_accepts_normal_id() {
+        assert_eq!(
+            super::validate_user_id(" alice ").expect("valid id"),
+            "alice"
+        );
+    }
+
+    #[test]
+    fn validate_user_id_rejects_empty() {
+        assert!(super::validate_user_id("").is_err());
+        assert!(super::validate_user_id("   ").is_err());
+    }
+
+    #[test]
+    fn validate_user_id_rejects_too_long() {
+        let long = "a".repeat(65);
+        assert!(super::validate_user_id(&long).is_err());
+        let max = "a".repeat(64);
+        assert_eq!(super::validate_user_id(&max).expect("64 chars ok"), max);
+    }
+
+    #[test]
+    fn validate_user_id_trims_whitespace() {
+        assert_eq!(super::validate_user_id("\tbob\n").expect("valid id"), "bob");
     }
 }
