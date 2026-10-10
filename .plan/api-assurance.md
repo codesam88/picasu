@@ -167,3 +167,7 @@ e2e functional tests.
 ## Progress
 
 - Recorded; implementation not started.
+- Step 1 done: `just openapi-breakcheck` (pinned oasdiff 1.33.0,
+  checksum-verified install, base-branch baseline, ignore file with the one
+  accepted break) wired into `openapi-check`; RED verified both directions
+  independently.
