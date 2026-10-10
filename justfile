@@ -165,46 +165,7 @@ oasdiff_sha256 := "43a4e328e2d13ba1552d760aa68d2485c75c5621f309f6ff64ae895188345
 # Install pinned oasdiff into ~/.local (idempotent, no root)
 [group('utils')]
 install-oasdiff:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    version="{{ oasdiff_version }}"
-    prefix="$HOME/.local/opt/oasdiff-$version"
-    link="$HOME/.local/bin/oasdiff"
-
-    # Already installed: the pinned prefix runs the pinned version and the PATH
-    # entry points at it. Re-running this recipe is then a no-op.
-    if [ -x "$prefix/oasdiff" ] \
-        && [ "$("$prefix/oasdiff" --version 2>/dev/null || true)" = "oasdiff version $version" ] \
-        && [ -L "$link" ] \
-        && [ "$(readlink -f "$link")" = "$prefix/oasdiff" ]; then
-        echo "✓ oasdiff $version already installed — $link"
-        exit 0
-    fi
-
-    mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
-    workdir="$(mktemp -d)"
-    trap 'rm -rf "$workdir"' EXIT
-    archive="$workdir/oasdiff.tar.gz"
-    echo "→ downloading oasdiff-$version"
-    curl -fsSL -o "$archive" \
-        "https://github.com/oasdiff/oasdiff/releases/download/v$version/oasdiff_${version}_linux_amd64.tar.gz"
-
-    actual="$(sha256sum "$archive" | cut -d' ' -f1)"
-    if [ "$actual" != "{{ oasdiff_sha256 }}" ]; then
-        echo "checksum mismatch for oasdiff_${version}_linux_amd64.tar.gz" >&2
-        echo "  expected {{ oasdiff_sha256 }}" >&2
-        echo "  actual   $actual" >&2
-        exit 1
-    fi
-
-    echo "→ unpacking into $prefix"
-    rm -rf "$prefix"
-    mkdir -p "$prefix"
-    tar -xzf "$archive" -C "$prefix"
-    ln -sfn "$prefix/oasdiff" "$link"
-    "$link" --version | grep -qx "oasdiff version $version" \
-        || { echo "installed oasdiff reports an unexpected version" >&2; exit 1; }
-    echo "✓ oasdiff $version installed — $link"
+    ./scripts/install-oasdiff.sh "{{ oasdiff_version }}" "{{ oasdiff_sha256 }}"
 
 # Fail on breaking OpenAPI changes vs the base branch's committed spec.
 #
@@ -219,52 +180,7 @@ install-oasdiff:
 # network use) instead of touching the shared checkout config.
 [group('utils')]
 openapi-breakcheck:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if ! command -v oasdiff >/dev/null 2>&1 \
-        || [ "$(oasdiff --version 2>/dev/null || true)" != "oasdiff version {{ oasdiff_version }}" ]; then
-        just install-oasdiff
-        export PATH="$HOME/.local/bin:$PATH"
-    fi
-
-    branch="${OASDIFF_BASE_BRANCH:-${GITHUB_BASE_REF:-main}}"
-    if git rev-parse --verify --quiet "origin/$branch^{commit}" >/dev/null; then
-        base="origin/$branch"
-    elif git rev-parse --verify --quiet "$branch^{commit}" >/dev/null; then
-        base="$branch"
-    else
-        echo "→ base ref '$branch' not present locally; fetching from origin"
-        git fetch origin "$branch" --depth=1
-        base="origin/$branch"
-    fi
-    if ! git cat-file -e "$base:backend/openapi.json" 2>/dev/null; then
-        echo "base ref '$base' has no committed backend/openapi.json; cannot diff" >&2
-        exit 1
-    fi
-
-    baseline="$(mktemp)"
-    generated="$(mktemp)"
-    trap 'rm -f "$baseline" "$generated"' EXIT
-    git show "$base:backend/openapi.json" > "$baseline"
-    RUST_MIN_STACK=16777216 cargo run -q --package picasu -- --dump-openapi > "$generated"
-
-    # --include-path-params: the spec has sibling template-only routes
-    # (/{dynamic_album_id} and /{path}) that oasdiff's default endpoint
-    # matching treats as duplicates; matching on param names keeps them apart.
-    # --fail-on ERR: without it oasdiff prints errors yet exits 0.
-    if oasdiff breaking --include-path-params --fail-on ERR \
-        --err-ignore "{{justfile_directory()}}/.oasdiff-ignore.txt" \
-        "$baseline" "$generated"; then
-        echo "no breaking OpenAPI changes vs $base"
-    else
-        echo ""
-        echo "--- oasdiff summary ---"
-        oasdiff summary --include-path-params "$baseline" "$generated" || true
-        echo ""
-        echo "Breaking OpenAPI changes detected vs $base."
-        echo "If a finding is intended, record it in .oasdiff-ignore.txt; otherwise fix the annotations."
-        exit 1
-    fi
+    OASDIFF_SHA256="{{ oasdiff_sha256 }}" ./scripts/openapi-breakcheck.sh "{{ justfile_directory() }}" "{{ oasdiff_version }}"
 
 # Auto-format .plan task frontmatter and body
 [group('tooling')]
@@ -363,53 +279,11 @@ exiftool_sha256 := "668ea3acececb7235fbd0f4900e72d5f12c9b07e5c778fd36cb1e9b5828f
 # Install ExifTool into ~/.local (idempotent, no root)
 [group('global')]
 install-exiftool:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    version="{{ exiftool_version }}"
-    prefix="$HOME/.local/opt/Image-ExifTool-$version"
-    link="$HOME/.local/bin/exiftool"
-
-    # Already installed: the pinned prefix runs the pinned version and the PATH
-    # entry points at it. Re-running this recipe is then a no-op.
-    if [ -x "$prefix/exiftool" ] \
-        && [ "$("$prefix/exiftool" -ver 2>/dev/null || true)" = "$version" ] \
-        && [ -L "$link" ] \
-        && [ "$(readlink -f "$link")" = "$prefix/exiftool" ]; then
-        echo "✓ exiftool $version already installed — $link"
-        exit 0
-    fi
-
-    mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
-    workdir="$(mktemp -d)"
-    trap 'rm -rf "$workdir"' EXIT
-    archive="$workdir/Image-ExifTool-$version.tar.gz"
-    echo "→ downloading Image-ExifTool-$version"
-    curl -fsSL -o "$archive" \
-        "https://downloads.sourceforge.net/project/exiftool/Image-ExifTool-$version.tar.gz"
-
-    if command -v sha256sum >/dev/null 2>&1; then
-        actual="$(sha256sum "$archive" | cut -d' ' -f1)"
-    else
-        actual="$(shasum -a 256 "$archive" | cut -d' ' -f1)"
-    fi
-    if [ "$actual" != "{{ exiftool_sha256 }}" ]; then
-        echo "checksum mismatch for Image-ExifTool-$version.tar.gz" >&2
-        echo "  expected {{ exiftool_sha256 }}" >&2
-        echo "  actual   $actual" >&2
-        exit 1
-    fi
-
-    echo "→ unpacking into $prefix"
-    rm -rf "$prefix"
-    tar -xzf "$archive" -C "$HOME/.local/opt"
-    ln -sfn "$prefix/exiftool" "$link"
-    "$link" -ver | grep -qx "$version" \
-        || { echo "installed exiftool reports an unexpected version" >&2; exit 1; }
-    echo "✓ exiftool $version installed — $link"
+    ./scripts/install-exiftool.sh "{{ exiftool_version }}" "{{ exiftool_sha256 }}"
 
 # Install dev tools
 [group('global')]
-install-dev: install-plan install-exiftool
+install-dev: install-plan install-exiftool install-oasdiff
     cargo install cargo-deny
     npm ci --prefix frontend
 
