@@ -80,6 +80,7 @@ serde_yaml = "0.9"
 jsonschema = { version = "0.58", default-features = false }
 snapfab = { version = "0.1", path = "../utils/snapfab" }
 openapi-sanity = { version = "0.1", path = "../utils/openapi-sanity" }
+proptest = "1.11.0"
 
 [features]
 embed-frontend = []
