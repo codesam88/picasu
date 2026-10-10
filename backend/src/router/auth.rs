@@ -742,7 +742,9 @@ pub fn try_authorize_upload_via_share(req: &Request<'_>) -> bool {
 use rocket::http::Status;
 use rocket::request::{FromRequest, Outcome};
 
-pub struct GuardAuth;
+pub struct GuardAuth {
+    pub claims: Claims,
+}
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardAuth {
@@ -750,10 +752,81 @@ impl<'r> FromRequest<'r> for GuardAuth {
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         match try_jwt_cookie_auth(req, &VALIDATION) {
-            Ok(_) => Outcome::Success(GuardAuth),
+            Ok(claims) => Outcome::Success(GuardAuth { claims }),
             Err(err) => Outcome::Error((
                 Status::Unauthorized,
                 AppError::from_err(ErrorKind::Auth, err).context("Authentication error"),
+            )),
+        }
+    }
+}
+
+/// Request guard for any authenticated user (admin or not). Carries the
+/// caller's claims with the admin flag re-read from the DB, so demotion
+/// takes effect before token expiry.
+///
+/// Unlike [`GuardAuth`] (admin-only), this admits non-admin users, for the
+/// self-service password routes. Share-role tokens are rejected.
+pub struct GuardUser {
+    pub claims: Claims,
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for GuardUser {
+    type Error = GuardError;
+
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let denied = |msg: &str| {
+            Outcome::Error((
+                Status::Unauthorized,
+                AppError::new(ErrorKind::Auth, msg).context("Authentication error"),
+            ))
+        };
+        let non_empty = match crate::auth::users::user_count() {
+            Ok(count) => count > 0,
+            Err(err) => {
+                return Outcome::Error((
+                    Status::InternalServerError,
+                    AppError::from_err(ErrorKind::Database, err),
+                ));
+            }
+        };
+        if !non_empty {
+            // Mirror `try_jwt_cookie_auth` open-mode semantics: no users and
+            // no legacy password is open (ephemeral admin); otherwise the
+            // caller must migrate first.
+            let open = APP_CONFIG
+                .get()
+                .expect("APP_CONFIG not initialized")
+                .read()
+                .expect("lock poisoned")
+                .password
+                .is_none();
+            if open {
+                return Outcome::Success(GuardUser {
+                    claims: Claims::new_user("admin".to_string(), true),
+                });
+            }
+            return denied("No users exist yet; authenticate first");
+        }
+        let Some(jwt_cookie) = req.cookies().get("jwt") else {
+            return denied("JWT not found in cookies");
+        };
+        let claims: Claims = match decode_typed(jwt_cookie.value(), &VALIDATION) {
+            Ok(claims) => claims,
+            Err(_) => return denied("Invalid token"),
+        };
+        let Role::User { id, .. } = &claims.role else {
+            return denied("Share token not accepted");
+        };
+        match crate::auth::users::get_user(id) {
+            Ok(Some(record)) => Outcome::Success(GuardUser {
+                claims: Claims::new_user(id.clone(), record.admin),
+            }),
+            Ok(None) => denied("Unknown user"),
+            Err(err) => Outcome::Error((
+                Status::InternalServerError,
+                AppError::from_err(ErrorKind::Database, err),
             )),
         }
     }
@@ -1000,7 +1073,6 @@ impl<'r> FromRequest<'r> for TimestampGuardModified {
 // src/router/fairing/guard_read_only_mode.rs
 
 pub struct GuardReadOnlyMode;
-
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for GuardReadOnlyMode {
     type Error = GuardError;

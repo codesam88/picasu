@@ -11,6 +11,7 @@ pub mod edit_share;
 pub mod edit_tag;
 pub mod regenerate_thumbnail;
 pub mod rotate_image;
+pub mod users_password;
 pub fn generate_put_routes() -> Vec<Route> {
     let r = routes![
         assign_album::assign_album,
@@ -25,6 +26,7 @@ pub fn generate_put_routes() -> Vec<Route> {
         regenerate_thumbnail::regenerate_thumbnail_with_frame,
         edit_config::update_config_handler,
         edit_config::update_password_handler,
+        users_password::set_user_password_handler,
         rotate_image::rotate_image
     ];
     r
