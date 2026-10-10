@@ -17,6 +17,8 @@ given:
 steps:
   - when:
       - navigate: /login
+      - fill: textbox/User ID
+        value: admin
       - fill: textbox/Password
         value: e2e_test_pwd
       - click: button/Login
