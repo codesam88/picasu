@@ -1,0 +1,11 @@
+# Accepted breaking OpenAPI changes for `just openapi-breakcheck`.
+#
+# Each non-comment line names one explicitly approved break that oasdiff
+# would otherwise fail on (method + path + change description, backticks
+# significant). Add a dated line here — never delete the gate — when a
+# breaking spec change is approved. See `.plan/api-assurance.md` step 1.
+
+# 2026-10-10 (feat/authz): /post/authenticate moved from a bare text/plain
+# body to an application/json AuthenticateRequest body; the legacy
+# text/plain shape is rejected once any user exists.
+POST /post/authenticate removed the media type `text/plain` from the request body
