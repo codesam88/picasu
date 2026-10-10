@@ -64,6 +64,81 @@ pub fn get_user(id: &str) -> Result<Option<UserRecord>> {
     }
 }
 
+/// Set the admin flag for an existing user, refusing the change when it
+/// would leave zero admins. The existence check, the admin census, and the
+/// write happen in one redb write transaction, so concurrent demotions
+/// cannot interleave into a zero-admin store (redb is single-writer).
+///
+/// Returns `Ok(true)` when the flag was changed, `Ok(false)` for a no-op
+/// same-flag write.
+///
+/// # Errors
+/// Returns [`ErrorKind::InvalidInput`] when the id is invalid,
+/// [`ErrorKind::NotFound`] when the id is unknown,
+/// [`ErrorKind::Conflict`] when the demotion would leave zero admins, and
+/// [`ErrorKind::Database`] when the database cannot be read or written.
+pub fn set_admin_role(id: &str, admin: bool) -> Result<bool, AppError> {
+    use redb::ReadableTable;
+    let target = validate_user_id(id)?;
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    let changed = {
+        let mut table = txn
+            .open_table(USERS)
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+        let current: UserRecord = match table
+            .get(target.as_str())
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
+        {
+            Some(guard) => serde_json::from_str(guard.value()).map_err(|e| {
+                AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e))
+            })?,
+            None => {
+                return Err(AppError::new(
+                    ErrorKind::NotFound,
+                    format!("unknown user: {target}"),
+                ));
+            }
+        };
+        if current.admin == admin {
+            return Ok(false);
+        }
+        if !admin {
+            let mut admins = 0;
+            for entry in table
+                .iter()
+                .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
+            {
+                let (_, guard) =
+                    entry.map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+                let record: UserRecord = serde_json::from_str(guard.value()).map_err(|e| {
+                    AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e))
+                })?;
+                if record.admin {
+                    admins += 1;
+                }
+            }
+            if admins <= 1 {
+                return Err(AppError::new(
+                    ErrorKind::Conflict,
+                    "demotion would leave zero admins",
+                ));
+            }
+        }
+        let value = serde_json::to_string(&UserRecord { admin })
+            .map_err(|e| AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e)))?;
+        table
+            .insert(target.as_str(), value.as_str())
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+        true
+    };
+    txn.commit()
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    Ok(changed)
+}
+
 /// Set the admin flag for an existing user. Fails for unknown ids.
 ///
 /// # Errors
@@ -318,5 +393,74 @@ mod tests {
     #[test]
     fn validate_user_id_trims_whitespace() {
         assert_eq!(super::validate_user_id("\tbob\n").expect("valid id"), "bob");
+    }
+
+    #[test]
+    fn set_admin_role_rejects_unknown_id() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        clear_users_table();
+
+        let err = super::set_admin_role("s5-ghost", true).expect_err("unknown id must fail");
+        assert_eq!(err.kind, crate::error::ErrorKind::NotFound);
+
+        clear_users_table();
+    }
+
+    #[test]
+    fn set_admin_role_refuses_last_admin_demotion() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        clear_users_table();
+
+        crate::auth::users::create_user("s5-sole", true).expect("create sole admin");
+        let err =
+            super::set_admin_role("s5-sole", false).expect_err("sole-admin demotion must fail");
+        assert_eq!(err.kind, crate::error::ErrorKind::Conflict);
+        // Refusal leaves the flag untouched.
+        let found = crate::auth::users::get_user("s5-sole").expect("get user");
+        assert_eq!(found, Some(UserRecord { admin: true }));
+
+        clear_users_table();
+    }
+
+    #[test]
+    fn set_admin_role_allows_transfer_when_other_admin_exists() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        clear_users_table();
+
+        crate::auth::users::create_user("s5-a", true).expect("create a");
+        crate::auth::users::create_user("s5-b", true).expect("create b");
+        assert!(super::set_admin_role("s5-a", false).expect("transfer demotion"));
+        assert_eq!(
+            crate::auth::users::get_user("s5-a").expect("get a"),
+            Some(UserRecord { admin: false })
+        );
+        assert_eq!(
+            crate::auth::users::get_user("s5-b").expect("get b"),
+            Some(UserRecord { admin: true })
+        );
+
+        clear_users_table();
+    }
+
+    #[test]
+    fn set_admin_role_promotes_and_noops() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        clear_users_table();
+
+        crate::auth::users::create_user("s5-c", false).expect("create c");
+        assert!(super::set_admin_role("s5-c", true).expect("promote"));
+        assert_eq!(
+            crate::auth::users::get_user("s5-c").expect("get c"),
+            Some(UserRecord { admin: true })
+        );
+        // Same-flag write is a no-op reporting no change.
+        assert!(!super::set_admin_role("s5-c", true).expect("noop promote"));
+        crate::auth::users::create_user("s5-d", false).expect("create d");
+        assert!(!super::set_admin_role("s5-d", false).expect("noop demote"));
+        clear_users_table();
     }
 }
