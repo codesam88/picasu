@@ -23,8 +23,9 @@ export const setUserAdmin = async (userId: string, admin: boolean): Promise<void
 ///
 /// A pre-migration deployment (empty user store + legacy config password)
 /// answers the object path with 401 (unknown user), so the first post-upgrade
-/// login retries once as the bare-string `password`, which migrates the legacy
-/// password onto user `admin`, then retries the object path to mint the token.
+/// login retries once as the bare-string `password`, which bootstraps the
+/// claimed id (or `admin` for the string path) as the first admin, then
+/// retries the object path to mint the token.
 ///
 /// Cost: one-time migration costs two KDF rounds on the first post-upgrade
 /// login only; steady-state migrated logins cost exactly one request; failed

@@ -116,4 +116,4 @@ and mutations were accepted again.
 Consequence for the decided fix: the re-auth guard must cover **import_config**
 too, not only a new disable endpoint — otherwise a captured admin token defeats
 the re-authentication requirement through the side door. Recorded as finding F9
-in `docs/auth.md`.
+in `.plan/auth-hardening.md`.
