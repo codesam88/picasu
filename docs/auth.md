@@ -79,32 +79,48 @@ are HS256-encoded with it; validation pins the algorithm list to `[HS256]`
 (`VALIDATION` in `router/auth.rs`, enforced by unit tests) so algorithm-confusion
 attacks are excluded by construction.
 
-### Admin sign-in
+### Sign-in
 
-1. `POST /post/authenticate` takes the password as a JSON string, trims it, and
-   compares it to the configured password. A match returns a 14-day
-   `Claims { role: Admin, exp }` JWT in the response body.
+1. `POST /post/authenticate` takes `{ userId, password }`, trims the password,
+   and verifies it against the PBKDF2 password store
+   (`<DATA_HOME>/auth/passwd.json`) for that user id. A match returns a 14-day
+   `Claims { role: User { id, admin }, exp }` JWT in the response body. Unknown
+   users and wrong passwords both answer 401 with no distinguishing detail;
+   the unknown-user path still pays one KDF round so timing leaks nothing.
 2. The **client** stores it in a cookie named `jwt` via js-cookie
    (`LoginPage.vue`): `httpOnly: false`, `secure: true`, `sameSite: Strict`,
    `expires: 14` days. The server never issues `Set-Cookie`.
 3. `GuardAuth` reads the cookie, decodes it with `VALIDATION` (expiry enforced),
-   and requires `role == Admin`.
+   and requires a user identity with the admin role — re-read from the user
+   table on every request, so demotion takes effect before token expiry.
+   (Promotion requires re-login: the token-embedded flag gates first.)
 4. Logout (`GalleryBar.vue`) removes the cookie client-side only; the token
    remains cryptographically valid until expiry or until `auth_key` is rotated.
+5. Users are managed through `POST /post/users/create`, `GET /get/users`, and
+   `PUT /put/users/password` (admin-only, except unauthenticated creation of
+   the first user, which is forced admin). The legacy `PUT /put/config/password`
+   route now changes the caller's own password on the same store.
 
-**No-password mode:** if `password` is unset, `try_jwt_cookie_auth` returns an
-admin `Claims` value without reading any credential, and `authenticate` accepts
-any input. A fresh install is therefore fully open until a password is set —
-this is the documented first-run flow, but see Finding F6 for its interaction
-with the default bind address.
+**Open first-run mode:** while the user store is empty and no legacy password
+is set, `try_jwt_cookie_auth` returns an admin user identity without reading
+any credential, and `authenticate` accepts any parseable input. A fresh
+install is therefore fully open until the first user is created — this is the
+documented first-run flow, but see Finding F6 for its interaction with the
+default bind address.
+
+**Legacy bootstrap:** a bare JSON string body to `authenticate` is accepted
+only while the user store is empty; it verifies the legacy config `password`
+and migrates it onto user `admin`. The legacy config password is ignored once
+any user exists, and pre-migration identity tokens do not decode under the new
+`Role` shape.
 
 ### The three token types
 
-| Type              | Claims                                                               | TTL   | Minted by                        | Consumed by                                                |
-| ----------------- | -------------------------------------------------------------------- | ----- | -------------------------------- | ---------------------------------------------------------- |
-| `Claims`          | `role` (Admin / Share(resolved)), `exp`, `typ: admin`                | 14 d  | login, share resolution          | `GuardAuth`, `GuardShare` (cookie fallback), `GuardUpload` |
-| `ClaimsTimestamp` | `resolvedShareOpt`, `timestamp`, `exp`, `typ: snapshot`              | 300 s | `POST /get/prefetch`             | `GuardTimestamp`, `TimestampGuardModified`                 |
-| `ClaimsHash`      | `allowOriginal`, `hash`, `assetId`, `timestamp`, `exp`, `typ: asset` | 300 s | every row of `GET /get/get-data` | `GuardHash`, `GuardHashOriginal`                           |
+| Type              | Claims                                                               | TTL   | Minted by                        | Consumed by                                                             |
+| ----------------- | -------------------------------------------------------------------- | ----- | -------------------------------- | ----------------------------------------------------------------------- |
+| `Claims`          | `role` (User{id, admin} / Share(resolved)), `exp`, `typ: admin`      | 14 d  | login, share resolution          | `GuardAuth`, `GuardShare` (cookie fallback), `GuardUpload`, `GuardUser` |
+| `ClaimsTimestamp` | `resolvedShareOpt`, `timestamp`, `exp`, `typ: snapshot`              | 300 s | `POST /get/prefetch`             | `GuardTimestamp`, `TimestampGuardModified`                              |
+| `ClaimsHash`      | `allowOriginal`, `hash`, `assetId`, `timestamp`, `exp`, `typ: asset` | 300 s | every row of `GET /get/get-data` | `GuardHash`, `GuardHashOriginal`                                        |
 
 All three are plain JWTs signed with the same `auth_key`. Each carries a `typ`
 claim and is decoded through a typed entry point that rejects a mismatched
@@ -118,7 +134,8 @@ cross-type decode paths fail closed (see Finding F1, now fixed).
 1. **Headers** `x-album-id` + `x-share-id` (both or neither; half-supplied is a
    400), plus `x-share-password` when the share has one.
 2. **Query parameters** `albumId` + `shareId`.
-3. **Admin cookie fallback** — a logged-in admin passes any share-guarded route.
+3. **Admin cookie fallback** — a logged-in user with the admin role passes any
+   share-guarded route.
 
 `resolve_share_internal` looks up the album in `METADATA_TABLE`, pulls the share
 out of `shareList`, and calls `validate_share_access`: expiry (`exp > 0`) and
@@ -160,25 +177,31 @@ expiry.
 
 ### Request guards (the authorization manifest)
 
-| Guard               | Accepts                                                                     | Used by                                                                                                                                                                                                                                             |
-| ------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GuardAuth`         | admin cookie (or no-password mode)                                          | config write/export/import (incl. password change), album cover/assign/create-dir, delete, index jobs, rebuild, rotate, regenerate thumbnail, tags/flags/rating, share create/edit, album/tag lists, fs completion, album-index status, test probes |
-| `GuardShare`        | share headers/query, or admin cookie                                        | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                                                                                           |
-| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter | get-data, get-metadata, get-scroll-bar                                                                                                                                                                                                              |
-| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                 | `GET /object/compressed/...`                                                                                                                                                                                                                        |
-| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim               | `GET /object/imported/...`                                                                                                                                                                                                                          |
-| `GuardUpload`       | share with `showUpload` + matching `presigned_album_id`, or admin           | `POST /upload`                                                                                                                                                                                                                                      |
-| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                  | every mutating route                                                                                                                                                                                                                                |
+| Guard               | Accepts                                                                     | Used by                                                                                                                                                                                                                                                                            |
+| ------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GuardAuth`         | cookie of a user with the admin role (or open first-run mode)               | config write/export/import (incl. password change), user management (create/list), album cover/assign/create-dir, delete, index jobs, rebuild, rotate, regenerate thumbnail, tags/flags/rating, share create/edit, album/tag lists, fs completion, album-index status, test probes |
+| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected      | `PUT /put/users/password`, legacy `PUT /put/config/password` (caller-only writes)                                                                                                                                                                                                  |
+| `GuardShare`        | share headers/query, or cookie of a user with the admin role                | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                                                                                                                          |
+| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter | get-data, get-metadata, get-scroll-bar                                                                                                                                                                                                                                             |
+| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                 | `GET /object/compressed/...`                                                                                                                                                                                                                                                       |
+| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim               | `GET /object/imported/...`                                                                                                                                                                                                                                                         |
+| `GuardUpload`       | share with `showUpload` + matching `presigned_album_id`, or admin-role user | `POST /upload`                                                                                                                                                                                                                                                                     |
+| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                  | every mutating route                                                                                                                                                                                                                                                               |
 
 ### Configuration surface
 
 - **`read_only_mode`** — global write kill-switch (405 on all mutations).
 - **`auth_key` rotation** — changing it invalidates every outstanding token of
-  all three types at once; this is the only revocation mechanism that exists.
-- **Password change** — does **not** touch `auth_key`, so existing admin tokens
-  survive a password change (documented in `update_password_handler`).
-- **Export** (`GET /get/config/export`) returns the full config including
-  `password` and `authKey` in plaintext to an admin, by design.
+  all three types at once.
+- **User passwords** live as PBKDF2 hashes in `<DATA_HOME>/auth/passwd.json`
+  (separate from config and the database) with role records in the `users`
+  table; hashes are never exported. Demotion/removal is re-checked per request
+  for `GuardAuth`/`GuardShare`/`GuardUser`, so it takes effect before token
+  expiry; promotion requires re-login. A password change does **not** touch
+  `auth_key`, so outstanding tokens survive it.
+- **Export** (`GET /get/config/export`) returns the full config including the
+  legacy `password` and `authKey` in plaintext to an admin, by design. The
+  legacy config password is ignored once any user exists.
 
 ---
 
@@ -290,7 +313,8 @@ which limits forensic use, and the password comparison is a non-constant-time
 single-password system exposed to a network, online guessing is the primary
 attack and nothing throttles it. **Fix:** per-source attempt throttling,
 constant-time comparison, include the remote address in failure logs (Rocket
-has it on the request).
+has it on the request). (Update: user passwords are now PBKDF2 hashes verified
+in constant time; throttling, lockout, and client-address logging remain open.)
 
 #### F6 — Fresh installs are wide open, and bind to all interfaces by default (Medium, reproduced)
 
@@ -326,7 +350,10 @@ share passwords are stored plaintext in the album records, and passwords are
 compared verbatim. The export endpoint returns them in plaintext to any admin
 (by design, but it multiplies the value of an admin token). There is no hashing,
 so compromise of the config file or a backup is immediate and total credential
-disclosure with no time-to-rotate window. **Fix:** store a slow hash of the
+disclosure with no time-to-rotate window. (Update: user passwords are now
+PBKDF2 hashes in a separate file, never exported; the legacy config
+`password`, `auth_key`, and share passwords remain plaintext as described.)
+**Fix:** store a slow hash of the
 password (the comparison input is small); keep `auth_key` as-is but document
 that config-file permissions are load-bearing.
 

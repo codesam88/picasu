@@ -74,8 +74,9 @@ A guard denotes a partial map from a request to the capability it establishes,
 
 | Guard               | `⟦g⟧(req)`                                                                                                   |
 | ------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `GuardAuth`         | `⊤` if the request carries admin identity (cookie or no-password mode)                                       |
-| `GuardShare`        | `⊤` if admin cookie; else `Share(a,F)` if it resolves a **live** share `⟨a,F,e,w⟩`                           |
+| `GuardAuth`         | `⊤` if the request carries a user identity with the admin role (cookie or open first-run mode)               |
+| `GuardUser`         | the request's `User` identity (admin or not) if its record is live; rejects share tokens                     |
+| `GuardShare`        | `⊤` if admin-role user cookie; else `Share(a,F)` if it resolves a **live** share `⟨a,F,e,w⟩`                 |
 | `GuardTimestamp`    | `Snap(a,F,t)` if it decodes a snapshot token `⟨a,F,t⟩` and `t` equals the query `timestamp`                  |
 | `GuardHash`         | `Asset(x,o)` if it decodes an asset token `⟨x,o,t⟩` and `hash(x)` equals the URL path segment                |
 | `GuardHashOriginal` | `Asset(x,o)` if it decodes `⟨x,o,t⟩` with `o = true` and `x` equals the URL path segment                     |
@@ -141,7 +142,7 @@ Each is a named formula over the model. `AUTH-n` are the identifiers the rules
 and tests cite.
 
 **AUTH-1 — Type soundness.** `decode_g(tok) ≠ ⊥ ⟹ typ(tok) = expected(g)`, where
-`expected` maps `GuardAuth`/`GuardShare`/`GuardUpload` → `admin`,
+`expected` maps `GuardAuth`/`GuardShare`/`GuardUpload`/`GuardUser` → `admin`,
 `GuardTimestamp` → `snapshot`, `GuardHash`/`GuardHashOriginal` → `asset`.
 Decoding a token as a type it does not declare fails.
 
@@ -177,7 +178,9 @@ authorizes exactly one asset.
 the DB (`GuardShare` requires a live share). Minted capabilities are immutable
 and remain valid until `exp`; revoking a share prevents new identity and renewal
 but does not retract outstanding tokens. A renewal re-validates the embedded
-share before re-issue.
+share before re-issue. For users the role is re-read per request: demotion or
+removal takes effect before expiry, while promotion requires re-login (the
+token-embedded flag gates first).
 
 **AUTH-10 — Renewal preserves authority.** `renew(t) = t'` requires
 `payload(t') = payload(t)`, `bound(t') = bound(t)`, and a presenter capability
@@ -185,7 +188,8 @@ share before re-issue.
 outlive the share's validity for new tokens.
 
 **AUTH-11 — Admin isolation.** If `manage ∈ needs(r)`, then `G(r)` establishes
-`⊤` and admits no share capability.
+`⊤` and admits no share capability: the caller must be a user with the admin
+role (`GuardAuth`), not merely a share holder.
 
 **AUTH-12 — Read-only blocks mutation.** If `r` has an effect (any `write_*`,
 `upload`, `manage`), then `GuardReadOnlyMode ∈ G(r)`.
