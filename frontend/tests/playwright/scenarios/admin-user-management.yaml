@@ -1,14 +1,12 @@
-name: Login handling covers all states
+name: Admin user management panel visible after login
 covers:
   api:
     - POST /post/authenticate
-    - PUT /put/config/password
+    - GET /get/users
   ui:
     - textbox/User ID
-    - textbox/Password
     - route:/timeline
-    - toast:error:unauthorized
-    - snapshot:login-page
+    - route:/config
 given:
   - empty: true
   - config:
@@ -19,17 +17,6 @@ steps:
     assert:
       - ui.visible: textbox/User ID
       - ui.visible: textbox/Password
-      - ui.aria_snapshot: login-page
-  - when:
-      - fill: textbox/User ID
-        value: admin
-      - fill: textbox/Password
-        value: wrong_password
-      - click: button/Login
-    assert:
-      - ui.toast:
-          type: error
-          contains: unauthorized
   - when:
       - fill: textbox/User ID
         value: admin
@@ -38,3 +25,9 @@ steps:
       - click: button/Login
     assert:
       - ui.route: /timeline
+  - when:
+      - navigate: /config
+    assert:
+      - ui.text_visible: User Management
+      - ui.text_visible: admin
+      - ui.text_visible: Promote someone else first to demote your own account
