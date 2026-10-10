@@ -121,7 +121,7 @@ openapi-gen:
 
 # Run all OpenAPI checks.
 [group('utils')]
-openapi-check: openapi-sanity openapi-json-match openapi-lint openapi-routes-match
+openapi-check: openapi-sanity openapi-json-match openapi-breakcheck openapi-lint openapi-routes-match
 
 # Lint the committed OpenAPI document (errors fail, warnings are baseline noise).
 [group('utils')]
@@ -155,6 +155,116 @@ openapi-json-match:
         exit 1
     fi
     echo "openapi.json matches the generated spec"
+
+# Pinned oasdiff release for the breaking-change gate below.
+# Upstream publishes checksums at
+# https://github.com/oasdiff/oasdiff/releases/download/v<version>/checksums.txt
+oasdiff_version := "1.33.0"
+oasdiff_sha256 := "43a4e328e2d13ba1552d760aa68d2485c75c5621f309f6ff64ae895188345247"
+
+# Install pinned oasdiff into ~/.local (idempotent, no root)
+[group('utils')]
+install-oasdiff:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version="{{ oasdiff_version }}"
+    prefix="$HOME/.local/opt/oasdiff-$version"
+    link="$HOME/.local/bin/oasdiff"
+
+    # Already installed: the pinned prefix runs the pinned version and the PATH
+    # entry points at it. Re-running this recipe is then a no-op.
+    if [ -x "$prefix/oasdiff" ] \
+        && [ "$("$prefix/oasdiff" --version 2>/dev/null || true)" = "oasdiff version $version" ] \
+        && [ -L "$link" ] \
+        && [ "$(readlink -f "$link")" = "$prefix/oasdiff" ]; then
+        echo "✓ oasdiff $version already installed — $link"
+        exit 0
+    fi
+
+    mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
+    workdir="$(mktemp -d)"
+    trap 'rm -rf "$workdir"' EXIT
+    archive="$workdir/oasdiff.tar.gz"
+    echo "→ downloading oasdiff-$version"
+    curl -fsSL -o "$archive" \
+        "https://github.com/oasdiff/oasdiff/releases/download/v$version/oasdiff_${version}_linux_amd64.tar.gz"
+
+    actual="$(sha256sum "$archive" | cut -d' ' -f1)"
+    if [ "$actual" != "{{ oasdiff_sha256 }}" ]; then
+        echo "checksum mismatch for oasdiff_${version}_linux_amd64.tar.gz" >&2
+        echo "  expected {{ oasdiff_sha256 }}" >&2
+        echo "  actual   $actual" >&2
+        exit 1
+    fi
+
+    echo "→ unpacking into $prefix"
+    rm -rf "$prefix"
+    mkdir -p "$prefix"
+    tar -xzf "$archive" -C "$prefix"
+    ln -sfn "$prefix/oasdiff" "$link"
+    "$link" --version | grep -qx "oasdiff version $version" \
+        || { echo "installed oasdiff reports an unexpected version" >&2; exit 1; }
+    echo "✓ oasdiff $version installed — $link"
+
+# Fail on breaking OpenAPI changes vs the base branch's committed spec.
+#
+# Compares a freshly generated spec (not the committed file — drift between
+# the two is openapi-json-match's job) against the base branch's committed
+# backend/openapi.json. Breaking findings fail the recipe. Entries in
+# .oasdiff-ignore.txt are explicitly accepted breaks, not failures.
+#
+# Baseline resolution: $OASDIFF_BASE_BRANCH, else $GITHUB_BASE_REF (PRs),
+# else `main`. CI checks out with full history so origin/<branch> resolves
+# locally; on shallow clones the recipe fetches the base itself (its only
+# network use) instead of touching the shared checkout config.
+[group('utils')]
+openapi-breakcheck:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v oasdiff >/dev/null 2>&1 \
+        || [ "$(oasdiff --version 2>/dev/null || true)" != "oasdiff version {{ oasdiff_version }}" ]; then
+        just install-oasdiff
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
+
+    branch="${OASDIFF_BASE_BRANCH:-${GITHUB_BASE_REF:-main}}"
+    if git rev-parse --verify --quiet "origin/$branch^{commit}" >/dev/null; then
+        base="origin/$branch"
+    elif git rev-parse --verify --quiet "$branch^{commit}" >/dev/null; then
+        base="$branch"
+    else
+        echo "→ base ref '$branch' not present locally; fetching from origin"
+        git fetch origin "$branch" --depth=1
+        base="origin/$branch"
+    fi
+    if ! git cat-file -e "$base:backend/openapi.json" 2>/dev/null; then
+        echo "base ref '$base' has no committed backend/openapi.json; cannot diff" >&2
+        exit 1
+    fi
+
+    baseline="$(mktemp)"
+    generated="$(mktemp)"
+    trap 'rm -f "$baseline" "$generated"' EXIT
+    git show "$base:backend/openapi.json" > "$baseline"
+    RUST_MIN_STACK=16777216 cargo run -q --package picasu -- --dump-openapi > "$generated"
+
+    # --include-path-params: the spec has sibling template-only routes
+    # (/{dynamic_album_id} and /{path}) that oasdiff's default endpoint
+    # matching treats as duplicates; matching on param names keeps them apart.
+    # --fail-on ERR: without it oasdiff prints errors yet exits 0.
+    if oasdiff breaking --include-path-params --fail-on ERR \
+        --err-ignore "{{justfile_directory()}}/.oasdiff-ignore.txt" \
+        "$baseline" "$generated"; then
+        echo "no breaking OpenAPI changes vs $base"
+    else
+        echo ""
+        echo "--- oasdiff summary ---"
+        oasdiff summary --include-path-params "$baseline" "$generated" || true
+        echo ""
+        echo "Breaking OpenAPI changes detected vs $base."
+        echo "If a finding is intended, record it in .oasdiff-ignore.txt; otherwise fix the annotations."
+        exit 1
+    fi
 
 # Auto-format .plan task frontmatter and body
 [group('tooling')]
