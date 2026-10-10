@@ -24,6 +24,17 @@
 
             <v-form @submit.prevent="handleLogin" ref="form">
               <v-text-field
+                v-model="userId"
+                label="User ID"
+                placeholder="User ID"
+                variant="outlined"
+                density="comfortable"
+                required
+                class="mb-4"
+                :rules="[rules.required]"
+              ></v-text-field>
+
+              <v-text-field
                 v-model="password"
                 :type="showPassword ? 'text' : 'password'"
                 label="Password"
@@ -51,17 +62,20 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import Cookies from 'js-cookie'
-import axios from 'axios'
 import { useRouter } from 'vue-router'
-import { z } from 'zod'
 import { useRedirectionStore } from '@/store/redirectionStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
+import { login } from '@/api/users'
 
 const password = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
+
+// Prefill from the last successful login; empty on first run.
+const LAST_USER_ID_KEY = 'picasu-last-user-id'
+const userId = ref(localStorage.getItem(LAST_USER_ID_KEY) ?? '')
 
 const router = useRouter()
 const redirectionStore = useRedirectionStore('mainId')
@@ -86,14 +100,7 @@ const handleLogin = async () => {
   loading.value = true
   try {
     await tryWithMessageStore('mainId', async () => {
-      const response = await axios.post('/post/authenticate', JSON.stringify(password.value), {
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-
-      // Validate response.data using Zod
-      const tokenValue = z.string().parse(response.data) // Ensures response.data is a string
+      const tokenValue = await login(userId.value, password.value)
 
       // Store the JWT in a cookie with security attributes
       Cookies.set('jwt', tokenValue, {
@@ -102,6 +109,9 @@ const handleLogin = async () => {
         sameSite: 'Strict', // Prevent CSRF attacks
         expires: 14 // Optional: Expires in 1 day
       })
+
+      // Remember the id for the next login's User ID prefill.
+      localStorage.setItem(LAST_USER_ID_KEY, userId.value)
 
       const redirection = redirectionStore.redirection
       if (redirection !== null) {

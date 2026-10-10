@@ -1,0 +1,33 @@
+name: Admin user management panel visible after login
+covers:
+  api:
+    - POST /post/authenticate
+    - GET /get/users
+  ui:
+    - textbox/User ID
+    - route:/timeline
+    - route:/config
+given:
+  - empty: true
+  - config:
+      password: e2e_test_pwd
+steps:
+  - when:
+      - navigate: /login
+    assert:
+      - ui.visible: textbox/User ID
+      - ui.visible: textbox/Password
+  - when:
+      - fill: textbox/User ID
+        value: admin
+      - fill: textbox/Password
+        value: e2e_test_pwd
+      - click: button/Login
+    assert:
+      - ui.route: /timeline
+  - when:
+      - navigate: /config
+    assert:
+      - ui.text_visible: User Management
+      - ui.text_visible: admin
+      - ui.text_visible: Promote someone else first to demote your own account
