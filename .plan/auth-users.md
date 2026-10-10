@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: backend
@@ -169,4 +169,12 @@ via S3/S4 — then each gets a falsification companion per authz-props S0f):
 
 ## Progress
 
-- 2026-10-10: plan flushed out; starting S0.
+- 2026-10-10: plan flushed out; S0–S5 built with worker sub-agents under
+  strict TDD (each iteration reviewed, RED observed, gates verified).
+- 2026-10-10: **Done.** S6: `openapi.json` regenerated, `openapi-check`
+  clean, docs reconciled (`auth.md` sign-in/token-table/guards/config;
+  `authz-model.md` guard table, AUTH-1/AUTH-9/AUTH-11; F5/F8 status notes).
+  Known follow-ups, all out of scope: user delete/demote endpoints,
+  per-user settings values, album ACL, rate limiting/lockout, HttpOnly
+  cookies, plaintext config/share secrets, `scenario_upload_no_auth`
+  single unreproduced flake (passed in isolation + two full runs).
