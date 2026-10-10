@@ -49,6 +49,8 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
             .expect("create ASSET_BY_ID");
         txn.open_table(crate::storage::db::DUPE_INDEX)
             .expect("create DUPE_INDEX");
+        txn.open_table(crate::storage::db::USERS)
+            .expect("create USERS");
         txn.commit().expect("commit");
     }
 
@@ -149,7 +151,7 @@ pub fn reset_backend_state() {
     }
     txn.commit().expect("commit METADATA_TABLE drain");
 
-    // Also drain the path-primary asset tables.
+    // Also drain the path-primary asset tables and the user store.
     let txn = TREE
         .in_disk
         .begin_write()
@@ -158,6 +160,7 @@ pub fn reset_backend_state() {
         crate::storage::db::ASSET_BY_PATH,
         crate::storage::db::ASSET_BY_ID,
         crate::storage::db::DUPE_INDEX,
+        crate::storage::db::USERS,
     ] {
         let mut table = txn
             .open_table(table_def)
@@ -200,6 +203,16 @@ pub fn reset_backend_state() {
     let image_home = test_image_home();
     std::fs::create_dir_all(&image_home)
         .unwrap_or_else(|e| panic!("create image_home {}: {e}", image_home.display()));
+
+    // Remove the password store so authenticated scenarios never leak
+    // password hashes into later (open-mode) scenarios. The DATA_PATH wipe
+    // above already removes it in practice; this makes the guarantee
+    // explicit and independent of wipe ordering.
+    let passwd_path = crate::auth::users::passwd_file_path();
+    if passwd_path.exists() {
+        std::fs::remove_file(&passwd_path)
+            .unwrap_or_else(|e| panic!("remove {}: {e}", passwd_path.display()));
+    }
 
     // Clear directory album cache so stale album IDs are not reused.
     dir_album::reset_dir_album_cache();
@@ -264,5 +277,47 @@ mod tests {
         assert!(!config_file.exists(), "stale config.toml must be wiped");
         assert!(db_file.exists(), "open redb file must survive the wipe");
         assert!(test_image_home().exists(), "image_home must be recreated");
+    }
+
+    /// `reset_backend_state` must clear the user store (redb `USERS` table)
+    /// and remove the password file, so authenticated scenarios never leak
+    /// users or password hashes into later (open-mode) scenarios.
+    #[test]
+    fn reset_backend_state_clears_user_store() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+
+        crate::auth::users::create_user("s2b-reset-user", true).expect("create user");
+        let passwd_path = crate::auth::users::passwd_file_path();
+        if let Some(parent) = passwd_path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&passwd_path, b"{\"users\":{}}").unwrap();
+        assert_eq!(
+            crate::auth::users::user_count().expect("user count before reset"),
+            1
+        );
+        assert!(passwd_path.exists(), "passwd file must exist before reset");
+
+        reset_backend_state();
+
+        assert_eq!(
+            crate::auth::users::user_count().expect("user count after reset"),
+            0,
+            "USERS table must be empty after reset"
+        );
+        assert!(
+            crate::auth::users::list_users()
+                .expect("list users after reset")
+                .is_empty()
+        );
+        assert_eq!(
+            crate::auth::users::get_user("s2b-reset-user").expect("get user after reset"),
+            None
+        );
+        assert!(
+            !passwd_path.exists(),
+            "passwd file must be removed by reset"
+        );
     }
 }

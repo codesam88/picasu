@@ -59,6 +59,12 @@ struct PasswdDoc {
     users: std::collections::HashMap<String, PasswordHash>,
 }
 
+/// Borrowed view of [`PasswdDoc`] for serialization without cloning.
+#[derive(Debug, Serialize)]
+struct PasswdDocRef<'a> {
+    users: &'a std::collections::HashMap<String, PasswordHash>,
+}
+
 /// JSON-backed password store at an explicit file path.
 ///
 /// On-disk shape is `{"users": {id: {salt, hash, iterations}}}` with
@@ -99,10 +105,8 @@ impl PasswdFile {
     /// # Errors
     /// Returns an error if the file cannot be written.
     pub fn save(&self) -> anyhow::Result<()> {
-        let bytes = serde_json::to_vec_pretty(&PasswdDoc {
-            users: self.users.clone(),
-        })
-        .context("failed to serialize passwd file")?;
+        let bytes = serde_json::to_vec_pretty(&PasswdDocRef { users: &self.users })
+            .context("failed to serialize passwd file")?;
         let tmp = self.path.with_extension("tmp");
         std::fs::write(&tmp, &bytes)
             .context(format!("failed to write passwd file {}", tmp.display()))?;
@@ -250,6 +254,24 @@ mod tests {
         let path = dir.path().join("passwd.json");
         std::fs::write(&path, "{ not valid json").expect("write corrupt file");
         assert!(PasswdFile::load(&path).is_err());
+    }
+
+    #[test]
+    fn passwd_file_save_keeps_on_disk_shape() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("passwd.json");
+        let mut store = PasswdFile::load(&path).expect("load empty");
+        store.set_password("alice", "s3cret").expect("set password");
+        let raw = std::fs::read_to_string(&path).expect("read passwd file");
+        let doc: serde_json::Value = serde_json::from_str(&raw).expect("valid json");
+        let users = doc.get("users").expect("top-level users object");
+        let alice = users.get("alice").expect("alice entry");
+        assert!(alice.get("salt").is_some(), "salt must be present");
+        assert!(alice.get("hash").is_some(), "hash must be present");
+        assert!(
+            alice.get("iterations").is_some(),
+            "iterations must be present"
+        );
     }
 
     #[test]
