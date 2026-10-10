@@ -4,6 +4,7 @@ covers:
     - POST /post/authenticate
     - PUT /put/config/password
   ui:
+    - textbox/User ID
     - textbox/Password
     - route:/timeline
     - toast:error:unauthorized
@@ -16,9 +17,12 @@ steps:
   - when:
       - navigate: /login
     assert:
+      - ui.visible: textbox/User ID
       - ui.visible: textbox/Password
       - ui.aria_snapshot: login-page
   - when:
+      - fill: textbox/User ID
+        value: admin
       - fill: textbox/Password
         value: wrong_password
       - click: button/Login
@@ -27,6 +31,8 @@ steps:
           type: error
           contains: unauthorized
   - when:
+      - fill: textbox/User ID
+        value: admin
       - fill: textbox/Password
         value: e2e_test_pwd
       - click: button/Login

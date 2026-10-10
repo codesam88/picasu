@@ -28,23 +28,33 @@
             />
           </v-row>
         </div>
+
+        <div v-if="isAdmin" class="config-block">
+          <v-row class="ma-0">
+            <UserManagement />
+          </v-row>
+        </div>
       </div>
     </template>
   </PageTemplate>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useConfigStore } from '@/store/configStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import type { AppConfig } from '@/api/config'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 import StorageAndSync from './Config/StorageAndSync.vue'
 import AdvancedConfig from './Config/AdvancedConfig.vue'
+import UserManagement from './Config/UserManagement.vue'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
+import { useCurrentUser, canSeeUserPanel } from '@/script/utils/currentUser'
 
 const configStore = useConfigStore('mainId')
 const initializedStore = useInitializedStore('mainId')
+const currentUser = useCurrentUser()
+const isAdmin = computed(() => canSeeUserPanel(currentUser.value))
 
 // UI State
 const loading = ref(false)
