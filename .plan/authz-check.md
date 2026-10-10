@@ -8,7 +8,9 @@ area: backend
 ## Notes
 
 Structural assurance for the authentication subsystem: convert the invariants
-behind `docs/auth.md` (Security assessment, findings F1–F10) from conventions
+behind the security assessment (remediated findings F1–F4 in
+`.plan/authz-fix.md`, open findings F5–F10 in `.plan/auth-hardening.md`) from
+conventions
 into machine-checkable statements, so a violation cannot merge. The rationale
 and verified exploit transcripts live in that document's assessment; this plan
 is the work item. Five components, in dependency order:
@@ -114,7 +116,8 @@ Extend the existing scenario/contract-test infrastructure (the
 Writing rules: assert on data/side effects, not status codes (F1 and F3
 returned 200 while violating policy — a status-code suite passes against the
 vulnerable code); pin every reproduced finding as a named test whose exploit
-transcript in `docs/auth.md` must keep failing.
+transcript in `.plan/authz-fix.md` (F1–F4) or `.plan/auth-hardening.md`
+(F5–F10) must keep failing.
 
 ### 5. Traceability and evidence ladder
 
