@@ -16,6 +16,7 @@ pub mod get_prefetch;
 // their `__path_*` items unconditionally — but nothing mounts or calls them.
 #[cfg_attr(not(test), allow(dead_code))]
 pub mod get_test_probe;
+pub mod users;
 
 /// The GET route table Rocket mounts.
 ///
@@ -63,6 +64,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_config::export_config_handler,
         get_fs_completion::get_fs_completion,
         get_album_index::get_album_index_status,
+        users::list_users_handler,
     ];
 
     #[cfg(test)]
