@@ -11,6 +11,9 @@ mod backend_api;
 mod capabilities;
 
 #[cfg(test)]
+mod auth_users;
+
+#[cfg(test)]
 mod authz;
 
 #[cfg(test)]
