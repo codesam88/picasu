@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: chore
 priority: medium
 area: testing
@@ -105,3 +105,11 @@ degradation while keeping intentional exceptions reviewable and finite.
   `paste-shim` utility in Rust format/Clippy checks, and added Rust to CodeQL.
   An all-target Rust Clippy trial found substantial existing test debt, so that
   broader scope remains follow-up work rather than an immediately blocking gate.
+- 2026-10-10: Closed as consolidated. Contract direction is owned by the
+  `openapi-check` phases plus `.plan/api-assurance.md` (oasdiff gate,
+  Dylint/custom-lint analysis, Schemathesis generation); auth invariants by
+  `docs/authz-model.md` and the authz plans. Deliberately not pursued:
+  mutation testing, metamorphic/differential tests, dependency-boundary rules,
+  complexity budgets, churn reports, and a repo-wide invariant registry —
+  judged beyond what automated checks can reasonably carry; anything there
+  stays in code review.
