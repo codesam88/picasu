@@ -232,6 +232,7 @@ docs-build: docs-openapi
     mkdir -p target/mdbook/src
     cp docs/book.toml target/mdbook
     cp -r docs/*.md target/mdbook/src
+    cp -r docs/briefs target/mdbook/src/briefs
     mdbook build target/mdbook -d target/docs/book
     echo ""
     echo "=== Documentation built ==="

@@ -23,3 +23,10 @@
 # API Reference
 
 - [OpenAPI Reference](openapi-reference.md)
+
+---
+
+# Briefs
+
+- [Schemathesis](briefs/schemathesis.md)
+- [Dylint](briefs/dylint.md)
