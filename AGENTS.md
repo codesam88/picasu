@@ -53,6 +53,7 @@ The `.plan/` directory tracks pending and completed work. Run `plan list` to vie
 ## Task Management (.plan)
 
 Every task lives as a markdown file in `.plan/<slug>.md` with YAML frontmatter. The filename (without `.md`) is the unique key — no numeric ID needed.
+Trivial single-fix tasks skip the plan file; say so in one line and do the work.
 
 ### Status lifecycle
 
