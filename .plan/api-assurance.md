@@ -140,7 +140,28 @@ spike shows the nightly cost is negligible, in which case consolidate. Either
 way the decision is recorded rule by rule, and the dropped tool's scope is
 deleted, not left running in parallel.
 
-### 3. Schemathesis pilot
+### 3. Run the lint through cargo-dylint
+
+Run `utils/dylint-lints` through upstream `cargo-dylint`: pin it like
+other tools (`just install-dylint`), declare the lint crate in workspace
+metadata, and point `just dylint-check` at `cargo dylint --all -- -p
+picasu`. Verify GREEN (zero findings) and RED (exactly one warning on a
+synthetic violation, tree restored) through `cargo dylint`. The nightly
+pin, the lint source, and the quarterly re-pin policy are the load-bearing
+parts — the runner is just mechanics.
+
+Step 3 done (`just install-dylint` pinned 6.1.0, workspace metadata,
+GREEN/RED re-verified through `cargo dylint`). Follow-up
+survey of the upstream general example set (dylint rev `08e00155`, tag
+v6.1.1): all 8 lints build and run, exactly one finding — `abs_home_path`
+on `env!("CARGO_MANIFEST_DIR")` in `default_spec_path()` (dev-only
+`--check-openapi` gate, acceptable-with-reason, not a bug). Decision: not
+wired in — the set needs its own nightly (`nightly-2026-08-20`) plus
+`dylint-link`, which doubles the toolchain/tool surface for zero real
+findings. `just dylint-check` stays custom-lint-only; re-survey at the
+quarterly re-pin if the nightlies converge.
+
+### 4. Schemathesis pilot
 
 Python 3.14 is present (no pip — use `uvx` or a pinned venv). Target is a
 locally run backend seeded over HTTP (bootstrap admin first, then fixture
@@ -158,7 +179,7 @@ create→get→demote) plus the first custom assertions:
 RESTler stays the fallback if the auth-harness customization proves
 insufficient.
 
-### 4. Fold the above analysis and final settled shape into `docs/test-strategy.md`.
+### 5. Fold the above analysis and final settled shape into `docs/test-strategy.md`.
 
 Based on a (assumed to be reviewed) auto-derived openapi documentation, the
 above tooling forms the api-level assurance layer next while frontend/backend
@@ -171,3 +192,9 @@ e2e functional tests.
   checksum-verified install, base-branch baseline, ignore file with the one
   accepted break) wired into `openapi-check`; RED verified both directions
   independently.
+- Step 2 done: AUTH-2 dylint lint in `utils/dylint-lints`, run through
+  upstream cargo-dylint (`just dylint-check`, advisory-only);
+  GREEN (0 warnings) and RED (exactly 1 warning) verified independently,
+  tree byte-identical. Transition decision: P2/AUTH-3 move to dylint,
+  A1–A7/A9/B1–B5/P1 stay in `syn`. Follow-ups: `if let Ok`-without-else
+  false negative, quarterly nightly re-pin.

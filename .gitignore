@@ -35,3 +35,6 @@ picasu-data/
 # backend/openapi.json is intentionally NOT ignored: it is the checked-in public
 # API contract that `just openapi-check` diffs against a fresh generation.
 
+
+# Editor swap files (tooling artifact, never commit)
+*.swp

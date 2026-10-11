@@ -123,6 +123,15 @@ openapi-gen:
 [group('utils')]
 openapi-check: openapi-sanity openapi-json-match openapi-breakcheck openapi-lint openapi-routes-match
 
+# Run the dylint authorization lints against the backend.
+# Currently advisory (not part of `check`): enforced rules stay in
+# `openapi-sanity`; dylint covers what needs compiler type information.
+# Runs `cargo dylint` with the workspace lint libraries declared in the root
+# Cargo.toml; the check toolchain follows the lint library's nightly pin.
+[group('utils')]
+dylint-check:
+    cargo dylint --all -- -p picasu
+
 # Lint the committed OpenAPI document (errors fail, warnings are baseline noise).
 [group('utils')]
 openapi-lint:
@@ -155,6 +164,16 @@ openapi-json-match:
         exit 1
     fi
     echo "openapi.json matches the generated spec"
+
+# Pinned cargo-dylint release (matches the `dylint_linting` version the lint
+# crate in utils/dylint-lints links; crates.io verification + `--locked`
+# is the integrity mechanism, there is no sha256 to pin).
+dylint_version := "6.1.0"
+
+# Install pinned cargo-dylint (idempotent, skips when already installed)
+[group('utils')]
+install-dylint:
+    ./scripts/install-dylint.sh "{{ dylint_version }}"
 
 # Pinned oasdiff release for the breaking-change gate below.
 # Upstream publishes checksums at
@@ -283,7 +302,7 @@ install-exiftool:
 
 # Install dev tools
 [group('global')]
-install-dev: install-plan install-exiftool install-oasdiff
+install-dev: install-plan install-exiftool install-oasdiff install-dylint
     cargo install cargo-deny
     npm ci --prefix frontend
 
