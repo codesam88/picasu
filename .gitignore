@@ -18,6 +18,10 @@ frontend/node_modules
 frontend/*.tsbuildinfo
 /target/
 
+# Standalone nightly-pinned lint workspace (not part of the main build;
+# kept out of `cargo check --workspace` by design, see utils/dylint-lints)
+utils/dylint-lints/target/
+
 # `just run`'s dev sandbox (data dir + test galleries, see docs/config.md)
 /sandbox/
 
@@ -31,3 +35,6 @@ picasu-data/
 # backend/openapi.json is intentionally NOT ignored: it is the checked-in public
 # API contract that `just openapi-check` diffs against a fresh generation.
 
+
+# Editor swap files (tooling artifact, never commit)
+*.swp
