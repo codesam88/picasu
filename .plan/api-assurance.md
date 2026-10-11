@@ -1,5 +1,5 @@
 ---
-status: open
+status: in-progress
 type: chore
 priority: medium
 area: testing
@@ -163,9 +163,10 @@ quarterly re-pin if the nightlies converge.
 
 ### 4. Schemathesis pilot
 
-Python 3.14 is present (no pip — use `uvx` or a pinned venv). Target is a
-locally run backend seeded over HTTP (bootstrap admin first, then fixture
-albums); auth via custom hooks (login cookie, share headers). Phase one:
+Background: `docs/briefs/schemathesis.md`. Python 3.14 is present (no
+pip — use `uvx` or a pinned venv). Target is a locally run backend
+seeded over HTTP (bootstrap admin first, then fixture albums); auth via
+custom hooks (login cookie, share headers). Pilot bounds (agreed):
 single-operation runs asserting schema conformance and no-500s. Phase two:
 links for the token chains (prefetch→get-data→serve,
 create→get→demote) plus the first custom assertions:
@@ -178,6 +179,28 @@ create→get→demote) plus the first custom assertions:
 
 RESTler stays the fallback if the auth-harness customization proves
 insufficient.
+
+First/quick pilot: phase one is a full single-operation sweep;
+phase two (links + custom assertions) runs under a hard 5-minute
+timebox, then reports regardless. Harness lives in scratch
+(`/tmp`) — the pilot commits nothing. Findings are triaged only
+(bug / harness artifact / spec imprecision); fixes become follow-up
+tasks. Detailed fuzzer campaign configuration is a separate later
+task, not part of the pilot.
+
+Pilot run (quick): full single-op sweep, 918 cases, 43 failures —
+36 spec imprecision (undocumented 422/404/415 framework statuses,
+wrong export content-type), 4 harness artifacts, 3 real bugs.
+Hard 5-min phase-two box: 9/64 ops reached statefully, custom
+assertions A2/A3/A5 PASS, A1 holds (corrected replication), A4
+partial (F9 pin not established). Bugs filed separately
+(`bug-rebuild-dir-album-cache`); remaining 500s (unknown snapshot
+id, create_dir_album EEXIST) and SPA-fallback 200s await triage.
+Verdict: advisory gate justified with conditions — contract
+reconciliation first (document or normalize the 4xx statuses),
+harness hardening (config-write ops excluded, stable authKey),
+scoped 5-check oracle. Harness in `/tmp/opencode/schemathesis/`,
+nothing committed.
 
 ### 5. Fold the above analysis and final settled shape into `docs/test-strategy.md`.
 
