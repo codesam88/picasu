@@ -11,6 +11,9 @@ resolver = "2"
 [patch.crates-io]
 paste = { path = "utils/paste-shim" }
 
+[workspace.metadata.dylint]
+libraries = [{ path = "utils/dylint-lints" }]
+
 [profile.lto]
 inherits = "release"
 lto = true
