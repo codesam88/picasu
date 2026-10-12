@@ -507,6 +507,7 @@ impl AppConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::fixtures::test_password;
 
     #[test]
     fn toml_round_trip_full() {
@@ -523,7 +524,7 @@ mod tests {
             normalize_upload_filenames: false,
             validate_upload_content: true,
             use_client_timestamp_info: false,
-            password: Some("secret".to_string()),
+            password: Some(test_password("t-config")),
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),
         };

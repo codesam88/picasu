@@ -163,6 +163,7 @@ mod tests {
     use serde_json::json;
 
     use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
+    use crate::tests::fixtures::test_password;
 
     fn lock() -> std::sync::MutexGuard<'static, ()> {
         TEST_SERIAL_GUARD
@@ -212,28 +213,32 @@ mod tests {
         let _g = lock();
         let client = setup();
         seed("s4d-root", true, None);
-        seed("s4d-bob", false, Some("s4d-bob-old"));
+        seed("s4d-bob", false, Some(test_password("t-bob-old").as_str()));
         let status = put_password(
             &client,
             cookie("s4d-root", true),
-            &json!({ "userId": "s4d-bob", "newPassword": "s4d-bob-new" }),
+            &json!({ "userId": "s4d-bob", "newPassword": test_password("t-bob-new") }),
         );
         assert_eq!(status, Status::Ok);
         let store =
             crate::auth::password::PasswdFile::load(&crate::auth::users::passwd_file_path())
                 .expect("load passwd");
-        assert!(store.verify("s4d-bob", "s4d-bob-new"));
+        assert!(store.verify("s4d-bob", &test_password("t-bob-new")));
     }
 
     #[test]
     fn self_service_with_correct_old_password() {
         let _g = lock();
         let client = setup();
-        seed("s4d-carol", false, Some("s4d-carol-old"));
+        seed(
+            "s4d-carol",
+            false,
+            Some(test_password("t-carol-old").as_str()),
+        );
         let status = put_password(
             &client,
             cookie("s4d-carol", false),
-            &json!({ "userId": "s4d-carol", "oldPassword": "s4d-carol-old", "newPassword": "s4d-carol-new" }),
+            &json!({ "userId": "s4d-carol", "oldPassword": test_password("t-carol-old"), "newPassword": test_password("t-carol-new") }),
         );
         assert_eq!(status, Status::Ok);
     }
@@ -299,7 +304,7 @@ mod tests {
     fn non_admin_targeting_unknown_user_is_403_not_404() {
         let _g = lock();
         let client = setup();
-        seed("s4d-bob", false, Some("s4d-bob-old"));
+        seed("s4d-bob", false, Some(test_password("t-bob-old").as_str()));
         // `s4d-ghost` does not exist: permission must be checked before
         // existence so the status leaks no user-enumeration signal.
         let status = put_password(

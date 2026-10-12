@@ -20,7 +20,7 @@ use crate::tests::bootstrap::{
 use crate::tests::fixtures::authz::{
     create_album, create_share, get_data_asset_token, get_data_rows, prefetch_as_share,
 };
-use crate::tests::fixtures::set_image_home;
+use crate::tests::fixtures::{set_image_home, test_password};
 
 /// Serialize a test against the shared backend state.
 fn lock() -> std::sync::MutexGuard<'static, ()> {
@@ -101,7 +101,7 @@ fn bootstrap_open_mode_and_first_user_forced_admin() {
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
     // Open first-run mode accepts any login body and mints an admin token.
-    let (status, token) = login(&client, "anything", "whatever");
+    let (status, token) = login(&client, "anything", &test_password("t-open"));
     assert_eq!(status, Status::Ok);
     let (id, admin) = role_of(&decode(&token.expect("open-mode token")));
     assert_eq!(id, "admin");
@@ -111,7 +111,10 @@ fn bootstrap_open_mode_and_first_user_forced_admin() {
     let resp = client
         .post("/post/users/create")
         .header(ContentType::JSON)
-        .body(json!({ "userId": "root", "password": "matrix-root-pw", "admin": false }).to_string())
+        .body(
+            json!({ "userId": "root", "password": test_password("t-root-pw"), "admin": false })
+                .to_string(),
+        )
         .dispatch();
     assert_eq!(resp.status(), Status::Ok);
     let created: Value = resp.into_json().expect("created user json");
@@ -125,7 +128,10 @@ fn bootstrap_open_mode_and_first_user_forced_admin() {
     let resp = client
         .post("/post/users/create")
         .header(ContentType::JSON)
-        .body(json!({ "userId": "late", "password": "matrix-late-pw", "admin": false }).to_string())
+        .body(
+            json!({ "userId": "late", "password": test_password("t-late-pw"), "admin": false })
+                .to_string(),
+        )
         .dispatch();
     assert_eq!(resp.status(), Status::Unauthorized);
 }
@@ -142,16 +148,16 @@ fn bootstrap_open_mode_and_first_user_forced_admin() {
 fn two_users_admin_route_distinguishes_roles() {
     let _g = lock();
     let client = setup();
-    seed_user("matrix-root", true, "matrix-root-pw");
-    seed_user("matrix-bob", false, "matrix-bob-pw");
+    seed_user("matrix-root", true, &test_password("t-root-pw"));
+    seed_user("matrix-bob", false, &test_password("t-bob-pw"));
 
-    let (status, token) = login(&client, "matrix-root", "matrix-root-pw");
+    let (status, token) = login(&client, "matrix-root", &test_password("t-root-pw"));
     assert_eq!(status, Status::Ok);
     let (id, admin) = role_of(&decode(&token.expect("root token")));
     assert_eq!(id, "matrix-root");
     assert!(admin, "root login must mint an admin token");
 
-    let (status, token) = login(&client, "matrix-bob", "matrix-bob-pw");
+    let (status, token) = login(&client, "matrix-bob", &test_password("t-bob-pw"));
     assert_eq!(status, Status::Ok);
     let (id, admin) = role_of(&decode(&token.expect("bob token")));
     assert_eq!(id, "matrix-bob");
@@ -170,9 +176,9 @@ fn two_users_admin_route_distinguishes_roles() {
     assert_eq!(resp.status(), Status::Unauthorized);
 
     // Unknown user and wrong password are 401 (generic, no oracle).
-    let (status, _) = login(&client, "matrix-ghost", "anything");
+    let (status, _) = login(&client, "matrix-ghost", &test_password("t-ghost"));
     assert_eq!(status, Status::Unauthorized);
-    let (status, _) = login(&client, "matrix-bob", "wrong-password");
+    let (status, _) = login(&client, "matrix-bob", &test_password("t-wrong"));
     assert_eq!(status, Status::Unauthorized);
 }
 
@@ -226,11 +232,11 @@ fn guest_share_prefetch_get_data_and_serving() {
     assert_eq!(resp.status(), Status::Ok, "anonymous share serving");
 
     // Users afterwards: seeding does not invalidate the share above.
-    seed_user("matrix-host", true, "matrix-host-pw");
-    seed_user("matrix-guest", false, "matrix-guest-pw");
-    let (status, _) = login(&client, "matrix-host", "matrix-host-pw");
+    seed_user("matrix-host", true, &test_password("t-host-pw"));
+    seed_user("matrix-guest", false, &test_password("t-guest-pw"));
+    let (status, _) = login(&client, "matrix-host", &test_password("t-host-pw"));
     assert_eq!(status, Status::Ok, "host login must work");
-    let (status, _) = login(&client, "matrix-guest", "matrix-guest-pw");
+    let (status, _) = login(&client, "matrix-guest", &test_password("t-guest-pw"));
     assert_eq!(status, Status::Ok, "guest login must work");
 
     // Admin-role user passes the share-guarded prefetch without share headers.
@@ -273,22 +279,25 @@ fn guest_share_prefetch_get_data_and_serving() {
 fn password_change_and_demotion_take_effect() {
     let _g = lock();
     let client = setup();
-    seed_user("matrix-admin", true, "matrix-admin-old");
-    seed_user("matrix-member", false, "matrix-member-old");
+    seed_user("matrix-admin", true, &test_password("t-admin-old"));
+    seed_user("matrix-member", false, &test_password("t-member-old"));
 
     // Admin rotates the member's password without the old one.
     let resp = client
         .put("/put/users/password")
         .cookie(user_cookie("matrix-admin", true))
         .header(ContentType::JSON)
-        .body(json!({ "userId": "matrix-member", "newPassword": "matrix-member-new" }).to_string())
+        .body(
+            json!({ "userId": "matrix-member", "newPassword": test_password("t-member-new") })
+                .to_string(),
+        )
         .dispatch();
     assert_eq!(resp.status(), Status::Ok);
 
     // Liveness: new password logs in, old password is 401.
-    let (status, _) = login(&client, "matrix-member", "matrix-member-new");
+    let (status, _) = login(&client, "matrix-member", &test_password("t-member-new"));
     assert_eq!(status, Status::Ok, "new password must work");
-    let (status, _) = login(&client, "matrix-member", "matrix-member-old");
+    let (status, _) = login(&client, "matrix-member", &test_password("t-member-old"));
     assert_eq!(
         status,
         Status::Unauthorized,
@@ -307,7 +316,7 @@ fn password_change_and_demotion_take_effect() {
     assert_eq!(resp.status(), Status::Unauthorized);
 
     crate::auth::users::set_admin("matrix-member", true).expect("promote member");
-    let (status, token) = login(&client, "matrix-member", "matrix-member-new");
+    let (status, token) = login(&client, "matrix-member", &test_password("t-member-new"));
     assert_eq!(status, Status::Ok, "login must work after promotion");
     let (_, admin) = role_of(&decode(&token.clone().expect("member token")));
     assert!(admin, "post-promotion login must mint an admin token");

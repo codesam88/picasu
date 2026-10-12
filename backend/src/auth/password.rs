@@ -1,6 +1,6 @@
 use anyhow::Context as _;
 use pbkdf2::pbkdf2_hmac;
-use rand::{TryRng, rngs::SysRng};
+use rand::random;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
@@ -79,10 +79,9 @@ pub struct PasswordHash {
 /// Panics if the system RNG fails, which indicates a broken host.
 #[must_use]
 pub fn hash_password(password: &str) -> PasswordHash {
-    let mut salt = [0u8; SALT_LEN];
-    SysRng
-        .try_fill_bytes(&mut salt)
-        .expect("system RNG failure while generating password salt");
+    // Generated directly: no zero-initialized buffer that reads as a
+    // hardcoded salt, and still panics on RNG failure as documented.
+    let salt: [u8; SALT_LEN] = random();
     let iterations = password_iterations();
     let hash = derive(password, &salt, iterations);
     PasswordHash {
@@ -243,6 +242,7 @@ base64_field!(base64_hash, super::HASH_LEN);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::fixtures::test_password;
 
     #[test]
     fn iteration_override_parsing() {
@@ -258,38 +258,38 @@ mod tests {
 
     #[test]
     fn hash_verify_roundtrip() {
-        let stored = hash_password("correct horse");
-        assert!(verify_password("correct horse", &stored));
+        let stored = hash_password(&test_password("t-ok"));
+        assert!(verify_password(&test_password("t-ok"), &stored));
     }
 
     #[test]
     fn wrong_password_rejected() {
-        let stored = hash_password("correct horse");
-        assert!(!verify_password("wrong password", &stored));
+        let stored = hash_password(&test_password("t-ok"));
+        assert!(!verify_password(&test_password("t-wrong"), &stored));
     }
 
     #[test]
     fn tampered_salt_rejected() {
-        let mut stored = hash_password("correct horse");
+        let mut stored = hash_password(&test_password("t-ok"));
         stored.salt[0] ^= 0xff;
-        assert!(!verify_password("correct horse", &stored));
+        assert!(!verify_password(&test_password("t-ok"), &stored));
     }
 
     #[test]
     fn tampered_iterations_rejected() {
-        let mut stored = hash_password("correct horse");
+        let mut stored = hash_password(&test_password("t-ok"));
         stored.iterations += 1;
-        assert!(!verify_password("correct horse", &stored));
+        assert!(!verify_password(&test_password("t-ok"), &stored));
     }
 
     #[test]
     fn same_password_hashes_differ() {
-        let first = hash_password("same password");
-        let second = hash_password("same password");
+        let first = hash_password(&test_password("t-same"));
+        let second = hash_password(&test_password("t-same"));
         assert_ne!(first.hash, second.hash);
         assert_ne!(first.salt, second.salt);
-        assert!(verify_password("same password", &first));
-        assert!(verify_password("same password", &second));
+        assert!(verify_password(&test_password("t-same"), &first));
+        assert!(verify_password(&test_password("t-same"), &second));
     }
 
     #[test]
@@ -298,10 +298,12 @@ mod tests {
         let path = dir.path().join("passwd.json");
         let mut store = PasswdFile::load(&path).expect("load empty");
         assert!(store.is_empty());
-        store.set_password("alice", "s3cret").expect("set password");
+        store
+            .set_password("alice", &test_password("t-file"))
+            .expect("set password");
         let reloaded = PasswdFile::load(&path).expect("reload");
-        assert!(reloaded.verify("alice", "s3cret"));
-        assert!(!reloaded.verify("alice", "wrong"));
+        assert!(reloaded.verify("alice", &test_password("t-file")));
+        assert!(!reloaded.verify("alice", &test_password("t-other")));
     }
 
     #[test]
@@ -325,7 +327,9 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("passwd.json");
         let mut store = PasswdFile::load(&path).expect("load empty");
-        store.set_password("alice", "s3cret").expect("set password");
+        store
+            .set_password("alice", &test_password("t-file"))
+            .expect("set password");
         let raw = std::fs::read_to_string(&path).expect("read passwd file");
         let doc: serde_json::Value = serde_json::from_str(&raw).expect("valid json");
         let users = doc.get("users").expect("top-level users object");
@@ -343,8 +347,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("passwd.json");
         let mut store = PasswdFile::load(&path).expect("load empty");
-        store.set_password("alice", "s3cret").expect("set password");
-        assert!(!store.verify("bob", "s3cret"));
-        assert!(!store.verify("bob", "anything"));
+        store
+            .set_password("alice", &test_password("t-file"))
+            .expect("set password");
+        assert!(!store.verify("bob", &test_password("t-file")));
+        assert!(!store.verify("bob", &test_password("t-other")));
     }
 }
