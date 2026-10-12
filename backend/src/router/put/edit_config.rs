@@ -192,7 +192,7 @@ pub async fn update_password_handler(
             caller_admin,
             &caller_id,
             req_data.old_password.as_deref(),
-            req_data.password.as_deref().unwrap_or(""),
+            req_data.password.as_deref().unwrap_or_default(),
         )?;
         Ok(Status::Ok)
     })
