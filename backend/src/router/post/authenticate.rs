@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tokio::task::spawn_blocking;
 
 use crate::auth::password::{
-    DEFAULT_ITERATIONS, HASH_LEN, PasswdFile, PasswordHash, SALT_LEN, verify_password,
+    HASH_LEN, PasswdFile, PasswordHash, SALT_LEN, password_iterations, verify_password,
 };
 use crate::auth::users::{self, validate_user_id};
 use crate::error::ResultExt;
@@ -38,7 +38,7 @@ fn dummy_hash() -> PasswordHash {
     PasswordHash {
         salt: [0u8; SALT_LEN],
         hash: [0u8; HASH_LEN],
-        iterations: DEFAULT_ITERATIONS,
+        iterations: password_iterations(),
     }
 }
 
@@ -476,9 +476,15 @@ mod tests {
     fn unknown_user_dummy_verify_runs_pbkdf2() {
         let start = std::time::Instant::now();
         assert!(!super::run_dummy_verify());
-        assert!(
-            start.elapsed().as_millis() > 50,
-            "dummy verify must cost a PBKDF2 round"
-        );
+        // Timing threshold only holds at production effort: under the
+        // test-only iteration default/override the round is deliberately
+        // cheap, so only correctness is asserted there.
+        if crate::auth::password::password_iterations() == crate::auth::password::DEFAULT_ITERATIONS
+        {
+            assert!(
+                start.elapsed().as_millis() > 50,
+                "dummy verify must cost a PBKDF2 round"
+            );
+        }
     }
 }

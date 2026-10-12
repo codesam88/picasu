@@ -175,7 +175,10 @@ export async function startBackend(paths: WorkerPaths): Promise<BackendHandle> {
       PICASU_PORT: String(paths.BACKEND_PORT),
       PICASU_DATA_HOME: paths.DATA_DIR,
       PICASU_CONFIG_HOME: paths.CONFIG_DIR,
-      PICASU_WEB_ROOT: path.resolve(REPO_ROOT, 'frontend/dist')
+      PICASU_WEB_ROOT: path.resolve(REPO_ROOT, 'frontend/dist'),
+      // Test-only PBKDF effort: production KDF cost (~10s/verify in debug
+      // builds) would dominate every login flow under test.
+      PICASU_PBKDF_ITERATIONS: '1000'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   })
