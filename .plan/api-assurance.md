@@ -213,6 +213,34 @@ and `docs/briefs/` as the tool knowledge layer. Done when
 test-strategy describes the api-level assurance layer next to the
 frontend/backend e2e suites with no stale claims.
 
+### 6. AUTH-3/11/12 dylint spikes
+
+Dylint cannot be called a success on one lint: the remaining
+statically-decidable AUTH properties must catch real mistakes or the
+runner is ceremony. Definitions in `docs/authz-model.md`
+(AUTH-3 denial-vs-forward, AUTH-11 admin isolation, AUTH-12
+read-only completeness); background in `docs/briefs/dylint.md`.
+
+- **AUTH-3 (directly decidable):** flag every `Outcome::Forward` in a
+  `FromRequest` impl. Exactly 3 sites exist today, all in
+  `router/auth.rs` — triage each against the definition (denial
+  re-enterable as a weaker route vs legitimate route-variant
+  selection); record route-variant exceptions or file bugs. GREEN on
+  the tree as-is only if all 3 triage as exceptions; RED via a
+  synthetic denial-as-forward.
+- **AUTH-11/12 (classification gap):** first resolve G(r) — the guard
+  type set per route from signatures — precisely. Then face the gap:
+  no machine-readable classification says which routes are `manage`
+  or have effects (`security(...)` unused, POST serves reads too, no
+  policy artifact yet). The spike either implements the check against
+  the minimal declaration source it finds, or reports the guard
+  matrix plus a concrete declaration proposal (extend annotation vs
+  new attribute) for a follow-up. No hardcoded method/name
+  heuristics land in the tree.
+- Each lint: GREEN/RED verified, README catalog entry, advisory-only
+  (no gating change). P2/AUTH-3 follow-up in step 2 closes when the
+  AUTH-3 lint lands.
+
 ## Progress
 
 - Step 1 done: `just openapi-breakcheck` (pinned oasdiff 1.33.0,
