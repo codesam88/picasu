@@ -117,28 +117,28 @@ statuses, and narrowed schemas fail CI unless explicitly accepted. The
 the diff is always meaningful. Baseline is the base branch's committed spec
 on PRs.
 
-### 2. Dylint spike + openapi-sanity transition review
+### 2. Dylint lint + openapi-sanity transition (done)
 
-Pin a nightly toolchain for lint runs only (stable stays the build
-toolchain) and spike the AUTH-2 propagation lint. In parallel, disposition
-the 17 existing rules for a full transition:
+Background: `docs/briefs/dylint.md`. Pinned a nightly toolchain for
+lint runs only (stable stays the build toolchain) and built the AUTH-2
+propagation lint with full type resolution. The 17 existing rules
+dispositioned for the transition:
 
 - **Stay in the `syn` checker:** A1–A7, A9 (annotation shape and doc
-  conventions), B1–B5 (route/attribute/signature agreement) — syntactic
-  checks where type information adds nothing. A3's tag vocabulary stays a
-  data file; A9's fail-closed philosophy must be preserved by any
-  replacement.
-- **Move to dylint:** P2/P3/P4 (guard outcome and body-error analysis) plus
-  the new auth rules (AUTH-2 with type-resolved `GuardResult`,
-  AUTH-3 Forward detection, AUTH-11/12 parity) — these gain real precision
-  from resolved types and cross-module guard lookup.
-- **Borderline:** P1 (return-type reasoning) — start in `syn`, move only if
-  the spike shows false positives type info would remove.
+  conventions), B1–B5 (route/attribute/signature agreement), P1, P3,
+  P4 — syntactic checks where type information adds nothing. A3's tag
+  vocabulary stays a data file; A9's fail-closed philosophy must be
+  preserved by any replacement. P1 stays unless false positives show
+  type info would remove them; P3/P4 move deferred to a follow-up.
+- **Moved to dylint:** AUTH-2 with type-resolved `GuardResult`, and
+  the P2/AUTH-3 decision recorded — these gain real precision from
+  resolved types and cross-module guard lookup.
 
-Expected outcome is therefore a hybrid, not a full replacement — unless the
-spike shows the nightly cost is negligible, in which case consolidate. Either
-way the decision is recorded rule by rule, and the dropped tool's scope is
-deleted, not left running in parallel.
+Outcome is therefore a hybrid, not a full replacement. Marker
+(stable-toolchain lint API) evaluated and dropped: experimental, and
+unproven whether its AST exposes the resolved-alias + typeck +
+parent-node classification AUTH-2 needs; revisit only if nightly
+pinning becomes painful.
 
 ### 3. Run the lint through cargo-dylint
 
@@ -166,9 +166,9 @@ quarterly re-pin if the nightlies converge.
 Background: `docs/briefs/schemathesis.md`. Python 3.14 is present (no
 pip — use `uvx` or a pinned venv). Target is a locally run backend
 seeded over HTTP (bootstrap admin first, then fixture albums); auth via
-custom hooks (login cookie, share headers). Pilot bounds (agreed):
-single-operation runs asserting schema conformance and no-500s. Phase two:
-links for the token chains (prefetch→get-data→serve,
+custom hooks (login cookie, share headers). Design: phase one is
+single-operation runs asserting schema conformance and no-500s; phase
+two is links for the token chains (prefetch→get-data→serve,
 create→get→demote) plus the first custom assertions:
 
 1. cross-scope reads refused (share-A token × album-B asset → 404);
@@ -180,15 +180,15 @@ create→get→demote) plus the first custom assertions:
 RESTler stays the fallback if the auth-harness customization proves
 insufficient.
 
-First/quick pilot: phase one is a full single-operation sweep;
-phase two (links + custom assertions) runs under a hard 5-minute
-timebox, then reports regardless. Harness lives in scratch
-(`/tmp`) — the pilot commits nothing. Findings are triaged only
-(bug / harness artifact / spec imprecision); fixes become follow-up
-tasks. Detailed fuzzer campaign configuration is a separate later
-task, not part of the pilot.
+Agreed bounds (first/quick pilot): phase one is a full
+single-operation sweep; phase two runs under a hard 5-minute timebox,
+then reports regardless. Harness lives in scratch (`/tmp`) — the
+pilot commits nothing. Findings are triaged only (bug / harness
+artifact / spec imprecision); fixes become follow-up tasks. Detailed
+fuzzer campaign configuration is a separate later task, not part of
+the pilot.
 
-Pilot run (quick): full single-op sweep, 918 cases, 43 failures —
+Outcome (pilot run): full single-op sweep, 918 cases, 43 failures —
 36 spec imprecision (undocumented 422/404/415 framework statuses,
 wrong export content-type), 4 harness artifacts, 3 real bugs.
 Hard 5-min phase-two box: 9/64 ops reached statefully, custom
@@ -202,15 +202,19 @@ harness hardening (config-write ops excluded, stable authKey),
 scoped 5-check oracle. Harness in `/tmp/opencode/schemathesis/`,
 nothing committed.
 
-### 5. Fold the above analysis and final settled shape into `docs/test-strategy.md`.
+### 5. Fold the settled shape into `docs/test-strategy.md`.
 
-Based on a (assumed to be reviewed) auto-derived openapi documentation, the
-above tooling forms the api-level assurance layer next while frontend/backend
-e2e functional tests.
+Record: the 5-check oracle scope (schema conformance + no-500s;
+acceptance checks stay off until the spec claims them), advisory status
+of both runners (`just dylint-check`, `just schemathesis-run`) with
+their gating preconditions (contract reconciliation for the fuzzer,
+zero-finding discipline for the lint), the quarterly re-pin cadence,
+and `docs/briefs/` as the tool knowledge layer. Done when
+test-strategy describes the api-level assurance layer next to the
+frontend/backend e2e suites with no stale claims.
 
 ## Progress
 
-- Recorded; implementation not started.
 - Step 1 done: `just openapi-breakcheck` (pinned oasdiff 1.33.0,
   checksum-verified install, base-branch baseline, ignore file with the one
   accepted break) wired into `openapi-check`; RED verified both directions
@@ -218,6 +222,12 @@ e2e functional tests.
 - Step 2 done: AUTH-2 dylint lint in `utils/dylint-lints`, run through
   upstream cargo-dylint (`just dylint-check`, advisory-only);
   GREEN (0 warnings) and RED (exactly 1 warning) verified independently,
-  tree byte-identical. Transition decision: P2/AUTH-3 move to dylint,
-  A1–A7/A9/B1–B5/P1 stay in `syn`. Follow-ups: `if let Ok`-without-else
-  false negative, quarterly nightly re-pin.
+  tree byte-identical. P3/P4 move deferred; open follow-ups are the
+  `if let Ok`-without-else false negative and the quarterly nightly
+  re-pin.
+- Step 3 done (see step body; includes the example-set survey decision).
+- Step 4 pilot run done (see step body; F0 filed as
+  `bug-rebuild-dir-album-cache`, remaining findings filed as
+  `bug-snapshot-unknown-500`, `bug-spa-fallback-missing-param`,
+  `bug-create-dir-album-eexist`, `spec-reconciliation-4xx`,
+  `schemathesis-campaign-config`).
