@@ -1777,7 +1777,7 @@ fn load_scenario(dir: &Path, subdir: &str, name: &str) -> Value {
     let path = dir.join(format!("tests/scenarios/{subdir}/{name}.yaml"));
     let yaml_str =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-    serde_yaml::from_str(&yaml_str).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+    serde_saphyr::from_str(&yaml_str).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
 }
 
 pub fn run_backend_scenario(name: &str) {
