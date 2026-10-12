@@ -1,5 +1,5 @@
 [package]
-name = "dylint-lints"
+name = "auth3_no_forward_denial"
 version = "0.1.0"
 edition = "2021"
 

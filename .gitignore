@@ -20,7 +20,7 @@ frontend/*.tsbuildinfo
 
 # Standalone nightly-pinned lint workspace (not part of the main build;
 # kept out of `cargo check --workspace` by design, see utils/dylint-lints)
-utils/dylint-lints/target/
+utils/dylint-lints/*/target/
 
 # `just run`'s dev sandbox (data dir + test galleries, see docs/config.md)
 /sandbox/
