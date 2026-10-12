@@ -175,6 +175,24 @@ dylint_version := "6.1.0"
 install-dylint:
     ./scripts/install-dylint.sh "{{ dylint_version }}"
 
+# Pinned Schemathesis release for API fuzzing (run via uvx — prefetch into
+# the uv cache is the install step; uv's registry verification is the
+# integrity mechanism, there is no sha256 to pin).
+schemathesis_version := "4.30.1"
+
+# Prefetch pinned Schemathesis into the uv cache (idempotent)
+[group('utils')]
+install-schemathesis:
+    ./scripts/install-schemathesis.sh "{{ schemathesis_version }}"
+
+# Run Schemathesis against a running backend (advisory, not part of `check`).
+# The target must be up and seeded; harness pieces (config, hooks, phase and
+# check selection) pass through as extra args. Campaign configuration is a
+# separate task — see `.plan/api-assurance.md` step 4.
+[group('utils')]
+schemathesis-run *args:
+    ./scripts/schemathesis-run.sh "{{ schemathesis_version }}" backend/openapi.json http://localhost:5673 {{ args }}
+
 # Pinned oasdiff release for the breaking-change gate below.
 # Upstream publishes checksums at
 # https://github.com/oasdiff/oasdiff/releases/download/v<version>/checksums.txt
@@ -303,7 +321,7 @@ install-exiftool:
 
 # Install dev tools
 [group('global')]
-install-dev: install-plan install-exiftool install-oasdiff install-dylint
+install-dev: install-plan install-exiftool install-oasdiff install-dylint install-schemathesis
     cargo install cargo-deny
     npm ci --prefix frontend
 
