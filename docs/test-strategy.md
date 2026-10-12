@@ -186,6 +186,14 @@ the same workflows.
 
 ### Tooling caveats
 
+- **`PICASU_PBKDF_ITERATIONS`**: test-only PBKDF effort override
+  (wired into `just backend-test` and the e2e backend launcher at a
+  very low count; unit tests default to it via `cfg(test)` even
+  without the env var). PBKDF itself is never bypassed;
+  absent/unparseable falls back to the 600k production default, and
+  the override is env-only so it cannot arrive via config. Plain
+  `cargo test` pays full KDF cost only in integration tests, which
+  link the lib without `cfg(test)`.
 - **clippy `unwrap_used`**: enforced under `-D warnings` for the default
   targets (lib, bin, build script). Precommit/CI clippy does not compile
   test targets, so test-code call sites remain ungated — see
