@@ -240,6 +240,16 @@ read-only completeness); background in `docs/briefs/dylint.md`.
 - Each lint: GREEN/RED verified, README catalog entry, advisory-only
   (no gating change). P2/AUTH-3 follow-up in step 2 closes when the
   AUTH-3 lint lands.
+- **Decode agreement (AUTH-1/F1 ratchet):** each guard decodes exactly
+  the claims type the model assigns it (verified by hand: user guards
+  → `Claims`, hash guards → `ClaimsHash`, timestamp guards →
+  `ClaimsTimestamp`). Directly decidable, GREEN on day one — pins the
+  F1 incident class.
+- **Claims consumption (F3, queued after):** 23 handlers do
+  `let _ = auth?` — rejection propagated but claims never read.
+  Extends AUTH-2's use analysis with the target-source question
+  (claims-derived target vs body/query-derived on a share-guarded
+  write); triage may yield genuine F3s.
 
 ## Progress
 
