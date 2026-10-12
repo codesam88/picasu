@@ -1,0 +1,10 @@
+warning: `Outcome::Forward` in a `FromRequest` guard impl: denial must be `Outcome::Error`, `Forward` only selects the next ranked route
+  --> $DIR/fail_forward.rs:31:20
+   |
+LL |             return request::Outcome::Forward(401);
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(auth3_no_forward_denial)]` on by default
+
+warning: 1 warning emitted
+

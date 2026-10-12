@@ -1,0 +1,10 @@
+warning: `GuardAuth` decodes `ClaimsHash` but the model assigns `Claims`
+  --> $DIR/fail_auth_wrong_claims.rs:21:35
+   |
+LL |         let _claims: ClaimsHash = decode_typed(token).unwrap();
+   |                                   ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(decode_agreement)]` on by default
+
+warning: 1 warning emitted
+
