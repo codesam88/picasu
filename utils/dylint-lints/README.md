@@ -8,10 +8,11 @@ disposition per rule is recorded in `.plan/api-assurance.md`.
 
 ## Lint catalog
 
-| Lint                             | Folder                                                 | One-line                                                                                              |
-| -------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| `AUTH2_GUARD_PROPAGATION` (Warn) | [`auth2_guard_propagation/`](auth2_guard_propagation/) | Every `GuardResult<T>` request-guard binding must be propagated with `?` or otherwise handled.        |
-| `AUTH3_NO_FORWARD_DENIAL` (Warn) | [`auth3_no_forward_denial/`](auth3_no_forward_denial/) | No `Outcome::Forward` in a `FromRequest` guard impl — denial is `Outcome::Error`, not a fall-through. |
+| Lint                             | Folder                                                 | One-line                                                                                                                                                                                                               |
+| -------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH2_GUARD_PROPAGATION` (Warn) | [`auth2_guard_propagation/`](auth2_guard_propagation/) | Every `GuardResult<T>` request-guard binding must be propagated with `?` or otherwise handled.                                                                                                                         |
+| `AUTH3_NO_FORWARD_DENIAL` (Warn) | [`auth3_no_forward_denial/`](auth3_no_forward_denial/) | No `Outcome::Forward` in a `FromRequest` guard impl — denial is `Outcome::Error`, not a fall-through.                                                                                                                  |
+| `DECODE_AGREEMENT` (Warn)        | [`decode_agreement/`](decode_agreement/)               | Each `FromRequest` guard decodes exactly its model-assigned claims type (`GuardAuth`/`GuardUser`→`Claims`, `GuardHash`/`GuardHashOriginal`→`ClaimsHash`, `TimestampGuardModified`/`GuardTimestamp`→`ClaimsTimestamp`). |
 
 Each folder is a standalone lint crate (mirroring the upstream
 `examples/<category>/<lint-name>/` layout: one directory per lint, each
