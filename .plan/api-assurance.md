@@ -251,6 +251,31 @@ read-only completeness); background in `docs/briefs/dylint.md`.
   (claims-derived target vs body/query-derived on a share-guarded
   write); triage may yield genuine F3s.
 
+### 7. UI-test infrastructure for the lint crates
+
+Every lint here is verified by manual GREEN/RED transcripts, which
+evaporate at the next re-pin. Port the Clippy workflow: per-lint UI
+fixtures (pass + fail) with blessed expected output, wired to `cargo
+test` in each lint crate (Dylint ships `ui_test` on the
+`compiletest_rs` pattern for this). Open spike question first:
+whether `ui_test` cooperates with the manual multi-lint registration
+on the pinned nightly. Done when all three lints carry committed
+fixtures and the re-pin procedure is "run the suites", not
+"re-prove by hand".
+
+### 8. Expiry-confinement and decode-path ratchets
+
+Two GREEN-day-one lints, one worker: flag `VALIDATION_ALLOW_EXPIRED`
+inside any `FromRequest` impl (verified: the only production uses
+are the two renewal handlers — guards never accept expired tokens),
+and flag any JWT decode outside `decode_typed` (verified: zero raw
+decodes — the `typ` backstop holds iff every decode flows through
+it). Same enclosing-impl + call-site shape as AUTH-3. Span-origin
+ignoring (`from_expansion` first line of defense against generated
+code) rides along as a drive-by in the same change. Exception
+lists stay per-site `#[allow]` until a legitimate exception
+appears — no `dylint.toml` mechanism with zero entries.
+
 ## Progress
 
 - Step 1 done: `just openapi-breakcheck` (pinned oasdiff 1.33.0,
