@@ -19,10 +19,10 @@ backend-check:
     cd backend && cargo fmt --check
     cargo clippy -- -D warnings
 
-# cargo test
+# cargo test (test-only PBKDF effort: full KDF cost would dominate the suite)
 [group('backend')]
 backend-test: frontend-build-maybe
-    cd backend && cargo test
+    PICASU_PBKDF_ITERATIONS="1000" cd backend && cargo test
 
 # cargo test (release)
 [group('backend')]

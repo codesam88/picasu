@@ -9,6 +9,10 @@ export default defineConfig({
   testDir: './tests/playwright',
   fullyParallel: true,
   forbidOnly: isCI,
+  // Debug builds pay ~10s per PBKDF2 verify, so KDF-bound scenarios
+  // (notably UI login flows) need minutes, not seconds. Timeouts only
+  // bite on genuine failures.
+  timeout: 120_000,
   retries: isCI ? 2 : 0,
   workers: undefined,
   outputDir: path.join(TEST_DIR, 'artifacts'),
@@ -18,8 +22,11 @@ export default defineConfig({
     ['html', { outputFolder: path.join(TEST_DIR, 'html-report'), open: 'never' }]
   ],
 
+  // KDF-bound actions (notably UI login: ~10s PBKDF2 verify in debug
+  // builds) legitimately exceed fast defaults; timeouts only bite on
+  // genuine failures, so parity here costs passing runs nothing.
   expect: {
-    timeout: isCI ? 15_000 : 5_000
+    timeout: 15_000
   },
 
   use: {

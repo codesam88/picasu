@@ -9,8 +9,59 @@ use subtle::ConstantTimeEq;
 pub const DEFAULT_ITERATIONS: u32 = 600_000;
 /// Length of the per-password random salt in bytes.
 pub const SALT_LEN: usize = 16;
-/// Length of the derived key in bytes.
 pub const HASH_LEN: usize = 32;
+
+/// Environment variable overriding the PBKDF2 iteration count for new
+/// hashes (and the unknown-user dummy round). Test-only: set to a very
+/// low count (e.g. `1000`) to keep password hashing off the dev-loop
+/// critical path. PBKDF itself is never bypassed — only the effort
+/// factor changes. Env-only so it cannot arrive via a config file;
+/// absent or unparseable falls back below (fail secure, never fail
+/// weak). Production must never set this.
+pub const ITERATIONS_ENV_VAR: &str = "PICASU_PBKDF_ITERATIONS";
+
+/// Default when no explicit override applies: a very low count under
+/// `cfg(test)` (unit tests always run cheap), else [`DEFAULT_ITERATIONS`].
+/// Integration tests link the lib without `cfg(test)`, so they follow
+/// the production default unless the env var is set (as `just
+/// backend-test` does).
+#[cfg(test)]
+const TEST_ITERATIONS: u32 = 1_000;
+
+/// Parse an iteration override: positive integers only, clamped to a
+/// minimum of 1; anything else (including absent) is `None` for default.
+fn parse_iterations_override(var: Option<&str>) -> Option<u32> {
+    var.and_then(|s| s.trim().parse::<u32>().ok())
+        .filter(|&n| n > 0)
+}
+
+/// Iteration count for new password hashes: the explicit env override
+/// when set, else the test default under `cfg(test)`, else
+/// [`DEFAULT_ITERATIONS`]. Logs once when the env override is active so
+/// a production process running weakened hashing is unmistakable.
+pub(crate) fn password_iterations() -> u32 {
+    match parse_iterations_override(std::env::var(ITERATIONS_ENV_VAR).ok().as_deref()) {
+        Some(n) => {
+            static WARN_ONCE: std::sync::Once = std::sync::Once::new();
+            WARN_ONCE.call_once(|| {
+                log::warn!(
+                    "{ITERATIONS_ENV_VAR}={n}: weakened password hashing for tests — never set in production"
+                );
+            });
+            n
+        }
+        None => {
+            #[cfg(test)]
+            {
+                TEST_ITERATIONS
+            }
+            #[cfg(not(test))]
+            {
+                DEFAULT_ITERATIONS
+            }
+        }
+    }
+}
 
 /// A salted password hash. Salt and hash serialize as base64 strings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,11 +83,12 @@ pub fn hash_password(password: &str) -> PasswordHash {
     SysRng
         .try_fill_bytes(&mut salt)
         .expect("system RNG failure while generating password salt");
-    let hash = derive(password, &salt, DEFAULT_ITERATIONS);
+    let iterations = password_iterations();
+    let hash = derive(password, &salt, iterations);
     PasswordHash {
         salt,
         hash,
-        iterations: DEFAULT_ITERATIONS,
+        iterations,
     }
 }
 
@@ -191,6 +243,18 @@ base64_field!(base64_hash, super::HASH_LEN);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn iteration_override_parsing() {
+        assert_eq!(parse_iterations_override(None), None);
+        assert_eq!(parse_iterations_override(Some("1000")), Some(1000));
+        assert_eq!(parse_iterations_override(Some("  2048  ")), Some(2048));
+        // Zero, negative, non-numeric, and empty all fall back to default.
+        assert_eq!(parse_iterations_override(Some("0")), None);
+        assert_eq!(parse_iterations_override(Some("-5")), None);
+        assert_eq!(parse_iterations_override(Some("fast")), None);
+        assert_eq!(parse_iterations_override(Some("")), None);
+    }
 
     #[test]
     fn hash_verify_roundtrip() {
