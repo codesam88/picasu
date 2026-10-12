@@ -78,7 +78,7 @@ pub(crate) fn set_password_sync(
         }
     }
     if !caller_admin {
-        let presented = old_password.unwrap_or("").trim();
+        let presented = old_password.unwrap_or_default().trim();
         let path = users::passwd_file_path();
         let store = crate::auth::password::PasswdFile::load(&path)
             .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
