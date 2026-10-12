@@ -8,7 +8,7 @@
 //! is silently dropped, so a scenario full of them passes. Validating the files
 //! is what turns the schema from prose into a check.
 //!
-//! The corpus is validated as data (`serde_yaml` → `serde_json::Value` → the
+//! The corpus is validated as data (`serde_saphyr` → `serde_json::Value` → the
 //! validator), not executed, so this is a static check and costs no backend
 //! process. It is a *lower* bound on the interpreter's acceptance, not an
 //! equality: a form the schema allows and the interpreter ignores still passes
@@ -144,7 +144,7 @@ fn every_scenario_validates_against_the_schema() {
     for file in scenario_files() {
         let text = std::fs::read_to_string(&file)
             .unwrap_or_else(|e| panic!("read {}: {e}", file.display()));
-        let document: Value = match serde_yaml::from_str(&text) {
+        let document: Value = match serde_saphyr::from_str(&text) {
             Ok(document) => document,
             Err(e) => {
                 failures.push(format!("{}: not valid YAML: {e}", file.display()));

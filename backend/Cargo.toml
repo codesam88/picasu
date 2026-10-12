@@ -75,7 +75,7 @@ subtle = "2.6.1"
 
 [dev-dependencies]
 tempfile = "3"
-serde_yaml = "0.9"
+serde-saphyr = "0.0"
 # Validates tests/scenarios/**.yaml against tests/schema.json. `default-features`
 # is off on purpose: the schema only ever uses local `#/definitions/…` JSON
 # pointers, so the crate's remote/file resolvers (and the reqwest + rustls they
