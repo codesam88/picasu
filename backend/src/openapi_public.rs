@@ -61,13 +61,43 @@ pub fn strip_test_only_endpoints(spec: &mut serde_json::Value) {
     }
 }
 
+/// Rebuild every object in the document so its entries sit in sorted key
+/// order, making the artifact's ordering explicit in this module instead of
+/// relying on `serde_json::Map` internals (`BTreeMap` today, insertion order
+/// if the `preserve_order` feature ever gets enabled workspace-wide).
+///
+/// Under the current `BTreeMap` backend the rebuild is a no-op for order; the
+/// recursion only pays off under `preserve_order`, where it keeps the output
+/// byte-stable. Arrays are traversed but keep their order: JSON arrays are
+/// ordered by definition and reordering them would change the API contract.
+fn sort_object_keys(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut entries: Vec<(String, serde_json::Value)> =
+                std::mem::take(map).into_iter().collect();
+            entries.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+            for (key, mut child) in entries {
+                sort_object_keys(&mut child);
+                map.insert(key, child);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                sort_object_keys(item);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// The spec for the committed reference and `--dump-openapi`: the generated
 /// document minus test-only probes, pretty-printed so the checked-in artifact
 /// diffs line by line.
 ///
-/// Object keys are emitted in sorted order because `serde_json::Map` is
-/// `BTreeMap`-backed unless the `preserve_order` feature is enabled; the
-/// `committed_artifact_is_sorted` test fails if that ever changes.
+/// Object keys are emitted in sorted order because [`sort_object_keys`]
+/// explicitly re-sorts every object before serialization — not as a side
+/// effect of `serde_json::Map`'s backing store. The
+/// `committed_artifact_is_sorted` test guards the result on the output text.
 ///
 /// # Panics
 /// Panics if the generated document is not valid JSON.
@@ -76,6 +106,7 @@ pub fn public_json() -> String {
     let mut spec: serde_json::Value =
         serde_json::from_str(&generate_json()).expect("generated OpenAPI must be valid JSON");
     strip_test_only_endpoints(&mut spec);
+    sort_object_keys(&mut spec);
     let mut json =
         serde_json::to_string_pretty(&spec).expect("public OpenAPI serialization failed");
     json.push('\n');
@@ -154,7 +185,8 @@ mod tests {
         // `just openapi-check` diffs the committed artifact against freshly
         // generated output. If object key order stopped being sorted, every run
         // would produce a spurious diff, so the ordering is asserted instead of
-        // assumed.
+        // assumed. With the explicit `sort_object_keys` step in `public_json`,
+        // this guards that code path rather than a `serde_json` feature flag.
         fn assert_sorted(value: &serde_json::Value, path: &str) {
             if let Some(map) = value.as_object() {
                 let keys: Vec<&String> = map.keys().collect();
