@@ -227,3 +227,8 @@ impl<'tcx> LateLintPass<'tcx> for Auth2GuardPropagation {
         }
     }
 }
+
+#[test]
+fn ui() {
+    dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui");
+}

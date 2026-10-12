@@ -9,4 +9,7 @@ crate-type = ["cdylib"]
 [dependencies]
 dylint_linting = "6.1.0"
 
+[dev-dependencies]
+dylint_testing = "6.1.0"
+
 [workspace]

@@ -58,7 +58,15 @@ lint crate directories.
    (expect zero findings), then apply a one-line violation, re-run (exactly
    that site must warn), then `git checkout --` the file and confirm
    `git status` is clean — never leave the violation in the tree.
-3. Document the lint in its folder README (what it flags, why it matters
+3. Pin the behavior with UI fixtures: add `ui/pass_*.rs` (silent,
+   empty `.stderr`) and `ui/fail_*.rs` (warns, blessed `.stderr`) beside
+   the crate — self-contained stubs mirroring the resolved-type shapes the
+   lint matches (see any existing `ui/` folder) — plus `dylint_testing`
+   as a dev-dependency and a `#[test] fn ui()` calling
+   `dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui")`. Write the
+   `.stderr` from the `normalized stderr` in a failing `cargo test` run
+   (run under the pinned nightly); `cargo test` must be green.
+4. Document the lint in its folder README (what it flags, why it matters
    with the AUTH property and failure mode, violating/fixed example pair,
    known limits) and, if it moves a rule out of `openapi-sanity`, update
    the disposition in `.plan/api-assurance.md`.

@@ -91,4 +91,4 @@ Fixed code (silent):
 Standalone Dylint library crate: `src/lib.rs` holds the whole lint.
 It is deliberately _not_ a member of the main workspace and builds under
 the pinned nightly from the parent `utils/dylint-lints/rust-toolchain.toml`.
-Run via `just dylint-check` (see `utils/dylint-lints/README.md`).
+Run via `just dylint-check` (see `utils/dylint-lints/README.md`). UI fixtures in `ui/` pin behavior (`cargo test` under the pinned nightly runs them via `dylint_testing`).
