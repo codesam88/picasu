@@ -7,130 +7,114 @@ project-specific invariant needs a custom check. That split — free
 oracle vs handwritten oracle — is the load-bearing idea for scoping
 any Schemathesis work.
 
-## Mental model
+## Baseline (the obvious third)
 
-Three layers, each doing one job:
+Hypothesis strategies drive values from the schema through four phases
+(examples, coverage, fuzzing, stateful); failures shrink to minimal
+reproducers with `curl` output. Stateful testing chains producers to
+consumers via inferred, `Location`-learned, or manual OpenAPI links
+(applied probabilistically — random IDs next to real ones are by
+design) against disposable environments only. Extension is hooks
+(`filter_`/`map_`/`flatmap_` over request parts, `before_call` as the
+universal hatch) plus custom checks (function per-response, class with
+`after_run` for run-wide invariants), loaded as a module or
+`conftest.py` with a TOML config. Auth layers run from static headers
+through OpenAPI-aware schemes to declarative token endpoints (body,
+header, or cookie extraction with refresh) and Python auth classes;
+explicit configuration disables auth classes, and the runner
+deliberately drops credentials on some requests to verify rejection.
 
-1. **Hypothesis** — primitive strategies, shrinking a failure to its
-   minimal reproducer, and an example database across runs.
-2. **Schema-strategy engine** — translates schema fragments into
-   Hypothesis strategies (JSON Schema engine for OpenAPI). This is the
-   per-operation value source every phase draws from.
-3. **Schemathesis pipeline** — four test phases, HTTP transport,
-   response checks, and a feedback loop that learns from server
-   responses (real IDs observed get reused; effort shifts away from
-   operations producing no signal).
+## The adaptive loop (what a single run hides)
 
-## Phases
+The distinguishing behavior is in-run learning, and misreading it
+produces the classic pilot confusions:
 
-Each phase adds its own cases per operation; an operation's total
-traffic is the sum across phases.
+- **Error-feedback constraint learning.** Rejected positive-mode 4xx
+  responses with recognized framework envelopes become validation
+  rules applied to the operation's schema from the next checkpoint —
+  the tool literally rewrites its generators mid-run. The trade-off is
+  sharp: learned constraints push traffic toward business logic but
+  hide bugs behind validation, which only negative mode still probes.
+  A run that "goes quiet" may be learning, not passing.
+- **Resource pool.** Successful responses populate per-resource pools
+  that all phases draw from (producers ordered before consumers), so
+  success paths get exercised without any link. The stateful phase
+  reads the same pool for parameters its links don't fill.
+- **Per-run cache.** Rejected requests, inferred auth requirements,
+  and 405s persist across runs and replay at the next start — runs
+  are not independent, and "from scratch" needs explicit cache
+  clearing.
+- **Auth inference and budget shifting.** 401/403 on public operations
+  infers requirements and retries with configured credentials;
+  signal-less operations get deprioritized so budget moves. Our pilot
+  saw all three fire.
 
-- **Examples** — sends the schema's own `example`/`examples` values.
-  Positive-only; the only phase that trusts the schema author.
-- **Coverage** — boundary values per schema constraint (length 2..10
-  draws 1, 2, 3, 9, 10, 11). Deterministic count from the constraints.
-- **Fuzzing** — random valid and invalid data from the constraints.
-  This is where deliberately-wrong inputs come from.
-- **Stateful** — chains operations with real response data (see below).
-  Runs only when at least one connection between operations is known.
+## Stateful testing, properly understood
 
-Generation modes (positive / negative / all) control whether cases
-should be accepted or rejected by the API; non-example phases default
-to both, because rejected-input handling is where most server bugs
-live. Expect 4xx noise in every run — it is the tool working, not a
-failure. Case volume per operation is configurable; shrinking means a
-single finding costs extra requests while it minimizes.
+Schemathesis links are one instance of Hypothesis's rule-based
+stateful testing: named bundles carry values between rules, programs
+shrink to minimal demonstrators, preconditions (not assumptions)
+select applicable rules, invariants run after every step. Knowing the
+ancestor explains the descendant's edges — e.g. why link-less
+parameters still sometimes hit real IDs (pool, not links), and why
+chains need disposable state. The deeper ancestor is RESTler (ICSE'19,
+the first stateful REST fuzzer): static producer-consumer inference
+from the spec plus dynamic feedback learning refused sequences, with
+feedback alone cutting 40x noise dramatically. RESTler's lesson that
+transfers: _both_ inference and feedback are needed; either alone
+underperforms. Schemathesis's Python-native strategies and hooks are
+the reason to prefer it; RESTler's grammar-based config and
+security-bug track record on cloud services are the reason it stays
+the fallback when auth customization proves insufficient.
 
-## Stateful testing: links
+## Extension sharp edges
 
-Stateful testing chains producers to consumers (create → read →
-update → delete) using real IDs. Connections come from three sources
-that combine additively:
+- **Phase-caveat matrix.** Component hooks (`filter_*`/`map_*`) never
+  run in coverage and never alter schema-authored example values;
+  only `before_call` and `[parameters]` overrides apply everywhere.
+  A hook that "does nothing" is usually firing in a phase that
+  ignores it — our pilot's share-header wiring had to be verified
+  per phase for exactly this reason.
+- **Check accumulation must be idempotent.** Shrinking and replay
+  re-invoke per-response hooks; prefer sets over counters. Class
+  checks see partial traffic under parallel execution (`after_run`
+  - xdist is broken by design).
+- **Check kwargs come from config.** `__init__` parameters matching
+  `[checks.<Name>]` keys are forwarded automatically — per-project
+  tuning without code changes; checks also disable individually.
+- **Negative traffic is signal, not failure.** Deliberately-wrong
+  inputs are the default in non-example phases; 4xx noise means the
+  fuzzer works. Triage is bug / harness artifact / spec imprecision —
+  and undocumented framework statuses (our 422s) drown real findings
+  until the contract is reconciled.
 
-1. **Automatic schema analysis** — infers resource production and
-   consumption from response shapes and parameter names (path params,
-   nested resources, pagination envelopes, composed schemas).
-2. **Location-header learning** — observes `Location` headers during
-   earlier phases and links them into operations. Only happens in CLI
-   runs where the earlier phases actually execute.
-3. **Manual OpenAPI links** — explicit `links` declarations for
-   relationships analysis misses or non-path dependencies. Extended
-   beyond the standard: regex extraction from headers/parameters and
-   nested expressions in request bodies.
+## Limits that scope the work
 
-Two behaviors to internalize: links apply _probabilistically_ — random
-IDs appear next to real ones by design, so a 404 inside a chain does
-not mean a link is broken; and stateful runs _mutate data_, so they
-only ever target disposable environments.
+The built-in oracle ends at 5xx and schema conformance. Absence of
+effect, cross-operation data isolation, token lifecycles, and races
+are custom checks or handwritten tests — and the token choreography
+behind them is not inferable from schema alone, so the harness
+staging identities and fixtures is the irreducible handwritten part.
+Cookie-session logins defeat auto-detection entirely. Stateful runs
+need budgets an order of magnitude past what reaches a handful of
+operations, and accepted findings need a baseline file before any
+gate can fail a build.
 
-## Extension model: hooks and checks
+## Pointers
 
-Customization has two channels, loaded as a Python module (CLI) or
-`conftest.py` (pytest), plus a TOML config file:
-
-- **Hooks** reshape generation: `filter_<part>` drops cases,
-  `map_<part>` rewrites values, `flatmap_<part>` re-derives a value
-  from an already-drawn one via a dependent strategy. Parts are query,
-  headers, path parameters, cookies, body, or the whole case; hooks can
-  be scoped to operations by path, method, name, tag, or ID. Two
-  caveats that bite: the coverage phase bypasses component hooks
-  entirely, and the examples phase never lets hooks alter
-  schema-authored values. `before_call` is the escape hatch that runs
-  on every request in every phase.
-- **Custom checks** judge responses. Function checks assert one
-  per-response invariant and raise on violation. Class checks
-  accumulate across responses for run-wide invariants, with an
-  `after_run` hook — but accumulation must be idempotent (shrinking
-  and replay re-invoke per-response hooks) and `after_run` sees only
-  partial traffic under parallel execution.
-- **Config file** holds what shouldn't be code: parameter overrides
-  (pin a value in _every_ phase, hooks can't), per-check tuning and
-  enabling, per-operation header/auth scoping.
-
-## Authentication model
-
-Credentials come in layers; knowing which layer a target needs avoids
-the common "everything 401s" run:
-
-- **Auto sign-up/login** — detects a register+login pair returning a
-  bearer token or API key and exercises it unconfigured. Narrow: only
-  bearer/key schemes, and **cookie-session logins are not detected**.
-  Anything else needs explicit configuration; unauthenticated
-  operations are listed under run warnings rather than failing.
-- **Static credentials** — fixed headers or basic auth, globally or
-  per operation. Simple, no refresh.
-- **OpenAPI-aware schemes** — values bound to the schema's named
-  `securitySchemes` (location and name come from the spec, only the
-  secret is supplied).
-- **Declarative dynamic auth** — a token-fetch endpoint plus a
-  selector (JSON Pointer into the body, a header name, or a cookie
-  name); the token is cached and periodically re-fetched. Covers
-  form-encoded logins and cookie sessions declaratively.
-- **Python auth classes** — `get` fetches, `set` attaches; supports
-  refresh schedules, per-scope token caching, and selective
-  application to operation subsets. The escape hatch when nothing
-  declarative fits.
-
-Precedence matters: any explicit configuration disables auth classes,
-and CLI flags override the config file. One deliberate behavior to
-know: the runner _removes or alters_ credentials on some requests to
-verify the API rejects unauthenticated calls — a 401 probe inside a
-run is the tool testing your auth, not losing it.
-
-## Oracle limits
-
-Built-in checks end at server errors and schema conformance. Absence
-of effect ("refused write changed nothing"), cross-operation data
-isolation ("share-A rows never reference album B"), token-lifecycle
-rules, and anything concurrent are custom checks or handwritten tests
-— the token choreography behind them is not inferable from schema
-alone, so the harness that stages identities and fixtures is the
-irreducible handwritten part of any engagement.
-
-## Sources
-
-Schemathesis readthedocs (concepts: data generation, stateful
-testing; how-tos: authentication, extending, stateful runs), surveyed
-for the api-assurance plan. Re-verify against current docs when
-starting new work; record the outcome in the using plan.
+- Schemathesis _Adaptive testing_ explanation — read for the learning
+  loop, resource pool, cache, and the narrowing trade-off:
+  <https://schemathesis.readthedocs.io/en/stable/explanations/adaptive-testing/>
+- Schemathesis _Stateful testing_ explanation — read for link sources,
+  extensions (regex, nested bodies), and probabilistic application:
+  <https://schemathesis.readthedocs.io/en/stable/explanations/stateful/>
+- Hypothesis _Stateful tests_ — read for the bundles model behind the
+  resource pool, plus preconditions/invariants:
+  <https://hypothesis.readthedocs.io/en/latest/stateful.html>
+- Atlidakis et al., _RESTler: Stateful REST API Fuzzing_ (ICSE'19) —
+  read for dependency inference + dynamic feedback and when RESTler
+  instead: <https://www.microsoft.com/en-us/research/publication/restler-stateful-rest-api-fuzzing/>
+- Schemathesis auth + extending guides — read when wiring credentials
+  or custom checks (precedence, refresh, scoping):
+  <https://schemathesis.readthedocs.io/en/stable/guides/auth/>
+  <https://schemathesis.readthedocs.io/en/stable/guides/extending/>
