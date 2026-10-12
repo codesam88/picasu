@@ -1,6 +1,7 @@
 # Picasu dev tasks
 # Install just: cargo install just
 # Activate pre-commit hook: git config core.hooksPath .githooks
+# Recipe comments are single-line summaries; keep `just --list` within 80 columns.
 
 [private]
 help:
@@ -113,7 +114,7 @@ utils-test:
 
 # ── Tooling ─────────────────────────────────────────────────────────────────────
 
-# Generate the checked-in public OpenAPI artifact from utoipa annotations
+# Regenerate the checked-in OpenAPI artifact
 [group('utils')]
 openapi-gen:
     RUST_MIN_STACK=16777216 cargo run --package picasu -- --dump-openapi > backend/openapi.json
@@ -123,16 +124,12 @@ openapi-gen:
 [group('utils')]
 openapi-check: openapi-sanity openapi-json-match openapi-breakcheck openapi-lint openapi-routes-match
 
-# Run the dylint authorization lints against the backend.
-# Currently advisory (not part of `check`): enforced rules stay in
-# `openapi-sanity`; dylint covers what needs compiler type information.
-# Runs `cargo dylint` with the workspace lint libraries declared in the root
-# Cargo.toml; the check toolchain follows the lint library's nightly pin.
+# Run dylint auth lints on the backend (advisory)
 [group('utils')]
 dylint-check:
     cargo dylint --all -- -p picasu
 
-# Lint the committed OpenAPI document (errors fail, warnings are baseline noise).
+# Lint the OpenAPI document (errors fail)
 [group('utils')]
 openapi-lint:
     cd frontend && npx --no-install spectral lint --ruleset ../.spectral.yaml ../backend/openapi.json
@@ -165,30 +162,23 @@ openapi-json-match:
     fi
     echo "openapi.json matches the generated spec"
 
-# Pinned cargo-dylint release (matches the `dylint_linting` version the lint
-# crate in utils/dylint-lints links; crates.io verification + `--locked`
-# is the integrity mechanism, there is no sha256 to pin).
+# Pinned cargo-dylint release (matches the lint crate's dylint_linting; no sha256 — crates.io verification).
 dylint_version := "6.1.0"
 
-# Install pinned cargo-dylint (idempotent, skips when already installed)
+# Install pinned cargo-dylint (idempotent)
 [group('utils')]
 install-dylint:
     ./scripts/install-dylint.sh "{{ dylint_version }}"
 
-# Pinned Schemathesis release for API fuzzing (run via uvx — prefetch into
-# the uv cache is the install step; uv's registry verification is the
-# integrity mechanism, there is no sha256 to pin).
+# Pinned Schemathesis release for API fuzzing (via uvx; no sha256 — uv registry verification).
 schemathesis_version := "4.30.1"
 
-# Prefetch pinned Schemathesis into the uv cache (idempotent)
+# Prefetch pinned Schemathesis (idempotent)
 [group('utils')]
 install-schemathesis:
     ./scripts/install-schemathesis.sh "{{ schemathesis_version }}"
 
-# Run Schemathesis against a running backend (advisory, not part of `check`).
-# The target must be up and seeded; harness pieces (config, hooks, phase and
-# check selection) pass through as extra args. Campaign configuration is a
-# separate task — see `.plan/api-assurance.md` step 4.
+# Fuzz a running seeded backend (advisory)
 [group('utils')]
 schemathesis-run *args:
     ./scripts/schemathesis-run.sh "{{ schemathesis_version }}" backend/openapi.json http://localhost:5673 {{ args }}
@@ -199,22 +189,12 @@ schemathesis-run *args:
 oasdiff_version := "1.33.0"
 oasdiff_sha256 := "43a4e328e2d13ba1552d760aa68d2485c75c5621f309f6ff64ae895188345247"
 
-# Install pinned oasdiff into ~/.local (idempotent, no root)
+# Install pinned oasdiff (idempotent)
 [group('utils')]
 install-oasdiff:
     ./scripts/install-oasdiff.sh "{{ oasdiff_version }}" "{{ oasdiff_sha256 }}"
 
-# Fail on breaking OpenAPI changes vs the base branch's committed spec.
-#
-# Compares a freshly generated spec (not the committed file — drift between
-# the two is openapi-json-match's job) against the base branch's committed
-# backend/openapi.json. Breaking findings fail the recipe. Entries in
-# .oasdiff-ignore.txt are explicitly accepted breaks, not failures.
-#
-# Baseline resolution: $OASDIFF_BASE_BRANCH, else $GITHUB_BASE_REF (PRs),
-# else `main`. CI checks out with full history so origin/<branch> resolves
-# locally; on shallow clones the recipe fetches the base itself (its only
-# network use) instead of touching the shared checkout config.
+# Fail on breaking OpenAPI changes
 [group('utils')]
 openapi-breakcheck:
     OASDIFF_SHA256="{{ oasdiff_sha256 }}" ./scripts/openapi-breakcheck.sh "{{ justfile_directory() }}" "{{ oasdiff_version }}"
@@ -274,7 +254,7 @@ docs-check:
 
 # ── Global ─────────────────────────────────────────────────────────────────────
 
-# Format everything (backend + utils + frontend + docs + .plan)
+# Format everything
 [group('global')]
 format: backend-format utils-format frontend-format docs-format
 
@@ -314,7 +294,7 @@ install-plan:
 exiftool_version := "13.59"
 exiftool_sha256 := "668ea3acececb7235fbd0f4900e72d5f12c9b07e5c778fd36cb1e9b5828fd65a"
 
-# Install ExifTool into ~/.local (idempotent, no root)
+# Install pinned ExifTool (idempotent)
 [group('global')]
 install-exiftool:
     ./scripts/install-exiftool.sh "{{ exiftool_version }}" "{{ exiftool_sha256 }}"
@@ -329,7 +309,7 @@ install-dev: install-plan install-exiftool install-oasdiff install-dylint instal
 [group('global')]
 build: frontend-build backend-build
 
-# Build frontend then backend with embedded assets (release)
+# Release build with embedded assets
 [group('global')]
 build-release: frontend-build backend-build-release
 
@@ -338,7 +318,7 @@ build-release: frontend-build backend-build-release
 test-release: backend-test-release build-release
     PICASU_BINARY=target/release/picasu just frontend-playwright
 
-# Remove transient generated state (test runs, docs, sandbox)
+# Remove transient generated state
 [group('global')]
 clean:
     rm -rf .testruns/*
