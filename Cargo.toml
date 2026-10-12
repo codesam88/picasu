@@ -12,7 +12,7 @@ resolver = "2"
 paste = { path = "utils/paste-shim" }
 
 [workspace.metadata.dylint]
-libraries = [{ path = "utils/dylint-lints" }]
+libraries = [{ path = "utils/dylint-lints/*" }]
 
 [profile.lto]
 inherits = "release"
