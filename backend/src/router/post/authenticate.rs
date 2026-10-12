@@ -3,9 +3,7 @@ use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use tokio::task::spawn_blocking;
 
-use crate::auth::password::{
-    HASH_LEN, PasswdFile, PasswordHash, SALT_LEN, password_iterations, verify_password,
-};
+use crate::auth::password::{PasswdFile, password_iterations, verify_password};
 use crate::auth::users::{self, validate_user_id};
 use crate::error::ResultExt;
 use crate::model::config::APP_CONFIG;
@@ -31,21 +29,23 @@ pub enum AuthenticateRequest {
     Login(LoginRequest),
 }
 
-/// Fixed dummy hash for the unknown-user path: all-zero salt with the
-/// production iteration count, so an unknown user costs one PBKDF2 round
-/// like a wrong password and leaks no timing signal.
-fn dummy_hash() -> PasswordHash {
-    PasswordHash {
-        salt: [0u8; SALT_LEN],
-        hash: [0u8; HASH_LEN],
-        iterations: password_iterations(),
-    }
-}
-
-/// Run one PBKDF2 verification against the fixed dummy hash. Always false;
+/// Run one PBKDF verification against a throwaway hash. Always false;
 /// exposed for tests to assert the unknown-user path pays a KDF round.
+///
+/// Salt, expected hash, and password are freshly generated per call, so
+/// no fixed constant exists for readers or scanners to mistake for a
+/// credential. Unpredictability is not required (verification fails
+/// regardless); `rand::random` is used because it is already the
+/// crate's randomness source, not because the dummy needs strength.
 pub(crate) fn run_dummy_verify() -> bool {
-    verify_password("dummy-unknown-user-password", &dummy_hash())
+    verify_password(
+        &format!("{:x}-{:x}", rand::random::<u64>(), rand::random::<u64>()),
+        &crate::auth::password::PasswordHash {
+            salt: rand::random(),
+            hash: rand::random(),
+            iterations: password_iterations(),
+        },
+    )
 }
 
 /// Verify `password` for `user_id` against the user and password stores and
@@ -248,6 +248,7 @@ mod tests {
     use serde_json::json;
 
     use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
+    use crate::tests::fixtures::{test_password, test_password_padded};
 
     fn lock() -> std::sync::MutexGuard<'static, ()> {
         TEST_SERIAL_GUARD
@@ -290,12 +291,14 @@ mod tests {
     fn authenticate_login_mints_user_bound_token() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some("s3c-legacy"));
-        create_user_with_password("s3c-alice", true, "s3c-correct");
+        set_legacy_password(Some(&test_password("t-legacy")));
+        create_user_with_password("s3c-alice", true, &test_password("t-alice"));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!({ "userId": "s3c-alice", "password": "s3c-correct" }).to_string())
+            .body(
+                json!({ "userId": "s3c-alice", "password": test_password("t-alice") }).to_string(),
+            )
             .dispatch();
         assert_eq!(resp.status(), Status::Ok);
         let body = resp.into_string().expect("token body");
@@ -314,18 +317,20 @@ mod tests {
     fn authenticate_login_wrong_and_unknown_user_are_401() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some("s3c-legacy"));
-        create_user_with_password("s3c-bob", false, "s3c-correct");
+        set_legacy_password(Some(&test_password("t-legacy")));
+        create_user_with_password("s3c-bob", false, &test_password("t-bob"));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!({ "userId": "s3c-bob", "password": "wrong" }).to_string())
+            .body(json!({ "userId": "s3c-bob", "password": test_password("t-wrong") }).to_string())
             .dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!({ "userId": "s3c-ghost", "password": "anything" }).to_string())
+            .body(
+                json!({ "userId": "s3c-ghost", "password": test_password("t-ghost") }).to_string(),
+            )
             .dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
         set_legacy_password(None);
@@ -335,11 +340,11 @@ mod tests {
     fn legacy_string_migrates_to_admin_user() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some("s3d-legacy-secret"));
+        set_legacy_password(Some(&test_password("t-s3d-legacy")));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!("s3d-legacy-secret").to_string())
+            .body(json!(test_password("t-s3d-legacy")).to_string())
             .dispatch();
         assert_eq!(resp.status(), Status::Ok);
         let body = resp.into_string().expect("token body");
@@ -357,7 +362,7 @@ mod tests {
         let passwd =
             crate::auth::password::PasswdFile::load(&crate::auth::users::passwd_file_path())
                 .expect("load passwd");
-        assert!(passwd.verify("admin", "s3d-legacy-secret"));
+        assert!(passwd.verify("admin", &test_password("t-s3d-legacy")));
         let token = body.trim_matches('"').to_string();
         let resp = client
             .get("/get/index/status")
@@ -368,7 +373,7 @@ mod tests {
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!("s3d-legacy-secret").to_string())
+            .body(json!(test_password("t-s3d-legacy")).to_string())
             .dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
         set_legacy_password(None);
@@ -378,12 +383,12 @@ mod tests {
     fn legacy_string_rejected_once_store_non_empty() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some("s3d-legacy-secret"));
-        create_user_with_password("s3d-carol", true, "s3d-carol-pw");
+        set_legacy_password(Some(&test_password("t-s3d-legacy")));
+        create_user_with_password("s3d-carol", true, &test_password("t-carol"));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!("s3d-legacy-secret").to_string())
+            .body(json!(test_password("t-s3d-legacy")).to_string())
             .dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
         set_legacy_password(None);
@@ -393,13 +398,16 @@ mod tests {
     fn legacy_login_registers_claimed_id_as_admin() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some("s3e-legacy-secret"));
+        set_legacy_password(Some(&test_password("t-s3e-legacy")));
         // First login with the legacy password claims a new id: it is
         // registered as the first admin instead of hardcoded `admin`.
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!({ "userId": "s3e-alice", "password": "s3e-legacy-secret" }).to_string())
+            .body(
+                json!({ "userId": "s3e-alice", "password": test_password("t-s3e-legacy") })
+                    .to_string(),
+            )
             .dispatch();
         assert_eq!(resp.status(), Status::Ok);
         let body = resp.into_string().expect("token body");
@@ -417,7 +425,10 @@ mod tests {
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!({ "userId": "s3e-alice", "password": "s3e-legacy-secret" }).to_string())
+            .body(
+                json!({ "userId": "s3e-alice", "password": test_password("t-s3e-legacy") })
+                    .to_string(),
+            )
             .dispatch();
         assert_eq!(resp.status(), Status::Ok);
         set_legacy_password(None);
@@ -427,11 +438,11 @@ mod tests {
     fn legacy_login_wrong_password_creates_nothing() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some("s3e-legacy-secret"));
+        set_legacy_password(Some(&test_password("t-s3e-legacy")));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!({ "userId": "s3e-bob", "password": "wrong" }).to_string())
+            .body(json!({ "userId": "s3e-bob", "password": test_password("t-wrong") }).to_string())
             .dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
@@ -447,11 +458,11 @@ mod tests {
     fn legacy_login_invalid_id_is_400() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some("s3e-legacy-secret"));
+        set_legacy_password(Some(&test_password("t-s3e-legacy")));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!({ "userId": "   ", "password": "s3e-legacy-secret" }).to_string())
+            .body(json!({ "userId": "   ", "password": test_password("t-s3e-legacy") }).to_string())
             .dispatch();
         assert_eq!(resp.status(), Status::BadRequest);
         set_legacy_password(None);
@@ -461,12 +472,15 @@ mod tests {
     fn login_trims_padded_password() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some("s4-trim-legacy"));
-        create_user_with_password("s4-trim-user", false, "s4-secret");
+        set_legacy_password(Some(&test_password("t-trim-legacy")));
+        create_user_with_password("s4-trim-user", false, &test_password("t-trim"));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!({ "userId": "s4-trim-user", "password": "  s4-secret  " }).to_string())
+            .body(
+                json!({ "userId": "s4-trim-user", "password": test_password_padded("t-trim") })
+                    .to_string(),
+            )
             .dispatch();
         assert_eq!(resp.status(), Status::Ok);
         set_legacy_password(None);

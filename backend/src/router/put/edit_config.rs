@@ -206,6 +206,7 @@ mod tests {
     use serde_json::json;
 
     use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
+    use crate::tests::fixtures::test_password;
 
     fn lock() -> std::sync::MutexGuard<'static, ()> {
         TEST_SERIAL_GUARD
@@ -254,28 +255,28 @@ mod tests {
     fn legacy_admin_sets_own_password_without_old() {
         let _g = lock();
         let client = setup();
-        seed("s4e-root", true, Some("s4e-root-old"));
+        seed("s4e-root", true, Some(test_password("t-root-old").as_str()));
         let status = put_legacy(
             &client,
             cookie("s4e-root", true),
-            &json!({ "password": "s4e-root-new" }),
+            &json!({ "password": test_password("t-root-new") }),
         );
         assert_eq!(status, Status::Ok);
         let store =
             crate::auth::password::PasswdFile::load(&crate::auth::users::passwd_file_path())
                 .expect("load passwd");
-        assert!(store.verify("s4e-root", "s4e-root-new"));
+        assert!(store.verify("s4e-root", &test_password("t-root-new")));
     }
 
     #[test]
     fn legacy_self_service_with_correct_old_password() {
         let _g = lock();
         let client = setup();
-        seed("s4e-bob", false, Some("s4e-bob-old"));
+        seed("s4e-bob", false, Some(test_password("t-bob-old").as_str()));
         let status = put_legacy(
             &client,
             cookie("s4e-bob", false),
-            &json!({ "password": "s4e-bob-new", "oldPassword": "s4e-bob-old" }),
+            &json!({ "password": test_password("t-bob-new"), "oldPassword": test_password("t-bob-old") }),
         );
         assert_eq!(status, Status::Ok);
     }
@@ -284,11 +285,15 @@ mod tests {
     fn legacy_wrong_old_password_is_401() {
         let _g = lock();
         let client = setup();
-        seed("s4e-carol", false, Some("s4e-carol-old"));
+        seed(
+            "s4e-carol",
+            false,
+            Some(test_password("t-carol-old").as_str()),
+        );
         let status = put_legacy(
             &client,
             cookie("s4e-carol", false),
-            &json!({ "password": "s4e-carol-new", "oldPassword": "nope" }),
+            &json!({ "password": test_password("t-carol-new"), "oldPassword": test_password("t-nope") }),
         );
         assert_eq!(status, Status::Unauthorized);
     }

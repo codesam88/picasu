@@ -244,6 +244,7 @@ static VALIDATION_ALLOW_EXPIRED: LazyLock<Validation> = LazyLock::new(|| {
 mod tests {
 
     use super::{VALIDATION, VALIDATION_ALLOW_EXPIRED};
+    use crate::tests::fixtures::test_password;
     use jsonwebtoken::{Algorithm, Header};
 
     // RUSTSEC-2023-0071: rsa 0.9.x has a Marvin Attack timing side-channel.
@@ -360,7 +361,7 @@ mod tests {
     fn jwt_auth_empty_store_with_password_denies_without_cookie() {
         let _g = s3b_lock();
         let client = s3b_client();
-        s3b_set_legacy_password(Some("s3b-secret"));
+        s3b_set_legacy_password(Some(test_password("t-s3b-legacy").as_str()));
         let resp = client.get("/get/index/status").dispatch();
         assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
         s3b_set_legacy_password(None);
@@ -370,7 +371,7 @@ mod tests {
     fn jwt_auth_valid_admin_user_accepted() {
         let _g = s3b_lock();
         let client = s3b_client();
-        s3b_set_legacy_password(Some("s3b-secret"));
+        s3b_set_legacy_password(Some(test_password("t-s3b-legacy").as_str()));
         crate::auth::users::create_user("s3b-admin-user", true).expect("create user");
         let token = super::Claims::new_user("s3b-admin-user".to_string(), true).encode();
         let resp = client
@@ -385,7 +386,7 @@ mod tests {
     fn jwt_auth_demoted_user_rejected() {
         let _g = s3b_lock();
         let client = s3b_client();
-        s3b_set_legacy_password(Some("s3b-secret"));
+        s3b_set_legacy_password(Some(test_password("t-s3b-legacy").as_str()));
         crate::auth::users::create_user("s3b-demoted-user", true).expect("create user");
         let token = super::Claims::new_user("s3b-demoted-user".to_string(), true).encode();
         crate::auth::users::set_admin("s3b-demoted-user", false).expect("demote user");
@@ -401,7 +402,7 @@ mod tests {
     fn jwt_auth_unknown_and_non_admin_users_rejected() {
         let _g = s3b_lock();
         let client = s3b_client();
-        s3b_set_legacy_password(Some("s3b-secret"));
+        s3b_set_legacy_password(Some(test_password("t-s3b-legacy").as_str()));
         crate::auth::users::create_user("s3b-other-user", false).expect("create user");
         // Unknown user: store is non-empty but the id has no record.
         let ghost = super::Claims::new_user("s3b-ghost-user".to_string(), true).encode();
