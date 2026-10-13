@@ -339,6 +339,10 @@ run: build
     mkdir -p sandbox/images
     rm -rf sandbox/data
     cd backend && \
+        PICASU_BOOTSTRAP_ADMIN=true \
+        PICASU_ALLOW_REGISTRATION=true \
+        PICASU_TRIVIAL_PASSWORDS=true \
+        PICASU_PBKDF_ITERATIONS=100 \
         PICASU_CONFIG_HOME="{{justfile_directory()}}/sandbox/data" \
         PICASU_DATA_HOME="{{justfile_directory()}}/sandbox/data" \
         PICASU_IMAGE_HOME="{{justfile_directory()}}/sandbox/images" \
