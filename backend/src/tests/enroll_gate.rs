@@ -155,6 +155,47 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
     assert_eq!(login(&client, "root", &pw), Status::Ok);
 }
 
+// ── Row: password-PUT never enrolls ─────────────────────────────────────────
+
+/// A password PUT on an empty store must not enroll: the unknown target is
+/// 404 even while the bootstrap window is open, and no user record or
+/// password entry is written. Enrollment happens only via
+/// `POST /post/users/create` (or the CLI); the legacy first-run flow through
+/// the settings password form is gone.
+#[test]
+fn password_put_on_empty_store_is_404_and_creates_nothing() {
+    let _g = lock();
+    let client = setup();
+    assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+
+    // No cookie: the open window admits the ephemeral admin identity, but
+    // the password route refuses the unknown target.
+    let resp = client
+        .put("/put/users/password")
+        .header(ContentType::JSON)
+        .body(json!({ "userId": "first", "newPassword": test_password("t-put-first") }).to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::NotFound);
+
+    // The legacy config-password route is the same call with the caller id;
+    // it must refuse too when the store is empty.
+    let resp = client
+        .put("/put/config/password")
+        .header(ContentType::JSON)
+        .body(json!({ "password": test_password("t-put-first") }).to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::NotFound);
+
+    assert_eq!(
+        crate::auth::users::get_user("first").expect("get user"),
+        None
+    );
+    assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+    let store = crate::auth::password::PasswdFile::load(&crate::auth::users::passwd_file_path())
+        .expect("load passwd");
+    assert!(store.is_empty(), "no password entry may be written");
+}
+
 // ── Row: admin-less non-empty store stays closed ───────────────────────────
 
 /// The gate is "empty store", not "no admin": a non-admin user closes
