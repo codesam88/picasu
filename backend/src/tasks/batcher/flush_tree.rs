@@ -68,7 +68,7 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
     use crate::storage::asset_store;
     use redb::ReadableTable;
 
-    log::info!(
+    log::debug!(
         "flush_tree_task: {} inserts, {} removes",
         insert_list.len(),
         remove_list.len()
@@ -177,7 +177,7 @@ fn flush_tables(insert_list: &[AbstractData], remove_list: &[AbstractData]) {
                     .insert(&*asset_id, payload)
                     .expect("failed to insert into METADATA_TABLE");
 
-                log::info!(
+                log::debug!(
                     "flush_tree: wrote to METADATA_TABLE key={asset_id}, path={path}, content_hash={content_hash}"
                 );
 

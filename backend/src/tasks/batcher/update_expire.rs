@@ -39,7 +39,7 @@ fn update_expire_task() {
                 .insert(current_timestamp, None)
                 .expect("Failed to insert into expire table");
 
-            info!(
+            debug!(
                 "Expire table updated. Next expire time set to {}",
                 new_expire_time
             );

@@ -83,7 +83,7 @@ fn start_watcher_task_internal() -> Result<()> {
     }
 
     let Some(raw_image_path) = raw_image_path else {
-        info!("No path to watch");
+        warn!("No path to watch");
         IS_WATCHING.store(false, Ordering::SeqCst);
         return Ok(());
     };

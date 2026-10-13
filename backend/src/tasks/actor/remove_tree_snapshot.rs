@@ -35,7 +35,7 @@ fn remove_task(timestamp: i64) {
 
     match write_txn.delete_table(table_definition) {
         Ok(true) => {
-            info!("Delete tree cache table: {:?}", timestamp);
+            debug!("Delete tree cache table: {:?}", timestamp);
         }
         Ok(false) => {
             error!("Failed to delete tree cache table: {:?}", timestamp);
@@ -48,7 +48,7 @@ fn remove_task(timestamp: i64) {
         }
     }
 
-    info!(
+    debug!(
         "{} items remaining in disk tree cache",
         write_txn
             .list_tables()

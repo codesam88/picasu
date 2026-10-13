@@ -60,7 +60,7 @@ fn update_tree_task() {
     BATCH_COORDINATOR.execute_batch_detached(UpdateExpireTask);
 
     let duration = format!("{:?}", start_time.elapsed());
-    info!(duration = &*duration; "In-memory cache updated ({}).", current_timestamp);
+    debug!(duration = &*duration; "In-memory cache updated ({}).", current_timestamp);
 }
 
 /// Build the in-memory tree from `ASSET_BY_ID` (one entry per file/path),
@@ -71,11 +71,11 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
     use redb::{ReadableDatabase, ReadableTable};
 
     let Ok(txn) = TREE.in_disk.begin_read() else {
-        log::info!("build_from_asset_tables: failed to begin read transaction");
+        log::warn!("build_from_asset_tables: failed to begin read transaction");
         return None;
     };
     let Ok(table) = txn.open_table(crate::storage::db::ASSET_BY_ID) else {
-        log::info!("build_from_asset_tables: failed to open ASSET_BY_ID");
+        log::warn!("build_from_asset_tables: failed to open ASSET_BY_ID");
         return None;
     };
 
@@ -106,7 +106,7 @@ fn build_from_asset_tables(priority_list: &[&str]) -> Option<Vec<DatabaseTimesta
         ));
     }
 
-    log::info!(
+    log::debug!(
         "build_from_asset_tables: built {} entries from ASSET_BY_ID",
         entries.len()
     );

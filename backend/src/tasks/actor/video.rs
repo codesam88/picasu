@@ -6,7 +6,7 @@ use crate::{
     tasks::{BATCH_COORDINATOR, batcher::flush_tree::FlushTreeTask},
 };
 use anyhow::{Context, Result};
-use log::info;
+use log::debug;
 use mini_executor::Task;
 use tokio_rayon::AsyncThreadPool;
 
@@ -38,7 +38,7 @@ pub fn video_task(mut abstract_data: AbstractData) -> Result<()> {
             abstract_data.set_pending(false);
             BATCH_COORDINATOR
                 .execute_batch_detached(FlushTreeTask::insert(vec![abstract_data.clone()]));
-            info!("transcoded {hash}");
+            debug!("transcoded {hash}");
         }
         Err(err) => Err(err).context(format!(
             "video_task: video compression failed for hash: {hash}"

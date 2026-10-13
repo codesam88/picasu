@@ -78,7 +78,7 @@ pub fn init_dir_album_cache() {
     if stale_count > 0 {
         info!("Skipped {stale_count} stale dir album entries (directories no longer exist)");
     }
-    info!("Loaded {} dir album mappings from database", cache.len());
+    debug!("Loaded {} dir album mappings from database", cache.len());
 
     if !cache.is_empty() {
         let mut pending = PENDING_ALBUM_UPDATES.lock().expect("lock poisoned");
@@ -339,7 +339,7 @@ fn write_album_to_db(dir_path: &Path) -> Result<ArrayString<64>> {
     }
     txn.commit().context("Failed to commit dir album")?;
 
-    info!(
+    debug!(
         "Created filesystem album '{}' (id: {}) for {}",
         title,
         album_id,

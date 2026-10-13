@@ -27,7 +27,7 @@ pub fn start_expire_check_loop() {
             tokio::select! {
                 () = sleep_future => {
                     // Timeout reached, execute the check task
-                    info!("Timeout reached, executing the check task");
+                    debug!("Timeout reached, executing the check task");
                     BATCH_COORDINATOR.execute_batch_detached(ExpireCheckTask);
                 }
                 _ = rx.recv() => {
