@@ -1,13 +1,14 @@
-name: Upload without authentication cookie returns 401 when password is set
+name: Upload without authentication cookie returns 401 once the store is non-empty
 given:
   - dir_album: /e2e_up_noauth/target
     id_as: $album
   - photo: /e2e_up_noauth/src/photo.jpg
 when:
-  - call: "PUT /put/config/password"
+  - call: "POST /post/users/create"
     body:
-      oldPassword: ~
+      userId: noauth-user
       password: "testpass1234"
+      admin: false
   - upload:
       file: /e2e_up_noauth/src/photo.jpg
       target_album: "${album}"

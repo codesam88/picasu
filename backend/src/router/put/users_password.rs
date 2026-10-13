@@ -28,15 +28,15 @@ pub struct SetUserPasswordRequest {
 ///
 /// Rules: an admin may set any user's password without the old one; a
 /// non-admin may only set their own, presenting the correct old password.
-/// With an empty store the target cannot exist yet, so the first user is
-/// bootstrapped as admin (forced), mirroring user creation — this keeps
-/// the legacy `PUT /put/config/password` first-run flow working.
+/// A password change never enrolls: an unknown target is 404 even on an
+/// empty store — the bootstrap window enrolls only via
+/// `POST /post/users/create` or the `picasu-admin` CLI.
 ///
 /// # Errors
 /// Returns 400 when the id is invalid or the new password is shorter than
 /// [`users::MIN_PASSWORD_LEN`] after trimming, 401 when the old password is
 /// wrong, 403 when a non-admin targets another user, 404 when the target
-/// user is unknown and the store is non-empty, and 500 when either store
+/// user is unknown (empty store included), and 500 when either store
 /// fails.
 pub(crate) fn set_password_sync(
     caller_id: &str,
@@ -62,17 +62,13 @@ pub(crate) fn set_password_sync(
         .map_err(|e| AppError::from_err(ErrorKind::Database, e))?
         .is_some();
     if !target_exists {
-        let empty =
-            users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))? == 0;
-        if empty {
-            users::create_user(&target, true)
-                .map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
-        } else {
-            return Err(AppError::new(
-                ErrorKind::NotFound,
-                format!("unknown user: {target}"),
-            ));
-        }
+        // Password changes never enroll. An unknown target is 404 whether
+        // or not the store is empty, so a settings password-PUT cannot mint
+        // an invisible admin on a fresh install.
+        return Err(AppError::new(
+            ErrorKind::NotFound,
+            format!("unknown user: {target}"),
+        ));
     }
     if !caller_admin {
         let presented = old_password.unwrap_or_default().trim();
@@ -85,6 +81,7 @@ pub(crate) fn set_password_sync(
         }
     }
     users::store_password(&target, &canonical_new)?;
+    log::info!("auth: password set for user {target}");
     Ok(())
 }
 
@@ -296,20 +293,29 @@ mod tests {
     }
 
     #[test]
-    fn empty_store_bootstraps_first_user_as_admin() {
+    fn empty_store_password_put_is_404_and_creates_nothing() {
         let _g = lock();
         let client = setup();
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
-        // No cookie: open first-run mode admits the GuardUser ephemeral id.
+        // No cookie: open first-run mode admits the GuardUser ephemeral id,
+        // but a password PUT must never enroll — an unknown target is 404
+        // even on an empty store, and nothing is written.
         let status = client
             .put("/put/users/password")
             .header(ContentType::JSON)
             .body(json!({ "userId": "first", "newPassword": "s4d-first-pw" }).to_string())
             .dispatch()
             .status();
-        assert_eq!(status, Status::Ok);
-        let record = crate::auth::users::get_user("first").expect("get user");
-        assert_eq!(record, Some(crate::auth::users::UserRecord { admin: true }));
+        assert_eq!(status, Status::NotFound);
+        assert_eq!(
+            crate::auth::users::get_user("first").expect("get user"),
+            None
+        );
+        assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+        let store =
+            crate::auth::password::PasswdFile::load(&crate::auth::users::passwd_file_path())
+                .expect("load passwd");
+        assert!(store.is_empty(), "no password entry may be written");
     }
 
     #[test]
