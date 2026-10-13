@@ -2659,6 +2659,7 @@ dependencies = [
  "bitcode",
  "blake3",
  "chrono",
+ "clap",
  "crossbeam-queue",
  "dashmap",
  "directories",
