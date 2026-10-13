@@ -33,8 +33,8 @@ rest:
 1. **Host-based initial password stays as-is.** A pre-seeded legacy
    `password` in `config.toml` keeps working: guards deny, first login
    migrates the claimed id to first admin. No code change.
-2. **`--bootstrap-passwd` enables bootstrap of the first user.**
-   New server flag (also `PICASU_BOOTSTRAP_PASSWD` env and a config-file
+2. **`--bootstrap-admin` enables bootstrap of the first user.**
+   New server flag (also `PICASU_BOOTSTRAP_ADMIN` env and a config-file
    key): while it is set **and the user store is empty**, the current
    open first-run behavior applies (ephemeral admin identity,
    accept-anything `authenticate`, unauthenticated `users/create`
@@ -145,9 +145,9 @@ Verified constraints (from sources, not memory):
 
 ## Steps
 
-1. **Enrollment gate (backend).** Add `bootstrap_passwd: bool`
-   (default false) to config with `PICASU_BOOTSTRAP_PASSWD` env
-   override and `--bootstrap-passwd` server flag; gate the "store
+1. **Enrollment gate (backend).** Add `bootstrap_admin: bool`
+   (default false) to config with `PICASU_BOOTSTRAP_ADMIN` env
+   override and `--bootstrap-admin` server flag; gate the "store
    empty" open-mode conditions in `try_jwt_cookie_auth`, `GuardUser`,
    and `authenticate` on the flag, and narrow `create_user_handler`'s
    bootstrap exception to empty-store-only while denying
@@ -161,13 +161,16 @@ passwd_exists)` predicate — flag + existing `passwd.json` refuses
    the flag is on; log every enrollment event (create, migration).
    Update the test harness (`tests/bootstrap.rs`) to opt into
    bootstrap mode where tests rely on open behavior, set
-   `PICASU_BOOTSTRAP_PASSWD=true` in the Playwright launcher env
+   `PICASU_BOOTSTRAP_ADMIN=true` in the Playwright launcher env
    (e2e seeds its password via open-mode routes), and add gate tests
    (closed by default, open with flag on empty store, closes once
    any user exists, admin-less non-empty store stays closed with CLI
    recovery, legacy ignores the flag, freshness refusal).
-   `just run` passes `--bootstrap-passwd` so the sandbox stays
+   `just run` passes `--bootstrap-admin` so the sandbox stays
    demo-able.
+   **Done 2026-10-13** (worker spike + parent review): gate, freshness
+   refusal, harness opt-in, e2e launcher, gate matrix, and
+   enrollment-event logging on create/migrate/register/invite-redeem.
    Leaves out: the concurrent-first-create race (unverified; verify
    with a test here, fix — share the lock — only if confirmed).
 2. **CLI binary + lock.** New `[[bin]] picasu-admin`
@@ -245,7 +248,7 @@ backend-check` and `just openapi-check` (after `openapi-gen`)
   server holds shared for life; CLI fail-closes when locking is
   unsupported, server warn-and-continues.
 - Online enrollment gated on "no admin user exists", enabled only by
-  `--bootstrap-passwd` / env / config; closed by default.
+  `--bootstrap-admin` / env / config; closed by default.
 - Freshness: flag + existing `passwd.json` refuses to launch
   (actionable message); a forgotten flag fails loud, never silent.
 - Legacy mode denies unauthenticated `users/create` (review A1) —
