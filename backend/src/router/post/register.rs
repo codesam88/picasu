@@ -117,6 +117,7 @@ fn register_user_sync(req: &RegisterRequest, allow_registration: bool) -> AppRes
         invites::redeem_invite(&id, token)?;
     }
     users::store_password(&id, &canonical)?;
+    log::info!("enrollment: registered user {id}");
     Ok(UserSummary {
         user_id: id,
         admin: false,

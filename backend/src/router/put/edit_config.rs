@@ -33,6 +33,7 @@ pub struct PartialUpdateConfigRequest {
     pub use_client_timestamp_info: Option<bool>,
     pub allow_registration: Option<bool>,
     pub trivial_passwords: Option<bool>,
+    pub bootstrap_admin: Option<bool>,
     pub auth_key: Option<String>,
 }
 
@@ -128,6 +129,9 @@ pub async fn update_config_handler(
         }
         if let Some(trivial_passwords) = req_data.trivial_passwords {
             current_config.trivial_passwords = trivial_passwords;
+        }
+        if let Some(bootstrap_admin) = req_data.bootstrap_admin {
+            current_config.bootstrap_admin = bootstrap_admin;
         }
         if let Some(key) = req_data.auth_key {
             let trimmed = key.trim();
@@ -326,6 +330,49 @@ mod tests {
             .cookie(cookie("s4e-root", true))
             .header(ContentType::JSON)
             .body(json!({ "allowRegistration": true }).to_string())
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::Ok);
+        assert!(flag(), "PUT must toggle the knob on");
+        // A patch that omits the field keeps the current value.
+        let status = client
+            .put("/put/config")
+            .cookie(cookie("s4e-root", true))
+            .header(ContentType::JSON)
+            .body(json!({ "port": 5673 }).to_string())
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::Ok);
+        assert!(flag(), "absent field must not touch the knob");
+    }
+
+    #[test]
+    fn put_config_allowlists_bootstrap_admin() {
+        let _g = lock();
+        let client = setup();
+        seed("s4e-root", true, None);
+        // The test harness opts into bootstrap mode; start explicitly off so
+        // the knob's change is observable.
+        crate::model::config::APP_CONFIG
+            .get()
+            .expect("APP_CONFIG")
+            .write()
+            .expect("APP_CONFIG lock")
+            .bootstrap_admin = false;
+        let flag = || {
+            crate::model::config::APP_CONFIG
+                .get()
+                .expect("APP_CONFIG")
+                .read()
+                .expect("APP_CONFIG lock")
+                .bootstrap_admin
+        };
+        assert!(!flag(), "start must be off");
+        let status = client
+            .put("/put/config")
+            .cookie(cookie("s4e-root", true))
+            .header(ContentType::JSON)
+            .body(json!({ "bootstrapAdmin": true }).to_string())
             .dispatch()
             .status();
         assert_eq!(status, Status::Ok);

@@ -33,6 +33,13 @@ struct Cli {
     /// warn-logged at first use.
     #[arg(long)]
     trivial_passwords: bool,
+
+    /// Enable online enrollment of the first administrator: while set and
+    /// the user store is empty, unauthenticated user creation and sign-in
+    /// are open. Refuses to start if a password store already exists.
+    /// Equivalent to `PICASU_BOOTSTRAP_ADMIN=true`.
+    #[arg(long)]
+    bootstrap_admin: bool,
 }
 
 fn main() {
@@ -60,6 +67,14 @@ fn main() {
         }
     }
 
+    if cli.bootstrap_admin {
+        // SAFETY: see the `--trivial-passwords` bridge above — still
+        // single-threaded, and the flag is the most explicit setting.
+        unsafe {
+            std::env::set_var("PICASU_BOOTSTRAP_ADMIN", "true");
+        }
+    }
+
     picasu::run();
 }
 
@@ -78,6 +93,7 @@ mod tests {
         let cli = parse(&[]);
         assert!(!cli.dump_openapi);
         assert!(!cli.trivial_passwords);
+        assert!(!cli.bootstrap_admin);
         assert!(cli.check_openapi.is_none());
     }
 
@@ -87,6 +103,14 @@ mod tests {
         assert!(cli.dump_openapi);
         assert!(cli.trivial_passwords);
         assert!(cli.check_openapi.is_none());
+    }
+
+    #[test]
+    fn bootstrap_admin_flag_parses() {
+        let cli = parse(&["--bootstrap-admin"]);
+        assert!(cli.bootstrap_admin);
+        assert!(!cli.dump_openapi);
+        assert!(!cli.trivial_passwords);
     }
 
     #[test]
@@ -101,7 +125,12 @@ mod tests {
         let err = Cli::try_parse_from(["picasu", "--help"]).expect_err("--help exits via error");
         assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp);
         let text = err.to_string();
-        for flag in ["--dump-openapi", "--check-openapi", "--trivial-passwords"] {
+        for flag in [
+            "--dump-openapi",
+            "--check-openapi",
+            "--trivial-passwords",
+            "--bootstrap-admin",
+        ] {
             assert!(text.contains(flag), "help lists {flag}");
         }
     }

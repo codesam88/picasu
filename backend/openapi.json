@@ -130,6 +130,10 @@
               "null"
             ]
           },
+          "bootstrapAdmin": {
+            "description": "Enable the online first-admin bootstrap window. While set **and the\nuser store is empty**, unauthenticated `POST /post/users/create`\nand open `POST /post/authenticate` mint the first admin. Default\noff: a fresh install answers 401 everywhere until an operator opts\nin (or provisions the store via the `picasu-admin` CLI). A\nconfigured legacy `password` still wins over the flag (the host\nsecret gates enrollment); enabling the flag against an existing\n`passwd.json` makes the server refuse to start. WARN-logged at boot\nwhenever set.",
+            "type": "boolean"
+          },
           "dataHome": {
             "type": [
               "string",
@@ -718,6 +722,12 @@
           "authKey": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "bootstrapAdmin": {
+            "type": [
+              "boolean",
               "null"
             ]
           },
@@ -2409,7 +2419,7 @@
     },
     "/post/users/create": {
       "post": {
-        "description": "Admin-only, except for the bootstrap exception: while the user store is\nempty an unauthenticated call succeeds and forces `admin: true`\nregardless of the body's flag — but only in open mode. With a legacy\npassword configured the store stays gated by that host secret (review\nA1): unauthenticated create is denied and enrollment happens through\n`POST /post/authenticate` migration. A non-admin caller — or no caller\nonce any user exists — is rejected.\n\nCorner cases: The `admin` flag is honored for admin callers and forced\non for bootstrap. The password is trimmed before hashing.\n\nErrors: 400 invalid `userId` or password violating the policy — 401\nmissing or invalid credentials, non-admin caller, legacy-mode\nunauthenticated call, or unauthenticated call once any user exists —\n405 read-only mode — 409 `userId` already exists — 500 storage\nfailure.",
+        "description": "Admin-only, except for the bootstrap exception: while the user store is\nempty **and `--bootstrap-admin` is set** an unauthenticated call succeeds\nand forces `admin: true` regardless of the body's flag. Closed by default:\nwith the flag off an empty store rejects unauthenticated create. With a\nlegacy password configured the store stays gated by that host secret\n(review A1): unauthenticated create is denied and enrollment happens\nthrough `POST /post/authenticate` migration. A non-admin caller — or no\ncaller once any user exists — is rejected.\n\nCorner cases: The `admin` flag is honored for admin callers and forced\non for bootstrap. The password is trimmed before hashing.\n\nErrors: 400 invalid `userId` or password violating the policy — 401\nmissing or invalid credentials, non-admin caller, legacy-mode\nunauthenticated call, or unauthenticated call once any user exists —\n405 read-only mode — 409 `userId` already exists — 500 storage\nfailure.",
         "operationId": "create_user_handler",
         "requestBody": {
           "content": {

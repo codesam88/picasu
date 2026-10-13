@@ -100,12 +100,19 @@ attacks are excluded by construction.
    The legacy `PUT /put/config/password` route now changes the caller's own
    password on the same store.
 
-**Open first-run mode:** while the user store is empty and no legacy password
-is set, `try_jwt_cookie_auth` returns an admin user identity without reading
-any credential, and `authenticate` accepts any parseable input. A fresh
-install is therefore fully open until the first user is created — this is the
-documented first-run flow, but see Finding F6 for its interaction with the
-default bind address.
+**Bootstrap mode (opt-in):** a fresh install is closed by default — with an
+empty user store and no legacy password, every guarded route answers 401 and
+`authenticate` accepts nothing. Online enrollment of the first administrator
+opens only while the `--bootstrap-admin` flag (or `PICASU_BOOTSTRAP_ADMIN`,
+or the `bootstrap_admin` config key) is set **and** the store is empty and no
+legacy password is configured: `try_jwt_cookie_auth` then returns an admin
+identity without reading a credential and `authenticate` accepts any
+parseable input, until the first user is created. The flag is WARN-logged at
+boot, the server refuses to start when the flag is set against an existing
+`<DATA_HOME>/auth/passwd.json` (bootstrap already happened, or the store
+needs repair — provision via the CLI instead), and a configured legacy
+password always wins over the flag. This closes Finding F6 for the default
+path; a network-exposed install is only ever open if the operator opted in.
 
 **Legacy bootstrap:** a bare JSON string body to `authenticate` is accepted
 only while the user store is empty; it verifies the legacy config `password`

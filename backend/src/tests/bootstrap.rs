@@ -35,6 +35,11 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
     let image_home = data_path.join("images");
     std::fs::create_dir_all(&image_home).unwrap();
     test_config.image_home = Some(image_home);
+    // Opt the whole test binary into bootstrap mode: scenario tests exercise
+    // the open first-run behavior (ephemeral admin, open `authenticate`,
+    // unauthenticated first create). Production's default is closed, so the
+    // closed-mode behavior needs its own explicit test (`tests/enroll_gate`).
+    test_config.bootstrap_admin = true;
     APP_CONFIG
         .set(RwLock::new(test_config))
         .expect("APP_CONFIG already set");
@@ -84,6 +89,12 @@ pub fn write_config(updates: &serde_json::Value) {
             .and_then(serde_json::Value::as_bool)
         {
             config.trivial_passwords = val;
+        }
+        if let Some(val) = obj
+            .get("bootstrap_admin")
+            .and_then(serde_json::Value::as_bool)
+        {
+            config.bootstrap_admin = val;
         }
         if let Some(val) = obj.get("fs_notify_watcher").and_then(|v| v.as_bool()) {
             config.fs_notify_watcher = val;
@@ -239,6 +250,9 @@ pub fn reset_backend_state() {
     config.read_only_mode = false;
     config.allow_registration = false;
     config.trivial_passwords = false;
+    // Tests run in bootstrap mode (open first-run behavior); production's
+    // default is closed. Individual tests opt out via `write_config`.
+    config.bootstrap_admin = true;
     config.fs_notify_watcher = true;
     config.normalize_upload_filenames = true;
     config.validate_upload_content = true;

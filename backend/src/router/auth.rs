@@ -496,31 +496,60 @@ where
     Ok(claims)
 }
 
+/// Whether the open bootstrap window is available: the `--bootstrap-admin`
+/// flag is set and no legacy password is configured.
+///
+/// Callers combine this with their own store-emptiness check; the flag alone
+/// never opens a non-empty store, and a configured legacy password wins over
+/// the flag (the explicit host secret keeps gating enrollment).
+pub(crate) fn bootstrap_open() -> bool {
+    APP_CONFIG
+        .get()
+        .expect("APP_CONFIG not initialized")
+        .read()
+        .expect("lock poisoned")
+        .bootstrap_admin
+        && !legacy_password_configured()
+}
+
+/// Whether a legacy single password is configured. Read independently of the
+/// bootstrap flag: an explicit host secret always gates the store.
+pub(crate) fn legacy_password_configured() -> bool {
+    APP_CONFIG
+        .get()
+        .expect("APP_CONFIG not initialized")
+        .read()
+        .expect("lock poisoned")
+        .password
+        .is_some()
+}
+
 /// Try to authenticate via JWT cookie and check if user is admin.
 ///
 /// When the user store is non-empty, the token must carry
 /// [`Role::User`] with `admin: true`, and the user record is re-read from
 /// the database on every call so demotion or removal takes effect before
-/// the token expires. When the store is empty the legacy behavior applies:
-/// with no configured password every request is open (minting an ephemeral
-/// `admin` identity); with a configured password cookie auth is denied and
-/// the caller must migrate via `POST /post/authenticate` first.
+/// the token expires. When the store is empty the bootstrap behavior
+/// applies: only while `--bootstrap-admin` is set and no legacy password is
+/// configured is every request open (minting an ephemeral `admin` identity);
+/// with a configured password cookie auth is denied and the caller must
+/// migrate via `POST /post/authenticate` first; with neither, the install is
+/// closed by default.
 pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
     let store_non_empty = crate::auth::users::user_count().map(|count| count > 0)?;
     if !store_non_empty {
-        // Legacy behavior preserved exactly while no users exist.
-        if APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned")
-            .password
-            .is_none()
-        {
+        // Open bootstrap window: flag set, no legacy password, no users.
+        if bootstrap_open() {
             return Ok(Claims::new_user("admin".to_string(), true));
         }
+        // Legacy deny-and-migrate: the host secret wins over the flag.
+        if legacy_password_configured() {
+            return Err(anyhow!(
+                "No users exist yet; authenticate with the legacy password to migrate"
+            ));
+        }
         return Err(anyhow!(
-            "No users exist yet; authenticate with the legacy password to migrate"
+            "No administrator enrolled: start the server with --bootstrap-admin (or PICASU_BOOTSTRAP_ADMIN=true) to enroll the first admin, or provision a user with the picasu-admin CLI"
         ));
     }
 
@@ -793,22 +822,21 @@ impl<'r> FromRequest<'r> for GuardUser {
             }
         };
         if !non_empty {
-            // Mirror `try_jwt_cookie_auth` open-mode semantics: no users and
-            // no legacy password is open (ephemeral admin); otherwise the
-            // caller must migrate first.
-            let open = APP_CONFIG
-                .get()
-                .expect("APP_CONFIG not initialized")
-                .read()
-                .expect("lock poisoned")
-                .password
-                .is_none();
-            if open {
+            // Mirror `try_jwt_cookie_auth` open-mode semantics: only the
+            // bootstrap flag on an empty store with no legacy password is
+            // open (ephemeral admin); a legacy password means migrate first;
+            // otherwise the install is closed by default.
+            if bootstrap_open() {
                 return Outcome::Success(GuardUser {
                     claims: Claims::new_user("admin".to_string(), true),
                 });
             }
-            return denied("No users exist yet; authenticate first");
+            if legacy_password_configured() {
+                return denied("No users exist yet; authenticate first");
+            }
+            return denied(
+                "No administrator enrolled: start the server with --bootstrap-admin or provision a user with the picasu-admin CLI",
+            );
         }
         let Some(jwt_cookie) = req.cookies().get("jwt") else {
             return denied("JWT not found in cookies");

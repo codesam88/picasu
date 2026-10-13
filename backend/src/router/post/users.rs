@@ -42,18 +42,20 @@ pub struct CreateUserRequest {
 /// fails.
 fn create_user_sync(user_id: &str, password: &str, admin: bool) -> AppResult<UserSummary> {
     let id = users::provision_user(user_id, password, admin)?;
+    log::info!("enrollment: created user {id} (admin: {admin})");
     Ok(UserSummary { user_id: id, admin })
 }
 
 /// Create a user.
 ///
 /// Admin-only, except for the bootstrap exception: while the user store is
-/// empty an unauthenticated call succeeds and forces `admin: true`
-/// regardless of the body's flag — but only in open mode. With a legacy
-/// password configured the store stays gated by that host secret (review
-/// A1): unauthenticated create is denied and enrollment happens through
-/// `POST /post/authenticate` migration. A non-admin caller — or no caller
-/// once any user exists — is rejected.
+/// empty **and `--bootstrap-admin` is set** an unauthenticated call succeeds
+/// and forces `admin: true` regardless of the body's flag. Closed by default:
+/// with the flag off an empty store rejects unauthenticated create. With a
+/// legacy password configured the store stays gated by that host secret
+/// (review A1): unauthenticated create is denied and enrollment happens
+/// through `POST /post/authenticate` migration. A non-admin caller — or no
+/// caller once any user exists — is rejected.
 ///
 /// Corner cases: The `admin` flag is honored for admin callers and forced
 /// on for bootstrap. The password is trimmed before hashing.
@@ -99,18 +101,21 @@ pub async fn create_user_handler(
         }
         Ok(_) => true,
         Err(err) => {
-            // Empty-store-only, and only while open: with a legacy password
-            // configured the host secret gates enrollment too (review A1) —
-            // an unauthenticated create is denied and migration happens
-            // through `POST /post/authenticate` instead.
-            let legacy_password = APP_CONFIG
-                .get()
-                .expect("APP_CONFIG not initialized")
-                .read()
-                .expect("lock poisoned")
-                .password
-                .is_some();
-            if non_empty || legacy_password {
+            // Unauthenticated create is allowed only in the open bootstrap
+            // window: empty store, `--bootstrap-admin` set, and no legacy
+            // password configured. Once any user exists it is denied; in
+            // legacy mode the host secret gates enrollment (review A1) and
+            // migration happens through `POST /post/authenticate`; with the
+            // flag off the install is closed by default.
+            let (legacy_password, bootstrap_admin) = {
+                let config = APP_CONFIG
+                    .get()
+                    .expect("APP_CONFIG not initialized")
+                    .read()
+                    .expect("lock poisoned");
+                (config.password.is_some(), config.bootstrap_admin)
+            };
+            if non_empty || legacy_password || !bootstrap_admin {
                 return Err(err);
             }
             true
