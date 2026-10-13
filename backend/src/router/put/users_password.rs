@@ -46,9 +46,9 @@ pub(crate) fn set_password_sync(
     new_password: &str,
 ) -> AppResult<()> {
     let target = validate_user_id(target_user_id)?;
-    // Floor-12 applies to new passwords only; the check runs before the
-    // permission/old-password checks so a short password is always 400.
-    let canonical_new = users::validate_new_password(new_password)?;
+    // Policy applies to new passwords only; the check runs before the
+    // permission/old-password checks so a weak password is always 400.
+    let canonical_new = users::validate_new_password(&target, new_password)?;
     // Permission before existence: a non-admin targeting another id gets
     // 403 even when the target is unknown, so the status leaks no
     // user-enumeration signal.
@@ -99,13 +99,15 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::Claims) -> (String, 
 ///
 /// An admin may set any user's password without the old one; a non-admin
 /// may only change their own, presenting the correct `oldPassword`. The new
-/// password is trimmed and must be at least 12 characters after trimming
-/// (there is no "clear to open": open mode is store-empty only).
+/// password is trimmed and must satisfy the default password policy
+/// after trimming (length floor/ceiling, blocklist, user-id and pattern
+/// rules — see `auth::password::check_strength`).
 ///
 /// Corner cases: Any authenticated user reaches this route (share tokens
 /// are rejected); unauthenticated callers are denied at dispatch.
 ///
-/// Errors: 400 invalid `userId` or `newPassword` under 12 characters — 401
+/// Errors: 400 invalid `userId` or `newPassword` violating the password
+/// policy — 401
 /// missing or invalid credentials, or wrong `oldPassword` — 403 non-admin
 /// targeting another user — 404 unknown `userId` — 405 read-only mode —
 /// 500 storage failure.
@@ -277,11 +279,11 @@ mod tests {
         let _g = lock();
         let client = setup();
         seed("s4d-root", true, None);
-        // 11 chars: below the floor-12 minimum for new passwords.
+        // 7 chars: below the minimum for new passwords.
         let status = put_password(
             &client,
             cookie("s4d-root", true),
-            &json!({ "userId": "s4d-root", "newPassword": "12345678901" }),
+            &json!({ "userId": "s4d-root", "newPassword": "short1!" }),
         );
         assert_eq!(status, Status::BadRequest);
         // 12 chars passes.

@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+use std::sync::LazyLock;
+
 use anyhow::Context as _;
 use pbkdf2::pbkdf2_hmac;
 use rand::random;
@@ -5,11 +8,106 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
+use crate::error::{AppError, ErrorKind};
+
 /// PBKDF2-HMAC-SHA256 iteration count for new password hashes.
 pub const DEFAULT_ITERATIONS: u32 = 600_000;
 /// Length of the per-password random salt in bytes.
 pub const SALT_LEN: usize = 16;
 pub const HASH_LEN: usize = 32;
+
+/// Minimum length for a new password, in characters. Follows NIST
+/// SP 800-63B §5.1.1.2: length plus screening against known-bad values
+/// beats composition rules, which mostly produce `Password123!`.
+pub const MIN_PASSWORD_LEN: usize = 8;
+/// Maximum length for a new password, in characters. Not a usability
+/// judgment: an unbounded secret is unbounded KDF input on an endpoint
+/// with no throttling yet, so the ceiling is a `DoS` bound. 256 is far
+/// beyond any legitimate password or passphrase.
+pub const MAX_PASSWORD_LEN: usize = 256;
+
+/// Shipped blocklist for the default password policy: the `SecLists`
+/// 500-worst-passwords list plus service-specific words (see
+/// `blocklist.txt`). Compared case-insensitively against the trimmed
+/// candidate. Offline by design — a self-hosted verifier cannot depend
+/// on a breach-corpus API.
+static BLOCKLIST: LazyLock<HashSet<String>> = LazyLock::new(|| {
+    include_str!("blocklist.txt")
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            (!trimmed.is_empty() && !trimmed.starts_with('#')).then(|| trimmed.to_lowercase())
+        })
+        .collect()
+});
+
+/// True when the whole (already lowercased) candidate is one repeated
+/// character or one unbroken ascending/descending run.
+fn is_trivial_pattern(lower: &str) -> bool {
+    let chars: Vec<char> = lower.chars().collect();
+    if chars.len() < 2 {
+        return false;
+    }
+    if chars.iter().all(|&c| c == chars[0]) {
+        return true;
+    }
+    let ascending = chars.windows(2).all(|w| {
+        let (a, b) = (w[0] as u32, w[1] as u32);
+        b == a + 1
+    });
+    let descending = chars.windows(2).all(|w| {
+        let (a, b) = (w[0] as u32, w[1] as u32);
+        a == b + 1
+    });
+    ascending || descending
+}
+
+/// Enforce the default password policy on `canonical` (already trimmed)
+/// for `user_id` (already validated): length floor and ceiling, then the
+/// blocklist, the user-id equality rule, then trivial patterns.
+///
+/// Deliberately no composition rules and no expiry (NIST SP 800-63B):
+/// the PBKDF2 work factor plus the planned online throttling carry the
+/// guessing resistance; this floor only keeps the trivially crackable
+/// class out. Callers pass the canonical id so `Alice` rejects `alice`.
+///
+/// # Errors
+/// Returns [`ErrorKind::InvalidInput`] describing the first failed rule.
+pub fn check_strength(user_id: &str, canonical: &str) -> Result<(), AppError> {
+    let len = canonical.chars().count();
+    if len < MIN_PASSWORD_LEN {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            format!("password must be at least {MIN_PASSWORD_LEN} characters"),
+        ));
+    }
+    if len > MAX_PASSWORD_LEN {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            format!("password must be at most {MAX_PASSWORD_LEN} characters"),
+        ));
+    }
+    let lower = canonical.to_lowercase();
+    if BLOCKLIST.contains(&lower) {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "password is too common; choose a less predictable one",
+        ));
+    }
+    if lower == user_id.trim().to_lowercase() {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "password must not match the user id",
+        ));
+    }
+    if is_trivial_pattern(&lower) {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "password is too predictable; use unrelated characters",
+        ));
+    }
+    Ok(())
+}
 
 /// Environment variable overriding the PBKDF2 iteration count for new
 /// hashes (and the unknown-user dummy round). Test-only: set to a very
@@ -266,6 +364,54 @@ mod tests {
     fn wrong_password_rejected() {
         let stored = hash_password(&test_password("t-ok"));
         assert!(!verify_password(&test_password("t-wrong"), &stored));
+    }
+
+    fn strength(user_id: &str, password: &str) -> Result<(), crate::error::AppError> {
+        super::check_strength(user_id, password)
+    }
+
+    #[test]
+    fn strength_floor_and_ceiling_count_characters() {
+        // 7 chars: below the minimum, whatever its content.
+        assert!(strength("s9-u", "short1!").is_err());
+        // Exactly 8 passes the floor (and is neither listed nor trivial).
+        strength("s9-u", "s9-ok-pw1").expect("8 chars pass");
+        // 256 passes; 257 is rejected to bound KDF input (pre-throttling DoS).
+        let long_ok: String = std::iter::repeat_n('x', 252).collect::<String>() + "y2b!";
+        assert_eq!(long_ok.chars().count(), 256);
+        strength("s9-u", &long_ok).expect("256 chars pass");
+        let too_long: String = std::iter::repeat_n('z', 257).collect();
+        assert!(strength("s9-u", &too_long).is_err());
+    }
+
+    #[test]
+    fn strength_rejects_listed_passwords_case_insensitively() {
+        // "password" is entry #2 of the shipped blocklist.
+        assert!(strength("s9-u", "password").is_err());
+        assert!(strength("s9-u", "Password").is_err());
+        assert!(strength("s9-u", "PASSWORD").is_err());
+        // Service appendix (membership: the behavior is covered by
+        // "password" above; these assert the appendix shipped).
+        assert!(super::BLOCKLIST.contains("picasu"));
+        assert!(super::BLOCKLIST.contains("urocissa"));
+    }
+
+    #[test]
+    fn strength_rejects_user_id_and_trivial_patterns() {
+        // 10 chars, unlisted: the id rule is the only possible cause.
+        assert!(strength("AliceAlice", "alicealice").is_err());
+        // The same password with a different id is fine.
+        strength("s9-other", "alicealice").expect("other id passes");
+        assert!(strength("s9-u", "aaaaaaaa").is_err());
+        assert!(strength("s9-u", "abcdefgh").is_err());
+        assert!(strength("s9-u", "hgfedcba").is_err());
+    }
+
+    #[test]
+    fn strength_accepts_passphrases_and_random_strings() {
+        strength("s9-u", "correct horse battery staple").expect("passphrase passes");
+        strength("s9-u", &test_password("t-strength")).expect("derived passes");
+        strength("s9-u", "s9-ok-pw1").expect("ordinary passes");
     }
 
     #[test]

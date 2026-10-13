@@ -71,14 +71,17 @@ fn register(client: &Client, body: &Value) -> (Status, Option<String>) {
     (resp.status(), resp.into_string())
 }
 
-/// POST /post/invites/create as `cookie` (or unauthenticated when `None`).
+/// POST /post/invites/create as `cookie` (or unauthenticated when `None`)
+/// with the given JSON body.
 fn create_invite_route(
     client: &Client,
     cookie: Option<rocket::http::Cookie<'static>>,
+    body: &Value,
 ) -> (Status, Option<Value>) {
     let mut req = client
         .post("/post/invites/create")
-        .header(ContentType::JSON);
+        .header(ContentType::JSON)
+        .body(body.to_string());
     if let Some(c) = cookie {
         req = req.cookie(c);
     }
@@ -190,8 +193,8 @@ fn expired_invite_is_403() {
         .expect("clock")
         .as_secs()
         - 60;
-    let (token, _) =
-        crate::auth::invites::create_invite_with_expiry("s6-root", past).expect("create invite");
+    let (token, _) = crate::auth::invites::create_invite_with_expiry("s6-root", Some(past))
+        .expect("create invite");
     let pw = crate::tests::fixtures::test_password("t-reg-exp");
     let (status, _) = register(
         &client,
@@ -299,7 +302,7 @@ fn short_password_is_400() {
 
     let (status, _) = register(
         &client,
-        &json!({ "userId": "s6-short", "password": "12345678901" }),
+        &json!({ "userId": "s6-short", "password": "short1!" }),
     );
     assert_eq!(status, Status::BadRequest);
     let (status, _) = register(&client, &json!({ "userId": "s6-short", "password": "   " }));
@@ -307,6 +310,15 @@ fn short_password_is_400() {
     let (status, _) = register(&client, &json!({ "userId": "   ", "password": pw }));
     assert_eq!(status, Status::BadRequest);
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+}
+
+#[test]
+fn trivial_passwords_flag_opens_registration_to_weak_passwords() {
+    let _g = lock();
+    let client = setup();
+    write_config(&json!({ "allow_registration": true, "trivial_passwords": true }));
+    let (status, _) = register(&client, &json!({ "userId": "s6-triv", "password": "pw" }));
+    assert_eq!(status, Status::Ok);
 }
 
 // ── Row: legacy-deny (review A1) ───────────────────────────────────────────
@@ -347,15 +359,23 @@ fn invite_routes_require_admin_and_never_leak_tokens() {
     crate::auth::users::create_user("s6-bob", false).expect("seed bob");
 
     // Unauthenticated and non-admin callers are refused on both routes.
-    let (status, _) = create_invite_route(&client, None);
+    let (status, _) = create_invite_route(&client, None, &json!({"expiresInHours": 168}));
     assert_eq!(status, Status::Unauthorized);
-    let (status, _) = create_invite_route(&client, Some(user_cookie("s6-bob")));
+    let (status, _) = create_invite_route(
+        &client,
+        Some(user_cookie("s6-bob")),
+        &json!({"expiresInHours": 168}),
+    );
     assert_eq!(status, Status::Unauthorized);
     let resp = client.get("/get/invites").dispatch();
     assert_eq!(resp.status(), Status::Unauthorized);
 
     // The admin's create returns the token exactly once…
-    let (status, body) = create_invite_route(&client, Some(admin.clone()));
+    let (status, body) = create_invite_route(
+        &client,
+        Some(admin.clone()),
+        &json!({"expiresInHours": 168}),
+    );
     assert_eq!(status, Status::Ok, "body: {body:?}");
     let body = body.expect("create body");
     let token = body["token"].as_str().expect("token");
@@ -387,4 +407,72 @@ fn invite_routes_require_admin_and_never_leak_tokens() {
         .cookie(admin)
         .dispatch();
     assert_eq!(resp.status(), Status::NotFound);
+}
+
+/// `expiresInHours` configures the invite deadline; 0 means the invite
+/// never expires, absent means the 7-day default. Negative values are
+/// rejected before anything is stored.
+#[test]
+fn invite_expiry_is_configurable_in_hours() {
+    let _g = lock();
+    let client = setup();
+    let admin = seed_admin("s6-root");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_secs();
+
+    // 168 hours: the conventional 7-day lifetime.
+    let (status, body) = create_invite_route(
+        &client,
+        Some(admin.clone()),
+        &json!({"expiresInHours": 168}),
+    );
+    assert_eq!(status, Status::Ok, "body: {body:?}");
+    let at = body.expect("body")["invite"]["expiresAt"]
+        .as_u64()
+        .expect("expiresAt number");
+    assert!(
+        at >= now + 6 * 24 * 3600 && at <= now + 7 * 24 * 3600 + 120,
+        "168h is 7 days, got {at}"
+    );
+
+    // 1 hour: deadline ~1h out, and the token redeems.
+    let (status, body) =
+        create_invite_route(&client, Some(admin.clone()), &json!({"expiresInHours": 1}));
+    assert_eq!(status, Status::Ok, "body: {body:?}");
+    let body = body.expect("body");
+    let at = body["invite"]["expiresAt"]
+        .as_u64()
+        .expect("expiresAt number");
+    assert!(
+        at >= now + 3500 && at <= now + 3600 + 120,
+        "1h deadline, got {at}"
+    );
+    let token = body["token"].as_str().expect("token").to_string();
+    let (status, _) = register(
+        &client,
+        &json!({"userId": "s6-hour", "password": "s6-hour-pw12", "invite": token}),
+    );
+    assert_eq!(status, Status::Ok);
+
+    // 0: never expires (null deadline), redeems fine.
+    let (status, body) =
+        create_invite_route(&client, Some(admin.clone()), &json!({"expiresInHours": 0}));
+    assert_eq!(status, Status::Ok, "body: {body:?}");
+    let body = body.expect("body");
+    assert!(
+        body["invite"]["expiresAt"].is_null(),
+        "0 means never expires"
+    );
+    let token = body["token"].as_str().expect("token").to_string();
+    let (status, _) = register(
+        &client,
+        &json!({"userId": "s6-never", "password": "s6-never-pw12", "invite": token}),
+    );
+    assert_eq!(status, Status::Ok);
+
+    // Negative: rejected, nothing stored.
+    let (status, _) = create_invite_route(&client, Some(admin), &json!({"expiresInHours": -5}));
+    assert_eq!(status, Status::BadRequest);
 }

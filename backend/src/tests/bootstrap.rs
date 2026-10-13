@@ -79,6 +79,12 @@ pub fn write_config(updates: &serde_json::Value) {
         {
             config.allow_registration = val;
         }
+        if let Some(val) = obj
+            .get("trivial_passwords")
+            .and_then(serde_json::Value::as_bool)
+        {
+            config.trivial_passwords = val;
+        }
         if let Some(val) = obj.get("fs_notify_watcher").and_then(|v| v.as_bool()) {
             config.fs_notify_watcher = val;
         }
@@ -232,6 +238,7 @@ pub fn reset_backend_state() {
         .expect("APP_CONFIG lock");
     config.read_only_mode = false;
     config.allow_registration = false;
+    config.trivial_passwords = false;
     config.fs_notify_watcher = true;
     config.normalize_upload_filenames = true;
     config.validate_upload_content = true;

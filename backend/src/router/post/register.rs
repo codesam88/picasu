@@ -32,12 +32,12 @@ pub struct RegisterRequest {
 /// `allowRegistration` is on, an `invite` in the body is ignored: open
 /// registration supersedes it and does not burn the token.
 ///
-/// Corner cases: The password is trimmed once and must be at least 12
-/// characters; an empty `invite` string counts as absent. Invite redemption
+/// Corner cases: The password is trimmed once and must satisfy the
+/// default policy (see `auth::password::check_strength`); an empty `invite` string counts as absent. Invite redemption
 /// marks the token used and inserts the user record in one transaction, so
 /// a failed request never half-consumes an invite.
 ///
-/// Errors: 400 invalid `userId` or password under 12 characters — 403
+/// Errors: 400 invalid `userId` or password violating the policy — 403
 /// registration disabled (no invite) or invite expired — 404 unknown or
 /// revoked invite token — 405 read-only mode — 409 `userId` already exists
 /// or invite already used — 500 storage failure.
@@ -81,12 +81,12 @@ pub async fn register_user_handler(
 /// the password hash.
 ///
 /// # Errors
-/// 400 invalid id or short password — 403 registration disabled or invite
+/// 400 invalid id or weak password — 403 registration disabled or invite
 /// expired — 404 unknown/revoked invite — 409 duplicate id or used invite —
 /// 500 store failure. Runs inside `spawn_blocking` (KDF on the password).
 fn register_user_sync(req: &RegisterRequest, allow_registration: bool) -> AppResult<UserSummary> {
     let id = validate_user_id(&req.user_id)?;
-    let canonical = validate_new_password(&req.password)?;
+    let canonical = validate_new_password(&id, &req.password)?;
     if allow_registration {
         // Open registration: the invite is not consulted (open supersedes
         // bearer), so a stale link neither fails nor gets burned.

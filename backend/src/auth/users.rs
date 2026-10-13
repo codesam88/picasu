@@ -229,27 +229,54 @@ pub fn validate_user_id(id: &str) -> Result<String, AppError> {
     Ok(trimmed)
 }
 
-/// Minimum length for newly set or provisioned passwords (security review
-/// A3). Enforced on new-password writes only — legacy stored passwords are
-/// not retroactively checked.
-pub const MIN_PASSWORD_LEN: usize = 12;
+/// Length bounds for newly set or provisioned passwords, applied by
+/// [`validate_new_password`] (security review A3). Re-exported here so
+/// callers keep one import path; defined in [`crate::auth::password`]
+/// next to the strength check itself.
+pub use crate::auth::password::{MAX_PASSWORD_LEN, MIN_PASSWORD_LEN};
 
-/// Validate a new password: trim, then require at least
-/// [`MIN_PASSWORD_LEN`] characters. Returns the canonical (trimmed) form —
-/// the same form login verifies against, so write-then-login stays
-/// consistent.
+/// Whether password strength checks are bypassed via the
+/// `--trivial-passwords` flag / `PICASU_TRIVIAL_PASSWORDS` env / config
+/// key. Unset config reads as strict (fail secure): only an explicit
+/// opt-in disables the checks.
+pub(crate) fn trivial_passwords_enabled() -> bool {
+    crate::model::config::APP_CONFIG
+        .get()
+        .and_then(|config| config.read().ok().map(|guard| guard.trivial_passwords))
+        .unwrap_or(false)
+}
+
+/// Validate a new password for `user_id`: trim, then enforce the default
+/// policy ([`crate::auth::password::check_strength`]). Returns the
+/// canonical (trimmed) form — the same form login verifies against, so
+/// write-then-login stays consistent.
+///
+/// With trivial passwords enabled the strength checks are skipped and any
+/// non-empty trimmed password is accepted (empty is presence, not
+/// strength, and stays rejected); the bypass is warn-logged once, mirroring
+/// the weakened-PBKDF precedent.
 ///
 /// # Errors
-/// Returns an [`AppError`] with [`ErrorKind::InvalidInput`] when the trimmed
-/// password is shorter than [`MIN_PASSWORD_LEN`] (empty included).
-pub fn validate_new_password(password: &str) -> Result<String, AppError> {
+/// Returns an [`AppError`] with [`ErrorKind::InvalidInput`] when the
+/// trimmed password violates the policy.
+pub fn validate_new_password(user_id: &str, password: &str) -> Result<String, AppError> {
     let canonical = password.trim().to_string();
-    if canonical.chars().count() < MIN_PASSWORD_LEN {
-        return Err(AppError::new(
-            ErrorKind::InvalidInput,
-            format!("password must be at least {MIN_PASSWORD_LEN} characters"),
-        ));
+    if trivial_passwords_enabled() {
+        static WARN_ONCE: std::sync::Once = std::sync::Once::new();
+        WARN_ONCE.call_once(|| {
+            log::warn!(
+                "trivial passwords enabled — password strength checks are off; never set in production"
+            );
+        });
+        if canonical.is_empty() {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                "password must not be empty",
+            ));
+        }
+        return Ok(canonical);
     }
+    crate::auth::password::check_strength(user_id, &canonical)?;
     Ok(canonical)
 }
 
@@ -282,13 +309,13 @@ pub(crate) fn store_password(id: &str, password: &str) -> Result<(), AppError> {
 ///
 /// # Errors
 /// Returns [`ErrorKind::InvalidInput`] for an invalid id or a password
-/// below [`MIN_PASSWORD_LEN`], [`ErrorKind::Conflict`] when the id already
+/// violating the policy, [`ErrorKind::Conflict`] when the id already
 /// exists, and [`ErrorKind::Database`]/[`ErrorKind::IO`] when either store
 /// fails. A failure after the redb insert leaves a user record without a
 /// password hash — no login is possible until it is reprovisioned.
 pub fn provision_user(id: &str, password: &str, admin: bool) -> Result<String, AppError> {
     let id = validate_user_id(id)?;
-    let canonical = validate_new_password(password)?;
+    let canonical = validate_new_password(&id, password)?;
     if get_user(&id)
         .map_err(|e| AppError::from_err(ErrorKind::Database, e))?
         .is_some()
@@ -462,10 +489,11 @@ mod tests {
         let _ = &*TEST_ENV;
         reset_backend_state();
 
-        // 11 chars is below the floor; "" and whitespace trim to nothing.
-        for pw in ["short-pw", "12345678901", "", "   "] {
+        // 7 chars is below the minimum; "password" is blocklisted; "" and
+        // whitespace trim to nothing.
+        for pw in ["short1!", "password", "", "   "] {
             let err = super::provision_user("s3-short", pw, false)
-                .expect_err("short/empty password must be rejected");
+                .expect_err("weak/empty password must be rejected");
             assert_eq!(err.kind, crate::error::ErrorKind::InvalidInput);
         }
         // Rejected provisions leave no user record behind.
@@ -485,6 +513,39 @@ mod tests {
 
         super::provision_user("s3-exact", "123456789012", false).expect("12 chars ok");
         assert_eq!(super::user_count().expect("count"), 1);
+
+        reset_backend_state();
+    }
+
+    fn set_trivial_passwords(enabled: bool) {
+        crate::model::config::APP_CONFIG
+            .get()
+            .expect("APP_CONFIG set")
+            .write()
+            .expect("APP_CONFIG lock")
+            .trivial_passwords = enabled;
+    }
+
+    #[test]
+    fn trivial_passwords_flag_bypasses_strength_but_not_presence() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        set_trivial_passwords(true);
+        // Weak but non-empty passes with the bypass on…
+        super::provision_user("s3-trivial", "pw", false).expect("trivial accepted");
+        // …and fails with it off (flag restored before asserting).
+        set_trivial_passwords(false);
+        let err = super::provision_user("s3-strict", "pw", false).expect_err("strict rejects");
+        assert_eq!(err.kind, crate::error::ErrorKind::InvalidInput);
+        // Empty stays rejected either way: presence is not strength.
+        set_trivial_passwords(true);
+        let err = super::provision_user("s3-empty", "   ", false).expect_err("empty rejected");
+        assert_eq!(err.kind, crate::error::ErrorKind::InvalidInput);
+        set_trivial_passwords(false);
 
         reset_backend_state();
     }

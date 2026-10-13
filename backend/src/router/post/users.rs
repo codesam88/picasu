@@ -30,15 +30,15 @@ pub struct CreateUserRequest {
 /// Create a user record plus its password hash and persist both.
 ///
 /// Thin delegate over [`users::provision_user`]: id/password validation
-/// (including the floor-12 rule for new passwords), duplicate rejection,
+/// (including the default password policy for new passwords), duplicate rejection,
 /// redb record insert, and password-store write all live there. The
 /// trimmed (canonical) password is stored, matching the legacy semantics
 /// that trimmed everywhere; login verifies the trimmed input, so
 /// write-then-login stays consistent.
 ///
 /// # Errors
-/// Returns 400 when the id is invalid or the password is under 12
-/// characters, 409 when the id already exists, and 500 when either store
+/// Returns 400 when the id is invalid or the password violates the
+/// policy, 409 when the id already exists, and 500 when either store
 /// fails.
 fn create_user_sync(user_id: &str, password: &str, admin: bool) -> AppResult<UserSummary> {
     let id = users::provision_user(user_id, password, admin)?;
@@ -58,7 +58,7 @@ fn create_user_sync(user_id: &str, password: &str, admin: bool) -> AppResult<Use
 /// Corner cases: The `admin` flag is honored for admin callers and forced
 /// on for bootstrap. The password is trimmed before hashing.
 ///
-/// Errors: 400 invalid `userId` or password under 12 characters — 401
+/// Errors: 400 invalid `userId` or password violating the policy — 401
 /// missing or invalid credentials, non-admin caller, legacy-mode
 /// unauthenticated call, or unauthenticated call once any user exists —
 /// 405 read-only mode — 409 `userId` already exists — 500 storage
