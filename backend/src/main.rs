@@ -1,69 +1,114 @@
+use std::path::PathBuf;
+
+use clap::Parser;
+
+/// Picasu — a self-hosted, filesystem-first photo gallery.
+///
+/// With no flags the server boots and serves the gallery. The flags below
+/// are one-shot operations: they print, check, or configure, then exit
+/// instead of serving. Unknown flags are rejected rather than ignored, so
+/// a typo never boots a server with unintended settings.
+#[derive(Parser, Debug)]
+#[command(
+    name = "picasu",
+    version,
+    about = "Self-hosted filesystem-first photo gallery"
+)]
+struct Cli {
+    /// Print the public API document to stdout and exit.
+    #[arg(long)]
+    dump_openapi: bool,
+
+    /// Verify the committed API document against the mounted routes
+    /// and exit. With no value, checks `backend/openapi.json`.
+    ///
+    /// Three states by construction (absent / bare flag / flag with
+    /// value), hence the nested option rather than a custom enum.
+    #[allow(clippy::option_option)]
+    #[arg(long, num_args = 0..=1, value_name = "SPEC")]
+    check_openapi: Option<Option<PathBuf>>,
+
+    /// Disable the default password-strength checks for new passwords.
+    /// Development and throwaway installs only — the bypass is
+    /// warn-logged at first use.
+    #[arg(long)]
+    trivial_passwords: bool,
+}
+
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    apply_cli_flags(&args);
+    let cli = Cli::parse();
 
     // A sibling of `--dump-openapi`, and the only reason the committed spec is
     // read at all: the route-set gate runs when asked for, never at boot.
-    if let Some(index) = args.iter().position(|arg| arg == "--check-openapi") {
-        let spec = args
-            .get(index + 1)
-            .filter(|next| !next.starts_with('-'))
-            .map_or_else(picasu::openapi_parity::default_spec_path, Into::into);
+    if let Some(spec) = cli.check_openapi {
+        let spec = spec.unwrap_or_else(picasu::openapi_parity::default_spec_path);
         std::process::exit(picasu::openapi_parity::run(&spec));
     }
 
-    if args.iter().any(|arg| arg == "--dump-openapi") {
+    if cli.dump_openapi {
         print!("{}", picasu::openapi_public::public_json());
         return;
+    }
+
+    if cli.trivial_passwords {
+        // SAFETY: `main` is still single-threaded here — no worker or
+        // server thread has been spawned yet — so mutating the process
+        // environment is sound. The flag wins over a preset env var: it is
+        // the most explicit, closest-to-the-invocation setting.
+        unsafe {
+            std::env::set_var("PICASU_TRIVIAL_PASSWORDS", "true");
+        }
     }
 
     picasu::run();
 }
 
-/// Flags that map onto `PICASU_*` env overrides, applied before the server
-/// boots and reads them. The flag wins over a preset env var: it is the
-/// most explicit, closest-to-the-invocation setting. New boolean flags
-/// follow the `--trivial-passwords` entry below.
-fn apply_cli_flags(args: &[String]) {
-    if cli_flag_present(args, "--trivial-passwords") {
-        // SAFETY: `main` is still single-threaded here — no worker or
-        // server thread has been spawned yet — so mutating the process
-        // environment is sound.
-        unsafe {
-            std::env::set_var("PICASU_TRIVIAL_PASSWORDS", "true");
-        }
-    }
-}
-
-/// Pure detection half of [`apply_cli_flags`], kept separate so the flag
-/// parsing is unit-testable without touching the process environment.
-fn cli_flag_present(args: &[String], flag: &str) -> bool {
-    args.iter().any(|arg| arg == flag)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
-    fn args(flags: &[&str]) -> Vec<String> {
-        flags.iter().map(|flag| (*flag).to_string()).collect()
+    fn parse(args: &[&str]) -> Cli {
+        Cli::try_parse_from(std::iter::once("picasu").chain(args.iter().copied()))
+            .expect("test args must parse")
     }
 
     #[test]
-    fn trivial_passwords_flag_is_detected() {
-        assert!(cli_flag_present(
-            &args(&["--trivial-passwords"]),
-            "--trivial-passwords"
-        ));
-        assert!(!cli_flag_present(
-            &args(&["--dump-openapi"]),
-            "--trivial-passwords"
-        ));
-        assert!(!cli_flag_present(&args(&[]), "--trivial-passwords"));
-        // Prefix lookalikes do not count.
-        assert!(!cli_flag_present(
-            &args(&["--trivial-passwords=x"]),
-            "--trivial-passwords"
-        ));
+    fn no_flags_boots_server_mode() {
+        let cli = parse(&[]);
+        assert!(!cli.dump_openapi);
+        assert!(!cli.trivial_passwords);
+        assert!(cli.check_openapi.is_none());
+    }
+
+    #[test]
+    fn dump_and_trivial_flags_parse() {
+        let cli = parse(&["--dump-openapi", "--trivial-passwords"]);
+        assert!(cli.dump_openapi);
+        assert!(cli.trivial_passwords);
+        assert!(cli.check_openapi.is_none());
+    }
+
+    #[test]
+    fn check_openapi_value_is_optional() {
+        assert_eq!(parse(&["--check-openapi"]).check_openapi, Some(None));
+        let cli = parse(&["--check-openapi", "spec.json"]);
+        assert_eq!(cli.check_openapi, Some(Some(PathBuf::from("spec.json"))));
+    }
+
+    #[test]
+    fn help_lists_every_flag() {
+        let err = Cli::try_parse_from(["picasu", "--help"]).expect_err("--help exits via error");
+        assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp);
+        let text = err.to_string();
+        for flag in ["--dump-openapi", "--check-openapi", "--trivial-passwords"] {
+            assert!(text.contains(flag), "help lists {flag}");
+        }
+    }
+
+    #[test]
+    fn unknown_flags_fail_fast() {
+        let err = Cli::try_parse_from(["picasu", "--bogus"]).expect_err("unknown flag errors");
+        assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
     }
 }
