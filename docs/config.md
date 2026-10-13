@@ -99,17 +99,21 @@ back to the working directory, so existing installs keep working unchanged.
 
 The following env vars override the config file on every launch:
 
-| Variable                 | Overrides                |
-| ------------------------ | ------------------------ |
-| `PICASU_ADDRESS`         | `server.address`         |
-| `PICASU_MAX_UPLOAD_SIZE` | `server.max_upload_size` |
-| `PICASU_PORT`            | `server.port`            |
-| `PICASU_DATA_HOME`       | `gallery.data_home`      |
-| `PICASU_DISABLE_IMG`     | `gallery.disable_img`    |
-| `PICASU_IMAGE_HOME`      | `gallery.image_home`     |
-| `PICASU_READ_ONLY_MODE`  | `gallery.read_only_mode` |
-| `PICASU_UPLOAD_FOLDER`   | `gallery.upload_folder`  |
-| `PICASU_AUTH_KEY`        | `secrets.auth_key`       |
+| Variable                    | Overrides                    |
+| --------------------------- | ---------------------------- |
+| `PICASU_ADDRESS`            | `server.address`             |
+| `PICASU_ALLOW_REGISTRATION` | `gallery.allow_registration` |
+| `PICASU_MAX_UPLOAD_SIZE`    | `server.max_upload_size`     |
+| `PICASU_PORT`               | `server.port`                |
+| `PICASU_BOOTSTRAP_ADMIN`    | `gallery.bootstrap_admin`    |
+| `PICASU_DATA_HOME`          | `gallery.data_home`          |
+| `PICASU_DISABLE_IMG`        | `gallery.disable_img`        |
+| `PICASU_FS_NOTIFY_WATCHER`  | `gallery.fs_notify_watcher`  |
+| `PICASU_IMAGE_HOME`         | `gallery.image_home`         |
+| `PICASU_READ_ONLY_MODE`     | `gallery.read_only_mode`     |
+| `PICASU_TRIVIAL_PASSWORDS`  | `gallery.trivial_passwords`  |
+| `PICASU_UPLOAD_FOLDER`      | `gallery.upload_folder`      |
+| `PICASU_AUTH_KEY`           | `secrets.auth_key`           |
 
 ## Advanced: Rocket configuration
 

@@ -352,6 +352,7 @@ pub fn redeem_invite(user_id: &str, token: &str) -> Result<(), AppError> {
     }
     txn.commit()
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    log::info!("enrollment: invited user {id} registered");
     Ok(())
 }
 

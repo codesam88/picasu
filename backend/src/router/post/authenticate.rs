@@ -124,6 +124,7 @@ fn bootstrap_user(id: &str, trimmed_password: &str) -> AppResult<()> {
     store
         .set_password(id, trimmed_password)
         .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
+    log::info!("enrollment: first admin bootstrapped as {id}");
     Ok(())
 }
 
@@ -185,17 +186,11 @@ fn ensure_migrated_from_legacy(user_id: &str, password: &str) -> AppResult<()> {
 ]
 #[post("/post/authenticate", data = "<body>")]
 pub async fn authenticate(body: Json<AuthenticateRequest>) -> AppResult<Json<String>> {
-    // Open first-run mode: no users and no legacy password accept any
-    // parseable body without touching the stores.
+    // Open bootstrap mode: no users, the `--bootstrap-admin` flag set, and no
+    // legacy password accept any parseable body without touching the stores.
     let open_mode = users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))?
         == 0
-        && APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned")
-            .password
-            .is_none();
+        && crate::router::auth::bootstrap_open();
     if open_mode {
         let token = Claims::new_user("admin".to_string(), true).encode();
         return Ok(Json(token));

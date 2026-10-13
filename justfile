@@ -343,7 +343,7 @@ run: build
         PICASU_DATA_HOME="{{justfile_directory()}}/sandbox/data" \
         PICASU_IMAGE_HOME="{{justfile_directory()}}/sandbox/images" \
         PICASU_WEB_ROOT="{{justfile_directory()}}/frontend/dist" \
-        cargo run --bin picasu
+        cargo run --bin picasu -- --bootstrap-admin
 
 # Run security audits (backend + frontend)
 [group('global')]

@@ -39,6 +39,50 @@ use crate::tasks::looper::start_expire_check_loop;
 use crate::tasks::runtime::{INDEX_RUNTIME, ROCKET_RUNTIME};
 use model::metadata_record::MetadataRecord;
 
+/// Pure boot-freshness predicate: launching is allowed unless the bootstrap
+/// flag is set on a store that already has a password file.
+///
+/// `true` means "ok to launch". Bootstrap is a one-shot window: once
+/// `<DATA_HOME>/auth/passwd.json` exists the store is either provisioned or
+/// needs repair, and re-opening enrollment on it would silently re-expose the
+/// install. The failure is loud at boot rather than silent at request time.
+#[must_use]
+pub fn bootstrap_freshness_ok(flag: bool, passwd_exists: bool) -> bool {
+    !(flag && passwd_exists)
+}
+
+/// Boot gate for the bootstrap window: called by [`run`] after
+/// `initialize()` (config and `DATA_PATH` resolved) and before any thread
+/// serves.
+///
+/// WARN-logs whenever the flag is set, and refuses to launch (returning
+/// `Err`, which [`run`] maps to a non-zero exit) when the flag is set and a
+/// password store already exists. The error names both remedies.
+///
+/// # Errors
+/// Returns an error when [`bootstrap_freshness_ok`] is false.
+pub(crate) fn bootstrap_boot_gate() -> anyhow::Result<()> {
+    let flag = APP_CONFIG
+        .get()
+        .expect("APP_CONFIG not initialized")
+        .read()
+        .expect("lock poisoned")
+        .bootstrap_admin;
+    if flag {
+        warn!(
+            "bootstrap_admin is enabled: the first administrator may be enrolled online while the user store is empty"
+        );
+    }
+    let passwd_path = crate::auth::users::passwd_file_path();
+    if bootstrap_freshness_ok(flag, passwd_path.exists()) {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "bootstrap_admin is enabled but a password store already exists at {}: bootstrap already happened or the store needs repair. Remove the flag (--bootstrap-admin / PICASU_BOOTSTRAP_ADMIN / config `bootstrap_admin`), or inspect/repair the store with the `picasu-admin` CLI.",
+        passwd_path.display()
+    );
+}
+
 #[allow(clippy::missing_panics_doc)]
 pub fn run() {
     use tokio::signal::unix::{SignalKind, signal};
@@ -49,6 +93,14 @@ pub fn run() {
     // Initialize core subsystems (Config, DB, FFmpeg checks).
     // Must run first so DATA_PATH is resolved from config.
     initialize();
+
+    // Refuse to launch when --bootstrap-admin is set on a store that already
+    // exists: either bootstrap happened (remove the flag) or the store needs
+    // manual repair via the CLI. Fail loud at boot, before serving.
+    if let Err(err) = bootstrap_boot_gate() {
+        error!("{err}");
+        std::process::exit(1);
+    }
 
     // Load the directory→album mapping cache from disk (must run after initialize()).
     init_dir_album_cache();

@@ -176,6 +176,9 @@ export async function startBackend(paths: WorkerPaths): Promise<BackendHandle> {
       PICASU_DATA_HOME: paths.DATA_DIR,
       PICASU_CONFIG_HOME: paths.CONFIG_DIR,
       PICASU_WEB_ROOT: path.resolve(REPO_ROOT, 'frontend/dist'),
+      // E2E scenarios seed a legacy password through the open-mode routes,
+      // which only respond while the bootstrap window is open.
+      PICASU_BOOTSTRAP_ADMIN: 'true',
       // Test-only PBKDF effort: production KDF cost (~10s/verify in debug
       // builds) would dominate every login flow under test.
       PICASU_PBKDF_ITERATIONS: '1000'
