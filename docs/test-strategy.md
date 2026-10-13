@@ -170,6 +170,17 @@ These checks complement API and UI scenarios. They test properties of the
 implementation and the test suite itself rather than adding more examples of
 the same workflows.
 
+### Priority: auth first, then the same shape elsewhere
+
+Assurance effort prioritizes user authentication: it is the first
+domain held to the document-exactly/derive/enforce standard (flows in
+route matrices, gate predicates and status maps, enforced by tests
+and generated-artifact parity). Backend API assurance holds second
+priority, configuration and other functional domains third. Each
+domain reuses the same enforcement shape — analysis derived from
+definitions, tests derived from contracts, drift killed by parity
+gates — rather than inventing its own.
+
 ---
 
 ## Other notes
