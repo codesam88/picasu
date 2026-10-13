@@ -276,6 +276,22 @@ code) rides along as a drive-by in the same change. Exception
 lists stay per-site `#[allow]` until a legitimate exception
 appears — no `dylint.toml` mechanism with zero entries.
 
+### 9. Cross-domain consistency lints (queued — third priority)
+
+Same enforcement shape, new domains, after the auth prototype and
+the API-assurance core land. First candidate (noted 2026-10-13):
+configuration consistency — enumerate every `std::env::var` lookup
+in `backend/src` and match the set against the documented `PICASU_*`
+variables (`docs/config.md` + README table), failing on undocumented
+additions or documented-but-unread removals. Stronger variant: a
+single source array (name, type, default, doc) from which the docs
+table is generated, with the lint checking lookups against the
+array instead of prose. Both kill the same drift class the
+`openapi.json` parity gate kills for routes. Further domains follow
+the same recipe: pick a property with a machine-readable declaration
+source, write the lint, pin GREEN/RED. No new lint starts until the
+auth set above is gating.
+
 ## Progress
 
 - Step 1 done: `just openapi-breakcheck` (pinned oasdiff 1.33.0,
