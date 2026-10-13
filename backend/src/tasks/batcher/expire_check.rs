@@ -8,7 +8,7 @@ use crate::tasks::looper::reset_expire_check_timer;
 use mini_executor::BatchTask;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
-use log::{error, info};
+use log::{debug, error};
 use redb::{ReadableDatabase, ReadableTable, TableDefinition, TableHandle};
 use std::sync::atomic::Ordering;
 
@@ -51,7 +51,7 @@ fn expire_check_task() {
 
                 match write_txn.delete_table(table_handle) {
                     Ok(true) => {
-                        info!("Delete query cache table: {timestamp}");
+                        debug!("Delete query cache table: {timestamp}");
                         let tree_snapshot_delete_queue: Vec<_> = table
                             .iter()
                             .expect("failed to iterate table")
@@ -76,7 +76,7 @@ fn expire_check_task() {
                     }
                 }
 
-                info!(
+                debug!(
                     "{} items remaining in disk query cache",
                     write_txn
                         .list_tables()

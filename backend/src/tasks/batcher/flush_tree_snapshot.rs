@@ -70,7 +70,7 @@ fn flush_tree_snapshot_task() {
                 break;
             }
 
-            info!(
+            debug!(
                 duration = &*format!("{:?}", timer_start.elapsed());
                 "Write in-memory cache into disk"
             );
@@ -79,7 +79,7 @@ fn flush_tree_snapshot_task() {
 
         //Remove from DashMap *after* reference is dropped
         TREE_SNAPSHOT.in_memory.remove(&timestamp);
-        info!(
+        debug!(
             "{} items remaining in in-memory tree cache",
             TREE_SNAPSHOT.in_memory.len()
         );

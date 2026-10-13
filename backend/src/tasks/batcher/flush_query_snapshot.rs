@@ -72,7 +72,7 @@ fn flush_query_snapshot_task() {
                 ));
                 break;
             }
-            info!(
+            debug!(
                 duration = &*format!("{:?}", timer_start.elapsed());
                 "Write query cache into disk"
             );
@@ -84,7 +84,7 @@ fn flush_query_snapshot_task() {
         // Remove from DashMap *after* reference is dropped
         QUERY_SNAPSHOT.in_memory.remove(&expression_hashed);
 
-        info!(
+        debug!(
             "{} items remaining in in-memory query cache",
             QUERY_SNAPSHOT.in_memory.len()
         );
