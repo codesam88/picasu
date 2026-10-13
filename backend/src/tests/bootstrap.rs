@@ -73,6 +73,12 @@ pub fn write_config(updates: &serde_json::Value) {
         if let Some(val) = obj.get("read_only_mode").and_then(|v| v.as_bool()) {
             config.read_only_mode = val;
         }
+        if let Some(val) = obj
+            .get("allow_registration")
+            .and_then(serde_json::Value::as_bool)
+        {
+            config.allow_registration = val;
+        }
         if let Some(val) = obj.get("fs_notify_watcher").and_then(|v| v.as_bool()) {
             config.fs_notify_watcher = val;
         }
@@ -161,6 +167,7 @@ pub fn reset_backend_state() {
         crate::storage::db::ASSET_BY_ID,
         crate::storage::db::DUPE_INDEX,
         crate::storage::db::USERS,
+        crate::storage::db::INVITES,
     ] {
         let mut table = txn
             .open_table(table_def)
@@ -224,6 +231,7 @@ pub fn reset_backend_state() {
         .write()
         .expect("APP_CONFIG lock");
     config.read_only_mode = false;
+    config.allow_registration = false;
     config.fs_notify_watcher = true;
     config.normalize_upload_filenames = true;
     config.validate_upload_content = true;

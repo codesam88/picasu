@@ -7,7 +7,7 @@ when:
   - call: "PUT /put/config/password"
     body:
       oldPassword: ~
-      password: "testpass"
+      password: "testpass1234"
   - upload:
       file: /e2e_up_noauth/src/photo.jpg
       target_album: "${album}"

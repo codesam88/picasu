@@ -2,7 +2,7 @@
 use rocket::Route;
 
 pub fn generate_delete_routes() -> Vec<Route> {
-    routes![delete_data]
+    routes![delete_data, delete_invite]
 }
 
 // src/router/delete/delete_data.rs
@@ -298,4 +298,47 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
     }
 
     Ok((abstract_data_to_remove, all_affected_album_ids))
+}
+
+/// Revoke an invite token.
+///
+/// Admin-only. The invite's row is removed, so its token stops redeeming
+/// immediately; a registration attempt afterwards answers 404. Ids come
+/// from `GET /get/invites`.
+///
+/// Corner cases: Revoking an already-removed id is a 404, not a success —
+/// the second caller cannot distinguish "revoked twice" from "never
+/// existed", which leaks nothing.
+///
+/// Errors: 401 missing or invalid admin credentials — 404 unknown invite
+/// id — 405 read-only mode — 500 storage failure.
+#[utoipa::path(
+        tag = "auth",
+        params(
+            ("invite_id" = &str, Path, description = "Invite id as listed by GET /get/invites"),
+        ),
+        responses(
+            (status = 200, description = "Invite revoked"),
+            (status = 401, response = Unauthorized),
+            (status = 404, description = "Unknown invite id"),
+            (status = 405, description = "Read-only mode"),
+            (status = 500, description = "Internal error"),
+        )
+    )
+]
+#[delete("/delete/invites/<invite_id>")]
+pub fn delete_invite(
+    auth: GuardResult<GuardAuth>,
+    read_only_mode: GuardResult<GuardReadOnlyMode>,
+    invite_id: &str,
+) -> AppResult<()> {
+    let _ = auth?;
+    let _ = read_only_mode?;
+    if !crate::auth::invites::revoke_invite(invite_id)? {
+        return Err(AppError::new(
+            ErrorKind::NotFound,
+            format!("unknown invite: {invite_id}"),
+        ));
+    }
+    Ok(())
 }

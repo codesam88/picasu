@@ -33,10 +33,11 @@ pub struct SetUserPasswordRequest {
 /// the legacy `PUT /put/config/password` first-run flow working.
 ///
 /// # Errors
-/// Returns 400 when the id is invalid or the trimmed new password is
-/// empty, 401 when the old password is wrong, 403 when a non-admin targets
-/// another user, 404 when the target user is unknown and the store is
-/// non-empty, and 500 when either store fails.
+/// Returns 400 when the id is invalid or the new password is shorter than
+/// [`users::MIN_PASSWORD_LEN`] after trimming, 401 when the old password is
+/// wrong, 403 when a non-admin targets another user, 404 when the target
+/// user is unknown and the store is non-empty, and 500 when either store
+/// fails.
 pub(crate) fn set_password_sync(
     caller_id: &str,
     caller_admin: bool,
@@ -45,13 +46,9 @@ pub(crate) fn set_password_sync(
     new_password: &str,
 ) -> AppResult<()> {
     let target = validate_user_id(target_user_id)?;
-    let canonical_new = new_password.trim().to_string();
-    if canonical_new.is_empty() {
-        return Err(AppError::new(
-            ErrorKind::InvalidInput,
-            "new password must not be empty",
-        ));
-    }
+    // Floor-12 applies to new passwords only; the check runs before the
+    // permission/old-password checks so a short password is always 400.
+    let canonical_new = users::validate_new_password(new_password)?;
     // Permission before existence: a non-admin targeting another id gets
     // 403 even when the target is unknown, so the status leaks no
     // user-enumeration signal.
@@ -87,15 +84,7 @@ pub(crate) fn set_password_sync(
                 .context("Password change failed"));
         }
     }
-    let path = users::passwd_file_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| AppError::from_err(ErrorKind::IO, e.into()))?;
-    }
-    let mut store = crate::auth::password::PasswdFile::load(&path)
-        .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
-    store
-        .set_password(&target, &canonical_new)
-        .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
+    users::store_password(&target, &canonical_new)?;
     Ok(())
 }
 
@@ -110,16 +99,16 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::Claims) -> (String, 
 ///
 /// An admin may set any user's password without the old one; a non-admin
 /// may only change their own, presenting the correct `oldPassword`. The new
-/// password is trimmed and must be non-empty after trimming (there is no
-/// "clear to open": open mode is store-empty only).
+/// password is trimmed and must be at least 12 characters after trimming
+/// (there is no "clear to open": open mode is store-empty only).
 ///
 /// Corner cases: Any authenticated user reaches this route (share tokens
 /// are rejected); unauthenticated callers are denied at dispatch.
 ///
-/// Errors: 400 invalid `userId` or empty `newPassword` — 401 missing or
-/// invalid credentials, or wrong `oldPassword` — 403 non-admin targeting
-/// another user — 404 unknown `userId` — 405 read-only mode — 500 storage
-/// failure.
+/// Errors: 400 invalid `userId` or `newPassword` under 12 characters — 401
+/// missing or invalid credentials, or wrong `oldPassword` — 403 non-admin
+/// targeting another user — 404 unknown `userId` — 405 read-only mode —
+/// 500 storage failure.
 #[utoipa::path(
         tag = "auth",
         request_body = SetUserPasswordRequest,
@@ -281,6 +270,27 @@ mod tests {
             &json!({ "userId": "s4d-root", "newPassword": "   " }),
         );
         assert_eq!(status, Status::BadRequest);
+    }
+
+    #[test]
+    fn short_new_password_is_400() {
+        let _g = lock();
+        let client = setup();
+        seed("s4d-root", true, None);
+        // 11 chars: below the floor-12 minimum for new passwords.
+        let status = put_password(
+            &client,
+            cookie("s4d-root", true),
+            &json!({ "userId": "s4d-root", "newPassword": "12345678901" }),
+        );
+        assert_eq!(status, Status::BadRequest);
+        // 12 chars passes.
+        let status = put_password(
+            &client,
+            cookie("s4d-root", true),
+            &json!({ "userId": "s4d-root", "newPassword": "123456789012" }),
+        );
+        assert_eq!(status, Status::Ok);
     }
 
     #[test]

@@ -176,6 +176,11 @@ pub const DUPE_INDEX: TableDefinition<&str, &str> = TableDefinition::new("dupe_i
 /// [`ASSET_BY_ID`].
 pub const USERS: TableDefinition<&str, &str> = TableDefinition::new("users");
 
+/// Maps invite id (blake3 hash hex of the token) → JSON-serialized
+/// [`crate::auth::invites::InviteRecord`]. Only the token hash is ever
+/// stored; the plaintext token exists solely in the creation response.
+pub const INVITES: TableDefinition<&str, &str> = TableDefinition::new("invites");
+
 use anyhow::Result;
 
 pub fn open_metadata_table() -> ReadOnlyTable<&'static str, MetadataRecord> {
