@@ -31,6 +31,7 @@ pub struct PartialUpdateConfigRequest {
     pub normalize_upload_filenames: Option<bool>,
     pub validate_upload_content: Option<bool>,
     pub use_client_timestamp_info: Option<bool>,
+    pub allow_registration: Option<bool>,
     pub auth_key: Option<String>,
 }
 
@@ -121,6 +122,9 @@ pub async fn update_config_handler(
         if let Some(use_client_timestamp_info) = req_data.use_client_timestamp_info {
             current_config.use_client_timestamp_info = use_client_timestamp_info;
         }
+        if let Some(allow_registration) = req_data.allow_registration {
+            current_config.allow_registration = allow_registration;
+        }
         if let Some(key) = req_data.auth_key {
             let trimmed = key.trim();
             current_config.auth_key = if trimmed.is_empty() {
@@ -153,18 +157,19 @@ pub struct UpdatePasswordRequest {
 /// This is the legacy single-password route, reworked onto the user store:
 /// it changes the password of the authenticated caller only. An admin may
 /// set their own password without `oldPassword`; a non-admin must present
-/// the correct `oldPassword`. The new `password` is trimmed and must be
-/// non-empty after trimming (there is no "clear to open": open mode is
-/// store-empty only). To change another user's password, use
+/// the correct `oldPassword`. The new `password` is trimmed and must be at
+/// least 12 characters after trimming (there is no "clear to open": open
+/// mode is store-empty only). To change another user's password, use
 /// `PUT /put/users/password`.
 ///
 /// Corner cases: Any authenticated user reaches this route (share tokens
 /// are rejected); unauthenticated callers are denied at dispatch. A missing
-/// (`None`) or blank `password` is 400.
+/// (`None`), blank, or too-short `password` is 400.
 ///
-/// Errors: 400 missing or blank `password`, or the body cannot be parsed —
-/// 401 missing or invalid credentials, or wrong `oldPassword`; share tokens
-/// are not accepted — 405 read-only mode — 500 storage failure.
+/// Errors: 400 missing, blank, or under-12 `password`, or the body cannot
+/// be parsed — 401 missing or invalid credentials, or wrong `oldPassword`;
+/// share tokens are not accepted — 405 read-only mode — 500 storage
+/// failure.
 #[utoipa::path(
         tag = "config",
         request_body = UpdatePasswordRequest,
@@ -296,6 +301,41 @@ mod tests {
             &json!({ "password": test_password("t-carol-new"), "oldPassword": test_password("t-nope") }),
         );
         assert_eq!(status, Status::Unauthorized);
+    }
+
+    #[test]
+    fn put_config_allowlists_allow_registration() {
+        let _g = lock();
+        let client = setup();
+        seed("s4e-root", true, None);
+        let flag = || {
+            crate::model::config::APP_CONFIG
+                .get()
+                .expect("APP_CONFIG")
+                .read()
+                .expect("APP_CONFIG lock")
+                .allow_registration
+        };
+        assert!(!flag(), "default must be off");
+        let status = client
+            .put("/put/config")
+            .cookie(cookie("s4e-root", true))
+            .header(ContentType::JSON)
+            .body(json!({ "allowRegistration": true }).to_string())
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::Ok);
+        assert!(flag(), "PUT must toggle the knob on");
+        // A patch that omits the field keeps the current value.
+        let status = client
+            .put("/put/config")
+            .cookie(cookie("s4e-root", true))
+            .header(ContentType::JSON)
+            .body(json!({ "port": 5673 }).to_string())
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::Ok);
+        assert!(flag(), "absent field must not touch the knob");
     }
 
     #[test]

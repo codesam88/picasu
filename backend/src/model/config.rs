@@ -86,6 +86,10 @@ pub struct AppConfig {
     /// (`resolve_upload_timestamp`).
     #[serde(default)]
     pub use_client_timestamp_info: bool,
+    /// Allow self-registration via `POST /post/users/register` without an
+    /// invite token. Default off: registration then requires a valid invite.
+    #[serde(default)]
+    pub allow_registration: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -111,6 +115,7 @@ impl Default for AppConfig {
             normalize_upload_filenames: true,
             validate_upload_content: true,
             use_client_timestamp_info: false,
+            allow_registration: false,
             password: None,
             auth_key: None,
             web_root: None,
@@ -179,6 +184,8 @@ pub(crate) struct TomlGallery {
     pub(crate) validate_upload_content: bool,
     #[serde(default)]
     pub(crate) use_client_timestamp_info: bool,
+    #[serde(default)]
+    pub(crate) allow_registration: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) web_root: Option<PathBuf>,
 }
@@ -195,6 +202,7 @@ impl Default for TomlGallery {
             normalize_upload_filenames: true,
             validate_upload_content: true,
             use_client_timestamp_info: false,
+            allow_registration: false,
             web_root: None,
         }
     }
@@ -225,6 +233,7 @@ impl From<TomlFile> for AppConfig {
             normalize_upload_filenames: t.gallery.normalize_upload_filenames,
             validate_upload_content: t.gallery.validate_upload_content,
             use_client_timestamp_info: t.gallery.use_client_timestamp_info,
+            allow_registration: t.gallery.allow_registration,
             password: t.secrets.password,
             auth_key: t.secrets.auth_key,
             web_root: t.gallery.web_root,
@@ -250,6 +259,7 @@ impl From<AppConfig> for TomlFile {
                 normalize_upload_filenames: c.normalize_upload_filenames,
                 validate_upload_content: c.validate_upload_content,
                 use_client_timestamp_info: c.use_client_timestamp_info,
+                allow_registration: c.allow_registration,
                 web_root: c.web_root,
             },
             secrets: TomlSecrets {
@@ -405,6 +415,11 @@ impl AppConfig {
         {
             config.read_only_mode = mode;
         }
+        if let Ok(val) = std::env::var("PICASU_ALLOW_REGISTRATION")
+            && let Ok(mode) = val.parse()
+        {
+            config.allow_registration = mode;
+        }
         if let Ok(val) = std::env::var("PICASU_DISABLE_IMG")
             && let Ok(disabled) = val.parse()
         {
@@ -524,6 +539,7 @@ mod tests {
             normalize_upload_filenames: false,
             validate_upload_content: true,
             use_client_timestamp_info: false,
+            allow_registration: true,
             password: Some(test_password("t-config")),
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),
@@ -574,6 +590,11 @@ mod tests {
     }
 
     #[test]
+    fn allow_registration_defaults_to_false() {
+        assert!(!AppConfig::default().allow_registration);
+    }
+
+    #[test]
     fn toml_defaults_fill_gaps() {
         let toml_str = r#"
 [server]
@@ -591,5 +612,6 @@ read_only_mode = true
         assert_eq!(config.max_upload_size, "100MiB");
         assert_eq!(config.upload_folder, "uploads");
         assert!(!config.disable_img);
+        assert!(!config.allow_registration);
     }
 }
