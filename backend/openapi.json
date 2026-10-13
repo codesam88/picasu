@@ -169,6 +169,10 @@
           "readOnlyMode": {
             "type": "boolean"
           },
+          "trivialPasswords": {
+            "description": "Disable the default password-strength checks (length floor/ceiling,\nblocklist, user-id and pattern rules) for new passwords. Default\noff. Only for development, throwaway installs, or tests that must\nuse weak fixtures — the bypass is warn-logged at first use.",
+            "type": "boolean"
+          },
           "uploadFolder": {
             "type": "string"
           },
@@ -319,6 +323,20 @@
         "required": [
           "parentAlbumId",
           "name"
+        ],
+        "type": "object"
+      },
+      "CreateInviteRequest": {
+        "description": "Body for `POST /post/invites/create`.",
+        "properties": {
+          "expiresInHours": {
+            "description": "Lifetime of the invite in hours, required: `0` means the invite\nnever expires. Negative values are rejected. Pass 168 for the\nconventional 7-day lifetime.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expiresInHours"
         ],
         "type": "object"
       },
@@ -633,7 +651,10 @@
           "expiresAt": {
             "format": "int64",
             "minimum": 0,
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "id": {
             "description": "Row id — blake3 hash hex of the token; identifies the invite for\nrevoke. Preimage-resistant, useless as a token.",
@@ -652,8 +673,7 @@
         "required": [
           "id",
           "prefix",
-          "createdBy",
-          "expiresAt"
+          "createdBy"
         ],
         "type": "object"
       },
@@ -735,6 +755,12 @@
             ]
           },
           "readOnlyMode": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "trivialPasswords": {
             "type": [
               "boolean",
               "null"
@@ -2223,8 +2249,18 @@
     },
     "/post/invites/create": {
       "post": {
-        "description": "Admin-only. The `token` field is shown exactly once: only its blake3\nhash is stored, so the value cannot be retrieved again — the admin\ndistributes it out of band (for example as\n`${origin}/register?invite=${token}`). Default expiry is 7 days; the\ninvite redeems once, for a single registration.\n\nCorner cases: In open mode the ephemeral admin identity creates the\ninvite. Listing, expiry, use and revoke are handled by\n`GET /get/invites` and `DELETE /delete/invites/{invite_id}`.\n\nErrors: 401 missing or invalid admin credentials — 405 read-only mode —\n500 storage failure.",
+        "description": "Admin-only. The `token` field is shown exactly once: only its blake3\nhash is stored, so the value cannot be retrieved again — the admin\ndistributes it out of band (for example as\n`${origin}/register?invite=${token}`). Expiry is required, in hours\n(`0` never expires — pass 168 for the conventional 7-day lifetime);\nthe invite redeems once, for a single registration.\n\nCorner cases: In open mode the ephemeral admin identity creates the\ninvite. Listing, expiry, use and revoke are handled by\n`GET /get/invites` and `DELETE /delete/invites/{invite_id}`.\n\nErrors: 400 negative `expiresInHours` — 401 missing or invalid admin\ncredentials — 405 read-only mode — 500 storage failure.",
         "operationId": "create_invite_handler",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -2235,6 +2271,9 @@
               }
             },
             "description": "Invite created; token returned once"
+          },
+          "400": {
+            "description": "Invalid input"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -2370,7 +2409,7 @@
     },
     "/post/users/create": {
       "post": {
-        "description": "Admin-only, except for the bootstrap exception: while the user store is\nempty an unauthenticated call succeeds and forces `admin: true`\nregardless of the body's flag — but only in open mode. With a legacy\npassword configured the store stays gated by that host secret (review\nA1): unauthenticated create is denied and enrollment happens through\n`POST /post/authenticate` migration. A non-admin caller — or no caller\nonce any user exists — is rejected.\n\nCorner cases: The `admin` flag is honored for admin callers and forced\non for bootstrap. The password is trimmed before hashing.\n\nErrors: 400 invalid `userId` or password under 12 characters — 401\nmissing or invalid credentials, non-admin caller, legacy-mode\nunauthenticated call, or unauthenticated call once any user exists —\n405 read-only mode — 409 `userId` already exists — 500 storage\nfailure.",
+        "description": "Admin-only, except for the bootstrap exception: while the user store is\nempty an unauthenticated call succeeds and forces `admin: true`\nregardless of the body's flag — but only in open mode. With a legacy\npassword configured the store stays gated by that host secret (review\nA1): unauthenticated create is denied and enrollment happens through\n`POST /post/authenticate` migration. A non-admin caller — or no caller\nonce any user exists — is rejected.\n\nCorner cases: The `admin` flag is honored for admin callers and forced\non for bootstrap. The password is trimmed before hashing.\n\nErrors: 400 invalid `userId` or password violating the policy — 401\nmissing or invalid credentials, non-admin caller, legacy-mode\nunauthenticated call, or unauthenticated call once any user exists —\n405 read-only mode — 409 `userId` already exists — 500 storage\nfailure.",
         "operationId": "create_user_handler",
         "requestBody": {
           "content": {
@@ -2417,7 +2456,7 @@
     },
     "/post/users/register": {
       "post": {
-        "description": "Public route (no auth guard) behind the read-only guard. With\n`allowRegistration` on, anyone registers without an invite; with it off,\na valid, unexpired, unused invite is required. The account is always\ncreated with `admin: false` — `POST /post/users/create` on an empty\nstore remains the only online admin-granting path. While\n`allowRegistration` is on, an `invite` in the body is ignored: open\nregistration supersedes it and does not burn the token.\n\nCorner cases: The password is trimmed once and must be at least 12\ncharacters; an empty `invite` string counts as absent. Invite redemption\nmarks the token used and inserts the user record in one transaction, so\na failed request never half-consumes an invite.\n\nErrors: 400 invalid `userId` or password under 12 characters — 403\nregistration disabled (no invite) or invite expired — 404 unknown or\nrevoked invite token — 405 read-only mode — 409 `userId` already exists\nor invite already used — 500 storage failure.",
+        "description": "Public route (no auth guard) behind the read-only guard. With\n`allowRegistration` on, anyone registers without an invite; with it off,\na valid, unexpired, unused invite is required. The account is always\ncreated with `admin: false` — `POST /post/users/create` on an empty\nstore remains the only online admin-granting path. While\n`allowRegistration` is on, an `invite` in the body is ignored: open\nregistration supersedes it and does not burn the token.\n\nCorner cases: The password is trimmed once and must satisfy the\ndefault policy (see `auth::password::check_strength`); an empty `invite` string counts as absent. Invite redemption\nmarks the token used and inserts the user record in one transaction, so\na failed request never half-consumes an invite.\n\nErrors: 400 invalid `userId` or password violating the policy — 403\nregistration disabled (no invite) or invite expired — 404 unknown or\nrevoked invite token — 405 read-only mode — 409 `userId` already exists\nor invite already used — 500 storage failure.",
         "operationId": "register_user_handler",
         "requestBody": {
           "content": {
@@ -2548,7 +2587,7 @@
     },
     "/put/config/password": {
       "put": {
-        "description": "This is the legacy single-password route, reworked onto the user store:\nit changes the password of the authenticated caller only. An admin may\nset their own password without `oldPassword`; a non-admin must present\nthe correct `oldPassword`. The new `password` is trimmed and must be at\nleast 12 characters after trimming (there is no \"clear to open\": open\nmode is store-empty only). To change another user's password, use\n`PUT /put/users/password`.\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch. A missing\n(`None`), blank, or too-short `password` is 400.\n\nErrors: 400 missing, blank, or under-12 `password`, or the body cannot\nbe parsed — 401 missing or invalid credentials, or wrong `oldPassword`;\nshare tokens are not accepted — 405 read-only mode — 500 storage\nfailure.",
+        "description": "This is the legacy single-password route, reworked onto the user store:\nit changes the password of the authenticated caller only. An admin may\nset their own password without `oldPassword`; a non-admin must present\nthe correct `oldPassword`. The new `password` is trimmed and must satisfy\nthe default password policy after trimming (there is no \"clear to open\": open\nmode is store-empty only). To change another user's password, use\n`PUT /put/users/password`.\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch. A missing\n(`None`), blank, or too-short `password` is 400.\n\nErrors: 400 missing, blank, or under-12 `password`, or the body cannot\nbe parsed — 401 missing or invalid credentials, or wrong `oldPassword`;\nshare tokens are not accepted — 405 read-only mode — 500 storage\nfailure.",
         "operationId": "update_password_handler",
         "requestBody": {
           "content": {
@@ -3023,7 +3062,7 @@
     },
     "/put/users/password": {
       "put": {
-        "description": "An admin may set any user's password without the old one; a non-admin\nmay only change their own, presenting the correct `oldPassword`. The new\npassword is trimmed and must be at least 12 characters after trimming\n(there is no \"clear to open\": open mode is store-empty only).\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch.\n\nErrors: 400 invalid `userId` or `newPassword` under 12 characters — 401\nmissing or invalid credentials, or wrong `oldPassword` — 403 non-admin\ntargeting another user — 404 unknown `userId` — 405 read-only mode —\n500 storage failure.",
+        "description": "An admin may set any user's password without the old one; a non-admin\nmay only change their own, presenting the correct `oldPassword`. The new\npassword is trimmed and must satisfy the default password policy\nafter trimming (length floor/ceiling, blocklist, user-id and pattern\nrules — see `auth::password::check_strength`).\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch.\n\nErrors: 400 invalid `userId` or `newPassword` violating the password\npolicy — 401\nmissing or invalid credentials, or wrong `oldPassword` — 403 non-admin\ntargeting another user — 404 unknown `userId` — 405 read-only mode —\n500 storage failure.",
         "operationId": "set_user_password_handler",
         "requestBody": {
           "content": {

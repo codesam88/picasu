@@ -84,11 +84,13 @@ rest:
    - Invites live in a new redb `INVITES` table (same `USERS`
      `TableDefinition<&str, &str>` + JSON pattern): random 128-bit
      token, only the blake3 hash stored (compare with `subtle`),
-     7-day default expiry, creator/expiry/used-by metadata plus a
-     short prefix hint for admin display. Redeem marks used in the
-     same redb transaction as the user insert (passwd.json stays
-     file-atomic outside it; either crash order fails safe — no
-     login without both halves).
+     configurable expiry in hours (required `expiresInHours`, `0`
+     never expires — 168 is the conventional 7-day lifetime) resolved
+     by `auth::invites::resolve_expiry`, creator/expiry/used-by
+     metadata plus a short prefix hint for admin display. Redeem
+     marks used in the same redb transaction as the user insert
+     (passwd.json stays file-atomic outside it; either crash order
+     fails safe — no login without both halves).
    - `POST /post/invites/create` (admin + read-only guard) returns
      the token once; `GET /get/invites` (admin) lists metadata, never
      tokens; revoke follows the existing delete-route conventions.
@@ -180,11 +182,12 @@ passwd_exists)` predicate — flag + existing `passwd.json` refuses
 3. **Shared provisioning helper (backend).** Extract `create_user_sync`
    from `backend/src/router/post/users.rs` into
    `auth::users::provision_user(id, password, admin)` (validate id,
-   trim, reject empty, minimum length 12 for new passwords per review
-   A3 — check `test_password()`/`e2e_test_pwd` fixture lengths,
+   trim, default password policy for new passwords —
+   `auth::password::check_strength`: 8–256 chars, shipped blocklist,
+   user-id and trivial-pattern rules; `--trivial-passwords` bypass —
    duplicate error, write redb record + passwd file); route and CLI
-   both delegate. Unit tests: duplicate, empty/whitespace/short
-   password, trim-then-login consistency.
+   both delegate. Unit tests: duplicate, weak/empty password,
+   trim-then-login consistency. Done 2026-10-13 (commits below).
 4. **Registration screen (frontend).** `createUser` in
    `frontend/src/api/users.ts` (+ vitest); `LoginPage.vue` bootstrap mode
    from the `listUsers` probe (list with no admin → register form with
@@ -195,8 +198,9 @@ passwd_exists)` predicate — flag + existing `passwd.json` refuses
    level; revisit if flaky).
 5. **Registration backend (spike — worker, then senior review).**
    Scope: `auth::users::provision_user` extraction (route delegates,
-   behavior preserved) + floor-12 for new passwords (provision and
-   `set_password_sync`); `allow_registration` knob (config key +
+   behavior preserved) + default password policy for new passwords
+   (provision and `set_password_sync`: 8–256 chars, shipped
+   blocklist, id/pattern rules; `--trivial-passwords` bypass); `allow_registration` knob (config key +
    env + `PUT /put/config` allowlist); `INVITES` table +
    `auth::invites` helpers (create/list/redeem, blake3-hashed
    tokens, `subtle` compare, 7d default expiry, prefix hint);
@@ -246,9 +250,16 @@ backend-check` and `just openapi-check` (after `openapi-gen`)
   (actionable message); a forgotten flag fails loud, never silent.
 - Legacy mode denies unauthenticated `users/create` (review A1) —
   the host secret actually gates enrollment; migration paths only.
-- New passwords minimum length 12, enforced in the shared provision
-  and set-password paths only (review A3; no retroactive enforcement
-  on legacy migration).
+- New-password policy (review A3, settled 2026-10-13): NIST
+  800-63B-shaped — 8–256 chars, shipped blocklist (SecLists 500 +
+  service appendix, case-insensitive), user-id equality and
+  trivial-pattern rejection, no composition rules or expiry; PBKDF2
+  work factor plus planned online throttling carry the guessing
+  resistance. Enforced in the shared provision and set-password
+  paths only (no retroactive enforcement on legacy migration).
+  `--trivial-passwords` (flag/env/config, default off,
+  warn-logged) bypasses strength but never presence (empty stays
+  400).
 - Closed-vs-legacy 401 oracle accepted deliberately: the distinct
   "no administrator enrolled" message aids deployer UX and reduces
   attacker incentive (review A5).
