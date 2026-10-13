@@ -96,6 +96,17 @@ pub struct AppConfig {
     /// use weak fixtures — the bypass is warn-logged at first use.
     #[serde(default)]
     pub trivial_passwords: bool,
+    /// Enable the online first-admin bootstrap window. While set **and the
+    /// user store is empty**, unauthenticated `POST /post/users/create`
+    /// and open `POST /post/authenticate` mint the first admin. Default
+    /// off: a fresh install answers 401 everywhere until an operator opts
+    /// in (or provisions the store via the `picasu-admin` CLI). A
+    /// configured legacy `password` still wins over the flag (the host
+    /// secret gates enrollment); enabling the flag against an existing
+    /// `passwd.json` makes the server refuse to start. WARN-logged at boot
+    /// whenever set.
+    #[serde(default)]
+    pub bootstrap_admin: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -123,6 +134,7 @@ impl Default for AppConfig {
             use_client_timestamp_info: false,
             allow_registration: false,
             trivial_passwords: false,
+            bootstrap_admin: false,
             password: None,
             auth_key: None,
             web_root: None,
@@ -195,6 +207,8 @@ pub(crate) struct TomlGallery {
     pub(crate) allow_registration: bool,
     #[serde(default)]
     pub(crate) trivial_passwords: bool,
+    #[serde(default)]
+    pub(crate) bootstrap_admin: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) web_root: Option<PathBuf>,
 }
@@ -213,6 +227,7 @@ impl Default for TomlGallery {
             use_client_timestamp_info: false,
             allow_registration: false,
             trivial_passwords: false,
+            bootstrap_admin: false,
             web_root: None,
         }
     }
@@ -245,6 +260,7 @@ impl From<TomlFile> for AppConfig {
             use_client_timestamp_info: t.gallery.use_client_timestamp_info,
             allow_registration: t.gallery.allow_registration,
             trivial_passwords: t.gallery.trivial_passwords,
+            bootstrap_admin: t.gallery.bootstrap_admin,
             password: t.secrets.password,
             auth_key: t.secrets.auth_key,
             web_root: t.gallery.web_root,
@@ -272,6 +288,7 @@ impl From<AppConfig> for TomlFile {
                 use_client_timestamp_info: c.use_client_timestamp_info,
                 allow_registration: c.allow_registration,
                 trivial_passwords: c.trivial_passwords,
+                bootstrap_admin: c.bootstrap_admin,
                 web_root: c.web_root,
             },
             secrets: TomlSecrets {
@@ -437,6 +454,11 @@ impl AppConfig {
         {
             config.trivial_passwords = mode;
         }
+        if let Ok(val) = std::env::var("PICASU_BOOTSTRAP_ADMIN")
+            && let Ok(mode) = val.parse()
+        {
+            config.bootstrap_admin = mode;
+        }
         if let Ok(val) = std::env::var("PICASU_DISABLE_IMG")
             && let Ok(disabled) = val.parse()
         {
@@ -558,6 +580,7 @@ mod tests {
             use_client_timestamp_info: false,
             allow_registration: true,
             trivial_passwords: true,
+            bootstrap_admin: true,
             password: Some(test_password("t-config")),
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),
@@ -618,6 +641,11 @@ mod tests {
     }
 
     #[test]
+    fn bootstrap_admin_defaults_to_false() {
+        assert!(!AppConfig::default().bootstrap_admin);
+    }
+
+    #[test]
     fn toml_defaults_fill_gaps() {
         let toml_str = r#"
 [server]
@@ -636,5 +664,6 @@ read_only_mode = true
         assert_eq!(config.upload_folder, "uploads");
         assert!(!config.disable_img);
         assert!(!config.allow_registration);
+        assert!(!config.bootstrap_admin);
     }
 }

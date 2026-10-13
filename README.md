@@ -34,13 +34,14 @@ docker compose up -d
 
 `config.toml` is auto-created on first launch. Key settings:
 
-| Env var                 | Overrides        |
-| ----------------------- | ---------------- |
-| `PICASU_IMAGE_HOME`     | Image root       |
-| `PICASU_CONFIG_HOME`    | Config directory |
-| `PICASU_DATA_HOME`      | Data directory   |
-| `PICASU_PORT`           | Server port      |
-| `PICASU_READ_ONLY_MODE` | Read-only mode   |
+| Env var                  | Overrides                                |
+| ------------------------ | ---------------------------------------- |
+| `PICASU_IMAGE_HOME`      | Image root                               |
+| `PICASU_CONFIG_HOME`     | Config directory                         |
+| `PICASU_DATA_HOME`       | Data directory                           |
+| `PICASU_PORT`            | Server port                              |
+| `PICASU_READ_ONLY_MODE`  | Read-only mode                           |
+| `PICASU_BOOTSTRAP_ADMIN` | First-admin enrollment on fresh installs |
 
 See [docs/config.md](docs/config.md) for the full reference.
 
