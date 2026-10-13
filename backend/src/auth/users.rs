@@ -229,6 +229,80 @@ pub fn validate_user_id(id: &str) -> Result<String, AppError> {
     Ok(trimmed)
 }
 
+/// Minimum length for newly set or provisioned passwords (security review
+/// A3). Enforced on new-password writes only — legacy stored passwords are
+/// not retroactively checked.
+pub const MIN_PASSWORD_LEN: usize = 12;
+
+/// Validate a new password: trim, then require at least
+/// [`MIN_PASSWORD_LEN`] characters. Returns the canonical (trimmed) form —
+/// the same form login verifies against, so write-then-login stays
+/// consistent.
+///
+/// # Errors
+/// Returns an [`AppError`] with [`ErrorKind::InvalidInput`] when the trimmed
+/// password is shorter than [`MIN_PASSWORD_LEN`] (empty included).
+pub fn validate_new_password(password: &str) -> Result<String, AppError> {
+    let canonical = password.trim().to_string();
+    if canonical.chars().count() < MIN_PASSWORD_LEN {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            format!("password must be at least {MIN_PASSWORD_LEN} characters"),
+        ));
+    }
+    Ok(canonical)
+}
+
+/// Write the password hash for `id` into `passwd.json`, creating the auth
+/// directory on first use. The password must already be validated and
+/// trimmed by the caller.
+///
+/// # Errors
+/// Returns an [`AppError`] with [`ErrorKind::IO`] when the directory or
+/// the store cannot be written.
+pub(crate) fn store_password(id: &str, password: &str) -> Result<(), AppError> {
+    let path = passwd_file_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| AppError::from_err(ErrorKind::IO, e.into()))?;
+    }
+    let mut store = crate::auth::password::PasswdFile::load(&path)
+        .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
+    store
+        .set_password(id, password)
+        .map_err(|e| AppError::from_err(ErrorKind::IO, e))
+}
+
+/// Provision a new user: validate the id and password, insert the redb
+/// record, and write the password hash to `passwd.json`.
+///
+/// The password is trimmed once and the trimmed (canonical) form is stored;
+/// login verifies trimmed input, so write-then-login stays consistent.
+/// Password hashing is CPU-bound, so callers must run this inside
+/// `spawn_blocking`.
+///
+/// # Errors
+/// Returns [`ErrorKind::InvalidInput`] for an invalid id or a password
+/// below [`MIN_PASSWORD_LEN`], [`ErrorKind::Conflict`] when the id already
+/// exists, and [`ErrorKind::Database`]/[`ErrorKind::IO`] when either store
+/// fails. A failure after the redb insert leaves a user record without a
+/// password hash — no login is possible until it is reprovisioned.
+pub fn provision_user(id: &str, password: &str, admin: bool) -> Result<String, AppError> {
+    let id = validate_user_id(id)?;
+    let canonical = validate_new_password(password)?;
+    if get_user(&id)
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e))?
+        .is_some()
+    {
+        return Err(AppError::new(
+            ErrorKind::Conflict,
+            format!("user already exists: {id}"),
+        ));
+    }
+    create_user(&id, admin).map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
+    store_password(&id, &canonical)?;
+    Ok(id)
+}
+
 /// Path of the JSON password store: `<DATA_HOME>/auth/passwd.json`.
 /// The store itself takes an explicit path (see [`crate::auth::password`]);
 /// this helper only resolves the production location.
@@ -272,7 +346,9 @@ mod tests {
 
     #[test]
     fn create_and_get_user_round_trip() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_users_table();
 
@@ -285,7 +361,9 @@ mod tests {
 
     #[test]
     fn get_unknown_user_returns_none() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_users_table();
 
@@ -297,7 +375,9 @@ mod tests {
 
     #[test]
     fn create_duplicate_user_fails() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_users_table();
 
@@ -309,7 +389,9 @@ mod tests {
 
     #[test]
     fn set_admin_updates_flag() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_users_table();
 
@@ -324,7 +406,9 @@ mod tests {
 
     #[test]
     fn list_users_and_count() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_users_table();
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
@@ -347,7 +431,9 @@ mod tests {
 
     #[test]
     fn passwd_file_path_lives_under_data_home() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         let path = crate::auth::users::passwd_file_path();
         assert_eq!(path.file_name().expect("file name"), "passwd.json");
@@ -366,6 +452,86 @@ mod tests {
         // The on-disk table name is `users`; values are JSON strings like ASSET_BY_ID.
         let def: TableDefinition<'static, &'static str, &'static str> = USERS;
         assert_eq!(def.to_string(), "users<&str, &str>");
+    }
+
+    #[test]
+    fn provision_user_rejects_short_and_empty_password() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        // 11 chars is below the floor; "" and whitespace trim to nothing.
+        for pw in ["short-pw", "12345678901", "", "   "] {
+            let err = super::provision_user("s3-short", pw, false)
+                .expect_err("short/empty password must be rejected");
+            assert_eq!(err.kind, crate::error::ErrorKind::InvalidInput);
+        }
+        // Rejected provisions leave no user record behind.
+        assert_eq!(super::user_count().expect("count"), 0);
+        assert!(super::get_user("s3-short").expect("get").is_none());
+
+        reset_backend_state();
+    }
+
+    #[test]
+    fn provision_user_accepts_exactly_12_chars() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        super::provision_user("s3-exact", "123456789012", false).expect("12 chars ok");
+        assert_eq!(super::user_count().expect("count"), 1);
+
+        reset_backend_state();
+    }
+
+    #[test]
+    fn provision_user_duplicate_is_conflict() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        super::provision_user("s3-dup", "long-enough-pw1", true).expect("first provision");
+        let err = super::provision_user("s3-dup", "long-enough-pw2", false)
+            .expect_err("duplicate must fail");
+        assert_eq!(err.kind, crate::error::ErrorKind::Conflict);
+        // The existing record is untouched by the failed duplicate.
+        assert_eq!(
+            super::get_user("s3-dup").expect("get"),
+            Some(UserRecord { admin: true })
+        );
+
+        reset_backend_state();
+    }
+
+    #[test]
+    fn provision_user_trims_id_and_password_for_login_consistency() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        let id = super::provision_user("  s3-trim  ", "  spaced-pw-12chars  ", false)
+            .expect("provision");
+        assert_eq!(id, "s3-trim");
+        assert_eq!(
+            super::get_user("s3-trim").expect("get"),
+            Some(UserRecord { admin: false })
+        );
+        // Login verifies the trimmed input against the stored (trimmed)
+        // canonical form — write-then-login must stay consistent.
+        let store =
+            crate::auth::password::PasswdFile::load(&super::passwd_file_path()).expect("load");
+        assert!(store.verify("s3-trim", "spaced-pw-12chars"));
+
+        reset_backend_state();
     }
 
     #[test]
@@ -397,7 +563,9 @@ mod tests {
 
     #[test]
     fn set_admin_role_rejects_unknown_id() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_users_table();
 
@@ -409,7 +577,9 @@ mod tests {
 
     #[test]
     fn set_admin_role_refuses_last_admin_demotion() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_users_table();
 
@@ -426,7 +596,9 @@ mod tests {
 
     #[test]
     fn set_admin_role_allows_transfer_when_other_admin_exists() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_users_table();
 
@@ -447,7 +619,9 @@ mod tests {
 
     #[test]
     fn set_admin_role_promotes_and_noops() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_users_table();
 

@@ -11,6 +11,7 @@ pub mod get_list;
 pub mod get_metadata;
 pub mod get_page;
 pub mod get_prefetch;
+pub mod invites;
 // The probe handlers are registered only in test builds (see
 // `generate_get_routes`); outside them they stay compiled — `#[utoipauto]` names
 // their `__path_*` items unconditionally — but nothing mounts or calls them.
@@ -65,6 +66,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_fs_completion::get_fs_completion,
         get_album_index::get_album_index_status,
         users::list_users_handler,
+        invites::list_invites_handler,
     ];
 
     #[cfg(test)]

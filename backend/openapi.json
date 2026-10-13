@@ -120,6 +120,10 @@
           "address": {
             "type": "string"
           },
+          "allowRegistration": {
+            "description": "Allow self-registration via `POST /post/users/register` without an\ninvite token. Default off: registration then requires a valid invite.",
+            "type": "boolean"
+          },
           "authKey": {
             "type": [
               "string",
@@ -315,6 +319,24 @@
         "required": [
           "parentAlbumId",
           "name"
+        ],
+        "type": "object"
+      },
+      "CreateInviteResponse": {
+        "description": "Response for `POST /post/invites/create`.",
+        "properties": {
+          "invite": {
+            "$ref": "#/components/schemas/InviteView",
+            "description": "The stored invite as it appears in listings (no token material)."
+          },
+          "token": {
+            "description": "Plaintext invite token — returned exactly once and never stored;\nit cannot be recovered after this response.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "invite"
         ],
         "type": "object"
       },
@@ -602,6 +624,39 @@
         ],
         "type": "object"
       },
+      "InviteView": {
+        "description": "Listing view of an invite: the stored metadata plus the row id (the\ntoken hash). Never contains the token itself.",
+        "properties": {
+          "createdBy": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "description": "Row id — blake3 hash hex of the token; identifies the invite for\nrevoke. Preimage-resistant, useless as a token.",
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          },
+          "usedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "prefix",
+          "createdBy",
+          "expiresAt"
+        ],
+        "type": "object"
+      },
       "LoginRequest": {
         "description": "User login body for `POST /post/authenticate`.",
         "properties": {
@@ -631,6 +686,12 @@
           "address": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "allowRegistration": {
+            "type": [
+              "boolean",
               "null"
             ]
           },
@@ -775,6 +836,29 @@
           "mediaCreated",
           "unsupportedSkipped",
           "hashErrors"
+        ],
+        "type": "object"
+      },
+      "RegisterRequest": {
+        "description": "Body for `POST /post/users/register`.",
+        "properties": {
+          "invite": {
+            "description": "Single-use invite token. Required while `allowRegistration` is off;\nignored while it is on.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "password": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "password"
         ],
         "type": "object"
       },
@@ -1217,6 +1301,44 @@
         ]
       }
     },
+    "/delete/invites/{invite_id}": {
+      "delete": {
+        "description": "Admin-only. The invite's row is removed, so its token stops redeeming\nimmediately; a registration attempt afterwards answers 404. Ids come\nfrom `GET /get/invites`.\n\nCorner cases: Revoking an already-removed id is a 404, not a success —\nthe second caller cannot distinguish \"revoked twice\" from \"never\nexisted\", which leaks nothing.\n\nErrors: 401 missing or invalid admin credentials — 404 unknown invite\nid — 405 read-only mode — 500 storage failure.",
+        "operationId": "delete_invite",
+        "parameters": [
+          {
+            "description": "Invite id as listed by GET /get/invites",
+            "in": "path",
+            "name": "invite_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invite revoked"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "description": "Unknown invite id"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "Revoke an invite token.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/favicon.ico": {
       "get": {
         "description": "Returns `favicon.ico` from the frontend build — the embedded asset in a\nbuild with `embed-frontend`, otherwise `<web_root>/favicon.ico` — with the\ncontent type guessed from the file extension.\n\nErrors: 404 frontend build without the embedded asset — 500 open of\n`<web_root>/favicon.ico` failed.",
@@ -1561,6 +1683,37 @@
         "summary": "Report the state of the most recently started album-indexing job.",
         "tags": [
           "index"
+        ]
+      }
+    },
+    "/get/invites": {
+      "get": {
+        "description": "Admin-only. Returns every invite with its display `prefix`, creator,\nexpiry and — once redeemed — the `usedBy` user id. Tokens themselves are\nnever returned: `id` is the blake3 hash of the token (preimage-resistant\nand useless as a bearer) and identifies the invite for\n`DELETE /delete/invites/{invite_id}`.\n\nCorner cases: A store that has never seen an invite returns an empty\nlist rather than an error.\n\nErrors: 401 missing or invalid admin credentials — 500 storage failure.",
+        "operationId": "list_invites_handler",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InviteView"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Invite metadata, never tokens"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "List invite tokens' metadata.",
+        "tags": [
+          "auth"
         ]
       }
     },
@@ -2068,6 +2221,37 @@
         ]
       }
     },
+    "/post/invites/create": {
+      "post": {
+        "description": "Admin-only. The `token` field is shown exactly once: only its blake3\nhash is stored, so the value cannot be retrieved again — the admin\ndistributes it out of band (for example as\n`${origin}/register?invite=${token}`). Default expiry is 7 days; the\ninvite redeems once, for a single registration.\n\nCorner cases: In open mode the ephemeral admin identity creates the\ninvite. Listing, expiry, use and revoke are handled by\n`GET /get/invites` and `DELETE /delete/invites/{invite_id}`.\n\nErrors: 401 missing or invalid admin credentials — 405 read-only mode —\n500 storage failure.",
+        "operationId": "create_invite_handler",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateInviteResponse"
+                }
+              }
+            },
+            "description": "Invite created; token returned once"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "Create a single-use invite token.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/post/rebuild": {
       "post": {
         "description": "Clears `ASSET_BY_PATH`, `ASSET_BY_ID`, `DUPE_INDEX` and `METADATA_TABLE`,\nwalks the image root, and repopulates all four: identity from the walk,\nmetadata through the same pipeline the incremental indexer runs. The\nresponse carries the rebuild stats and is returned only after an\nin-memory tree refresh, so it does not race a following prefetch or\nget-data call.\n\nCorner cases: Rows are rebuilt rather than merged: the rebuild assigns\nnew `asset_id`s, so rows keyed by the previous ids must not remain. A\nfile whose metadata pipeline fails keeps its identity, logs the failure,\nand does not stop the walk.\n\nErrors: 400 malformed request — 401 missing or invalid credentials —\n405 read-only mode — 500 `imagePath` unset, or a failure while walking the\nimage root or writing the tables.",
@@ -2186,7 +2370,7 @@
     },
     "/post/users/create": {
       "post": {
-        "description": "Admin-only, except for the bootstrap exception: while the user store is\nempty an unauthenticated call succeeds and forces `admin: true`\nregardless of the body's flag. A non-admin caller — or no caller once\nany user exists — is rejected.\n\nCorner cases: The `admin` flag is honored for admin callers and forced\non for bootstrap. The password is trimmed before hashing.\n\nErrors: 400 invalid `userId` or empty password — 401 missing or invalid\ncredentials, non-admin caller, or unauthenticated call once any user\nexists — 405 read-only mode — 409 `userId` already exists — 500 storage\nfailure.",
+        "description": "Admin-only, except for the bootstrap exception: while the user store is\nempty an unauthenticated call succeeds and forces `admin: true`\nregardless of the body's flag — but only in open mode. With a legacy\npassword configured the store stays gated by that host secret (review\nA1): unauthenticated create is denied and enrollment happens through\n`POST /post/authenticate` migration. A non-admin caller — or no caller\nonce any user exists — is rejected.\n\nCorner cases: The `admin` flag is honored for admin callers and forced\non for bootstrap. The password is trimmed before hashing.\n\nErrors: 400 invalid `userId` or password under 12 characters — 401\nmissing or invalid credentials, non-admin caller, legacy-mode\nunauthenticated call, or unauthenticated call once any user exists —\n405 read-only mode — 409 `userId` already exists — 500 storage\nfailure.",
         "operationId": "create_user_handler",
         "requestBody": {
           "content": {
@@ -2226,6 +2410,56 @@
           }
         },
         "summary": "Create a user.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/post/users/register": {
+      "post": {
+        "description": "Public route (no auth guard) behind the read-only guard. With\n`allowRegistration` on, anyone registers without an invite; with it off,\na valid, unexpired, unused invite is required. The account is always\ncreated with `admin: false` — `POST /post/users/create` on an empty\nstore remains the only online admin-granting path. While\n`allowRegistration` is on, an `invite` in the body is ignored: open\nregistration supersedes it and does not burn the token.\n\nCorner cases: The password is trimmed once and must be at least 12\ncharacters; an empty `invite` string counts as absent. Invite redemption\nmarks the token used and inserts the user record in one transaction, so\na failed request never half-consumes an invite.\n\nErrors: 400 invalid `userId` or password under 12 characters — 403\nregistration disabled (no invite) or invite expired — 404 unknown or\nrevoked invite token — 405 read-only mode — 409 `userId` already exists\nor invite already used — 500 storage failure.",
+        "operationId": "register_user_handler",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSummary"
+                }
+              }
+            },
+            "description": "Account registered (non-admin)"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "403": {
+            "description": "Registration disabled or invite expired"
+          },
+          "404": {
+            "description": "Unknown or revoked invite token"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "409": {
+            "description": "User already exists or invite already used"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "Register a new user account.",
         "tags": [
           "auth"
         ]
@@ -2314,7 +2548,7 @@
     },
     "/put/config/password": {
       "put": {
-        "description": "This is the legacy single-password route, reworked onto the user store:\nit changes the password of the authenticated caller only. An admin may\nset their own password without `oldPassword`; a non-admin must present\nthe correct `oldPassword`. The new `password` is trimmed and must be\nnon-empty after trimming (there is no \"clear to open\": open mode is\nstore-empty only). To change another user's password, use\n`PUT /put/users/password`.\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch. A missing\n(`None`) or blank `password` is 400.\n\nErrors: 400 missing or blank `password`, or the body cannot be parsed —\n401 missing or invalid credentials, or wrong `oldPassword`; share tokens\nare not accepted — 405 read-only mode — 500 storage failure.",
+        "description": "This is the legacy single-password route, reworked onto the user store:\nit changes the password of the authenticated caller only. An admin may\nset their own password without `oldPassword`; a non-admin must present\nthe correct `oldPassword`. The new `password` is trimmed and must be at\nleast 12 characters after trimming (there is no \"clear to open\": open\nmode is store-empty only). To change another user's password, use\n`PUT /put/users/password`.\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch. A missing\n(`None`), blank, or too-short `password` is 400.\n\nErrors: 400 missing, blank, or under-12 `password`, or the body cannot\nbe parsed — 401 missing or invalid credentials, or wrong `oldPassword`;\nshare tokens are not accepted — 405 read-only mode — 500 storage\nfailure.",
         "operationId": "update_password_handler",
         "requestBody": {
           "content": {
@@ -2789,7 +3023,7 @@
     },
     "/put/users/password": {
       "put": {
-        "description": "An admin may set any user's password without the old one; a non-admin\nmay only change their own, presenting the correct `oldPassword`. The new\npassword is trimmed and must be non-empty after trimming (there is no\n\"clear to open\": open mode is store-empty only).\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch.\n\nErrors: 400 invalid `userId` or empty `newPassword` — 401 missing or\ninvalid credentials, or wrong `oldPassword` — 403 non-admin targeting\nanother user — 404 unknown `userId` — 405 read-only mode — 500 storage\nfailure.",
+        "description": "An admin may set any user's password without the old one; a non-admin\nmay only change their own, presenting the correct `oldPassword`. The new\npassword is trimmed and must be at least 12 characters after trimming\n(there is no \"clear to open\": open mode is store-empty only).\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch.\n\nErrors: 400 invalid `userId` or `newPassword` under 12 characters — 401\nmissing or invalid credentials, or wrong `oldPassword` — 403 non-admin\ntargeting another user — 404 unknown `userId` — 405 read-only mode —\n500 storage failure.",
         "operationId": "set_user_password_handler",
         "requestBody": {
           "content": {

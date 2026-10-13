@@ -3,8 +3,9 @@ use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 use tokio::task::spawn_blocking;
 
-use crate::auth::users::{self, validate_user_id};
+use crate::auth::users;
 use crate::error::ResultExt;
+use crate::model::config::APP_CONFIG;
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::{GuardAuth, GuardReadOnlyMode};
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
@@ -28,41 +29,19 @@ pub struct CreateUserRequest {
 
 /// Create a user record plus its password hash and persist both.
 ///
-/// The password is trimmed once and the trimmed (canonical) form is stored,
-/// matching the legacy semantics that trimmed everywhere; login verifies
-/// the trimmed input, so write-then-login stays consistent.
+/// Thin delegate over [`users::provision_user`]: id/password validation
+/// (including the floor-12 rule for new passwords), duplicate rejection,
+/// redb record insert, and password-store write all live there. The
+/// trimmed (canonical) password is stored, matching the legacy semantics
+/// that trimmed everywhere; login verifies the trimmed input, so
+/// write-then-login stays consistent.
 ///
 /// # Errors
-/// Returns 400 when the id is invalid or the trimmed password is empty,
-/// 409 when the id already exists, and 500 when either store fails.
+/// Returns 400 when the id is invalid or the password is under 12
+/// characters, 409 when the id already exists, and 500 when either store
+/// fails.
 fn create_user_sync(user_id: &str, password: &str, admin: bool) -> AppResult<UserSummary> {
-    let id = validate_user_id(user_id)?;
-    let canonical = password.trim().to_string();
-    if canonical.is_empty() {
-        return Err(AppError::new(
-            ErrorKind::InvalidInput,
-            "password must not be empty",
-        ));
-    }
-    if users::get_user(&id)
-        .map_err(|e| AppError::from_err(ErrorKind::Database, e))?
-        .is_some()
-    {
-        return Err(AppError::new(
-            ErrorKind::Conflict,
-            format!("user already exists: {id}"),
-        ));
-    }
-    users::create_user(&id, admin).map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
-    let path = users::passwd_file_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| AppError::from_err(ErrorKind::IO, e.into()))?;
-    }
-    let mut store = crate::auth::password::PasswdFile::load(&path)
-        .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
-    store
-        .set_password(&id, &canonical)
-        .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
+    let id = users::provision_user(user_id, password, admin)?;
     Ok(UserSummary { user_id: id, admin })
 }
 
@@ -70,15 +49,19 @@ fn create_user_sync(user_id: &str, password: &str, admin: bool) -> AppResult<Use
 ///
 /// Admin-only, except for the bootstrap exception: while the user store is
 /// empty an unauthenticated call succeeds and forces `admin: true`
-/// regardless of the body's flag. A non-admin caller — or no caller once
-/// any user exists — is rejected.
+/// regardless of the body's flag — but only in open mode. With a legacy
+/// password configured the store stays gated by that host secret (review
+/// A1): unauthenticated create is denied and enrollment happens through
+/// `POST /post/authenticate` migration. A non-admin caller — or no caller
+/// once any user exists — is rejected.
 ///
 /// Corner cases: The `admin` flag is honored for admin callers and forced
 /// on for bootstrap. The password is trimmed before hashing.
 ///
-/// Errors: 400 invalid `userId` or empty password — 401 missing or invalid
-/// credentials, non-admin caller, or unauthenticated call once any user
-/// exists — 405 read-only mode — 409 `userId` already exists — 500 storage
+/// Errors: 400 invalid `userId` or password under 12 characters — 401
+/// missing or invalid credentials, non-admin caller, legacy-mode
+/// unauthenticated call, or unauthenticated call once any user exists —
+/// 405 read-only mode — 409 `userId` already exists — 500 storage
 /// failure.
 #[utoipa::path(
         tag = "auth",
@@ -116,7 +99,18 @@ pub async fn create_user_handler(
         }
         Ok(_) => true,
         Err(err) => {
-            if non_empty {
+            // Empty-store-only, and only while open: with a legacy password
+            // configured the host secret gates enrollment too (review A1) —
+            // an unauthenticated create is denied and migration happens
+            // through `POST /post/authenticate` instead.
+            let legacy_password = APP_CONFIG
+                .get()
+                .expect("APP_CONFIG not initialized")
+                .read()
+                .expect("lock poisoned")
+                .password
+                .is_some();
+            if non_empty || legacy_password {
                 return Err(err);
             }
             true
@@ -168,7 +162,7 @@ mod tests {
             .cookie(cookie.clone())
             .header(ContentType::JSON)
             .body(
-                json!({ "userId": "s4-alice", "password": "s4-alice-pw", "admin": false })
+                json!({ "userId": "s4-alice", "password": "s4-alice-pw12", "admin": false })
                     .to_string(),
             )
             .dispatch();
@@ -188,7 +182,7 @@ mod tests {
             .cookie(cookie)
             .header(ContentType::JSON)
             .body(
-                json!({ "userId": "s4-other-admin", "password": "s4-other-pw", "admin": true })
+                json!({ "userId": "s4-other-admin", "password": "s4-other-pw12", "admin": true })
                     .to_string(),
             )
             .dispatch();
@@ -202,7 +196,7 @@ mod tests {
         seed_admin_user();
         let cookie = admin_cookie("s4-root", true);
         let body =
-            json!({ "userId": "s4-dupe", "password": "s4-dupe-pw", "admin": false }).to_string();
+            json!({ "userId": "s4-dupe", "password": "s4-dupe-pw12", "admin": false }).to_string();
         let resp = client
             .post("/post/users/create")
             .cookie(cookie.clone())
@@ -231,7 +225,8 @@ mod tests {
             .cookie(cookie)
             .header(ContentType::JSON)
             .body(
-                json!({ "userId": "s4-eve", "password": "s4-eve-pw", "admin": false }).to_string(),
+                json!({ "userId": "s4-eve", "password": "s4-eve-pw123", "admin": false })
+                    .to_string(),
             )
             .dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
@@ -246,7 +241,8 @@ mod tests {
             .post("/post/users/create")
             .header(ContentType::JSON)
             .body(
-                json!({ "userId": "s4-eve", "password": "s4-eve-pw", "admin": false }).to_string(),
+                json!({ "userId": "s4-eve", "password": "s4-eve-pw123", "admin": false })
+                    .to_string(),
             )
             .dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
@@ -260,7 +256,9 @@ mod tests {
         let resp = client
             .post("/post/users/create")
             .header(ContentType::JSON)
-            .body(json!({ "userId": "root", "password": "s4-root-pw", "admin": false }).to_string())
+            .body(
+                json!({ "userId": "root", "password": "s4-root-pw12", "admin": false }).to_string(),
+            )
             .dispatch();
         assert_eq!(resp.status(), Status::Ok);
         let created: super::UserSummary =

@@ -257,3 +257,13 @@ backend-check` and `just openapi-check` (after `openapi-gen`)
   signal — re-propose as its own task if wanted.
 - Spike model: `opencode/mimo-v2.6-flash-free` (2.5 not offered by
   the provider); worker reports, senior reviews before commit.
+- Spike review 2026-10-13: accepted as committed. Verified
+  `backend-check`, targeted suites (register/invite/auth/config),
+  and the pre-existing partial-filter failure (`cargo test --lib
+user`: `reset_backend_state_clears_user_store` order-dependence,
+  reproduced on pristine HEAD — full suite is the gate).
+  Follow-ups for step 6: `ConfigResponse` (GET /get/config) does not
+  expose `allowRegistration` yet — the admin-panel toggle needs it;
+  register/invite failures use 403/404/409 (never 401), so the
+  register UI must not route them through the login-redirect
+  interceptor path.
