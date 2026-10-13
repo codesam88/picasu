@@ -988,7 +988,7 @@ const ANNOTATIONS_IN_ROUTER: usize = 70;
 /// without a decision. The third is what keeps B3 and B4 honest: a scan that
 /// stopped reading `request_body` would find nothing to compare and report the
 /// same emptiness as a clean tree.
-const DECLARATION_INVENTORY: (usize, usize, usize) = (25, 0, 27);
+const DECLARATION_INVENTORY: (usize, usize, usize) = (25, 0, 28);
 
 /// How many of those declared request bodies B3 actually compares against a
 /// route binding — the tree's 27 declarations less the one `request_body = Value`
@@ -998,7 +998,7 @@ const DECLARATION_INVENTORY: (usize, usize, usize) = (25, 0, 27);
 /// unreadable, or every binding non-`Json` — and the tree would still report
 /// clean. Under a clean tree a comparison is also a match, so 20 compares both
 /// that B3 ran and that its results held.
-const BODIES_COMPARED: usize = 24;
+const BODIES_COMPARED: usize = 25;
 
 /// The backend's router tree, resolved from this crate's manifest directory
 /// rather than from the working directory a test happens to run in.

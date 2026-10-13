@@ -32,6 +32,7 @@ pub struct PartialUpdateConfigRequest {
     pub validate_upload_content: Option<bool>,
     pub use_client_timestamp_info: Option<bool>,
     pub allow_registration: Option<bool>,
+    pub trivial_passwords: Option<bool>,
     pub auth_key: Option<String>,
 }
 
@@ -125,6 +126,9 @@ pub async fn update_config_handler(
         if let Some(allow_registration) = req_data.allow_registration {
             current_config.allow_registration = allow_registration;
         }
+        if let Some(trivial_passwords) = req_data.trivial_passwords {
+            current_config.trivial_passwords = trivial_passwords;
+        }
         if let Some(key) = req_data.auth_key {
             let trimmed = key.trim();
             current_config.auth_key = if trimmed.is_empty() {
@@ -157,8 +161,8 @@ pub struct UpdatePasswordRequest {
 /// This is the legacy single-password route, reworked onto the user store:
 /// it changes the password of the authenticated caller only. An admin may
 /// set their own password without `oldPassword`; a non-admin must present
-/// the correct `oldPassword`. The new `password` is trimmed and must be at
-/// least 12 characters after trimming (there is no "clear to open": open
+/// the correct `oldPassword`. The new `password` is trimmed and must satisfy
+/// the default password policy after trimming (there is no "clear to open": open
 /// mode is store-empty only). To change another user's password, use
 /// `PUT /put/users/password`.
 ///

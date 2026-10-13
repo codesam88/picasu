@@ -90,6 +90,12 @@ pub struct AppConfig {
     /// invite token. Default off: registration then requires a valid invite.
     #[serde(default)]
     pub allow_registration: bool,
+    /// Disable the default password-strength checks (length floor/ceiling,
+    /// blocklist, user-id and pattern rules) for new passwords. Default
+    /// off. Only for development, throwaway installs, or tests that must
+    /// use weak fixtures — the bypass is warn-logged at first use.
+    #[serde(default)]
+    pub trivial_passwords: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -116,6 +122,7 @@ impl Default for AppConfig {
             validate_upload_content: true,
             use_client_timestamp_info: false,
             allow_registration: false,
+            trivial_passwords: false,
             password: None,
             auth_key: None,
             web_root: None,
@@ -186,6 +193,8 @@ pub(crate) struct TomlGallery {
     pub(crate) use_client_timestamp_info: bool,
     #[serde(default)]
     pub(crate) allow_registration: bool,
+    #[serde(default)]
+    pub(crate) trivial_passwords: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) web_root: Option<PathBuf>,
 }
@@ -203,6 +212,7 @@ impl Default for TomlGallery {
             validate_upload_content: true,
             use_client_timestamp_info: false,
             allow_registration: false,
+            trivial_passwords: false,
             web_root: None,
         }
     }
@@ -234,6 +244,7 @@ impl From<TomlFile> for AppConfig {
             validate_upload_content: t.gallery.validate_upload_content,
             use_client_timestamp_info: t.gallery.use_client_timestamp_info,
             allow_registration: t.gallery.allow_registration,
+            trivial_passwords: t.gallery.trivial_passwords,
             password: t.secrets.password,
             auth_key: t.secrets.auth_key,
             web_root: t.gallery.web_root,
@@ -260,6 +271,7 @@ impl From<AppConfig> for TomlFile {
                 validate_upload_content: c.validate_upload_content,
                 use_client_timestamp_info: c.use_client_timestamp_info,
                 allow_registration: c.allow_registration,
+                trivial_passwords: c.trivial_passwords,
                 web_root: c.web_root,
             },
             secrets: TomlSecrets {
@@ -420,6 +432,11 @@ impl AppConfig {
         {
             config.allow_registration = mode;
         }
+        if let Ok(val) = std::env::var("PICASU_TRIVIAL_PASSWORDS")
+            && let Ok(mode) = val.parse()
+        {
+            config.trivial_passwords = mode;
+        }
         if let Ok(val) = std::env::var("PICASU_DISABLE_IMG")
             && let Ok(disabled) = val.parse()
         {
@@ -540,6 +557,7 @@ mod tests {
             validate_upload_content: true,
             use_client_timestamp_info: false,
             allow_registration: true,
+            trivial_passwords: true,
             password: Some(test_password("t-config")),
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),
@@ -592,6 +610,11 @@ mod tests {
     #[test]
     fn allow_registration_defaults_to_false() {
         assert!(!AppConfig::default().allow_registration);
+    }
+
+    #[test]
+    fn trivial_passwords_defaults_to_false() {
+        assert!(!AppConfig::default().trivial_passwords);
     }
 
     #[test]

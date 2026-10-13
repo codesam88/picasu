@@ -18,8 +18,8 @@ use subtle::ConstantTimeEq;
 use crate::error::{AppError, ErrorKind};
 use crate::storage::db::{INVITES, TREE, USERS};
 
-/// Token lifetime: 7 days.
-pub const INVITE_TTL_SECS: u64 = 7 * 24 * 60 * 60;
+/// Default token lifetime when the creation request names none: 7 days.
+pub const DEFAULT_EXPIRY_HOURS: i64 = 7 * 24;
 /// Entropy of a fresh token: 128 bits.
 const TOKEN_BYTES: usize = 16;
 /// Characters of the token kept as a display hint in listings.
@@ -34,8 +34,9 @@ pub struct InviteRecord {
     pub prefix: String,
     /// User id of the admin who created the invite.
     pub created_by: String,
-    /// Unix seconds after which the invite no longer redeems.
-    pub expires_at: u64,
+    /// Unix seconds after which the invite no longer redeems, or `None`
+    /// for an invite that never expires.
+    pub expires_at: Option<u64>,
     /// Set once redeemed: the user id that consumed the invite.
     pub used_by: Option<String>,
 }
@@ -50,7 +51,7 @@ pub struct InviteView {
     pub id: String,
     pub prefix: String,
     pub created_by: String,
-    pub expires_at: u64,
+    pub expires_at: Option<u64>,
     pub used_by: Option<String>,
 }
 
@@ -81,26 +82,51 @@ fn now_secs() -> Result<u64, AppError> {
         .map_err(|e| AppError::from_err(ErrorKind::Internal, e.into()))
 }
 
-/// Create a fresh invite for `created_by`, expiring in [`INVITE_TTL_SECS`].
+/// Map the creation request's `expires_in_hours` onto a stored deadline:
+/// `0` means the invite never expires, positive hours land on that
+/// deadline. Negative values are rejected rather than wrapped. The
+/// parameter is required — there is no absent-means-default; callers
+/// that want the conventional lifetime pass [`DEFAULT_EXPIRY_HOURS`]
+/// explicitly.
+///
+/// # Errors
+/// Returns [`ErrorKind::InvalidInput`] for negative hours and
+/// [`ErrorKind::Internal`] when the clock is unavailable.
+pub fn resolve_expiry(expires_in_hours: i64) -> Result<Option<u64>, AppError> {
+    match expires_in_hours {
+        0 => Ok(None),
+        hours if hours > 0 => Ok(Some(
+            now_secs()?.saturating_add(hours.unsigned_abs() * 3600),
+        )),
+        _ => Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "expiresInHours must not be negative (0 means never expires)",
+        )),
+    }
+}
+
+/// Create a fresh invite for `created_by` with the conventional 7-day
+/// expiry ([`DEFAULT_EXPIRY_HOURS`]).
 ///
 /// Returns the plaintext token (shown once) and the stored record.
 ///
 /// # Errors
 /// Returns [`ErrorKind::InvalidInput`] for an empty creator id and
-/// [`ErrorKind::Database`] when the table cannot be written.
+/// [`ErrorKind::Database`]/[`ErrorKind::Internal`] when the clock or the
+/// table cannot be used.
 pub fn create_invite(created_by: &str) -> Result<(String, InviteRecord), AppError> {
-    let expires_at = now_secs()?.saturating_add(INVITE_TTL_SECS);
+    let expires_at = resolve_expiry(DEFAULT_EXPIRY_HOURS)?;
     create_invite_with_expiry(created_by, expires_at)
 }
 
-/// Create an invite with an explicit `expires_at` (Unix seconds).
+/// Create an invite with an explicit deadline (`None` never expires).
 ///
 /// # Errors
 /// Returns [`ErrorKind::InvalidInput`] for an empty creator id and
 /// [`ErrorKind::Database`] when the table cannot be written.
 pub fn create_invite_with_expiry(
     created_by: &str,
-    expires_at: u64,
+    expires_at: Option<u64>,
 ) -> Result<(String, InviteRecord), AppError> {
     let creator = created_by.trim();
     if creator.is_empty() {
@@ -291,7 +317,9 @@ pub fn redeem_invite(user_id: &str, token: &str) -> Result<(), AppError> {
                 "invite has already been used",
             ));
         }
-        if now >= record.expires_at {
+        if let Some(deadline) = record.expires_at
+            && now >= deadline
+        {
             return Err(AppError::new(
                 ErrorKind::PermissionDenied,
                 "invite has expired",
@@ -363,9 +391,9 @@ mod tests {
             token.chars().take(PREFIX_LEN).collect::<String>()
         );
         let now = super::now_secs().expect("now");
+        let expires_at = record.expires_at.expect("default invite expires");
         assert!(
-            record.expires_at >= now + 6 * 24 * 3600
-                && record.expires_at <= now + 7 * 24 * 3600 + 60,
+            expires_at >= now + 6 * 24 * 3600 && expires_at <= now + 7 * 24 * 3600 + 60,
             "default expiry must be 7 days from now"
         );
         // The row is keyed by the token's blake3 hash and contains no token
@@ -416,7 +444,7 @@ mod tests {
     fn redeem_rejects_expired_invite() {
         let _g = setup();
         let past = super::now_secs().expect("now") - 60;
-        let (token, _) = super::create_invite_with_expiry("s6-root", past).expect("create");
+        let (token, _) = super::create_invite_with_expiry("s6-root", Some(past)).expect("create");
         let err = super::redeem_invite("s6-reg", &token).expect_err("expired must fail");
         assert_eq!(err.kind, ErrorKind::PermissionDenied);
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
@@ -460,7 +488,7 @@ mod tests {
         assert_eq!(view.id, super::hash_token(&token));
         assert_eq!(view.created_by, "s6-root");
         assert_eq!(view.used_by.as_deref(), Some("s6-reg"));
-        assert!(view.expires_at > super::now_secs().expect("now"));
+        assert!(view.expires_at.expect("listed invite expires") > super::now_secs().expect("now"));
         let json = serde_json::to_string(view).expect("serialize view");
         assert!(
             !json.contains(&token),
@@ -494,6 +522,38 @@ mod tests {
         assert!(super::list_invites().expect("list").is_empty());
         let err = super::redeem_invite("s6-reg", &token).expect_err("revoked must fail");
         assert_eq!(err.kind, ErrorKind::NotFound);
+        reset_backend_state();
+    }
+
+    #[test]
+    fn resolve_expiry_maps_hours_to_deadline() {
+        let _g = setup();
+        let now = super::now_secs().expect("now");
+        // Zero means never.
+        assert_eq!(super::resolve_expiry(0).expect("zero resolves"), None);
+        // Positive hours land on that deadline.
+        let two_days = super::resolve_expiry(48)
+            .expect("48h resolves")
+            .expect("48h expires");
+        assert!(
+            two_days >= now + 47 * 3600 && two_days <= now + 48 * 3600 + 60,
+            "48h deadline, got {two_days}"
+        );
+        // Negative hours are rejected, not wrapped.
+        let err = super::resolve_expiry(-1).expect_err("negative must fail");
+        assert_eq!(err.kind, ErrorKind::InvalidInput);
+        reset_backend_state();
+    }
+
+    #[test]
+    fn never_expiring_invite_redeems() {
+        let _g = setup();
+        let (token, record) = super::create_invite_with_expiry("s6-root", None).expect("create");
+        assert!(
+            record.expires_at.is_none(),
+            "None means the invite never expires"
+        );
+        super::redeem_invite("s6-reg", &token).expect("never-expiring invite redeems");
         reset_backend_state();
     }
 }
