@@ -14,7 +14,7 @@ use crate::error::{AppError, ErrorKind, ResultExt};
 use crate::router::auth::GuardTimestamp;
 use crate::router::{AppResult, GuardResult};
 use anyhow::Result;
-use log::info;
+use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use redb::ReadableDatabase;
 use rocket::serde::json::Json;
@@ -183,7 +183,7 @@ pub async fn get_data(
             .collect();
 
         let duration = format!("{:?}", start_time.elapsed());
-        info!(duration = &*duration; "Get data: {start} ~ {end}");
+        debug!(duration = &*duration; "Get data: {start} ~ {end}");
         Ok(Json(database_timestamp_return_list?))
     })
     .await
@@ -231,7 +231,7 @@ pub async fn get_rows(
             .read_row(index, timestamp)
             .map_err(map_snapshot_read_error)?;
         let duration = format!("{:?}", start_time.elapsed());
-        info!(duration = &*duration; "Read rows: index = {index}");
+        debug!(duration = &*duration; "Read rows: index = {index}");
         Ok(Json(filtered_rows))
     })
     .await

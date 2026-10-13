@@ -247,7 +247,7 @@ impl TreeSnapshot {
                 }
             }
         }
-        info!(duration = &*format!("{:?}", start_time.elapsed()); "Generate scrollbar");
+        debug!(duration = &*format!("{:?}", start_time.elapsed()); "Generate scrollbar");
         Ok(scroll_bar_data_vec)
     }
 }
@@ -523,7 +523,7 @@ impl Expire {
 }
 
 // Import necessary modules and items
-use log::info;
+use log::debug;
 impl Expire {
     /// Checks if the given `timestamp` has expired.
     ///
@@ -588,12 +588,12 @@ impl Expire {
                                 .remove(key_timestamp)
                                 .expect("failed to remove expired key");
                             // Log the deletion of the expired key
-                            info!("Deleted expired key: {key_timestamp:?}");
+                            debug!("Deleted expired key: {key_timestamp:?}");
                         }
                     }
 
                     // Log the number of items remaining in the expiration table
-                    info!(
+                    debug!(
                         "{} items remaining in expire table",
                         write_table
                             .len()

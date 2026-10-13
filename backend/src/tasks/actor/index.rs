@@ -1,7 +1,7 @@
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::anyhow;
-use log::{debug, error, info};
+use log::{debug, error};
 use tokio_rayon::AsyncThreadPool;
 
 use crate::tasks::runtime::WORKER_RAYON_POOL;
@@ -38,7 +38,7 @@ fn index_task_match(abstract_data: AbstractData) -> Result<AbstractData> {
     let hash = abstract_data.hash();
     match index_task(abstract_data) {
         Ok(data) => {
-            info!("indexed {hash}");
+            debug!("indexed {hash}");
             Ok(data)
         }
         Err(e) => {
@@ -63,7 +63,7 @@ fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
         ));
     }
 
-    info!("indexing {} {hash}: {path}", abstract_data.ext_type());
+    debug!("indexing {} {hash}: {path}", abstract_data.ext_type());
 
     let is_image = abstract_data.is_image();
     // One shared pipeline for both orchestration modes: the incremental index

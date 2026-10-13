@@ -21,7 +21,7 @@ use crate::tasks::batcher::flush_tree_snapshot::FlushTreeSnapshotTask;
 
 use anyhow::Result;
 use bitcode::{Decode, Encode};
-use log::info;
+use log::{debug, trace};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
@@ -80,7 +80,7 @@ fn check_query_cache(
     // Check cache first
     if let Ok(Some(prefetch)) = QUERY_SNAPSHOT.read_query_snapshot(query_hash) {
         let duration = format!("{:?}", find_cache_start_time.elapsed());
-        info!(duration = &*duration; "Query cache found");
+        debug!(duration = &*duration; "Query cache found");
         let claims = ClaimsTimestamp::new(mem::take(resolved_share_option), prefetch.timestamp);
         return Some(Json(PrefetchReturn::new(
             prefetch,
@@ -90,7 +90,7 @@ fn check_query_cache(
     }
 
     let duration = format!("{:?}", find_cache_start_time.elapsed());
-    info!(duration = &*duration; "Query cache not found. Generate a new one.");
+    debug!(duration = &*duration; "Query cache not found. Generate a new one.");
     None
 }
 
@@ -135,7 +135,7 @@ fn filter_items(
     };
 
     let duration = format!("{:?}", filter_items_start_time.elapsed());
-    info!(duration = &*duration; "Filter items");
+    trace!(duration = &*duration; "Filter items");
 
     Ok(reduced_data_vector)
 }
@@ -156,7 +156,7 @@ fn compute_locate(
     });
 
     let duration = format!("{:?}", layout_start_time.elapsed());
-    info!(duration = &*duration; "Compute layout");
+    trace!(duration = &*duration; "Compute layout");
 
     locate_to_index
 }
@@ -173,7 +173,7 @@ fn build_cache_key(expression_option: Option<&Expression>, locate_option: Option
     let query_hash = hasher.finish();
 
     let duration = format!("{:?}", cache_key_start_time.elapsed());
-    info!(duration = &*duration; "Build cache key");
+    trace!(duration = &*duration; "Build cache key");
 
     query_hash
 }
@@ -190,7 +190,7 @@ fn insert_data_into_tree_snapshot(reduced_data_vector: Vec<ReducedData>) -> (i64
     BATCH_COORDINATOR.execute_batch_detached(FlushTreeSnapshotTask);
 
     let duration = format!("{:?}", db_start_time.elapsed());
-    info!(duration = &*duration; "Write cache into memory");
+    trace!(duration = &*duration; "Write cache into memory");
 
     (timestamp_millis, reduced_data_vector_length)
 }
@@ -223,7 +223,7 @@ fn create_json_response(
     ));
 
     let duration = format!("{:?}", json_start_time.elapsed());
-    info!(duration = &*duration; "Create JSON response");
+    trace!(duration = &*duration; "Create JSON response");
 
     json
 }
@@ -269,7 +269,7 @@ fn execute_prefetch_logic(
 
     // Total elapsed time
     let duration = format!("{:?}", start_time.elapsed());
-    info!(duration = &*duration; "(total time) Get_data_length complete");
+    trace!(duration = &*duration; "(total time) Get_data_length complete");
 
     Ok(json)
 }

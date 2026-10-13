@@ -8,7 +8,7 @@ use crate::storage::db::TREE;
 use anyhow::Context;
 use anyhow::Result;
 use arrayvec::ArrayString;
-use log::info;
+use log::debug;
 use mini_executor::Task;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use redb::ReadableTable;
@@ -36,7 +36,7 @@ impl Task for AlbumSelfUpdateTask {
 }
 
 pub fn album_task(album_id: ArrayString<64>) -> Result<()> {
-    info!("Perform album self-update");
+    debug!("Perform album self-update");
 
     let txn = TREE
         .in_disk
