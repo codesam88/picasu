@@ -5,6 +5,8 @@
 - Stick to facts and established best practice. Do not editorialize or try to be persuasive.
 - In assessments and commit messages, reflect uncertainty where it exists. Avoid asserting things as definitive when the evidence is incomplete.
 - Skip superlatives and filler ("Clean.", "Perfect.", "This is the right call."). State what happened or what is true and move on.
+- Answer questions precisely and avoid jargon. Explain identified problems and conclusions clearly, without extensive prose. Base recommendations on facts and arguments, not convincing language.
+- Do not start building from exploratory questions. Present findings and options, then wait for review before implementing.
 
 ## Project Orientation
 
