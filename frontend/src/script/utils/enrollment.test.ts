@@ -1,6 +1,12 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest'
 import axios from 'axios'
-import { decideBootDestination, probeEnrollment, runEnrollmentBoot } from './enrollment'
+import {
+  decideBootDestination,
+  getEnrollmentProbe,
+  probeEnrollment,
+  resetEnrollmentProbe,
+  runEnrollmentBoot
+} from './enrollment'
 
 vi.mock('axios')
 
@@ -111,5 +117,63 @@ describe('runEnrollmentBoot', () => {
     const navigate = vi.fn().mockResolvedValue(undefined)
     await expect(runEnrollmentBoot({ probe, navigate })).resolves.toBe('login')
     expect(navigate).toHaveBeenCalledWith('login')
+  })
+})
+
+/**
+ * The boot guard caches the probe once per app start. After a successful
+ * registration the store is non-empty but the cache still resolves `[]`,
+ * so every later navigation bounces back to `/register`. Registration
+ * must reset the cache so the next navigation re-probes.
+ */
+describe('getEnrollmentProbe / resetEnrollmentProbe', () => {
+  beforeEach(() => {
+    resetEnrollmentProbe()
+  })
+
+  test('caches the probe: one call for two reads', async () => {
+    const probe = vi.fn().mockResolvedValue({ ok: true, users: [] })
+
+    const first = await getEnrollmentProbe(probe)
+    const second = await getEnrollmentProbe(probe)
+
+    expect(probe).toHaveBeenCalledTimes(1)
+    expect(second).toEqual(first)
+  })
+
+  test('no re-probe without a reset', async () => {
+    const probe = vi.fn().mockResolvedValue({ ok: true, users: [] })
+
+    await getEnrollmentProbe(probe)
+    await getEnrollmentProbe(probe)
+    await getEnrollmentProbe(probe)
+
+    expect(probe).toHaveBeenCalledTimes(1)
+  })
+
+  test('reset forces a re-probe on the next read', async () => {
+    const probe = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, users: [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        users: [{ userId: 'root', admin: true }]
+      })
+
+    const before = await getEnrollmentProbe(probe)
+    resetEnrollmentProbe()
+    const after = await getEnrollmentProbe(probe)
+
+    expect(probe).toHaveBeenCalledTimes(2)
+    expect(before).toEqual({ ok: true, users: [] })
+    expect(after).toEqual({ ok: true, users: [{ userId: 'root', admin: true }] })
+  })
+
+  test('reset on a fresh cache is safe', async () => {
+    resetEnrollmentProbe()
+    const probe = vi.fn().mockResolvedValue({ ok: false, status: 401 })
+
+    await expect(getEnrollmentProbe(probe)).resolves.toEqual({ ok: false, status: 401 })
+    expect(probe).toHaveBeenCalledTimes(1)
   })
 })
