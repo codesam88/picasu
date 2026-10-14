@@ -87,6 +87,11 @@ open-mode mints tokens without persisting a user.
    register ⇒ timeline. Playwright scenario only.
 4. Docs: `docs/auth.md` bootstrap section, config key table, README
    row. `docs-check`, `plan-lint`.
+5. Self-change requires current (backend + UI): `set_password_sync`
+   verifies old whenever target == caller (admins included); admin →
+   other keeps no-old recovery. Change form requires current
+   client-side; settings modal header shows username + role
+   read-only. Gates: `cargo test`, vitest, both checks.
 
 ## Decisions
 

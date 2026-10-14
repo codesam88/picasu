@@ -163,9 +163,9 @@ pub struct UpdatePasswordRequest {
 /// Change the caller's own password.
 ///
 /// This is the legacy single-password route, reworked onto the user store:
-/// it changes the password of the authenticated caller only. An admin may
-/// set their own password without `oldPassword`; a non-admin must present
-/// the correct `oldPassword`. The new `password` is trimmed and must satisfy
+/// it changes the password of the authenticated caller only. A self-change
+/// always requires the correct `oldPassword`, admins included. The new
+/// `password` is trimmed and must satisfy
 /// the default password policy after trimming (there is no "clear to open": open
 /// mode is store-empty only). To change another user's password, use
 /// `PUT /put/users/password`.
@@ -265,7 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_admin_sets_own_password_without_old() {
+    fn legacy_admin_self_change_without_old_is_401() {
         let _g = lock();
         let client = setup();
         seed("s4e-root", true, Some(test_password("t-root-old").as_str()));
@@ -274,11 +274,28 @@ mod tests {
             cookie("s4e-root", true),
             &json!({ "password": test_password("t-root-new") }),
         );
+        assert_eq!(status, Status::Unauthorized);
+    }
+
+    #[test]
+    fn legacy_admin_self_change_with_correct_old_is_200() {
+        let _g = lock();
+        let client = setup();
+        seed(
+            "s4e-root2",
+            true,
+            Some(test_password("t-root2-old").as_str()),
+        );
+        let status = put_legacy(
+            &client,
+            cookie("s4e-root2", true),
+            &json!({ "password": test_password("t-root2-new"), "oldPassword": test_password("t-root2-old") }),
+        );
         assert_eq!(status, Status::Ok);
         let store =
             crate::auth::password::PasswdFile::load(&crate::auth::users::passwd_file_path())
                 .expect("load passwd");
-        assert!(store.verify("s4e-root", &test_password("t-root-new")));
+        assert!(store.verify("s4e-root2", &test_password("t-root2-new")));
     }
 
     #[test]
