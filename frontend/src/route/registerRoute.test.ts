@@ -53,9 +53,19 @@ describe('register route', () => {
   test('routes.ts probes enrollment once and forces register on empty', () => {
     const source = readRoute('routes.ts')
     expect(source).toContain('beforeEach')
-    expect(source).toContain('probeEnrollment')
+    expect(source).toContain('getEnrollmentProbe')
     expect(source).toContain('decideBootDestination')
     expect(source).toMatch(/name:\s*'register'/)
+  })
+
+  test('routes.ts shares the cached probe so registration can reset it', () => {
+    const routesSource = readRoute('routes.ts')
+    expect(routesSource).not.toMatch(/let enrollmentProbe/)
+    const page = readFileSync(join(routeDir, '../components/Login/RegisterPage.vue'), 'utf8')
+    expect(page).toContain('resetEnrollmentProbe')
+    const enrollmentSource = readSrc('script/utils/enrollment.ts')
+    expect(enrollmentSource).toMatch(/export const getEnrollmentProbe/)
+    expect(enrollmentSource).toMatch(/export const resetEnrollmentProbe/)
   })
 
   test('routes.ts never redirects share links (capability URLs)', () => {

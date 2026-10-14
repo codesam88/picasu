@@ -156,11 +156,44 @@ export interface BackendHandle {
   stop(): Promise<void>
 }
 
+export interface StartBackendOptions {
+  /// Extra environment entries merged over the defaults below. An entry
+  /// set to `undefined` removes that variable, so a spec can start a
+  /// closed install with `{ PICASU_BOOTSTRAP_ADMIN: undefined }`. Defaults
+  /// to `{}`: behavior without the option is exactly the current one.
+  extraEnv?: Record<string, string | undefined>
+}
+
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..')
 
-export async function startBackend(paths: WorkerPaths): Promise<BackendHandle> {
+export async function startBackend(
+  paths: WorkerPaths,
+  options: StartBackendOptions = {}
+): Promise<BackendHandle> {
   fs.mkdirSync(paths.DATA_DIR, { recursive: true })
   fs.mkdirSync(paths.CONFIG_DIR, { recursive: true })
+
+  const backendEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    PICASU_PORT: String(paths.BACKEND_PORT),
+    PICASU_DATA_HOME: paths.DATA_DIR,
+    PICASU_CONFIG_HOME: paths.CONFIG_DIR,
+    PICASU_WEB_ROOT: path.resolve(REPO_ROOT, 'frontend/dist'),
+    // E2E scenarios enroll the first admin through the open-window
+    // `POST /post/users/create`, which only responds while the bootstrap
+    // window is open.
+    PICASU_BOOTSTRAP_ADMIN: 'true',
+    // Test-only PBKDF effort: production KDF cost (~10s/verify in debug
+    // builds) would dominate every login flow under test.
+    PICASU_PBKDF_ITERATIONS: '1000'
+  }
+  for (const [key, value] of Object.entries(options.extraEnv ?? {})) {
+    if (value === undefined) {
+      delete backendEnv[key]
+    } else {
+      backendEnv[key] = value
+    }
+  }
 
   const binaryPath = process.env.PICASU_BINARY
   const [cmd, cmdArgs, cmdOpts] = binaryPath
@@ -170,20 +203,7 @@ export async function startBackend(paths: WorkerPaths): Promise<BackendHandle> {
   const logTag = `[${path.basename(paths.DIR)}]`
   const proc = spawn(cmd, cmdArgs, {
     ...cmdOpts,
-    env: {
-      ...process.env,
-      PICASU_PORT: String(paths.BACKEND_PORT),
-      PICASU_DATA_HOME: paths.DATA_DIR,
-      PICASU_CONFIG_HOME: paths.CONFIG_DIR,
-      PICASU_WEB_ROOT: path.resolve(REPO_ROOT, 'frontend/dist'),
-      // E2E scenarios enroll the first admin through the open-window
-      // `POST /post/users/create`, which only responds while the bootstrap
-      // window is open.
-      PICASU_BOOTSTRAP_ADMIN: 'true',
-      // Test-only PBKDF effort: production KDF cost (~10s/verify in debug
-      // builds) would dominate every login flow under test.
-      PICASU_PBKDF_ITERATIONS: '1000'
-    },
+    env: backendEnv,
     stdio: ['ignore', 'pipe', 'pipe']
   })
 
