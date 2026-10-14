@@ -1,8 +1,9 @@
 export const isPasswordChangeSubmittable = (
+  oldPassword: string,
   newPassword: string,
   confirmPassword: string
 ): boolean => {
-  return newPassword.length > 0 && newPassword === confirmPassword
+  return oldPassword.length > 0 && newPassword.length > 0 && newPassword === confirmPassword
 }
 
 export const submitPasswordChange = async (
@@ -11,7 +12,7 @@ export const submitPasswordChange = async (
   confirmPassword: string,
   update: (oldPassword: string, newPassword: string) => Promise<void>
 ): Promise<boolean> => {
-  if (!isPasswordChangeSubmittable(newPassword, confirmPassword)) return false
+  if (!isPasswordChangeSubmittable(oldPassword, newPassword, confirmPassword)) return false
   await update(oldPassword, newPassword)
   return true
 }

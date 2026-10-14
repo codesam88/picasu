@@ -84,9 +84,10 @@ const showOldPassword = ref(false)
 const showNewPassword = ref(false)
 const showConfirmPassword = ref(false)
 
-// Submit is enabled only when the new password is non-empty and confirmed.
+// Submit is enabled only when the current password is non-empty and the
+// new password is non-empty and confirmed.
 const canSubmit = computed(() =>
-  isPasswordChangeSubmittable(newPassword.value, confirmPassword.value)
+  isPasswordChangeSubmittable(oldPassword.value, newPassword.value, confirmPassword.value)
 )
 
 // --- Validation Rules ---
