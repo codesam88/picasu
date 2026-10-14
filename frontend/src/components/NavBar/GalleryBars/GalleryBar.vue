@@ -114,7 +114,6 @@
 
 <script setup lang="ts">
 import { computed, inject, Ref, ref, watchEffect } from 'vue'
-import Cookies from 'js-cookie'
 import { LocationQueryValue, useRoute, useRouter } from 'vue-router'
 import { useCollectionStore } from '@/store/collectionStore'
 import { useFilterStore } from '@/store/filterStore'
@@ -127,6 +126,7 @@ import CreateShareModal from '@/components/Modal/CreateShareModal.vue'
 import { useTheme } from 'vuetify'
 import GalleryBarTemplate from '@/components/NavBar/GalleryBars/GalleryBarTemplate.vue'
 import { leaveView } from '@utils/leaveView'
+import { performLogout } from '@utils/logout'
 
 const showNavPanel = inject('showNavPanel')
 
@@ -224,8 +224,7 @@ const handleSearch = async () => {
 }
 
 const handleLogout = async () => {
-  Cookies.remove('jwt')
-  await router.push({ name: 'login' })
+  await performLogout((location) => router.push(location))
 }
 
 watchEffect(() => {

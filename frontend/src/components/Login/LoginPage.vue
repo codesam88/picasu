@@ -61,9 +61,9 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import Cookies from 'js-cookie'
 import { useRouter } from 'vue-router'
 import { useRedirectionStore } from '@/store/redirectionStore'
+import { setSessionToken } from '@/script/utils/sessionCookie'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
@@ -102,13 +102,8 @@ const handleLogin = async () => {
     await tryWithMessageStore('mainId', async () => {
       const tokenValue = await login(userId.value, password.value)
 
-      // Store the JWT in a cookie with security attributes
-      Cookies.set('jwt', tokenValue, {
-        httpOnly: false, // Set to true for better security (cannot access via JavaScript)
-        secure: true, // Ensure it's only sent over HTTPS
-        sameSite: 'Strict', // Prevent CSRF attacks
-        expires: 14 // Optional: Expires in 1 day
-      })
+      // Store the JWT in a cookie with the shared session attributes
+      setSessionToken(tokenValue)
 
       // Remember the id for the next login's User ID prefill.
       localStorage.setItem(LAST_USER_ID_KEY, userId.value)
