@@ -51,6 +51,12 @@
               <v-btn type="submit" color="primary" size="large" block :loading="loading">
                 Login
               </v-btn>
+
+              <div class="text-center mt-4">
+                <router-link :to="{ name: 'register' }"
+                  >First run? Create the admin account</router-link
+                >
+              </div>
             </v-form>
           </v-card-text>
         </v-card>

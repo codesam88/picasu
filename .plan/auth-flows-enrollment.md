@@ -92,6 +92,17 @@ open-mode mints tokens without persisting a user.
    other keeps no-old recovery. Change form requires current
    client-side; settings modal header shows username + role
    read-only. Gates: `cargo test`, vitest, both checks.
+6. Admin panel UI: admin-create-user form, set-password control,
+   registration toggle, invite create (link shown once) / list /
+   revoke; needs `ConfigResponse.allowRegistration` read-back (add
+   the field backend-side in this step). Gates: vitest,
+   `frontend-check`, `openapi-check` after regen.
+7. CLI provisioning: separate `picasu-admin` binary (`add-user`,
+   `set-password`, `set-admin`) with lockfile discipline vs a live
+   server; Dockerfile ships it. Gates: `cargo test`, `backend-check`.
+8. First-create race: prove with a test whether concurrent
+   unauthenticated creates both land; share the bootstrap lock only
+   if confirmed, else close with the negative result.
 
 ## Decisions
 

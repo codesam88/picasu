@@ -11,6 +11,18 @@ export const listUsers = async (): Promise<UserSummary[]> => {
   return response.data
 }
 
+/// Create a user record. On an empty store with `--bootstrap-admin` the
+/// backend forces `admin: true` regardless of the body's flag, so the
+/// first-user enrollment form always sends `admin: true`.
+export const createUser = async (userId: string, password: string): Promise<UserSummary> => {
+  const response = await axios.post<UserSummary>('/post/users/create', {
+    userId,
+    password,
+    admin: true
+  })
+  return response.data
+}
+
 export const setUserAdmin = async (userId: string, admin: boolean): Promise<void> => {
   await axios.put('/put/users/admin', {
     userId,
