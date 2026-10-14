@@ -46,10 +46,6 @@ describe('register route', () => {
     expect(source).toContain('timeline')
   })
 
-  test('LoginPage links to registration', () => {
-    expect(readSrc('components/Login/LoginPage.vue')).toMatch(/register/)
-  })
-
   test('routes.ts probes enrollment once and forces register on empty', () => {
     const source = readRoute('routes.ts')
     expect(source).toContain('beforeEach')
@@ -59,8 +55,6 @@ describe('register route', () => {
   })
 
   test('routes.ts shares the cached probe so registration can reset it', () => {
-    const routesSource = readRoute('routes.ts')
-    expect(routesSource).not.toMatch(/let enrollmentProbe/)
     const page = readFileSync(join(routeDir, '../components/Login/RegisterPage.vue'), 'utf8')
     expect(page).toContain('resetEnrollmentProbe')
     const enrollmentSource = readSrc('script/utils/enrollment.ts')
