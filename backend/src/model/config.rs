@@ -100,15 +100,11 @@ pub struct AppConfig {
     /// user store is empty**, unauthenticated `POST /post/users/create`
     /// and open `POST /post/authenticate` mint the first admin. Default
     /// off: a fresh install answers 401 everywhere until an operator opts
-    /// in (or provisions the store via the `picasu-admin` CLI). A
-    /// configured legacy `password` still wins over the flag (the host
-    /// secret gates enrollment); enabling the flag against an existing
-    /// `passwd.json` makes the server refuse to start. WARN-logged at boot
-    /// whenever set.
+    /// in (or provisions the store via the `picasu-admin` CLI). Enabling
+    /// the flag against an existing `passwd.json` makes the server refuse
+    /// to start. WARN-logged at boot whenever set.
     #[serde(default)]
     pub bootstrap_admin: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_key: Option<String>,
     /// Path to the compiled frontend build directory (contains index.html and assets/).
@@ -135,7 +131,6 @@ impl Default for AppConfig {
             allow_registration: false,
             trivial_passwords: false,
             bootstrap_admin: false,
-            password: None,
             auth_key: None,
             web_root: None,
         }
@@ -238,8 +233,6 @@ impl Default for TomlGallery {
 #[derive(Default)]
 pub(crate) struct TomlSecrets {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) password: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) auth_key: Option<String>,
 }
 
@@ -261,7 +254,6 @@ impl From<TomlFile> for AppConfig {
             allow_registration: t.gallery.allow_registration,
             trivial_passwords: t.gallery.trivial_passwords,
             bootstrap_admin: t.gallery.bootstrap_admin,
-            password: t.secrets.password,
             auth_key: t.secrets.auth_key,
             web_root: t.gallery.web_root,
         }
@@ -292,7 +284,6 @@ impl From<AppConfig> for TomlFile {
                 web_root: c.web_root,
             },
             secrets: TomlSecrets {
-                password: c.password,
                 auth_key: c.auth_key,
             },
         }
@@ -366,13 +357,22 @@ impl AppConfig {
         info!("Loading configuration from {config_path_display}");
 
         let mut config = match fs::read_to_string(&config_path) {
-            Ok(content) => match toml::from_str::<TomlFile>(&content) {
-                Ok(tf) => AppConfig::from(tf),
-                Err(e) => {
-                    warn!("Failed to parse config at {config_path_display}: {e:?}, using defaults");
-                    AppConfig::default()
+            Ok(content) => {
+                if has_legacy_password_key(&content) {
+                    warn!(
+                        "legacy single password is no longer supported and is ignored; enroll via --bootstrap-admin or the picasu-admin CLI"
+                    );
                 }
-            },
+                match toml::from_str::<TomlFile>(&content) {
+                    Ok(tf) => AppConfig::from(tf),
+                    Err(e) => {
+                        warn!(
+                            "Failed to parse config at {config_path_display}: {e:?}, using defaults"
+                        );
+                        AppConfig::default()
+                    }
+                }
+            }
             Err(e) => {
                 warn!("Failed to read config file {config_path_display}: {e}");
                 AppConfig::default()
@@ -558,10 +558,20 @@ impl AppConfig {
     }
 }
 
+/// Whether the raw TOML text contains the removed `[secrets] password` key.
+/// Old config files still parse (serde ignores the unknown key); the boot
+/// path warns and continues. Pure so unit tests can exercise the detector
+/// without a logger; the WARN itself is manual-verify in boot logs.
+pub(crate) fn has_legacy_password_key(content: &str) -> bool {
+    toml::from_str::<toml::Value>(content)
+        .ok()
+        .and_then(|v| v.get("secrets")?.get("password").cloned())
+        .is_some_and(|p| p.as_str().is_some_and(|s| !s.is_empty()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tests::fixtures::test_password;
 
     #[test]
     fn toml_round_trip_full() {
@@ -581,7 +591,6 @@ mod tests {
             allow_registration: true,
             trivial_passwords: true,
             bootstrap_admin: true,
-            password: Some(test_password("t-config")),
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),
         };
@@ -601,7 +610,6 @@ mod tests {
             data_home: Some(PathBuf::from("/data")),
             image_home: Some(PathBuf::from("/images")),
             max_upload_size: "200MiB".to_string(),
-            password: Some("hunter2".to_string()),
             auth_key: Some("jwt-secret".to_string()),
             ..AppConfig::default()
         };
@@ -626,8 +634,50 @@ mod tests {
         assert!(toml_str.contains("max_upload_size = \"200MiB\""));
         assert!(toml_str.contains("data_home = \"/data\""));
         assert!(toml_str.contains("image_home = \"/images\""));
-        assert!(toml_str.contains("password = \"hunter2\""));
+        assert!(
+            !toml_str
+                .lines()
+                .any(|l| l.trim_start().starts_with("password =")),
+            "no legacy password key may be written"
+        );
         assert!(toml_str.contains("auth_key = \"jwt-secret\""));
+    }
+
+    #[test]
+    fn legacy_password_key_in_file_is_ignored() {
+        // Old config files may still contain `[secrets] password = ...`.
+        // Parsing must succeed and the password must have no effect: there
+        // is no password field on the config anymore. The boot path warns
+        // (see `has_legacy_password_key`, WARN is manual-verify in logs).
+        let toml_str = r#"
+[server]
+port = 9999
+
+[gallery]
+read_only_mode = true
+
+[secrets]
+password = "hunter2"
+auth_key = "jwt-secret"
+"#;
+        assert!(
+            super::has_legacy_password_key(toml_str),
+            "detector must see the legacy key"
+        );
+        let parsed: TomlFile = toml::from_str(toml_str).expect("old file must still parse");
+        let config = AppConfig::from(parsed);
+        assert_eq!(config.port, 9999);
+        assert!(config.read_only_mode);
+        assert_eq!(config.auth_key.as_deref(), Some("jwt-secret"));
+    }
+
+    #[test]
+    fn no_legacy_password_key_absent() {
+        let toml_str = r#"
+[server]
+port = 9999
+"#;
+        assert!(!super::has_legacy_password_key(toml_str));
     }
 
     #[test]

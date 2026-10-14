@@ -13,7 +13,6 @@ export interface AppConfig {
   // password is handled separately now
   authKey: string | null
   hasAuthKey: boolean
-  hasPassword: boolean
   imagePath: string | null
   uploadFolder: string
   maxUploadSize: string

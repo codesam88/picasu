@@ -6,11 +6,11 @@
 //! Rows: closed-by-default (flag off refuses `users/create`, `authenticate`
 //! and `get/users`), open-with-flag on an empty store (probe, forced-admin
 //! create, close-after-first-user, login), admin-less non-empty store stays
-//! closed, legacy mode ignores the flag, and the boot-freshness refusal.
+//! closed, no legacy gate, and the boot-freshness refusal.
 //!
 //! The test harness opts the whole binary into bootstrap mode
-//! (`tests/bootstrap.rs`); these tests opt back out with a flag-off config or
-//! a legacy password where the row requires it.
+//! (`tests/bootstrap.rs`); these tests opt back out with a flag-off config
+//! where the row requires it.
 //!
 //! Hashing budget: PBKDF2 rounds are slow in debug builds, so each test seeds
 //! at most two users and batches its assertions.
@@ -32,20 +32,11 @@ fn lock() -> std::sync::MutexGuard<'static, ()> {
 }
 
 /// Reset shared state and return a fresh client. The harness resets into
-/// bootstrap mode (flag on, no legacy password, empty store).
+/// bootstrap mode (flag on, empty store).
 fn setup() -> Client {
     let _ = &*TEST_ENV;
     reset_backend_state();
     make_client()
-}
-
-fn set_legacy_password(password: Option<&str>) {
-    let mut config = crate::model::config::APP_CONFIG
-        .get()
-        .expect("APP_CONFIG")
-        .write()
-        .expect("APP_CONFIG lock");
-    config.password = password.map(str::to_string);
 }
 
 fn set_bootstrap_admin(enabled: bool) {
@@ -94,13 +85,14 @@ fn closed_by_default_denies_enrollment() {
         login(&client, "root", &test_password("t-closed")),
         Status::Unauthorized
     );
-    // The legacy bare-string path is closed too (no migration target).
+    // The bare-string shape no longer parses as a login object: Rocket's
+    // `Json` guard answers 422 for well-formed JSON of the wrong shape.
     let resp = client
         .post("/post/authenticate")
         .header(ContentType::JSON)
         .body(json!(test_password("t-closed")).to_string())
         .dispatch();
-    assert_eq!(resp.status(), Status::Unauthorized);
+    assert_eq!(resp.status(), Status::UnprocessableEntity);
     // The open-mode identity is not minted, so the admin probe refuses.
     assert_eq!(
         client.get("/get/users").dispatch().status(),
@@ -160,7 +152,7 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
 /// A password PUT on an empty store must not enroll: the unknown target is
 /// 404 even while the bootstrap window is open, and no user record or
 /// password entry is written. Enrollment happens only via
-/// `POST /post/users/create` (or the CLI); the legacy first-run flow through
+/// `POST /post/users/create` (or the CLI); the first-run flow through
 /// the settings password form is gone.
 #[test]
 fn password_put_on_empty_store_is_404_and_creates_nothing() {
@@ -177,7 +169,7 @@ fn password_put_on_empty_store_is_404_and_creates_nothing() {
         .dispatch();
     assert_eq!(resp.status(), Status::NotFound);
 
-    // The legacy config-password route is the same call with the caller id;
+    // The self-change route is the same call with the caller id;
     // it must refuse too when the store is empty.
     let resp = client
         .put("/put/config/password")
@@ -214,42 +206,37 @@ fn admin_less_non_empty_store_stays_closed() {
     assert_eq!(crate::auth::users::user_count().expect("count"), 1);
 }
 
-// ── Row: legacy mode ignores the flag ──────────────────────────────────────
+// ── Row: no legacy password concept ──────────────────────────────────────
 
-/// A configured legacy password gates the store regardless of the flag: the
-/// guards deny and unauthenticated create is refused, then a login with the
-/// legacy password migrates the claimed id to first admin and works.
+/// There is no host-secret gate anymore: flag-on opens the empty store and
+/// flag-off closes it. A bare-string body never parses as a login object
+/// (422) and never enrolls anybody.
 #[test]
-fn legacy_mode_ignores_the_flag() {
+fn no_legacy_gate_flag_controls_empty_store() {
     let _g = lock();
     let client = setup();
-    let legacy = test_password("t-legacy-enroll");
-    set_legacy_password(Some(&legacy));
-
-    // The guard does not open despite the flag: the host secret wins.
-    assert_eq!(
-        client.get("/get/users").dispatch().status(),
-        Status::Unauthorized
-    );
-    assert_eq!(
-        create_user(&client, "eve", &test_password("t-eve")),
-        Status::Unauthorized
-    );
+    set_bootstrap_admin(true);
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
-    // Migration via the legacy path registers the claimed id as the first
-    // admin. The bare-string shape targets the historical `admin` id.
+    // Open without any password notion: the probe succeeds.
+    assert_eq!(client.get("/get/users").dispatch().status(), Status::Ok);
+    // The bare-string shape is unparseable on an open store too (422).
     let resp = client
         .post("/post/authenticate")
         .header(ContentType::JSON)
-        .body(json!(legacy).to_string())
+        .body(json!(test_password("t-enroll-nolegacy")).to_string())
         .dispatch();
-    assert_eq!(resp.status(), Status::Ok);
+    assert_eq!(resp.status(), Status::UnprocessableEntity);
+    assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+
+    // Flag off closes the same empty store for object logins.
+    set_bootstrap_admin(false);
     assert_eq!(
-        crate::auth::users::get_user("admin").expect("get user"),
-        Some(crate::auth::users::UserRecord { admin: true })
+        login(&client, "root", &test_password("t-enroll-nolegacy")),
+        Status::Unauthorized
     );
-    set_legacy_password(None);
+    assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+    set_bootstrap_admin(true);
 }
 
 // ── Boot freshness ─────────────────────────────────────────────────────────

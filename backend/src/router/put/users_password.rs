@@ -22,9 +22,9 @@ pub struct SetUserPasswordRequest {
 /// Set the password for `target_user_id` on behalf of `caller_id`.
 ///
 /// The new password is trimmed once and the trimmed (canonical) form is
-/// stored, matching the legacy semantics that trimmed everywhere; login
-/// verifies the trimmed input, so write-then-login stays consistent. The
-/// old password, when required, is trimmed the same way before comparison.
+/// stored; login verifies the trimmed input, so write-then-login stays
+/// consistent. The old password, when required, is trimmed the same way
+/// before comparison.
 ///
 /// Rules: a self-change (target == caller) always requires the correct old
 /// password, admins included; an admin may set another user's password

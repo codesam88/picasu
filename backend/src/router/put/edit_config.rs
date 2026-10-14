@@ -162,10 +162,9 @@ pub struct UpdatePasswordRequest {
 
 /// Change the caller's own password.
 ///
-/// This is the legacy single-password route, reworked onto the user store:
-/// it changes the password of the authenticated caller only. A self-change
-/// always requires the correct `oldPassword`, admins included. The new
-/// `password` is trimmed and must satisfy
+/// This route changes the password of the authenticated caller only. A
+/// self-change always requires the correct `oldPassword`, admins included.
+/// The new `password` is trimmed and must satisfy
 /// the default password policy after trimming (there is no "clear to open": open
 /// mode is store-empty only). To change another user's password, use
 /// `PUT /put/users/password`.
@@ -250,7 +249,7 @@ mod tests {
         }
     }
 
-    fn put_legacy(
+    fn put_self(
         client: &rocket::local::blocking::Client,
         cookie: Cookie<'static>,
         body: &serde_json::Value,
@@ -265,11 +264,11 @@ mod tests {
     }
 
     #[test]
-    fn legacy_admin_self_change_without_old_is_401() {
+    fn admin_self_change_without_old_is_401() {
         let _g = lock();
         let client = setup();
         seed("s4e-root", true, Some(test_password("t-root-old").as_str()));
-        let status = put_legacy(
+        let status = put_self(
             &client,
             cookie("s4e-root", true),
             &json!({ "password": test_password("t-root-new") }),
@@ -278,7 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_admin_self_change_with_correct_old_is_200() {
+    fn admin_self_change_with_correct_old_is_200() {
         let _g = lock();
         let client = setup();
         seed(
@@ -286,7 +285,7 @@ mod tests {
             true,
             Some(test_password("t-root2-old").as_str()),
         );
-        let status = put_legacy(
+        let status = put_self(
             &client,
             cookie("s4e-root2", true),
             &json!({ "password": test_password("t-root2-new"), "oldPassword": test_password("t-root2-old") }),
@@ -299,11 +298,11 @@ mod tests {
     }
 
     #[test]
-    fn legacy_self_service_with_correct_old_password() {
+    fn self_service_with_correct_old_password() {
         let _g = lock();
         let client = setup();
         seed("s4e-bob", false, Some(test_password("t-bob-old").as_str()));
-        let status = put_legacy(
+        let status = put_self(
             &client,
             cookie("s4e-bob", false),
             &json!({ "password": test_password("t-bob-new"), "oldPassword": test_password("t-bob-old") }),
@@ -312,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_wrong_old_password_is_401() {
+    fn wrong_old_password_is_401() {
         let _g = lock();
         let client = setup();
         seed(
@@ -320,7 +319,7 @@ mod tests {
             false,
             Some(test_password("t-carol-old").as_str()),
         );
-        let status = put_legacy(
+        let status = put_self(
             &client,
             cookie("s4e-carol", false),
             &json!({ "password": test_password("t-carol-new"), "oldPassword": test_password("t-nope") }),
@@ -407,11 +406,11 @@ mod tests {
     }
 
     #[test]
-    fn legacy_empty_new_password_is_400() {
+    fn empty_new_password_is_400() {
         let _g = lock();
         let client = setup();
         seed("s4e-root", true, None);
-        let status = put_legacy(
+        let status = put_self(
             &client,
             cookie("s4e-root", true),
             &json!({ "password": "   " }),

@@ -4,7 +4,7 @@
 //! HTTP stack through a real Rocket client.
 //!
 //! Rows: open / invite / disabled / expired / double-use / revoked /
-//! duplicate-id / short-password / legacy-deny, plus the invite-route auth
+//! duplicate-id / short-password / closed-flag-off, plus the invite-route auth
 //! and no-token-leak requirements.
 //!
 //! Hashing budget: PBKDF2 rounds are slow in debug builds, so each test
@@ -26,8 +26,7 @@ fn lock() -> std::sync::MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Reset shared state and return a fresh client (knob off, no legacy
-/// password, no users).
+/// Reset shared state and return a fresh client (knob off, no users).
 fn setup() -> Client {
     let _ = &*TEST_ENV;
     reset_backend_state();
@@ -52,13 +51,13 @@ fn user_cookie(id: &str) -> rocket::http::Cookie<'static> {
     )
 }
 
-fn set_legacy_password(password: Option<&str>) {
+fn set_bootstrap_admin(enabled: bool) {
     let mut config = crate::model::config::APP_CONFIG
         .get()
         .expect("APP_CONFIG")
         .write()
         .expect("APP_CONFIG lock");
-    config.password = password.map(str::to_string);
+    config.bootstrap_admin = enabled;
 }
 
 /// POST /post/users/register with the given body; returns the response.
@@ -321,19 +320,16 @@ fn trivial_passwords_flag_opens_registration_to_weak_passwords() {
     assert_eq!(status, Status::Ok);
 }
 
-// ── Row: legacy-deny (review A1) ───────────────────────────────────────────
+// ── Row: closed flag-off denies unauthenticated create ─────────────────────
 
-/// With a legacy password configured, an unauthenticated `users/create` is
-/// refused even while the store is empty — the host secret must gate
-/// enrollment, not just login. (Migration stays possible via
-/// `POST /post/authenticate`.)
+/// With the flag off, an unauthenticated `users/create` on an empty store is
+/// refused and no user appears. (With the flag on the same call opens and
+/// forces the first admin; see `tests/enroll_gate`.)
 #[test]
-fn legacy_mode_denies_unauthenticated_create() {
+fn flag_off_denies_unauthenticated_create() {
     let _g = lock();
     let client = setup();
-    set_legacy_password(Some(
-        crate::tests::fixtures::test_password("t-reg-legacy").as_str(),
-    ));
+    set_bootstrap_admin(false);
 
     let pw = crate::tests::fixtures::test_password("t-reg-a1");
     let resp = client
@@ -344,7 +340,7 @@ fn legacy_mode_denies_unauthenticated_create() {
     assert_eq!(resp.status(), Status::Unauthorized);
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
-    set_legacy_password(None);
+    set_bootstrap_admin(true);
 }
 
 // ── Invite routes: auth + no token leak ────────────────────────────────────

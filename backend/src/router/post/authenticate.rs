@@ -6,27 +6,16 @@ use tokio::task::spawn_blocking;
 use crate::auth::password::{PasswdFile, password_iterations, verify_password};
 use crate::auth::users::{self, validate_user_id};
 use crate::error::ResultExt;
-use crate::model::config::APP_CONFIG;
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::Claims;
 use crate::router::{AppError, AppResult, ErrorKind};
 
-/// User login body for `POST /post/authenticate`.
+/// Request body for `POST /post/authenticate`: a user login object.
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginRequest {
     pub user_id: String,
     pub password: String,
-}
-
-/// Request body for `POST /post/authenticate`: either a user login object
-/// or the legacy bare-string bootstrap path. Untagged so a JSON string and
-/// a JSON object both parse on the same route.
-#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
-#[serde(untagged)]
-pub enum AuthenticateRequest {
-    Legacy(String),
-    Login(LoginRequest),
 }
 
 /// Run one PBKDF verification against a throwaway hash. Always false;
@@ -53,9 +42,8 @@ pub(crate) fn run_dummy_verify() -> bool {
 /// hashing is CPU-heavy.
 ///
 /// The password input is trimmed once and the trimmed (canonical) form is
-/// verified, matching the legacy semantics that trimmed everywhere; callers
-/// writing new passwords must store the trimmed form too so
-/// write-then-login stays consistent.
+/// verified; callers writing new passwords must store the trimmed form too
+/// so write-then-login stays consistent.
 ///
 /// # Errors
 /// Returns 401 when the user is unknown or the password is wrong, and 500
@@ -82,100 +70,24 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<String> {
     Ok(Claims::new_user(user_id.to_string(), record.admin).encode())
 }
 
-/// Read the configured legacy single password, if any.
-fn legacy_password() -> Option<String> {
-    APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned")
-        .password
-        .clone()
-}
-
-/// Register `id` as the first admin with the given (already trimmed)
-/// password hash. Must run on a blocking thread: password hashing is
-/// CPU-heavy.
-///
-/// The store-emptiness re-check and the creation happen under one process
-/// lock: the redb write and the password-file write cannot share a
-/// transaction, so without the lock two concurrent bootstraps could each
-/// create a different first admin.
-///
-/// # Errors
-/// Returns 401 when the store is already non-empty (bootstrap-only), and 500
-/// when either store cannot be written.
-fn bootstrap_user(id: &str, trimmed_password: &str) -> AppResult<()> {
-    static BOOTSTRAP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _guard = BOOTSTRAP_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let non_empty = users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
-    if non_empty > 0 {
-        return Err(AppError::new(ErrorKind::Auth, "Legacy sign-in is disabled")
-            .context("Authentication failed"));
-    }
-    users::create_user(id, true).map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
-    let path = users::passwd_file_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| AppError::from_err(ErrorKind::IO, e.into()))?;
-    }
-    let mut store = PasswdFile::load(&path).map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
-    store
-        .set_password(id, trimmed_password)
-        .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
-    log::info!("enrollment: first admin bootstrapped as {id}");
-    Ok(())
-}
-
-/// Migrate the legacy single-password config into the user store: when no
-/// users exist and the trimmed input matches the configured legacy password,
-/// register the claimed id as the first admin. The bare-string path passes
-/// `"admin"`, preserving the previous migration target.
-///
-/// Must run on a blocking thread: password hashing is CPU-heavy.
-///
-/// # Errors
-/// Returns 401 when the store is already non-empty (the legacy path is
-/// bootstrap-only) or when the input does not match the configured legacy
-/// password, and 500 when either store cannot be written.
-fn ensure_migrated_from_legacy(user_id: &str, password: &str) -> AppResult<()> {
-    let trimmed = password.trim();
-    match legacy_password() {
-        Some(expected) if !expected.is_empty() && trimmed == expected => {}
-        _ => {
-            return Err(
-                AppError::new(ErrorKind::Auth, "Invalid password").context("Authentication failed")
-            );
-        }
-    }
-    bootstrap_user(user_id, trimmed)
-}
-
 /// Sign in and return a 14-day user-bound JWT.
 ///
 /// A `{ userId, password }` object verifies against the user and password
-/// stores and mints a token carrying the user's id and admin flag. On a
-/// legacy deployment (empty store + configured legacy password) the first
-/// login with the legacy password registers the claimed `userId` as the
-/// first admin. A bare
-/// JSON string is the legacy bootstrap path: while the user store is empty
-/// it verifies the configured legacy password and migrates it onto user
-/// `admin`, and it is rejected once any user exists. Tokens are signed with
-/// `authKey`, or with a secret generated once per process when `authKey` is
-/// unset, so changing `authKey` invalidates every token issued under the
-/// previous one.
+/// stores and mints a token carrying the user's id and admin flag. Tokens
+/// are signed with `authKey`, or with a secret generated once per process
+/// when `authKey` is unset, so changing `authKey` invalidates every token
+/// issued under the previous one.
 ///
-/// Corner cases: While no users exist and no legacy password is configured,
-/// sign-in succeeds without credentials: every parseable input is accepted
-/// (open first-run mode).
+/// Corner cases: While no users exist and `--bootstrap-admin` is set,
+/// sign-in succeeds without credentials: every parseable login object is
+/// accepted (open first-run mode).
 ///
 /// Errors: 400 the login `userId` is empty or longer than 64 characters, or
-/// the body parses as neither shape — 401 unknown user, wrong password, or
-/// legacy path used after bootstrap.
+/// the body does not parse as a login object — 401 unknown user or wrong
+/// password.
 #[utoipa::path(
         tag = "auth",
-        request_body = AuthenticateRequest,
+        request_body = LoginRequest,
         responses(
             (status = 200, description = "JWT token", body = String),
             (status = 400, description = "Invalid input"),
@@ -185,9 +97,9 @@ fn ensure_migrated_from_legacy(user_id: &str, password: &str) -> AppResult<()> {
     )
 ]
 #[post("/post/authenticate", data = "<body>")]
-pub async fn authenticate(body: Json<AuthenticateRequest>) -> AppResult<Json<String>> {
-    // Open bootstrap mode: no users, the `--bootstrap-admin` flag set, and no
-    // legacy password accept any parseable body without touching the stores.
+pub async fn authenticate(body: Json<LoginRequest>) -> AppResult<Json<String>> {
+    // Open bootstrap mode: no users and the `--bootstrap-admin` flag set
+    // accept any parseable login object without touching the stores.
     let open_mode = users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))?
         == 0
         && crate::router::auth::bootstrap_open();
@@ -196,45 +108,13 @@ pub async fn authenticate(body: Json<AuthenticateRequest>) -> AppResult<Json<Str
         return Ok(Json(token));
     }
 
-    match body.into_inner() {
-        AuthenticateRequest::Login(login) => {
-            let user_id = validate_user_id(&login.user_id)?;
-            let password = login.password;
-            let token = spawn_blocking(move || -> AppResult<String> {
-                // Legacy deployment (empty store + configured password):
-                // the first login with the legacy password registers the
-                // claimed id as the first admin. Otherwise the normal path
-                // below answers 401 for the unknown user.
-                if users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))? == 0
-                {
-                    let canonical = password.trim().to_string();
-                    match legacy_password() {
-                        Some(expected) if !expected.is_empty() && canonical == expected => {
-                            bootstrap_user(&user_id, &canonical)?;
-                        }
-                        _ => {}
-                    }
-                }
-                login_sync(&user_id, &password)
-            })
-            .await
-            .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-            Ok(Json(token))
-        }
-        AuthenticateRequest::Legacy(password) => {
-            let token = spawn_blocking(move || -> AppResult<String> {
-                // The trimmed form is canonical for comparison, storage, and
-                // the follow-up verification alike. The bare-string path
-                // keeps the historical `"admin"` migration target.
-                let canonical = password.trim().to_string();
-                ensure_migrated_from_legacy("admin", &canonical)?;
-                login_sync("admin", &canonical)
-            })
-            .await
-            .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
-            Ok(Json(token))
-        }
-    }
+    let login = body.into_inner();
+    let user_id = validate_user_id(&login.user_id)?;
+    let password = login.password;
+    let token = spawn_blocking(move || login_sync(&user_id, &password))
+        .await
+        .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))??;
+    Ok(Json(token))
 }
 
 #[cfg(test)]
@@ -257,13 +137,13 @@ mod tests {
         make_client()
     }
 
-    fn set_legacy_password(password: Option<&str>) {
+    fn set_bootstrap_admin(enabled: bool) {
         let mut config = crate::model::config::APP_CONFIG
             .get()
             .expect("APP_CONFIG set")
             .write()
             .expect("APP_CONFIG lock");
-        config.password = password.map(str::to_string);
+        config.bootstrap_admin = enabled;
     }
 
     fn create_user_with_password(id: &str, admin: bool, password: &str) {
@@ -286,7 +166,6 @@ mod tests {
     fn authenticate_login_mints_user_bound_token() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some(&test_password("t-legacy")));
         create_user_with_password("s3c-alice", true, &test_password("t-alice"));
         let resp = client
             .post("/post/authenticate")
@@ -305,14 +184,12 @@ mod tests {
             }
             crate::router::auth::Role::Share(_) => panic!("expected user role"),
         }
-        set_legacy_password(None);
     }
 
     #[test]
     fn authenticate_login_wrong_and_unknown_user_are_401() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some(&test_password("t-legacy")));
         create_user_with_password("s3c-bob", false, &test_password("t-bob"));
         let resp = client
             .post("/post/authenticate")
@@ -328,112 +205,64 @@ mod tests {
             )
             .dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
-        set_legacy_password(None);
     }
 
     #[test]
-    fn legacy_string_migrates_to_admin_user() {
+    fn bare_string_body_is_422_on_empty_store_flag_off() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some(&test_password("t-s3d-legacy")));
+        set_bootstrap_admin(false);
+        assert_eq!(crate::auth::users::user_count().expect("count"), 0);
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!(test_password("t-s3d-legacy")).to_string())
+            .body(json!(test_password("t-closed")).to_string())
             .dispatch();
-        assert_eq!(resp.status(), Status::Ok);
-        let body = resp.into_string().expect("token body");
-        let claims = decode_claims(&body);
-        match claims.role {
-            crate::router::auth::Role::User { id, admin } => {
-                assert_eq!(id, "admin");
-                assert!(admin);
-            }
-            crate::router::auth::Role::Share(_) => panic!("expected user role"),
-        }
-        // The migrated user exists in both stores and its token is live.
-        let record = crate::auth::users::get_user("admin").expect("get migrated user");
-        assert_eq!(record, Some(crate::auth::users::UserRecord { admin: true }));
-        let passwd =
-            crate::auth::password::PasswdFile::load(&crate::auth::users::passwd_file_path())
-                .expect("load passwd");
-        assert!(passwd.verify("admin", &test_password("t-s3d-legacy")));
-        let token = body.trim_matches('"').to_string();
-        let resp = client
-            .get("/get/index/status")
-            .cookie(rocket::http::Cookie::new("jwt", token))
-            .dispatch();
-        assert_eq!(resp.status(), Status::Ok);
-        // A second legacy attempt is rejected once the store is non-empty.
-        let resp = client
-            .post("/post/authenticate")
-            .header(ContentType::JSON)
-            .body(json!(test_password("t-s3d-legacy")).to_string())
-            .dispatch();
-        assert_eq!(resp.status(), Status::Unauthorized);
-        set_legacy_password(None);
+        // Rocket's `Json` guard maps well-formed JSON of the wrong shape
+        // (string vs. login object) to 422, not 400.
+        assert_eq!(resp.status(), Status::UnprocessableEntity);
+        assert_eq!(crate::auth::users::user_count().expect("count"), 0);
     }
 
     #[test]
-    fn legacy_string_rejected_once_store_non_empty() {
+    fn bare_string_body_is_422_on_empty_store_flag_on() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some(&test_password("t-s3d-legacy")));
+        set_bootstrap_admin(true);
+        assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+        // The bare-string shape no longer parses as `LoginRequest`, so even
+        // the open window answers 400: there is no legacy bootstrap path.
+        let resp = client
+            .post("/post/authenticate")
+            .header(ContentType::JSON)
+            .body(json!(test_password("t-closed")).to_string())
+            .dispatch();
+        // Rocket's `Json` guard maps well-formed JSON of the wrong shape
+        // (string vs. login object) to 422, not 400.
+        assert_eq!(resp.status(), Status::UnprocessableEntity);
+        assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+    }
+
+    #[test]
+    fn bare_string_body_is_422_on_non_empty_store() {
+        let _g = lock();
+        let client = setup();
         create_user_with_password("s3d-carol", true, &test_password("t-carol"));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!(test_password("t-s3d-legacy")).to_string())
+            .body(json!(test_password("t-s3d-str")).to_string())
             .dispatch();
-        assert_eq!(resp.status(), Status::Unauthorized);
-        set_legacy_password(None);
+        // Rocket's `Json` guard maps well-formed JSON of the wrong shape
+        // (string vs. login object) to 422, not 400.
+        assert_eq!(resp.status(), Status::UnprocessableEntity);
     }
 
     #[test]
-    fn legacy_login_registers_claimed_id_as_admin() {
+    fn empty_store_flag_off_login_is_401_and_creates_nothing() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some(&test_password("t-s3e-legacy")));
-        // First login with the legacy password claims a new id: it is
-        // registered as the first admin instead of hardcoded `admin`.
-        let resp = client
-            .post("/post/authenticate")
-            .header(ContentType::JSON)
-            .body(
-                json!({ "userId": "s3e-alice", "password": test_password("t-s3e-legacy") })
-                    .to_string(),
-            )
-            .dispatch();
-        assert_eq!(resp.status(), Status::Ok);
-        let body = resp.into_string().expect("token body");
-        let claims = decode_claims(&body);
-        match claims.role {
-            crate::router::auth::Role::User { id, admin } => {
-                assert_eq!(id, "s3e-alice");
-                assert!(admin);
-            }
-            crate::router::auth::Role::Share(_) => panic!("expected user role"),
-        }
-        let record = crate::auth::users::get_user("s3e-alice").expect("get bootstrapped user");
-        assert_eq!(record, Some(crate::auth::users::UserRecord { admin: true }));
-        // Second login goes through the normal path.
-        let resp = client
-            .post("/post/authenticate")
-            .header(ContentType::JSON)
-            .body(
-                json!({ "userId": "s3e-alice", "password": test_password("t-s3e-legacy") })
-                    .to_string(),
-            )
-            .dispatch();
-        assert_eq!(resp.status(), Status::Ok);
-        set_legacy_password(None);
-    }
-
-    #[test]
-    fn legacy_login_wrong_password_creates_nothing() {
-        let _g = lock();
-        let client = setup();
-        set_legacy_password(Some(&test_password("t-s3e-legacy")));
+        set_bootstrap_admin(false);
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
@@ -446,28 +275,50 @@ mod tests {
                 .expect("get")
                 .is_none()
         );
-        set_legacy_password(None);
     }
 
     #[test]
-    fn legacy_login_invalid_id_is_400() {
+    fn empty_store_flag_on_login_opens_without_creating_user() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some(&test_password("t-s3e-legacy")));
+        set_bootstrap_admin(true);
+        assert_eq!(crate::auth::users::user_count().expect("count"), 0);
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!({ "userId": "   ", "password": test_password("t-s3e-legacy") }).to_string())
+            .body(json!({ "userId": "anything", "password": test_password("t-open") }).to_string())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        let body = resp.into_string().expect("token body");
+        let claims = decode_claims(&body);
+        match claims.role {
+            crate::router::auth::Role::User { id, admin } => {
+                assert_eq!(id, "admin");
+                assert!(admin);
+            }
+            crate::router::auth::Role::Share(_) => panic!("expected user role"),
+        }
+        // Open mode mints a token without enrolling anybody.
+        assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+    }
+
+    #[test]
+    fn login_invalid_id_is_400() {
+        let _g = lock();
+        let client = setup();
+        set_bootstrap_admin(false);
+        let resp = client
+            .post("/post/authenticate")
+            .header(ContentType::JSON)
+            .body(json!({ "userId": "   ", "password": test_password("t-s3e-str") }).to_string())
             .dispatch();
         assert_eq!(resp.status(), Status::BadRequest);
-        set_legacy_password(None);
     }
 
     #[test]
     fn login_trims_padded_password() {
         let _g = lock();
         let client = setup();
-        set_legacy_password(Some(&test_password("t-trim-legacy")));
         create_user_with_password("s4-trim-user", false, &test_password("t-trim"));
         let resp = client
             .post("/post/authenticate")
@@ -478,7 +329,6 @@ mod tests {
             )
             .dispatch();
         assert_eq!(resp.status(), Status::Ok);
-        set_legacy_password(None);
     }
 
     #[test]

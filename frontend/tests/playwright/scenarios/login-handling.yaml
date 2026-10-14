@@ -2,7 +2,7 @@ name: Login handling covers all states
 covers:
   api:
     - POST /post/authenticate
-    - PUT /put/config/password
+    - POST /post/users/create
   ui:
     - textbox/User ID
     - textbox/Password
@@ -11,7 +11,8 @@ covers:
     - snapshot:login-page
 given:
   - empty: true
-  - config:
+  - user:
+      user_id: admin
       password: e2e_test_pwd
 steps:
   - when:
