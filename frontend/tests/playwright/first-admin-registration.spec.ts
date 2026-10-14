@@ -2,6 +2,7 @@ import { expect } from '@playwright/test'
 import { test } from './scenarioFixtures'
 import { createPaths } from './paths'
 import { startBackend } from './backendLauncher'
+import { createGivenContext, executeGiven } from './executeGiven'
 
 // Keep in sync with RACE_LOST_NOTICE in src/script/utils/registration.ts.
 // It is inlined (not imported) because the Playwright project
@@ -20,7 +21,7 @@ const authHeaders = (token: string) => ({
 })
 
 test.describe('first admin registration', () => {
-  test('open install enrolls, session survives reload, logout sticks, race loses, closed stays shut', async ({
+  test('open install enrolls, session survives reload, logout sticks, duplicate reveals nothing, closed stays shut', async ({
     page,
     request,
     backendPaths,
@@ -30,6 +31,18 @@ test.describe('first admin registration', () => {
     const ADMIN_PASSWORD = backendPaths.ADMIN_PASSWORD
     const WRONG_PASSWORD = 'wrong-password-1'
     const base = backendPaths.BACKEND_URL
+
+    // One photo so the empty-library onboarding dialog never appears: this
+    // spec is about auth, and the modal would cover the account menu that
+    // the logout step needs to click. Media presence does not affect the
+    // enrollment probe, which only reads the user store.
+    await executeGiven(
+      request,
+      [{ dir_album: '/library' }, { photo: '/library/photo.jpg' }],
+      createGivenContext('e2e_first_admin'),
+      undefined,
+      backendPaths
+    )
 
     // (1) A fresh backend boots to /register, with no timeline content.
     // Counter-proof: the timeline shell (GalleryBar search) is absent, so a
@@ -136,11 +149,12 @@ test.describe('first admin registration', () => {
       await expect(page.locator('#nav-search-input')).toBeVisible()
     })
 
-    // (8) 409 race: a fresh context (no cookie) registers the SAME id and
-    // loses, falling back to /login with the race-lost notice.
-    // Counter-proof: the notice text is visible, so a silent redirect or a
-    // duplicate-takeover would fail here.
-    await test.step('race loser falls back to login with the notice', async () => {
+    // (8) Logged-out duplicate reveals nothing: the store is non-empty
+    // and there is no session, so the backend answers 401 — the 409 race
+    // path needs an authenticated or open-window caller. The UI lands on
+    // /login WITHOUT confirming the id exists (no user enumeration).
+    // Counter-proof: the race-lost notice is absent; a leak would show it.
+    await test.step('logged-out duplicate reveals nothing', async () => {
       const raceContext = await browser.newContext({ baseURL: base })
       const racePage = await raceContext.newPage()
       try {
@@ -151,7 +165,7 @@ test.describe('first admin registration', () => {
         await racePage.getByPlaceholder('Confirm Password').fill(ADMIN_PASSWORD)
         await racePage.getByRole('button', { name: 'Register' }).click()
         await expect(racePage).toHaveURL(/\/login/)
-        await expect(racePage.getByText(RACE_LOST_NOTICE)).toBeVisible()
+        await expect(racePage.getByText(RACE_LOST_NOTICE)).toHaveCount(0)
       } finally {
         await raceContext.close()
       }
