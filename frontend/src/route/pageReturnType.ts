@@ -35,6 +35,7 @@ type BaseName =
   | 'album'
   | 'tags'
   | 'login'
+  | 'register'
   | 'share'
   | 'links'
   | 'config'

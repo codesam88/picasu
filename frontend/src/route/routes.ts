@@ -14,8 +14,10 @@ import { createRoute } from './createRoute'
 import { tagsRoute } from './tagsRoute'
 import { linksRoute } from './linksRoute'
 import { loginRoute } from './loginRoute'
+import { registerRoute } from './registerRoute'
 import { shareRoute } from './shareRoute'
 import { configRoute } from './configRoute'
+import { decideBootDestination, probeEnrollment, type ProbeResult } from '@/script/utils/enrollment'
 
 // ======================================
 // Define Simple Static Routes
@@ -26,6 +28,7 @@ const simpleRoutes: RouteRecordRaw[] = [
   tagsRoute,
   linksRoute,
   loginRoute,
+  registerRoute,
   shareRoute,
   configRoute
 ]
@@ -113,6 +116,33 @@ const router = createRouter({
   }
 })
 
+// First-user enrollment probe: on an empty store with `--bootstrap-admin`
+// the backend answers `GET /get/users` with `[]`, and no album or config
+// page may render before the admin registration completes. The probe runs
+// once per app start; an empty result forces the register screen, a 401
+// (closed install) falls through to the normal login.
+let enrollmentProbe: Promise<ProbeResult> | null = null
+
+router.beforeEach(async (to) => {
+  // Share links are capability URLs: they authenticate out-of-band and
+  // must work without login — including on installs where the probe
+  // below 401s (e.g. legacy-password mode). Never redirect them.
+  if (to.name === 'share' || to.name === 'shareViewPage') {
+    return true
+  }
+  if (enrollmentProbe === null) {
+    enrollmentProbe = probeEnrollment()
+  }
+  const destination = decideBootDestination(await enrollmentProbe)
+  if (destination === 'register' && to.name !== 'register') {
+    return { name: 'register' }
+  }
+  if (destination === 'login' && to.name !== 'login' && to.name !== 'register') {
+    return { name: 'login' }
+  }
+  return true
+})
+
 // Update the browser tab title based on the current route
 router.afterEach((to) => {
   const baseName =
@@ -131,6 +161,7 @@ router.afterEach((to) => {
     tags: 'Tags',
     links: 'Links',
     login: 'Login',
+    register: 'Register',
     share: 'Share',
     config: 'Configuration'
   }
