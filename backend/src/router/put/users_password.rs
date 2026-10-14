@@ -26,8 +26,10 @@ pub struct SetUserPasswordRequest {
 /// verifies the trimmed input, so write-then-login stays consistent. The
 /// old password, when required, is trimmed the same way before comparison.
 ///
-/// Rules: an admin may set any user's password without the old one; a
-/// non-admin may only set their own, presenting the correct old password.
+/// Rules: a self-change (target == caller) always requires the correct old
+/// password, admins included; an admin may set another user's password
+/// without the old one (recovery path). A non-admin may only set their own,
+/// presenting the correct old password.
 /// A password change never enrolls: an unknown target is 404 even on an
 /// empty store — the bootstrap window enrolls only via
 /// `POST /post/users/create` or the `picasu-admin` CLI.
@@ -70,7 +72,7 @@ pub(crate) fn set_password_sync(
             format!("unknown user: {target}"),
         ));
     }
-    if !caller_admin {
+    if target == caller_id {
         let presented = old_password.unwrap_or_default().trim();
         let path = users::passwd_file_path();
         let store = crate::auth::password::PasswdFile::load(&path)
@@ -94,8 +96,10 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::Claims) -> (String, 
 
 /// Change a user's password.
 ///
-/// An admin may set any user's password without the old one; a non-admin
-/// may only change their own, presenting the correct `oldPassword`. The new
+/// A self-change (target == caller) always requires the correct
+/// `oldPassword`, admins included; an admin may set another user's password
+/// without the old one (recovery path). A non-admin may only change their
+/// own. The new
 /// password is trimmed and must satisfy the default password policy
 /// after trimming (length floor/ceiling, blocklist, user-id and pattern
 /// rules — see `auth::password::check_strength`).
@@ -215,6 +219,40 @@ mod tests {
     }
 
     #[test]
+    fn admin_self_change_without_old_is_401() {
+        let _g = lock();
+        let client = setup();
+        seed(
+            "s4d-admin",
+            true,
+            Some(test_password("t-admin-old").as_str()),
+        );
+        let status = put_password(
+            &client,
+            cookie("s4d-admin", true),
+            &json!({ "userId": "s4d-admin", "newPassword": test_password("t-admin-new") }),
+        );
+        assert_eq!(status, Status::Unauthorized);
+    }
+
+    #[test]
+    fn admin_self_change_with_correct_old_is_200() {
+        let _g = lock();
+        let client = setup();
+        seed(
+            "s4d-admin2",
+            true,
+            Some(test_password("t-admin2-old").as_str()),
+        );
+        let status = put_password(
+            &client,
+            cookie("s4d-admin2", true),
+            &json!({ "userId": "s4d-admin2", "oldPassword": test_password("t-admin2-old"), "newPassword": test_password("t-admin2-new") }),
+        );
+        assert_eq!(status, Status::Ok);
+    }
+
+    #[test]
     fn self_service_with_correct_old_password() {
         let _g = lock();
         let client = setup();
@@ -276,18 +314,19 @@ mod tests {
         let _g = lock();
         let client = setup();
         seed("s4d-root", true, None);
+        seed("s4d-bob", false, Some(test_password("t-bob-old").as_str()));
         // 7 chars: below the minimum for new passwords.
         let status = put_password(
             &client,
             cookie("s4d-root", true),
-            &json!({ "userId": "s4d-root", "newPassword": "short1!" }),
+            &json!({ "userId": "s4d-bob", "newPassword": "short1!" }),
         );
         assert_eq!(status, Status::BadRequest);
-        // 12 chars passes.
+        // 12 chars passes (admin -> other recovery path needs no old).
         let status = put_password(
             &client,
             cookie("s4d-root", true),
-            &json!({ "userId": "s4d-root", "newPassword": "123456789012" }),
+            &json!({ "userId": "s4d-bob", "newPassword": "123456789012" }),
         );
         assert_eq!(status, Status::Ok);
     }
