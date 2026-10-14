@@ -1,5 +1,6 @@
 use super::auth::generate_fairing_routes;
 use super::cache::cache_control_fairing;
+use super::catchers::generate_catchers;
 use super::delete::generate_delete_routes;
 use super::get::generate_get_routes;
 use super::post::generate_post_routes;
@@ -95,6 +96,7 @@ pub fn build_rocket_with_config(mut app_config: AppConfig) -> rocket::Rocket<roc
         .mount("/", generate_put_routes())
         .mount("/", generate_delete_routes())
         .mount("/", generate_fairing_routes())
+        .register("/", generate_catchers())
 }
 
 #[cfg(test)]
