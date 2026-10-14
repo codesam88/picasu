@@ -338,8 +338,10 @@ run: build
     set -e
     mkdir -p sandbox/images
     rm -rf sandbox/data
+    # Dev-sandbox-only KDF effort (matches the e2e launcher); production default untouched.
     cd backend && \
         PICASU_BOOTSTRAP_ADMIN=true \
+        PICASU_PBKDF_ITERATIONS=1000 \
         PICASU_CONFIG_HOME="{{justfile_directory()}}/sandbox/data" \
         PICASU_DATA_HOME="{{justfile_directory()}}/sandbox/data" \
         PICASU_IMAGE_HOME="{{justfile_directory()}}/sandbox/images" \

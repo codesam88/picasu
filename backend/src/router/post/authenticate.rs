@@ -259,6 +259,24 @@ mod tests {
     }
 
     #[test]
+    fn bare_string_body_is_rejected_not_migrated() {
+        let _g = lock();
+        let client = setup();
+        set_bootstrap_admin(false);
+        create_user_with_password("s3d-dave", false, &test_password("t-dave"));
+        let resp = client
+            .post("/post/authenticate")
+            .header(ContentType::JSON)
+            .body(json!(test_password("t-s3d-pin")).to_string())
+            .dispatch();
+        // The legacy bare-string shape is not migrated: Rocket's `Json`
+        // guard maps well-formed JSON of the wrong shape (string vs. login
+        // object) to 422, and nothing is enrolled.
+        assert_eq!(resp.status(), Status::UnprocessableEntity);
+        assert_eq!(crate::auth::users::user_count().expect("count"), 1);
+    }
+
+    #[test]
     fn empty_store_flag_off_login_is_401_and_creates_nothing() {
         let _g = lock();
         let client = setup();
