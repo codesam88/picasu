@@ -34,13 +34,17 @@ describe('decideBootDestination', () => {
 
 describe('probeEnrollment', () => {
   test('maps GET /get/users [] to an ok empty result', async () => {
-    mockedAxios.get = vi.fn().mockResolvedValue({ data: [] })
+    mockedAxios.get = vi.fn().mockResolvedValue({ status: 200, data: [] })
     await expect(probeEnrollment()).resolves.toEqual({ ok: true, users: [] })
-    expect(mockedAxios.get).toHaveBeenCalledWith('/get/users')
+    expect(mockedAxios.get).toHaveBeenCalledWith('/get/users', {
+      validateStatus: expect.any(Function)
+    })
   })
 
   test('maps a non-empty list to an ok result', async () => {
-    mockedAxios.get = vi.fn().mockResolvedValue({ data: [{ userId: 'root', admin: true }] })
+    mockedAxios.get = vi
+      .fn()
+      .mockResolvedValue({ status: 200, data: [{ userId: 'root', admin: true }] })
     await expect(probeEnrollment()).resolves.toEqual({
       ok: true,
       users: [{ userId: 'root', admin: true }]
@@ -59,6 +63,29 @@ describe('probeEnrollment', () => {
   test('maps a status-less failure to a not-ok result without status', async () => {
     mockedAxios.get = vi.fn().mockRejectedValueOnce(new Error('Network Error'))
     await expect(probeEnrollment()).resolves.toEqual({ ok: false, status: undefined })
+  })
+
+  test('maps a resolved 401 response to a not-ok result with status', async () => {
+    mockedAxios.get = vi.fn().mockResolvedValue({ status: 401, data: '' })
+    await expect(probeEnrollment()).resolves.toEqual({ ok: false, status: 401 })
+  })
+
+  test('maps a resolved 422 response to a not-ok result with status', async () => {
+    mockedAxios.get = vi.fn().mockResolvedValue({ status: 422, data: '' })
+    await expect(probeEnrollment()).resolves.toEqual({ ok: false, status: 422 })
+  })
+
+  test('probe GET opts out of rejection so the interceptor stays silent', async () => {
+    mockedAxios.get = vi.fn().mockResolvedValue({ status: 200, data: [] })
+    await probeEnrollment()
+    const config = (mockedAxios.get.mock.calls[0] as unknown[])[1] as
+      { validateStatus?: (status: number) => boolean } | undefined
+    expect(typeof config?.validateStatus).toBe('function')
+    // Error statuses resolve instead of rejecting, so the global
+    // handleAxiosResponseError (toast + login redirect) never runs.
+    expect(config?.validateStatus?.(401)).toBe(true)
+    expect(config?.validateStatus?.(422)).toBe(true)
+    expect(config?.validateStatus?.(500)).toBe(true)
   })
 })
 

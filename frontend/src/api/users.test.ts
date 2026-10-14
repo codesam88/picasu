@@ -75,35 +75,14 @@ describe('login', () => {
     })
   })
 
-  test('object-401 then string-401 rethrows the first error with exactly two POSTs', async () => {
+  test('object-401 rejects the same error with exactly one POST (no migration retry)', async () => {
     const first = axios401()
-    const second = axios401()
-    mockedAxios.post = vi.fn().mockRejectedValueOnce(first).mockRejectedValueOnce(second)
+    mockedAxios.post = vi.fn().mockRejectedValueOnce(first)
     await expect(login('admin', 'wrong')).rejects.toBe(first)
-    expect(mockedAxios.post).toHaveBeenCalledTimes(2)
-    expect(mockedAxios.post).toHaveBeenNthCalledWith(2, '/post/authenticate', 'wrong')
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
   })
 
-  test('object-401 then string-ok then object-ok returns the token with three POSTs', async () => {
-    mockedAxios.post = vi
-      .fn()
-      .mockRejectedValueOnce(axios401())
-      .mockResolvedValueOnce({ data: 'migrated-token' })
-      .mockResolvedValueOnce({ data: 'jwt-token' })
-    await expect(login('admin', 'legacy-secret')).resolves.toBe('jwt-token')
-    expect(mockedAxios.post).toHaveBeenCalledTimes(3)
-    expect(mockedAxios.post).toHaveBeenNthCalledWith(1, '/post/authenticate', {
-      userId: 'admin',
-      password: 'legacy-secret'
-    })
-    expect(mockedAxios.post).toHaveBeenNthCalledWith(2, '/post/authenticate', 'legacy-secret')
-    expect(mockedAxios.post).toHaveBeenNthCalledWith(3, '/post/authenticate', {
-      userId: 'admin',
-      password: 'legacy-secret'
-    })
-  })
-
-  test('non-401 error rethrows without any fallback POST', async () => {
+  test('network error rethrows as-is with exactly one POST', async () => {
     const err = new Error('Network Error') as Error & { response?: unknown }
     mockedAxios.post = vi.fn().mockRejectedValueOnce(err)
     await expect(login('bob', 'secret')).rejects.toBe(err)
