@@ -1,4 +1,5 @@
-import { listUsers, type UserSummary } from '@/api/users'
+import axios, { type AxiosResponse } from 'axios'
+import { type UserSummary } from '@/api/users'
 
 export type BootDestination = 'register' | 'login' | 'app'
 
@@ -17,12 +18,24 @@ export const decideBootDestination = (result: ProbeResult): BootDestination => {
 
 /// Probe once whether any user exists. Failures resolve to a not-ok
 /// result carrying the HTTP status when one is available; they never throw.
+///
+/// The probe runs on every boot — including logged-out, where `GET
+/// /get/users` answers 401 — so it opts out of axios rejection with
+/// `validateStatus: () => true` and branches on the status itself. A rejected
+/// error status would first run the global `handleAxiosResponseError`
+/// (session-expired toast + login redirect) before the boot guard routes on
+/// the result; a resolved status keeps the probe silent.
 export const probeEnrollment = async (): Promise<ProbeResult> => {
+  let response: AxiosResponse<UserSummary[]>
   try {
-    return { ok: true, users: await listUsers() }
+    response = await axios.get<UserSummary[]>('/get/users', { validateStatus: () => true })
   } catch (err: unknown) {
     return { ok: false, status: (err as { response?: { status?: number } })?.response?.status }
   }
+  if (response.status >= 200 && response.status < 300) {
+    return { ok: true, users: response.data }
+  }
+  return { ok: false, status: response.status }
 }
 
 /// Run the boot probe once and navigate to the decided destination.
