@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest'
 import axios from 'axios'
-import { listUsers, login, setUserAdmin } from './users'
+import { listUsers, createUser, login, setUserAdmin } from './users'
 
 vi.mock('axios')
 
@@ -36,6 +36,21 @@ describe('setUserAdmin', () => {
     await setUserAdmin('bob', true)
     expect(mockedAxios.put).toHaveBeenCalledWith('/put/users/admin', {
       userId: 'bob',
+      admin: true
+    })
+  })
+})
+
+describe('createUser', () => {
+  test('posts userId, password and admin:true and returns the summary', async () => {
+    mockedAxios.post = vi.fn().mockResolvedValue({ data: { userId: 'root', admin: true } })
+    await expect(createUser('root', 'secret-pw')).resolves.toEqual({
+      userId: 'root',
+      admin: true
+    })
+    expect(mockedAxios.post).toHaveBeenCalledWith('/post/users/create', {
+      userId: 'root',
+      password: 'secret-pw',
       admin: true
     })
   })
