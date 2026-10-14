@@ -4,17 +4,6 @@
       <v-card-title class="font-weight-bold">Change Password</v-card-title>
       <v-divider thickness="4" variant="double"></v-divider>
 
-      <v-list-item
-        @click="enabled = !enabled"
-        title="Enable Password Protection"
-        subtitle="Turning this off makes your album public."
-      >
-        <template #append>
-          <v-switch v-model="enabled" @click.stop color="primary" hide-details inset></v-switch>
-        </template>
-      </v-list-item>
-
-      <v-divider></v-divider>
       <v-list-item>
         <v-text-field
           class="pt-2"
@@ -24,9 +13,7 @@
           :type="showOldPassword ? 'text' : 'password'"
           :append-inner-icon="showOldPassword ? 'mdi-eye' : 'mdi-eye-off'"
           variant="outlined"
-          :placeholder="oldPasswordPlaceholder"
-          :rules="[rules.requiredIfAction]"
-          :disabled="!canInputOldPassword"
+          :rules="[rules.required]"
           persistent-placeholder
           density="compact"
           @click:append-inner="showOldPassword = !showOldPassword"
@@ -41,11 +28,25 @@
           :type="showNewPassword ? 'text' : 'password'"
           :append-inner-icon="showNewPassword ? 'mdi-eye' : 'mdi-eye-off'"
           variant="outlined"
-          :rules="[rules.requiredIfAction, rules.noLeadingTrailingSpaces]"
-          :disabled="!enabled"
+          :rules="[rules.required]"
           persistent-placeholder
           density="compact"
           @click:append-inner="showNewPassword = !showNewPassword"
+        ></v-text-field
+      ></v-list-item>
+      <v-list-item>
+        <v-text-field
+          class="pt-2"
+          prepend-icon="mdi-lock-check"
+          v-model="confirmPassword"
+          label="Confirm New Password"
+          :type="showConfirmPassword ? 'text' : 'password'"
+          :append-inner-icon="showConfirmPassword ? 'mdi-eye' : 'mdi-eye-off'"
+          variant="outlined"
+          :rules="[rules.required, rules.matchesNew]"
+          persistent-placeholder
+          density="compact"
+          @click:append-inner="showConfirmPassword = !showConfirmPassword"
         ></v-text-field
       ></v-list-item>
       <v-card-actions class="justify-end px-4 pb-4">
@@ -53,7 +54,7 @@
           color="primary"
           variant="flat"
           :loading="loading"
-          :disabled="!isValidAction"
+          :disabled="!canSubmit"
           @click="savePassword"
           class="text-none"
         >
@@ -65,104 +66,56 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
-import { updatePassword, getConfig } from '@/api/config'
+import { ref, computed } from 'vue'
+import { updatePassword } from '@/api/config'
 import { useMessageStore } from '@/store/messageStore'
-import { useConfigStore } from '@/store/configStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
-
-const hasPassword = defineModel<boolean>('hasPassword', { required: true })
+import { isPasswordChangeSubmittable, submitPasswordChange } from '@utils/passwordChange'
 
 const messageStore = useMessageStore('mainId')
-const configStore = useConfigStore('mainId')
 
 // --- State ---
-const enabled = ref(true)
 const oldPassword = ref('')
 const newPassword = ref('')
+const confirmPassword = ref('')
 const loading = ref(false)
 
 const showOldPassword = ref(false)
 const showNewPassword = ref(false)
+const showConfirmPassword = ref(false)
 
-// --- Computed: Status Checks ---
-const hasExistingPassword = computed(() => hasPassword.value)
-
-// Logic: Users can only input old password if one exists on the server.
-const canInputOldPassword = computed(() => hasExistingPassword.value)
-
-// User Intent
-const isDisabling = computed(() => !enabled.value)
-const isUpdating = computed(() => enabled.value && !!newPassword.value)
-
-// Rule Logic
-const isOldPasswordRequired = computed(() => {
-  if (!hasExistingPassword.value) return false
-  return isDisabling.value || isUpdating.value
-})
-
-const isValidAction = computed(() => {
-  if (isOldPasswordRequired.value && !oldPassword.value) return false
-  if (enabled.value && !newPassword.value) return false
-  return true
-})
-
-// UI Helpers
-const oldPasswordPlaceholder = computed(() => {
-  if (!hasExistingPassword.value) return 'Not required'
-  return isDisabling.value ? 'Required to disable password' : 'Required to verify identity'
-})
-
-// --- Watchers & Lifecycle ---
-watch(
-  hasPassword,
-  (val) => {
-    enabled.value = val
-  },
-  { immediate: true }
+// Submit is enabled only when the new password is non-empty and confirmed.
+const canSubmit = computed(() =>
+  isPasswordChangeSubmittable(newPassword.value, confirmPassword.value)
 )
-
-watch(enabled, (val) => {
-  if (!val) {
-    newPassword.value = ''
-  }
-})
 
 // --- Validation Rules ---
 const rules = {
-  requiredIfAction: (v: string) => {
-    return isOldPasswordRequired.value
-      ? !!v || 'Current password is required to save changes'
-      : true
-  },
-  noLeadingTrailingSpaces: (v: string) => {
-    // Optional chaining safeguard
-    if (!v) return true
-    return v === v.trim() || 'Do not use spaces at the beginning or end of the password.'
-  }
+  required: (v: string) => !!v || 'This field is required',
+  matchesNew: (v: string) => v === newPassword.value || 'Passwords do not match'
 }
 
 // --- Actions ---
 const savePassword = async () => {
-  if (!isValidAction.value) return
+  if (!canSubmit.value) return
 
   loading.value = true
 
   await tryWithMessageStore('mainId', async () => {
-    const finalNewPassword = isDisabling.value ? '' : newPassword.value.trim()
-
-    await updatePassword(oldPassword.value, finalNewPassword)
-
-    const newConfig = await getConfig()
-    configStore.config = newConfig
-
-    messageStore.success(
-      isDisabling.value ? 'Password disabled successfully' : 'Password updated successfully'
+    const ok = await submitPasswordChange(
+      oldPassword.value,
+      newPassword.value,
+      confirmPassword.value,
+      updatePassword
     )
+    if (!ok) return false
+
+    messageStore.success('Password updated successfully')
 
     // Reset local form state
     oldPassword.value = ''
     newPassword.value = ''
+    confirmPassword.value = ''
     return true
   })
 
