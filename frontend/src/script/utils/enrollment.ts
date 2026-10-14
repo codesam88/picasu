@@ -48,3 +48,29 @@ export const runEnrollmentBoot = async (deps: {
   await deps.navigate(destination)
   return destination
 }
+
+/// Cached boot probe shared with the router guard. The guard resolves it
+/// once per app start; after a successful registration the store is
+/// non-empty but the cache still resolves `[]`, so every later navigation
+/// would bounce back to `/register`. Registration calls
+/// `resetEnrollmentProbe` on success so the next navigation re-probes and
+/// sees the enrolled store.
+let cachedEnrollmentProbe: Promise<ProbeResult> | null = null
+
+/// Return the cached probe, starting it on first use. The `probe`
+/// parameter is injectable so the caching stays unit-testable; production
+/// callers use the default live probe.
+export const getEnrollmentProbe = (
+  probe: () => Promise<ProbeResult> = probeEnrollment
+): Promise<ProbeResult> => {
+  if (cachedEnrollmentProbe === null) {
+    cachedEnrollmentProbe = probe()
+  }
+  return cachedEnrollmentProbe
+}
+
+/// Drop the cached probe so the next read re-probes. Safe to call when
+/// no probe is cached.
+export const resetEnrollmentProbe = (): void => {
+  cachedEnrollmentProbe = null
+}

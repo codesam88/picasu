@@ -87,6 +87,7 @@ import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
 import { createUser, login } from '@/api/users'
 import { submitRegistration } from '@/script/utils/registration'
+import { resetEnrollmentProbe } from '@/script/utils/enrollment'
 
 const password = ref('')
 const confirmPassword = ref('')
@@ -127,6 +128,11 @@ const handleRegister = async () => {
         onRegistered: async (token: string) => {
           // Store the JWT in a cookie with the shared session attributes
           setSessionToken(token)
+
+          // Drop the cached empty-store probe so the next navigation
+          // re-probes the now non-empty store instead of bouncing back
+          // to `/register`.
+          resetEnrollmentProbe()
 
           // Remember the id for the next login's User ID prefill.
           localStorage.setItem(LAST_USER_ID_KEY, userId.value)
