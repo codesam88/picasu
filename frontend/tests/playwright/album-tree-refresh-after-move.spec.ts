@@ -13,6 +13,7 @@ test.describe('Album tree refresh after move', () => {
     const ctx = createGivenContext('e2e_tree_refresh')
 
     const givenItems: GivenItem[] = [
+      { user: { user_id: 'admin', password: backendPaths.ADMIN_PASSWORD } },
       { dir_album: '/source/child', id_as: '$child_album' },
       { photo: '/source/child/photo.jpg', id_as: '$photo' },
       { dir_album: '/target', id_as: '$target_album' },
@@ -24,9 +25,9 @@ test.describe('Album tree refresh after move', () => {
     const target_album = seeded.vars['$target_album']
     const source_album = seeded.vars['$source_album']
 
-    // Authenticate
+    // Authenticate (object login; the legacy bare-string path is gone)
     const authRes = await request.post(`${backendPaths.BACKEND_URL}/post/authenticate`, {
-      data: JSON.stringify(backendPaths.ADMIN_PASSWORD),
+      data: { userId: 'admin', password: backendPaths.ADMIN_PASSWORD },
       headers: { 'Content-Type': 'application/json' }
     })
     const authToken = String(await authRes.json())

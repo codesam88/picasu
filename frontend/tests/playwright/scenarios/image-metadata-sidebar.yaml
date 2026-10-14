@@ -2,11 +2,13 @@ name: Image metadata shown in sidebar
 covers:
   api:
     - POST /post/authenticate
+    - POST /post/users/create
     - PUT /put/config
     - POST /post/index/album
     - GET /get/index/status
 given:
-  - config:
+  - user:
+      user_id: admin
       password: e2e_test_pwd
 
   - dir_album: nature/sunset

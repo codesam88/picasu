@@ -9,3 +9,14 @@
 # body to an application/json AuthenticateRequest body; the legacy
 # text/plain shape is rejected once any user exists.
 POST /post/authenticate removed the media type `text/plain` from the request body
+
+# 2026-10-14 (auth-enrollment legacy-password removal): the pre-user-auth
+# single-password machinery is gone entirely — no migration path preserved.
+# `hasPassword` leaves `GET /get/config`, and `POST /post/authenticate`
+# takes a `{ userId, password }` object only (the untagged bare-string
+# shape is now a 422).
+GET /get/config removed the required property `hasPassword` from the response with the `200` status
+POST /post/authenticate added the new required request property `password`
+POST /post/authenticate added the new required request property `userId`
+POST /post/authenticate removed `#/components/schemas/LoginRequest, subschema #1` from the request body `oneOf` list
+POST /post/authenticate the request's body `type` changed from `any` to `object`

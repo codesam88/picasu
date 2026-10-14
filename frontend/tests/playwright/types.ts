@@ -44,9 +44,18 @@ export const GivenConfig = z
   .object({
     config: z.object({
       read_only_mode: z.boolean().optional(),
-      password: z.string().optional(),
       auth_key: z.string().optional(),
       fs_notify_watcher: z.boolean().optional()
+    })
+  })
+  .strict()
+
+export const GivenUser = z
+  .object({
+    user: z.object({
+      user_id: z.string().min(1),
+      password: z.string().min(1),
+      admin: z.boolean().optional()
     })
   })
   .strict()
@@ -86,6 +95,7 @@ export const GivenItem = z.union([
   GivenEmpty,
   GivenRemove,
   GivenConfig,
+  GivenUser,
   GivenMove
 ])
 

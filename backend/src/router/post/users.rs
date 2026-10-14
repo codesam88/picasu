@@ -32,9 +32,8 @@ pub struct CreateUserRequest {
 /// Thin delegate over [`users::provision_user`]: id/password validation
 /// (including the default password policy for new passwords), duplicate rejection,
 /// redb record insert, and password-store write all live there. The
-/// trimmed (canonical) password is stored, matching the legacy semantics
-/// that trimmed everywhere; login verifies the trimmed input, so
-/// write-then-login stays consistent.
+/// trimmed (canonical) password is stored; login verifies the trimmed input,
+/// so write-then-login stays consistent.
 ///
 /// # Errors
 /// Returns 400 when the id is invalid or the password violates the
@@ -51,20 +50,16 @@ fn create_user_sync(user_id: &str, password: &str, admin: bool) -> AppResult<Use
 /// Admin-only, except for the bootstrap exception: while the user store is
 /// empty **and `--bootstrap-admin` is set** an unauthenticated call succeeds
 /// and forces `admin: true` regardless of the body's flag. Closed by default:
-/// with the flag off an empty store rejects unauthenticated create. With a
-/// legacy password configured the store stays gated by that host secret
-/// (review A1): unauthenticated create is denied and enrollment happens
-/// through `POST /post/authenticate` migration. A non-admin caller — or no
-/// caller once any user exists — is rejected.
+/// with the flag off an empty store rejects unauthenticated create. A
+/// non-admin caller — or no caller once any user exists — is rejected.
 ///
 /// Corner cases: The `admin` flag is honored for admin callers and forced
 /// on for bootstrap. The password is trimmed before hashing.
 ///
 /// Errors: 400 invalid `userId` or password violating the policy — 401
-/// missing or invalid credentials, non-admin caller, legacy-mode
-/// unauthenticated call, or unauthenticated call once any user exists —
-/// 405 read-only mode — 409 `userId` already exists — 500 storage
-/// failure.
+/// missing or invalid credentials, non-admin caller, or unauthenticated
+/// call once any user exists — 405 read-only mode — 409 `userId` already
+/// exists — 500 storage failure.
 #[utoipa::path(
         tag = "auth",
         request_body = CreateUserRequest,
@@ -102,20 +97,18 @@ pub async fn create_user_handler(
         Ok(_) => true,
         Err(err) => {
             // Unauthenticated create is allowed only in the open bootstrap
-            // window: empty store, `--bootstrap-admin` set, and no legacy
-            // password configured. Once any user exists it is denied; in
-            // legacy mode the host secret gates enrollment (review A1) and
-            // migration happens through `POST /post/authenticate`; with the
-            // flag off the install is closed by default.
-            let (legacy_password, bootstrap_admin) = {
+            // window: empty store and `--bootstrap-admin` set. Once any user
+            // exists it is denied; with the flag off the install is closed
+            // by default.
+            let bootstrap_admin = {
                 let config = APP_CONFIG
                     .get()
                     .expect("APP_CONFIG not initialized")
                     .read()
                     .expect("lock poisoned");
-                (config.password.is_some(), config.bootstrap_admin)
+                config.bootstrap_admin
             };
-            if non_empty || legacy_password || !bootstrap_admin {
+            if non_empty || !bootstrap_admin {
                 return Err(err);
             }
             true

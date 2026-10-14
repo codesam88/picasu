@@ -28,7 +28,6 @@ pub struct ConfigResponse {
     pub normalize_upload_filenames: bool,
     pub validate_upload_content: bool,
     pub use_client_timestamp_info: bool,
-    pub has_password: bool,
     pub has_auth_key: bool,
 }
 
@@ -38,10 +37,10 @@ pub struct ConfigResponse {
 /// and port, the image library root (`imagePath`), `uploadFolder`,
 /// `maxUploadSize`, `readOnlyMode`, `disableImg`, `fsNotifyWatcher`,
 /// `normalizeUploadFilenames`, `validateUploadContent`,
-/// `useClientTimestampInfo`, plus `hasPassword` and `hasAuthKey`.
+/// `useClientTimestampInfo`, plus `hasAuthKey`.
 ///
-/// Corner cases: secrets are never returned — `hasPassword` and `hasAuthKey`
-/// only report whether a password or an auth key is configured. `imagePath` is
+/// Corner cases: secrets are never returned — `hasAuthKey` only reports
+/// whether an auth key is configured. `imagePath` is
 /// the absolute library root and serializes as `null` when it is unset.
 ///
 /// Errors: 400 half-supplied share credentials or an id that is not an album —
@@ -75,7 +74,6 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
         normalize_upload_filenames: config.normalize_upload_filenames,
         validate_upload_content: config.validate_upload_content,
         use_client_timestamp_info: config.use_client_timestamp_info,
-        has_password: config.password.is_some(),
         has_auth_key: config.auth_key.is_some(),
     };
     Ok(Json(response))
@@ -83,9 +81,9 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
 
 /// Export the full server configuration as JSON.
 ///
-/// Returns the complete serialized configuration, including `password` and
-/// `authKey` in plaintext whenever they are set, so the response has to be
-/// handled as a secret. `webRoot` is the only field never serialized.
+/// Returns the complete serialized configuration, including `authKey` in
+/// plaintext whenever it is set, so the response has to be handled as a
+/// secret. `webRoot` is the only field never serialized.
 ///
 /// Errors: 400 invalid input — 401 no valid admin credentials.
 #[utoipa::path(

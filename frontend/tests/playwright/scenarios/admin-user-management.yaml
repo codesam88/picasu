@@ -2,6 +2,7 @@ name: Admin user management panel visible after login
 covers:
   api:
     - POST /post/authenticate
+    - POST /post/users/create
     - GET /get/users
   ui:
     - textbox/User ID
@@ -9,7 +10,8 @@ covers:
     - route:/config
 given:
   - empty: true
-  - config:
+  - user:
+      user_id: admin
       password: e2e_test_pwd
 steps:
   - when:
