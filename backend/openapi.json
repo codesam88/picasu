@@ -131,7 +131,7 @@
             ]
           },
           "bootstrapAdmin": {
-            "description": "Enable the online first-admin bootstrap window. While set **and the\nuser store is empty**, unauthenticated `POST /post/users/create`\nand open `POST /post/authenticate` mint the first admin. Default\noff: a fresh install answers 401 everywhere until an operator opts\nin (or provisions the store via the `picasu-admin` CLI). A\nconfigured legacy `password` still wins over the flag (the host\nsecret gates enrollment); enabling the flag against an existing\n`passwd.json` makes the server refuse to start. WARN-logged at boot\nwhenever set.",
+            "description": "Enable the online first-admin bootstrap window. While set **and the\nuser store is empty**, unauthenticated `POST /post/users/create`\nand open `POST /post/authenticate` mint the first admin. Default\noff: a fresh install answers 401 everywhere until an operator opts\nin (or provisions the store via the `picasu-admin` CLI). Enabling\nthe flag against an existing `passwd.json` makes the server refuse\nto start. WARN-logged at boot whenever set.",
             "type": "boolean"
           },
           "dataHome": {
@@ -158,12 +158,6 @@
           "normalizeUploadFilenames": {
             "description": "NFC-normalize uploaded filenames so macOS NFD names collapse onto\ntheir composed form. Optional (unlike the always-on sanitization tiers).",
             "type": "boolean"
-          },
-          "password": {
-            "type": [
-              "string",
-              "null"
-            ]
           },
           "port": {
             "format": "int32",
@@ -241,17 +235,6 @@
         ],
         "type": "object"
       },
-      "AuthenticateRequest": {
-        "description": "Request body for `POST /post/authenticate`: either a user login object\nor the legacy bare-string bootstrap path. Untagged so a JSON string and\na JSON object both parse on the same route.",
-        "oneOf": [
-          {
-            "type": "string"
-          },
-          {
-            "$ref": "#/components/schemas/LoginRequest"
-          }
-        ]
-      },
       "ConfigResponse": {
         "properties": {
           "address": {
@@ -264,9 +247,6 @@
             "type": "boolean"
           },
           "hasAuthKey": {
-            "type": "boolean"
-          },
-          "hasPassword": {
             "type": "boolean"
           },
           "imagePath": {
@@ -310,7 +290,6 @@
           "normalizeUploadFilenames",
           "validateUploadContent",
           "useClientTimestampInfo",
-          "hasPassword",
           "hasAuthKey"
         ],
         "type": "object"
@@ -682,7 +661,7 @@
         "type": "object"
       },
       "LoginRequest": {
-        "description": "User login body for `POST /post/authenticate`.",
+        "description": "Request body for `POST /post/authenticate`: a user login object.",
         "properties": {
           "password": {
             "type": "string"
@@ -1398,7 +1377,7 @@
     },
     "/get/config": {
       "get": {
-        "description": "Returns the values a client needs to drive the other operations: address\nand port, the image library root (`imagePath`), `uploadFolder`,\n`maxUploadSize`, `readOnlyMode`, `disableImg`, `fsNotifyWatcher`,\n`normalizeUploadFilenames`, `validateUploadContent`,\n`useClientTimestampInfo`, plus `hasPassword` and `hasAuthKey`.\n\nCorner cases: secrets are never returned — `hasPassword` and `hasAuthKey`\nonly report whether a password or an auth key is configured. `imagePath` is\nthe absolute library root and serializes as `null` when it is unset.\n\nErrors: 400 half-supplied share credentials or an id that is not an album —\n401 no valid admin or share credentials.",
+        "description": "Returns the values a client needs to drive the other operations: address\nand port, the image library root (`imagePath`), `uploadFolder`,\n`maxUploadSize`, `readOnlyMode`, `disableImg`, `fsNotifyWatcher`,\n`normalizeUploadFilenames`, `validateUploadContent`,\n`useClientTimestampInfo`, plus `hasAuthKey`.\n\nCorner cases: secrets are never returned — `hasAuthKey` only reports\nwhether an auth key is configured. `imagePath` is\nthe absolute library root and serializes as `null` when it is unset.\n\nErrors: 400 half-supplied share credentials or an id that is not an album —\n401 no valid admin or share credentials.",
         "operationId": "get_config_handler",
         "responses": {
           "200": {
@@ -1426,7 +1405,7 @@
     },
     "/get/config/export": {
       "get": {
-        "description": "Returns the complete serialized configuration, including `password` and\n`authKey` in plaintext whenever they are set, so the response has to be\nhandled as a secret. `webRoot` is the only field never serialized.\n\nErrors: 400 invalid input — 401 no valid admin credentials.",
+        "description": "Returns the complete serialized configuration, including `authKey` in\nplaintext whenever it is set, so the response has to be handled as a\nsecret. `webRoot` is the only field never serialized.\n\nErrors: 400 invalid input — 401 no valid admin credentials.",
         "operationId": "export_config_handler",
         "responses": {
           "200": {
@@ -2032,13 +2011,13 @@
     },
     "/post/authenticate": {
       "post": {
-        "description": "A `{ userId, password }` object verifies against the user and password\nstores and mints a token carrying the user's id and admin flag. On a\nlegacy deployment (empty store + configured legacy password) the first\nlogin with the legacy password registers the claimed `userId` as the\nfirst admin. A bare\nJSON string is the legacy bootstrap path: while the user store is empty\nit verifies the configured legacy password and migrates it onto user\n`admin`, and it is rejected once any user exists. Tokens are signed with\n`authKey`, or with a secret generated once per process when `authKey` is\nunset, so changing `authKey` invalidates every token issued under the\nprevious one.\n\nCorner cases: While no users exist and no legacy password is configured,\nsign-in succeeds without credentials: every parseable input is accepted\n(open first-run mode).\n\nErrors: 400 the login `userId` is empty or longer than 64 characters, or\nthe body parses as neither shape — 401 unknown user, wrong password, or\nlegacy path used after bootstrap.",
+        "description": "A `{ userId, password }` object verifies against the user and password\nstores and mints a token carrying the user's id and admin flag. Tokens\nare signed with `authKey`, or with a secret generated once per process\nwhen `authKey` is unset, so changing `authKey` invalidates every token\nissued under the previous one.\n\nCorner cases: While no users exist and `--bootstrap-admin` is set,\nsign-in succeeds without credentials: every parseable login object is\naccepted (open first-run mode).\n\nErrors: 400 the login `userId` is empty or longer than 64 characters, or\nthe body does not parse as a login object — 401 unknown user or wrong\npassword.",
         "operationId": "authenticate",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AuthenticateRequest"
+                "$ref": "#/components/schemas/LoginRequest"
               }
             }
           },
@@ -2419,7 +2398,7 @@
     },
     "/post/users/create": {
       "post": {
-        "description": "Admin-only, except for the bootstrap exception: while the user store is\nempty **and `--bootstrap-admin` is set** an unauthenticated call succeeds\nand forces `admin: true` regardless of the body's flag. Closed by default:\nwith the flag off an empty store rejects unauthenticated create. With a\nlegacy password configured the store stays gated by that host secret\n(review A1): unauthenticated create is denied and enrollment happens\nthrough `POST /post/authenticate` migration. A non-admin caller — or no\ncaller once any user exists — is rejected.\n\nCorner cases: The `admin` flag is honored for admin callers and forced\non for bootstrap. The password is trimmed before hashing.\n\nErrors: 400 invalid `userId` or password violating the policy — 401\nmissing or invalid credentials, non-admin caller, legacy-mode\nunauthenticated call, or unauthenticated call once any user exists —\n405 read-only mode — 409 `userId` already exists — 500 storage\nfailure.",
+        "description": "Admin-only, except for the bootstrap exception: while the user store is\nempty **and `--bootstrap-admin` is set** an unauthenticated call succeeds\nand forces `admin: true` regardless of the body's flag. Closed by default:\nwith the flag off an empty store rejects unauthenticated create. A\nnon-admin caller — or no caller once any user exists — is rejected.\n\nCorner cases: The `admin` flag is honored for admin callers and forced\non for bootstrap. The password is trimmed before hashing.\n\nErrors: 400 invalid `userId` or password violating the policy — 401\nmissing or invalid credentials, non-admin caller, or unauthenticated\ncall once any user exists — 405 read-only mode — 409 `userId` already\nexists — 500 storage failure.",
         "operationId": "create_user_handler",
         "requestBody": {
           "content": {
@@ -2597,7 +2576,7 @@
     },
     "/put/config/password": {
       "put": {
-        "description": "This is the legacy single-password route, reworked onto the user store:\nit changes the password of the authenticated caller only. A self-change\nalways requires the correct `oldPassword`, admins included. The new\n`password` is trimmed and must satisfy\nthe default password policy after trimming (there is no \"clear to open\": open\nmode is store-empty only). To change another user's password, use\n`PUT /put/users/password`.\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch. A missing\n(`None`), blank, or too-short `password` is 400.\n\nErrors: 400 missing, blank, or under-12 `password`, or the body cannot\nbe parsed — 401 missing or invalid credentials, or wrong `oldPassword`;\nshare tokens are not accepted — 405 read-only mode — 500 storage\nfailure.",
+        "description": "This route changes the password of the authenticated caller only. A\nself-change always requires the correct `oldPassword`, admins included.\nThe new `password` is trimmed and must satisfy\nthe default password policy after trimming (there is no \"clear to open\": open\nmode is store-empty only). To change another user's password, use\n`PUT /put/users/password`.\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch. A missing\n(`None`), blank, or too-short `password` is 400.\n\nErrors: 400 missing, blank, or under-12 `password`, or the body cannot\nbe parsed — 401 missing or invalid credentials, or wrong `oldPassword`;\nshare tokens are not accepted — 405 read-only mode — 500 storage\nfailure.",
         "operationId": "update_password_handler",
         "requestBody": {
           "content": {

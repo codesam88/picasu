@@ -14,15 +14,19 @@ export function resetAuthToken(): void {
   authToken = null
 }
 
-function readCurrentPassword(configDir: string): string | null {
-  try {
-    const configPath = path.join(configDir, 'config.toml')
-    const raw = fs.readFileSync(configPath, 'utf-8')
-    const match = raw.match(/password\s*=\s*"([^"]+)"/)
-    return match ? match[1] : null
-  } catch {
-    return null
-  }
+async function ensureAuthenticated(
+  request: APIRequestContext,
+  backendUrl: string,
+  adminPassword: string
+): Promise<string> {
+  if (authToken) return authToken
+  const res = await request.post(`${backendUrl}/post/authenticate`, {
+    data: { userId: 'admin', password: adminPassword },
+    headers: { 'Content-Type': 'application/json' }
+  })
+  if (!res.ok()) throw new Error(`Auth failed: ${res.status()}`)
+  authToken = String(await res.json())
+  return authToken
 }
 
 function authHeaders(token: string): Record<string, string> {
@@ -31,21 +35,6 @@ function authHeaders(token: string): Record<string, string> {
     'Content-Type': 'application/json',
     Cookie: `jwt=${token}`
   }
-}
-
-async function ensureAuthenticated(
-  request: APIRequestContext,
-  backendUrl: string,
-  adminPassword: string
-): Promise<string> {
-  if (authToken) return authToken
-  const res = await request.post(`${backendUrl}/post/authenticate`, {
-    data: JSON.stringify(adminPassword),
-    headers: { 'Content-Type': 'application/json' }
-  })
-  if (!res.ok()) throw new Error(`Auth failed: ${res.status()}`)
-  authToken = String(await res.json())
-  return authToken
 }
 
 interface PhotoManifestEntry {
@@ -127,8 +116,7 @@ export async function executeGiven(
   const {
     IMAGE_HOME: imageHome,
     BACKEND_URL: backendUrl,
-    ADMIN_PASSWORD: adminPassword,
-    CONFIG_DIR: configDir
+    ADMIN_PASSWORD: adminPassword
   } = overridePaths
 
   const request = tracer ? tracedRequest(baseRequest, tracer) : baseRequest
@@ -199,29 +187,29 @@ export async function executeGiven(
       postIndexMoves.push({ from: fromQualified, to: toQualified })
     }
 
+    if ('user' in item && item.user) {
+      const u = item as { user: { user_id: string; password: string; admin?: boolean } }
+      // Open-window enrollment: the launcher sets PICASU_BOOTSTRAP_ADMIN=true,
+      // so the first user is minted unauthenticated and forced admin.
+      const createRes = await request.post(`${backendUrl}/post/users/create`, {
+        data: { userId: u.user.user_id, password: u.user.password, admin: u.user.admin ?? true }
+      })
+      if (!createRes.ok()) {
+        throw new Error(`User creation failed: ${createRes.status()} ${await createRes.text()}`)
+      }
+      authToken = null
+    }
+
     if ('config' in item && item.config) {
       const cfg = item as {
         config: {
           read_only_mode?: boolean
-          password?: string
           auth_key?: string
           fs_notify_watcher?: boolean
         }
       }
       const token = await ensureAuthenticated(request, backendUrl, adminPassword)
       const headers = authHeaders(token)
-
-      if (cfg.config.password !== undefined) {
-        const oldPassword = readCurrentPassword(configDir)
-        const pwdRes = await request.fetch(`${backendUrl}/put/config/password`, {
-          method: 'PUT',
-          headers,
-          data: { password: cfg.config.password, oldPassword }
-        })
-        if (!pwdRes.ok()) {
-          throw new Error(`Password update failed: ${pwdRes.status()} ${await pwdRes.text()}`)
-        }
-      }
 
       if (cfg.config.read_only_mode !== undefined) {
         const res = await request.fetch(`${backendUrl}/put/config`, {

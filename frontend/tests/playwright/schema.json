@@ -59,7 +59,6 @@
           "type": "object",
           "properties": {
             "read_only_mode": { "type": "boolean" },
-            "password": { "type": "string" },
             "auth_key": { "type": "string" },
             "fs_notify_watcher": { "type": "boolean" }
           },
@@ -67,6 +66,23 @@
         }
       },
       "required": ["config"],
+      "additionalProperties": false
+    },
+    "givenUser": {
+      "type": "object",
+      "properties": {
+        "user": {
+          "type": "object",
+          "properties": {
+            "user_id": { "type": "string", "minLength": 1 },
+            "password": { "type": "string", "minLength": 1 },
+            "admin": { "type": "boolean" }
+          },
+          "required": ["user_id", "password"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["user"],
       "additionalProperties": false
     },
     "givenPhotoRaw": {
@@ -109,6 +125,7 @@
         { "$ref": "#/definitions/givenEmpty" },
         { "$ref": "#/definitions/givenRemove" },
         { "$ref": "#/definitions/givenConfig" },
+        { "$ref": "#/definitions/givenUser" },
         { "$ref": "#/definitions/givenMove" }
       ]
     },

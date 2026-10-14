@@ -244,7 +244,6 @@ static VALIDATION_ALLOW_EXPIRED: LazyLock<Validation> = LazyLock::new(|| {
 mod tests {
 
     use super::{VALIDATION, VALIDATION_ALLOW_EXPIRED};
-    use crate::tests::fixtures::test_password;
     use jsonwebtoken::{Algorithm, Header};
 
     // RUSTSEC-2023-0071: rsa 0.9.x has a Marvin Attack timing side-channel.
@@ -338,40 +337,39 @@ mod tests {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn s3b_set_legacy_password(password: Option<&str>) {
+    fn s3b_set_bootstrap_admin(enabled: bool) {
         use crate::model::config::APP_CONFIG;
         let mut config = APP_CONFIG
             .get()
             .expect("APP_CONFIG set")
             .write()
             .expect("APP_CONFIG lock");
-        config.password = password.map(str::to_string);
+        config.bootstrap_admin = enabled;
     }
 
     #[test]
     fn jwt_auth_open_mode_without_password_allows_without_cookie() {
         let _g = s3b_lock();
         let client = s3b_client();
-        s3b_set_legacy_password(None);
+        s3b_set_bootstrap_admin(true);
         let resp = client.get("/get/index/status").dispatch();
         assert_eq!(resp.status(), rocket::http::Status::Ok);
     }
 
     #[test]
-    fn jwt_auth_empty_store_with_password_denies_without_cookie() {
+    fn jwt_auth_empty_store_flag_off_denies_without_cookie() {
         let _g = s3b_lock();
         let client = s3b_client();
-        s3b_set_legacy_password(Some(test_password("t-s3b-legacy").as_str()));
+        s3b_set_bootstrap_admin(false);
         let resp = client.get("/get/index/status").dispatch();
         assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
-        s3b_set_legacy_password(None);
+        s3b_set_bootstrap_admin(true);
     }
 
     #[test]
     fn jwt_auth_valid_admin_user_accepted() {
         let _g = s3b_lock();
         let client = s3b_client();
-        s3b_set_legacy_password(Some(test_password("t-s3b-legacy").as_str()));
         crate::auth::users::create_user("s3b-admin-user", true).expect("create user");
         let token = super::Claims::new_user("s3b-admin-user".to_string(), true).encode();
         let resp = client
@@ -379,14 +377,12 @@ mod tests {
             .cookie(rocket::http::Cookie::new("jwt", token))
             .dispatch();
         assert_eq!(resp.status(), rocket::http::Status::Ok);
-        s3b_set_legacy_password(None);
     }
 
     #[test]
     fn jwt_auth_demoted_user_rejected() {
         let _g = s3b_lock();
         let client = s3b_client();
-        s3b_set_legacy_password(Some(test_password("t-s3b-legacy").as_str()));
         crate::auth::users::create_user("s3b-demoted-user", true).expect("create user");
         let token = super::Claims::new_user("s3b-demoted-user".to_string(), true).encode();
         crate::auth::users::set_admin("s3b-demoted-user", false).expect("demote user");
@@ -395,14 +391,12 @@ mod tests {
             .cookie(rocket::http::Cookie::new("jwt", token))
             .dispatch();
         assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
-        s3b_set_legacy_password(None);
     }
 
     #[test]
     fn jwt_auth_unknown_and_non_admin_users_rejected() {
         let _g = s3b_lock();
         let client = s3b_client();
-        s3b_set_legacy_password(Some(test_password("t-s3b-legacy").as_str()));
         crate::auth::users::create_user("s3b-other-user", false).expect("create user");
         // Unknown user: store is non-empty but the id has no record.
         let ghost = super::Claims::new_user("s3b-ghost-user".to_string(), true).encode();
@@ -418,7 +412,6 @@ mod tests {
             .cookie(rocket::http::Cookie::new("jwt", plain))
             .dispatch();
         assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
-        s3b_set_legacy_password(None);
     }
 }
 
@@ -497,11 +490,10 @@ where
 }
 
 /// Whether the open bootstrap window is available: the `--bootstrap-admin`
-/// flag is set and no legacy password is configured.
+/// flag is set.
 ///
 /// Callers combine this with their own store-emptiness check; the flag alone
-/// never opens a non-empty store, and a configured legacy password wins over
-/// the flag (the explicit host secret keeps gating enrollment).
+/// never opens a non-empty store.
 pub(crate) fn bootstrap_open() -> bool {
     APP_CONFIG
         .get()
@@ -509,19 +501,6 @@ pub(crate) fn bootstrap_open() -> bool {
         .read()
         .expect("lock poisoned")
         .bootstrap_admin
-        && !legacy_password_configured()
-}
-
-/// Whether a legacy single password is configured. Read independently of the
-/// bootstrap flag: an explicit host secret always gates the store.
-pub(crate) fn legacy_password_configured() -> bool {
-    APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned")
-        .password
-        .is_some()
 }
 
 /// Try to authenticate via JWT cookie and check if user is admin.
@@ -530,23 +509,15 @@ pub(crate) fn legacy_password_configured() -> bool {
 /// [`Role::User`] with `admin: true`, and the user record is re-read from
 /// the database on every call so demotion or removal takes effect before
 /// the token expires. When the store is empty the bootstrap behavior
-/// applies: only while `--bootstrap-admin` is set and no legacy password is
-/// configured is every request open (minting an ephemeral `admin` identity);
-/// with a configured password cookie auth is denied and the caller must
-/// migrate via `POST /post/authenticate` first; with neither, the install is
-/// closed by default.
+/// applies: only while `--bootstrap-admin` is set is every request open
+/// (minting an ephemeral `admin` identity); otherwise the install is closed
+/// by default.
 pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
     let store_non_empty = crate::auth::users::user_count().map(|count| count > 0)?;
     if !store_non_empty {
-        // Open bootstrap window: flag set, no legacy password, no users.
+        // Open bootstrap window: flag set, no users.
         if bootstrap_open() {
             return Ok(Claims::new_user("admin".to_string(), true));
-        }
-        // Legacy deny-and-migrate: the host secret wins over the flag.
-        if legacy_password_configured() {
-            return Err(anyhow!(
-                "No users exist yet; authenticate with the legacy password to migrate"
-            ));
         }
         return Err(anyhow!(
             "No administrator enrolled: start the server with --bootstrap-admin (or PICASU_BOOTSTRAP_ADMIN=true) to enroll the first admin, or provision a user with the picasu-admin CLI"
@@ -823,16 +794,12 @@ impl<'r> FromRequest<'r> for GuardUser {
         };
         if !non_empty {
             // Mirror `try_jwt_cookie_auth` open-mode semantics: only the
-            // bootstrap flag on an empty store with no legacy password is
-            // open (ephemeral admin); a legacy password means migrate first;
+            // bootstrap flag on an empty store is open (ephemeral admin);
             // otherwise the install is closed by default.
             if bootstrap_open() {
                 return Outcome::Success(GuardUser {
                     claims: Claims::new_user("admin".to_string(), true),
                 });
-            }
-            if legacy_password_configured() {
-                return denied("No users exist yet; authenticate first");
             }
             return denied(
                 "No administrator enrolled: start the server with --bootstrap-admin or provision a user with the picasu-admin CLI",

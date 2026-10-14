@@ -336,11 +336,10 @@ fn password_change_and_demotion_take_effect() {
     );
 }
 
-// ── Row 5: legacy migration ──────────────────────────────────────────────
+// ── Row 5: no legacy migration ───────────────────────────────────────────
 //
-// Covered exactly by S3's `legacy_string_migrates_to_admin_user` in
-// `router::post::authenticate` (sets `APP_CONFIG.password` directly, posts
-// the legacy string body, asserts the `admin` user is created in both
-// stores, the minted token passes an admin route, and a second legacy
-// attempt is 401). Duplicating that flow here would add a PBKDF2-heavy
-// round-trip with no new signal, so it is referenced, not repeated.
+// There is no bare-string bootstrap path: `POST /post/authenticate` takes a
+// `{ userId, password }` object only, and a JSON string body is 400 (covered
+// by `router::post::authenticate::{bare_string_body_is_422_*}`). No migration
+// registers users; enrollment is `POST /post/users/create` (open window) or
+// the `picasu-admin` CLI.

@@ -64,7 +64,6 @@ const localSettings = reactive<AppConfig>({
   readOnlyMode: false,
   disableImg: false,
   fsNotifyWatcher: true,
-  hasPassword: false,
   hasAuthKey: false,
   authKey: '',
   imagePath: null,
