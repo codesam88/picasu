@@ -101,8 +101,9 @@ mod tests {
     }
 
     fn cookie(id: &str, admin: bool) -> Cookie<'static> {
-        let token = crate::router::auth::Claims::new_user(id.to_string(), admin).encode();
-        Cookie::new("jwt", token)
+        let claims = crate::router::auth::Claims::new_user(id.to_string(), admin);
+        let _ = crate::auth::users::add_session(id, &claims.jti);
+        Cookie::new("jwt", claims.encode())
     }
 
     fn seed(id: &str, admin: bool) {
@@ -184,13 +185,14 @@ mod tests {
             &json!({ "userId": "s5-a", "admin": false }),
         );
         assert_eq!(status, Status::Ok);
-        let record = crate::auth::users::get_user("s5-a").expect("get user");
-        assert_eq!(
-            record,
-            Some(crate::auth::users::UserRecord {
-                admin: false,
-                sessions: vec![]
-            })
+        let record = crate::auth::users::get_user("s5-a")
+            .expect("get user")
+            .expect("record");
+        assert!(!record.admin, "admin flag must be cleared");
+        // Session added by the cookie helper persists; the demotion itself must not clear it.
+        assert!(
+            !record.sessions.is_empty(),
+            "session from the acting cookie must survive demotion"
         );
     }
 

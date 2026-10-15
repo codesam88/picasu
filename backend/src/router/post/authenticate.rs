@@ -120,7 +120,9 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
             AppError::new(ErrorKind::Auth, "Invalid credentials").context("Authentication failed")
         );
     }
-    let token = Claims::new_user(user_id.to_string(), record.admin).encode();
+    let claims = Claims::new_user(user_id.to_string(), record.admin);
+    users::add_session(user_id, &claims.jti)?;
+    let token = claims.encode();
     let profile = UserSummary {
         user_id: user_id.to_string(),
         admin: record.admin,
@@ -585,5 +587,99 @@ mod tests {
                 "dummy verify must cost a PBKDF2 round"
             );
         }
+    }
+
+    #[test]
+    fn live_login_cookie_jti_is_accepted_and_forged_is_401_and_open_mode_works() {
+        let _g = lock();
+        let client = setup();
+        create_user_with_password("s3c-live", true, &test_password("t-live"));
+        // Live login mints and stores jti; the cookie must be accepted by a guarded route.
+        let resp = client
+            .post("/post/authenticate")
+            .header(ContentType::JSON)
+            .body(json!({ "userId": "s3c-live", "password": test_password("t-live") }).to_string())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        let token = session_cookie_token(&resp);
+        let claims = decode_claims(&token);
+        // Session store must contain the jti.
+        let record = crate::auth::users::get_user("s3c-live")
+            .expect("get user")
+            .expect("record");
+        assert!(record.sessions.iter().any(|s| s.jti == claims.jti));
+
+        let resp = client
+            .get("/get/index/status")
+            .cookie(rocket::http::Cookie::new("jwt", token.clone()))
+            .dispatch();
+        assert_eq!(
+            resp.status(),
+            Status::Ok,
+            "live login cookie must be accepted"
+        );
+
+        // Forged/unknown jti on same user must be 401.
+        let forged = crate::router::auth::Claims::new_user("s3c-live".to_string(), true).encode();
+        let resp = client
+            .get("/get/index/status")
+            .cookie(rocket::http::Cookie::new("jwt", forged))
+            .dispatch();
+        assert_eq!(
+            resp.status(),
+            Status::Unauthorized,
+            "forged jti must be 401"
+        );
+
+        // Legacy-shaped payload without jti must fail decode.
+        {
+            let key = crate::model::config::APP_CONFIG
+                .get()
+                .expect("APP_CONFIG not initialized")
+                .read()
+                .expect("lock poisoned")
+                .get_jwt_secret_key();
+            #[derive(serde::Serialize)]
+            #[serde(rename_all = "camelCase")]
+            struct LegacyNoJti {
+                role: crate::router::auth::Role,
+                exp: u64,
+                #[serde(rename = "typ")]
+                typ: crate::router::auth::TokenType,
+            }
+            let legacy = LegacyNoJti {
+                role: crate::router::auth::Role::User {
+                    id: "s3c-live".to_string(),
+                    admin: true,
+                },
+                exp: 9_999_999_999,
+                typ: crate::router::auth::TokenType::Admin,
+            };
+            let legacy_token = jsonwebtoken::encode(
+                &jsonwebtoken::Header::default(),
+                &legacy,
+                &jsonwebtoken::EncodingKey::from_secret(&key),
+            )
+            .expect("encode legacy");
+            let res: anyhow::Result<crate::router::auth::Claims> =
+                crate::router::auth::decode_typed(
+                    &legacy_token,
+                    &jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256),
+                );
+            assert!(res.is_err(), "legacy without jti must fail");
+        }
+
+        // Open-mode ephemeral token still works with no record.
+        crate::tests::bootstrap::reset_backend_state();
+        let client2 = setup();
+        // Store is empty, bootstrap flag is true by default after reset.
+        let resp = client2.get("/get/index/status").dispatch();
+        assert_eq!(
+            resp.status(),
+            Status::Ok,
+            "open-mode without cookie must still be 200"
+        );
+        // Also an ephemeral token minted without a record should be irrelevant — open-mode
+        // bypasses session check, but we verify the unauthenticated open path still succeeds.
     }
 }

@@ -9,6 +9,7 @@ use crate::router::{AppResult, GuardError, GuardResult};
 use chrono::Utc;
 use jsonwebtoken::{EncodingKey, Header, encode};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -45,6 +46,7 @@ pub struct Claims {
     /// Type marker; always [`TokenType::Admin`] for identity tokens.
     #[serde(rename = "typ")]
     pub typ: TokenType,
+    pub jti: String,
 }
 
 impl Claims {
@@ -58,6 +60,7 @@ impl Claims {
             role: Role::User { id, admin },
             exp,
             typ: TokenType::Admin,
+            jti: Uuid::new_v4().to_string(),
         }
     }
 
@@ -69,6 +72,7 @@ impl Claims {
             role: Role::Share(Box::new(resolved_share)),
             exp,
             typ: TokenType::Admin,
+            jti: Uuid::new_v4().to_string(),
         }
     }
     pub fn is_admin(&self) -> bool {
@@ -371,7 +375,9 @@ mod tests {
         let _g = s3b_lock();
         let client = s3b_client();
         crate::auth::users::create_user("s3b-admin-user", true).expect("create user");
-        let token = super::Claims::new_user("s3b-admin-user".to_string(), true).encode();
+        let claims = super::Claims::new_user("s3b-admin-user".to_string(), true);
+        crate::auth::users::add_session("s3b-admin-user", &claims.jti).expect("add session");
+        let token = claims.encode();
         let resp = client
             .get("/get/index/status")
             .cookie(rocket::http::Cookie::new("jwt", token))
@@ -384,7 +390,9 @@ mod tests {
         let _g = s3b_lock();
         let client = s3b_client();
         crate::auth::users::create_user("s3b-demoted-user", true).expect("create user");
-        let token = super::Claims::new_user("s3b-demoted-user".to_string(), true).encode();
+        let claims = super::Claims::new_user("s3b-demoted-user".to_string(), true);
+        crate::auth::users::add_session("s3b-demoted-user", &claims.jti).expect("add session");
+        let token = claims.encode();
         crate::auth::users::set_admin("s3b-demoted-user", false).expect("demote user");
         let resp = client
             .get("/get/index/status")
@@ -412,6 +420,85 @@ mod tests {
             .cookie(rocket::http::Cookie::new("jwt", plain))
             .dispatch();
         assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
+    }
+
+    // ——— R6 step 2: jti enforcement (RED before feature) ———
+
+    #[test]
+    fn legacy_token_without_jti_rejected() {
+        let _g = s3b_lock();
+        let _client = s3b_client();
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
+        use crate::model::config::APP_CONFIG;
+        use jsonwebtoken::{EncodingKey, Header, encode};
+        use serde::Serialize;
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct LegacyNoJtiClaims {
+            role: super::Role,
+            exp: u64,
+            #[serde(rename = "typ")]
+            typ: super::TokenType,
+        }
+        let key = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG not initialized")
+            .read()
+            .expect("lock poisoned")
+            .get_jwt_secret_key();
+        let legacy = LegacyNoJtiClaims {
+            role: super::Role::User {
+                id: "legacy-user".to_string(),
+                admin: true,
+            },
+            exp: 9_999_999_999,
+            typ: super::TokenType::Admin,
+        };
+        let token = encode(&Header::default(), &legacy, &EncodingKey::from_secret(&key))
+            .expect("encode legacy token without jti");
+        let result: anyhow::Result<super::Claims> = super::decode_typed(&token, &super::VALIDATION);
+        assert!(
+            result.is_err(),
+            "token without jti must be rejected after hard cut"
+        );
+    }
+
+    #[test]
+    fn forged_jti_rejected_and_open_mode_still_works() {
+        let _g = s3b_lock();
+        let client = s3b_client();
+        // Store non-empty: forged jti (minted but never stored) must be 401.
+        crate::auth::users::create_user("s3b-jti-user", true).expect("create user");
+        let token = super::Claims::new_user("s3b-jti-user".to_string(), true).encode();
+        let resp = client
+            .get("/get/index/status")
+            .cookie(rocket::http::Cookie::new("jwt", token))
+            .dispatch();
+        assert_eq!(
+            resp.status(),
+            rocket::http::Status::Unauthorized,
+            "forged/unknown jti must be 401"
+        );
+
+        // Open-mode ephemeral token still works with no record.
+        // Reset to empty store for open-mode check.
+        {
+            let _ = &*crate::tests::bootstrap::TEST_ENV;
+            crate::tests::bootstrap::reset_backend_state();
+        }
+        let client2 = s3b_client();
+        s3b_set_bootstrap_admin(true);
+        let resp = client2.get("/get/index/status").dispatch();
+        assert_eq!(
+            resp.status(),
+            rocket::http::Status::Ok,
+            "open-mode must still work"
+        );
+        // Explicit empty-store ephemeral token via Claims::new_user without session should also work
+        // when store is empty and flag is on (but our guard skips check in that branch).
+        // We verify that decoding still requires jti even for ephemeral, but the guard bypasses it.
+        // So just the above unauthenticated open check suffices.
+        s3b_set_bootstrap_admin(true);
     }
 }
 
@@ -534,7 +621,12 @@ pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result
             return Err(anyhow!("User is not an admin"));
         };
         match crate::auth::users::get_user(id)? {
-            Some(record) if record.admin => return Ok(claims),
+            Some(record) if record.admin => {
+                if !record.sessions.iter().any(|s| s.jti == claims.jti) {
+                    return Err(anyhow!("User is not an admin"));
+                }
+                return Ok(claims);
+            }
             _ => return Err(anyhow!("User is not an admin")),
         }
     }
@@ -816,9 +908,21 @@ impl<'r> FromRequest<'r> for GuardUser {
             return denied("Share token not accepted");
         };
         match crate::auth::users::get_user(id) {
-            Ok(Some(record)) => Outcome::Success(GuardUser {
-                claims: Claims::new_user(id.clone(), record.admin),
-            }),
+            Ok(Some(record)) => {
+                if !record.sessions.iter().any(|s| s.jti == claims.jti) {
+                    return denied("Unknown user");
+                }
+                // Refresh the token-embedded admin flag from the record
+                // (promotion requires re-login, demotion takes effect here),
+                // but keep the presented `jti`/`exp`: minting fresh claims
+                // would manufacture a live-looking session id that was never
+                // stored.
+                let mut claims = claims;
+                if let Role::User { admin, .. } = &mut claims.role {
+                    *admin = record.admin;
+                }
+                Outcome::Success(GuardUser { claims })
+            }
             Ok(None) => denied("Unknown user"),
             Err(err) => Outcome::Error((
                 Status::InternalServerError,

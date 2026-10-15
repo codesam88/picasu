@@ -54,7 +54,11 @@ fn seed_user(id: &str, admin: bool, password: &str) {
 
 /// Mint a `jwt` cookie without hashing (signs locally, no store access).
 fn user_cookie(id: &str, admin: bool) -> Cookie<'static> {
-    Cookie::new("jwt", Claims::new_user(id.to_string(), admin).encode())
+    let claims = Claims::new_user(id.to_string(), admin);
+    // Session must exist for the token to be accepted by guards (R6 step 2).
+    // Callers ensure the user record already exists via `seed_user`.
+    let _ = crate::auth::users::add_session(id, &claims.jti);
+    Cookie::new("jwt", claims.encode())
 }
 
 /// Log in over HTTP; returns the status and, on success, the session
