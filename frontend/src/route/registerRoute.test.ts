@@ -46,6 +46,15 @@ describe('register route', () => {
     expect(source).toContain('timeline')
   })
 
+  test('RegisterPage leaves when already enrolled', () => {
+    const page = join(routeDir, '../components/Login/RegisterPage.vue')
+    const source = readFileSync(page, 'utf8')
+    expect(source).toContain('onMounted')
+    expect(source).toContain('runEnrollmentBoot')
+    expect(source).toContain('getEnrollmentProbe')
+    expect(source).toMatch(/destination !== 'register'/)
+  })
+
   test('routes.ts probes enrollment once and forces register on empty', () => {
     const source = readRoute('routes.ts')
     expect(source).toContain('beforeEach')
