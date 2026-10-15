@@ -39,6 +39,7 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_img::imported_file,
         get_page::redirect_to_photo,
         get_page::login,
+        get_page::register,
         get_page::redirect_to_login,
         get_page::unauthorized,
         get_page::timeline,

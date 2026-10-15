@@ -3107,6 +3107,21 @@
         ]
       }
     },
+    "/register": {
+      "get": {
+        "description": "Returns `index.html` like every other page route. The client boot\nguard forces this page on an empty store with `--bootstrap-admin`;\nwithout a backend route here a browser reload on `/register` answers\n404 instead of the shell.",
+        "operationId": "register",
+        "responses": {
+          "200": {
+            "description": "SPA page (HTML)"
+          }
+        },
+        "summary": "Serve the SPA shell for the first-admin registration page.",
+        "tags": [
+          "pages"
+        ]
+      }
+    },
     "/registerSW.js": {
       "get": {
         "description": "Returns `registerSW.js` from the frontend build — the embedded asset in a\nbuild with `embed-frontend`, otherwise `<web_root>/registerSW.js` — with the\ncontent type guessed from the `.js` extension. The browser calls it to\nregister `/serviceWorker.js`.\n\nErrors: 404 frontend build without the embedded asset — 500 open of\n`<web_root>/registerSW.js` failed.",
