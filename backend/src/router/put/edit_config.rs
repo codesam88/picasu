@@ -233,8 +233,9 @@ mod tests {
     }
 
     fn cookie(id: &str, admin: bool) -> Cookie<'static> {
-        let token = crate::router::auth::Claims::new_user(id.to_string(), admin).encode();
-        Cookie::new("jwt", token)
+        let claims = crate::router::auth::Claims::new_user(id.to_string(), admin);
+        let _ = crate::auth::users::add_session(id, &claims.jti);
+        Cookie::new("jwt", claims.encode())
     }
 
     fn seed(id: &str, admin: bool, password: Option<&str>) {
