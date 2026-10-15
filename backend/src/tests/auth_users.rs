@@ -134,7 +134,10 @@ fn bootstrap_open_mode_and_first_user_forced_admin() {
     assert_eq!(created["admin"], true, "first user must be forced admin");
     assert_eq!(
         crate::auth::users::get_user("root").expect("get root"),
-        Some(crate::auth::users::UserRecord { admin: true })
+        Some(crate::auth::users::UserRecord {
+            admin: true,
+            sessions: vec![]
+        })
     );
 
     // Companion: bootstrap is one-shot — unauthenticated bootstrap now 401.

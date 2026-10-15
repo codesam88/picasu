@@ -143,7 +143,10 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
     assert_eq!(created["admin"], true, "bootstrap must force admin:true");
     assert_eq!(
         crate::auth::users::get_user("root").expect("get user"),
-        Some(crate::auth::users::UserRecord { admin: true })
+        Some(crate::auth::users::UserRecord {
+            admin: true,
+            sessions: vec![]
+        })
     );
 
     // The store is non-empty now, so enrollment is closed again.

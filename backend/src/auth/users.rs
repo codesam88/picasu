@@ -5,11 +5,23 @@ use serde::{Deserialize, Serialize};
 use crate::error::{AppError, ErrorKind};
 use crate::storage::db::{TREE, USERS};
 
+/// How long a server-side session record lives. Matches the identity-token
+/// TTL in [`crate::router::auth::Claims::new_user`] (14 days).
+pub const SESSION_TTL_SECS: u64 = 14 * 86_400;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionRecord {
+    pub jti: String,
+    pub issued_at: u64,
+}
+
 /// A user record stored in the `USERS` redb table, keyed by user id.
 /// Deliberately minimal; extended with new optional fields later.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserRecord {
     pub admin: bool,
+    #[serde(default)]
+    pub sessions: Vec<SessionRecord>,
 }
 
 /// Create a user. Fails if the id already exists.
@@ -30,8 +42,11 @@ pub fn create_user(id: &str, admin: bool) -> Result<()> {
         if table.get(id)?.is_some() {
             anyhow::bail!("user already exists: {id}");
         }
-        let value = serde_json::to_string(&UserRecord { admin })
-            .context("Failed to serialize UserRecord")?;
+        let value = serde_json::to_string(&UserRecord {
+            admin,
+            sessions: Vec::new(),
+        })
+        .context("Failed to serialize UserRecord")?;
         table
             .insert(id, value.as_str())
             .context("Failed to insert into USERS")?;
@@ -127,8 +142,11 @@ pub fn set_admin_role(id: &str, admin: bool) -> Result<bool, AppError> {
                 ));
             }
         }
-        let value = serde_json::to_string(&UserRecord { admin })
-            .map_err(|e| AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e)))?;
+        let value = serde_json::to_string(&UserRecord {
+            admin,
+            sessions: current.sessions.clone(),
+        })
+        .map_err(|e| AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e)))?;
         table
             .insert(target.as_str(), value.as_str())
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
@@ -152,16 +170,184 @@ pub fn set_admin(id: &str, admin: bool) -> Result<()> {
         let mut table = txn
             .open_table(USERS)
             .context("Failed to open USERS for write")?;
-        if table.get(id)?.is_none() {
-            anyhow::bail!("unknown user: {id}");
-        }
-        let value = serde_json::to_string(&UserRecord { admin })
-            .context("Failed to serialize UserRecord")?;
+        let current: UserRecord = match table.get(id)? {
+            Some(guard) => {
+                serde_json::from_str(guard.value()).context("Failed to deserialize UserRecord")?
+            }
+            None => anyhow::bail!("unknown user: {id}"),
+        };
+        let value = serde_json::to_string(&UserRecord {
+            admin,
+            sessions: current.sessions,
+        })
+        .context("Failed to serialize UserRecord")?;
         table
             .insert(id, value.as_str())
             .context("Failed to update USERS")?;
     }
     txn.commit().context("Failed to commit USERS update")
+}
+
+#[allow(clippy::cast_sign_loss)]
+fn now_secs() -> u64 {
+    (chrono::Utc::now().timestamp_millis() / 1000) as u64
+}
+
+/// Add a live session for `id` with `jti`. Deduplicates by `jti` (refreshing
+/// `issued_at` and moving to the back), pushes the new/ refreshed entry, and
+/// lazily prunes expired sessions (`issued_at + SESSION_TTL_SECS <= now`) in
+/// the same write transaction.
+///
+/// # Errors
+/// Returns [`ErrorKind::InvalidInput`] when the id is invalid,
+/// [`ErrorKind::NotFound`] when the id is unknown, and
+/// [`ErrorKind::Database`] when the database cannot be read or written.
+pub fn add_session(id: &str, jti: &str) -> Result<(), AppError> {
+    let target = validate_user_id(id)?;
+    if jti.is_empty() {
+        return Err(AppError::new(
+            ErrorKind::InvalidInput,
+            "jti must not be empty",
+        ));
+    }
+    let now = now_secs();
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    {
+        let mut table = txn
+            .open_table(USERS)
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+        let mut record: UserRecord = match table
+            .get(target.as_str())
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
+        {
+            Some(guard) => serde_json::from_str(guard.value()).map_err(|e| {
+                AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e))
+            })?,
+            None => {
+                return Err(AppError::new(
+                    ErrorKind::NotFound,
+                    format!("unknown user: {target}"),
+                ));
+            }
+        };
+        // Lazy-prune expired sessions.
+        record
+            .sessions
+            .retain(|s| s.issued_at + SESSION_TTL_SECS > now);
+        // Dedupe by jti: remove existing, refresh issued_at and move to back.
+        if let Some(pos) = record.sessions.iter().position(|s| s.jti == jti) {
+            record.sessions.remove(pos);
+        }
+        record.sessions.push(SessionRecord {
+            jti: jti.to_string(),
+            issued_at: now,
+        });
+        let value = serde_json::to_string(&record)
+            .map_err(|e| AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e)))?;
+        table
+            .insert(target.as_str(), value.as_str())
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    }
+    txn.commit()
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    Ok(())
+}
+
+/// Remove the session `jti` for `id`.
+///
+/// Returns `Ok(true)` when a session was removed, `Ok(false)` when the user
+/// or the session does not exist.
+///
+/// # Errors
+/// Returns [`ErrorKind::Database`] when the database cannot be read or written.
+pub fn remove_session(id: &str, jti: &str) -> Result<bool, AppError> {
+    // Validate id shape; invalid ids are treated as unknown → Ok(false).
+    let target = match validate_user_id(id) {
+        Ok(v) => v,
+        Err(e) if e.kind == ErrorKind::InvalidInput => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    if jti.is_empty() {
+        return Ok(false);
+    }
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    let removed = {
+        let mut table = txn
+            .open_table(USERS)
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+        let mut record: UserRecord = match table
+            .get(target.as_str())
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
+        {
+            Some(guard) => serde_json::from_str(guard.value()).map_err(|e| {
+                AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e))
+            })?,
+            None => return Ok(false),
+        };
+        let before = record.sessions.len();
+        record.sessions.retain(|s| s.jti != jti);
+        let removed = record.sessions.len() != before;
+        if removed {
+            let value = serde_json::to_string(&record).map_err(|e| {
+                AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e))
+            })?;
+            table
+                .insert(target.as_str(), value.as_str())
+                .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+        }
+        removed
+    };
+    txn.commit()
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    Ok(removed)
+}
+
+/// Clear all live sessions for `id`.
+///
+/// # Errors
+/// Returns [`ErrorKind::InvalidInput`] when the id is invalid,
+/// [`ErrorKind::NotFound`] when the id is unknown, and
+/// [`ErrorKind::Database`] when the database cannot be read or written.
+pub fn clear_sessions(id: &str) -> Result<(), AppError> {
+    let target = validate_user_id(id)?;
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    {
+        let mut table = txn
+            .open_table(USERS)
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+        let mut record: UserRecord = match table
+            .get(target.as_str())
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
+        {
+            Some(guard) => serde_json::from_str(guard.value()).map_err(|e| {
+                AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e))
+            })?,
+            None => {
+                return Err(AppError::new(
+                    ErrorKind::NotFound,
+                    format!("unknown user: {target}"),
+                ));
+            }
+        };
+        record.sessions.clear();
+        let value = serde_json::to_string(&record)
+            .map_err(|e| AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e)))?;
+        table
+            .insert(target.as_str(), value.as_str())
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    }
+    txn.commit()
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    Ok(())
 }
 
 /// List all users as `(id, record)` pairs ordered by id.
@@ -381,7 +567,13 @@ mod tests {
 
         crate::auth::users::create_user(ROUNDTRIP_ID, true).expect("create user");
         let found = crate::auth::users::get_user(ROUNDTRIP_ID).expect("get user");
-        assert_eq!(found, Some(UserRecord { admin: true }));
+        assert_eq!(
+            found,
+            Some(UserRecord {
+                admin: true,
+                sessions: vec![]
+            })
+        );
 
         clear_users_table();
     }
@@ -425,7 +617,13 @@ mod tests {
         crate::auth::users::create_user(ADMIN_ID, false).expect("create user");
         crate::auth::users::set_admin(ADMIN_ID, true).expect("set admin");
         let found = crate::auth::users::get_user(ADMIN_ID).expect("get user");
-        assert_eq!(found, Some(UserRecord { admin: true }));
+        assert_eq!(
+            found,
+            Some(UserRecord {
+                admin: true,
+                sessions: vec![]
+            })
+        );
         assert!(crate::auth::users::set_admin("s2a-no-such-user", true).is_err());
 
         clear_users_table();
@@ -448,8 +646,20 @@ mod tests {
         assert_eq!(
             listed,
             vec![
-                (LIST_A_ID.to_string(), UserRecord { admin: true }),
-                (LIST_B_ID.to_string(), UserRecord { admin: false }),
+                (
+                    LIST_A_ID.to_string(),
+                    UserRecord {
+                        admin: true,
+                        sessions: vec![]
+                    }
+                ),
+                (
+                    LIST_B_ID.to_string(),
+                    UserRecord {
+                        admin: false,
+                        sessions: vec![]
+                    }
+                ),
             ]
         );
 
@@ -565,7 +775,10 @@ mod tests {
         // The existing record is untouched by the failed duplicate.
         assert_eq!(
             super::get_user("s3-dup").expect("get"),
-            Some(UserRecord { admin: true })
+            Some(UserRecord {
+                admin: true,
+                sessions: vec![]
+            })
         );
 
         reset_backend_state();
@@ -584,7 +797,10 @@ mod tests {
         assert_eq!(id, "s3-trim");
         assert_eq!(
             super::get_user("s3-trim").expect("get"),
-            Some(UserRecord { admin: false })
+            Some(UserRecord {
+                admin: false,
+                sessions: vec![]
+            })
         );
         // Login verifies the trimmed input against the stored (trimmed)
         // canonical form — write-then-login must stay consistent.
@@ -650,7 +866,13 @@ mod tests {
         assert_eq!(err.kind, crate::error::ErrorKind::Conflict);
         // Refusal leaves the flag untouched.
         let found = crate::auth::users::get_user("s5-sole").expect("get user");
-        assert_eq!(found, Some(UserRecord { admin: true }));
+        assert_eq!(
+            found,
+            Some(UserRecord {
+                admin: true,
+                sessions: vec![]
+            })
+        );
 
         clear_users_table();
     }
@@ -668,11 +890,17 @@ mod tests {
         assert!(super::set_admin_role("s5-a", false).expect("transfer demotion"));
         assert_eq!(
             crate::auth::users::get_user("s5-a").expect("get a"),
-            Some(UserRecord { admin: false })
+            Some(UserRecord {
+                admin: false,
+                sessions: vec![]
+            })
         );
         assert_eq!(
             crate::auth::users::get_user("s5-b").expect("get b"),
-            Some(UserRecord { admin: true })
+            Some(UserRecord {
+                admin: true,
+                sessions: vec![]
+            })
         );
 
         clear_users_table();
@@ -690,12 +918,190 @@ mod tests {
         assert!(super::set_admin_role("s5-c", true).expect("promote"));
         assert_eq!(
             crate::auth::users::get_user("s5-c").expect("get c"),
-            Some(UserRecord { admin: true })
+            Some(UserRecord {
+                admin: true,
+                sessions: vec![]
+            })
         );
         // Same-flag write is a no-op reporting no change.
         assert!(!super::set_admin_role("s5-c", true).expect("noop promote"));
         crate::auth::users::create_user("s5-d", false).expect("create d");
         assert!(!super::set_admin_role("s5-d", false).expect("noop demote"));
+        clear_users_table();
+    }
+
+    #[test]
+    fn legacy_row_reads_as_empty_sessions() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        clear_users_table();
+
+        // Write a legacy row without the `sessions` field directly via redb,
+        // then verify `get_user` defaults it to empty.
+        let txn = TREE.in_disk.begin_write().expect("begin write");
+        {
+            let mut table = txn.open_table(USERS).expect("open USERS");
+            table
+                .insert("s6-legacy", r#"{"admin":true}"#)
+                .expect("insert legacy row");
+        }
+        txn.commit().expect("commit");
+
+        let found = super::get_user("s6-legacy").expect("get legacy");
+        assert_eq!(
+            found,
+            Some(UserRecord {
+                admin: true,
+                sessions: vec![]
+            })
+        );
+
+        clear_users_table();
+    }
+
+    #[test]
+    fn add_and_remove_session_round_trip() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        clear_users_table();
+
+        crate::auth::users::create_user("s6-sess-a", false).expect("create");
+        super::add_session("s6-sess-a", "jti-1").expect("add");
+        let rec = super::get_user("s6-sess-a").expect("get").expect("exists");
+        assert_eq!(rec.sessions.len(), 1);
+        assert_eq!(rec.sessions[0].jti, "jti-1");
+
+        super::add_session("s6-sess-a", "jti-2").expect("add second");
+        let rec = super::get_user("s6-sess-a").expect("get").expect("exists");
+        assert_eq!(rec.sessions.len(), 2);
+        assert!(super::remove_session("s6-sess-a", "jti-1").expect("remove"));
+        let rec = super::get_user("s6-sess-a").expect("get").expect("exists");
+        assert_eq!(rec.sessions.len(), 1);
+        assert_eq!(rec.sessions[0].jti, "jti-2");
+
+        clear_users_table();
+    }
+
+    #[test]
+    fn remove_session_is_idempotent() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        clear_users_table();
+
+        crate::auth::users::create_user("s6-sess-b", false).expect("create");
+        super::add_session("s6-sess-b", "jti-1").expect("add");
+        assert!(super::remove_session("s6-sess-b", "jti-1").expect("first remove"));
+        assert!(!super::remove_session("s6-sess-b", "jti-1").expect("second remove"));
+        assert!(!super::remove_session("s6-sess-b", "jti-missing").expect("missing jti"));
+        assert!(!super::remove_session("s6-unknown", "jti-1").expect("unknown user"));
+
+        clear_users_table();
+    }
+
+    #[test]
+    fn clear_sessions_removes_all() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        clear_users_table();
+
+        crate::auth::users::create_user("s6-sess-c", false).expect("create");
+        super::add_session("s6-sess-c", "jti-1").expect("add 1");
+        super::add_session("s6-sess-c", "jti-2").expect("add 2");
+        super::clear_sessions("s6-sess-c").expect("clear");
+        let rec = super::get_user("s6-sess-c").expect("get").expect("exists");
+        assert!(rec.sessions.is_empty());
+        let err = super::clear_sessions("s6-ghost").expect_err("unknown user must fail");
+        assert_eq!(err.kind, crate::error::ErrorKind::NotFound);
+        let err = super::add_session("s6-ghost", "jti-x").expect_err("unknown user must fail");
+        assert_eq!(err.kind, crate::error::ErrorKind::NotFound);
+
+        clear_users_table();
+    }
+
+    #[test]
+    fn readd_session_refreshes_and_moves_to_back() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        clear_users_table();
+
+        crate::auth::users::create_user("s6-sess-d", false).expect("create");
+        super::add_session("s6-sess-d", "jti-1").expect("add 1");
+        // Capture first issued_at.
+        let first = super::get_user("s6-sess-d")
+            .expect("get")
+            .expect("exists")
+            .sessions[0]
+            .issued_at;
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        super::add_session("s6-sess-d", "jti-2").expect("add 2");
+        // Re-add jti-1: should refresh issued_at and move to back.
+        super::add_session("s6-sess-d", "jti-1").expect("re-add 1");
+        let rec = super::get_user("s6-sess-d").expect("get").expect("exists");
+        assert_eq!(rec.sessions.len(), 2);
+        assert_eq!(rec.sessions[0].jti, "jti-2");
+        assert_eq!(rec.sessions[1].jti, "jti-1");
+        assert!(rec.sessions[1].issued_at >= first);
+        assert!(rec.sessions[1].issued_at >= rec.sessions[0].issued_at);
+
+        clear_users_table();
+    }
+
+    #[test]
+    fn add_session_prunes_expired() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        clear_users_table();
+
+        crate::auth::users::create_user("s6-sess-e", false).expect("create");
+        // Inject an expired session directly via redb.
+        let expired_at = {
+            let now = (chrono::Utc::now().timestamp_millis() / 1000) as u64;
+            now.saturating_sub(super::SESSION_TTL_SECS + 10)
+        };
+        let stale = UserRecord {
+            admin: false,
+            sessions: vec![
+                super::SessionRecord {
+                    jti: "old".to_string(),
+                    issued_at: expired_at,
+                },
+                super::SessionRecord {
+                    jti: "fresh".to_string(),
+                    issued_at: (chrono::Utc::now().timestamp_millis() / 1000) as u64,
+                },
+            ],
+        };
+        let txn = TREE.in_disk.begin_write().expect("begin write");
+        {
+            let mut table = txn.open_table(USERS).expect("open USERS");
+            let value = serde_json::to_string(&stale).expect("serialize stale");
+            table
+                .insert("s6-sess-e", value.as_str())
+                .expect("insert stale");
+        }
+        txn.commit().expect("commit stale");
+
+        // Adding a new session must lazily prune the expired one.
+        super::add_session("s6-sess-e", "jti-new").expect("add new");
+        let rec = super::get_user("s6-sess-e").expect("get").expect("exists");
+        let jtis: Vec<_> = rec.sessions.iter().map(|s| s.jti.as_str()).collect();
+        assert!(!jtis.contains(&"old"), "expired session must be pruned");
+        assert!(jtis.contains(&"fresh"));
+        assert!(jtis.contains(&"jti-new"));
+        assert_eq!(rec.sessions.len(), 2);
+
         clear_users_table();
     }
 }
