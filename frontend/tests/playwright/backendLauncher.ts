@@ -179,8 +179,8 @@ export async function startBackend(
     PICASU_DATA_HOME: paths.DATA_DIR,
     PICASU_CONFIG_HOME: paths.CONFIG_DIR,
     PICASU_WEB_ROOT: path.resolve(REPO_ROOT, 'frontend/dist'),
-    // E2E scenarios enroll the first admin through the open-window
-    // `POST /post/users/create`, which only responds while the bootstrap
+    // E2E scenarios enroll the first admin through the bootstrap route
+    // `POST /post/users/bootstrap`, which only responds while the bootstrap
     // window is open.
     PICASU_BOOTSTRAP_ADMIN: 'true',
     // Test-only PBKDF effort: production KDF cost (~10s/verify in debug

@@ -7,30 +7,43 @@ use crate::auth::invites;
 use crate::auth::users::{self, validate_new_password, validate_user_id};
 use crate::error::ResultExt;
 use crate::model::config::APP_CONFIG;
-use crate::router::auth::GuardReadOnlyMode;
-use crate::router::post::users::UserSummary;
+use crate::openapi_components::Unauthorized;
+use crate::router::auth::{GuardAuth, GuardReadOnlyMode};
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
-/// Body for `POST /post/users/register`.
-#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+/// Summary of a user record. Password hashes are never exported.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
+pub struct UserSummary {
+    pub user_id: String,
+    pub admin: bool,
+}
+
+/// Body for `POST /post/users/register`. There is deliberately no `admin`
+/// field: registration always creates standard users; elevation is
+/// `PUT /put/users/admin` only.
+#[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RegisterRequest {
     pub user_id: String,
     pub password: String,
-    /// Single-use invite token. Required while `allowRegistration` is off;
-    /// ignored while it is on.
+    /// Single-use invite token. Required while `allowRegistration` is off
+    /// and the caller holds no admin session; ignored while it is on or
+    /// the caller is an admin.
     pub invite: Option<String>,
 }
 
 /// Register a new user account.
 ///
-/// Public route (no auth guard) behind the read-only guard. With
-/// `allowRegistration` on, anyone registers without an invite; with it off,
-/// a valid, unexpired, unused invite is required. The account is always
-/// created with `admin: false` — `POST /post/users/create` on an empty
-/// store remains the only online admin-granting path. While
-/// `allowRegistration` is on, an `invite` in the body is ignored: open
-/// registration supersedes it and does not burn the token.
+/// Public route (no auth guard) behind the read-only guard. Three gates, in
+/// order: a valid admin session registers without an invite; with
+/// `allowRegistration` on, anyone registers without an invite; otherwise a
+/// valid, unexpired, unused invite is required. Non-admin sessions count as
+/// anonymous for gating. The account is always created with `admin: false` —
+/// `POST /post/users/bootstrap` (flag ∧ empty store) is the only online
+/// admin-granting path. While an invite is not needed (admin session or open
+/// knob), an `invite` in the body is ignored: it neither fails nor gets
+/// burned.
 ///
 /// Corner cases: The password is trimmed once and must satisfy the
 /// default policy (see `auth::password::check_strength`); an empty `invite` string counts as absent. Invite redemption
@@ -47,6 +60,7 @@ pub struct RegisterRequest {
         responses(
             (status = 200, description = "Account registered (non-admin)", body = UserSummary),
             (status = 400, description = "Invalid input"),
+            (status = 401, response = Unauthorized),
             (status = 403, description = "Registration disabled or invite expired"),
             (status = 404, description = "Unknown or revoked invite token"),
             (status = 405, description = "Read-only mode"),
@@ -57,10 +71,22 @@ pub struct RegisterRequest {
 ]
 #[post("/post/users/register", data = "<body>")]
 pub async fn register_user_handler(
+    auth: GuardResult<GuardAuth>,
     read_only: GuardResult<GuardReadOnlyMode>,
     body: Json<RegisterRequest>,
 ) -> AppResult<Json<UserSummary>> {
     let _ = read_only?;
+    // A valid admin session is a gate on its own. The ephemeral bootstrap
+    // identity (empty store, flag on) never counts: only a real admin record
+    // does, so anonymous callers cannot squat the first-user slot as a
+    // non-admin. Non-admin sessions fall through to the knob/invite gates.
+    let admin_session = match &auth {
+        Ok(guard) => {
+            guard.claims.is_admin()
+                && users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))? > 0
+        }
+        Err(_) => false,
+    };
     let allow_registration = APP_CONFIG
         .get()
         .expect("APP_CONFIG not initialized")
@@ -70,7 +96,7 @@ pub async fn register_user_handler(
     let req = body.into_inner();
     // Password hashing is CPU-bound: the whole sync flow runs on the
     // blocking pool.
-    spawn_blocking(move || register_user_sync(&req, allow_registration))
+    spawn_blocking(move || register_user_sync(&req, allow_registration, admin_session))
         .await
         .or_raise(|| (ErrorKind::Internal, "Failed to join blocking task"))?
         .map(Json)
@@ -80,16 +106,25 @@ pub async fn register_user_handler(
 /// redeeming an invite in the same transaction as the insert), then store
 /// the password hash.
 ///
+/// Gates in order: a valid admin session, open registration, or a valid
+/// invite — otherwise 403/404. An admin session or the open knob bypasses
+/// the invite entirely (a supplied token is ignored, never burned).
+///
 /// # Errors
 /// 400 invalid id or weak password — 403 registration disabled or invite
 /// expired — 404 unknown/revoked invite — 409 duplicate id or used invite —
 /// 500 store failure. Runs inside `spawn_blocking` (KDF on the password).
-fn register_user_sync(req: &RegisterRequest, allow_registration: bool) -> AppResult<UserSummary> {
+fn register_user_sync(
+    req: &RegisterRequest,
+    allow_registration: bool,
+    admin_session: bool,
+) -> AppResult<UserSummary> {
     let id = validate_user_id(&req.user_id)?;
     let canonical = validate_new_password(&id, &req.password)?;
-    if allow_registration {
-        // Open registration: the invite is not consulted (open supersedes
-        // bearer), so a stale link neither fails nor gets burned.
+    if admin_session || allow_registration {
+        // Gated registration: the invite is not consulted (an admin session
+        // or the open knob supersedes the bearer), so a stale link neither
+        // fails nor gets burned.
         if users::get_user(&id)
             .map_err(|e| AppError::from_err(ErrorKind::Database, e))?
             .is_some()

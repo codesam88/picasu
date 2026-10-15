@@ -51,15 +51,6 @@ fn user_cookie(id: &str) -> rocket::http::Cookie<'static> {
     )
 }
 
-fn set_bootstrap_admin(enabled: bool) {
-    let mut config = crate::model::config::APP_CONFIG
-        .get()
-        .expect("APP_CONFIG")
-        .write()
-        .expect("APP_CONFIG lock");
-    config.bootstrap_admin = enabled;
-}
-
 /// POST /post/users/register with the given body; returns the response.
 fn register(client: &Client, body: &Value) -> (Status, Option<String>) {
     let resp = client
@@ -320,27 +311,91 @@ fn trivial_passwords_flag_opens_registration_to_weak_passwords() {
     assert_eq!(status, Status::Ok);
 }
 
-// ── Row: closed flag-off denies unauthenticated create ─────────────────────
+// ── Row: admin session ───────────────────────────────────────────────────
 
-/// With the flag off, an unauthenticated `users/create` on an empty store is
-/// refused and no user appears. (With the flag on the same call opens and
-/// forces the first admin; see `tests/enroll_gate`.)
+/// A valid admin session registers without an invite; the account is still
+/// non-admin.
 #[test]
-fn flag_off_denies_unauthenticated_create() {
+fn admin_session_creates_without_invite() {
     let _g = lock();
     let client = setup();
-    set_bootstrap_admin(false);
+    let admin = seed_admin("s6-root");
+    assert!(
+        !crate::model::config::APP_CONFIG
+            .get()
+            .expect("cfg")
+            .read()
+            .expect("lock")
+            .allow_registration,
+        "knob must be off: the admin session alone must suffice"
+    );
 
-    let pw = crate::tests::fixtures::test_password("t-reg-a1");
+    let pw = crate::tests::fixtures::test_password("t-reg-admin");
     let resp = client
-        .post("/post/users/create")
+        .post("/post/users/register")
+        .cookie(admin)
         .header(ContentType::JSON)
-        .body(json!({ "userId": "s6-eve", "password": pw, "admin": false }).to_string())
+        .body(json!({ "userId": "s6-by-admin", "password": pw }).to_string())
         .dispatch();
-    assert_eq!(resp.status(), Status::Unauthorized);
-    assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+    assert_eq!(resp.status(), Status::Ok);
+    let created: Value = serde_json::from_str(&resp.into_string().expect("body")).expect("summary");
+    assert_eq!(created["userId"], "s6-by-admin");
+    assert_eq!(created["admin"], false, "register is always non-admin");
+    assert_eq!(
+        crate::auth::users::get_user("s6-by-admin").expect("get user"),
+        Some(crate::auth::users::UserRecord { admin: false })
+    );
+}
 
-    set_bootstrap_admin(true);
+/// A non-admin session is anonymous for gating: without the knob or an
+/// invite it is 403 and creates nobody.
+#[test]
+fn non_admin_session_without_invite_when_disabled_is_403() {
+    let _g = lock();
+    let client = setup();
+    seed_admin("s6-root");
+    crate::auth::users::create_user("s6-bob", false).expect("seed bob");
+    let pw = crate::tests::fixtures::test_password("t-reg-bob");
+
+    let (status, _) = {
+        let resp = client
+            .post("/post/users/register")
+            .cookie(user_cookie("s6-bob"))
+            .header(ContentType::JSON)
+            .body(json!({ "userId": "s6-bob-friend", "password": pw }).to_string())
+            .dispatch();
+        (resp.status(), resp.into_string())
+    };
+    assert_eq!(status, Status::Forbidden);
+    assert!(
+        crate::auth::users::get_user("s6-bob-friend")
+            .expect("get")
+            .is_none()
+    );
+    assert_eq!(crate::auth::users::user_count().expect("count"), 2);
+}
+
+// ── Row: no `admin` field on the body ──────────────────────────────────────
+
+/// An unknown `admin` key on the register body is a 4xx and registers
+/// nobody, even with the knob on.
+#[test]
+fn register_rejects_unknown_admin_field() {
+    let _g = lock();
+    let client = setup();
+    write_config(&json!({ "allow_registration": true }));
+    let pw = crate::tests::fixtures::test_password("t-reg-shape");
+
+    let (status, _) = register(
+        &client,
+        &json!({ "userId": "s6-shape", "password": pw, "admin": false }),
+    );
+    assert_eq!(
+        status,
+        Status::UnprocessableEntity,
+        "unknown `admin` field must be rejected, not honored"
+    );
+    assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 }
 
 // ── Invite routes: auth + no token leak ────────────────────────────────────

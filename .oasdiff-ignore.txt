@@ -20,3 +20,11 @@ POST /post/authenticate added the new required request property `password`
 POST /post/authenticate added the new required request property `userId`
 POST /post/authenticate removed `#/components/schemas/LoginRequest, subschema #1` from the request body `oneOf` list
 POST /post/authenticate the request's body `type` changed from `any` to `object`
+
+# 2026-10-15 (auth-enrollment step 9, decided): `POST /post/users/create`
+# is deleted outright — creation never grants admin, so the merged
+# `POST /post/users/register` (always non-admin) plus the new
+# `POST /post/users/bootstrap` (flag ∧ empty store, forced admin) replace
+# it. No deprecation window: the old route's `admin` body flag is the
+# defect being removed.
+POST /post/users/create api path removed without deprecation

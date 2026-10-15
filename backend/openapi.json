@@ -131,7 +131,7 @@
             ]
           },
           "bootstrapAdmin": {
-            "description": "Enable the online first-admin bootstrap window. While set **and the\nuser store is empty**, unauthenticated `POST /post/users/create`\nand open `POST /post/authenticate` mint the first admin. Default\noff: a fresh install answers 401 everywhere until an operator opts\nin (or provisions the store via the `picasu-admin` CLI). Enabling\nthe flag against an existing `passwd.json` makes the server refuse\nto start. WARN-logged at boot whenever set.",
+            "description": "Enable the online first-admin bootstrap window. While set **and the\nuser store is empty**, unauthenticated `POST /post/users/bootstrap`\nenrolls the first admin and open `POST /post/authenticate` mints a\ntoken without enrolling anybody. Default\noff: a fresh install answers 401 everywhere until an operator opts\nin (or provisions the store via the `picasu-admin` CLI). Enabling\nthe flag against an existing `passwd.json` makes the server refuse\nto start. WARN-logged at boot whenever set.",
             "type": "boolean"
           },
           "dataHome": {
@@ -232,6 +232,23 @@
         },
         "required": [
           "outcome"
+        ],
+        "type": "object"
+      },
+      "BootstrapRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /post/users/bootstrap`. There is deliberately no `admin`\nfield: creation never grants admin through a body flag, and bootstrap\nalways forces `admin: true`.",
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "password"
         ],
         "type": "object"
       },
@@ -376,26 +393,6 @@
           "showDownload",
           "showUpload",
           "exp"
-        ],
-        "type": "object"
-      },
-      "CreateUserRequest": {
-        "description": "Body for `POST /post/users/create`.",
-        "properties": {
-          "admin": {
-            "type": "boolean"
-          },
-          "password": {
-            "type": "string"
-          },
-          "userId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "userId",
-          "password",
-          "admin"
         ],
         "type": "object"
       },
@@ -661,7 +658,8 @@
         "type": "object"
       },
       "LoginRequest": {
-        "description": "Request body for `POST /post/authenticate`: a user login object.",
+        "additionalProperties": false,
+        "description": "Request body for `POST /post/authenticate`: a user login object. There is\ndeliberately no `admin` field: unknown keys are rejected, never honored.",
         "properties": {
           "password": {
             "type": "string"
@@ -855,10 +853,11 @@
         "type": "object"
       },
       "RegisterRequest": {
-        "description": "Body for `POST /post/users/register`.",
+        "additionalProperties": false,
+        "description": "Body for `POST /post/users/register`. There is deliberately no `admin`\nfield: registration always creates standard users; elevation is\n`PUT /put/users/admin` only.",
         "properties": {
           "invite": {
-            "description": "Single-use invite token. Required while `allowRegistration` is off;\nignored while it is on.",
+            "description": "Single-use invite token. Required while `allowRegistration` is off\nand the caller holds no admin session; ignored while it is on or\nthe caller is an admin.",
             "type": [
               "string",
               "null"
@@ -2396,15 +2395,15 @@
         ]
       }
     },
-    "/post/users/create": {
+    "/post/users/bootstrap": {
       "post": {
-        "description": "Admin-only, except for the bootstrap exception: while the user store is\nempty **and `--bootstrap-admin` is set** an unauthenticated call succeeds\nand forces `admin: true` regardless of the body's flag. Closed by default:\nwith the flag off an empty store rejects unauthenticated create. A\nnon-admin caller — or no caller once any user exists — is rejected.\n\nCorner cases: The `admin` flag is honored for admin callers and forced\non for bootstrap. The password is trimmed before hashing.\n\nErrors: 400 invalid `userId` or password violating the policy — 401\nmissing or invalid credentials, non-admin caller, or unauthenticated\ncall once any user exists — 405 read-only mode — 409 `userId` already\nexists — 500 storage failure.",
-        "operationId": "create_user_handler",
+        "description": "The only online admin-granting path. Open only while the user store is\nempty **and `--bootstrap-admin` is set**; the created user is forced to\n`admin: true`. Closed by default: with the flag off an empty store\nrejects with the same 401 as every other guarded surface, and once any\nuser exists the window stays shut (further users come from\n`POST /post/users/register`; role changes from `PUT /put/users/admin`).\n\nCorner cases: The password is trimmed before hashing.\n\nErrors: 400 invalid `userId` or password violating the policy — 401\nthe bootstrap window is closed (flag off, or the store is non-empty) —\n405 read-only mode — 409 `userId` already exists — 500 storage failure.",
+        "operationId": "bootstrap_admin_handler",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateUserRequest"
+                "$ref": "#/components/schemas/BootstrapRequest"
               }
             }
           },
@@ -2419,7 +2418,7 @@
                 }
               }
             },
-            "description": "User created"
+            "description": "First administrator enrolled"
           },
           "400": {
             "description": "Invalid input"
@@ -2437,7 +2436,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Create a user.",
+        "summary": "Enroll the first administrator.",
         "tags": [
           "auth"
         ]
@@ -2445,7 +2444,7 @@
     },
     "/post/users/register": {
       "post": {
-        "description": "Public route (no auth guard) behind the read-only guard. With\n`allowRegistration` on, anyone registers without an invite; with it off,\na valid, unexpired, unused invite is required. The account is always\ncreated with `admin: false` — `POST /post/users/create` on an empty\nstore remains the only online admin-granting path. While\n`allowRegistration` is on, an `invite` in the body is ignored: open\nregistration supersedes it and does not burn the token.\n\nCorner cases: The password is trimmed once and must satisfy the\ndefault policy (see `auth::password::check_strength`); an empty `invite` string counts as absent. Invite redemption\nmarks the token used and inserts the user record in one transaction, so\na failed request never half-consumes an invite.\n\nErrors: 400 invalid `userId` or password violating the policy — 403\nregistration disabled (no invite) or invite expired — 404 unknown or\nrevoked invite token — 405 read-only mode — 409 `userId` already exists\nor invite already used — 500 storage failure.",
+        "description": "Public route (no auth guard) behind the read-only guard. Three gates, in\norder: a valid admin session registers without an invite; with\n`allowRegistration` on, anyone registers without an invite; otherwise a\nvalid, unexpired, unused invite is required. Non-admin sessions count as\nanonymous for gating. The account is always created with `admin: false` —\n`POST /post/users/bootstrap` (flag ∧ empty store) is the only online\nadmin-granting path. While an invite is not needed (admin session or open\nknob), an `invite` in the body is ignored: it neither fails nor gets\nburned.\n\nCorner cases: The password is trimmed once and must satisfy the\ndefault policy (see `auth::password::check_strength`); an empty `invite` string counts as absent. Invite redemption\nmarks the token used and inserts the user record in one transaction, so\na failed request never half-consumes an invite.\n\nErrors: 400 invalid `userId` or password violating the policy — 403\nregistration disabled (no invite) or invite expired — 404 unknown or\nrevoked invite token — 405 read-only mode — 409 `userId` already exists\nor invite already used — 500 storage failure.",
         "operationId": "register_user_handler",
         "requestBody": {
           "content": {
@@ -2470,6 +2469,9 @@
           },
           "400": {
             "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
           "403": {
             "description": "Registration disabled or invite expired"

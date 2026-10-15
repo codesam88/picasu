@@ -2,7 +2,7 @@ name: Admin user management panel visible after login
 covers:
   api:
     - POST /post/authenticate
-    - POST /post/users/create
+    - POST /post/users/bootstrap
     - GET /get/users
   ui:
     - textbox/User ID

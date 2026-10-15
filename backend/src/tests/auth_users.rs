@@ -89,9 +89,9 @@ fn role_of(claims: &Claims) -> (String, bool) {
 // ── Row 1: bootstrap ─────────────────────────────────────────────────────
 
 /// Empty store is open (login with anything mints an admin token) and the
-/// first created user is forced admin even when the body asks otherwise.
+/// first bootstrapped user is forced admin.
 ///
-/// Falsification companion: a second, unauthenticated creation once the
+/// Falsification companion: a second, unauthenticated bootstrap once the
 /// store is non-empty must be 401 — otherwise bootstrap would stay open
 /// forever and anyone could mint users.
 #[test]
@@ -107,14 +107,11 @@ fn bootstrap_open_mode_and_first_user_forced_admin() {
     assert_eq!(id, "admin");
     assert!(admin, "open-mode identity must be admin");
 
-    // First creation forces `admin: true` despite the body's `false`.
+    // First bootstrap forces `admin: true`: the body carries no `admin` key.
     let resp = client
-        .post("/post/users/create")
+        .post("/post/users/bootstrap")
         .header(ContentType::JSON)
-        .body(
-            json!({ "userId": "root", "password": test_password("t-root-pw"), "admin": false })
-                .to_string(),
-        )
+        .body(json!({ "userId": "root", "password": test_password("t-root-pw") }).to_string())
         .dispatch();
     assert_eq!(resp.status(), Status::Ok);
     let created: Value = resp.into_json().expect("created user json");
@@ -124,14 +121,11 @@ fn bootstrap_open_mode_and_first_user_forced_admin() {
         Some(crate::auth::users::UserRecord { admin: true })
     );
 
-    // Companion: bootstrap is one-shot — unauthenticated creation now 401.
+    // Companion: bootstrap is one-shot — unauthenticated bootstrap now 401.
     let resp = client
-        .post("/post/users/create")
+        .post("/post/users/bootstrap")
         .header(ContentType::JSON)
-        .body(
-            json!({ "userId": "late", "password": test_password("t-late-pw"), "admin": false })
-                .to_string(),
-        )
+        .body(json!({ "userId": "late", "password": test_password("t-late-pw") }).to_string())
         .dispatch();
     assert_eq!(resp.status(), Status::Unauthorized);
 }
@@ -341,5 +335,5 @@ fn password_change_and_demotion_take_effect() {
 // There is no bare-string bootstrap path: `POST /post/authenticate` takes a
 // `{ userId, password }` object only, and a JSON string body is 400 (covered
 // by `router::post::authenticate::{bare_string_body_is_422_*}`). No migration
-// registers users; enrollment is `POST /post/users/create` (open window) or
-// the `picasu-admin` CLI.
+// registers users; enrollment is `POST /post/users/bootstrap` (open window)
+// or the `picasu-admin` CLI.
