@@ -37,18 +37,16 @@ fn setup() -> Client {
 /// matching admin cookie.
 fn seed_admin(id: &str) -> rocket::http::Cookie<'static> {
     crate::auth::users::create_user(id, true).expect("seed admin");
-    rocket::http::Cookie::new(
-        "jwt",
-        crate::router::auth::Claims::new_user(id.to_string(), true).encode(),
-    )
+    let claims = crate::router::auth::Claims::new_user(id.to_string(), true);
+    crate::auth::users::add_session(id, &claims.jti).expect("add session");
+    rocket::http::Cookie::new("jwt", claims.encode())
 }
 
 /// Mint a cookie for an existing non-admin user (no hashing).
 fn user_cookie(id: &str) -> rocket::http::Cookie<'static> {
-    rocket::http::Cookie::new(
-        "jwt",
-        crate::router::auth::Claims::new_user(id.to_string(), false).encode(),
-    )
+    let claims = crate::router::auth::Claims::new_user(id.to_string(), false);
+    crate::auth::users::add_session(id, &claims.jti).expect("add session");
+    rocket::http::Cookie::new("jwt", claims.encode())
 }
 
 /// POST /post/users/register with the given body; returns the response.
