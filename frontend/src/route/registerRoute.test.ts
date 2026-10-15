@@ -40,7 +40,7 @@ describe('register route', () => {
     expect(source).toMatch(/userId/)
     expect(source).toMatch(/confirm/i)
     expect(source).toContain('submitRegistration')
-    expect(source).toContain('createUser')
+    expect(source).toContain('bootstrapUser')
     expect(source).toContain('login')
     expect(source).toMatch(/409/)
     expect(source).toContain('timeline')
