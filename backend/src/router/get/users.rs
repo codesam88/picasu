@@ -4,7 +4,7 @@ use rocket::serde::json::Json;
 use crate::auth::users;
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
-use crate::router::post::users::UserSummary;
+use crate::router::post::register::UserSummary;
 use crate::router::{AppError, AppResult, ErrorKind};
 
 /// List all users as `{ userId, admin }` pairs ordered by id.
@@ -40,7 +40,7 @@ pub fn list_users_handler(_auth: GuardAuth) -> AppResult<Json<Vec<UserSummary>>>
 mod tests {
     use rocket::http::{Cookie, Status};
 
-    use crate::router::post::users::UserSummary;
+    use crate::router::post::register::UserSummary;
     use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
 
     fn lock() -> std::sync::MutexGuard<'static, ()> {

@@ -2,6 +2,7 @@
 use rocket::Route;
 pub mod album_index;
 pub mod authenticate;
+pub mod bootstrap;
 pub mod create_dir_album;
 pub mod create_share;
 pub mod import_config;
@@ -9,7 +10,6 @@ pub mod invites;
 pub mod post_upload;
 pub mod rebuild;
 pub mod register;
-pub mod users;
 
 pub fn generate_post_routes() -> Vec<Route> {
     routes![
@@ -21,7 +21,7 @@ pub fn generate_post_routes() -> Vec<Route> {
         album_index::index_album_handler,
         album_index::cancel_album_index_handler,
         rebuild::rebuild_handler,
-        users::create_user_handler,
+        bootstrap::bootstrap_admin_handler,
         register::register_user_handler,
         invites::create_invite_handler,
     ]

@@ -97,8 +97,9 @@ pub struct AppConfig {
     #[serde(default)]
     pub trivial_passwords: bool,
     /// Enable the online first-admin bootstrap window. While set **and the
-    /// user store is empty**, unauthenticated `POST /post/users/create`
-    /// and open `POST /post/authenticate` mint the first admin. Default
+    /// user store is empty**, unauthenticated `POST /post/users/bootstrap`
+    /// enrolls the first admin and open `POST /post/authenticate` mints a
+    /// token without enrolling anybody. Default
     /// off: a fresh install answers 401 everywhere until an operator opts
     /// in (or provisions the store via the `picasu-admin` CLI). Enabling
     /// the flag against an existing `passwd.json` makes the server refuse
