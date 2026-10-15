@@ -53,6 +53,9 @@ user should observe, not how the implementation does it.
 
 ## Relation to existing work
 
+- Motivated by `.plan/auth-enrollment-review.md`: sequence findings R1,
+  R3–R4, R23–R26 showed per-case tests do not scale, so this task builds
+  the planned model-based tooling.
 - Broader than auth but Layer 1 starts on auth (matches
   `auth-flows-enrollment.md` matrices + `auth-flows.md` tracker).
 - Complements, not replaces: existing YAML scenario runners stay as
