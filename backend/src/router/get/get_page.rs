@@ -117,6 +117,24 @@ pub async fn login() -> AppResult<FrontendResponse> {
     serve_file("index.html").await
 }
 
+/// Serve the SPA shell for the first-admin registration page.
+///
+/// Returns `index.html` like every other page route. The client boot
+/// guard forces this page on an empty store with `--bootstrap-admin`;
+/// without a backend route here a browser reload on `/register` answers
+/// 404 instead of the shell.
+#[utoipa::path(
+        tag = "pages",
+        responses(
+            (status = 200, description = "SPA page (HTML)"),
+        )
+    )
+]
+#[get("/register")]
+pub async fn register() -> AppResult<FrontendResponse> {
+    serve_file("index.html").await
+}
+
 /// Redirect to the sign-in page.
 ///
 /// Answers 303 See Other with a `Location: /login` header and an empty body.
@@ -582,4 +600,21 @@ pub async fn spa_fallback(path: PathBuf) -> AppResult<FrontendResponse> {
     }
 
     serve_file("index.html").await
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::tests::bootstrap::{TEST_ENV, build_test_rocket};
+
+    /// Every client page route needs a backend shell route, or a browser
+    /// reload on that path answers 404 (the `/register` page shipped
+    /// without one).
+    #[test]
+    fn register_page_is_mounted() {
+        let _ = &*TEST_ENV;
+        let register_mounted = build_test_rocket().routes().any(|route| {
+            route.method == rocket::http::Method::Get && route.uri.to_string() == "/register"
+        });
+        assert!(register_mounted, "GET /register must be mounted");
+    }
 }
