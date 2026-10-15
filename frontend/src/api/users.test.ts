@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest'
 import axios from 'axios'
-import { listUsers, createUser, login, setUserAdmin } from './users'
+import { listUsers, createUser, bootstrapUser, login, setUserAdmin } from './users'
 
 vi.mock('axios')
 
@@ -42,16 +42,29 @@ describe('setUserAdmin', () => {
 })
 
 describe('createUser', () => {
-  test('posts userId, password and admin:true and returns the summary', async () => {
+  test('posts userId and password without admin to /post/users/register', async () => {
+    mockedAxios.post = vi.fn().mockResolvedValue({ data: { userId: 'bob', admin: false } })
+    await expect(createUser('bob', 'secret-pw')).resolves.toEqual({
+      userId: 'bob',
+      admin: false
+    })
+    expect(mockedAxios.post).toHaveBeenCalledWith('/post/users/register', {
+      userId: 'bob',
+      password: 'secret-pw'
+    })
+  })
+})
+
+describe('bootstrapUser', () => {
+  test('posts userId and password without admin to /post/users/bootstrap', async () => {
     mockedAxios.post = vi.fn().mockResolvedValue({ data: { userId: 'root', admin: true } })
-    await expect(createUser('root', 'secret-pw')).resolves.toEqual({
+    await expect(bootstrapUser('root', 'secret-pw')).resolves.toEqual({
       userId: 'root',
       admin: true
     })
-    expect(mockedAxios.post).toHaveBeenCalledWith('/post/users/create', {
+    expect(mockedAxios.post).toHaveBeenCalledWith('/post/users/bootstrap', {
       userId: 'root',
-      password: 'secret-pw',
-      admin: true
+      password: 'secret-pw'
     })
   })
 })

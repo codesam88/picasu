@@ -81,7 +81,7 @@ import { errorDisplay } from '@/script/utils/errorDisplay'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
-import { createUser, login } from '@/api/users'
+import { bootstrapUser, login } from '@/api/users'
 import { submitRegistration } from '@/script/utils/registration'
 import { resetEnrollmentProbe } from '@/script/utils/enrollment'
 
@@ -119,7 +119,7 @@ const handleRegister = async () => {
   try {
     await tryWithMessageStore('mainId', async () => {
       await submitRegistration(userId.value, password.value, confirmPassword.value, {
-        create: createUser,
+        create: bootstrapUser,
         login,
         onRegistered: async (token: string) => {
           // Store the JWT in a cookie with the shared session attributes
