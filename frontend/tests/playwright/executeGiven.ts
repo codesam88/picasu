@@ -25,8 +25,18 @@ async function ensureAuthenticated(
     headers: { 'Content-Type': 'application/json' }
   })
   if (!res.ok()) throw new Error(`Auth failed: ${res.status()}`)
-  authToken = String(await res.json())
+  authToken = sessionTokenFromLogin(res)
   return authToken
+}
+
+/// Read the session JWT out of the login response's `Set-Cookie` header.
+/// The token travels HttpOnly (R5): the body carries only the profile.
+export function sessionTokenFromLogin(res: { headers: () => Record<string, string> }): string {
+  const setCookie = res.headers()['set-cookie']
+  if (!setCookie) throw new Error('Auth set no session cookie')
+  const pair = setCookie.split(';')[0]
+  if (!pair || !pair.startsWith('jwt=')) throw new Error('Auth set no jwt cookie')
+  return pair.slice('jwt='.length)
 }
 
 function authHeaders(token: string): Record<string, string> {

@@ -81,19 +81,30 @@ attacks are excluded by construction.
 
 1. `POST /post/authenticate` takes `{ userId, password }`, trims the password,
    and verifies it against the PBKDF2 password store
-   (`<DATA_HOME>/auth/passwd.json`) for that user id. A match returns a 14-day
-   `Claims { role: User { id, admin }, exp }` JWT in the response body. Unknown
-   users and wrong passwords both answer 401 with no distinguishing detail;
-   the unknown-user path still pays one KDF round so timing leaks nothing.
-2. The **client** stores it in a cookie named `jwt` via js-cookie
-   (`LoginPage.vue`): `httpOnly: false`, `secure: true`, `sameSite: Strict`,
-   `expires: 14` days. The server never issues `Set-Cookie`.
+   (`<DATA_HOME>/auth/passwd.json`) for that user id. A match sets a 14-day
+   `Claims { role: User { id, admin }, exp }` JWT in an HttpOnly session
+   cookie and returns the session profile `{ userId, admin }` in the body.
+   Unknown users and wrong passwords both answer 401 with no distinguishing
+   detail; the unknown-user path still pays one KDF round so timing leaks
+   nothing.
+2. The **server** issues the session cookie via `Set-Cookie`
+   (`router/post/authenticate.rs`): `jwt=...; HttpOnly; SameSite=Strict;
+Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
+   `X-Forwarded-Proto: https` (a TLS-terminating proxy must forward that
+   header; plain-HTTP LAN deploys get a non-Secure cookie). Page JS never
+   sees the token, so a future XSS cannot exfiltrate the session (R5). The
+   client keeps only the `{ userId, admin }` profile from the login body in
+   its session store for display.
 3. `GuardAuth` reads the cookie, decodes it with `VALIDATION` (expiry enforced),
    and requires a user identity with the admin role — re-read from the user
    table on every request, so demotion takes effect before token expiry.
    (Promotion requires re-login: the token-embedded flag gates first.)
-4. Logout (`GalleryBar.vue`) removes the cookie client-side only; the token
-   remains cryptographically valid until expiry or until `auth_key` is rotated.
+4. Logout is `POST /post/logout`, which clears the cookie server-side
+   (HttpOnly cookies cannot be removed by page JS) and answers 204,
+   idempotent with or without a live session. The client also clears its
+   session profile and capability tokens unconditionally, so logout sticks
+   even when the round trip fails. The JWT itself remains cryptographically
+   valid until expiry or until `auth_key` is rotated.
 5. Users are managed through `POST /post/users/create`, `GET /get/users`,
    `PUT /put/users/password`, and `PUT /put/users/admin` (admin-only,
    except unauthenticated creation of the first user, which is forced admin).
@@ -222,18 +233,18 @@ bodies live with the work that owns them, not here:
 - open F5–F10, with transcripts and follow-up recommendations:
   `.plan/auth-hardening.md`.
 
-| Finding                         | Severity | Status | Owner                     |
-| ------------------------------- | -------- | ------ | ------------------------- |
-| F1 — token type confusion       | High     | fixed  | `.plan/authz-fix.md`      |
-| F2 — `get-metadata` unscoped    | Medium   | fixed  | `.plan/authz-fix.md`      |
-| F3 — share writes unbound       | High     | fixed  | `.plan/authz-fix.md`      |
-| F4 — renewal unbound            | Medium   | fixed  | `.plan/authz-fix.md`      |
-| F5 — no rate limiting/lockout   | Medium   | open   | `.plan/auth-hardening.md` |
-| F6 — open installs bind 0.0.0.0 | Medium   | open   | `.plan/auth-hardening.md` |
-| F7 — JS-readable session cookie | Medium   | open   | `.plan/auth-hardening.md` |
-| F8 — plaintext credentials      | Medium   | open   | `.plan/auth-hardening.md` |
-| F9 — read-only lift via import  | Medium   | open   | `.plan/auth-hardening.md` |
-| F10 — bounded issues            | Low      | open   | `.plan/auth-hardening.md` |
+| Finding                         | Severity | Status                                                                 | Owner                                 |
+| ------------------------------- | -------- | ---------------------------------------------------------------------- | ------------------------------------- |
+| F1 — token type confusion       | High     | fixed                                                                  | `.plan/authz-fix.md`                  |
+| F2 — `get-metadata` unscoped    | Medium   | fixed                                                                  | `.plan/authz-fix.md`                  |
+| F3 — share writes unbound       | High     | fixed                                                                  | `.plan/authz-fix.md`                  |
+| F4 — renewal unbound            | Medium   | fixed                                                                  | `.plan/authz-fix.md`                  |
+| F5 — no rate limiting/lockout   | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
+| F6 — open installs bind 0.0.0.0 | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
+| F7 — JS-readable session cookie | Medium   | fixed (R5: HttpOnly `Set-Cookie` + profile body + `POST /post/logout`) | `.plan/r5-httponly-session-cookie.md` |
+| F8 — plaintext credentials      | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
+| F9 — read-only lift via import  | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
+| F10 — bounded issues            | Low      | open                                                                   | `.plan/auth-hardening.md`             |
 
 ### What holds up
 

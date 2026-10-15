@@ -25,14 +25,18 @@ fn make_client() -> Client {
 }
 
 fn auth_cookie(client: &Client) -> rocket::http::Cookie<'static> {
+    // Open first-run mode accepts any parseable login object. The JWT now
+    // travels in the HttpOnly `Set-Cookie` header (R5), never the body.
     let r = client
         .post("/post/authenticate")
         .header(ContentType::JSON)
-        .body(r#""""#)
+        .body(r#"{"userId":"admin","password":""}"#)
         .dispatch();
     assert_eq!(r.status(), Status::Ok, "authenticate");
-    let token = r.into_string().expect("token body");
-    rocket::http::Cookie::new("jwt", token.trim_matches('"').to_owned())
+    let set_cookie = r.headers().get_one("Set-Cookie").expect("Set-Cookie");
+    let pair = set_cookie.split(';').next().expect("cookie pair");
+    let token = pair.strip_prefix("jwt=").expect("jwt cookie").to_owned();
+    rocket::http::Cookie::new("jwt", token)
 }
 
 /// Total number of items visible in the full library timeline.
@@ -128,6 +132,13 @@ fn watcher_disabled_and_album_index_targeting() {
     }
 
     AppConfig::init();
+
+    // The open first-run window (empty store + flag) is what this test
+    // authenticates through; production defaults to closed.
+    {
+        let mut cfg = APP_CONFIG.get().unwrap().write().unwrap();
+        cfg.bootstrap_admin = true;
+    }
 
     {
         let cfg = APP_CONFIG.get().unwrap().read().unwrap();

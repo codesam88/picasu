@@ -2610,6 +2610,7 @@ dependencies = [
  "blake3",
  "chrono",
  "clap",
+ "cookie",
  "crossbeam-queue",
  "dashmap",
  "directories",

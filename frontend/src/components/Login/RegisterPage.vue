@@ -76,7 +76,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessageStore } from '@/store/messageStore'
-import { setSessionToken } from '@/script/utils/sessionCookie'
+import { useSessionStore } from '@/store/sessionStore'
 import { errorDisplay } from '@/script/utils/errorDisplay'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useConstStore } from '@/store/constStore'
@@ -140,9 +140,10 @@ const handleRegister = async () => {
       await submitRegistration(userId.value, password.value, confirmPassword.value, {
         create: bootstrapUser,
         login,
-        onRegistered: async (token: string) => {
-          // Store the JWT in a cookie with the shared session attributes
-          setSessionToken(token)
+        onRegistered: async (profile) => {
+          // The session JWT is in an HttpOnly cookie the page never sees
+          // (R5); keep only the display profile in the session store.
+          useSessionStore('mainId').setProfile(profile)
 
           // Drop the cached empty-store probe so the next navigation
           // re-probes the now non-empty store instead of bouncing back

@@ -1,45 +1,32 @@
-import { describe, expect, test } from 'vitest'
-import { canSeeUserPanel, errorToMessage, parseCurrentUser, selfRowState } from './currentUser'
+import { describe, expect, test, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
+import { canSeeUserPanel, errorToMessage, selfRowState, useCurrentUser } from './currentUser'
+import { useSessionStore } from '@/store/sessionStore'
 
-// jwt-decode only base64-decodes the payload: unsigned tokens are fine.
-const b64url = (s: string): string =>
-  Buffer.from(s).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+beforeEach(() => {
+  setActivePinia(createPinia())
+})
 
-const mint = (payload: unknown): string =>
-  `${b64url(JSON.stringify({ alg: 'none' }))}.${b64url(JSON.stringify(payload))}.sig`
-
-describe('parseCurrentUser', () => {
-  test('decodes an admin identity token', () => {
-    const token = mint({ role: { user: { id: 'alice', admin: true } }, exp: 9999999999 })
-    expect(parseCurrentUser(token)).toEqual({ id: 'alice', isAdmin: true })
+describe('useCurrentUser', () => {
+  test('is null with no session profile', () => {
+    expect(useCurrentUser().value).toBeNull()
   })
 
-  test('decodes a non-admin identity token', () => {
-    const token = mint({ role: { user: { id: 'bob', admin: false } }, exp: 9999999999 })
-    expect(parseCurrentUser(token)).toEqual({ id: 'bob', isAdmin: false })
+  test('maps an admin profile to an admin user', () => {
+    useSessionStore('mainId').setProfile({ userId: 'alice', admin: true })
+    expect(useCurrentUser().value).toEqual({ id: 'alice', isAdmin: true })
   })
 
-  test('returns null for a share-role token', () => {
-    const token = mint({ role: { share: { albumId: 'a', share: {} } }, exp: 9999999999 })
-    expect(parseCurrentUser(token)).toBeNull()
+  test('maps a non-admin profile to a non-admin user', () => {
+    useSessionStore('mainId').setProfile({ userId: 'bob', admin: false })
+    expect(useCurrentUser().value).toEqual({ id: 'bob', isAdmin: false })
   })
 
-  test('returns null for a legacy admin-role token', () => {
-    const token = mint({ role: 'admin', exp: 9999999999 })
-    expect(parseCurrentUser(token)).toBeNull()
-  })
-
-  test('returns null for garbage, empty, and missing tokens', () => {
-    expect(parseCurrentUser('not-a-jwt')).toBeNull()
-    expect(parseCurrentUser('')).toBeNull()
-    expect(parseCurrentUser(undefined)).toBeNull()
-  })
-
-  test('returns null when the user claim is malformed', () => {
-    expect(parseCurrentUser(mint({}))).toBeNull()
-    expect(parseCurrentUser(mint({ role: {} }))).toBeNull()
-    expect(parseCurrentUser(mint({ role: { user: { id: 42, admin: true } } }))).toBeNull()
-    expect(parseCurrentUser(mint({ role: { user: { id: 'x', admin: 'yes' } } }))).toBeNull()
+  test('goes null again when the profile is cleared', () => {
+    const session = useSessionStore('mainId')
+    session.setProfile({ userId: 'alice', admin: true })
+    session.clearProfile()
+    expect(useCurrentUser().value).toBeNull()
   })
 })
 

@@ -14,6 +14,7 @@ pub mod register;
 pub fn generate_post_routes() -> Vec<Route> {
     routes![
         authenticate::authenticate,
+        authenticate::logout,
         post_upload::upload,
         create_share::create_share,
         create_dir_album::create_dir_album,

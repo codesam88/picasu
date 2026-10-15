@@ -2,7 +2,7 @@ import { expect } from '@playwright/test'
 import { test } from './scenarioFixtures'
 import { createPaths } from './paths'
 import { startBackend } from './backendLauncher'
-import { createGivenContext, executeGiven } from './executeGiven'
+import { createGivenContext, executeGiven, sessionTokenFromLogin } from './executeGiven'
 
 // Keep in sync with RACE_LOST_NOTICE in src/script/utils/registration.ts.
 // It is inlined (not imported) because the Playwright project
@@ -86,7 +86,7 @@ test.describe('first admin registration', () => {
         headers: { 'Content-Type': 'application/json' }
       })
       expect(loginRes.status()).toBe(200)
-      const token = String(await loginRes.json())
+      const token = sessionTokenFromLogin(loginRes)
       const usersRes = await request.get(`${base}/get/users`, {
         headers: authHeaders(token)
       })
@@ -106,16 +106,19 @@ test.describe('first admin registration', () => {
     })
 
     // (5) Logout via UI lands on /login and sticks across reload.
-    // Counter-proof: the session cookie is actually gone (fails if it
-    // survives), and the dead session cannot render /timeline anymore. The
-    // bare reload-URL check alone cannot bite: an authenticated boot guard
-    // leaves /login in place either way.
+    // Counter-proof: the server-side cookie jar no longer holds the session
+    // (fails if it survives — `document.cookie` cannot see HttpOnly cookies,
+    // so the jar is asserted instead), and the dead session cannot render
+    // /timeline anymore. The bare reload-URL check alone cannot bite: an
+    // authenticated boot guard leaves /login in place either way.
     await test.step('logout sticks across reload', async () => {
       await page.locator('button:has(.mdi-account-circle)').click()
       await page.getByText('Log out').click()
       await expect(page).toHaveURL(/\/login/)
 
-      await expect.poll(() => page.evaluate(() => document.cookie)).not.toContain('jwt=')
+      await expect
+        .poll(async () => (await page.context().cookies()).find((c) => c.name === 'jwt'))
+        .toBeUndefined()
 
       await page.reload()
       await expect(page).toHaveURL(/\/login/)
@@ -149,22 +152,19 @@ test.describe('first admin registration', () => {
       await expect(page.locator('#nav-search-input')).toBeVisible()
     })
 
-    // (8) Logged-out duplicate reveals nothing: the store is non-empty
-    // and there is no session, so the backend answers 401 — the 409 race
-    // path needs an authenticated or open-window caller. The UI lands on
-    // /login WITHOUT confirming the id exists (no user enumeration).
-    // Counter-proof: the race-lost notice is absent; a leak would show it.
-    await test.step('logged-out duplicate reveals nothing', async () => {
+    // (8) Logged-out /register visit leaves immediately: the store is
+    // non-empty and there is no session, so the probe 401s and the page
+    // redirects to /login without ever showing the enrollment form — no
+    // duplicate can be submitted, and nothing confirms or denies the id
+    // (no user enumeration). Counter-proof: the register copy and the
+    // race-lost notice are both absent; a leak would show one of them.
+    await test.step('logged-out register visit leaves without a form', async () => {
       const raceContext = await browser.newContext({ baseURL: base })
       const racePage = await raceContext.newPage()
       try {
         await racePage.goto('/register')
-        await expect(racePage).toHaveURL(/\/register/)
-        await racePage.getByPlaceholder('User ID').fill(ADMIN_ID)
-        await racePage.getByPlaceholder('Password', { exact: true }).fill(ADMIN_PASSWORD)
-        await racePage.getByPlaceholder('Confirm Password').fill(ADMIN_PASSWORD)
-        await racePage.getByRole('button', { name: 'Register' }).click()
         await expect(racePage).toHaveURL(/\/login/)
+        await expect(racePage.getByText('Create Admin Account')).toHaveCount(0)
         await expect(racePage.getByText(RACE_LOST_NOTICE)).toHaveCount(0)
       } finally {
         await raceContext.close()

@@ -83,9 +83,12 @@ green `just openapi-check`. Tests use `make_client()` +
    every writer trimming. Minimum length (12) applies to _new_
    passwords only — legacy migration must accept short secrets or
    old deploys lock out.
-10. **The server never `Set-Cookie`s.** Tokens return in the response
-    body; the SPA stores them (js-cookie, 14 days). New login-like
-    routes return the raw token string the same way.
+10. **Identity tokens travel HttpOnly.** `POST /post/authenticate` issues
+    the session JWT via `Set-Cookie` (`HttpOnly; SameSite=Strict; Path=/`,
+    `Secure` iff `X-Forwarded-Proto: https`) and returns only the
+    `{ userId, admin }` profile in the body; `POST /post/logout` clears it.
+    New login-like routes must follow the same shape — never return a raw
+    session token in the body, never let page JS write the session cookie.
 11. **Config fields are API surface.** `AppConfig` is `ToSchema` and
     served over `GET /get/config`; a new key appears in
     `openapi.json` (regen, don't hand-edit) and needs an explicit

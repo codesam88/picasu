@@ -1,3 +1,5 @@
+import type { UserSummary } from '@/api/users'
+
 export const isRegistrationSubmittable = (
   userId: string,
   password: string,
@@ -10,8 +12,8 @@ export type RegistrationOutcome = 'registered' | 'race-lost' | 'invalid' | 'fail
 
 export interface RegistrationDeps {
   create: (userId: string, password: string) => Promise<unknown>
-  login: (userId: string, password: string) => Promise<string>
-  onRegistered: (token: string) => Promise<void> | void
+  login: (userId: string, password: string) => Promise<UserSummary>
+  onRegistered: (profile: UserSummary) => Promise<void> | void
   onRaceLost: (notice: string) => Promise<void> | void
   onError: (error: unknown) => void
 }
@@ -34,8 +36,8 @@ export const submitRegistration = async (
   if (!isRegistrationSubmittable(userId, password, confirmPassword)) return 'invalid'
   try {
     await deps.create(userId, password)
-    const token = await deps.login(userId, password)
-    await deps.onRegistered(token)
+    const profile = await deps.login(userId, password)
+    await deps.onRegistered(profile)
     return 'registered'
   } catch (err: unknown) {
     if ((err as { response?: { status?: number } })?.response?.status === 409) {
