@@ -223,3 +223,9 @@ This is the suggested tackle order, not a commitment to fix all items.
 5. Plans + docs: R21 + R16/R19 (fold reverts back before more doc edits).
 
 No fixes applied in this change; no behavior changed.
+
+## Follow-up
+
+Sequence findings (R1, R3–R4, R23–R26) outgrew per-case tests and are
+planned as model-based flow conformance in `.plan/flow-model-conformance.md`
+(single golden model, backend-first then e2e drivers).
