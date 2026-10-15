@@ -260,7 +260,7 @@ pub fn revoke_invite(invite_id: &str) -> Result<bool, AppError> {
 
 /// Redeem `token` for `user_id`: in ONE redb write transaction, verify the
 /// token against every stored invite (constant-time compare), mark the
-/// invite used, and insert `UserRecord { admin: false }`.
+/// invite used, and insert `UserRecord { admin: false, sessions: vec![] }`.
 ///
 /// # Errors
 /// - [`ErrorKind::InvalidInput`] — invalid user id
@@ -344,8 +344,11 @@ pub fn redeem_invite(user_id: &str, token: &str) -> Result<(), AppError> {
         invites
             .insert(candidate.as_str(), json.as_str())
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        let user_json = serde_json::to_string(&crate::auth::users::UserRecord { admin: false })
-            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+        let user_json = serde_json::to_string(&crate::auth::users::UserRecord {
+            admin: false,
+            sessions: vec![],
+        })
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
         users
             .insert(id.as_str(), user_json.as_str())
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
@@ -426,7 +429,10 @@ mod tests {
         super::redeem_invite("s6-reg", &token).expect("redeem");
         assert_eq!(
             crate::auth::users::get_user("s6-reg").expect("get user"),
-            Some(crate::auth::users::UserRecord { admin: false })
+            Some(crate::auth::users::UserRecord {
+                admin: false,
+                sessions: vec![]
+            })
         );
         let used = super::get_invite(&super::hash_token(&token))
             .expect("get invite")

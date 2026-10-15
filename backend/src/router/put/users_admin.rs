@@ -187,7 +187,10 @@ mod tests {
         let record = crate::auth::users::get_user("s5-a").expect("get user");
         assert_eq!(
             record,
-            Some(crate::auth::users::UserRecord { admin: false })
+            Some(crate::auth::users::UserRecord {
+                admin: false,
+                sessions: vec![]
+            })
         );
     }
 
