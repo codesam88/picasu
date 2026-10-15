@@ -20,28 +20,27 @@ open-mode mints tokens without persisting a user.
 
 ### A. `bootstrap_admin=false` (default, closed)
 
-- Empty or non-empty store, no legacy password: every guarded route 401
-  `no administrator enrolled`. No probe list, no create, no login.
+- Empty or non-empty store: every guarded route 401 `no administrator
+enrolled`. No probe list, no enroll, no login.
 - Frontend: probe `GET /get/users` → 401 ⇒ locked screen ("restart with
   `--bootstrap-admin` or provision via CLI"). No album access.
-- Legacy password set: unchanged deny-and-migrate via `authenticate`.
 
-### B. `bootstrap_admin=true`, empty store, no legacy password
+### B. `bootstrap_admin=true`, empty store
 
-- Backend stays as built (flag ∧ empty opens `users/create`,
-  `authenticate`, probe `GET /get/users` → `[]`).
-- Frontend forces enrollment first: on boot probe `GET /get/users` →
-  `200 []` ⇒ full-screen admin registration (username, password,
-  password-confirm). Submit → `POST /post/users/create` (forced admin)
-  → auto-`login()` → cookie → `/timeline`. 409 ⇒ another admin won the
+- Only `POST /post/users/bootstrap {userId, password}` enrolls, forcing
+  the first admin. No `admin` field exists on any request body.
+- Frontend forces enrollment first: probe `[]` ⇒ full-screen admin
+  registration (username, password, confirm). Submit → bootstrap →
+  auto-`login()` → cookie → `/timeline`. 409 ⇒ another admin won the
   race: fall back to `/login` with notice. Any other probe result ⇒
   normal login. No album/config access before enrollment completes.
-- `authenticate` open-mint stays but UI never calls it in enroll mode.
 
 ### C. After first user exists
 
-- Window closes (store non-empty). Normal login; admin-less non-empty
-  stays closed (CLI recovery). Legacy migration unchanged.
+- Window closes (store non-empty). `POST /post/users/register`
+  creates standard users only, allowed with an admin session, or open
+  registration, or a valid invite. Elevation is admin-only via
+  `PUT /put/users/admin`. Admin-less non-empty stays closed (CLI).
 
 ## Reverts applied
 
@@ -58,15 +57,20 @@ open-mode mints tokens without persisting a user.
 - `authenticate` open-mint: keep route but document "creates nothing";
   UI never calls it during enrollment (probe + create + login only).
 
-## Test cases (backend matrix, `enroll_gate.rs`)
+## Test cases (backend matrices)
 
-1. Flag off, empty: `create`/`authenticate`/`get/users` → 401, count 0.
-2. Flag on, empty: probe `[]` → create forces admin → second create 401
-   → login 200.
-3. Flag on, seeded non-admin: create 401, count unchanged.
-4. Legacy + flag: guards 401, create 401, legacy login migrates, works.
-5. Password-PUT empty store, no cookie: 404 (after revert), no user made.
-6. Freshness predicate + boot-gate on real `passwd.json` (exists).
+`enroll_gate.rs` (bootstrap route; `users/create` gone):
+
+1. Flag off, empty: `bootstrap`/`authenticate`/`get/users` → 401, count 0.
+2. Flag on, empty: probe `[]` → bootstrap forces admin → second call
+   401 → login 200.
+3. Flag on, seeded non-admin: `bootstrap` 401, count unchanged.
+4. Password-PUT empty store, no cookie: 404, no user made.
+5. Freshness predicate + boot-gate on real `passwd.json`.
+6. No `admin` field accepted anywhere (unknown-field shape → 4xx).
+
+`register.rs` (merged route, always non-admin): 7. Admin session creates without invite → 200, `admin: false`. 8. Non-admin/anonymous + knob on → 200, invite ignored not burned. 9. Knob off + invite → 200, invite burned; without → 403, count 0. 10. Expired → 403; used/duplicate → 409; revoked/unknown → 404;
+weak → 400.
 
 ## Test cases (frontend, vitest + component)
 
@@ -101,8 +105,19 @@ open-mode mints tokens without persisting a user.
    `set-password`, `set-admin`) with lockfile discipline vs a live
    server; Dockerfile ships it. Gates: `cargo test`, `backend-check`.
 8. First-create race: prove with a test whether concurrent
-   unauthenticated creates both land; share the bootstrap lock only
+   unauthenticated bootstraps both land; share the bootstrap lock only
    if confirmed, else close with the negative result.
+9. Merge create+register, add `users/bootstrap` (backend first, then
+   frontend): delete `POST /post/users/create`; new
+   `POST /post/users/bootstrap {userId, password}` (flag ∧ empty only,
+   forced admin, same freshness/error semantics as the old bootstrap
+   arm); `POST /post/users/register` accepts an admin session as a
+   third gate (no invite then) and never mints admin; no `admin`
+   field on any body. Migrate matrices (rows above), e2e
+   given-runner + scenario covers to the new endpoints, openapi regen
+   - pins + dated oasdiff ignores. Then frontend: `RegisterPage`
+     calls bootstrap; `createUser` targets register without the flag.
+     Gates: `cargo test`, vitest, all checks.
 
 ## Decisions
 
@@ -111,3 +126,8 @@ open-mode mints tokens without persisting a user.
 - Gate stays "flag ∧ empty store" (not has-admin); admin-less
   non-empty recovers via CLI only.
 - No new status endpoint; probe is `GET /get/users`.
+- Creation never grants admin (2026-10-15): no `admin` field on any
+  request body. Bootstrap has its own route (`POST
+/post/users/bootstrap`, flag ∧ empty only); `register` merges
+  admin-session, open-knob, and invite-bearer gates, always
+  non-admin; elevation is `PUT /put/users/admin` only.
