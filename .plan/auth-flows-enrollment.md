@@ -131,3 +131,10 @@ weak → 400.
 /post/users/bootstrap`, flag ∧ empty only); `register` merges
   admin-session, open-knob, and invite-bearer gates, always
   non-admin; elevation is `PUT /put/users/admin` only.
+
+## Review claims 2026-10-15 (triaged elsewhere)
+
+Four parallel worker reviews reported R1–R35 on branch `auth-enrollment` @
+`442162a0c`, triaged 2026-10-16 in `.plan/auth-enrollment-review.md`.
+That file is authoritative (verdicts, severity x impact, tackle order);
+verbatim claims remain in git history.
