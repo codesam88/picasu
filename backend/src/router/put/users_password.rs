@@ -32,7 +32,7 @@ pub struct SetUserPasswordRequest {
 /// presenting the correct old password.
 /// A password change never enrolls: an unknown target is 404 even on an
 /// empty store — the bootstrap window enrolls only via
-/// `POST /post/users/create` or the `picasu-admin` CLI.
+/// `POST /post/users/bootstrap` or the `picasu-admin` CLI.
 ///
 /// # Errors
 /// Returns 400 when the id is invalid or the new password is shorter than

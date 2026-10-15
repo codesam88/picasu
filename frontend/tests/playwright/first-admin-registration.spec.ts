@@ -186,8 +186,8 @@ test.describe('first admin registration', () => {
         await expect(closedPage).toHaveURL(/\/login/)
         await expect(closedPage.getByText('Create Admin Account')).toHaveCount(0)
 
-        const createRes = await request.post(`${closedPaths.BACKEND_URL}/post/users/create`, {
-          data: { userId: 'sneaky', password: ADMIN_PASSWORD, admin: true },
+        const createRes = await request.post(`${closedPaths.BACKEND_URL}/post/users/bootstrap`, {
+          data: { userId: 'sneaky', password: ADMIN_PASSWORD },
           headers: { 'Content-Type': 'application/json' }
         })
         expect(createRes.status()).toBe(401)

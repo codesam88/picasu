@@ -2,7 +2,7 @@ name: Initial onboarding with full index flow
 covers:
   api:
     - POST /post/authenticate
-    - POST /post/users/create
+    - POST /post/users/bootstrap
     - PUT /put/config
     - POST /post/index/album
     - GET /get/index/status

@@ -3,10 +3,11 @@
 //! Step 1 bootstrap-enrollment gate matrix: one test per plan row, exercising
 //! the full HTTP stack through a real Rocket client.
 //!
-//! Rows: closed-by-default (flag off refuses `users/create`, `authenticate`
+//! Rows: closed-by-default (flag off refuses `users/bootstrap`, `authenticate`
 //! and `get/users`), open-with-flag on an empty store (probe, forced-admin
-//! create, close-after-first-user, login), admin-less non-empty store stays
-//! closed, no legacy gate, and the boot-freshness refusal.
+//! bootstrap, close-after-first-user, login), admin-less non-empty store stays
+//! closed, no legacy gate, no `admin` field on any body, and the
+//! boot-freshness refusal.
 //!
 //! The test harness opts the whole binary into bootstrap mode
 //! (`tests/bootstrap.rs`); these tests opt back out with a flag-off config
@@ -48,11 +49,11 @@ fn set_bootstrap_admin(enabled: bool) {
     config.bootstrap_admin = enabled;
 }
 
-fn create_user(client: &Client, id: &str, password: &str) -> Status {
+fn bootstrap_user(client: &Client, id: &str, password: &str) -> Status {
     client
-        .post("/post/users/create")
+        .post("/post/users/bootstrap")
         .header(ContentType::JSON)
-        .body(json!({ "userId": id, "password": password, "admin": false }).to_string())
+        .body(json!({ "userId": id, "password": password }).to_string())
         .dispatch()
         .status()
 }
@@ -77,9 +78,16 @@ fn closed_by_default_denies_enrollment() {
     write_config(&json!({ "bootstrap_admin": false }));
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
-    assert_eq!(
-        create_user(&client, "root", &test_password("t-closed")),
-        Status::Unauthorized
+    let resp = client
+        .post("/post/users/bootstrap")
+        .header(ContentType::JSON)
+        .body(json!({ "userId": "root", "password": test_password("t-closed") }).to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::Unauthorized);
+    let body = resp.into_string().unwrap_or_default();
+    assert!(
+        body.to_lowercase().contains("no administrator enrolled"),
+        "closed bootstrap must name the missing enrollment, got: {body}"
     );
     assert_eq!(
         login(&client, "root", &test_password("t-closed")),
@@ -105,9 +113,9 @@ fn closed_by_default_denies_enrollment() {
 // ── Row: open with the flag on an empty store ──────────────────────────────
 
 /// With the flag on and an empty store, the open first-run behavior applies:
-/// the probe succeeds with an empty list, an unauthenticated create mints the
-/// forced-admin first user, enrollment closes immediately after, and the new
-/// password logs in.
+/// the probe succeeds with an empty list, an unauthenticated bootstrap mints
+/// the forced-admin first user, enrollment closes immediately after, and the
+/// new password logs in.
 #[test]
 fn open_with_flag_on_empty_store_enrolls_first_admin() {
     let _g = lock();
@@ -121,12 +129,13 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
         serde_json::from_str(&resp.into_string().expect("body")).expect("user list");
     assert!(listed.is_empty());
 
-    // Unauthenticated create succeeds and forces admin:true.
+    // Unauthenticated bootstrap succeeds and forces admin:true. There is no
+    // `admin` field on the body to ask otherwise.
     let pw = test_password("t-enroll");
     let resp = client
-        .post("/post/users/create")
+        .post("/post/users/bootstrap")
         .header(ContentType::JSON)
-        .body(json!({ "userId": "root", "password": pw, "admin": false }).to_string())
+        .body(json!({ "userId": "root", "password": pw }).to_string())
         .dispatch();
     assert_eq!(resp.status(), Status::Ok);
     let created: serde_json::Value =
@@ -139,7 +148,7 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
 
     // The store is non-empty now, so enrollment is closed again.
     assert_eq!(
-        create_user(&client, "second", &test_password("t-second")),
+        bootstrap_user(&client, "second", &test_password("t-second")),
         Status::Unauthorized
     );
 
@@ -152,7 +161,7 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
 /// A password PUT on an empty store must not enroll: the unknown target is
 /// 404 even while the bootstrap window is open, and no user record or
 /// password entry is written. Enrollment happens only via
-/// `POST /post/users/create` (or the CLI); the first-run flow through
+/// `POST /post/users/bootstrap` (or the CLI); the first-run flow through
 /// the settings password form is gone.
 #[test]
 fn password_put_on_empty_store_is_404_and_creates_nothing() {
@@ -200,7 +209,7 @@ fn admin_less_non_empty_store_stays_closed() {
     crate::auth::users::create_user("plain", false).expect("seed non-admin");
 
     assert_eq!(
-        create_user(&client, "eve", &test_password("t-eve")),
+        bootstrap_user(&client, "eve", &test_password("t-eve")),
         Status::Unauthorized
     );
     assert_eq!(crate::auth::users::user_count().expect("count"), 1);
@@ -237,6 +246,32 @@ fn no_legacy_gate_flag_controls_empty_store() {
     );
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
     set_bootstrap_admin(true);
+}
+
+// ── Row: no `admin` field on any body ────────────────────────────────────
+
+/// Creation never grants admin through a body flag: an unknown `admin` key
+/// on the bootstrap body is a 4xx and enrolls nobody.
+#[test]
+fn bootstrap_rejects_unknown_admin_field() {
+    let _g = lock();
+    let client = setup();
+    assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+
+    let resp = client
+        .post("/post/users/bootstrap")
+        .header(ContentType::JSON)
+        .body(
+            json!({ "userId": "root", "password": test_password("t-enroll"), "admin": true })
+                .to_string(),
+        )
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::UnprocessableEntity,
+        "unknown `admin` field must be rejected, not honored"
+    );
+    assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 }
 
 // ── Boot freshness ─────────────────────────────────────────────────────────

@@ -4,11 +4,10 @@ given:
     id_as: $album
   - photo: /e2e_up_noauth/src/photo.jpg
 when:
-  - call: "POST /post/users/create"
+  - call: "POST /post/users/bootstrap"
     body:
       userId: noauth-user
       password: "testpass1234"
-      admin: false
   - upload:
       file: /e2e_up_noauth/src/photo.jpg
       target_album: "${album}"

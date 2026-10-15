@@ -10,9 +10,10 @@ use crate::openapi_components::Unauthorized;
 use crate::router::auth::Claims;
 use crate::router::{AppError, AppResult, ErrorKind};
 
-/// Request body for `POST /post/authenticate`: a user login object.
+/// Request body for `POST /post/authenticate`: a user login object. There is
+/// deliberately no `admin` field: unknown keys are rejected, never honored.
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LoginRequest {
     pub user_id: String,
     pub password: String,
@@ -331,6 +332,25 @@ mod tests {
             .body(json!({ "userId": "   ", "password": test_password("t-s3e-str") }).to_string())
             .dispatch();
         assert_eq!(resp.status(), Status::BadRequest);
+    }
+
+    #[test]
+    fn object_with_unknown_admin_field_is_422() {
+        let _g = lock();
+        let client = setup();
+        set_bootstrap_admin(false);
+        create_user_with_password("s3d-erin", false, &test_password("t-erin"));
+        let resp = client
+            .post("/post/authenticate")
+            .header(ContentType::JSON)
+            .body(
+                json!({ "userId": "s3d-erin", "password": test_password("t-erin"), "admin": true })
+                    .to_string(),
+            )
+            .dispatch();
+        // No `admin` field exists on any request body: the unknown key is
+        // rejected, not honored or ignored.
+        assert_eq!(resp.status(), Status::UnprocessableEntity);
     }
 
     #[test]

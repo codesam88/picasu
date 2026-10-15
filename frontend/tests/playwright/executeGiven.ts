@@ -189,10 +189,13 @@ export async function executeGiven(
 
     if ('user' in item && item.user) {
       const u = item as { user: { user_id: string; password: string; admin?: boolean } }
-      // Open-window enrollment: the launcher sets PICASU_BOOTSTRAP_ADMIN=true,
-      // so the first user is minted unauthenticated and forced admin.
-      const createRes = await request.post(`${backendUrl}/post/users/create`, {
-        data: { userId: u.user.user_id, password: u.user.password, admin: u.user.admin ?? true }
+      // First-user enrollment: the launcher sets PICASU_BOOTSTRAP_ADMIN=true,
+      // so the first user is enrolled unauthenticated via the bootstrap
+      // route and forced admin. There is no `admin` field on the body (the
+      // given's flag, if present, is ignored); later users enroll through
+      // register/invite flows, not here.
+      const createRes = await request.post(`${backendUrl}/post/users/bootstrap`, {
+        data: { userId: u.user.user_id, password: u.user.password }
       })
       if (!createRes.ok()) {
         throw new Error(`User creation failed: ${createRes.status()} ${await createRes.text()}`)
