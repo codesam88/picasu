@@ -73,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessageStore } from '@/store/messageStore'
 import { setSessionToken } from '@/script/utils/sessionCookie'
@@ -83,7 +83,11 @@ import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
 import { bootstrapUser, login } from '@/api/users'
 import { submitRegistration } from '@/script/utils/registration'
-import { resetEnrollmentProbe } from '@/script/utils/enrollment'
+import {
+  resetEnrollmentProbe,
+  runEnrollmentBoot,
+  getEnrollmentProbe
+} from '@/script/utils/enrollment'
 
 const password = ref('')
 const confirmPassword = ref('')
@@ -106,6 +110,21 @@ const themeIsLight = computed<boolean>({
       console.error('Failed to update theme (via RegisterPage):', err)
     })
   }
+})
+
+// The form is only valid while no administrator is enrolled. A direct
+// visit after enrollment (or on a closed install) leaves immediately:
+// an enrolled store resolves to the timeline (the guard sorts out the
+// session from there), anything else to the login screen.
+onMounted(() => {
+  void runEnrollmentBoot({
+    probe: () => getEnrollmentProbe(),
+    navigate: (destination) => {
+      if (destination !== 'register') {
+        void router.replace({ name: destination === 'app' ? 'timeline' : 'login' })
+      }
+    }
+  })
 })
 
 // Form validation rules
