@@ -261,6 +261,37 @@ fn snapshot_token_is_rejected_where_an_asset_token_is_required() {
     );
 }
 
+// ── original serving requires allow_original ──────────────────────────────
+
+/// A bearer token with `allow_original=false` must be denied with 401 on
+/// the original-file route. Pre-fix the guard `Forward`s into the SPA
+/// catch-all instead of answering `Error`, masking the denial as a
+/// non-401.
+#[test]
+fn original_serving_without_allow_original_is_401() {
+    let _g = lock();
+    let client = setup();
+    let asset: arrayvec::ArrayString<64> = "a".repeat(64).parse().expect("asset id");
+    let hash: arrayvec::ArrayString<64> = "b".repeat(64).parse().expect("hash");
+    let token = crate::router::auth::ClaimsHash::new(
+        hash,
+        asset.clone(),
+        chrono::Utc::now().timestamp_millis(),
+        false,
+    )
+    .encode();
+    let resp = client
+        .get(format!("/object/imported/aa/{asset}.jpg"))
+        .cookie(auth_cookie(&client))
+        .header(Header::new("Authorization", format!("Bearer {token}")))
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Unauthorized,
+        "a token without original access must be denied with 401, not forwarded"
+    );
+}
+
 // ── get-metadata is album-scoped ────────────────────────────────────
 
 /// A share on AlbumB must not read AlbumA's asset metadata by id.

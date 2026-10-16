@@ -102,7 +102,7 @@ const handleLogin = async () => {
     await tryWithMessageStore('mainId', async () => {
       const profile = await login(userId.value, password.value)
 
-      // The session JWT is in an HttpOnly cookie the page never sees (R5);
+      // The session JWT is in an HttpOnly cookie the page never sees;
       // keep only the display profile in the session store.
       useSessionStore('mainId').setProfile(profile)
 

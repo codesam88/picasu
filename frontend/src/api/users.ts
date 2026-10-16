@@ -44,7 +44,7 @@ export const setUserAdmin = async (userId: string, admin: boolean): Promise<void
 /// Sign in with `{ userId, password }` and return the session profile.
 ///
 /// The JWT travels in an HttpOnly `Set-Cookie` header the page JS never
-/// sees (R5); the body carries only `{ userId, admin }` for the client to
+/// sees; the body carries only `{ userId, admin }` for the client to
 /// keep in the session store. Rejects with the backend error unchanged
 /// (401 on unknown user or wrong password); there is no legacy fallback
 /// path.

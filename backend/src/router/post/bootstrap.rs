@@ -26,7 +26,7 @@ pub struct BootstrapRequest {
 /// lose the race see the same message.
 const WINDOW_CLOSED_MSG: &str = "No administrator enrolled: the bootstrap window is closed (user store is non-empty or --bootstrap-admin is off). Enroll further users via POST /post/users/register, or provision via the picasu-admin CLI";
 
-/// First-user enrollment lock (R3): the window check and the insert must be
+/// First-user enrollment lock: the window check and the insert must be
 /// atomic across concurrent requests. The handler's pre-check stays a fast
 /// path only; the check inside [`bootstrap_user_sync`] is authoritative.
 static BOOTSTRAP_LOCK: Mutex<()> = Mutex::new(());

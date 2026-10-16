@@ -4,8 +4,8 @@ import { useSessionStore } from '@/store/sessionStore'
 
 /// Identity of the caller, from the session-store profile.
 ///
-/// The session JWT lives in an HttpOnly cookie the page JS can never read
-/// (R5), so identity comes from the `{ userId, admin }` profile the login
+/// The session JWT lives in an HttpOnly cookie the page JS can never read,
+/// so identity comes from the `{ userId, admin }` profile the login
 /// response carried — never from decoding a token client-side.
 export interface CurrentUser {
   id: string

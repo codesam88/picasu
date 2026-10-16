@@ -26,7 +26,7 @@ pub fn test_password_padded(tag: &str) -> String {
 pub fn auth_cookie(client: &Client) -> Cookie<'static> {
     // Open first-run mode accepts any parseable body, so post the login
     // shape: this keeps the fixture exercising the current API. The JWT
-    // now travels in the HttpOnly `Set-Cookie` header (R5), never the body.
+    // now travels in the HttpOnly `Set-Cookie` header, never the body.
     let r = client
         .post("/post/authenticate")
         .header(ContentType::JSON)

@@ -6,10 +6,10 @@ use crate::auth::users;
 use crate::router::auth::bootstrap_open;
 use crate::router::{AppError, AppResult, ErrorKind};
 
-/// Captcha challenge descriptor, reserved for R7.
+/// Captcha challenge descriptor, reserved for future brute-force throttling.
 ///
 /// Never populated yet: the handler always answers `captcha: null`. Kept as
-/// a named schema so the R7 challenge can extend it without reshaping the
+/// a named schema so a future challenge can extend it without reshaping the
 /// enrollment response.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
