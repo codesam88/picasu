@@ -294,7 +294,7 @@ impl PasswdFile {
 
 /// Best-effort `0600` on the passwd file; permission errors are ignored and
 /// non-unix platforms are a no-op.
-fn restrict_permissions(path: &std::path::Path) {
+pub(crate) fn restrict_permissions(path: &std::path::Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
