@@ -47,6 +47,9 @@ pub struct PartialUpdateConfigRequest {
     /// `gallery.bootstrap_admin`). Any presence in the API body is rejected
     /// with 400 and changes nothing.
     pub bootstrap_admin: Option<bool>,
+    /// Managed, never set: the signing key lives in the owner-only secrets
+    /// file. Any presence in the API body is rejected with 400; rotate it
+    /// with `POST /post/config/auth-key/reset`.
     pub auth_key: Option<String>,
 }
 
@@ -54,19 +57,18 @@ pub struct PartialUpdateConfigRequest {
 ///
 /// Every field is optional and a field absent from the body keeps its current
 /// value. `address`, `port`, `allowRegistration`, `trivialPasswords`, and
-/// `bootstrapAdmin` are host-only (flag / env / config file) and any
-/// presence in the body is a 400. The only other validation is on
+/// `bootstrapAdmin` are host-only (flag / env / config file) and `authKey`
+/// is managed (secrets file + reset endpoint); any presence of these in the
+/// body is a 400. The only other validation is on
 /// `uploadFolder`, which must be a relative path free of `..` components;
 /// on success `config.toml` is rewritten, the in-memory configuration is
 /// replaced and the filesystem watcher is reloaded.
 ///
-/// Corner cases: `authKey` is trimmed, and clearing or replacing it moves JWT
-/// signing onto a new key, invalidating every token issued under the previous
-/// one. `uploadFolder` and `maxUploadSize` take an empty string to reset to
-/// their defaults, `uploads` and `100MiB`.
+/// Corner cases: `uploadFolder` and `maxUploadSize` take an empty string
+/// to reset to their defaults, `uploads` and `100MiB`.
 ///
 /// Errors: 400 `uploadFolder` is absolute or contains `..`, the body cannot
-/// be parsed, or a host-only knob is present — 401 missing or invalid admin
+/// be parsed, or a host-only or managed knob is present — 401 missing or invalid admin
 /// credentials; share tokens are not accepted — 405 read-only mode — 500
 /// config write failure.
 #[utoipa::path(
@@ -91,10 +93,12 @@ pub async fn update_config_handler(
     let req_data = req.into_inner();
 
     spawn_blocking(move || -> Result<Status, AppError> {
-        // `address`, `port`, `allowRegistration`, `trivialPasswords`, and
-        // `bootstrapAdmin` are host-only and never change at runtime via the
-        // API. Reject loudly (naming the host-side setters) instead of
-        // persisting a value the next boot would override or refuse.
+        // `address`, `port`, `allowRegistration`, `trivialPasswords`,
+        // `bootstrapAdmin`, and `authKey` are host-only or managed and never
+        // change at runtime via this route. Reject loudly (naming the
+        // setters) instead of persisting a value the next boot would
+        // override or refuse. Rotation of the signing key goes through
+        // `POST /post/config/auth-key/reset`.
         let host_only = [
             (
                 "address",
@@ -121,13 +125,16 @@ pub async fn update_config_handler(
                 req_data.bootstrap_admin.is_some(),
                 "--bootstrap-admin, PICASU_BOOTSTRAP_ADMIN, or config `gallery.bootstrap_admin`",
             ),
+            (
+                "authKey",
+                req_data.auth_key.is_some(),
+                "rotate it with `POST /post/config/auth-key/reset`",
+            ),
         ];
         if let Some((name, _, setters)) = host_only.into_iter().find(|(_, present, _)| *present) {
             return Err(AppError::new(
                 ErrorKind::InvalidInput,
-                format!(
-                    "{name} is a host-only option: set it with {setters}; it cannot be changed via the API"
-                ),
+                format!("{name} cannot be set via the API: {setters}"),
             ));
         }
         if let Some(ref folder) = req_data.upload_folder {
@@ -172,14 +179,6 @@ pub async fn update_config_handler(
         }
         if let Some(use_client_timestamp_info) = req_data.use_client_timestamp_info {
             current_config.use_client_timestamp_info = use_client_timestamp_info;
-        }
-        if let Some(key) = req_data.auth_key {
-            let trimmed = key.trim();
-            current_config.auth_key = if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed.to_string())
-            };
         }
         AppConfig::update(current_config).map_err(|e| {
             error!("Failed to update config: {e}");
@@ -445,6 +444,42 @@ mod tests {
             .status();
         assert_eq!(status, Status::Ok);
         assert!(!flag(), "absent field must not touch the knob");
+    }
+
+    /// `authKey` is managed, never set: any presence in the API body is a
+    /// 400 and changes nothing. Rotation goes through the reset endpoint.
+    #[test]
+    fn put_config_rejects_auth_key_as_managed() {
+        let _g = lock();
+        let client = setup();
+        seed("s4e-root", true, None);
+        {
+            let mut cfg = crate::model::config::APP_CONFIG
+                .get()
+                .expect("APP_CONFIG")
+                .write()
+                .expect("APP_CONFIG lock");
+            cfg.auth_key = Some("pre-existing-key".to_string());
+        }
+        let status = client
+            .put("/put/config")
+            .cookie(cookie("s4e-root", true))
+            .header(ContentType::JSON)
+            .body(json!({ "authKey": "smuggled-key" }).to_string())
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::BadRequest, "managed key must be rejected");
+        assert_eq!(
+            crate::model::config::APP_CONFIG
+                .get()
+                .expect("APP_CONFIG")
+                .read()
+                .expect("APP_CONFIG lock")
+                .auth_key
+                .as_deref(),
+            Some("pre-existing-key"),
+            "rejected key must not overwrite the current one"
+        );
     }
 
     #[test]

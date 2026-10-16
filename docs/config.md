@@ -50,11 +50,9 @@ Gallery application settings.
 
 ### `[secrets]` section
 
-Sensitive authentication and notification credentials. Only present when configured.
-
-| Key        | Type           | Default | Description                                                                                                                 |
-| ---------- | -------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `auth_key` | string \| null | `null`  | Secret key for signing JWT tokens. If `null`, a random key is generated on every startup (invalidates sessions on restart). |
+Holds no live keys: the signing key moved to the owner-only secrets file
+below. A legacy `auth_key` left in an old file is ignored, never read back;
+a legacy `password` is ignored (the boot path warns).
 
 > `[secrets] password` was removed: there is no password field anymore,
 > nothing reads it, and it is never written back. Old files containing it
@@ -104,21 +102,21 @@ back to the working directory, so existing installs keep working unchanged.
 
 The following env vars override the config file on every launch:
 
-| Variable                    | Overrides                    |
-| --------------------------- | ---------------------------- |
-| `PICASU_ADDRESS`            | `server.address`             |
-| `PICASU_ALLOW_REGISTRATION` | `gallery.allow_registration` |
-| `PICASU_MAX_UPLOAD_SIZE`    | `server.max_upload_size`     |
-| `PICASU_PORT`               | `server.port`                |
-| `PICASU_BOOTSTRAP_ADMIN`    | `gallery.bootstrap_admin`    |
-| `PICASU_DATA_HOME`          | `gallery.data_home`          |
-| `PICASU_DISABLE_IMG`        | `gallery.disable_img`        |
-| `PICASU_FS_NOTIFY_WATCHER`  | `gallery.fs_notify_watcher`  |
-| `PICASU_IMAGE_HOME`         | `gallery.image_home`         |
-| `PICASU_READ_ONLY_MODE`     | `gallery.read_only_mode`     |
-| `PICASU_TRIVIAL_PASSWORDS`  | `gallery.trivial_passwords`  |
-| `PICASU_UPLOAD_FOLDER`      | `gallery.upload_folder`      |
-| `PICASU_AUTH_KEY`           | `secrets.auth_key`           |
+| Variable                    | Overrides                                                             |
+| --------------------------- | --------------------------------------------------------------------- |
+| `PICASU_ADDRESS`            | `server.address`                                                      |
+| `PICASU_ALLOW_REGISTRATION` | `gallery.allow_registration`                                          |
+| `PICASU_MAX_UPLOAD_SIZE`    | `server.max_upload_size`                                              |
+| `PICASU_PORT`               | `server.port`                                                         |
+| `PICASU_BOOTSTRAP_ADMIN`    | `gallery.bootstrap_admin`                                             |
+| `PICASU_DATA_HOME`          | `gallery.data_home`                                                   |
+| `PICASU_DISABLE_IMG`        | `gallery.disable_img`                                                 |
+| `PICASU_FS_NOTIFY_WATCHER`  | `gallery.fs_notify_watcher`                                           |
+| `PICASU_IMAGE_HOME`         | `gallery.image_home`                                                  |
+| `PICASU_READ_ONLY_MODE`     | `gallery.read_only_mode`                                              |
+| `PICASU_TRIVIAL_PASSWORDS`  | `gallery.trivial_passwords`                                           |
+| `PICASU_UPLOAD_FOLDER`      | `gallery.upload_folder`                                               |
+| `PICASU_AUTH_KEY`           | signing key (in-memory override of the secrets file, never persisted) |
 
 ## Runtime changes via the API
 
@@ -136,11 +134,15 @@ var, or `config.toml` key listed, then restart:
 | `gallery.data_home`          | `PICASU_DATA_HOME` (not accepted by the API at all)                               |
 | `gallery.image_home`         | `PICASU_IMAGE_HOME` (not accepted by the API at all)                              |
 
+The JWT signing key is managed, never set: it lives in
+`<DATA_HOME>/auth/secrets.json` (owner-only file permissions), `PICASU_AUTH_KEY`
+overrides it in memory without persisting, and the API offers only
+`POST /post/config/auth-key/reset`, which generates a new strong random key
+(invalidating every live session). `GET /get/config/export` redacts it.
+
 API-writable knobs: `upload_folder`, `max_upload_size`, `read_only_mode`,
 `disable_img`, `fs_notify_watcher`, `normalize_upload_filenames`,
-`validate_upload_content`, `use_client_timestamp_info`, and `auth_key`.
-Note that changing `auth_key` re-signs JWTs and invalidates every live
-session.
+`validate_upload_content`, and `use_client_timestamp_info`.
 
 Two settings are environment-only by construction: `PICASU_CONFIG_HOME`
 (selects where `config.toml` itself lives, so it cannot come from the

@@ -11,7 +11,7 @@ use crate::storage::files::{DATA_PATH, get_config_path, get_data_path, resolve_r
 
 pub static FALLBACK_SECRET_KEY: OnceLock<String> = OnceLock::new();
 
-fn generate_secret_key() -> String {
+pub(crate) fn generate_secret_key() -> String {
     let mut secret = vec![0u8; 32];
     SysRng
         .try_fill_bytes(&mut secret)
@@ -233,8 +233,9 @@ impl Default for TomlGallery {
 #[serde(rename_all = "snake_case")]
 #[derive(Default)]
 pub(crate) struct TomlSecrets {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) auth_key: Option<String>,
+    // No fields: the signing key lives in the owner-only secrets file, and
+    // legacy `[secrets] auth_key` entries are adopted at boot, never parsed
+    // here. The section stays so old files keep parsing.
 }
 
 impl From<TomlFile> for AppConfig {
@@ -255,7 +256,9 @@ impl From<TomlFile> for AppConfig {
             allow_registration: t.gallery.allow_registration,
             trivial_passwords: t.gallery.trivial_passwords,
             bootstrap_admin: t.gallery.bootstrap_admin,
-            auth_key: t.secrets.auth_key,
+            // The signing key never comes from the file mapping: boot
+            // resolves it from the secrets file / legacy text / env.
+            auth_key: None,
             web_root: t.gallery.web_root,
         }
     }
@@ -284,9 +287,7 @@ impl From<AppConfig> for TomlFile {
                 bootstrap_admin: c.bootstrap_admin,
                 web_root: c.web_root,
             },
-            secrets: TomlSecrets {
-                auth_key: c.auth_key,
-            },
+            secrets: TomlSecrets {},
         }
     }
 }
@@ -357,26 +358,41 @@ impl AppConfig {
         // Read config file via TOML wrapper and merge with defaults
         info!("Loading configuration from {config_path_display}");
 
-        let mut config = match fs::read_to_string(&config_path) {
-            Ok(content) => {
-                if has_legacy_password_key(&content) {
-                    warn!(
-                        "legacy single password is no longer supported and is ignored; enroll via --bootstrap-admin or the picasu-admin CLI"
-                    );
-                }
-                match toml::from_str::<TomlFile>(&content) {
-                    Ok(tf) => AppConfig::from(tf),
-                    Err(e) => {
-                        warn!(
-                            "Failed to parse config at {config_path_display}: {e:?}, using defaults"
-                        );
-                        AppConfig::default()
-                    }
-                }
-            }
+        let raw_content = match fs::read_to_string(&config_path) {
+            Ok(content) => content,
             Err(e) => {
                 warn!("Failed to read config file {config_path_display}: {e}");
+                String::new()
+            }
+        };
+        if has_legacy_password_key(&raw_content) {
+            warn!(
+                "legacy single password is no longer supported and is ignored; enroll via --bootstrap-admin or the picasu-admin CLI"
+            );
+        }
+        let mut config = match toml::from_str::<TomlFile>(&raw_content) {
+            Ok(tf) => AppConfig::from(tf),
+            Err(e) => {
+                warn!("Failed to parse config at {config_path_display}: {e:?}, using defaults");
                 AppConfig::default()
+            }
+        };
+
+        // The signing key lives in the owner-only secrets file, never in
+        // config.toml (a legacy `[secrets] auth_key` is ignored). Unset stays
+        // unset for the per-process random fallback. `PICASU_AUTH_KEY` still
+        // wins below without being persisted.
+        let secrets_path = config
+            .data_home
+            .clone()
+            .unwrap_or_else(|| get_data_path().clone())
+            .join("auth")
+            .join("secrets.json");
+        config.auth_key = match crate::auth::secret_key::load_secret_key_from(&secrets_path) {
+            Ok(key) => key,
+            Err(e) => {
+                warn!("secrets file unreadable, starting without a stored key: {e:#}");
+                None
             }
         };
 
@@ -641,7 +657,10 @@ mod tests {
                 .any(|l| l.trim_start().starts_with("password =")),
             "no legacy password key may be written"
         );
-        assert!(toml_str.contains("auth_key = \"jwt-secret\""));
+        assert!(
+            !toml_str.contains("auth_key"),
+            "signing key lives in the secrets file, never config.toml"
+        );
     }
 
     #[test]
@@ -669,7 +688,8 @@ auth_key = "jwt-secret"
         let config = AppConfig::from(parsed);
         assert_eq!(config.port, 9999);
         assert!(config.read_only_mode);
-        assert_eq!(config.auth_key.as_deref(), Some("jwt-secret"));
+        // The file mapping carries no key: legacy keys are ignored.
+        assert_eq!(config.auth_key, None);
     }
 
     #[test]
