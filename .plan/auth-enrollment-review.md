@@ -130,8 +130,11 @@ This is the suggested tackle order, not a commitment to fix all items.
   Fix: run freshness check in the PUT path and reject boot-breaking flips.
   Fixed 2026-10-16 (narrowed per owner decision): `bootstrapAdmin` is
   host-only — any presence in `PUT /put/config` is a 400 naming the
-  flag/env/file setters, and the assignment is deleted. The full
-  API-vs-host knob matrix stays open.
+  flag/env/file setters, and the assignment is deleted. Extended the same
+  day: `address`, `port`, `allowRegistration`, `trivialPasswords`
+  likewise host-only (per-key 400 + setters, assignments deleted,
+  `docs/config.md` documents the API-vs-host split). The remaining
+  knob-matrix work is folded into that section.
 - R13 CONFIRMED (S2/MED/LOW). `get_config.rs:57-59` takes `GuardShare`
   and returns absolute `imagePath`, `uploadFolder`, address/port; already
   noted in `auth-hardening.md:125-126`. Fix: confirm intent; narrow share

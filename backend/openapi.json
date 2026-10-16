@@ -689,12 +689,14 @@
       "PartialUpdateConfigRequest": {
         "properties": {
           "address": {
+            "description": "Host-only (`PICASU_ADDRESS` / config `server.address`). Any presence\nin the API body is rejected with 400 and changes nothing.",
             "type": [
               "string",
               "null"
             ]
           },
           "allowRegistration": {
+            "description": "Host-only (`PICASU_ALLOW_REGISTRATION` / config\n`gallery.allow_registration`). Any presence in the API body is\nrejected with 400 and changes nothing.",
             "type": [
               "boolean",
               "null"
@@ -707,7 +709,7 @@
             ]
           },
           "bootstrapAdmin": {
-            "description": "Host-only: setting it requires the `--bootstrap-admin` flag,\n`PICASU_BOOTSTRAP_ADMIN`, or config `bootstrap_admin`. Any presence\nin the API body is rejected with 400 and changes nothing.",
+            "description": "Host-only (`--bootstrap-admin` / `PICASU_BOOTSTRAP_ADMIN` / config\n`gallery.bootstrap_admin`). Any presence in the API body is rejected\nwith 400 and changes nothing.",
             "type": [
               "boolean",
               "null"
@@ -739,6 +741,7 @@
             ]
           },
           "port": {
+            "description": "Host-only (`PICASU_PORT` / config `server.port`). Any presence\nin the API body is rejected with 400 and changes nothing.",
             "format": "int32",
             "minimum": 0,
             "type": [
@@ -753,6 +756,7 @@
             ]
           },
           "trivialPasswords": {
+            "description": "Host-only (`--trivial-passwords` / `PICASU_TRIVIAL_PASSWORDS` /\nconfig `gallery.trivial_passwords`). Any presence in the API body is\nrejected with 400 and changes nothing.",
             "type": [
               "boolean",
               "null"
@@ -2662,7 +2666,7 @@
     },
     "/put/config": {
       "put": {
-        "description": "Every field is optional and a field absent from the body keeps its current\nvalue. `bootstrapAdmin` is host-only (flag / env / config file) and any\npresence in the body is a 400. The only other validation is on\n`uploadFolder`, which must be a relative path free of `..` components;\non success `config.toml` is rewritten, the in-memory configuration is\nreplaced and the filesystem watcher is reloaded.\n\nCorner cases: `authKey` is trimmed, and clearing or replacing it moves JWT\nsigning onto a new key, invalidating every token issued under the previous\none. `uploadFolder` and `maxUploadSize` take an empty string to reset to\ntheir defaults, `uploads` and `100MiB`. `address` and `port` are stored but\nthe listener is not rebound, so they take effect only after a restart.\n\nErrors: 400 `uploadFolder` is absolute or contains `..`, the body cannot\nbe parsed, or `bootstrapAdmin` is present — 401 missing or invalid admin\ncredentials; share tokens are not accepted — 405 read-only mode — 500\nconfig write failure.",
+        "description": "Every field is optional and a field absent from the body keeps its current\nvalue. `address`, `port`, `allowRegistration`, `trivialPasswords`, and\n`bootstrapAdmin` are host-only (flag / env / config file) and any\npresence in the body is a 400. The only other validation is on\n`uploadFolder`, which must be a relative path free of `..` components;\non success `config.toml` is rewritten, the in-memory configuration is\nreplaced and the filesystem watcher is reloaded.\n\nCorner cases: `authKey` is trimmed, and clearing or replacing it moves JWT\nsigning onto a new key, invalidating every token issued under the previous\none. `uploadFolder` and `maxUploadSize` take an empty string to reset to\ntheir defaults, `uploads` and `100MiB`.\n\nErrors: 400 `uploadFolder` is absolute or contains `..`, the body cannot\nbe parsed, or a host-only knob is present — 401 missing or invalid admin\ncredentials; share tokens are not accepted — 405 read-only mode — 500\nconfig write failure.",
         "operationId": "update_config_handler",
         "requestBody": {
           "content": {
