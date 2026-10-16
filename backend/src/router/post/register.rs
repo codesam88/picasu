@@ -106,12 +106,16 @@ pub async fn register_user_handler(
 /// redeeming an invite in the same transaction as the insert), then store
 /// the password hash.
 ///
+/// Refuses with 401 on an empty store (bootstrap first — registration never
+/// creates the first user).
+///
 /// Gates in order: a valid admin session, open registration, or a valid
 /// invite — otherwise 403/404. An admin session or the open knob bypasses
 /// the invite entirely (a supplied token is ignored, never burned).
 ///
 /// # Errors
-/// 400 invalid id or weak password — 403 registration disabled or invite
+/// 401 empty store (no administrator enrolled yet) — 400 invalid id or weak
+/// password — 403 registration disabled or invite
 /// expired — 404 unknown/revoked invite — 409 duplicate id or used invite —
 /// 500 store failure. Runs inside `spawn_blocking` (KDF on the password).
 fn register_user_sync(
@@ -121,6 +125,16 @@ fn register_user_sync(
 ) -> AppResult<UserSummary> {
     let id = validate_user_id(&req.user_id)?;
     let canonical = validate_new_password(&id, &req.password)?;
+    // R4: registration never squats the first-user slot. On an empty store
+    // the only online path is `POST /post/users/bootstrap`; refuse before
+    // consulting the gates so neither the knob nor an invite can land the
+    // first user as non-admin (an admin-less store recovers only via CLI).
+    if users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))? == 0 {
+        return Err(AppError::new(
+            ErrorKind::Auth,
+            "No administrator enrolled: enroll the first administrator via POST /post/users/bootstrap (--bootstrap-admin on an empty store)",
+        ));
+    }
     if admin_session || allow_registration {
         // Gated registration: the invite is not consulted (an admin session
         // or the open knob supersedes the bearer), so a stale link neither

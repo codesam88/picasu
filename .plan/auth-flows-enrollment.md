@@ -106,7 +106,10 @@ weak → 400.
    server; Dockerfile ships it. Gates: `cargo test`, `backend-check`.
 8. First-create race: prove with a test whether concurrent
    unauthenticated bootstraps both land; share the bootstrap lock only
-   if confirmed, else close with the negative result.
+   if confirmed, else close with the negative result. Done 2026-10-16:
+   confirmed (6/6 contenders landed pre-fix) —
+   `concurrent_first_bootstraps_enroll_exactly_one_admin` pins the fix,
+   `BOOTSTRAP_LOCK` in `bootstrap.rs` serializes check+insert.
 9. Merge create+register, add `users/bootstrap` (backend first, then
    frontend): delete `POST /post/users/create`; new
    `POST /post/users/bootstrap {userId, password}` (flag ∧ empty only,
