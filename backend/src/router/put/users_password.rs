@@ -82,6 +82,8 @@ pub(crate) fn set_password_sync(
                 .context("Password change failed"));
         }
     }
+    // Sessions first, password second: a crash between leaves re-login-with-old-password, the safe direction.
+    users::clear_sessions(&target)?;
     users::store_password(&target, &canonical_new)?;
     log::info!("auth: password set for user {target}");
     Ok(())

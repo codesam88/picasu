@@ -236,7 +236,8 @@ pub fn generate_fairing_routes() -> Vec<Route> {
     routes![renew_timestamp_token, renew_hash_token]
 }
 
-static VALIDATION: LazyLock<Validation> = LazyLock::new(|| Validation::new(Algorithm::HS256));
+pub(crate) static VALIDATION: LazyLock<Validation> =
+    LazyLock::new(|| Validation::new(Algorithm::HS256));
 
 static VALIDATION_ALLOW_EXPIRED: LazyLock<Validation> = LazyLock::new(|| {
     let mut validation = Validation::new(Algorithm::HS256);

@@ -372,6 +372,188 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
+## List the caller's live sessions.
+
+<a id="opIdlist_sessions_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/sessions \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/sessions HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/sessions", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/sessions',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/sessions', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/sessions', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/sessions");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/sessions", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/sessions`
+
+Returns the live `SessionRecord` array (`jti` + `issuedAt`) for the
+authenticated user only. Any authenticated user may call it; it never
+returns another user's sessions.
+
+Errors: 401 missing or invalid credentials — 500 storage failure.
+
+> Example responses
+
+> 200 Response
+
+```json
+[
+  {
+    "issued_at": 0,
+    "jti": "string"
+  }
+]
+```
+
+<h3 id="list-the-caller's-live-sessions.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Live sessions                                                                              | Inline |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+
+<h3 id="list-the-caller's-live-sessions.-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+| Name        | Type                                    | Required | Restrictions | Description |
+| ----------- | --------------------------------------- | -------- | ------------ | ----------- |
+| _anonymous_ | [[SessionRecord](#schemasessionrecord)] | false    | none         | none        |
+| » issued_at | integer(int64)                          | true     | none         | none        |
+| » jti       | string                                  | true     | none         | none        |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 ## List all users as `{ userId, admin }` pairs ordered by id.
 
 <a id="opIdlist_users_handler"></a>
@@ -13224,6 +13406,27 @@ field: registration always creates standard users; elevation is
 | index | integer | true     | none         | none        |
 | month | integer | true     | none         | none        |
 | year  | integer | true     | none         | none        |
+
+<h2 id="tocS_SessionRecord">SessionRecord</h2>
+<!-- backwards compatibility -->
+<a id="schemasessionrecord"></a>
+<a id="schema_SessionRecord"></a>
+<a id="tocSsessionrecord"></a>
+<a id="tocssessionrecord"></a>
+
+```json
+{
+  "issued_at": 0,
+  "jti": "string"
+}
+```
+
+### Properties
+
+| Name      | Type           | Required | Restrictions | Description |
+| --------- | -------------- | -------- | ------------ | ----------- |
+| issued_at | integer(int64) | true     | none         | none        |
+| jti       | string         | true     | none         | none        |
 
 <h2 id="tocS_SetAlbumCover">SetAlbumCover</h2>
 <!-- backwards compatibility -->
