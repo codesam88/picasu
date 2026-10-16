@@ -10,7 +10,7 @@ use crate::auth::password::{PasswdFile, password_iterations, verify_password};
 use crate::auth::users::{self, validate_user_id};
 use crate::error::ResultExt;
 use crate::openapi_components::Unauthorized;
-use crate::router::auth::Claims;
+use crate::router::auth::{Claims, Role, VALIDATION, decode_typed};
 use crate::router::{AppError, AppResult, ErrorKind};
 
 use super::register::UserSummary;
@@ -205,6 +205,18 @@ pub async fn authenticate(
 ]
 #[post("/post/logout")]
 pub fn logout(jar: &CookieJar<'_>) -> Status {
+    // Revoke only the presented session (logout is local): a missing,
+    // undecodable, or expired token simply skips removal. The cookie is
+    // always cleared and the answer is always 204.
+    let presented = jar
+        .get(SESSION_COOKIE_NAME)
+        .map(|cookie| cookie.value().to_string())
+        .and_then(|token| decode_typed::<Claims>(&token, &VALIDATION).ok());
+    if let Some(claims) = presented
+        && let Role::User { id, .. } = &claims.role
+    {
+        let _ = users::remove_session(id, &claims.jti);
+    }
     jar.remove(Cookie::build(SESSION_COOKIE_NAME).path("/").build());
     Status::NoContent
 }

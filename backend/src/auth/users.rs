@@ -9,7 +9,7 @@ use crate::storage::db::{TREE, USERS};
 /// TTL in [`crate::router::auth::Claims::new_user`] (14 days).
 pub const SESSION_TTL_SECS: u64 = 14 * 86_400;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct SessionRecord {
     pub jti: String,
     pub issued_at: u64,

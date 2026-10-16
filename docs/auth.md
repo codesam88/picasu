@@ -81,12 +81,13 @@ attacks are excluded by construction.
 
 1. `POST /post/authenticate` takes `{ userId, password }`, trims the password,
    and verifies it against the PBKDF2 password store
-   (`<DATA_HOME>/auth/passwd.json`) for that user id. A match sets a 14-day
-   `Claims { role: User { id, admin }, exp }` JWT in an HttpOnly session
-   cookie and returns the session profile `{ userId, admin }` in the body.
-   Unknown users and wrong passwords both answer 401 with no distinguishing
-   detail; the unknown-user path still pays one KDF round so timing leaks
-   nothing.
+   (`<DATA_HOME>/auth/passwd.json`) for that user id. A match mints a random
+   `jti` (UUID v4), stores it as a live session for that user, and sets a
+   14-day `Claims { role: User { id, admin }, exp, jti }` JWT in an HttpOnly
+   session cookie, returning the session profile `{ userId, admin }` in the
+   body. Unknown users and wrong passwords both answer 401 with no
+   distinguishing detail; the unknown-user path still pays one KDF round so
+   timing leaks nothing.
 2. The **server** issues the session cookie via `Set-Cookie`
    (`router/post/authenticate.rs`): `jwt=...; HttpOnly; SameSite=Strict;
 Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
@@ -95,16 +96,29 @@ Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    sees the token, so a future XSS cannot exfiltrate the session (R5). The
    client keeps only the `{ userId, admin }` profile from the login body in
    its session store for display.
-3. `GuardAuth` reads the cookie, decodes it with `VALIDATION` (expiry enforced),
-   and requires a user identity with the admin role — re-read from the user
-   table on every request, so demotion takes effect before token expiry.
-   (Promotion requires re-login: the token-embedded flag gates first.)
-4. Logout is `POST /post/logout`, which clears the cookie server-side
-   (HttpOnly cookies cannot be removed by page JS) and answers 204,
-   idempotent with or without a live session. The client also clears its
-   session profile and capability tokens unconditionally, so logout sticks
-   even when the round trip fails. The JWT itself remains cryptographically
-   valid until expiry or until `auth_key` is rotated.
+3. `GuardAuth` (and `GuardUser`) read the cookie, decode it with `VALIDATION`
+   (expiry enforced), and require the `jti` to be live for that user — the
+   user record is re-read on every request, so demotion or session revocation
+   takes effect before token expiry. Admin routes additionally require the
+   admin role from the record (promotion requires re-login; demotion takes
+   effect here). Tokens without a `jti` are rejected (hard cut — pre-`jti`
+   tokens do not decode).
+4. Logout is `POST /post/logout`, which decodes the presented `jwt` cookie
+   with the same validation the guards use; on success it removes that `jti`
+   from the caller's live sessions (absent or unknown `jti` is ignored), then
+   clears the cookie server-side (HttpOnly cookies cannot be removed by page
+   JS) and answers 204. Missing, undecodable, or expired tokens skip removal
+   but still clear the cookie and still answer 204 — idempotent with or
+   without a live session. Only the presented device is logged out; other
+   sessions survive. The client also clears its session profile and capability
+   tokens unconditionally, so logout sticks even when the round trip fails.
+   Password change (`PUT /put/users/password`, self-change and admin reset
+   alike) wipes all `jti`s for the target user before writing the new hash —
+   sessions first, password second, so a crash between leaves
+   re-login-with-old-password, the safe direction — and therefore logs every
+   device out. `GET /get/sessions` (any authenticated user via `GuardUser`)
+   returns the caller's live `SessionRecord { jti, issuedAt }` array; it never
+   returns another user's sessions, and an unknown post-guard id maps to 401.
 5. Users are managed through `POST /post/users/create`, `GET /get/users`,
    `PUT /put/users/password`, and `PUT /put/users/admin` (admin-only,
    except unauthenticated creation of the first user, which is forced admin).
