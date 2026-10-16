@@ -125,7 +125,7 @@ fn register_user_sync(
 ) -> AppResult<UserSummary> {
     let id = validate_user_id(&req.user_id)?;
     let canonical = validate_new_password(&id, &req.password)?;
-    // R4: registration never squats the first-user slot. On an empty store
+    // Registration never squats the first-user slot. On an empty store
     // the only online path is `POST /post/users/bootstrap`; refuse before
     // consulting the gates so neither the knob nor an invite can land the
     // first user as non-admin (an admin-less store recovers only via CLI).

@@ -253,7 +253,7 @@
         "type": "object"
       },
       "CaptchaInfo": {
-        "description": "Captcha challenge descriptor, reserved for R7.\n\nNever populated yet: the handler always answers `captcha: null`. Kept as\na named schema so the R7 challenge can extend it without reshaping the\nenrollment response.",
+        "description": "Captcha challenge descriptor, reserved for future brute-force throttling.\n\nNever populated yet: the handler always answers `captcha: null`. Kept as\na named schema so a future challenge can extend it without reshaping the\nenrollment response.",
         "type": "object"
       },
       "ConfigResponse": {
@@ -707,6 +707,7 @@
             ]
           },
           "bootstrapAdmin": {
+            "description": "Host-only: setting it requires the `--bootstrap-admin` flag,\n`PICASU_BOOTSTRAP_ADMIN`, or config `bootstrap_admin`. Any presence\nin the API body is rejected with 400 and changes nothing.",
             "type": [
               "boolean",
               "null"
@@ -1087,6 +1088,7 @@
         "type": "object"
       },
       "SetUserAdminRequest": {
+        "additionalProperties": false,
         "description": "Body for `PUT /put/users/admin`.",
         "properties": {
           "admin": {
@@ -1126,6 +1128,7 @@
         "type": "object"
       },
       "SetUserPasswordRequest": {
+        "additionalProperties": false,
         "description": "Body for `PUT /put/users/password`.",
         "properties": {
           "newPassword": {
@@ -2113,7 +2116,7 @@
     },
     "/post/authenticate": {
       "post": {
-        "description": "A `{ userId, password }` object verifies against the user and password\nstores. On success the JWT travels in a `Set-Cookie: jwt=...; HttpOnly;\nSameSite=Strict; Path=/` response header — page JS never sees the token\n(R5) — and the body carries only the session profile\n`{ userId, admin }` for the client to display. Tokens are signed with\n`authKey`, or with a secret generated once per process when `authKey`\nis unset, so changing `authKey` invalidates every token issued under\nthe previous one.\n\nCorner cases: While no users exist and `--bootstrap-admin` is set,\nsign-in succeeds without credentials: every parseable login object is\naccepted (open first-run mode), setting an ephemeral admin cookie and\nreturning the ephemeral profile without enrolling anybody.\n\nErrors: 400 the login `userId` is empty or longer than 64 characters, or\nthe body does not parse as a login object — 401 unknown user or wrong\npassword.",
+        "description": "A `{ userId, password }` object verifies against the user and password\nstores. On success the JWT travels in a `Set-Cookie: jwt=...; HttpOnly;\nSameSite=Strict; Path=/` response header — page JS never sees the token\n— and the body carries only the session profile\n`{ userId, admin }` for the client to display. Tokens are signed with\n`authKey`, or with a secret generated once per process when `authKey`\nis unset, so changing `authKey` invalidates every token issued under\nthe previous one.\n\nCorner cases: While no users exist and `--bootstrap-admin` is set,\nsign-in succeeds without credentials: every parseable login object is\naccepted (open first-run mode), setting an ephemeral admin cookie and\nreturning the ephemeral profile without enrolling anybody.\n\nErrors: 400 the login `userId` is empty or longer than 64 characters, or\nthe body does not parse as a login object — 401 unknown user or wrong\npassword.",
         "operationId": "authenticate",
         "requestBody": {
           "content": {
@@ -2384,7 +2387,7 @@
     },
     "/post/logout": {
       "post": {
-        "description": "`HttpOnly` cookies cannot be removed by page JS, so logout is a server\nround trip. Idempotent: succeeds with or without a live session; the\nJWT itself stays cryptographically valid until expiry or `auth_key`\nrotation (no server-side session store — see R6).",
+        "description": "`HttpOnly` cookies cannot be removed by page JS, so logout is a server\nround trip. Idempotent: succeeds with or without a live session; the\nJWT itself stays cryptographically valid until expiry or `auth_key`\nrotation (server-side sessions revoke on logout and password change).",
         "operationId": "logout",
         "responses": {
           "204": {
@@ -2659,7 +2662,7 @@
     },
     "/put/config": {
       "put": {
-        "description": "Every field is optional and a field absent from the body keeps its current\nvalue. The only validation is on `uploadFolder`, which must be a relative\npath free of `..` components; on success `config.toml` is rewritten, the\nin-memory configuration is replaced and the filesystem watcher is reloaded.\n\nCorner cases: `authKey` is trimmed, and clearing or replacing it moves JWT\nsigning onto a new key, invalidating every token issued under the previous\none. `uploadFolder` and `maxUploadSize` take an empty string to reset to\ntheir defaults, `uploads` and `100MiB`. `address` and `port` are stored but\nthe listener is not rebound, so they take effect only after a restart.\n\nErrors: 400 `uploadFolder` is absolute or contains `..`, or the body cannot\nbe parsed — 401 missing or invalid admin credentials; share tokens are not\naccepted — 405 read-only mode — 500 config write failure.",
+        "description": "Every field is optional and a field absent from the body keeps its current\nvalue. `bootstrapAdmin` is host-only (flag / env / config file) and any\npresence in the body is a 400. The only other validation is on\n`uploadFolder`, which must be a relative path free of `..` components;\non success `config.toml` is rewritten, the in-memory configuration is\nreplaced and the filesystem watcher is reloaded.\n\nCorner cases: `authKey` is trimmed, and clearing or replacing it moves JWT\nsigning onto a new key, invalidating every token issued under the previous\none. `uploadFolder` and `maxUploadSize` take an empty string to reset to\ntheir defaults, `uploads` and `100MiB`. `address` and `port` are stored but\nthe listener is not rebound, so they take effect only after a restart.\n\nErrors: 400 `uploadFolder` is absolute or contains `..`, the body cannot\nbe parsed, or `bootstrapAdmin` is present — 401 missing or invalid admin\ncredentials; share tokens are not accepted — 405 read-only mode — 500\nconfig write failure.",
         "operationId": "update_config_handler",
         "requestBody": {
           "content": {

@@ -16,7 +16,7 @@ use crate::router::{AppError, AppResult, ErrorKind};
 use super::register::UserSummary;
 
 /// Name of the session cookie. Read by the auth guards; written only by
-/// the server via `Set-Cookie` (`HttpOnly` — see R5).
+/// the server via `Set-Cookie` (`HttpOnly`).
 pub const SESSION_COOKIE_NAME: &str = "jwt";
 
 /// Session lifetime in days. Matches the JWT `exp` minted in
@@ -48,7 +48,7 @@ impl<'r> FromRequest<'r> for ForwardedHttps {
 }
 
 /// Issue the session cookie on `jar`: `HttpOnly` (never readable by page
-/// JS — the R5 fix), `SameSite=Strict` (the CSRF defense), `Path=/`,
+/// JS), `SameSite=Strict` (the CSRF defense), `Path=/`,
 /// 14-day age, `Secure` iff the request came via forwarded HTTPS.
 fn set_session_cookie(jar: &CookieJar<'_>, https: bool, token: String) {
     jar.add(
@@ -135,7 +135,7 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
 /// A `{ userId, password }` object verifies against the user and password
 /// stores. On success the JWT travels in a `Set-Cookie: jwt=...; HttpOnly;
 /// SameSite=Strict; Path=/` response header — page JS never sees the token
-/// (R5) — and the body carries only the session profile
+/// — and the body carries only the session profile
 /// `{ userId, admin }` for the client to display. Tokens are signed with
 /// `authKey`, or with a secret generated once per process when `authKey`
 /// is unset, so changing `authKey` invalidates every token issued under
@@ -195,7 +195,7 @@ pub async fn authenticate(
 /// `HttpOnly` cookies cannot be removed by page JS, so logout is a server
 /// round trip. Idempotent: succeeds with or without a live session; the
 /// JWT itself stays cryptographically valid until expiry or `auth_key`
-/// rotation (no server-side session store — see R6).
+/// rotation (server-side sessions revoke on logout and password change).
 #[utoipa::path(
         tag = "auth",
         responses(
@@ -272,7 +272,7 @@ mod tests {
         pair.strip_prefix("jwt=").expect("jwt cookie").to_string()
     }
 
-    /// The session cookie must be HttpOnly (the R5 fix), SameSite=Strict,
+    /// The session cookie must be HttpOnly, SameSite=Strict,
     /// and path-scoped; `Secure` stays off on plain-HTTP test requests.
     fn assert_session_cookie_flags(resp: &rocket::local::blocking::LocalResponse<'_>) {
         let set_cookie = resp.headers().get_one("Set-Cookie").expect("Set-Cookie");

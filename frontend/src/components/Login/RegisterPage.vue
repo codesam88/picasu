@@ -121,8 +121,8 @@ const handleRegister = async () => {
         create: bootstrapUser,
         login,
         onRegistered: async (profile) => {
-          // The session JWT is in an HttpOnly cookie the page never sees
-          // (R5); keep only the display profile in the session store.
+          // The session JWT is in an HttpOnly cookie the page never sees;
+          // keep only the display profile in the session store.
           useSessionStore('mainId').setProfile(profile)
 
           // Remember the id for the next login's User ID prefill.

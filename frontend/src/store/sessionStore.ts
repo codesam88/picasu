@@ -4,7 +4,7 @@ import { z } from 'zod'
 import type { UserSummary } from '@/api/users'
 
 /// localStorage key for the session profile. The JWT itself lives in an
-/// HttpOnly cookie the page JS can never read (R5); this persisted profile
+/// HttpOnly cookie the page JS can never read; this persisted profile
 /// is display-only (admin UI gating) — the backend re-reads the role from
 /// the user table on every request, so a stale profile grants nothing.
 export const SESSION_PROFILE_KEY = 'picasu-session-profile'

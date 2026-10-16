@@ -109,11 +109,13 @@ This is the suggested tackle order, not a commitment to fix all items.
 - R8 CONFIRMED (S2/LOW/LOW). `auth.rs:923-925` returns
   `Forward(Unauthorized)`; falls through to rank-11 SPA catch-all as 200,
   unlike `GuardHash` which returns `Error`. Fix: one-line change to
-  `Outcome::Error(401)` + regression test.
+  `Outcome::Error(401)` + regression test. Fixed 2026-10-16: denial is now
+  `Error(401)`; `original_serving_without_allow_original_is_401` pins it.
 - R9 CONFIRMED (S2/LOW/LOW). `deny_unknown_fields` present on
   register/bootstrap/authenticate but absent on `users_password.rs:14-20`
   and `users_admin.rs:12-17`; row-6 coverage exists only for the former
   three. Fix: add attribute to both PUT bodies + extend coverage.
+  Fixed 2026-10-16: attribute added to both bodies with one 422 test each.
 - R10 CONFIRMED (S3/LOW/LOW). Plan demands locked screen naming
   `--bootstrap-admin`; code maps any probe failure to `login`
   (`enrollment.ts:12-17`, pinned by `enrollment.test.ts:32-34`). Fix:
@@ -126,6 +128,10 @@ This is the suggested tackle order, not a commitment to fix all items.
   (`edit_config.rs:36,133-135`); `update()` persists with no gate
   (`config.rs:507-544`); gate runs only in `run()` (`lib.rs:100`).
   Fix: run freshness check in the PUT path and reject boot-breaking flips.
+  Fixed 2026-10-16 (narrowed per owner decision): `bootstrapAdmin` is
+  host-only — any presence in `PUT /put/config` is a 400 naming the
+  flag/env/file setters, and the assignment is deleted. The full
+  API-vs-host knob matrix stays open.
 - R13 CONFIRMED (S2/MED/LOW). `get_config.rs:57-59` takes `GuardShare`
   and returns absolute `imagePath`, `uploadFolder`, address/port; already
   noted in `auth-hardening.md:125-126`. Fix: confirm intent; narrow share
@@ -245,7 +251,7 @@ Retriage 2026-10-16 (branch `auth-enrollment-review` @ `c3d0822`, five
 read-only batch checks + spot-checks): resolved R1, R2, R5, R6, R17, R23
 (session slice; R26 remains partial, session module only). Still open:
 R3, R4, R7–R16, R18–R22, R24, R25, R26–R35 (R25–R27, R30–R31 partial).
-In progress: R4+R3 done 2026-10-16, then R26 remainder.
+In progress: R4+R3 done 2026-10-16, R8+R9+R12 done 2026-10-16, then R26 remainder.
 
 Sequence findings (R1, R3–R4, R23–R26) outgrew per-case tests and are
 planned as model-based flow conformance in `.plan/flow-model-conformance.md`

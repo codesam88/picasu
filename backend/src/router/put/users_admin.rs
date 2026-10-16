@@ -10,7 +10,7 @@ use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
 /// Body for `PUT /put/users/admin`.
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SetUserAdminRequest {
     pub user_id: String,
     pub admin: bool,
@@ -136,6 +136,26 @@ mod tests {
             &json!({ "userId": "s5-ghost", "admin": true }),
         );
         assert_eq!(status, Status::NotFound);
+    }
+
+    /// Unknown fields on the admin-role body are a 422: a typo'd key
+    /// must not be silently dropped.
+    #[test]
+    fn unknown_field_on_admin_body_is_422() {
+        let _g = lock();
+        let client = setup();
+        seed("s5-root", true);
+        seed("s5-bob", false);
+        let status = put_admin(
+            &client,
+            Some(cookie("s5-root", true)),
+            &json!({ "userId": "s5-bob", "admin": true, "password": "x" }),
+        );
+        assert_eq!(
+            status,
+            Status::UnprocessableEntity,
+            "unknown fields must be rejected, not ignored"
+        );
     }
 
     #[test]

@@ -12,7 +12,7 @@ use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
 /// Body for `PUT /put/users/password`.
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SetUserPasswordRequest {
     pub user_id: String,
     pub old_password: Option<String>,
@@ -310,6 +310,26 @@ mod tests {
             &json!({ "userId": "s4d-root", "newPassword": "   " }),
         );
         assert_eq!(status, Status::BadRequest);
+    }
+
+    /// Unknown fields on the password body are a 422: a typo'd key
+    /// must not be silently dropped.
+    #[test]
+    fn unknown_field_on_password_body_is_422() {
+        let _g = lock();
+        let client = setup();
+        seed("s4d-root", true, None);
+        let pw = test_password("t-pw-shape");
+        let status = put_password(
+            &client,
+            cookie("s4d-root", true),
+            &json!({ "userId": "s4d-root", "newPassword": pw, "admin": false }),
+        );
+        assert_eq!(
+            status,
+            Status::UnprocessableEntity,
+            "unknown fields must be rejected, not ignored"
+        );
     }
 
     #[test]

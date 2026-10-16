@@ -1027,7 +1027,10 @@ impl<'r> FromRequest<'r> for GuardHashOriginal {
 
         if !claims.allow_original {
             warn!("Original hash access is not allowed.");
-            return Outcome::Forward(Status::Unauthorized);
+            return Outcome::Error((
+                Status::Unauthorized,
+                AppError::new(ErrorKind::Auth, "Original access is not allowed"),
+            ));
         }
 
         // Extract the asset_id from the URL path.

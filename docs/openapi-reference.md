@@ -1068,7 +1068,7 @@ func main() {
 A `{ userId, password }` object verifies against the user and password
 stores. On success the JWT travels in a `Set-Cookie: jwt=...; HttpOnly;
 SameSite=Strict; Path=/` response header — page JS never sees the token
-(R5) — and the body carries only the session profile
+— and the body carries only the session profile
 `{ userId, admin }` for the client to display. Tokens are signed with
 `authKey`, or with a secret generated once per process when `authKey`
 is unset, so changing `authKey` invalidates every token issued under
@@ -1453,7 +1453,7 @@ func main() {
 `HttpOnly` cookies cannot be removed by page JS, so logout is a server
 round trip. Idempotent: succeeds with or without a live session; the
 JWT itself stays cryptographically valid until expiry or `auth_key`
-rotation (no server-side session store — see R6).
+rotation (server-side sessions revoke on logout and password change).
 
 <h3 id="clear-the-session-cookie.-responses">Responses</h3>
 
@@ -6780,9 +6780,11 @@ func main() {
 `PUT /put/config`
 
 Every field is optional and a field absent from the body keeps its current
-value. The only validation is on `uploadFolder`, which must be a relative
-path free of `..` components; on success `config.toml` is rewritten, the
-in-memory configuration is replaced and the filesystem watcher is reloaded.
+value. `bootstrapAdmin` is host-only (flag / env / config file) and any
+presence in the body is a 400. The only other validation is on
+`uploadFolder`, which must be a relative path free of `..` components;
+on success `config.toml` is rewritten, the in-memory configuration is
+replaced and the filesystem watcher is reloaded.
 
 Corner cases: `authKey` is trimmed, and clearing or replacing it moves JWT
 signing onto a new key, invalidating every token issued under the previous
@@ -6790,9 +6792,10 @@ one. `uploadFolder` and `maxUploadSize` take an empty string to reset to
 their defaults, `uploads` and `100MiB`. `address` and `port` are stored but
 the listener is not rebound, so they take effect only after a restart.
 
-Errors: 400 `uploadFolder` is absolute or contains `..`, or the body cannot
-be parsed — 401 missing or invalid admin credentials; share tokens are not
-accepted — 405 read-only mode — 500 config write failure.
+Errors: 400 `uploadFolder` is absolute or contains `..`, the body cannot
+be parsed, or `bootstrapAdmin` is present — 401 missing or invalid admin
+credentials; share tokens are not accepted — 405 read-only mode — 500
+config write failure.
 
 > Body parameter
 
@@ -12778,10 +12781,10 @@ always forces `admin: true`.
 {}
 ```
 
-Captcha challenge descriptor, reserved for R7.
+Captcha challenge descriptor, reserved for future brute-force throttling.
 
 Never populated yet: the handler always answers `captcha: null`. Kept as
-a named schema so the R7 challenge can extend it without reshaping the
+a named schema so a future challenge can extend it without reshaping the
 enrollment response.
 
 ### Properties
@@ -13275,22 +13278,22 @@ existing destination untouched (the source stays put, outcome `skipped`);
 
 ### Properties
 
-| Name                     | Type                | Required | Restrictions | Description                                                         |
-| ------------------------ | ------------------- | -------- | ------------ | ------------------------------------------------------------------- |
-| address                  | string,null         | false    | none         | none                                                                |
-| allowRegistration        | boolean,null        | false    | none         | none                                                                |
-| authKey                  | string,null         | false    | none         | none                                                                |
-| bootstrapAdmin           | boolean,null        | false    | none         | none                                                                |
-| disableImg               | boolean,null        | false    | none         | none                                                                |
-| fsNotifyWatcher          | boolean,null        | false    | none         | none                                                                |
-| maxUploadSize            | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("100MiB").  |
-| normalizeUploadFilenames | boolean,null        | false    | none         | none                                                                |
-| port                     | integer,null(int32) | false    | none         | none                                                                |
-| readOnlyMode             | boolean,null        | false    | none         | none                                                                |
-| trivialPasswords         | boolean,null        | false    | none         | none                                                                |
-| uploadFolder             | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("uploads"). |
-| useClientTimestampInfo   | boolean,null        | false    | none         | none                                                                |
-| validateUploadContent    | boolean,null        | false    | none         | none                                                                |
+| Name                     | Type                | Required | Restrictions | Description                                                                                                                                                                                      |
+| ------------------------ | ------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| address                  | string,null         | false    | none         | none                                                                                                                                                                                             |
+| allowRegistration        | boolean,null        | false    | none         | none                                                                                                                                                                                             |
+| authKey                  | string,null         | false    | none         | none                                                                                                                                                                                             |
+| bootstrapAdmin           | boolean,null        | false    | none         | Host-only: setting it requires the `--bootstrap-admin` flag,<br>`PICASU_BOOTSTRAP_ADMIN`, or config `bootstrap_admin`. Any presence<br>in the API body is rejected with 400 and changes nothing. |
+| disableImg               | boolean,null        | false    | none         | none                                                                                                                                                                                             |
+| fsNotifyWatcher          | boolean,null        | false    | none         | none                                                                                                                                                                                             |
+| maxUploadSize            | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("100MiB").                                                                                                                               |
+| normalizeUploadFilenames | boolean,null        | false    | none         | none                                                                                                                                                                                             |
+| port                     | integer,null(int32) | false    | none         | none                                                                                                                                                                                             |
+| readOnlyMode             | boolean,null        | false    | none         | none                                                                                                                                                                                             |
+| trivialPasswords         | boolean,null        | false    | none         | none                                                                                                                                                                                             |
+| uploadFolder             | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("uploads").                                                                                                                              |
+| useClientTimestampInfo   | boolean,null        | false    | none         | none                                                                                                                                                                                             |
+| validateUploadContent    | boolean,null        | false    | none         | none                                                                                                                                                                                             |
 
 <h2 id="tocS_Prefetch">Prefetch</h2>
 <!-- backwards compatibility -->
@@ -13629,9 +13632,9 @@ Anonymous enrollment state for boot routing.
 
 oneOf
 
-| Name          | Type                              | Required | Restrictions | Description                                                                                                                                                                                                                      |
-| ------------- | --------------------------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| » _anonymous_ | [CaptchaInfo](#schemacaptchainfo) | false    | none         | Captcha challenge descriptor, reserved for R7.<br><br>Never populated yet: the handler always answers `captcha: null`. Kept as<br>a named schema so the R7 challenge can extend it without reshaping the<br>enrollment response. |
+| Name          | Type                              | Required | Restrictions | Description                                                                                                                                                                                                                                                   |
+| ------------- | --------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| » _anonymous_ | [CaptchaInfo](#schemacaptchainfo) | false    | none         | Captcha challenge descriptor, reserved for future brute-force throttling.<br><br>Never populated yet: the handler always answers `captcha: null`. Kept as<br>a named schema so a future challenge can extend it without reshaping the<br>enrollment response. |
 
 xor
 

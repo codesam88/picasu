@@ -33,6 +33,9 @@ pub struct PartialUpdateConfigRequest {
     pub use_client_timestamp_info: Option<bool>,
     pub allow_registration: Option<bool>,
     pub trivial_passwords: Option<bool>,
+    /// Host-only: setting it requires the `--bootstrap-admin` flag,
+    /// `PICASU_BOOTSTRAP_ADMIN`, or config `bootstrap_admin`. Any presence
+    /// in the API body is rejected with 400 and changes nothing.
     pub bootstrap_admin: Option<bool>,
     pub auth_key: Option<String>,
 }
@@ -40,9 +43,11 @@ pub struct PartialUpdateConfigRequest {
 /// Patch the server configuration with the posted fields.
 ///
 /// Every field is optional and a field absent from the body keeps its current
-/// value. The only validation is on `uploadFolder`, which must be a relative
-/// path free of `..` components; on success `config.toml` is rewritten, the
-/// in-memory configuration is replaced and the filesystem watcher is reloaded.
+/// value. `bootstrapAdmin` is host-only (flag / env / config file) and any
+/// presence in the body is a 400. The only other validation is on
+/// `uploadFolder`, which must be a relative path free of `..` components;
+/// on success `config.toml` is rewritten, the in-memory configuration is
+/// replaced and the filesystem watcher is reloaded.
 ///
 /// Corner cases: `authKey` is trimmed, and clearing or replacing it moves JWT
 /// signing onto a new key, invalidating every token issued under the previous
@@ -50,9 +55,10 @@ pub struct PartialUpdateConfigRequest {
 /// their defaults, `uploads` and `100MiB`. `address` and `port` are stored but
 /// the listener is not rebound, so they take effect only after a restart.
 ///
-/// Errors: 400 `uploadFolder` is absolute or contains `..`, or the body cannot
-/// be parsed — 401 missing or invalid admin credentials; share tokens are not
-/// accepted — 405 read-only mode — 500 config write failure.
+/// Errors: 400 `uploadFolder` is absolute or contains `..`, the body cannot
+/// be parsed, or `bootstrapAdmin` is present — 401 missing or invalid admin
+/// credentials; share tokens are not accepted — 405 read-only mode — 500
+/// config write failure.
 #[utoipa::path(
         tag = "config",
         request_body = PartialUpdateConfigRequest,
@@ -75,6 +81,15 @@ pub async fn update_config_handler(
     let req_data = req.into_inner();
 
     spawn_blocking(move || -> Result<Status, AppError> {
+        // `bootstrapAdmin` is host-only and never changes at runtime via
+        // the API. Reject loudly (naming the host-side setters) instead of
+        // persisting a flip the next boot would refuse.
+        if req_data.bootstrap_admin.is_some() {
+            return Err(AppError::new(
+                ErrorKind::InvalidInput,
+                "bootstrapAdmin is a host-only option: set it with --bootstrap-admin, PICASU_BOOTSTRAP_ADMIN, or config `bootstrap_admin`; it cannot be changed via the API",
+            ));
+        }
         if let Some(ref folder) = req_data.upload_folder {
             let p = Path::new(folder.as_str());
             if p.is_absolute() || p.components().any(|c| matches!(c, Component::ParentDir)) {
@@ -129,9 +144,6 @@ pub async fn update_config_handler(
         }
         if let Some(trivial_passwords) = req_data.trivial_passwords {
             current_config.trivial_passwords = trivial_passwords;
-        }
-        if let Some(bootstrap_admin) = req_data.bootstrap_admin {
-            current_config.bootstrap_admin = bootstrap_admin;
         }
         if let Some(key) = req_data.auth_key {
             let trimmed = key.trim();
@@ -364,12 +376,12 @@ mod tests {
     }
 
     #[test]
-    fn put_config_allowlists_bootstrap_admin() {
+    fn put_config_rejects_bootstrap_admin_as_host_only() {
         let _g = lock();
         let client = setup();
         seed("s4e-root", true, None);
         // The test harness opts into bootstrap mode; start explicitly off so
-        // the knob's change is observable.
+        // a leak would be observable.
         crate::model::config::APP_CONFIG
             .get()
             .expect("APP_CONFIG")
@@ -385,16 +397,20 @@ mod tests {
                 .bootstrap_admin
         };
         assert!(!flag(), "start must be off");
-        let status = client
-            .put("/put/config")
-            .cookie(cookie("s4e-root", true))
-            .header(ContentType::JSON)
-            .body(json!({ "bootstrapAdmin": true }).to_string())
-            .dispatch()
-            .status();
-        assert_eq!(status, Status::Ok);
-        assert!(flag(), "PUT must toggle the knob on");
-        // A patch that omits the field keeps the current value.
+        // `bootstrapAdmin` is host-only (flag / env / config file): any
+        // presence in the API body is a 400 and changes nothing.
+        for value in [json!(true), json!(false)] {
+            let status = client
+                .put("/put/config")
+                .cookie(cookie("s4e-root", true))
+                .header(ContentType::JSON)
+                .body(json!({ "bootstrapAdmin": value }).to_string())
+                .dispatch()
+                .status();
+            assert_eq!(status, Status::BadRequest, "host-only knob, value {value}");
+        }
+        assert!(!flag(), "rejected knob must not flip the flag");
+        // A patch that omits the field still succeeds and keeps the value.
         let status = client
             .put("/put/config")
             .cookie(cookie("s4e-root", true))
@@ -403,7 +419,7 @@ mod tests {
             .dispatch()
             .status();
         assert_eq!(status, Status::Ok);
-        assert!(flag(), "absent field must not touch the knob");
+        assert!(!flag(), "absent field must not touch the knob");
     }
 
     #[test]
