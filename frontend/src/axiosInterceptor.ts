@@ -101,7 +101,7 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
     case 401:
       // The session is gone server-side: drop the persisted display
       // profile too, before the throttle gate, so a stale admin badge can
-      // never outlive the session that backed it (R5). Share pages never
+      // never outlive the session that backed it. Share pages never
       // reach here — their 401s are share-password flow, not sessions.
       useSessionStore('mainId').clearProfile()
       if (isThrottled401()) return // Prevent duplicate snackbars/redirects

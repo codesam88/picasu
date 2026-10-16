@@ -90,7 +90,7 @@ fn open_registration_creates_non_admin_user() {
     let _g = lock();
     let client = setup();
     write_config(&json!({ "allow_registration": true }));
-    // Registration never creates the first user (R4): the store is already
+    // Registration never creates the first user: the store is already
     // non-empty here, so the knob gates normally.
     let _admin = seed_admin("s6-root");
 
@@ -129,7 +129,7 @@ fn open_registration_creates_non_admin_user() {
 fn invite_registration_works_with_knob_off() {
     let _g = lock();
     let client = setup();
-    // Registration never creates the first user (R4): seed a non-admin so
+    // Registration never creates the first user: seed a non-admin so
     // the store is non-empty (invite registration on an admin-less store).
     crate::auth::users::create_user("s6-seed", false).expect("seed first user");
     assert!(
@@ -169,7 +169,7 @@ fn registration_without_invite_when_disabled_is_403() {
     let _g = lock();
     let client = setup();
     // Non-empty store: the 403 here pins the disabled gate, not the
-    // empty-store 401 (covered by the R4 tests above).
+    // empty-store 401 covered by the empty-store tests above.
     crate::auth::users::create_user("s6-seed", false).expect("seed first user");
     let pw = crate::tests::fixtures::test_password("t-reg-off");
 
@@ -184,7 +184,7 @@ fn registration_without_invite_when_disabled_is_403() {
     assert_eq!(crate::auth::users::user_count().expect("count"), 1);
 }
 
-// ── Row: empty store never registers (R4) ──────────────────────────────────
+// ── Row: empty store never registers ───────────────────────────────────────
 
 /// Registration must not squat the first-user slot: on an empty store the
 /// open knob still refuses with 401 naming bootstrap, and nobody is
@@ -243,7 +243,7 @@ fn expired_invite_is_403() {
     let _g = lock();
     let client = setup();
     // Non-empty store so the 403 pins the expiry gate, not the empty-store
-    // 401 (covered by the R4 tests above).
+    // 401 covered by the empty-store tests above.
     crate::auth::users::create_user("s6-seed", false).expect("seed first user");
     let past = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -269,7 +269,7 @@ fn expired_invite_is_403() {
 fn double_use_invite_is_409() {
     let _g = lock();
     let client = setup();
-    // Non-empty store (R4): the first registration below is not the first
+    // Non-empty store: the first registration below is not the first
     // user, so the 409 pins double-use rather than the empty-store refusal.
     crate::auth::users::create_user("s6-seed", false).expect("seed first user");
     let (token, _) = crate::auth::invites::create_invite("s6-root").expect("create invite");
@@ -336,7 +336,7 @@ fn duplicate_id_is_409() {
     let _g = lock();
     let client = setup();
     write_config(&json!({ "allow_registration": true }));
-    // Non-empty store (R4) so the first registration succeeds normally.
+    // Non-empty store so the first registration succeeds normally.
     crate::auth::users::create_user("s6-seed", false).expect("seed first user");
     let pw = crate::tests::fixtures::test_password("t-reg-dup");
 
@@ -383,7 +383,7 @@ fn trivial_passwords_flag_opens_registration_to_weak_passwords() {
     let _g = lock();
     let client = setup();
     write_config(&json!({ "allow_registration": true, "trivial_passwords": true }));
-    // Non-empty store (R4) so the registration succeeds normally.
+    // Non-empty store so the registration succeeds normally.
     crate::auth::users::create_user("s6-seed", false).expect("seed first user");
     let (status, _) = register(&client, &json!({ "userId": "s6-triv", "password": "pw" }));
     assert_eq!(status, Status::Ok);

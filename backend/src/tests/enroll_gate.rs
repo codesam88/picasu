@@ -170,7 +170,7 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
     assert_eq!(login(&client, "root", &pw), Status::Ok);
 }
 
-// ── Row: first-create race (R3) ────────────────────────────────────────────
+// ── Row: first-create race ─────────────────────────────────────────────────
 
 /// Concurrent unauthenticated bootstraps on an empty store must enroll
 /// exactly one admin: the window check and the insert are atomic, so all
