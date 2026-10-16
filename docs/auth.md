@@ -125,6 +125,18 @@ Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    The legacy `PUT /put/config/password` route now changes the caller's own
    password on the same store.
 
+**Enrollment signal (frontend boot):** anonymous `GET /get/server-info`
+answers 200 in every install state with exactly `{ enrolled,
+enrollmentOpen, captcha: null }` (`Cache-Control: no-store`): `enrolled`
+is true once any user exists, `enrollmentOpen` only on an empty store
+with the bootstrap flag set, `captcha` always null (reserved). The
+router guard reads the session profile as a fast path (present → allow,
+zero fetches) and otherwise pings this endpoint fresh on each
+sessionless navigation — needs-enrollment forces `/register`, anything
+else falls through to `/login`; share routes are exempt. Nothing is
+cached. Anonymous `GET /get/users` is 401 in all states, including the
+empty store — it never serves enrollment state.
+
 **Bootstrap mode (opt-in):** a fresh install is closed by default — with an
 empty user store and no legacy password, every guarded route answers 401 and
 `authenticate` accepts nothing. Online enrollment of the first administrator

@@ -69,11 +69,14 @@ This is the suggested tackle order, not a commitment to fix all items.
   `resetEnrollmentProbe`; `LoginPage.vue:99-127` replaces to `timeline`
   without reset, so a 401 cached at boot is re-read post-login
   (`enrollment.ts:58-70`, `routes.ts:126-141`). Fix: reset on
-  login/logout or stop caching failures.
+  login/logout or stop caching failures. Fixed 2026-10-16: probe and cache
+  deleted, guard pings `GET /get/server-info` (`.plan/r26-frontend-auth-consolidation.md`).
 - R2 CONFIRMED with correction (S0/LOW/LOW). `cargo check --tests` fails
   at `backend/tests/api_config.rs:125` (`no field password`); `api_watcher.rs`
   compiles and fails at runtime (bare-string → 422), not at compile time.
-  Fix: drop legacy password assertions, send JSON bodies.
+  Fix: drop legacy password assertions, send JSON bodies. Fixed 2026-10-16:
+  bootstrap+JSON login via `Set-Cookie` session, removed `password`
+  assertions (R1/R2 worker session).
 - R3 CONFIRMED (S1/MED/MED). `bootstrap.rs:78-79` counts then
   `spawn_blocking` inserts with no lock; `provision_user`
   (`auth/users.rs:316-331`) re-checks id only; zero `BOOTSTRAP_LOCK` hits
@@ -157,7 +160,10 @@ This is the suggested tackle order, not a commitment to fix all items.
   (`enrollment.ts:66`) + Pinia with no single owner; probe overloads
   admin `GET /get/users` with `validateStatus: () => true`, mapping every
   failure to `login`. Fix: one session module + explicit boot-status
-  signal (revisit no-new-status-endpoint decision).
+  signal (revisit no-new-status-endpoint decision). Fixed 2026-10-16:
+  session-module slice done — `GET /get/server-info` signal, collapsed
+  guard, probe deleted, anonymous `GET /get/users` tied to 401
+  (`.plan/r26-frontend-auth-consolidation.md`).
 - R24 CONFIRMED (S2/MED/LOW). Interceptor (`axiosInterceptor.ts:101-104`)
   replaces all 401 messages then callers toast again; 1s throttle drops
   toast and redirect. Fix: single 401 display owner; scope throttle to
