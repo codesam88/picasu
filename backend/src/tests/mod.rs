@@ -36,3 +36,6 @@ mod openapi_contract;
 
 #[cfg(test)]
 mod openapi_parity;
+
+#[cfg(test)]
+mod r6_session_revocation;
