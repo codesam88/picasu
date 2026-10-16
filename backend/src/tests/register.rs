@@ -90,6 +90,9 @@ fn open_registration_creates_non_admin_user() {
     let _g = lock();
     let client = setup();
     write_config(&json!({ "allow_registration": true }));
+    // Registration never creates the first user (R4): the store is already
+    // non-empty here, so the knob gates normally.
+    let _admin = seed_admin("s6-root");
 
     let pw = crate::tests::fixtures::test_password("t-reg-open");
     let (status, body) = register(&client, &json!({ "userId": "s6-open", "password": pw }));
@@ -126,6 +129,9 @@ fn open_registration_creates_non_admin_user() {
 fn invite_registration_works_with_knob_off() {
     let _g = lock();
     let client = setup();
+    // Registration never creates the first user (R4): seed a non-admin so
+    // the store is non-empty (invite registration on an admin-less store).
+    crate::auth::users::create_user("s6-seed", false).expect("seed first user");
     assert!(
         !crate::model::config::APP_CONFIG
             .get()
@@ -162,6 +168,9 @@ fn invite_registration_works_with_knob_off() {
 fn registration_without_invite_when_disabled_is_403() {
     let _g = lock();
     let client = setup();
+    // Non-empty store: the 403 here pins the disabled gate, not the
+    // empty-store 401 (covered by the R4 tests above).
+    crate::auth::users::create_user("s6-seed", false).expect("seed first user");
     let pw = crate::tests::fixtures::test_password("t-reg-off");
 
     let (status, _) = register(&client, &json!({ "userId": "s6-noinv", "password": pw }));
@@ -172,7 +181,58 @@ fn registration_without_invite_when_disabled_is_403() {
         &json!({ "userId": "s6-noinv", "password": pw, "invite": "" }),
     );
     assert_eq!(status, Status::Forbidden);
+    assert_eq!(crate::auth::users::user_count().expect("count"), 1);
+}
+
+// ── Row: empty store never registers (R4) ──────────────────────────────────
+
+/// Registration must not squat the first-user slot: on an empty store the
+/// open knob still refuses with 401 naming bootstrap, and nobody is
+/// created. `POST /post/users/bootstrap` is the only online first-user path.
+#[test]
+fn register_on_empty_store_is_401_even_with_knob_on() {
+    let _g = lock();
+    let client = setup();
+    write_config(&json!({ "allow_registration": true }));
+
+    let pw = crate::tests::fixtures::test_password("t-reg-r4-open");
+    let (status, body) = register(&client, &json!({ "userId": "s6-r4-open", "password": pw }));
+    assert_eq!(status, Status::Unauthorized, "body: {body:?}");
+    let body = body.unwrap_or_default().to_lowercase();
+    assert!(
+        body.contains("no administrator enrolled"),
+        "refusal must name the missing enrollment, got: {body}"
+    );
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+}
+
+/// A valid invite does not bypass the empty-store refusal either: the first
+/// user still comes from bootstrap, and the invite is not burned.
+#[test]
+fn register_on_empty_store_is_401_even_with_valid_invite() {
+    let _g = lock();
+    let client = setup();
+    let (token, _) = crate::auth::invites::create_invite("s6-root").expect("create invite");
+
+    let pw = crate::tests::fixtures::test_password("t-reg-r4-inv");
+    let (status, body) = register(
+        &client,
+        &json!({ "userId": "s6-r4-invited", "password": pw, "invite": token }),
+    );
+    assert_eq!(status, Status::Unauthorized, "body: {body:?}");
+    assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+    assert!(
+        crate::auth::users::get_user("s6-r4-invited")
+            .expect("get")
+            .is_none(),
+        "refused registration must create nobody"
+    );
+    let listed = crate::auth::invites::list_invites().expect("list");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(
+        listed[0].used_by, None,
+        "refused registration must not burn the invite"
+    );
 }
 
 // ── Row: expired ───────────────────────────────────────────────────────────
@@ -182,6 +242,9 @@ fn registration_without_invite_when_disabled_is_403() {
 fn expired_invite_is_403() {
     let _g = lock();
     let client = setup();
+    // Non-empty store so the 403 pins the expiry gate, not the empty-store
+    // 401 (covered by the R4 tests above).
+    crate::auth::users::create_user("s6-seed", false).expect("seed first user");
     let past = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")
@@ -195,7 +258,7 @@ fn expired_invite_is_403() {
         &json!({ "userId": "s6-late", "password": pw, "invite": token }),
     );
     assert_eq!(status, Status::Forbidden);
-    assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+    assert_eq!(crate::auth::users::user_count().expect("count"), 1);
 }
 
 // ── Row: double-use ────────────────────────────────────────────────────────
@@ -206,6 +269,9 @@ fn expired_invite_is_403() {
 fn double_use_invite_is_409() {
     let _g = lock();
     let client = setup();
+    // Non-empty store (R4): the first registration below is not the first
+    // user, so the 409 pins double-use rather than the empty-store refusal.
+    crate::auth::users::create_user("s6-seed", false).expect("seed first user");
     let (token, _) = crate::auth::invites::create_invite("s6-root").expect("create invite");
     let pw = crate::tests::fixtures::test_password("t-reg-1");
 
@@ -219,7 +285,8 @@ fn double_use_invite_is_409() {
         &json!({ "userId": "s6-second", "password": pw, "invite": token }),
     );
     assert_eq!(status, Status::Conflict);
-    assert_eq!(crate::auth::users::user_count().expect("count"), 1);
+    // Seed + first user; the second registration created nobody.
+    assert_eq!(crate::auth::users::user_count().expect("count"), 2);
     assert!(
         crate::auth::users::get_user("s6-second")
             .expect("get")
@@ -269,13 +336,15 @@ fn duplicate_id_is_409() {
     let _g = lock();
     let client = setup();
     write_config(&json!({ "allow_registration": true }));
+    // Non-empty store (R4) so the first registration succeeds normally.
+    crate::auth::users::create_user("s6-seed", false).expect("seed first user");
     let pw = crate::tests::fixtures::test_password("t-reg-dup");
 
     let (status, _) = register(&client, &json!({ "userId": "s6-dup", "password": pw }));
     assert_eq!(status, Status::Ok);
     let (status, _) = register(&client, &json!({ "userId": " s6-dup ", "password": pw }));
     assert_eq!(status, Status::Conflict, "trimmed id must collide");
-    assert_eq!(crate::auth::users::user_count().expect("count"), 1);
+    assert_eq!(crate::auth::users::user_count().expect("count"), 2);
     // The original record is untouched.
     assert_eq!(
         crate::auth::users::get_user("s6-dup").expect("get"),
@@ -314,6 +383,8 @@ fn trivial_passwords_flag_opens_registration_to_weak_passwords() {
     let _g = lock();
     let client = setup();
     write_config(&json!({ "allow_registration": true, "trivial_passwords": true }));
+    // Non-empty store (R4) so the registration succeeds normally.
+    crate::auth::users::create_user("s6-seed", false).expect("seed first user");
     let (status, _) = register(&client, &json!({ "userId": "s6-triv", "password": "pw" }));
     assert_eq!(status, Status::Ok);
 }

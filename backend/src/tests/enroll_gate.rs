@@ -170,6 +170,54 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
     assert_eq!(login(&client, "root", &pw), Status::Ok);
 }
 
+// ── Row: first-create race (R3) ────────────────────────────────────────────
+
+/// Concurrent unauthenticated bootstraps on an empty store must enroll
+/// exactly one admin: the window check and the insert are atomic, so all
+/// but one contender see the closed window (401) instead of landing
+/// additional admins.
+#[test]
+fn concurrent_first_bootstraps_enroll_exactly_one_admin() {
+    let _g = lock();
+    let _client = setup();
+    assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+
+    const CONTENDERS: usize = 6;
+    let barrier = std::sync::Barrier::new(CONTENDERS);
+    let barrier_ref = &barrier;
+    std::thread::scope(|s| {
+        let mut handles = Vec::with_capacity(CONTENDERS);
+        for i in 0..CONTENDERS {
+            handles.push(s.spawn(move || {
+                barrier_ref.wait();
+                let client = make_client();
+                bootstrap_user(
+                    &client,
+                    &format!("s6-racer-{i}"),
+                    &test_password(&format!("t-race-{i}")),
+                )
+            }));
+        }
+        let statuses: Vec<Status> = handles
+            .into_iter()
+            .map(|h| h.join().expect("thread"))
+            .collect();
+        let wins = statuses.iter().filter(|&&s| s == Status::Ok).count();
+        assert_eq!(wins, 1, "exactly one bootstrap must win, got: {statuses:?}");
+        assert!(
+            statuses
+                .iter()
+                .all(|s| *s == Status::Ok || *s == Status::Unauthorized),
+            "losers must see the closed window (401), got: {statuses:?}"
+        );
+    });
+
+    assert_eq!(crate::auth::users::user_count().expect("count"), 1);
+    let users = crate::auth::users::list_users().expect("list users");
+    assert_eq!(users.len(), 1);
+    assert!(users[0].1.admin, "the single winner must be admin");
+}
+
 // ── Row: password-PUT never enrolls ─────────────────────────────────────────
 
 /// A password PUT on an empty store must not enroll: the unknown target is

@@ -81,12 +81,16 @@ This is the suggested tackle order, not a commitment to fix all items.
   `spawn_blocking` inserts with no lock; `provision_user`
   (`auth/users.rs:316-331`) re-checks id only; zero `BOOTSTRAP_LOCK` hits
   in `backend/src`. Fix: prove with concurrent test, guard check+insert
-  (plan step 8).
+  (plan step 8). Fixed 2026-10-16: `BOOTSTRAP_LOCK` serializes the
+  authoritative flag ∧ empty-store check with the insert inside
+  `bootstrap_user_sync`; concurrent-test pins exactly-one-winner.
 - R4 CONFIRMED with nuance (S1/MED/LOW). The `user_count()>0` check at
   `register.rs:86` gates only the admin-session path; the knob/invite
   branch (`register_user_sync`) has no emptiness check, so the first user
   can land non-admin (pinned by `register.rs:91-118`). Fix: empty-store
-  refusal on knob/invite branches.
+  refusal on knob/invite branches. Fixed 2026-10-16: `register_user_sync`
+  refuses 401 on an empty store after validation, before gates (invite not
+  burned); knob/invite matrices reseeded onto non-empty stores.
 - R5 CONFIRMED (S1/HIGH/MED). `sessionCookie.ts:28` sets `jwt` via
   `js-cookie` (cannot be HttpOnly); no server `Set-Cookie` in tree;
   `docs/auth.md:90` states the server never issues it. Fix: server-side
@@ -241,7 +245,7 @@ Retriage 2026-10-16 (branch `auth-enrollment-review` @ `c3d0822`, five
 read-only batch checks + spot-checks): resolved R1, R2, R5, R6, R17, R23
 (session slice; R26 remains partial, session module only). Still open:
 R3, R4, R7–R16, R18–R22, R24, R25, R26–R35 (R25–R27, R30–R31 partial).
-In progress: R4+R3 next, then R26 remainder.
+In progress: R4+R3 done 2026-10-16, then R26 remainder.
 
 Sequence findings (R1, R3–R4, R23–R26) outgrew per-case tests and are
 planned as model-based flow conformance in `.plan/flow-model-conformance.md`

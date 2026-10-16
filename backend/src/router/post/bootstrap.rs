@@ -1,6 +1,7 @@
 use rocket::post;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 use tokio::task::spawn_blocking;
 
 use crate::auth::users;
@@ -20,6 +21,16 @@ pub struct BootstrapRequest {
     pub password: String,
 }
 
+/// Closed-window refusal, shared by the handler fast path and the
+/// authoritative locked check in [`bootstrap_user_sync`] so contenders that
+/// lose the race see the same message.
+const WINDOW_CLOSED_MSG: &str = "No administrator enrolled: the bootstrap window is closed (user store is non-empty or --bootstrap-admin is off). Enroll further users via POST /post/users/register, or provision via the picasu-admin CLI";
+
+/// First-user enrollment lock (R3): the window check and the insert must be
+/// atomic across concurrent requests. The handler's pre-check stays a fast
+/// path only; the check inside [`bootstrap_user_sync`] is authoritative.
+static BOOTSTRAP_LOCK: Mutex<()> = Mutex::new(());
+
 /// Enroll the first administrator and persist its password hash.
 ///
 /// Thin delegate over [`users::provision_user`]: id/password validation
@@ -28,11 +39,23 @@ pub struct BootstrapRequest {
 /// The trimmed (canonical) password is stored; login verifies the trimmed
 /// input, so write-then-login stays consistent.
 ///
+/// The flag ∧ empty-store window test runs here under [`BOOTSTRAP_LOCK`],
+/// so concurrent first bootstraps serialize and exactly one wins; losers
+/// get the closed-window 401.
+///
 /// # Errors
 /// Returns 400 when the id is invalid or the password violates the
-/// policy, 409 when the id already exists, and 500 when either store
-/// fails.
+/// policy, 401 when the window is closed (flag off or store non-empty),
+/// 409 when the id already exists, and 500 when either store fails.
 fn bootstrap_user_sync(user_id: &str, password: &str) -> AppResult<UserSummary> {
+    let _guard = BOOTSTRAP_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))? > 0
+        || !bootstrap_open()
+    {
+        return Err(AppError::new(ErrorKind::Auth, WINDOW_CLOSED_MSG));
+    }
     let id = users::provision_user(user_id, password, true)?;
     log::info!("enrollment: created user {id} (admin: true)");
     Ok(UserSummary {
@@ -86,13 +109,7 @@ pub async fn bootstrap_admin_handler(
         // authenticated caller against a shut window falls through to the
         // missing-enrollment 401 below.
         auth?;
-        return Err(AppError::new(
-            ErrorKind::Auth,
-            "No administrator enrolled: the bootstrap window is closed (user \
-             store is non-empty or --bootstrap-admin is off). Enroll further \
-             users via POST /post/users/register, or provision via the \
-             picasu-admin CLI",
-        ));
+        return Err(AppError::new(ErrorKind::Auth, WINDOW_CLOSED_MSG));
     }
     let req = body.into_inner();
     let created = spawn_blocking(move || bootstrap_user_sync(&req.user_id, &req.password))
