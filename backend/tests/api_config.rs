@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use rocket::http::Status;
+use rocket::http::{ContentType, Status};
 use rocket::local::blocking::Client;
 use serde_json::Value;
 
@@ -9,16 +9,33 @@ use picasu::{APP_CONFIG, AppConfig, build_rocket_with_config};
 static API_LOCK: Mutex<()> = Mutex::new(());
 
 fn auth_and_config(client: &Client) -> Value {
-    // Config.toml sets password = "secret123"
+    // Seed the first admin via the open bootstrap window (empty store + flag
+    // set by the test harness). Afterwards authenticate with the same JSON
+    // body shape the SPA uses.
+    let bootstrap_res = client
+        .post("/post/users/bootstrap")
+        .header(ContentType::JSON)
+        .body(r#"{"userId":"admin","password":"secret123"}"#)
+        .dispatch();
+    assert_eq!(
+        bootstrap_res.status(),
+        Status::Ok,
+        "bootstrap should succeed"
+    );
+
     let auth_res = client
         .post("/post/authenticate")
-        .body("\"secret123\"")
-        .header(rocket::http::ContentType::JSON)
+        .header(ContentType::JSON)
+        .body(r#"{"userId":"admin","password":"secret123"}"#)
         .dispatch();
     assert_eq!(auth_res.status(), Status::Ok, "authenticate should succeed");
-    let token: String = auth_res.into_json().expect("JWT token");
-
-    // GuardShare requires the JWT in a cookie named "jwt".
+    // Post-R5/R6 the body is a profile; the JWT travels in HttpOnly Set-Cookie.
+    let set_cookie = auth_res
+        .headers()
+        .get_one("Set-Cookie")
+        .expect("Set-Cookie");
+    let pair = set_cookie.split(';').next().expect("cookie pair");
+    let token = pair.strip_prefix("jwt=").expect("jwt cookie").to_owned();
     let cookie = rocket::http::Cookie::new("jwt", token);
     let res = client.get("/get/config").cookie(cookie).dispatch();
     assert_eq!(res.status(), Status::Ok);
@@ -44,7 +61,7 @@ fn api_config_precedence() {
     // For each field type:
     //   server.*  ← address, port, max_upload_size
     //   gallery.* ← data_home, image_home, upload_folder, read_only_mode, disable_img
-    //   secrets.* ← password, auth_key
+    //   secrets.* ← auth_key (password was removed with legacy auth)
     //
     // Env overrides are set for port and upload_folder (verify env wins),
     // while max_upload_size and read_only_mode are left to the config file
@@ -62,7 +79,6 @@ read_only_mode = true
 upload_folder = "my_uploads"
 
 [secrets]
-password = "secret123"
 auth_key = "jwt-key-from-toml"
 "#,
     )
@@ -92,6 +108,14 @@ auth_key = "jwt-key-from-toml"
     // ── Load config ───────────────────────────────────────────────────
     std::fs::create_dir_all(dat_dir.join("db")).unwrap();
     AppConfig::init();
+    // Open the first-run bootstrap window for this test binary (like
+    // api_watcher and the shared bootstrap harness). Without it,
+    // `POST /post/users/bootstrap` would 401 on a non-empty check and
+    // `POST /post/authenticate` would require a pre-existing user.
+    {
+        let mut cfg = APP_CONFIG.get().unwrap().write().unwrap();
+        cfg.bootstrap_admin = true;
+    }
 
     // ── Verify in-memory struct ───────────────────────────────────────
     {
@@ -118,13 +142,6 @@ auth_key = "jwt-key-from-toml"
             cfg.auth_key.as_deref(),
             Some("jwt-key-from-env"),
             "PICASU_AUTH_KEY overrides secrets block"
-        );
-
-        // ── Config file wins over default ─────────
-        assert_eq!(
-            cfg.password.as_deref(),
-            Some("secret123"),
-            "password from secrets block"
         );
 
         // ── DATA_HOME / IMAGE_HOME from env ───────

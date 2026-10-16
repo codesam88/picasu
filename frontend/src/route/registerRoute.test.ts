@@ -90,4 +90,12 @@ describe('register route', () => {
     expect(source).toMatch(/to\.name === 'share'/)
     expect(source).toMatch(/shareViewPage/)
   })
+
+  test('401 interceptor clears the cached probe when the session expires (R1)', () => {
+    // A cached authenticated probe must not outlive a 401-expired session,
+    // or the router guard would let the next app navigation through
+    // sessionless. Mirrors the logout probe-reset check.
+    const source = readSrc('axiosInterceptor.ts')
+    expect(source).toContain('resetEnrollmentProbe')
+  })
 })

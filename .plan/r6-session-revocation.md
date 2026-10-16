@@ -66,9 +66,9 @@ unchanged (records live in redb, not memory).
    — sessions first, password second, so a crash between fails safe to
    re-login-with-old-password. Done: tests (logout kills only its
    session; second device survives; password change kills all; inventory
-   lists exactly live sessions), full lib suite green.
-4. Docs + verify: `docs/auth.md` mechanism (session list, local logout,
-   global password rotation, hard-cut note); session-list UI stays a
-   follow-up (API first; admin panel can surface it later). Done:
-   clippy/fmt/openapi checks green, Playwright first-admin spec green
-   live. Explicitly out: `api_config.rs` (R2).
+   lists exactly live sessions), full lib suite green. Committed as
+   `779a150a6` (step-3 worker transcript in session; senior review added
+   let-chain `logout` cleanup + `GuardUser` presented-claims fix).
+4. Docs + verify: `docs/auth.md` mechanism done in step 3. Remaining:
+   Playwright first-admin live rerun (login/logout paths changed since
+   the R5 run), then mark done. Explicitly out: `api_config.rs` (R2).
