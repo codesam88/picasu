@@ -115,6 +115,34 @@ The following env vars override the config file on every launch:
 | `PICASU_UPLOAD_FOLDER`      | `gallery.upload_folder`      |
 | `PICASU_AUTH_KEY`           | `secrets.auth_key`           |
 
+## Runtime changes via the API
+
+`PUT /put/config` accepts only runtime-safe knobs. Host-only knobs are
+rejected with 400 when present in the body — set them via the flag, env
+var, or `config.toml` key listed, then restart:
+
+| Knob                         | Set via                                                                           |
+| ---------------------------- | --------------------------------------------------------------------------------- |
+| `server.address`             | `PICASU_ADDRESS` or `server.address` in `config.toml`                             |
+| `server.port`                | `PICASU_PORT` or `server.port` in `config.toml`                                   |
+| `gallery.allow_registration` | `PICASU_ALLOW_REGISTRATION` or `gallery.allow_registration` in `config.toml`      |
+| `gallery.trivial_passwords`  | `--trivial-passwords`, `PICASU_TRIVIAL_PASSWORDS`, or `gallery.trivial_passwords` |
+| `gallery.bootstrap_admin`    | `--bootstrap-admin`, `PICASU_BOOTSTRAP_ADMIN`, or `gallery.bootstrap_admin`       |
+| `gallery.data_home`          | `PICASU_DATA_HOME` (not accepted by the API at all)                               |
+| `gallery.image_home`         | `PICASU_IMAGE_HOME` (not accepted by the API at all)                              |
+
+API-writable knobs: `upload_folder`, `max_upload_size`, `read_only_mode`,
+`disable_img`, `fs_notify_watcher`, `normalize_upload_filenames`,
+`validate_upload_content`, `use_client_timestamp_info`, and `auth_key`.
+Note that changing `auth_key` re-signs JWTs and invalidates every live
+session.
+
+Two settings are environment-only by construction: `PICASU_CONFIG_HOME`
+(selects where `config.toml` itself lives, so it cannot come from the
+file or the API) and `PICASU_PBKDF_ITERATIONS` (test-only password-hashing
+effort — never set in production, accepted from neither the file nor the
+API).
+
 ## Advanced: Rocket configuration
 
 Rocket has additional options not exposed in this config — TLS, worker count,
