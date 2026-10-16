@@ -1,5 +1,4 @@
 import { logout as logoutApi } from '@/api/users'
-import { resetEnrollmentProbe } from './enrollment'
 import { useRedirectionStore } from '@/store/redirectionStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { useTokenStore } from '@/store/tokenStore'
@@ -11,10 +10,6 @@ export const performLogout = async (
   // state is cleared unconditionally first, so logout sticks even when the
   // round trip fails (offline backend, dropped connection).
   useSessionStore('mainId').clearProfile()
-
-  // Drop the cached probe (R1): it may hold an authenticated result that
-  // would otherwise let the next navigation render app routes sessionless.
-  resetEnrollmentProbe()
 
   const tokenStore = useTokenStore('mainId')
   tokenStore.timestampToken = null

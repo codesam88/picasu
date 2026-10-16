@@ -9,12 +9,8 @@ function readRoute(file: string): string {
   return readFileSync(join(routeDir, file), 'utf8')
 }
 
-function readSrc(relative: string): string {
-  return readFileSync(join(routeDir, '..', relative), 'utf8')
-}
-
 /**
- * First-user enrollment needs a registration screen the boot probe can
+ * First-user enrollment needs a registration screen the boot guard can
  * force before any album or config page. The router module is
  * browser-bound (createWebHistory), so the wiring is checked as source
  * instead of importing it — same pattern as routes.test.ts.
@@ -46,56 +42,66 @@ describe('register route', () => {
     expect(source).toContain('timeline')
   })
 
-  test('RegisterPage leaves when already enrolled', () => {
-    const page = join(routeDir, '../components/Login/RegisterPage.vue')
-    const source = readFileSync(page, 'utf8')
-    expect(source).toContain('onMounted')
-    expect(source).toContain('runEnrollmentBoot')
-    expect(source).toContain('getEnrollmentProbe')
-    expect(source).toMatch(/destination !== 'register'/)
-  })
-
-  test('routes.ts probes enrollment once and forces register on empty', () => {
-    const source = readRoute('routes.ts')
-    expect(source).toContain('beforeEach')
-    expect(source).toContain('getEnrollmentProbe')
-    expect(source).toContain('decideBootDestination')
-    expect(source).toMatch(/name:\s*'register'/)
-  })
-
-  test('routes.ts shares the cached probe so registration can reset it', () => {
-    const page = readFileSync(join(routeDir, '../components/Login/RegisterPage.vue'), 'utf8')
-    expect(page).toContain('resetEnrollmentProbe')
-    const enrollmentSource = readSrc('script/utils/enrollment.ts')
-    expect(enrollmentSource).toMatch(/export const getEnrollmentProbe/)
-    expect(enrollmentSource).toMatch(/export const resetEnrollmentProbe/)
-  })
-
-  test('LoginPage resets the cached probe after login (R1)', () => {
-    // A 401 cached while logged out (or on a closed install) must not be
-    // re-read post-login, or the timeline navigation bounces to /login.
-    const page = readFileSync(join(routeDir, '../components/Login/LoginPage.vue'), 'utf8')
-    expect(page).toContain('resetEnrollmentProbe')
-  })
-
-  test('logout resets the cached probe (R1)', () => {
-    // A cached authenticated result must not outlive the session, or the
-    // next navigation renders app routes sessionless.
-    const source = readSrc('script/utils/logout.ts')
-    expect(source).toContain('resetEnrollmentProbe')
-  })
-
   test('routes.ts never redirects share links (capability URLs)', () => {
     const source = readRoute('routes.ts')
     expect(source).toMatch(/to\.name === 'share'/)
     expect(source).toMatch(/shareViewPage/)
   })
 
-  test('401 interceptor clears the cached probe when the session expires (R1)', () => {
-    // A cached authenticated probe must not outlive a 401-expired session,
-    // or the router guard would let the next app navigation through
-    // sessionless. Mirrors the logout probe-reset check.
-    const source = readSrc('axiosInterceptor.ts')
-    expect(source).toContain('resetEnrollmentProbe')
+  test('S7 guard allows with profile present before any fetch (fast path)', () => {
+    // Routing-grade fast path: a present session profile allows without
+    // touching the network. Assert the profile read precedes the only
+    // fetch (getServerInfo) in guard source order.
+    const source = readRoute('routes.ts')
+    expect(source).toContain("useSessionStore('mainId')")
+    expect(source).toMatch(/\.profile !== null/)
+    expect(source).toContain('getServerInfo')
+    const profileAt = source.indexOf('.profile !== null')
+    const fetchAt = source.indexOf('await getServerInfo()')
+    expect(profileAt).toBeGreaterThanOrEqual(0)
+    expect(fetchAt).toBeGreaterThanOrEqual(0)
+    expect(profileAt).toBeLessThan(fetchAt)
+  })
+
+  test('S7 guard performs no probe and holds no cache', () => {
+    // R1 by deletion: the guard pings fresh only when sessionless, so no
+    // probe import and no cache/reset language may remain in routes.ts.
+    const source = readRoute('routes.ts')
+    expect(source).not.toContain('getEnrollmentProbe')
+    expect(source).not.toContain('decideBootDestination')
+    expect(source).not.toContain('resetEnrollmentProbe')
+    expect(source).not.toContain('cachedEnrollmentProbe')
+  })
+
+  test('S8 guard sessionless + needs-enrollment redirects to register', () => {
+    // Fresh ping says unenrolled with enrollment open: force register
+    // unless already there.
+    const source = readRoute('routes.ts')
+    expect(source).toMatch(/!enrolled && enrollmentOpen/)
+    expect(source).toMatch(/return to\.name === 'register' \? true : \{\s*name:\s*'register'\s*\}/)
+  })
+
+  test('S9 guard sessionless + enrolled redirects to login', () => {
+    // Otherwise (enrolled store, or closed install): force login unless
+    // already there. The register arm absorbs the deleted RegisterPage
+    // leave-redirect: a sessionless /register visit lands on /login
+    // instead of rendering a dead enrollment form.
+    const source = readRoute('routes.ts')
+    expect(source).toMatch(/return to\.name === 'login' \? true : \{\s*name:\s*'login'\s*\}/)
+  })
+
+  test('S10 guard never redirects share links', () => {
+    // Capability URLs authenticate out-of-band: the share exemption must
+    // precede both the profile fast path and the server-info fetch.
+    const source = readRoute('routes.ts')
+    const shareAt = source.indexOf("to.name === 'share'")
+    const profileAt = source.indexOf('.profile !== null')
+    const fetchAt = source.indexOf('await getServerInfo()')
+    expect(shareAt).toBeGreaterThanOrEqual(0)
+    expect(profileAt).toBeGreaterThanOrEqual(0)
+    expect(fetchAt).toBeGreaterThanOrEqual(0)
+    expect(shareAt).toBeLessThan(profileAt)
+    expect(shareAt).toBeLessThan(fetchAt)
+    expect(source).toMatch(/shareViewPage/)
   })
 })

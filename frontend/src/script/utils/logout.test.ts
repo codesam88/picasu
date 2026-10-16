@@ -78,19 +78,6 @@ describe('performLogout', () => {
     expect(pushMock).toHaveBeenCalledWith({ name: 'login' })
   })
 
-  test('resets the cached enrollment probe', async () => {
-    const { getEnrollmentProbe, resetEnrollmentProbe } = await import('./enrollment')
-    resetEnrollmentProbe()
-    await getEnrollmentProbe(() => Promise.resolve({ ok: false }))
-
-    await performLogout(push())
-
-    // A new injectable probe runs only when the logout cleared the cache.
-    await expect(
-      getEnrollmentProbe(() => Promise.resolve({ ok: true, users: [] }))
-    ).resolves.toEqual({ ok: true, users: [] })
-  })
-
   test('navigates to login', async () => {
     const pushMock = push()
 
