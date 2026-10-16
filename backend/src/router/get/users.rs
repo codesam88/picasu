@@ -25,6 +25,14 @@ use crate::router::{AppError, AppResult, ErrorKind};
 ]
 #[get("/get/users")]
 pub fn list_users_handler(_auth: GuardAuth) -> AppResult<Json<Vec<UserSummary>>> {
+    // An empty store has no admins, so an admin-only route refuses in all
+    // states; enrollment state is served by GET /get/server-info.
+    if users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))? == 0 {
+        return Err(AppError::new(
+            ErrorKind::Auth,
+            "No administrator enrolled: start the server with --bootstrap-admin (or PICASU_BOOTSTRAP_ADMIN=true) to enroll the first admin, or provision a user with the picasu-admin CLI",
+        ));
+    }
     let rows = users::list_users().map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
     Ok(Json(
         rows.into_iter()
@@ -112,5 +120,21 @@ mod tests {
         crate::auth::users::create_user("s4c-root", true).expect("seed root");
         let resp = client.get("/get/users").dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
+    }
+
+    #[test]
+    fn empty_store_with_flag_on_anonymous_is_401() {
+        let _g = lock();
+        let client = setup();
+        assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+        // Enrollment state is served by GET /get/server-info; an empty
+        // store has no admins, so this admin-only route refuses.
+        let resp = client.get("/get/users").dispatch();
+        assert_eq!(resp.status(), Status::Unauthorized);
+        let body = resp.into_string().unwrap_or_default();
+        assert!(
+            body.to_lowercase().contains("no administrator enrolled"),
+            "empty-store refusal must name the missing enrollment, got: {body}"
+        );
     }
 }

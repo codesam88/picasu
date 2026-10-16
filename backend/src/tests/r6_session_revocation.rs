@@ -2,7 +2,7 @@ use rocket::http::{ContentType, Cookie, Status};
 use serde_json::json;
 
 use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
-use crate::tests::fixtures::{test_password, test_password_padded};
+use crate::tests::fixtures::test_password;
 
 fn lock() -> std::sync::MutexGuard<'static, ()> {
     TEST_SERIAL_GUARD
@@ -229,6 +229,7 @@ fn inventory_lists_live_sessions() {
     let listed: Vec<crate::auth::users::SessionRecord> = serde_json::from_str(&body).expect("json");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].jti, jti_b);
+    assert_ne!(listed[0].jti, jti_a, "logged-out session must be gone");
 }
 
 #[test]

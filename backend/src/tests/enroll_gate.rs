@@ -113,21 +113,32 @@ fn closed_by_default_denies_enrollment() {
 // ── Row: open with the flag on an empty store ──────────────────────────────
 
 /// With the flag on and an empty store, the open first-run behavior applies:
-/// the probe succeeds with an empty list, an unauthenticated bootstrap mints
-/// the forced-admin first user, enrollment closes immediately after, and the
-/// new password logs in.
+/// anonymous `GET /get/users` refuses (empty store has no admins; enrollment
+/// state is served by `GET /get/server-info`), an unauthenticated bootstrap
+/// mints the forced-admin first user, enrollment closes immediately after,
+/// and the new password logs in.
 #[test]
 fn open_with_flag_on_empty_store_enrolls_first_admin() {
     let _g = lock();
     let client = setup();
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
-    // Probe: the ephemeral admin identity lists an empty store.
+    // Tie-off: the admin-only user list refuses on an empty store.
     let resp = client.get("/get/users").dispatch();
+    assert_eq!(resp.status(), Status::Unauthorized);
+    let body = resp.into_string().unwrap_or_default();
+    assert!(
+        body.to_lowercase().contains("no administrator enrolled"),
+        "empty-store refusal must name the missing enrollment, got: {body}"
+    );
+
+    // Open-window enrollment is proven via server-info shape instead.
+    let resp = client.get("/get/server-info").dispatch();
     assert_eq!(resp.status(), Status::Ok);
-    let listed: Vec<serde_json::Value> =
-        serde_json::from_str(&resp.into_string().expect("body")).expect("user list");
-    assert!(listed.is_empty());
+    let info: serde_json::Value =
+        serde_json::from_str(&resp.into_string().expect("body")).expect("server-info body");
+    assert_eq!(info["enrolled"], serde_json::Value::Bool(false));
+    assert_eq!(info["enrollmentOpen"], serde_json::Value::Bool(true));
 
     // Unauthenticated bootstrap succeeds and forces admin:true. There is no
     // `admin` field on the body to ask otherwise.
@@ -230,8 +241,16 @@ fn no_legacy_gate_flag_controls_empty_store() {
     set_bootstrap_admin(true);
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
-    // Open without any password notion: the probe succeeds.
-    assert_eq!(client.get("/get/users").dispatch().status(), Status::Ok);
+    // Open without any password notion: the admin-only user list refuses,
+    // and server-info reports the open window.
+    let resp = client.get("/get/users").dispatch();
+    assert_eq!(resp.status(), Status::Unauthorized);
+    let resp = client.get("/get/server-info").dispatch();
+    assert_eq!(resp.status(), Status::Ok);
+    let info: serde_json::Value =
+        serde_json::from_str(&resp.into_string().expect("body")).expect("server-info body");
+    assert_eq!(info["enrolled"], serde_json::Value::Bool(false));
+    assert_eq!(info["enrollmentOpen"], serde_json::Value::Bool(true));
     // The bare-string shape is unparseable on an open store too (422).
     let resp = client
         .post("/post/authenticate")
