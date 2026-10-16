@@ -974,7 +974,7 @@ fn p4_an_undeclarable_status_on_a_bindingless_route_fails() {
 /// Pinned rather than derived, so a scan that silently stops finding annotations
 /// — a broken file walk, a swallowed parse error — fails here instead of
 /// reporting a clean tree it never looked at. Update it with the annotation.
-const ANNOTATIONS_IN_ROUTER: usize = 74;
+const ANNOTATIONS_IN_ROUTER: usize = 75;
 
 /// The declaration inventory section B was calibrated against: 25 declared
 /// parameters, all of them the inline `("name" = Type, Location, …)` form, and 27

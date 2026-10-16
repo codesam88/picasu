@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { z } from 'zod'
 
 export interface AppConfig {
   // Rocket settings
@@ -32,6 +33,14 @@ export const updatePassword = async (oldPassword: string, newPassword?: string):
     oldPassword: oldPassword || null,
     password: newPassword
   })
+}
+
+/// Rotate the JWT signing key. The server generates a new strong random key
+/// and installs it; all sessions invalidate. The key itself is never
+/// returned — only whether one is now configured.
+export const resetAuthKey = async (): Promise<{ hasAuthKey: boolean }> => {
+  const response = await axios.post('/post/config/auth-key/reset')
+  return z.object({ hasAuthKey: z.boolean() }).parse(response.data)
 }
 
 export const exportConfig = async (): Promise<AppConfig> => {

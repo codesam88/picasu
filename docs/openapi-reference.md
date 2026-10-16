@@ -6191,9 +6191,10 @@ func main() {
 
 `GET /get/config/export`
 
-Returns the complete serialized configuration, including `authKey` in
-plaintext whenever it is set, so the response has to be handled as a
-secret. `webRoot` is the only field never serialized.
+Returns the complete serialized configuration with the signing key
+redacted (`authKey` is removed, never exported), so the document stays
+safe to store alongside backups. `webRoot` is the only other field never
+serialized.
 
 Errors: 400 invalid input — 401 no valid admin credentials.
 
@@ -6404,6 +6405,178 @@ matched no directory — 500 the directory could not be read.
 This operation does not require authentication
 </aside>
 
+## Rotate the JWT signing key.
+
+<a id="opIdreset_auth_key_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X POST /post/config/auth-key/reset \
+  -H 'Accept: application/json'
+
+```
+
+```http
+POST /post/config/auth-key/reset HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/post/config/auth-key/reset", {
+  method: "POST",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.post '/post/config/auth-key/reset',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.post('/post/config/auth-key/reset', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('POST','/post/config/auth-key/reset', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/post/config/auth-key/reset");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("POST");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("POST", "/post/config/auth-key/reset", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`POST /post/config/auth-key/reset`
+
+Generates a new strong random key, persists it to the owner-only
+secrets file, and installs it in memory. All previously issued tokens
+stop verifying, so every session is invalidated by construction.
+Overrides from `PICASU_AUTH_KEY` still win at the next boot (they are
+never persisted).
+
+Errors: 401 missing or invalid admin credentials — 500 the new key
+could not be stored.
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "hasAuthKey": true
+}
+```
+
+<h3 id="rotate-the-jwt-signing-key.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                                              |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Signing key rotated                                                                        | [AuthKeyResetResponse](#schemaauthkeyresetresponse) |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                                |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 ## Replace the server configuration with the posted one.
 
 <a id="opIdimport_config_handler"></a>
@@ -6566,15 +6739,16 @@ func main() {
 
 The body is a complete `AppConfig` rather than a patch. Before writing,
 `imagePath` is trimmed of whitespace and quotes (an empty value becomes
-`null`), `uploadFolder` is trimmed, and an empty `authKey` is stored as
-`null`, moving JWT signing onto the random secret generated once per
-process. On success `config.toml` is rewritten, the in-memory configuration
-is replaced and the filesystem watcher reloaded.
+`null`) and `uploadFolder` is trimmed. A posted `authKey` is ignored —
+the current signing key is kept and can only be rotated through
+`POST /post/config/auth-key/reset` — so restoring an older export never
+smuggles a key in. On success `config.toml` is rewritten, the in-memory
+configuration is replaced and the filesystem watcher reloaded.
 
-Corner cases: The posted configuration is accepted as-is: unlike
-`PUT /put/config` it applies no validation, so an `uploadFolder` that is
-absolute or contains `..` is stored here. A failed write is a 500 and leaves
-the running configuration untouched.
+Corner cases: The posted configuration is otherwise accepted as-is:
+unlike `PUT /put/config` it applies no validation, so an `uploadFolder`
+that is absolute or contains `..` is stored here. A failed write is a
+500 and leaves the running configuration untouched.
 
 Errors: 400 unusable request body — 401 missing or invalid credentials —
 500 storage failure.
@@ -6781,19 +6955,18 @@ func main() {
 
 Every field is optional and a field absent from the body keeps its current
 value. `address`, `port`, `allowRegistration`, `trivialPasswords`, and
-`bootstrapAdmin` are host-only (flag / env / config file) and any
-presence in the body is a 400. The only other validation is on
+`bootstrapAdmin` are host-only (flag / env / config file) and `authKey`
+is managed (secrets file + reset endpoint); any presence of these in the
+body is a 400. The only other validation is on
 `uploadFolder`, which must be a relative path free of `..` components;
 on success `config.toml` is rewritten, the in-memory configuration is
 replaced and the filesystem watcher is reloaded.
 
-Corner cases: `authKey` is trimmed, and clearing or replacing it moves JWT
-signing onto a new key, invalidating every token issued under the previous
-one. `uploadFolder` and `maxUploadSize` take an empty string to reset to
-their defaults, `uploads` and `100MiB`.
+Corner cases: `uploadFolder` and `maxUploadSize` take an empty string
+to reset to their defaults, `uploads` and `100MiB`.
 
 Errors: 400 `uploadFolder` is absolute or contains `..`, the body cannot
-be parsed, or a host-only knob is present — 401 missing or invalid admin
+be parsed, or a host-only or managed knob is present — 401 missing or invalid admin
 credentials; share tokens are not accepted — 405 read-only mode — 500
 config write failure.
 
@@ -12745,6 +12918,29 @@ silent about what happened to the selected item.
 | ------- | ------------------------------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | outcome | [AssignOutcome](#schemaassignoutcome) | true     | none         | The concrete result of a successful assign: `moved`, `renamedFrom` (an<br>auto-`-001` suffix collision), or `skipped` (destination already exists and<br>strategy is skip). |
 
+<h2 id="tocS_AuthKeyResetResponse">AuthKeyResetResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemaauthkeyresetresponse"></a>
+<a id="schema_AuthKeyResetResponse"></a>
+<a id="tocSauthkeyresetresponse"></a>
+<a id="tocsauthkeyresetresponse"></a>
+
+```json
+{
+  "hasAuthKey": true
+}
+```
+
+Result of rotating the JWT signing key. Always true after a successful
+reset; the client drives its key-state display off this (the key itself
+is never returned).
+
+### Properties
+
+| Name       | Type    | Required | Restrictions | Description |
+| ---------- | ------- | -------- | ------------ | ----------- |
+| hasAuthKey | boolean | true     | none         | none        |
+
 <h2 id="tocS_BootstrapRequest">BootstrapRequest</h2>
 <!-- backwards compatibility -->
 <a id="schemabootstraprequest"></a>
@@ -13278,22 +13474,22 @@ existing destination untouched (the source stays put, outcome `skipped`);
 
 ### Properties
 
-| Name                     | Type                | Required | Restrictions | Description                                                                                                                                                                       |
-| ------------------------ | ------------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| address                  | string,null         | false    | none         | Host-only (`PICASU_ADDRESS` / config `server.address`). Any presence<br>in the API body is rejected with 400 and changes nothing.                                                 |
-| allowRegistration        | boolean,null        | false    | none         | Host-only (`PICASU_ALLOW_REGISTRATION` / config<br>`gallery.allow_registration`). Any presence in the API body is<br>rejected with 400 and changes nothing.                       |
-| authKey                  | string,null         | false    | none         | none                                                                                                                                                                              |
-| bootstrapAdmin           | boolean,null        | false    | none         | Host-only (`--bootstrap-admin` / `PICASU_BOOTSTRAP_ADMIN` / config<br>`gallery.bootstrap_admin`). Any presence in the API body is rejected<br>with 400 and changes nothing.       |
-| disableImg               | boolean,null        | false    | none         | none                                                                                                                                                                              |
-| fsNotifyWatcher          | boolean,null        | false    | none         | none                                                                                                                                                                              |
-| maxUploadSize            | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("100MiB").                                                                                                                |
-| normalizeUploadFilenames | boolean,null        | false    | none         | none                                                                                                                                                                              |
-| port                     | integer,null(int32) | false    | none         | Host-only (`PICASU_PORT` / config `server.port`). Any presence<br>in the API body is rejected with 400 and changes nothing.                                                       |
-| readOnlyMode             | boolean,null        | false    | none         | none                                                                                                                                                                              |
-| trivialPasswords         | boolean,null        | false    | none         | Host-only (`--trivial-passwords` / `PICASU_TRIVIAL_PASSWORDS` /<br>config `gallery.trivial_passwords`). Any presence in the API body is<br>rejected with 400 and changes nothing. |
-| uploadFolder             | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("uploads").                                                                                                               |
-| useClientTimestampInfo   | boolean,null        | false    | none         | none                                                                                                                                                                              |
-| validateUploadContent    | boolean,null        | false    | none         | none                                                                                                                                                                              |
+| Name                     | Type                | Required | Restrictions | Description                                                                                                                                                                           |
+| ------------------------ | ------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| address                  | string,null         | false    | none         | Host-only (`PICASU_ADDRESS` / config `server.address`). Any presence<br>in the API body is rejected with 400 and changes nothing.                                                     |
+| allowRegistration        | boolean,null        | false    | none         | Host-only (`PICASU_ALLOW_REGISTRATION` / config<br>`gallery.allow_registration`). Any presence in the API body is<br>rejected with 400 and changes nothing.                           |
+| authKey                  | string,null         | false    | none         | Managed, never set: the signing key lives in the owner-only secrets<br>file. Any presence in the API body is rejected with 400; rotate it<br>with `POST /post/config/auth-key/reset`. |
+| bootstrapAdmin           | boolean,null        | false    | none         | Host-only (`--bootstrap-admin` / `PICASU_BOOTSTRAP_ADMIN` / config<br>`gallery.bootstrap_admin`). Any presence in the API body is rejected<br>with 400 and changes nothing.           |
+| disableImg               | boolean,null        | false    | none         | none                                                                                                                                                                                  |
+| fsNotifyWatcher          | boolean,null        | false    | none         | none                                                                                                                                                                                  |
+| maxUploadSize            | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("100MiB").                                                                                                                    |
+| normalizeUploadFilenames | boolean,null        | false    | none         | none                                                                                                                                                                                  |
+| port                     | integer,null(int32) | false    | none         | Host-only (`PICASU_PORT` / config `server.port`). Any presence<br>in the API body is rejected with 400 and changes nothing.                                                           |
+| readOnlyMode             | boolean,null        | false    | none         | none                                                                                                                                                                                  |
+| trivialPasswords         | boolean,null        | false    | none         | Host-only (`--trivial-passwords` / `PICASU_TRIVIAL_PASSWORDS` /<br>config `gallery.trivial_passwords`). Any presence in the API body is<br>rejected with 400 and changes nothing.     |
+| uploadFolder             | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("uploads").                                                                                                                   |
+| useClientTimestampInfo   | boolean,null        | false    | none         | none                                                                                                                                                                                  |
+| validateUploadContent    | boolean,null        | false    | none         | none                                                                                                                                                                                  |
 
 <h2 id="tocS_Prefetch">Prefetch</h2>
 <!-- backwards compatibility -->

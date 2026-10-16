@@ -62,19 +62,6 @@ pub fn store_secret_key_to(path: &std::path::Path, key: &str) -> Result<()> {
     Ok(())
 }
 
-/// Adopt the legacy `[secrets] auth_key` from raw `config.toml` text.
-/// Returns the key when present and non-empty, else `None`; the caller
-/// persists it via [`store_secret_key_to`] on first boot after upgrade.
-pub fn legacy_file_key(content: &str) -> Option<String> {
-    toml::from_str::<toml::Value>(content)
-        .ok()?
-        .get("secrets")?
-        .get("auth_key")?
-        .as_str()
-        .filter(|s| !s.trim().is_empty())
-        .map(str::to_string)
-}
-
 /// Load the signing key from the production secrets file.
 ///
 /// # Errors
@@ -154,17 +141,5 @@ mod tests {
             .mode()
             & 0o777;
         assert_eq!(mode, 0o600, "secrets file must be owner-only, got {mode:o}");
-    }
-
-    #[test]
-    fn legacy_key_adopts_from_toml_text() {
-        let content = "[server]\nport = 5673\n\n[secrets]\nauth_key = \"legacy-key\"\n";
-        assert_eq!(legacy_file_key(content).as_deref(), Some("legacy-key"));
-    }
-
-    #[test]
-    fn legacy_key_absent_without_secrets_section() {
-        assert_eq!(legacy_file_key("[server]\nport = 5673\n"), None);
-        assert_eq!(legacy_file_key("[secrets]\nauth_key = \"\"\n"), None);
     }
 }

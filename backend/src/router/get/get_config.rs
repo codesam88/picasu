@@ -81,9 +81,10 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
 
 /// Export the full server configuration as JSON.
 ///
-/// Returns the complete serialized configuration, including `authKey` in
-/// plaintext whenever it is set, so the response has to be handled as a
-/// secret. `webRoot` is the only field never serialized.
+/// Returns the complete serialized configuration with the signing key
+/// redacted (`authKey` is removed, never exported), so the document stays
+/// safe to store alongside backups. `webRoot` is the only other field never
+/// serialized.
 ///
 /// Errors: 400 invalid input — 401 no valid admin credentials.
 #[utoipa::path(
@@ -103,6 +104,78 @@ pub fn export_config_handler(auth: GuardResult<GuardAuth>) -> AppResult<(Content
         .expect("APP_CONFIG not initialized")
         .read()
         .expect("lock poisoned");
-    let json = serde_json::to_string_pretty(&*config).unwrap_or_default();
+    let mut value = serde_json::to_value(&*config).expect("configuration serializes to JSON");
+    value
+        .as_object_mut()
+        .expect("configuration serializes to an object")
+        .remove("authKey");
+    let json = serde_json::to_string_pretty(&value).unwrap_or_default();
     Ok((ContentType::JSON, json))
+}
+
+#[cfg(test)]
+mod tests {
+    use rocket::http::{ContentType, Cookie, Status};
+
+    use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
+
+    fn lock() -> std::sync::MutexGuard<'static, ()> {
+        TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn setup() -> rocket::local::blocking::Client {
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        make_client()
+    }
+
+    fn cookie(id: &str, admin: bool) -> Cookie<'static> {
+        let claims = crate::router::auth::Claims::new_user(id.to_string(), admin);
+        let _ = crate::auth::users::add_session(id, &claims.jti);
+        Cookie::new("jwt", claims.encode())
+    }
+
+    fn seed(id: &str, admin: bool) {
+        crate::auth::users::create_user(id, admin).expect("seed user");
+    }
+
+    /// The config export must never carry the signing key: even with a key
+    /// configured, the body redacts it while keeping the other fields.
+    #[test]
+    fn config_export_redacts_auth_key() {
+        let _g = lock();
+        let client = setup();
+        seed("s4g-root", true);
+        let admin = cookie("s4g-root", true);
+        let status = client
+            .post("/post/config/auth-key/reset")
+            .cookie(admin.clone())
+            .header(ContentType::JSON)
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::Ok, "reset must establish a key first");
+        let stored = crate::auth::secret_key::load_secret_key()
+            .expect("load secrets file")
+            .expect("key stored");
+
+        // The reset invalidated the pre-reset session: mint a fresh one.
+        let admin = cookie("s4g-root", true);
+        let resp = client.get("/get/config/export").cookie(admin).dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        let body = resp.into_string().expect("export body");
+        assert!(
+            !body.contains("authKey"),
+            "export must not name the signing key"
+        );
+        assert!(
+            !body.contains(&stored),
+            "export must not leak the key value"
+        );
+        assert!(
+            body.contains("uploadFolder"),
+            "export must still carry the other fields, got: {body}"
+        );
+    }
 }

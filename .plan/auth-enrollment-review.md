@@ -254,7 +254,9 @@ Retriage 2026-10-16 (branch `auth-enrollment-review` @ `c3d0822`, five
 read-only batch checks + spot-checks): resolved R1, R2, R5, R6, R17, R23
 (session slice; R26 remains partial, session module only). Still open:
 R3, R4, R7–R16, R18–R22, R24, R25, R26–R35 (R25–R27, R30–R31 partial).
-In progress: R4+R3 done 2026-10-16, R8+R9+R12 done 2026-10-16, then R26 remainder.
+In progress: R4+R3 done 2026-10-16, R8+R9+R12 done 2026-10-16, host-only
+knob extension + `secrets.password` doc done, auth-key secrets-file slice
+done 2026-10-16 (`.plan/auth-key-secrets-file.md`), then R26 remainder.
 
 Sequence findings (R1, R3–R4, R23–R26) outgrew per-case tests and are
 planned as model-based flow conformance in `.plan/flow-model-conformance.md`
