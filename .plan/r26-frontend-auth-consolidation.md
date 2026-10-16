@@ -140,12 +140,11 @@ Frontend:
    `enroll_gate.rs`). Done 2026-10-16 (commit `a9acecc83`: empty→401,
    open-window rows onto server-info; plus 2 r6 warning cleanups).
 3. Frontend API + guard (scope: `api/serverInfo.ts`, `routes.ts`).
-   RED: S7–S11 fail (S7: fetch-count assertion against stub).
-   GREEN: guard rewrite. Leaves out: deletions, pages.
+   Done 2026-10-16 (commit `1dbd5d094`: S7–S11 green; senior review
+   hardened register→login redirect for sessionless visits).
 4. Deletion sweep (scope: `enrollment.ts`, reset call sites,
-   `RegisterPage.onMounted`, test dispositions above). RED: dead-import
-   failures + scrapped tests removed. GREEN: full vitest + vue-tsc +
-   eslint + prettier. Leaves out: specs, docs.
+   `RegisterPage.onMounted`, test dispositions above). Done 2026-10-16
+   (same commit: 149 vitest green, tsc/eslint/prettier clean).
 5. Specs live (scope: first-admin spec rewrite, fresh `vite build`,
    live run). Done: S12 green live. Leaves out: docs.
 6. Docs + full gate (scope: `docs/auth.md`, review completion notes
