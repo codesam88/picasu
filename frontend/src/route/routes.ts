@@ -17,7 +17,8 @@ import { loginRoute } from './loginRoute'
 import { registerRoute } from './registerRoute'
 import { shareRoute } from './shareRoute'
 import { configRoute } from './configRoute'
-import { decideBootDestination, getEnrollmentProbe } from '@/script/utils/enrollment'
+import { getServerInfo } from '@/api/serverInfo'
+import { useSessionStore } from '@/store/sessionStore'
 
 // ======================================
 // Define Simple Static Routes
@@ -116,28 +117,32 @@ const router = createRouter({
   }
 })
 
-// First-user enrollment probe: on an empty store with `--bootstrap-admin`
-// the backend answers `GET /get/users` with `[]`, and no album or config
-// page may render before the admin registration completes. The probe runs
-// once per app start (see `getEnrollmentProbe`); an empty result forces the
-// register screen, a 401 (closed install) falls through to the normal
-// login. Registration resets the cache on success, so later navigations
-// re-probe the now non-empty store instead of bouncing to `/register`.
+// Boot guard: on an empty store with enrollment open the backend reports
+// `enrolled: false` + `enrollmentOpen: true`, and no album or config page
+// may render before the admin registration completes. A present session
+// profile allows immediately with zero fetches; otherwise one fresh
+// anonymous `getServerInfo()` ping decides: needs-enrollment forces the
+// register screen, anything else (enrolled store, closed install) falls
+// through to the normal login. Nothing is cached — the ping runs only
+// when sessionless, so there is no stale state to invalidate.
 router.beforeEach(async (to) => {
   // Share links are capability URLs: they authenticate out-of-band and
-  // must work without login — including on installs where the probe
-  // below 401s (e.g. legacy-password mode). Never redirect them.
+  // must work without login — including on installs where the ping below
+  // reports a closed install. Never redirect them.
   if (to.name === 'share' || to.name === 'shareViewPage') {
     return true
   }
-  const destination = decideBootDestination(await getEnrollmentProbe())
-  if (destination === 'register' && to.name !== 'register') {
-    return { name: 'register' }
+  if (useSessionStore('mainId').profile !== null) {
+    return true
   }
-  if (destination === 'login' && to.name !== 'login' && to.name !== 'register') {
-    return { name: 'login' }
+  const { enrolled, enrollmentOpen } = await getServerInfo()
+  if (!enrolled && enrollmentOpen) {
+    return to.name === 'register' ? true : { name: 'register' }
   }
-  return true
+  // Enrolled store or closed install: sessionless means login. This also
+  // absorbs the deleted RegisterPage leave-redirect — a sessionless visit
+  // to /register lands on /login instead of rendering a dead form.
+  return to.name === 'login' ? true : { name: 'login' }
 })
 
 // Update the browser tab title based on the current route
