@@ -372,6 +372,182 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
+## Report anonymous enrollment state for boot routing.
+
+<a id="opIdserver_info_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/server-info \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/server-info HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/server-info", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/server-info',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/server-info', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/server-info', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/server-info");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/server-info", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/server-info`
+
+Answers without credentials in every install state so the login and
+register pages can route before any session exists: `enrolled` is true
+once any user row exists, `enrollmentOpen` is true only on an empty
+store with the bootstrap flag set, and `captcha` is always null for now.
+
+Corner cases: the shape is fixed to exactly `enrolled`, `enrollmentOpen`
+and `captcha` — no user rows or secrets are ever included. The response
+carries `Cache-Control: no-store` because enrollment state flips on
+first registration and must never be served stale.
+
+Errors: 500 storage failure.
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "captcha": {},
+  "enrolled": true,
+  "enrollmentOpen": true
+}
+```
+
+<h3 id="report-anonymous-enrollment-state-for-boot-routing.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description      | Schema                          |
+| ------ | -------------------------------------------------------------------------- | ---------------- | ------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Enrollment state | [ServerInfo](#schemaserverinfo) |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error   | None                            |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 ## List the caller's live sessions.
 
 <a id="opIdlist_sessions_handler"></a>
@@ -12591,6 +12767,27 @@ always forces `admin: true`.
 | password | string | true     | none         | none        |
 | userId   | string | true     | none         | none        |
 
+<h2 id="tocS_CaptchaInfo">CaptchaInfo</h2>
+<!-- backwards compatibility -->
+<a id="schemacaptchainfo"></a>
+<a id="schema_CaptchaInfo"></a>
+<a id="tocScaptchainfo"></a>
+<a id="tocscaptchainfo"></a>
+
+```json
+{}
+```
+
+Captcha challenge descriptor, reserved for R7.
+
+Never populated yet: the handler always answers `captcha: null`. Kept as
+a named schema so the R7 challenge can extend it without reshaping the
+enrollment response.
+
+### Properties
+
+_None_
+
 <h2 id="tocS_ConfigResponse">ConfigResponse</h2>
 <!-- backwards compatibility -->
 <a id="schemaconfigresponse"></a>
@@ -13406,6 +13603,48 @@ field: registration always creates standard users; elevation is
 | index | integer | true     | none         | none        |
 | month | integer | true     | none         | none        |
 | year  | integer | true     | none         | none        |
+
+<h2 id="tocS_ServerInfo">ServerInfo</h2>
+<!-- backwards compatibility -->
+<a id="schemaserverinfo"></a>
+<a id="schema_ServerInfo"></a>
+<a id="tocSserverinfo"></a>
+<a id="tocsserverinfo"></a>
+
+```json
+{
+  "captcha": {},
+  "enrolled": true,
+  "enrollmentOpen": true
+}
+```
+
+Anonymous enrollment state for boot routing.
+
+### Properties
+
+| Name    | Type | Required | Restrictions | Description |
+| ------- | ---- | -------- | ------------ | ----------- |
+| captcha | any  | false    | none         | none        |
+
+oneOf
+
+| Name          | Type                              | Required | Restrictions | Description                                                                                                                                                                                                                      |
+| ------------- | --------------------------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| » _anonymous_ | [CaptchaInfo](#schemacaptchainfo) | false    | none         | Captcha challenge descriptor, reserved for R7.<br><br>Never populated yet: the handler always answers `captcha: null`. Kept as<br>a named schema so the R7 challenge can extend it without reshaping the<br>enrollment response. |
+
+xor
+
+| Name          | Type | Required | Restrictions | Description |
+| ------------- | ---- | -------- | ------------ | ----------- |
+| » _anonymous_ | null | false    | none         | none        |
+
+continued
+
+| Name           | Type    | Required | Restrictions | Description |
+| -------------- | ------- | -------- | ------------ | ----------- |
+| enrolled       | boolean | true     | none         | none        |
+| enrollmentOpen | boolean | true     | none         | none        |
 
 <h2 id="tocS_SessionRecord">SessionRecord</h2>
 <!-- backwards compatibility -->

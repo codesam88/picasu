@@ -252,6 +252,10 @@
         ],
         "type": "object"
       },
+      "CaptchaInfo": {
+        "description": "Captcha challenge descriptor, reserved for R7.\n\nNever populated yet: the handler always answers `captcha: null`. Kept as\na named schema so the R7 challenge can extend it without reshaping the\nenrollment response.",
+        "type": "object"
+      },
       "ConfigResponse": {
         "properties": {
           "address": {
@@ -1001,6 +1005,32 @@
           "year",
           "month",
           "index"
+        ],
+        "type": "object"
+      },
+      "ServerInfo": {
+        "description": "Anonymous enrollment state for boot routing.",
+        "properties": {
+          "captcha": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CaptchaInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enrolled": {
+            "type": "boolean"
+          },
+          "enrollmentOpen": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enrolled",
+          "enrollmentOpen"
         ],
         "type": "object"
       },
@@ -1888,6 +1918,31 @@
         "summary": "Evaluate a list query, snapshot its result, and return the snapshot id.",
         "tags": [
           "timeline"
+        ]
+      }
+    },
+    "/get/server-info": {
+      "get": {
+        "description": "Answers without credentials in every install state so the login and\nregister pages can route before any session exists: `enrolled` is true\nonce any user row exists, `enrollmentOpen` is true only on an empty\nstore with the bootstrap flag set, and `captcha` is always null for now.\n\nCorner cases: the shape is fixed to exactly `enrolled`, `enrollmentOpen`\nand `captcha` — no user rows or secrets are ever included. The response\ncarries `Cache-Control: no-store` because enrollment state flips on\nfirst registration and must never be served stale.\n\nErrors: 500 storage failure.",
+        "operationId": "server_info_handler",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            },
+            "description": "Enrollment state"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "Report anonymous enrollment state for boot routing.",
+        "tags": [
+          "auth"
         ]
       }
     },
