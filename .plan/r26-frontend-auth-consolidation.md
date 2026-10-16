@@ -134,9 +134,8 @@ Frontend:
 ## Implementation steps (iterative TDD)
 
 1. Backend endpoint (scope: `get/server_info.rs`, `get/mod.rs`,
-   artifacts). RED: S1–S4 tests fail (404). GREEN: handler +
-   registration. Then regen openapi/reference, bump sanity count,
-   all openapi checks green. Leaves out: tie-off, frontend.
+   artifacts). Done 2026-10-16 (commit `c89fc1cea`: anonymous shape +
+   no-store, 5 module tests, 633 lib green, 74 annotations).
 2. Tie-off + enroll_gate (scope: `get/users.rs` handler,
    `enroll_gate.rs`). RED: S5 test + updated open-window tests fail.
    GREEN: empty→401. Full backend lib green. Leaves out: frontend.
