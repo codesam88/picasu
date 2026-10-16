@@ -235,6 +235,18 @@
         ],
         "type": "object"
       },
+      "AuthKeyResetResponse": {
+        "description": "Result of rotating the JWT signing key. Always true after a successful\nreset; the client drives its key-state display off this (the key itself\nis never returned).",
+        "properties": {
+          "hasAuthKey": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "hasAuthKey"
+        ],
+        "type": "object"
+      },
       "BootstrapRequest": {
         "additionalProperties": false,
         "description": "Body for `POST /post/users/bootstrap`. There is deliberately no `admin`\nfield: creation never grants admin through a body flag, and bootstrap\nalways forces `admin: true`.",
@@ -703,6 +715,7 @@
             ]
           },
           "authKey": {
+            "description": "Managed, never set: the signing key lives in the owner-only secrets\nfile. Any presence in the API body is rejected with 400; rotate it\nwith `POST /post/config/auth-key/reset`.",
             "type": [
               "string",
               "null"
@@ -1458,7 +1471,7 @@
     },
     "/get/config/export": {
       "get": {
-        "description": "Returns the complete serialized configuration, including `authKey` in\nplaintext whenever it is set, so the response has to be handled as a\nsecret. `webRoot` is the only field never serialized.\n\nErrors: 400 invalid input — 401 no valid admin credentials.",
+        "description": "Returns the complete serialized configuration with the signing key\nredacted (`authKey` is removed, never exported), so the document stays\nsafe to store alongside backups. `webRoot` is the only other field never\nserialized.\n\nErrors: 400 invalid input — 401 no valid admin credentials.",
         "operationId": "export_config_handler",
         "responses": {
           "200": {
@@ -2159,9 +2172,37 @@
         ]
       }
     },
+    "/post/config/auth-key/reset": {
+      "post": {
+        "description": "Generates a new strong random key, persists it to the owner-only\nsecrets file, and installs it in memory. All previously issued tokens\nstop verifying, so every session is invalidated by construction.\nOverrides from `PICASU_AUTH_KEY` still win at the next boot (they are\nnever persisted).\n\nErrors: 401 missing or invalid admin credentials — 500 the new key\ncould not be stored.",
+        "operationId": "reset_auth_key_handler",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthKeyResetResponse"
+                }
+              }
+            },
+            "description": "Signing key rotated"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "Rotate the JWT signing key.",
+        "tags": [
+          "config"
+        ]
+      }
+    },
     "/post/config/import": {
       "post": {
-        "description": "The body is a complete `AppConfig` rather than a patch. Before writing,\n`imagePath` is trimmed of whitespace and quotes (an empty value becomes\n`null`), `uploadFolder` is trimmed, and an empty `authKey` is stored as\n`null`, moving JWT signing onto the random secret generated once per\nprocess. On success `config.toml` is rewritten, the in-memory configuration\nis replaced and the filesystem watcher reloaded.\n\nCorner cases: The posted configuration is accepted as-is: unlike\n`PUT /put/config` it applies no validation, so an `uploadFolder` that is\nabsolute or contains `..` is stored here. A failed write is a 500 and leaves\nthe running configuration untouched.\n\nErrors: 400 unusable request body — 401 missing or invalid credentials —\n500 storage failure.",
+        "description": "The body is a complete `AppConfig` rather than a patch. Before writing,\n`imagePath` is trimmed of whitespace and quotes (an empty value becomes\n`null`) and `uploadFolder` is trimmed. A posted `authKey` is ignored —\nthe current signing key is kept and can only be rotated through\n`POST /post/config/auth-key/reset` — so restoring an older export never\nsmuggles a key in. On success `config.toml` is rewritten, the in-memory\nconfiguration is replaced and the filesystem watcher reloaded.\n\nCorner cases: The posted configuration is otherwise accepted as-is:\nunlike `PUT /put/config` it applies no validation, so an `uploadFolder`\nthat is absolute or contains `..` is stored here. A failed write is a\n500 and leaves the running configuration untouched.\n\nErrors: 400 unusable request body — 401 missing or invalid credentials —\n500 storage failure.",
         "operationId": "import_config_handler",
         "requestBody": {
           "content": {
@@ -2666,7 +2707,7 @@
     },
     "/put/config": {
       "put": {
-        "description": "Every field is optional and a field absent from the body keeps its current\nvalue. `address`, `port`, `allowRegistration`, `trivialPasswords`, and\n`bootstrapAdmin` are host-only (flag / env / config file) and any\npresence in the body is a 400. The only other validation is on\n`uploadFolder`, which must be a relative path free of `..` components;\non success `config.toml` is rewritten, the in-memory configuration is\nreplaced and the filesystem watcher is reloaded.\n\nCorner cases: `authKey` is trimmed, and clearing or replacing it moves JWT\nsigning onto a new key, invalidating every token issued under the previous\none. `uploadFolder` and `maxUploadSize` take an empty string to reset to\ntheir defaults, `uploads` and `100MiB`.\n\nErrors: 400 `uploadFolder` is absolute or contains `..`, the body cannot\nbe parsed, or a host-only knob is present — 401 missing or invalid admin\ncredentials; share tokens are not accepted — 405 read-only mode — 500\nconfig write failure.",
+        "description": "Every field is optional and a field absent from the body keeps its current\nvalue. `address`, `port`, `allowRegistration`, `trivialPasswords`, and\n`bootstrapAdmin` are host-only (flag / env / config file) and `authKey`\nis managed (secrets file + reset endpoint); any presence of these in the\nbody is a 400. The only other validation is on\n`uploadFolder`, which must be a relative path free of `..` components;\non success `config.toml` is rewritten, the in-memory configuration is\nreplaced and the filesystem watcher is reloaded.\n\nCorner cases: `uploadFolder` and `maxUploadSize` take an empty string\nto reset to their defaults, `uploads` and `100MiB`.\n\nErrors: 400 `uploadFolder` is absolute or contains `..`, the body cannot\nbe parsed, or a host-only or managed knob is present — 401 missing or invalid admin\ncredentials; share tokens are not accepted — 405 read-only mode — 500\nconfig write failure.",
         "operationId": "update_config_handler",
         "requestBody": {
           "content": {

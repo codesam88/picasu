@@ -21,7 +21,6 @@
         <div class="config-block">
           <v-row class="ma-0">
             <AdvancedConfig
-              v-model:auth-key="localSettings.authKey"
               v-model:has-auth-key="localSettings.hasAuthKey"
               v-model:read-only-mode="localSettings.readOnlyMode"
               v-model:disable-img="localSettings.disableImg"

@@ -35,28 +35,23 @@
       <v-divider></v-divider>
       <v-list-item
         title="JWT Authentication Key"
-        subtitle="Disable to use random key"
-        @click="hasAuthKey = !hasAuthKey"
+        :subtitle="
+          hasAuthKey
+            ? 'Configured — resetting signs everyone out'
+            : 'Not configured — random key per process restart'
+        "
       >
         <template #append>
-          <v-switch v-model="hasAuthKey" color="primary" hide-details inset @click.stop></v-switch>
+          <v-btn
+            color="primary"
+            variant="flat"
+            :loading="resetting"
+            @click.stop="resetKey"
+            class="text-none"
+          >
+            Reset Key
+          </v-btn>
         </template>
-      </v-list-item>
-      <v-list-item>
-        <v-text-field
-          v-model="authKey"
-          :key="hasAuthKey.toString()"
-          :rules="[(v) => !hasAuthKey || !!v || 'Required']"
-          label="JWT Authentication Key"
-          prepend-icon="mdi-key-outline"
-          placeholder="Enter JWT Key"
-          variant="outlined"
-          density="compact"
-          :disabled="!hasAuthKey"
-          @click.stop
-          class="py-2"
-        >
-        </v-text-field>
       </v-list-item>
       <v-card-actions class="justify-end px-4 pb-4">
         <v-btn color="primary" variant="flat" :loading="loading" @click="save" class="text-none">
@@ -68,12 +63,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
+import { resetAuthKey } from '@/api/config'
+import { tryWithMessageStore } from '@/script/utils/try_catch'
 import type { AppConfig } from '@/api/config'
 
-const authKey = defineModel<string | null>('authKey', { required: true })
 const readOnlyMode = defineModel<boolean>('readOnlyMode', { required: true })
 const disableImg = defineModel<boolean>('disableImg', { required: true })
 const hasAuthKey = defineModel<boolean>('hasAuthKey', { required: true })
@@ -81,31 +77,27 @@ const hasAuthKey = defineModel<boolean>('hasAuthKey', { required: true })
 const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
 const loading = ref(false)
+const resetting = ref(false)
 
-watch(hasAuthKey, (newValue) => {
-  if (!newValue) {
-    authKey.value = ''
+const resetKey = async () => {
+  resetting.value = true
+  const success = await tryWithMessageStore('mainId', async () => {
+    const result = await resetAuthKey()
+    hasAuthKey.value = result.hasAuthKey
+    return true
+  })
+  if (success === true) {
+    messageStore.success('Authentication key rotated — all sessions signed out')
   }
-})
+  resetting.value = false
+}
 
 const save = async () => {
   loading.value = true
 
-  if (hasAuthKey.value && (authKey.value == null || authKey.value.trim() === '')) {
-    messageStore.error('JWT Authentication Key is required when enabled')
-    loading.value = false
-    return
-  }
-
   const payload: Partial<AppConfig> = {
     readOnlyMode: readOnlyMode.value,
     disableImg: disableImg.value
-  }
-
-  if (!hasAuthKey.value) {
-    payload.authKey = ''
-  } else if (authKey.value != null && authKey.value !== '') {
-    payload.authKey = authKey.value
   }
 
   const success = await configStore.updateConfig(payload)
