@@ -54,8 +54,13 @@ Sensitive authentication and notification credentials. Only present when configu
 
 | Key        | Type           | Default | Description                                                                                                                 |
 | ---------- | -------------- | ------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `password` | string \| null | `null`  | Password required to log in to the web interface. Set via the web UI or the password endpoint.                              |
 | `auth_key` | string \| null | `null`  | Secret key for signing JWT tokens. If `null`, a random key is generated on every startup (invalidates sessions on restart). |
+
+> `[secrets] password` was removed: there is no password field anymore,
+> nothing reads it, and it is never written back. Old files containing it
+> still parse — the key is ignored (the boot path warns). Passwords now live
+> per-user in the password store; use `PUT /put/users/password`, or the
+> caller-only legacy route `PUT /put/config/password`.
 
 > **`data_home`** and **`image_home`** are resolved on first launch from
 > environment variables or defaults and written to `config.toml`. On
