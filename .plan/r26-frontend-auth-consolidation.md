@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: high
 area: frontend
@@ -146,7 +146,8 @@ Frontend:
    `RegisterPage.onMounted`, test dispositions above). Done 2026-10-16
    (same commit: 149 vitest green, tsc/eslint/prettier clean).
 5. Specs live (scope: first-admin spec rewrite, fresh `vite build`,
-   live run). Done: S12 green live. Leaves out: docs.
+   live run). Done 2026-10-16 (commit `f15c90c21`: S12 green live +
+   album-tree green live).
 6. Docs + full gate (scope: `docs/auth.md`, review completion notes
    for R23/R1). Done: backend `cargo test`, frontend suite, all `just
 check` gates, openapi suite green; interpreter auth scenarios green
