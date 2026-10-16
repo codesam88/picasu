@@ -64,7 +64,6 @@ import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRedirectionStore } from '@/store/redirectionStore'
 import { useSessionStore } from '@/store/sessionStore'
-import { resetEnrollmentProbe } from '@/script/utils/enrollment'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
@@ -106,10 +105,6 @@ const handleLogin = async () => {
       // The session JWT is in an HttpOnly cookie the page never sees (R5);
       // keep only the display profile in the session store.
       useSessionStore('mainId').setProfile(profile)
-
-      // Drop any cached logged-out probe (R1): the next navigation must
-      // re-probe with the fresh session instead of bouncing back to /login.
-      resetEnrollmentProbe()
 
       // Remember the id for the next login's User ID prefill.
       localStorage.setItem(LAST_USER_ID_KEY, userId.value)

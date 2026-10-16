@@ -5,7 +5,6 @@ import { useShareStore } from '@/store/shareStore'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
-import { resetEnrollmentProbe } from '@/script/utils/enrollment'
 
 // --- Constants ---
 const HEADERS = {
@@ -105,10 +104,6 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
       // never outlive the session that backed it (R5). Share pages never
       // reach here — their 401s are share-password flow, not sessions.
       useSessionStore('mainId').clearProfile()
-      // Drop the cached probe (R1): an authenticated probe must not outlive
-      // the session, or the router guard would let the next navigation
-      // render app routes sessionless before the backend 401s again.
-      resetEnrollmentProbe()
       if (isThrottled401()) return // Prevent duplicate snackbars/redirects
       messageStore.error('Session expired or unauthorized. Please login.')
       await redirectionStore.redirectionToLogin()

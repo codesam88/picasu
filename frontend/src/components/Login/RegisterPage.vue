@@ -73,7 +73,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessageStore } from '@/store/messageStore'
 import { useSessionStore } from '@/store/sessionStore'
@@ -83,11 +83,6 @@ import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
 import { bootstrapUser, login } from '@/api/users'
 import { submitRegistration } from '@/script/utils/registration'
-import {
-  resetEnrollmentProbe,
-  runEnrollmentBoot,
-  getEnrollmentProbe
-} from '@/script/utils/enrollment'
 
 const password = ref('')
 const confirmPassword = ref('')
@@ -112,21 +107,6 @@ const themeIsLight = computed<boolean>({
   }
 })
 
-// The form is only valid while no administrator is enrolled. A direct
-// visit after enrollment (or on a closed install) leaves immediately:
-// an enrolled store resolves to the timeline (the guard sorts out the
-// session from there), anything else to the login screen.
-onMounted(() => {
-  void runEnrollmentBoot({
-    probe: () => getEnrollmentProbe(),
-    navigate: (destination) => {
-      if (destination !== 'register') {
-        void router.replace({ name: destination === 'app' ? 'timeline' : 'login' })
-      }
-    }
-  })
-})
-
 // Form validation rules
 const rules = {
   required: (value: string) => !!value || 'This field is required',
@@ -144,11 +124,6 @@ const handleRegister = async () => {
           // The session JWT is in an HttpOnly cookie the page never sees
           // (R5); keep only the display profile in the session store.
           useSessionStore('mainId').setProfile(profile)
-
-          // Drop the cached empty-store probe so the next navigation
-          // re-probes the now non-empty store instead of bouncing back
-          // to `/register`.
-          resetEnrollmentProbe()
 
           // Remember the id for the next login's User ID prefill.
           localStorage.setItem(LAST_USER_ID_KEY, userId.value)
