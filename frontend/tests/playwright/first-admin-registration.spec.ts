@@ -9,6 +9,12 @@ import { createGivenContext, executeGiven, sessionTokenFromLogin } from './execu
 // (tsconfig.node.json) only lists tests/** and cannot reference src files.
 const RACE_LOST_NOTICE = 'An administrator account already exists. Please log in instead.'
 
+interface ServerInfoShape {
+  enrolled: boolean
+  enrollmentOpen: boolean
+  captcha: null
+}
+
 interface UserSummary {
   userId: string
   admin: boolean
@@ -35,7 +41,7 @@ test.describe('first admin registration', () => {
     // One photo so the empty-library onboarding dialog never appears: this
     // spec is about auth, and the modal would cover the account menu that
     // the logout step needs to click. Media presence does not affect the
-    // enrollment probe, which only reads the user store.
+    // enrollment signal, which only reads the user store.
     await executeGiven(
       request,
       [{ dir_album: '/library' }, { photo: '/library/photo.jpg' }],
@@ -55,8 +61,9 @@ test.describe('first admin registration', () => {
     })
 
     // (2) Mismatched confirm submits nothing and stays on /register.
-    // Counter-proof: the open-window probe still lists an empty store, so a
-    // submit path that created the user anyway would fail here. (Object-login
+    // Counter-proof: anonymous server-info still reports an empty store with
+    // the window open, so a submit path that created the user anyway (which
+    // would flip `enrolled` to true) would fail here. (Object-login
     // cannot prove this: in the open window ANY parseable login object mints
     // a token, even for unknown ids.)
     await test.step('mismatched confirm creates nothing', async () => {
@@ -67,9 +74,13 @@ test.describe('first admin registration', () => {
       await expect(page).toHaveURL(/\/register/)
       await expect(page.getByText('Create Admin Account')).toBeVisible()
 
-      const probe = await request.get(`${base}/get/users`)
-      expect(probe.status()).toBe(200)
-      expect(await probe.json()).toEqual([])
+      const signal = await request.get(`${base}/get/server-info`)
+      expect(signal.status()).toBe(200)
+      expect((await signal.json()) as ServerInfoShape).toEqual({
+        enrolled: false,
+        enrollmentOpen: true,
+        captcha: null
+      })
     })
 
     // (3) Matching submit enrolls and lands on /timeline.
@@ -97,7 +108,7 @@ test.describe('first admin registration', () => {
     })
 
     // (4) Reload keeps the timeline session: the cookie survived, and the
-    // re-probed non-empty store no longer forces /register. Counter-proof:
+    // guard's profile fast path still allows /timeline. Counter-proof:
     // without a persisted session cookie the reload would bounce to /login.
     await test.step('reload keeps the timeline session', async () => {
       await page.reload()
@@ -153,10 +164,10 @@ test.describe('first admin registration', () => {
     })
 
     // (8) Logged-out /register visit leaves immediately: the store is
-    // non-empty and there is no session, so the probe 401s and the page
-    // redirects to /login without ever showing the enrollment form — no
-    // duplicate can be submitted, and nothing confirms or denies the id
-    // (no user enumeration). Counter-proof: the register copy and the
+    // non-empty and there is no session, so server-info reports enrolled and
+    // the guard redirects to /login without ever showing the enrollment
+    // form — no duplicate can be submitted, and nothing confirms or denies
+    // the id (no user enumeration). Counter-proof: the register copy and the
     // race-lost notice are both absent; a leak would show one of them.
     await test.step('logged-out register visit leaves without a form', async () => {
       const raceContext = await browser.newContext({ baseURL: base })
