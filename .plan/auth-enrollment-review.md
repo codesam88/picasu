@@ -90,11 +90,15 @@ This is the suggested tackle order, not a commitment to fix all items.
 - R5 CONFIRMED (S1/HIGH/MED). `sessionCookie.ts:28` sets `jwt` via
   `js-cookie` (cannot be HttpOnly); no server `Set-Cookie` in tree;
   `docs/auth.md:90` states the server never issues it. Fix: server-side
-  issuance with HttpOnly + Secure + SameSite=Strict.
+  issuance with HttpOnly + Secure + SameSite=Strict. Fixed 2026-10-16:
+  server issues HttpOnly `Set-Cookie` (`authenticate.rs:50-58`),
+  `sessionCookie.ts` deleted, `.plan/r5-httponly-session-cookie.md` done.
 - R6 CONFIRMED (S2/HIGH/HIGH). `Claims` (`auth.rs:42-48`) has no
   version/jti; no logout route; `logout.ts:8` clears client-side only
   (demotion still re-checked per request). Fix: session epoch claim
-  rotated on password change/logout.
+  rotated on password change/logout. Fixed 2026-10-16: `Claims` carries
+  `jti` with server-side session inventory, `POST /post/logout` revokes,
+  password change clears sessions (`.plan/r6-session-revocation.md` done).
 - R7 CONFIRMED (S2/MED/MED). No rate-limit/lockout/429 symbols in
   `backend/`; PBKDF2-600k raises per-guess cost only. Fix: per-IP/identity
   counters with 429 on the four credential paths.
@@ -137,7 +141,8 @@ This is the suggested tackle order, not a commitment to fix all items.
 - R17 CONFIRMED (S3/LOW/LOW). Reference documents `hasPassword` (spec has
   only `hasAuthKey`) and blank-clears-password text; regen recipe
   (`justfile:219-223`) not rerun since 2026-10-08. Fix: run
-  `just docs-openapi`.
+  `just docs-openapi`. Fixed 2026-10-16: reference and `backend/openapi.json`
+  regenerated (`c89fc1cea`), zero `hasPassword` hits.
 - R18 CONFIRMED (S3/LOW/LOW). `playwright_generator.md:142-143,195` and
   `scenario-dsl.md:147-156` show `config.password`; code has `givenUser`
   (`schema.json:71-85`, `executeGiven.ts:190-191`); scenarios migrated.
@@ -231,6 +236,12 @@ This is the suggested tackle order, not a commitment to fix all items.
 No fixes applied in this change; no behavior changed.
 
 ## Follow-up
+
+Retriage 2026-10-16 (branch `auth-enrollment-review` @ `c3d0822`, five
+read-only batch checks + spot-checks): resolved R1, R2, R5, R6, R17, R23
+(session slice; R26 remains partial, session module only). Still open:
+R3, R4, R7–R16, R18–R22, R24, R25, R26–R35 (R25–R27, R30–R31 partial).
+In progress: R4+R3 next, then R26 remainder.
 
 Sequence findings (R1, R3–R4, R23–R26) outgrew per-case tests and are
 planned as model-based flow conformance in `.plan/flow-model-conformance.md`
