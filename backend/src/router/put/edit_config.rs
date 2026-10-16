@@ -19,7 +19,11 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 #[derive(utoipa::ToSchema)]
 pub struct PartialUpdateConfigRequest {
+    /// Host-only (`PICASU_ADDRESS` / config `server.address`). Any presence
+    /// in the API body is rejected with 400 and changes nothing.
     pub address: Option<String>,
+    /// Host-only (`PICASU_PORT` / config `server.port`). Any presence
+    /// in the API body is rejected with 400 and changes nothing.
     pub port: Option<u16>,
     /// `None` = don't touch; `Some("")` resets to the default ("uploads").
     pub upload_folder: Option<String>,
@@ -31,11 +35,17 @@ pub struct PartialUpdateConfigRequest {
     pub normalize_upload_filenames: Option<bool>,
     pub validate_upload_content: Option<bool>,
     pub use_client_timestamp_info: Option<bool>,
+    /// Host-only (`PICASU_ALLOW_REGISTRATION` / config
+    /// `gallery.allow_registration`). Any presence in the API body is
+    /// rejected with 400 and changes nothing.
     pub allow_registration: Option<bool>,
+    /// Host-only (`--trivial-passwords` / `PICASU_TRIVIAL_PASSWORDS` /
+    /// config `gallery.trivial_passwords`). Any presence in the API body is
+    /// rejected with 400 and changes nothing.
     pub trivial_passwords: Option<bool>,
-    /// Host-only: setting it requires the `--bootstrap-admin` flag,
-    /// `PICASU_BOOTSTRAP_ADMIN`, or config `bootstrap_admin`. Any presence
-    /// in the API body is rejected with 400 and changes nothing.
+    /// Host-only (`--bootstrap-admin` / `PICASU_BOOTSTRAP_ADMIN` / config
+    /// `gallery.bootstrap_admin`). Any presence in the API body is rejected
+    /// with 400 and changes nothing.
     pub bootstrap_admin: Option<bool>,
     pub auth_key: Option<String>,
 }
@@ -43,7 +53,8 @@ pub struct PartialUpdateConfigRequest {
 /// Patch the server configuration with the posted fields.
 ///
 /// Every field is optional and a field absent from the body keeps its current
-/// value. `bootstrapAdmin` is host-only (flag / env / config file) and any
+/// value. `address`, `port`, `allowRegistration`, `trivialPasswords`, and
+/// `bootstrapAdmin` are host-only (flag / env / config file) and any
 /// presence in the body is a 400. The only other validation is on
 /// `uploadFolder`, which must be a relative path free of `..` components;
 /// on success `config.toml` is rewritten, the in-memory configuration is
@@ -52,11 +63,10 @@ pub struct PartialUpdateConfigRequest {
 /// Corner cases: `authKey` is trimmed, and clearing or replacing it moves JWT
 /// signing onto a new key, invalidating every token issued under the previous
 /// one. `uploadFolder` and `maxUploadSize` take an empty string to reset to
-/// their defaults, `uploads` and `100MiB`. `address` and `port` are stored but
-/// the listener is not rebound, so they take effect only after a restart.
+/// their defaults, `uploads` and `100MiB`.
 ///
 /// Errors: 400 `uploadFolder` is absolute or contains `..`, the body cannot
-/// be parsed, or `bootstrapAdmin` is present — 401 missing or invalid admin
+/// be parsed, or a host-only knob is present — 401 missing or invalid admin
 /// credentials; share tokens are not accepted — 405 read-only mode — 500
 /// config write failure.
 #[utoipa::path(
@@ -81,13 +91,43 @@ pub async fn update_config_handler(
     let req_data = req.into_inner();
 
     spawn_blocking(move || -> Result<Status, AppError> {
-        // `bootstrapAdmin` is host-only and never changes at runtime via
-        // the API. Reject loudly (naming the host-side setters) instead of
-        // persisting a flip the next boot would refuse.
-        if req_data.bootstrap_admin.is_some() {
+        // `address`, `port`, `allowRegistration`, `trivialPasswords`, and
+        // `bootstrapAdmin` are host-only and never change at runtime via the
+        // API. Reject loudly (naming the host-side setters) instead of
+        // persisting a value the next boot would override or refuse.
+        let host_only = [
+            (
+                "address",
+                req_data.address.is_some(),
+                "PICASU_ADDRESS or config `server.address`",
+            ),
+            (
+                "port",
+                req_data.port.is_some(),
+                "PICASU_PORT or config `server.port`",
+            ),
+            (
+                "allowRegistration",
+                req_data.allow_registration.is_some(),
+                "PICASU_ALLOW_REGISTRATION or config `gallery.allow_registration`",
+            ),
+            (
+                "trivialPasswords",
+                req_data.trivial_passwords.is_some(),
+                "--trivial-passwords, PICASU_TRIVIAL_PASSWORDS, or config `gallery.trivial_passwords`",
+            ),
+            (
+                "bootstrapAdmin",
+                req_data.bootstrap_admin.is_some(),
+                "--bootstrap-admin, PICASU_BOOTSTRAP_ADMIN, or config `gallery.bootstrap_admin`",
+            ),
+        ];
+        if let Some((name, _, setters)) = host_only.into_iter().find(|(_, present, _)| *present) {
             return Err(AppError::new(
                 ErrorKind::InvalidInput,
-                "bootstrapAdmin is a host-only option: set it with --bootstrap-admin, PICASU_BOOTSTRAP_ADMIN, or config `bootstrap_admin`; it cannot be changed via the API",
+                format!(
+                    "{name} is a host-only option: set it with {setters}; it cannot be changed via the API"
+                ),
             ));
         }
         if let Some(ref folder) = req_data.upload_folder {
@@ -109,12 +149,6 @@ pub async fn update_config_handler(
             read_lock.clone()
         };
 
-        if let Some(address) = req_data.address {
-            current_config.address = address;
-        }
-        if let Some(port) = req_data.port {
-            current_config.port = port;
-        }
         if let Some(upload_folder) = req_data.upload_folder {
             current_config.upload_folder = upload_folder;
         }
@@ -138,12 +172,6 @@ pub async fn update_config_handler(
         }
         if let Some(use_client_timestamp_info) = req_data.use_client_timestamp_info {
             current_config.use_client_timestamp_info = use_client_timestamp_info;
-        }
-        if let Some(allow_registration) = req_data.allow_registration {
-            current_config.allow_registration = allow_registration;
-        }
-        if let Some(trivial_passwords) = req_data.trivial_passwords {
-            current_config.trivial_passwords = trivial_passwords;
         }
         if let Some(key) = req_data.auth_key {
             let trimmed = key.trim();
@@ -340,8 +368,48 @@ mod tests {
         assert_eq!(status, Status::Unauthorized);
     }
 
+    /// `address`, `port`, `allowRegistration`, and `trivialPasswords` are
+    /// host-only like `bootstrapAdmin`: any presence in the API body is a
+    /// 400 and changes nothing.
     #[test]
-    fn put_config_allowlists_allow_registration() {
+    fn put_config_rejects_host_only_network_and_policy_knobs() {
+        let _g = lock();
+        let client = setup();
+        seed("s4e-root", true, None);
+        let snapshot = || {
+            let cfg = crate::model::config::APP_CONFIG
+                .get()
+                .expect("APP_CONFIG")
+                .read()
+                .expect("APP_CONFIG lock");
+            (
+                cfg.address.clone(),
+                cfg.port,
+                cfg.allow_registration,
+                cfg.trivial_passwords,
+            )
+        };
+        let before = snapshot();
+        for body in [
+            json!({ "address": "10.0.0.1" }),
+            json!({ "port": 8888 }),
+            json!({ "allowRegistration": true }),
+            json!({ "trivialPasswords": true }),
+        ] {
+            let status = client
+                .put("/put/config")
+                .cookie(cookie("s4e-root", true))
+                .header(ContentType::JSON)
+                .body(body.to_string())
+                .dispatch()
+                .status();
+            assert_eq!(status, Status::BadRequest, "host-only knob, body {body}");
+        }
+        assert_eq!(snapshot(), before, "rejected knobs must change nothing");
+    }
+
+    #[test]
+    fn put_config_rejects_allow_registration_as_host_only() {
         let _g = lock();
         let client = setup();
         seed("s4e-root", true, None);
@@ -361,18 +429,22 @@ mod tests {
             .body(json!({ "allowRegistration": true }).to_string())
             .dispatch()
             .status();
-        assert_eq!(status, Status::Ok);
-        assert!(flag(), "PUT must toggle the knob on");
+        assert_eq!(
+            status,
+            Status::BadRequest,
+            "host-only knob must be rejected"
+        );
+        assert!(!flag(), "rejected knob must not toggle on");
         // A patch that omits the field keeps the current value.
         let status = client
             .put("/put/config")
             .cookie(cookie("s4e-root", true))
             .header(ContentType::JSON)
-            .body(json!({ "port": 5673 }).to_string())
+            .body(json!({ "disableImg": false }).to_string())
             .dispatch()
             .status();
         assert_eq!(status, Status::Ok);
-        assert!(flag(), "absent field must not touch the knob");
+        assert!(!flag(), "absent field must not touch the knob");
     }
 
     #[test]
@@ -415,7 +487,7 @@ mod tests {
             .put("/put/config")
             .cookie(cookie("s4e-root", true))
             .header(ContentType::JSON)
-            .body(json!({ "port": 5673 }).to_string())
+            .body(json!({ "disableImg": false }).to_string())
             .dispatch()
             .status();
         assert_eq!(status, Status::Ok);

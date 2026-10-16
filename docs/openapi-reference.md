@@ -6780,7 +6780,8 @@ func main() {
 `PUT /put/config`
 
 Every field is optional and a field absent from the body keeps its current
-value. `bootstrapAdmin` is host-only (flag / env / config file) and any
+value. `address`, `port`, `allowRegistration`, `trivialPasswords`, and
+`bootstrapAdmin` are host-only (flag / env / config file) and any
 presence in the body is a 400. The only other validation is on
 `uploadFolder`, which must be a relative path free of `..` components;
 on success `config.toml` is rewritten, the in-memory configuration is
@@ -6789,11 +6790,10 @@ replaced and the filesystem watcher is reloaded.
 Corner cases: `authKey` is trimmed, and clearing or replacing it moves JWT
 signing onto a new key, invalidating every token issued under the previous
 one. `uploadFolder` and `maxUploadSize` take an empty string to reset to
-their defaults, `uploads` and `100MiB`. `address` and `port` are stored but
-the listener is not rebound, so they take effect only after a restart.
+their defaults, `uploads` and `100MiB`.
 
 Errors: 400 `uploadFolder` is absolute or contains `..`, the body cannot
-be parsed, or `bootstrapAdmin` is present — 401 missing or invalid admin
+be parsed, or a host-only knob is present — 401 missing or invalid admin
 credentials; share tokens are not accepted — 405 read-only mode — 500
 config write failure.
 
@@ -13278,22 +13278,22 @@ existing destination untouched (the source stays put, outcome `skipped`);
 
 ### Properties
 
-| Name                     | Type                | Required | Restrictions | Description                                                                                                                                                                                      |
-| ------------------------ | ------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| address                  | string,null         | false    | none         | none                                                                                                                                                                                             |
-| allowRegistration        | boolean,null        | false    | none         | none                                                                                                                                                                                             |
-| authKey                  | string,null         | false    | none         | none                                                                                                                                                                                             |
-| bootstrapAdmin           | boolean,null        | false    | none         | Host-only: setting it requires the `--bootstrap-admin` flag,<br>`PICASU_BOOTSTRAP_ADMIN`, or config `bootstrap_admin`. Any presence<br>in the API body is rejected with 400 and changes nothing. |
-| disableImg               | boolean,null        | false    | none         | none                                                                                                                                                                                             |
-| fsNotifyWatcher          | boolean,null        | false    | none         | none                                                                                                                                                                                             |
-| maxUploadSize            | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("100MiB").                                                                                                                               |
-| normalizeUploadFilenames | boolean,null        | false    | none         | none                                                                                                                                                                                             |
-| port                     | integer,null(int32) | false    | none         | none                                                                                                                                                                                             |
-| readOnlyMode             | boolean,null        | false    | none         | none                                                                                                                                                                                             |
-| trivialPasswords         | boolean,null        | false    | none         | none                                                                                                                                                                                             |
-| uploadFolder             | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("uploads").                                                                                                                              |
-| useClientTimestampInfo   | boolean,null        | false    | none         | none                                                                                                                                                                                             |
-| validateUploadContent    | boolean,null        | false    | none         | none                                                                                                                                                                                             |
+| Name                     | Type                | Required | Restrictions | Description                                                                                                                                                                       |
+| ------------------------ | ------------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| address                  | string,null         | false    | none         | Host-only (`PICASU_ADDRESS` / config `server.address`). Any presence<br>in the API body is rejected with 400 and changes nothing.                                                 |
+| allowRegistration        | boolean,null        | false    | none         | Host-only (`PICASU_ALLOW_REGISTRATION` / config<br>`gallery.allow_registration`). Any presence in the API body is<br>rejected with 400 and changes nothing.                       |
+| authKey                  | string,null         | false    | none         | none                                                                                                                                                                              |
+| bootstrapAdmin           | boolean,null        | false    | none         | Host-only (`--bootstrap-admin` / `PICASU_BOOTSTRAP_ADMIN` / config<br>`gallery.bootstrap_admin`). Any presence in the API body is rejected<br>with 400 and changes nothing.       |
+| disableImg               | boolean,null        | false    | none         | none                                                                                                                                                                              |
+| fsNotifyWatcher          | boolean,null        | false    | none         | none                                                                                                                                                                              |
+| maxUploadSize            | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("100MiB").                                                                                                                |
+| normalizeUploadFilenames | boolean,null        | false    | none         | none                                                                                                                                                                              |
+| port                     | integer,null(int32) | false    | none         | Host-only (`PICASU_PORT` / config `server.port`). Any presence<br>in the API body is rejected with 400 and changes nothing.                                                       |
+| readOnlyMode             | boolean,null        | false    | none         | none                                                                                                                                                                              |
+| trivialPasswords         | boolean,null        | false    | none         | Host-only (`--trivial-passwords` / `PICASU_TRIVIAL_PASSWORDS` /<br>config `gallery.trivial_passwords`). Any presence in the API body is<br>rejected with 400 and changes nothing. |
+| uploadFolder             | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("uploads").                                                                                                               |
+| useClientTimestampInfo   | boolean,null        | false    | none         | none                                                                                                                                                                              |
+| validateUploadContent    | boolean,null        | false    | none         | none                                                                                                                                                                              |
 
 <h2 id="tocS_Prefetch">Prefetch</h2>
 <!-- backwards compatibility -->
