@@ -41,6 +41,8 @@ oldPassword, newPassword)` calling `PUT /put/users/password`; `ChangePassword`
    `update_password_handler`, route registration. Done: `cargo test --lib`
    green, no `config/password` hits in `backend/src`. Leaves out: changes to
    `users_password.rs` behavior.
+   Done 2026-10-17: alias deleted + `config_password_alias_is_gone` 404 pin
+   (targeted 15 green; openapi freshness red until step 3 regen).
 3. Contract and docs (scope: `backend/openapi.json`,
    `docs/openapi-reference.md`, `docs/auth.md`, `docs/auth-flows.md`,
    `docs/config.md`, `docs/frontend.md`, `docs/scenario-dsl.md`,
