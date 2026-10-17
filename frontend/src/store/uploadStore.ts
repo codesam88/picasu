@@ -149,9 +149,14 @@ export const useUploadStore = (isolationId: IsolationId) =>
 
           this.status = 'Completed'
           messageStore.success('Files uploaded successfully')
-        } catch (err) {
+        } catch (err: unknown) {
           this.status = 'Canceled'
-          messageStore.error(errorDisplay(err))
+          // The global axios interceptor already displayed axios errors
+          // that carry a response; surface only what it could not
+          // (non-axios throws and responseless failures).
+          if (!axios.isAxiosError(err) || err.response === undefined) {
+            messageStore.error(errorDisplay(err))
+          }
         }
       },
 

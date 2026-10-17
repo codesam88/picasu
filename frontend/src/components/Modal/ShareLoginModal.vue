@@ -44,13 +44,11 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useModalStore } from '@/store/modalStore'
-import { useMessageStore } from '@/store/messageStore'
 import { useShareStore } from '@/store/shareStore'
 import axios from 'axios'
 
 const modalStore = useModalStore('mainId')
 
-const messageStore = useMessageStore('mainId')
 const shareStore = useShareStore('mainId')
 
 const password = ref('')
@@ -100,8 +98,9 @@ const submit = async () => {
       const status = error.response?.status
 
       if (status === 403) {
+        // The global interceptor already toasted the share-403 message;
+        // mark expiry locally without a second snackbar.
         shareStore.isLinkExpired = true
-        messageStore.error('Link has expired.')
       } else if (status === 401) {
         errorMessage.value = 'Incorrect password'
       } else {

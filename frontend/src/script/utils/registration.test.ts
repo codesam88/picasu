@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
+import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { RACE_LOST_NOTICE, isRegistrationSubmittable, submitRegistration } from './registration'
 
 const axiosError = (status: number) => {
@@ -7,6 +8,27 @@ const axiosError = (status: number) => {
   }
   err.response = { status }
   return err
+}
+
+/// Real axios rejection: `axios.isAxiosError` recognizes it, so the global
+/// response interceptor owns its display and the local `onError` callback
+/// must stay silent.
+const realAxiosFailure = (status: number) => {
+  const config = { headers: {} } as InternalAxiosRequestConfig
+  const response = {
+    status,
+    statusText: String(status),
+    data: { message: 'boom' },
+    headers: {},
+    config
+  } as AxiosResponse
+  return new AxiosError(
+    `Request failed with status code ${status}`,
+    'ERR_BAD_REQUEST',
+    config,
+    null,
+    response
+  )
 }
 
 const makeDeps = () => ({
@@ -102,6 +124,61 @@ describe('submitRegistration', () => {
     expect(deps.create).toHaveBeenCalledTimes(1)
     expect(deps.onRegistered).not.toHaveBeenCalled()
     expect(deps.onRaceLost).not.toHaveBeenCalled()
+    expect(deps.onError).toHaveBeenCalledTimes(1)
+    expect(deps.onError).toHaveBeenCalledWith(failure)
+  })
+
+  test('axios failure with a response never reaches onError (interceptor owns display)', async () => {
+    const deps = makeDeps()
+    deps.create = vi.fn().mockRejectedValueOnce(realAxiosFailure(400))
+
+    await expect(submitRegistration('root', 'new-secret', 'new-secret', deps)).resolves.toBe(
+      'failed'
+    )
+    expect(deps.login).not.toHaveBeenCalled()
+    expect(deps.onRegistered).not.toHaveBeenCalled()
+    expect(deps.onRaceLost).not.toHaveBeenCalled()
+    expect(deps.onError).not.toHaveBeenCalled()
+  })
+
+  test('real axios 409 still falls back to the race-lost notice without onError', async () => {
+    const deps = makeDeps()
+    deps.create = vi.fn().mockRejectedValueOnce(realAxiosFailure(409))
+
+    await expect(submitRegistration('root', 'new-secret', 'new-secret', deps)).resolves.toBe(
+      'race-lost'
+    )
+    expect(deps.login).not.toHaveBeenCalled()
+    expect(deps.onError).not.toHaveBeenCalled()
+    expect(deps.onRaceLost).toHaveBeenCalledTimes(1)
+    expect(deps.onRaceLost).toHaveBeenCalledWith(RACE_LOST_NOTICE)
+  })
+
+  test('responseless axios failure still surfaces via onError', async () => {
+    const deps = makeDeps()
+    const failure = new AxiosError(
+      'Network Error',
+      'ERR_NETWORK',
+      { headers: {} } as InternalAxiosRequestConfig,
+      null
+    )
+    deps.create = vi.fn().mockRejectedValueOnce(failure)
+
+    await expect(submitRegistration('root', 'new-secret', 'new-secret', deps)).resolves.toBe(
+      'failed'
+    )
+    expect(deps.onError).toHaveBeenCalledTimes(1)
+    expect(deps.onError).toHaveBeenCalledWith(failure)
+  })
+
+  test('non-axios throw still surfaces via onError', async () => {
+    const deps = makeDeps()
+    const failure = new Error('boom')
+    deps.create = vi.fn().mockRejectedValueOnce(failure)
+
+    await expect(submitRegistration('root', 'new-secret', 'new-secret', deps)).resolves.toBe(
+      'failed'
+    )
     expect(deps.onError).toHaveBeenCalledTimes(1)
     expect(deps.onError).toHaveBeenCalledWith(failure)
   })

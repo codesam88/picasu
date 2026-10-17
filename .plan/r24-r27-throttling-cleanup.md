@@ -1,5 +1,5 @@
 ---
-status: open
+status: in-progress
 type: chore
 priority: high
 area: frontend
@@ -109,6 +109,13 @@ owns axios-error display. Remove the per-caller 401 navigation
 (`UserManagement.vue` duplicates the interceptor's redirect). Done: no
 double snackbar and no doubled navigation on the register, upload, and
 share-403 paths; full frontend suite green. Leaves out: T3, T4, backend.
+Done 2026-10-17: axios-display guards at `registration.ts`,
+`uploadStore.ts`, `ShareLoginModal.vue`; `onRaceLost` redirect-only
+(409 double-signal removed); UserManagement duplicate 401 navigation
+deleted (191 tests green; behavior tests on the two logic units +
+structure pins for the harness-less .vue files). Flagged leftover:
+`errorToMessage` in `script/utils/currentUser.ts` is
+production-caller-less until the admin panel consumes it.
 
 ### T3 — hint-less 429 fallback
 
