@@ -5,17 +5,33 @@ import { setupMainAxiosInterceptor } from './axiosInterceptor'
 import { useMessageStore } from '@/store/messageStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
+import router from '@/route/routes'
 
 // The router module imports .vue page components, which the node-env vitest
 // setup cannot parse (same reason routes.test.ts checks source instead of
 // importing it). Stub only the router; the real pinia stores under test still
 // load (see logout.test.ts for the same pattern).
-vi.mock('@/route/routes', () => ({
-  default: {
-    currentRoute: { value: { name: 'timeline', fullPath: '/timeline' } },
-    push: vi.fn()
+// Navigating stub: landing on login flips currentRoute, mirroring the real
+// router — that flip is what makes repeat redirectionToLogin calls no-ops.
+vi.mock('@/route/routes', () => {
+  const currentRoute = { value: { name: 'timeline', fullPath: '/timeline' } }
+  const push = vi.fn(async () => {
+    currentRoute.value = { name: 'login', fullPath: '/login' }
+  })
+  return {
+    default: {
+      currentRoute,
+      push
+    }
   }
-}))
+})
+
+/// Typed view of the router stub above (the real router types are unusable:
+/// the module is mocked and .vue routes never load under node vitest).
+const mockedRouter = router as unknown as {
+  currentRoute: { value: { name: string; fullPath: string } }
+  push: ReturnType<typeof vi.fn>
+}
 
 beforeAll(() => {
   setupMainAxiosInterceptor()
@@ -23,6 +39,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  mockedRouter.currentRoute.value = { name: 'timeline', fullPath: '/timeline' }
+  mockedRouter.push.mockClear()
 })
 
 /// Route every request through an adapter that rejects with the given
@@ -117,5 +135,47 @@ describe('429 handling', () => {
     const queue = useMessageStore('mainId').queue
     expect(queue).toHaveLength(1)
     expect(queue[0]?.text).toContain('Too many login attempts')
+  })
+})
+
+describe('401 handling', () => {
+  test('clears the session profile', async () => {
+    useSessionStore('mainId').setProfile({ userId: 'alice', admin: true })
+    rejectWith(401, {}, {})
+
+    await expect(axios.get('/get/get-data')).rejects.toBeTruthy()
+
+    expect(useSessionStore('mainId').profile).toBeNull()
+  })
+
+  test('parallel 401s navigate to login exactly once', async () => {
+    rejectWith(401, {}, {})
+
+    const outcomes = await Promise.allSettled([
+      axios.get('/get/get-data'),
+      axios.get('/get/get-data'),
+      axios.get('/get/get-data')
+    ])
+    expect(outcomes.filter((outcome) => outcome.status === 'rejected')).toHaveLength(3)
+
+    expect(mockedRouter.push).toHaveBeenCalledTimes(1)
+    expect(mockedRouter.push).toHaveBeenCalledWith({ name: 'login' })
+  })
+
+  test('emits no snackbar for a 401', async () => {
+    rejectWith(401, {}, {})
+
+    await expect(axios.get('/get/get-data')).rejects.toBeTruthy()
+
+    expect(useMessageStore('mainId').queue).toHaveLength(0)
+  })
+
+  test('a rapid second 401 does not navigate again', async () => {
+    rejectWith(401, {}, {})
+
+    await expect(axios.get('/get/get-data')).rejects.toBeTruthy()
+    await expect(axios.get('/get/get-data')).rejects.toBeTruthy()
+
+    expect(mockedRouter.push).toHaveBeenCalledTimes(1)
   })
 })

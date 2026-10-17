@@ -18,21 +18,6 @@ const HEADERS = {
 // --- Helpers ---
 
 /**
- * Creates a simple throttler to prevent spamming actions (like 401 redirects).
- */
-const createThrottler = (delay: number) => {
-  let lastTime = 0
-  return () => {
-    const now = Date.now()
-    if (now - lastTime < delay) return true
-    lastTime = now
-    return false
-  }
-}
-
-const isThrottled401 = createThrottler(1000)
-
-/**
  * Aggregates stores to avoid repetitive useStore calls.
  * Note: Must be called inside the interceptor to ensure Pinia is active.
  */
@@ -102,12 +87,14 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
   switch (status) {
     case 401:
       // The session is gone server-side: drop the persisted display
-      // profile too, before the throttle gate, so a stale admin badge can
-      // never outlive the session that backed it. Share pages never
-      // reach here — their 401s are share-password flow, not sessions.
+      // profile too, so a stale admin badge can never outlive the
+      // session that backed it. No snackbar here: the login page
+      // always shows the innocuous "Please log in to continue" banner
+      // on arrival. Share pages never reach here — their 401s are
+      // share-password flow, not sessions. Repeat 401s cannot
+      // double-navigate: redirectionToLogin is a no-op once the route
+      // is login.
       useSessionStore('mainId').clearProfile()
-      if (isThrottled401()) return // Prevent duplicate snackbars/redirects
-      messageStore.error('Session expired or unauthorized. Please login.')
       await redirectionStore.redirectionToLogin()
       break
 
