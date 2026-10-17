@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: medium
 area: frontend
@@ -34,6 +34,10 @@ gain at innocuous wording). Rejected: longer snackbar timeout (still
 transient, still competes with navigation); asserting "session expired"
 unconditionally (false for deep-link arrivals); no message at all (loses
 the why).
+
+Done 2026-10-17: step 1 banner `adee2358f`, step 2 snackbar/throttle
+deletion + 401 tests `294355f7c`; step 3 docs paragraph `docs/auth.md`
+(session-denial UX). Plan tied off; steps 1-2 committed, docs in step 3.
 
 ## Implementation steps
 
