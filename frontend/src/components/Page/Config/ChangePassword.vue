@@ -67,12 +67,14 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { updatePassword } from '@/api/config'
+import { setUserPassword } from '@/api/users'
+import { useCurrentUser } from '@/script/utils/currentUser'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { isPasswordChangeSubmittable, submitPasswordChange } from '@utils/passwordChange'
 
 const messageStore = useMessageStore('mainId')
+const currentUser = useCurrentUser()
 
 // --- State ---
 const oldPassword = ref('')
@@ -99,6 +101,8 @@ const rules = {
 // --- Actions ---
 const savePassword = async () => {
   if (!canSubmit.value) return
+  const userId = currentUser.value?.id
+  if (userId === undefined) return
 
   loading.value = true
 
@@ -107,7 +111,7 @@ const savePassword = async () => {
       oldPassword.value,
       newPassword.value,
       confirmPassword.value,
-      updatePassword
+      (old, next) => setUserPassword(userId, old, next)
     )
     if (!ok) return false
 
