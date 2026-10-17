@@ -22,6 +22,10 @@
               <h2 class="text-h4 font-weight-light mb-2">Welcome Back!</h2>
             </div>
 
+            <v-alert type="info" density="compact" variant="tonal" class="mb-4">
+              Please log in to continue
+            </v-alert>
+
             <v-form @submit.prevent="handleLogin" ref="form">
               <v-text-field
                 v-model="userId"
