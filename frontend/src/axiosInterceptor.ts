@@ -1,6 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { errorDisplay } from '@/script/utils/errorDisplay'
-import { retryAfterSecs } from '@/script/utils/retryAfter'
+import { retryAfterSecs, throttleMessage } from '@/script/utils/retryAfter'
 import { useSessionStore } from '@/store/sessionStore'
 import { useShareStore } from '@/store/shareStore'
 import { useModalStore } from '@/store/modalStore'
@@ -128,9 +128,7 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
       // route gets one toast carrying the retry hint.
       if (error.config?.url === AUTHENTICATE_URL) break
       const secs = retryAfterSecs(error)
-      messageStore.error(
-        secs !== null ? `Too many attempts — try again in ${secs}s` : errorDisplay(error)
-      )
+      messageStore.error(secs !== null ? throttleMessage(secs) : errorDisplay(error))
       break
     }
 

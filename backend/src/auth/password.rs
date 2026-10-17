@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 use std::sync::LazyLock;
+#[cfg(test)]
+use std::sync::atomic::AtomicU64;
 
 use anyhow::Context as _;
 use pbkdf2::pbkdf2_hmac;
@@ -195,6 +197,13 @@ pub fn verify_password(password: &str, expected: &PasswordHash) -> bool {
     let candidate = derive(password, &expected.salt, expected.iterations);
     candidate.ct_eq(&expected.hash).into()
 }
+
+/// KDF rounds executed on the login path (tests only): incremented by
+/// the dummy verify and the known-user verify in the authenticate
+/// handler, so login tests can prove throttled requests skip hashing
+/// without timing assertions. Unit tests of this module never touch it.
+#[cfg(test)]
+pub static VERIFY_CALLS: AtomicU64 = AtomicU64::new(0);
 
 fn derive(password: &str, salt: &[u8], iterations: u32) -> [u8; HASH_LEN] {
     let mut out = [0u8; HASH_LEN];

@@ -91,26 +91,12 @@ fn throttle_params() -> ThrottleParams {
         .get()
         .expect("APP_CONFIG not initialized")
         .read()
-        .expect("APP_CONFIG lock");
+        .unwrap_or_else(PoisonError::into_inner);
+    let [(_, ip_short), (_, ip_long), (_, user_long)] = config.login_throttle_schedules();
     ThrottleParams {
-        ip_short: (
-            config.login_ip_window_secs,
-            config.login_ip_max_failures,
-            config.login_ip_base_ban_secs,
-            config.login_ip_max_ban_secs,
-        ),
-        ip_long: (
-            config.login_ip_long_window_secs,
-            config.login_ip_long_max_failures,
-            config.login_ip_long_base_ban_secs,
-            config.login_ip_long_max_ban_secs,
-        ),
-        user_long: (
-            config.login_user_long_window_secs,
-            config.login_user_long_max_failures,
-            config.login_user_long_base_ban_secs,
-            config.login_user_long_max_ban_secs,
-        ),
+        ip_short,
+        ip_long,
+        user_long,
     }
 }
 
@@ -135,12 +121,53 @@ const SWEEP_INTERVAL_SECS: u64 = 60;
 /// brute-force protection. Read from the process environment at request
 /// time, mirroring `PICASU_PBKDF_ITERATIONS`.
 fn rate_limits_disabled() -> bool {
-    matches!(std::env::var(RATE_LIMITS_ENV_VAR), Ok(value) if value == "false")
+    #[cfg(test)]
+    match RATE_LIMITS_FORCED.load(Ordering::Relaxed) {
+        // Test seam: deterministic override without touching the process
+        // environment (`set_var` races any concurrent `env::var` reader,
+        // which is why the tests never mutate the environment).
+        1 => return true,
+        2 => return false,
+        _ => {}
+    }
+    rate_limits_disabled_from(std::env::var(RATE_LIMITS_ENV_VAR).ok().as_deref())
 }
+
+/// Pure mapping behind [`rate_limits_disabled`]: unit-testable without
+/// environment access.
+fn rate_limits_disabled_from(env_value: Option<&str>) -> bool {
+    matches!(env_value, Some("false"))
+}
+
+/// Test-only override for [`rate_limits_disabled`]: 0 follows the
+/// environment, 1 forces disabled, 2 forces enabled. Plain atomics, safe
+/// to set while other tests run — unlike `std::env::set_var`.
+#[cfg(test)]
+static RATE_LIMITS_FORCED: AtomicU64 = AtomicU64::new(0);
 
 /// Warn once per process when the kill switch is active, so an operator
 /// notices that brute-force protection is off.
 static RATE_LIMITS_OFF_WARNED: std::sync::Once = std::sync::Once::new();
+
+/// Render a claimed user id safe for log lines: control characters
+/// (newlines, ANSI escapes, DEL) become `?` so a crafted id cannot forge
+/// log lines or drive terminal escapes. The id itself is unchanged —
+/// only its log rendering is sanitized.
+fn log_safe_id(id: &str) -> String {
+    id.chars()
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect()
+}
+
+/// Current wall-clock seconds for throttle bookkeeping from an explicit
+/// clock reading, so the mapping is unit-testable. The handler turns
+/// `Err` into fail-open (proceed unthrottled) and logs the cause: a wrong
+/// `now` would corrupt every countdown.
+fn throttle_instant(
+    reading: Result<std::time::Duration, std::time::SystemTimeError>,
+) -> Result<u64, std::time::SystemTimeError> {
+    reading.map(|d| d.as_secs())
+}
 
 /// Emission counts for the two throttle warn sites. Tests read these
 /// instead of capturing log records: the process-global logger slot is
@@ -149,9 +176,6 @@ static RATE_LIMITS_OFF_WARNED: std::sync::Once = std::sync::Once::new();
 /// parallel tests.
 #[cfg(test)]
 static LOGIN_FAILED_WARNS: AtomicU64 = AtomicU64::new(0);
-
-#[cfg(test)]
-static RATE_LIMITS_OFF_WARNS: AtomicU64 = AtomicU64::new(0);
 
 /// Run `f` against the shared tracker, (re)building it first when the
 /// configured schedules differ from the ones it was built with.
@@ -227,6 +251,8 @@ pub struct LoginRequest {
 /// regardless); `rand::random` is used because it is already the
 /// crate's randomness source, not because the dummy needs strength.
 pub(crate) fn run_dummy_verify() -> bool {
+    #[cfg(test)]
+    crate::auth::password::VERIFY_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     verify_password(
         &format!("{:x}-{:x}", rand::random::<u64>(), rand::random::<u64>()),
         &crate::auth::password::PasswordHash {
@@ -262,6 +288,8 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
     };
     let store = PasswdFile::load(&users::passwd_file_path())
         .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
+    #[cfg(test)]
+    crate::auth::password::VERIFY_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     if !store.verify(user_id, canonical) {
         return Err(
             AppError::new(ErrorKind::Auth, "Invalid credentials").context("Authentication failed")
@@ -298,15 +326,16 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
 /// password — 429 the attempt is throttled (`Retry-After` carries the
 /// remaining ban seconds) — 500 internal error.
 ///
-/// Brute-force throttle: before the KDF runs, every non-open attempt is
-/// checked against the IP-short, IP-long, and user-long buckets (see
-/// [`crate::auth::rate_limit`]); while any bucket bans, a 429 is returned
-/// without hashing. Evaluated failures record into all applicable buckets,
-/// a success clears the caller's entries, and throttled attempts are never
-/// recorded. Open bootstrap mode (no users + flag) skips the throttle:
-/// there is no credential to guess. The environment-only kill switch
-/// `PICASU_RATE_LIMITS=false` (exact match) also bypasses the throttle —
-/// for fuzzing runs — while the failure logging stays.
+/// Brute-force throttle: before the KDF runs, every non-open attempt
+/// reserves a slot and then checks the IP-short, IP-long, and user-long
+/// buckets (see [`crate::auth::rate_limit`]); while any bucket bans, a
+/// 429 is returned without hashing. Evaluated failures record into all
+/// applicable buckets, a success drops the username entry and clears the
+/// IP burst bucket (keeping IP-long history), and throttled attempts are
+/// never recorded. Open bootstrap mode (no users + flag) skips the
+/// throttle: there is no credential to guess. The environment-only kill
+/// switch `PICASU_RATE_LIMITS=false` (exact match) also bypasses the
+/// throttle — for fuzzing runs — while the failure logging stays.
 #[utoipa::path(
         tag = "auth",
         request_body = LoginRequest,
@@ -349,8 +378,6 @@ pub async fn authenticate(
     // single "no throttle contact" signal for the rest of this handler.
     let now = if rate_limits_disabled() {
         RATE_LIMITS_OFF_WARNED.call_once(|| {
-            #[cfg(test)]
-            RATE_LIMITS_OFF_WARNS.fetch_add(1, Ordering::Relaxed);
             log::warn!("{RATE_LIMITS_ENV_VAR}=false: login brute-force throttling is DISABLED");
         });
         None
@@ -358,14 +385,17 @@ pub async fn authenticate(
         // Fail open on a pre-epoch clock: a wrong `now` would corrupt every
         // countdown (ban ends computed off a wrong epoch last for years), so
         // the attempt proceeds unthrottled and the clock error is logged.
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .map_err(|e| log::warn!("login throttle skipped for this attempt (clock error): {e}"))
+        throttle_instant(SystemTime::now().duration_since(UNIX_EPOCH))
+            .map_err(|e| {
+                log::warn!("login throttle skipped for this attempt (clock error): {e}");
+            })
             .ok()
     };
 
     if let Some(now) = now {
+        // Reserve first: the slot counts toward every threshold while the
+        // KDF runs, so a parallel burst cannot multiply the allowance.
+        // A returned ban held no slot (nothing was recorded).
         let ban = with_login_throttle(|throttle| {
             // Opportunistic reaping at most once a minute; the tracker's
             // entry caps bound memory between sweeps.
@@ -373,14 +403,19 @@ pub async fn authenticate(
                 throttle.sweep(now);
                 LAST_SWEEP.store(now, Ordering::Relaxed);
             }
-            throttle.check(&ip.0, &user_id, now)
+            throttle.reserve(&ip.0, &user_id, now)
         });
         if ban > 0 {
-            log::warn!("login throttled: ip={} user_id={}", ip.0, user_id);
+            log::warn!(
+                "login throttled: ip={} user_id={}",
+                ip.0,
+                log_safe_id(&user_id)
+            );
             return Err(AppError::new(
                 ErrorKind::RateLimited,
                 format!("Too many login attempts, try again in {ban}s"),
             )
+            .temporary()
             .retry_after(ban));
         }
     }
@@ -396,23 +431,38 @@ pub async fn authenticate(
             if err.kind == ErrorKind::Auth {
                 // Throttled attempts are logged too, but only evaluated
                 // failures (401s) are recorded; 400s never reach here.
+                // The reservation is released first: `record_failure`
+                // counts this attempt exactly once.
                 #[cfg(test)]
                 LOGIN_FAILED_WARNS.fetch_add(1, Ordering::Relaxed);
-                log::warn!("login failed: ip={} user_id={}", ip.0, user_id);
+                log::warn!(
+                    "login failed: ip={} user_id={}",
+                    ip.0,
+                    log_safe_id(&user_id)
+                );
                 if let Some(now) = now {
                     with_login_throttle(|throttle| {
+                        throttle.release(&ip.0, &user_id);
                         throttle.record_failure(&ip.0, &user_id, now);
                     });
                 }
+            } else if now.is_some() {
+                // Non-credential errors (unreadable stores): release the
+                // slot without recording — an outage must not fill buckets.
+                with_login_throttle(|throttle| {
+                    throttle.release(&ip.0, &user_id);
+                });
             }
             return Err(err);
         }
     };
     // When `now` is None (pre-epoch clock or the `PICASU_RATE_LIMITS`
     // kill switch) the tracker was never consulted, so there is nothing
-    // to clear; otherwise success drops the caller's entries.
-    if now.is_some() {
-        with_login_throttle(|throttle| throttle.record_success(&ip.0, &user_id));
+    // to clear; otherwise success consumes the reservation and clears
+    // the username entry plus the IP burst bucket (the IP-long history
+    // is kept — see `LoginThrottle::record_success`).
+    if let Some(now) = now {
+        with_login_throttle(|throttle| throttle.record_success(&ip.0, &user_id, now));
     }
     set_session_cookie(jar, https.0, token);
     Ok(Json(profile))
@@ -478,6 +528,62 @@ mod tests {
         config.bootstrap_admin = enabled;
     }
 
+    /// Shrink the user-long bucket for one test (IP buckets stay lenient)
+    /// so the user wiring trips within a few attempts. `reset_backend_state`
+    /// restores the shipped defaults afterwards.
+    fn set_tight_user_long(window_secs: u64, max_failures: u32, base_ban_secs: u64) {
+        let mut config = crate::model::config::APP_CONFIG
+            .get()
+            .expect("APP_CONFIG set")
+            .write()
+            .expect("APP_CONFIG lock");
+        config.login_user_long_window_secs = window_secs;
+        config.login_user_long_max_failures = max_failures;
+        config.login_user_long_base_ban_secs = base_ban_secs;
+    }
+
+    /// Shrink the IP-long bucket for one test (user-long stays lenient).
+    fn set_tight_ip_long(window_secs: u64, max_failures: u32, base_ban_secs: u64) {
+        let mut config = crate::model::config::APP_CONFIG
+            .get()
+            .expect("APP_CONFIG set")
+            .write()
+            .expect("APP_CONFIG lock");
+        config.login_ip_long_window_secs = window_secs;
+        config.login_ip_long_max_failures = max_failures;
+        config.login_ip_long_base_ban_secs = base_ban_secs;
+    }
+
+    /// Trust `X-Forwarded-For` for one test.
+    fn set_trust_proxy(enabled: bool) {
+        crate::model::config::APP_CONFIG
+            .get()
+            .expect("APP_CONFIG set")
+            .write()
+            .expect("APP_CONFIG lock")
+            .trust_proxy_forwarded_for = enabled;
+    }
+
+    /// Assert the opportunistic sweep ran: the shared `LAST_SWEEP` moved
+    /// off zero and a second login in the same window leaves it in place.
+    fn assert_sweep_ran_once(client: &rocket::local::blocking::Client) {
+        use std::sync::atomic::Ordering;
+        assert_eq!(
+            super::LAST_SWEEP.load(Ordering::Relaxed),
+            0,
+            "test setup drops the throttle state"
+        );
+        let _ = post_login(client, "t9-sweep", &test_password("t9-sweep-wrong"));
+        let swept = super::LAST_SWEEP.load(Ordering::Relaxed);
+        assert!(swept > 0, "first login runs the reaping pass");
+        let _ = post_login(client, "t9-sweep", &test_password("t9-sweep-wrong"));
+        assert_eq!(
+            super::LAST_SWEEP.load(Ordering::Relaxed),
+            swept,
+            "second login within 60s skips the pass"
+        );
+    }
+
     fn create_user_with_password(id: &str, admin: bool, password: &str) {
         crate::auth::users::create_user(id, admin).expect("create user");
         let path = crate::auth::users::passwd_file_path();
@@ -534,6 +640,40 @@ mod tests {
             .dispatch()
     }
 
+    /// Assert a throttled answer carries a coherent countdown and return
+    /// the observed wait: the `Retry-After` header parses to within
+    /// `(0, expected_max]` (a wall-clock second may elapse between opening
+    /// the ban and observing it, so the exact rung value is not stable),
+    /// the body's `retryAfter` equals the header, and the human message
+    /// names the same wait.
+    fn assert_throttled_countdown(
+        resp: rocket::local::blocking::LocalResponse<'_>,
+        expected_max: u64,
+    ) -> u64 {
+        assert_eq!(resp.status(), Status::TooManyRequests);
+        let header = resp
+            .headers()
+            .get_one("Retry-After")
+            .expect("Retry-After header");
+        let secs: u64 = header.parse().expect("numeric Retry-After");
+        assert!(
+            (1..=expected_max).contains(&secs),
+            "Retry-After {secs} within (0, {expected_max}]"
+        );
+        let body = resp.into_string().expect("429 body");
+        let parsed: serde_json::Value = serde_json::from_str(&body).expect("429 json");
+        assert_eq!(parsed["kind"], "Rate Limited");
+        assert_eq!(parsed["retryAfter"], secs, "body mirrors the header");
+        assert!(
+            parsed["message"]
+                .as_str()
+                .expect("message string")
+                .contains(&format!("try again in {secs}s")),
+            "human message must carry the countdown: {body}"
+        );
+        secs
+    }
+
     /// The IP-short schedule (3 failures / 600s → 10s ban) as shipped in
     /// `crate::auth::rate_limit`: three evaluated failures stay under the
     /// threshold, the fourth evaluated failure opens the 10s ban and still
@@ -550,59 +690,44 @@ mod tests {
             assert_eq!(resp.status(), Status::Unauthorized);
         }
         let resp = post_login(&client, "t7-alice", &wrong);
-        assert_eq!(resp.status(), Status::TooManyRequests);
-        assert_eq!(resp.headers().get_one("Retry-After"), Some("10"));
-        let body = resp.into_string().expect("429 body");
-        let parsed: serde_json::Value = serde_json::from_str(&body).expect("429 json");
-        assert_eq!(parsed["kind"], "Rate Limited");
-        assert_eq!(parsed["retryAfter"], 10);
-        assert!(
-            parsed["message"]
-                .as_str()
-                .expect("message string")
-                .contains("try again in 10s"),
-            "human message must carry the countdown: {body}"
-        );
+        assert_throttled_countdown(resp, 10);
     }
 
+    /// A throttled attempt runs zero KDF rounds: the counter observes
+    /// the verify path directly instead of timing it (timing is vacuous
+    /// at test iteration counts and flaky everywhere else).
     #[test]
     fn authenticate_throttled_attempt_skips_kdf() {
+        use std::sync::atomic::Ordering;
         let _g = lock();
         let client = setup();
         create_user_with_password("t7-fast", false, &test_password("t7-fast-pw"));
         let wrong = test_password("t7-fast-wrong");
-        for _ in 0..4 {
+        let rounds = || crate::auth::password::VERIFY_CALLS.load(Ordering::Relaxed);
+        // Sanity first: an evaluated (401) failure hashes — the counter
+        // observes the path, so a stuck counter cannot fake the assertion
+        // below.
+        let before = rounds();
+        assert_eq!(
+            post_login(&client, "t7-fast", &wrong).status(),
+            Status::Unauthorized
+        );
+        assert_eq!(rounds(), before + 1);
+        // Three more failures open the ban (the fourth still answers 401).
+        for _ in 0..3 {
             assert_eq!(
                 post_login(&client, "t7-fast", &wrong).status(),
                 Status::Unauthorized
             );
         }
-        // Reference: one KDF round at the effort currently in force.
-        let start = std::time::Instant::now();
-        let _ = super::run_dummy_verify();
-        let kdf_round = start.elapsed();
-
-        let start = std::time::Instant::now();
+        let before = rounds();
         let resp = post_login(&client, "t7-fast", &wrong);
-        let throttled = start.elapsed();
         assert_eq!(resp.status(), Status::TooManyRequests);
-        // Flakiness guard: at production effort a KDF round takes tens of
-        // milliseconds or more, so "well under one round" holds with a 5x
-        // margin. Under the test-only iteration override (1000) a round
-        // collapses below HTTP-dispatch noise, where only a generous
-        // absolute bound is meaningful; the check-before-KDF order itself
-        // is pinned structurally by the handler.
-        if kdf_round.as_millis() >= 20 {
-            assert!(
-                throttled.as_micros() * 5 < kdf_round.as_micros(),
-                "throttled answer ({throttled:?}) must cost well under one KDF round ({kdf_round:?})"
-            );
-        } else {
-            assert!(
-                throttled < std::time::Duration::from_millis(250),
-                "throttled answer ({throttled:?}) must stay cheap"
-            );
-        }
+        assert_eq!(
+            rounds(),
+            before,
+            "throttled answer must run zero KDF rounds"
+        );
     }
 
     #[test]
@@ -628,13 +753,9 @@ mod tests {
                 Status::Unauthorized
             );
         }
+        // Fresh failures must trip the ban again after the reset.
         let resp = post_login(&client, "t7-reset", &wrong);
-        assert_eq!(
-            resp.status(),
-            Status::TooManyRequests,
-            "fresh failures must trip the ban again"
-        );
-        assert_eq!(resp.headers().get_one("Retry-After"), Some("10"));
+        assert_throttled_countdown(resp, 10);
     }
 
     #[test]
@@ -650,12 +771,8 @@ mod tests {
             assert_eq!(resp.status(), Status::Unauthorized);
         }
         let resp = post_login(&client, "t7-ghost", &wrong);
-        assert_eq!(
-            resp.status(),
-            Status::TooManyRequests,
-            "unknown-name failures must trip the IP bucket identically"
-        );
-        assert_eq!(resp.headers().get_one("Retry-After"), Some("10"));
+        // Unknown-name failures trip the IP bucket identically.
+        assert_throttled_countdown(resp, 10);
         assert_eq!(
             crate::auth::users::user_count().expect("count"),
             0,
@@ -697,37 +814,194 @@ mod tests {
         }
     }
 
-    /// Set (or clear) `PICASU_RATE_LIMITS` for one test, restoring the
-    /// previous value afterwards. Env mutation is `unsafe` in edition
-    /// 2024; the crate-level deny is lifted for this test-only helper,
-    /// which is safe because the caller holds `TEST_SERIAL_GUARD` and the
-    /// only other readers of this variable are authenticate dispatches,
-    /// serialized by the same guard.
-    #[allow(unsafe_code)]
-    fn with_rate_limits_env(value: Option<&str>, f: impl FnOnce()) {
-        let saved = std::env::var(super::RATE_LIMITS_ENV_VAR).ok();
-        struct Restore(Option<String>);
+    /// Unit pins for the small pure helpers: log sanitizing keeps
+    /// printable (incl. unicode) text and neutralizes control characters;
+    /// the clock mapping passes seconds through and preserves errors.
+    #[test]
+    fn log_safe_id_and_throttle_instant() {
+        assert_eq!(super::log_safe_id("alice"), "alice");
+        assert_eq!(super::log_safe_id("héllo_wörld-123"), "héllo_wörld-123");
+        assert_eq!(super::log_safe_id("a\nb"), "a?b");
+        assert_eq!(super::log_safe_id("x\x1b[31my"), "x?[31my");
+        assert_eq!(super::log_safe_id("null\x00byte"), "null?byte");
+        assert_eq!(super::log_safe_id("del\x7fchar"), "del?char");
+        assert_eq!(super::log_safe_id(""), "");
+        assert_eq!(
+            super::throttle_instant(Ok(std::time::Duration::from_secs(42))).ok(),
+            Some(42)
+        );
+        assert_eq!(
+            super::throttle_instant(Ok(std::time::Duration::new(42, 999_999_999))).ok(),
+            Some(42),
+            "sub-second part truncates"
+        );
+        // A pre-epoch reading stays an error so the handler fails open.
+        let err = std::time::UNIX_EPOCH
+            .duration_since(std::time::SystemTime::now())
+            .expect_err("epoch predates now");
+        assert!(super::throttle_instant(Err(err)).is_err());
+    }
+
+    /// Dispatch one login with a fixed proxy-client address.
+    fn attempt_login<'c>(
+        client: &'c rocket::local::blocking::Client,
+        ip: &str,
+    ) -> rocket::local::blocking::LocalResponse<'c> {
+        use rocket::http::Header;
+        client
+            .post("/post/authenticate")
+            .header(ContentType::JSON)
+            .header(Header::new("X-Forwarded-For", ip.to_string()))
+            .body(
+                json!({ "userId": "t9-victim", "password": test_password("t9-victim-wrong") })
+                    .to_string(),
+            )
+            .dispatch()
+    }
+
+    /// The user-long bucket is wired to the claimed username, not the
+    /// IP: three failures against one name from *distinct* source
+    /// addresses (trusted proxy header) still trip it, and the ban
+    /// follows the name onto a fresh address. Swapped ip/user wiring
+    /// would answer 401 here (fresh keys on both buckets).
+    #[test]
+    fn authenticate_user_long_bucket_follows_the_username() {
+        let _g = lock();
+        let client = setup();
+        set_trust_proxy(true);
+        set_tight_user_long(600, 2, 5);
+        create_user_with_password("t9-victim", false, &test_password("t9-victim-pw"));
+        assert_eq!(
+            attempt_login(&client, "10.9.0.1").status(),
+            Status::Unauthorized
+        );
+        assert_eq!(
+            attempt_login(&client, "10.9.0.2").status(),
+            Status::Unauthorized
+        );
+        // Third failure opens the 5s user ban (still 401); the fourth
+        // attempt arrives from an address with no history at all.
+        assert_eq!(
+            attempt_login(&client, "10.9.0.3").status(),
+            Status::Unauthorized
+        );
+        assert_throttled_countdown(attempt_login(&client, "10.9.0.4"), 5);
+    }
+
+    /// With the proxy header untrusted (default), rotating
+    /// `X-Forwarded-For` values never key the buckets: five failures land
+    /// on the shared socket key and trip exactly like identical requests.
+    #[test]
+    fn authenticate_untrusted_forwarded_header_never_keys_buckets() {
+        use rocket::http::Header;
+        let _g = lock();
+        let client = setup();
+        set_trust_proxy(false);
+        create_user_with_password("t9-rot", false, &test_password("t9-rot-pw"));
+        for i in 0..4 {
+            let resp = client
+                .post("/post/authenticate")
+                .header(ContentType::JSON)
+                .header(Header::new("X-Forwarded-For", format!("10.8.0.{i}")))
+                .body(
+                    json!({ "userId": "t9-rot", "password": test_password("t9-rot-wrong") })
+                        .to_string(),
+                )
+                .dispatch();
+            assert_eq!(resp.status(), Status::Unauthorized, "attempt {i}");
+        }
+        let resp = client
+            .post("/post/authenticate")
+            .header(ContentType::JSON)
+            .header(Header::new("X-Forwarded-For", "10.8.0.99"))
+            .body(
+                json!({ "userId": "t9-rot", "password": test_password("t9-rot-wrong") })
+                    .to_string(),
+            )
+            .dispatch();
+        assert_throttled_countdown(resp, 10);
+    }
+
+    /// The IP-long bucket trips on repeated failures from one source
+    /// while the user-long bucket stays far away.
+    #[test]
+    fn authenticate_ip_long_bucket_trips() {
+        let _g = lock();
+        let client = setup();
+        set_tight_ip_long(600, 2, 7);
+        create_user_with_password("t9-iplong", false, &test_password("t9-iplong-pw"));
+        let wrong = test_password("t9-iplong-wrong");
+        assert_eq!(
+            post_login(&client, "t9-iplong", &wrong).status(),
+            Status::Unauthorized
+        );
+        assert_eq!(
+            post_login(&client, "t9-iplong", &wrong).status(),
+            Status::Unauthorized
+        );
+        // Third failure opens the 7s IP-long ban (still 401); IP-short
+        // holds 3 ≤ 3 and user-long is untouched at 3 ≤ 18.
+        assert_eq!(
+            post_login(&client, "t9-iplong", &wrong).status(),
+            Status::Unauthorized
+        );
+        assert_throttled_countdown(post_login(&client, "t9-iplong", &wrong), 7);
+    }
+
+    /// The opportunistic reaping pass runs on the login path.
+    #[test]
+    fn authenticate_login_runs_opportunistic_sweep() {
+        let _g = lock();
+        let client = setup();
+        create_user_with_password("t9-sweep", false, &test_password("t9-sweep-pw"));
+        assert_sweep_ran_once(&client);
+    }
+
+    /// Force the kill-switch state for one test via the `#[cfg(test)]`
+    /// override (no environment mutation: `set_var` races any concurrent
+    /// `env::var` reader elsewhere in the suite). Restores automatic mode
+    /// afterwards, even on panic.
+    fn with_rate_limits_forced(disabled: Option<bool>, f: impl FnOnce()) {
+        struct Restore;
         impl Drop for Restore {
             fn drop(&mut self) {
-                // SAFETY: see the helper's doc; runs before the guard is
-                // released.
-                unsafe {
-                    match &self.0 {
-                        Some(v) => std::env::set_var(super::RATE_LIMITS_ENV_VAR, v),
-                        None => std::env::remove_var(super::RATE_LIMITS_ENV_VAR),
-                    }
-                }
+                super::RATE_LIMITS_FORCED.store(0, std::sync::atomic::Ordering::Relaxed);
             }
         }
-        let _restore = Restore(saved);
-        // SAFETY: see the helper's doc.
-        unsafe {
-            match value {
-                Some(v) => std::env::set_var(super::RATE_LIMITS_ENV_VAR, v),
-                None => std::env::remove_var(super::RATE_LIMITS_ENV_VAR),
-            }
-        }
+        let _restore = Restore;
+        super::RATE_LIMITS_FORCED.store(
+            match disabled {
+                Some(true) => 1,
+                Some(false) => 2,
+                None => 0,
+            },
+            std::sync::atomic::Ordering::Relaxed,
+        );
         f();
+    }
+
+    /// The pure mapping behind the kill switch, exhaustively pinned
+    /// without environment access.
+    #[test]
+    fn rate_limits_disabled_mapping() {
+        assert!(super::rate_limits_disabled_from(Some("false")));
+        for enabled in [
+            None,
+            Some("true"),
+            Some("False"),
+            Some("FALSE"),
+            Some("false "),
+            Some(" false"),
+            Some(""),
+            Some("0"),
+            Some("no"),
+            Some("garbage"),
+        ] {
+            assert!(
+                !super::rate_limits_disabled_from(enabled),
+                "must stay enabled for {enabled:?}"
+            );
+        }
     }
 
     /// `PICASU_RATE_LIMITS=false` is the fuzzing kill switch: no check, no
@@ -735,7 +1009,7 @@ mod tests {
     #[test]
     fn rate_limits_env_false_disables_throttle() {
         let _g = lock();
-        with_rate_limits_env(Some("false"), || {
+        with_rate_limits_forced(Some(true), || {
             let client = setup();
             create_user_with_password("t8-off", false, &test_password("t8-off-pw"));
             let wrong = test_password("t8-off-wrong");
@@ -772,19 +1046,22 @@ mod tests {
             );
         };
         let _g = lock();
-        with_rate_limits_env(None, || {
+        // Automatic mode would also do (the variable is unset in test
+        // environments), but forcing enabled keeps this hermetic even if
+        // the ambient environment ever sets it.
+        with_rate_limits_forced(Some(false), || {
             let client = setup();
             trip(&client);
         });
-        with_rate_limits_env(Some("true"), || {
+        with_rate_limits_forced(Some(false), || {
             let client = setup();
             trip(&client);
         });
-        with_rate_limits_env(Some("False"), || {
+        with_rate_limits_forced(Some(false), || {
             let client = setup();
             trip(&client);
         });
-        with_rate_limits_env(Some("garbage"), || {
+        with_rate_limits_forced(Some(false), || {
             let client = setup();
             trip(&client);
         });
@@ -799,27 +1076,21 @@ mod tests {
     #[test]
     fn rate_limits_disabled_failure_logging_stays() {
         let _g = lock();
-        with_rate_limits_env(Some("false"), || {
+        with_rate_limits_forced(Some(true), || {
             let client = setup();
             create_user_with_password("t8-log", false, &test_password("t8-log-pw"));
             let before = super::LOGIN_FAILED_WARNS.load(std::sync::atomic::Ordering::Relaxed);
-            let off_before =
-                super::RATE_LIMITS_OFF_WARNS.load(std::sync::atomic::Ordering::Relaxed);
             let resp = post_login(&client, "t8-log", &test_password("t8-log-wrong"));
             assert_eq!(resp.status(), Status::Unauthorized);
             assert_eq!(
                 super::LOGIN_FAILED_WARNS.load(std::sync::atomic::Ordering::Relaxed),
                 before + 1,
-                "the ip=/user_id= failure warn must still fire while throttling is disabled"
+                "the ip=/user_id= failure warn site must still be reached while throttling is disabled"
             );
-            // Best-effort: the Once may already have been consumed by an
-            // earlier test in this process, so only the upper bound holds.
-            assert!(
-                super::RATE_LIMITS_OFF_WARNS.load(std::sync::atomic::Ordering::Relaxed)
-                    - off_before
-                    <= 1,
-                "the disabled warning fires at most once per process"
-            );
+            // The once-per-process disabled warning is deliberately not
+            // asserted: `std::sync::Once` may already be consumed by an
+            // earlier test in this process, so neither 0 nor 1 proves the
+            // site fires.
         });
     }
 

@@ -42,8 +42,10 @@ requests stay cheap. Locked 2026-10-17.
   once when disabled.
   Defaults = oracle tables below. Buckets locked 2026-10-17: IP-short +
   IP-long + user-long (user-short dropped; no per-(IP,user) pair bucket).
-- Success resets the caller's IP + user counters; failures increment
-  all applicable buckets (IP-short, IP-long, user-long).
+- Success drops the username entry and clears the IP burst bucket but
+  keeps the IP-long history (fix batch 2026-10-17: otherwise any valid
+  account holder could wipe a shared IP's daily budget with one login);
+  failures increment all applicable buckets (IP-short, IP-long, user-long).
 - User buckets are keyed on the claimed (validated, trimmed) username whether or not the account exists. Unknown names get the same 401 + throttle behavior as known ones (no existence oracle); enumeration guesses burn the same budgets. Invalid IDs (400) never enter the buckets. Entries are pruned when their window expires so random-name spraying cannot grow state without bound.
 - State: in-memory `DashMap` (already a dependency), reset on restart.
 - `Bucket::new` rejects degenerate config (zero window/max/base, cap <

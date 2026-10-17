@@ -272,3 +272,17 @@ existence oracle, 13 host-only `[server]` knobs + env overrides,
 Accepted risks: restart-clear in-memory state, single-node only,
 proxy-header trust opt-in, top-18 password burst residual (password
 policy carries it).
+
+Fix batch 2026-10-17 (four-lens review triage): reservation slots close
+the check→KDF→record TOCTOU (parallel bursts cannot multiply the
+threshold; serial behavior unchanged); success keeps IP-long history
+(account holders cannot wipe a shared IP's daily budget); kill-switch
+tests use a forced flag (no environment mutation); 429 assertions pin
+header↔body coherence within wall-clock skew; `.temporary()` on
+throttle errors; shared `AppConfig` schedules helper; tightened
+visibility; shared frontend retry string; handler tests for user-long /
+IP-long wiring, proxy-header trust on/off, and sweep cadence; log
+`user_id` sanitized; over-cap eviction spares live bans and held
+reservations. Deliberately deferred: IPv6 /64 keying, trusted-proxy
+CIDR list, log sampling, openapi 429 body schema, named-config struct,
+share-password hardening, password-PUT throttling (separate slice).

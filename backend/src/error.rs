@@ -21,7 +21,6 @@ pub enum ErrorKind {
     ///
     /// Renamed in JSON to `"Rate Limited"` (the [`Self::as_str`] spelling);
     /// the other variants serialize as their derived names.
-    #[allow(dead_code)]
     #[serde(rename = "Rate Limited")]
     RateLimited,
 }
@@ -47,7 +46,6 @@ impl ErrorKind {
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 pub enum ErrorStatus {
     Permanent,
-    #[allow(dead_code)]
     Temporary,
 }
 
@@ -103,7 +101,6 @@ impl AppError {
         }
     }
 
-    #[allow(dead_code)]
     pub fn temporary(mut self) -> Self {
         self.status = ErrorStatus::Temporary;
         self
@@ -295,7 +292,9 @@ mod tests {
     #[test]
     fn rate_limited_kind_maps_to_429() {
         assert_eq!(
-            AppError::new(ErrorKind::RateLimited, "throttled").http_status(),
+            AppError::new(ErrorKind::RateLimited, "throttled")
+                .temporary()
+                .http_status(),
             Status::TooManyRequests
         );
     }
@@ -307,14 +306,18 @@ mod tests {
 
     #[test]
     fn retry_after_builder_sets_field() {
-        let err = AppError::new(ErrorKind::RateLimited, "throttled").retry_after(10);
+        let err = AppError::new(ErrorKind::RateLimited, "throttled")
+            .temporary()
+            .retry_after(10);
         assert_eq!(err.retry_after_secs, Some(10));
     }
 
     #[test]
     fn retry_after_defaults_to_none_in_constructors() {
         assert_eq!(
-            AppError::new(ErrorKind::RateLimited, "throttled").retry_after_secs,
+            AppError::new(ErrorKind::RateLimited, "throttled")
+                .temporary()
+                .retry_after_secs,
             None
         );
         let from_err =
@@ -324,21 +327,23 @@ mod tests {
 
     #[test]
     fn serialized_body_omits_retry_field_when_unset() {
-        let err = AppError::new(ErrorKind::RateLimited, "throttled");
+        let err = AppError::new(ErrorKind::RateLimited, "throttled").temporary();
         let serialized = serde_json::to_string(&err).expect("serialize");
         assert_eq!(
             serialized,
-            r#"{"kind":"Rate Limited","message":"throttled","status":"Permanent","context":[]}"#
+            r#"{"kind":"Rate Limited","message":"throttled","status":"Temporary","context":[]}"#
         );
     }
 
     #[test]
     fn serialized_body_carries_camel_case_retry_field_when_set() {
-        let err = AppError::new(ErrorKind::RateLimited, "throttled").retry_after(10);
+        let err = AppError::new(ErrorKind::RateLimited, "throttled")
+            .temporary()
+            .retry_after(10);
         let serialized = serde_json::to_string(&err).expect("serialize");
         assert_eq!(
             serialized,
-            r#"{"kind":"Rate Limited","message":"throttled","status":"Permanent","context":[],"retryAfter":10}"#
+            r#"{"kind":"Rate Limited","message":"throttled","status":"Temporary","context":[],"retryAfter":10}"#
         );
     }
 
@@ -352,12 +357,13 @@ mod tests {
             ErrorKind::RateLimited,
             "Too many login attempts, try again in 10s",
         )
+        .temporary()
         .retry_after(10)
     }
 
     #[rocket::get("/retry-after-probe-unset")]
     fn retry_after_probe_unset() -> AppError {
-        AppError::new(ErrorKind::RateLimited, "Too many login attempts")
+        AppError::new(ErrorKind::RateLimited, "Too many login attempts").temporary()
     }
 
     fn probe_client() -> rocket::local::blocking::Client {
@@ -377,7 +383,7 @@ mod tests {
         assert_eq!(
             resp.into_string().as_deref(),
             Some(
-                r#"{"kind":"Rate Limited","message":"Too many login attempts, try again in 10s","status":"Permanent","context":[],"retryAfter":10}"#
+                r#"{"kind":"Rate Limited","message":"Too many login attempts, try again in 10s","status":"Temporary","context":[],"retryAfter":10}"#
             )
         );
     }
@@ -391,7 +397,7 @@ mod tests {
         assert_eq!(
             resp.into_string().as_deref(),
             Some(
-                r#"{"kind":"Rate Limited","message":"Too many login attempts","status":"Permanent","context":[]}"#
+                r#"{"kind":"Rate Limited","message":"Too many login attempts","status":"Temporary","context":[]}"#
             )
         );
     }

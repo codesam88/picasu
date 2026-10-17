@@ -662,7 +662,7 @@ mod tests {
     }
 
     /// The 13 login-throttle knobs are host-only (TOML / `PICASU_*`, all
-    /// require a restart: the throttle tracker is built once per process).
+    /// require a restart).
     /// Any presence in the API body is a 400 and changes nothing.
     #[test]
     fn put_config_rejects_login_throttle_knobs_as_host_only() {
