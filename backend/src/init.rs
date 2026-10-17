@@ -193,13 +193,18 @@ pub fn initialize_file() {
 }
 
 /// Initializes all core application subsystems.
-pub fn initialize() {
+///
+/// # Errors
+/// Returns an error when the configuration is unusable (degenerate
+/// login-throttle schedules); the caller must refuse to start.
+pub fn initialize() -> anyhow::Result<()> {
     // Config must be initialized first to ensure 'config.toml' exists for subsequent subsystems.
-    AppConfig::init();
+    AppConfig::init()?;
 
     // Ensure storage folders exist before trying to download FFmpeg into them
     initialize_folder();
 
     check_ffmpeg_and_ffprobe();
     initialize_file();
+    Ok(())
 }

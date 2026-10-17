@@ -30,11 +30,57 @@ disable_img = false
 
 Server-level settings including web server and upload limits.
 
-| Key               | Type   | Default   | Description                                                                                                           |
-| ----------------- | ------ | --------- | --------------------------------------------------------------------------------------------------------------------- |
-| `address`         | string | `0.0.0.0` | IP address the server binds to.                                                                                       |
-| `port`            | number | `5673`    | Port the server listens on.                                                                                           |
-| `max_upload_size` | string | `100MiB`  | Maximum size for a single file upload. Accepts `1GiB`, `500MiB`, etc. Sets both Rocket `file` and `data-form` limits. |
+| Key                             | Type    | Default   | Description                                                                                                                                                                                                                                                                  |
+| ------------------------------- | ------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `address`                       | string  | `0.0.0.0` | IP address the server binds to.                                                                                                                                                                                                                                              |
+| `port`                          | number  | `5673`    | Port the server listens on.                                                                                                                                                                                                                                                  |
+| `max_upload_size`               | string  | `100MiB`  | Maximum size for a single file upload. Accepts `1GiB`, `500MiB`, etc. Sets both Rocket `file` and `data-form` limits.                                                                                                                                                        |
+| `trust_proxy_forwarded_for`     | boolean | `false`   | Trust the leftmost `X-Forwarded-For` entry as the client IP (for login throttling + failure logs). Leave off on direct LAN deploys — the header is spoofable. Turn on behind a TLS-terminating reverse proxy that sets it. When off/unparseable, the socket address is used. |
+| `login_ip_window_secs`          | number  | `600`     | Sliding window (seconds, 10 min) for the IP-short burst bucket.                                                                                                                                                                                                              |
+| `login_ip_max_failures`         | number  | `3`       | Failed logins per `login_ip_window_secs` from one IP before the IP-short ban starts (i.e. the 4th failure bans).                                                                                                                                                             |
+| `login_ip_base_ban_secs`        | number  | `10`      | First IP-short ban (seconds); doubles per two further failures up to `login_ip_max_ban_secs`.                                                                                                                                                                                |
+| `login_ip_max_ban_secs`         | number  | `28800`   | IP-short ban cap (seconds, 8h).                                                                                                                                                                                                                                              |
+| `login_ip_long_window_secs`     | number  | `86400`   | Sliding window (seconds, 24h) for the IP-long daily bucket.                                                                                                                                                                                                                  |
+| `login_ip_long_max_failures`    | number  | `16`      | Failed logins per `login_ip_long_window_secs` from one IP before the IP-long ban starts (i.e. the 17th failure bans).                                                                                                                                                        |
+| `login_ip_long_base_ban_secs`   | number  | `1800`    | First IP-long ban (seconds, 30 min); doubles per two further failures up to `login_ip_long_max_ban_secs`.                                                                                                                                                                    |
+| `login_ip_long_max_ban_secs`    | number  | `28800`   | IP-long ban cap (seconds, 8h).                                                                                                                                                                                                                                               |
+| `login_user_long_window_secs`   | number  | `86400`   | Sliding window (seconds, 24h) for the user-long daily bucket.                                                                                                                                                                                                                |
+| `login_user_long_max_failures`  | number  | `18`      | Failed logins per `login_user_long_window_secs` for one claimed username before the user-long ban starts (i.e. the 19th failure bans), whether or not the account exists.                                                                                                    |
+| `login_user_long_base_ban_secs` | number  | `1800`    | First user-long ban (seconds, 30 min); doubles per two further failures up to `login_user_long_max_ban_secs`.                                                                                                                                                                |
+| `login_user_long_max_ban_secs`  | number  | `7200`    | User-long ban cap (seconds, 2h).                                                                                                                                                                                                                                             |
+
+#### Login throttling
+
+`POST /post/authenticate` checks three buckets before verifying the
+password (throttled requests skip the KDF and answer `429` with a
+`Retry-After` header: the max remaining ban across all three). Two
+authentication attempts are allowed between exponential increasing
+ban level (`ban(n) = min(base · 2^n, cap)`); while successful authentication
+resets the caller's (client-ip, user) buckets. The per-user throttling is
+implemented on claimed usernames, regardless whether or not the account
+exists. This prevents information leakage and further helps to slow down
+blind/spraying attacks.
+
+Default throttling configuration:
+
+- IP-short: 3 attempts in 10min, iterative 2^n * 10s ban, capped at 8h
+- IP-long: 16 attempts in 24h, iterative 2^n * 30min ban, capped at 8h
+- User: 18 attempts in 24h, iterative 2^n * 30min ban, capped at 2h
+
+Effect and purpose:
+
+- IP-short causes initial small delays: seconds-long bans that graduate
+  before the 30-minute hammer, softening the blow for legitimate owners
+  (a 4th mistype costs 10s, not 30min)
+- IP-long puts a strong throttle on longer-term campaigns based out of few IP
+  addresses. 8h maximum ban time, maximum 16 attempts/day for paced attack
+- User-long is last resort against longer-term botnet attacks. A distributed
+  attack using many IPs will bypass the IP thresholds and run into this limit
+  for individual probed accounts. The policy has slightly higher initial trigger
+  so that any IP-based filter will trigger first. Additionally, the maximum ban
+  time has a lower cap so that legitimate users will be able to login again
+  soon after a sustained attack (2h max ban time).
+- Any collected state is invalidated after max(ban_until, last_fail+window) of silence.
 
 ### `[gallery]` section
 
@@ -102,21 +148,35 @@ back to the working directory, so existing installs keep working unchanged.
 
 The following env vars override the config file on every launch:
 
-| Variable                    | Overrides                                                             |
-| --------------------------- | --------------------------------------------------------------------- |
-| `PICASU_ADDRESS`            | `server.address`                                                      |
-| `PICASU_ALLOW_REGISTRATION` | `gallery.allow_registration`                                          |
-| `PICASU_MAX_UPLOAD_SIZE`    | `server.max_upload_size`                                              |
-| `PICASU_PORT`               | `server.port`                                                         |
-| `PICASU_BOOTSTRAP_ADMIN`    | `gallery.bootstrap_admin`                                             |
-| `PICASU_DATA_HOME`          | `gallery.data_home`                                                   |
-| `PICASU_DISABLE_IMG`        | `gallery.disable_img`                                                 |
-| `PICASU_FS_NOTIFY_WATCHER`  | `gallery.fs_notify_watcher`                                           |
-| `PICASU_IMAGE_HOME`         | `gallery.image_home`                                                  |
-| `PICASU_READ_ONLY_MODE`     | `gallery.read_only_mode`                                              |
-| `PICASU_TRIVIAL_PASSWORDS`  | `gallery.trivial_passwords`                                           |
-| `PICASU_UPLOAD_FOLDER`      | `gallery.upload_folder`                                               |
-| `PICASU_AUTH_KEY`           | signing key (in-memory override of the secrets file, never persisted) |
+| Variable                               | Overrides                                                             |
+| -------------------------------------- | --------------------------------------------------------------------- |
+| `PICASU_ADDRESS`                       | `server.address`                                                      |
+| `PICASU_ALLOW_REGISTRATION`            | `gallery.allow_registration`                                          |
+| `PICASU_MAX_UPLOAD_SIZE`               | `server.max_upload_size`                                              |
+| `PICASU_PORT`                          | `server.port`                                                         |
+| `PICASU_BOOTSTRAP_ADMIN`               | `gallery.bootstrap_admin`                                             |
+| `PICASU_DATA_HOME`                     | `gallery.data_home`                                                   |
+| `PICASU_DISABLE_IMG`                   | `gallery.disable_img`                                                 |
+| `PICASU_FS_NOTIFY_WATCHER`             | `gallery.fs_notify_watcher`                                           |
+| `PICASU_IMAGE_HOME`                    | `gallery.image_home`                                                  |
+| `PICASU_READ_ONLY_MODE`                | `gallery.read_only_mode`                                              |
+| `PICASU_TRIVIAL_PASSWORDS`             | `gallery.trivial_passwords`                                           |
+| `PICASU_UPLOAD_FOLDER`                 | `gallery.upload_folder`                                               |
+| `PICASU_AUTH_KEY`                      | signing key (in-memory override of the secrets file, never persisted) |
+| `PICASU_TRUST_PROXY_FORWARDED_FOR`     | `server.trust_proxy_forwarded_for`                                    |
+| `PICASU_LOGIN_IP_WINDOW_SECS`          | `server.login_ip_window_secs`                                         |
+| `PICASU_LOGIN_IP_MAX_FAILURES`         | `server.login_ip_max_failures`                                        |
+| `PICASU_LOGIN_IP_BASE_BAN_SECS`        | `server.login_ip_base_ban_secs`                                       |
+| `PICASU_LOGIN_IP_MAX_BAN_SECS`         | `server.login_ip_max_ban_secs`                                        |
+| `PICASU_LOGIN_IP_LONG_WINDOW_SECS`     | `server.login_ip_long_window_secs`                                    |
+| `PICASU_LOGIN_IP_LONG_MAX_FAILURES`    | `server.login_ip_long_max_failures`                                   |
+| `PICASU_LOGIN_IP_LONG_BASE_BAN_SECS`   | `server.login_ip_long_base_ban_secs`                                  |
+| `PICASU_LOGIN_IP_LONG_MAX_BAN_SECS`    | `server.login_ip_long_max_ban_secs`                                   |
+| `PICASU_LOGIN_USER_LONG_WINDOW_SECS`   | `server.login_user_long_window_secs`                                  |
+| `PICASU_LOGIN_USER_LONG_MAX_FAILURES`  | `server.login_user_long_max_failures`                                 |
+| `PICASU_LOGIN_USER_LONG_BASE_BAN_SECS` | `server.login_user_long_base_ban_secs`                                |
+| `PICASU_LOGIN_USER_LONG_MAX_BAN_SECS`  | `server.login_user_long_max_ban_secs`                                 |
+| `PICASU_RATE_LIMITS`                   | env-only kill switch (exact `false` disables all login throttling)    |
 
 ## Runtime changes via the API
 
@@ -144,11 +204,12 @@ API-writable knobs: `upload_folder`, `max_upload_size`, `read_only_mode`,
 `disable_img`, `fs_notify_watcher`, `normalize_upload_filenames`,
 `validate_upload_content`, and `use_client_timestamp_info`.
 
-Two settings are environment-only by construction: `PICASU_CONFIG_HOME`
+Three settings are environment-only by construction: `PICASU_CONFIG_HOME`
 (selects where `config.toml` itself lives, so it cannot come from the
-file or the API) and `PICASU_PBKDF_ITERATIONS` (test-only password-hashing
+file or the API), `PICASU_PBKDF_ITERATIONS` (test-only password-hashing
 effort — never set in production, accepted from neither the file nor the
-API).
+API), and `PICASU_RATE_LIMITS` (exact `false` bypasses all login
+throttling for schemathesis fuzzing; failure logging stays on).
 
 ## Advanced: Rocket configuration
 

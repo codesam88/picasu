@@ -125,6 +125,25 @@ Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    The legacy `PUT /put/config/password` route now changes the caller's own
    password on the same store.
 
+**Login throttling (brute-force resistance):** `POST /post/authenticate`
+checks three sliding-window buckets before running the password KDF, so a
+throttled request stays cheap: an IP-short burst bucket (3 failures per
+10 min, first ban 10 s, doubling), an IP-long bucket per client address
+(16 failures per 24 h, first ban 30 min), and a user-long bucket per
+claimed username (18 failures per 24 h, first ban 30 min, capped at 2 h).
+A request whose ban is still active is rejected with 429 and a
+`Retry-After` header (seconds; the max remaining ban across all three
+buckets), distinct from the 401 of a bad credential. Buckets are keyed on
+claimed usernames whether or not the account exists, so throttling
+behaves identically for unknown names and reveals nothing about which
+users are real. A successful login resets the caller's buckets. All
+thresholds are knobs under `[server]` (see
+[Configuration](config.md) for the full table), the client address honors
+`trust_proxy_forwarded_for`, and the env-only switch
+`PICASU_RATE_LIMITS=false` bypasses all login throttling (e.g. for
+schema fuzzing). The login page renders the 429 as a countdown banner
+and re-enables submission when the ban expires.
+
 **Enrollment signal (frontend boot):** anonymous `GET /get/server-info`
 answers 200 in every install state with exactly `{ enrolled,
 enrollmentOpen, captcha: null }` (`Cache-Control: no-store`): `enrolled`
