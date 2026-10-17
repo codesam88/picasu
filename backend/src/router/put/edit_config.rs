@@ -10,8 +10,6 @@ use crate::model::config::{APP_CONFIG, AppConfig};
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
-use crate::router::auth::GuardUser;
-use crate::router::put::users_password::{caller_identity, set_password_sync};
 use crate::router::{AppResult, GuardResult};
 use serde::{Deserialize, Serialize};
 
@@ -323,66 +321,6 @@ pub async fn update_config_handler(
     .or_raise(|| (ErrorKind::Internal, "Task join error"))?
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[derive(utoipa::ToSchema)]
-pub struct UpdatePasswordRequest {
-    pub password: Option<String>,
-    pub old_password: Option<String>,
-}
-
-/// Change the caller's own password.
-///
-/// This route changes the password of the authenticated caller only. A
-/// self-change always requires the correct `oldPassword`, admins included.
-/// The new `password` is trimmed and must satisfy
-/// the default password policy after trimming (there is no "clear to open": open
-/// mode is store-empty only). To change another user's password, use
-/// `PUT /put/users/password`.
-///
-/// Corner cases: Any authenticated user reaches this route (share tokens
-/// are rejected); unauthenticated callers are denied at dispatch. A missing
-/// (`None`), blank, or too-short `password` is 400.
-///
-/// Errors: 400 missing, blank, or under-12 `password`, or the body cannot
-/// be parsed — 401 missing or invalid credentials, or wrong `oldPassword`;
-/// share tokens are not accepted — 405 read-only mode — 500 storage
-/// failure.
-#[utoipa::path(
-        tag = "config",
-        request_body = UpdatePasswordRequest,
-        responses(
-            (status = 200, description = "Password updated"),
-            (status = 400, description = "Invalid input"),
-            (status = 401, response = Unauthorized),
-            (status = 405, description = "Read-only mode"),
-            (status = 500, description = "Internal error"),
-        )
-    )
-]
-#[put("/put/config/password", data = "<req>")]
-pub async fn update_password_handler(
-    user: GuardUser,
-    read_only: GuardResult<GuardReadOnlyMode>,
-    req: Json<UpdatePasswordRequest>,
-) -> AppResult<Status> {
-    let _ = read_only?;
-    let (caller_id, caller_admin) = caller_identity(&user.claims);
-    let req_data = req.into_inner();
-    spawn_blocking(move || -> Result<Status, AppError> {
-        set_password_sync(
-            &caller_id,
-            caller_admin,
-            &caller_id,
-            req_data.old_password.as_deref(),
-            req_data.password.as_deref().unwrap_or_default(),
-        )?;
-        Ok(Status::Ok)
-    })
-    .await
-    .or_raise(|| (ErrorKind::Internal, "Task join error"))?
-}
-
 #[cfg(test)]
 mod tests {
     use rocket::http::{ContentType, Cookie, Status};
@@ -433,70 +371,6 @@ mod tests {
             .body(body.to_string())
             .dispatch()
             .status()
-    }
-
-    #[test]
-    fn admin_self_change_without_old_is_401() {
-        let _g = lock();
-        let client = setup();
-        seed("s4e-root", true, Some(test_password("t-root-old").as_str()));
-        let status = put_self(
-            &client,
-            cookie("s4e-root", true),
-            &json!({ "password": test_password("t-root-new") }),
-        );
-        assert_eq!(status, Status::Unauthorized);
-    }
-
-    #[test]
-    fn admin_self_change_with_correct_old_is_200() {
-        let _g = lock();
-        let client = setup();
-        seed(
-            "s4e-root2",
-            true,
-            Some(test_password("t-root2-old").as_str()),
-        );
-        let status = put_self(
-            &client,
-            cookie("s4e-root2", true),
-            &json!({ "password": test_password("t-root2-new"), "oldPassword": test_password("t-root2-old") }),
-        );
-        assert_eq!(status, Status::Ok);
-        let store =
-            crate::auth::password::PasswdFile::load(&crate::auth::users::passwd_file_path())
-                .expect("load passwd");
-        assert!(store.verify("s4e-root2", &test_password("t-root2-new")));
-    }
-
-    #[test]
-    fn self_service_with_correct_old_password() {
-        let _g = lock();
-        let client = setup();
-        seed("s4e-bob", false, Some(test_password("t-bob-old").as_str()));
-        let status = put_self(
-            &client,
-            cookie("s4e-bob", false),
-            &json!({ "password": test_password("t-bob-new"), "oldPassword": test_password("t-bob-old") }),
-        );
-        assert_eq!(status, Status::Ok);
-    }
-
-    #[test]
-    fn wrong_old_password_is_401() {
-        let _g = lock();
-        let client = setup();
-        seed(
-            "s4e-carol",
-            false,
-            Some(test_password("t-carol-old").as_str()),
-        );
-        let status = put_self(
-            &client,
-            cookie("s4e-carol", false),
-            &json!({ "password": test_password("t-carol-new"), "oldPassword": test_password("t-nope") }),
-        );
-        assert_eq!(status, Status::Unauthorized);
     }
 
     /// `address`, `port`, `allowRegistration`, and `trivialPasswords` are
@@ -713,15 +587,19 @@ mod tests {
     }
 
     #[test]
-    fn empty_new_password_is_400() {
+    fn config_password_alias_is_gone() {
         let _g = lock();
         let client = setup();
         seed("s4e-root", true, None);
         let status = put_self(
             &client,
             cookie("s4e-root", true),
-            &json!({ "password": "   " }),
+            &json!({ "password": test_password("t-gone"), "oldPassword": test_password("t-gone-old") }),
         );
-        assert_eq!(status, Status::BadRequest);
+        assert_eq!(
+            status,
+            Status::NotFound,
+            "PUT /put/config/password must be unregistered"
+        );
     }
 }
