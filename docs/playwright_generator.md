@@ -134,7 +134,7 @@ name: Login via button click succeeds
 covers:
   api:
     - POST /post/authenticate
-    - PUT /put/config/password
+    - PUT /put/users/password
   ui:
     - route:/home
 given:

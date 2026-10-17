@@ -119,11 +119,9 @@ Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    device out. `GET /get/sessions` (any authenticated user via `GuardUser`)
    returns the caller's live `SessionRecord { jti, issuedAt }` array; it never
    returns another user's sessions, and an unknown post-guard id maps to 401.
-5. Users are managed through `POST /post/users/create`, `GET /get/users`,
+5. Users are managed through `GET /get/users`,
    `PUT /put/users/password`, and `PUT /put/users/admin` (admin-only,
    except unauthenticated creation of the first user, which is forced admin).
-   The legacy `PUT /put/config/password` route now changes the caller's own
-   password on the same store.
 
 **Login throttling (brute-force resistance):** `POST /post/authenticate`
 checks three sliding-window buckets before running the password KDF, so a
@@ -244,7 +242,7 @@ expiry.
 | Guard               | Accepts                                                                     | Used by                                                                                                                                                                                                                                                                                      |
 | ------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GuardAuth`         | cookie of a user with the admin role (or open first-run mode)               | config write/export/import (incl. password change), user management (create/list/set-admin), album cover/assign/create-dir, delete, index jobs, rebuild, rotate, regenerate thumbnail, tags/flags/rating, share create/edit, album/tag lists, fs completion, album-index status, test probes |
-| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected      | `PUT /put/users/password`, legacy `PUT /put/config/password` (caller-only writes)                                                                                                                                                                                                            |
+| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected      | `PUT /put/users/password`                                                                                                                                                                                                                                                                    |
 | `GuardShare`        | share headers/query, or cookie of a user with the admin role                | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                                                                                                                                    |
 | `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter | get-data, get-metadata, get-scroll-bar                                                                                                                                                                                                                                                       |
 | `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                 | `GET /object/compressed/...`                                                                                                                                                                                                                                                                 |

@@ -1412,23 +1412,6 @@
         ],
         "type": "object"
       },
-      "UpdatePasswordRequest": {
-        "properties": {
-          "oldPassword": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "password": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "type": "object"
-      },
       "UserSummary": {
         "description": "Summary of a user record. Password hashes are never exported.",
         "properties": {
@@ -2931,43 +2914,6 @@
           }
         },
         "summary": "Patch the server configuration with the posted fields.",
-        "tags": [
-          "config"
-        ]
-      }
-    },
-    "/put/config/password": {
-      "put": {
-        "description": "This route changes the password of the authenticated caller only. A\nself-change always requires the correct `oldPassword`, admins included.\nThe new `password` is trimmed and must satisfy\nthe default password policy after trimming (there is no \"clear to open\": open\nmode is store-empty only). To change another user's password, use\n`PUT /put/users/password`.\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch. A missing\n(`None`), blank, or too-short `password` is 400.\n\nErrors: 400 missing, blank, or under-12 `password`, or the body cannot\nbe parsed — 401 missing or invalid credentials, or wrong `oldPassword`;\nshare tokens are not accepted — 405 read-only mode — 500 storage\nfailure.",
-        "operationId": "update_password_handler",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdatePasswordRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Password updated"
-          },
-          "400": {
-            "description": "Invalid input"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "405": {
-            "description": "Read-only mode"
-          },
-          "500": {
-            "description": "Internal error"
-          }
-        },
-        "summary": "Change the caller's own password.",
         "tags": [
           "config"
         ]

@@ -50,6 +50,8 @@ oldPassword, newPassword)` calling `PUT /put/users/password`; `ChangePassword`
    the canonical route with body shape. Done: `just docs-openapi` + `openapi-check`
    green, zero `put/config/password` hits outside this plan and history.
    Leaves out: recovery-token and admin-panel docs.
+   Done 2026-10-17: openapi regen + oasdiff ignore, alias mentions rewritten
+   (freshness + openapi-check green).
 4. Test sweep (scope: `backend/src/tests/enroll_gate.rs`,
    `backend/src/router/put/edit_config.rs` tests, scenario YAMLs,
    Playwright givens): delete alias rows, keep canonical `users/password`

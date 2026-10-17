@@ -109,8 +109,9 @@ a legacy `password` is ignored (the boot path warns).
 > `[secrets] password` was removed: there is no password field anymore,
 > nothing reads it, and it is never written back. Old files containing it
 > still parse — the key is ignored (the boot path warns). Passwords now live
-> per-user in the password store; use `PUT /put/users/password`, or the
-> caller-only legacy route `PUT /put/config/password`.
+> per-user in the password store; use `PUT /put/users/password`
+> (`{userId, oldPassword, newPassword}` for a self-change, `{userId,
+newPassword}` for an admin reset of another user).
 
 > **`data_home`** and **`image_home`** are resolved on first launch from
 > environment variables or defaults and written to `config.toml`. On

@@ -240,18 +240,18 @@ The config page at `ConfigPage.vue` contains:
 
 ## API Calls (frontend → backend)
 
-| Endpoint               | Used by                             | Returns                        |
-| ---------------------- | ----------------------------------- | ------------------------------ |
-| `/get/config`          | `configStore.fetchConfig()`         | Public config (camelCase JSON) |
-| `/put/config`          | `configStore.updateConfig()`        | —                              |
-| `/put/config/password` | `ChangePassword`                    | —                              |
-| `/get/get-albums`      | `albumStore.fetchAlbums()`          | All albums                     |
-| `/get/prefetch`        | `usePrefetch`                       | Row layout + dataLength        |
-| `/get/get-data`        | grid worker (`toDataWorker.ts`)     | Batch of grid items            |
-| `/get/get-rows`        | grid worker (`toDataWorker.ts`)     | Row layout calculation         |
-| `/get/get-tags`        | `tagStore.fetchTags()`              | All tags                       |
-| `/get/index/status`    | `StorageAndSync.vue` (scan polling) | Album index status             |
-| `/post/index/album`    | `StorageAndSync.vue` (scan trigger) | —                              |
-| `/post/index/cancel`   | `StorageAndSync.vue` (cancel scan)  | —                              |
+| Endpoint              | Used by                             | Returns                        |
+| --------------------- | ----------------------------------- | ------------------------------ |
+| `/get/config`         | `configStore.fetchConfig()`         | Public config (camelCase JSON) |
+| `/put/config`         | `configStore.updateConfig()`        | —                              |
+| `/put/users/password` | `ChangePassword`                    | —                              |
+| `/get/get-albums`     | `albumStore.fetchAlbums()`          | All albums                     |
+| `/get/prefetch`       | `usePrefetch`                       | Row layout + dataLength        |
+| `/get/get-data`       | grid worker (`toDataWorker.ts`)     | Batch of grid items            |
+| `/get/get-rows`       | grid worker (`toDataWorker.ts`)     | Row layout calculation         |
+| `/get/get-tags`       | `tagStore.fetchTags()`              | All tags                       |
+| `/get/index/status`   | `StorageAndSync.vue` (scan polling) | Album index status             |
+| `/post/index/album`   | `StorageAndSync.vue` (scan trigger) | —                              |
+| `/post/index/cancel`  | `StorageAndSync.vue` (cancel scan)  | —                              |
 
 The grid uses a Web Worker (`toDataWorker.ts`) to fetch item batches via `/get/get-data` without blocking the UI. The layout calculation (`/get/get-rows`) runs first and determines how many rows exist; the worker then fills them in on demand as the user scrolls.
