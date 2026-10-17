@@ -142,6 +142,17 @@ thresholds are knobs under `[server]` (see
 schema fuzzing). The login page renders the 429 as a countdown banner
 and re-enables submission when the ban expires.
 
+**Session-denial UX (frontend):** an unauthorized response outside the
+share flow makes the axios interceptor clear the session profile and
+navigate to the login page once; no snackbar is raised for it. The
+login page carries a static, non-dismissing information banner (Vuetify
+`v-alert`, the inline colored banner component — the auto-dismissing
+queue widget is `v-snackbar-queue`) reading "Please log in to
+continue". The wording is deliberately innocuous: the visitor may have
+arrived without any session (deep link, bookmark), so the banner asserts
+nothing about expiry. Repetition is safe by construction — the
+navigation call is a no-op once the router is on the login route.
+
 **Enrollment signal (frontend boot):** anonymous `GET /get/server-info`
 answers 200 in every install state with exactly `{ enrolled,
 enrollmentOpen, captcha: null }` (`Cache-Control: no-store`): `enrolled`

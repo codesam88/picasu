@@ -74,11 +74,10 @@ status-code-only test gap that hides the loss today).
 
 ### Open decisions (need answers before the respective steps)
 
-- D1 — 401 snackbar wording (step T1): prefer the server error message
-  with a fixed fallback (the existing 403 branch is the template,
-  `handleGeneralError`) or keep one uniform fixed string for
-  no-information-disclosure conservatism (current state; the uniform
-  string is confirmed sound as an oracle-avoidance measure).
+- D1 — 401 snackbar wording (step T1): MOOT 2026-10-17 — the 401
+  snackbar was deleted outright by the `login-session-banner` plan
+  (the login-page inline banner owns the message; see T1 below). No
+  wording decision needed.
 - D2 — worker 401/429 ownership (step T4): forward the failure to the
   main thread (single global path continues) or document
   "workers never own auth UX; callers must handle" and pin it with a test.
@@ -90,16 +89,15 @@ snackbar in favor of a login-page inline banner (Vuetify `v-alert`, the
 inline non-dismissing banner) — re-check T1 scope before starting; T2
 through T5 are unaffected.
 
-### T1 — throttle scope fix + 401 behavior tests
+### T1 — 401 rework (absorbed into the login banner plan)
 
-Scope: `frontend/src/axiosInterceptor.ts`, `frontend/src/axiosInterceptor.test.ts`.
-Move the throttle guard so it suppresses only the Vuetify snackbar; the
-login navigation always runs. Add one adapter-level 401 test per property:
-profile cleared even when throttled, exactly one snackbar, redirect
-performed, rapid second 401 produces no second snackbar but the redirect
-still fired. Done: `just frontend-vitest`, `just frontend-check` green.
-Leaves out: display-ownership cleanup (T2), 429 fallback (T3), worker
-path (T4).
+Done 2026-10-17, absorbed: the `login-session-banner` plan did this work
+in its steps 1-2 — the 401 branch now clears the profile unconditionally
+and redirects once; the snackbar and the 1-second throttle guard are
+deleted (no remaining consumer); four 401 behavior tests pin the contract
+(commits `adee2358f`, `294355f7c`). The original throttle-relocation scope
+became moot and the plain-worded summary of the landed state replaces it;
+no scope remains under this item. T2, T3, T4, T5 are unaffected.
 
 ### T2 — single-owner display cleanup
 
