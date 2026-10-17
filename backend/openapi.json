@@ -152,6 +152,78 @@
               "null"
             ]
           },
+          "loginIpBaseBanSecs": {
+            "description": "See [`Self::login_ip_window_secs`].",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpLongBaseBanSecs": {
+            "description": "See [`Self::login_ip_long_window_secs`].",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpLongMaxBanSecs": {
+            "description": "See [`Self::login_ip_long_window_secs`].",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpLongMaxFailures": {
+            "description": "See [`Self::login_ip_long_window_secs`].",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpLongWindowSecs": {
+            "description": "Login throttle IP-long daily bucket: paced spraying ceiling across\nmany usernames from one source. Host-only (restart required).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpMaxBanSecs": {
+            "description": "See [`Self::login_ip_window_secs`].",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpMaxFailures": {
+            "description": "See [`Self::login_ip_window_secs`].",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginIpWindowSecs": {
+            "description": "Login throttle IP-short burst bucket: `login_ip_max_failures`\nfailures within `login_ip_window_secs` open a ban of\n`login_ip_base_ban_secs`, doubling per further pair of failures up\nto `login_ip_max_ban_secs`. Host-only (restart required).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginUserLongBaseBanSecs": {
+            "description": "See [`Self::login_user_long_window_secs`].",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginUserLongMaxBanSecs": {
+            "description": "See [`Self::login_user_long_window_secs`].",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginUserLongMaxFailures": {
+            "description": "See [`Self::login_user_long_window_secs`].",
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "loginUserLongWindowSecs": {
+            "description": "Login throttle user-long daily bucket: per-account ceiling catching\nlow-and-slow attacks, keyed on the claimed name even when unknown.\nHost-only (restart required).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
           "maxUploadSize": {
             "type": "string"
           },
@@ -169,6 +241,10 @@
           },
           "trivialPasswords": {
             "description": "Disable the default password-strength checks (length floor/ceiling,\nblocklist, user-id and pattern rules) for new passwords. Default\noff. Only for development, throwaway installs, or tests that must\nuse weak fixtures — the bypass is warn-logged at first use.",
+            "type": "boolean"
+          },
+          "trustProxyForwardedFor": {
+            "description": "Trust the `X-Forwarded-For` header when keying the login throttle\n(leftmost entry, only when it parses as an IP address). Default off:\nthe header is client-spoofable, so only a reverse-proxy deployment\nthat strips or overwrites it may enable this. Host-only: the\nthrottle tracker is built once at startup, so changing it requires\na restart.",
             "type": "boolean"
           },
           "uploadFolder": {
@@ -740,6 +816,114 @@
               "null"
             ]
           },
+          "loginIpBaseBanSecs": {
+            "description": "Host-only login-throttle knob (`PICASU_LOGIN_IP_BASE_BAN_SECS` /\nconfig `server.login_ip_base_ban_secs`). Any presence in the API body\nis rejected with 400 and changes nothing.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "loginIpLongBaseBanSecs": {
+            "description": "Host-only login-throttle knob\n(`PICASU_LOGIN_IP_LONG_BASE_BAN_SECS` / config\n`server.login_ip_long_base_ban_secs`). Any presence in the API body\nis rejected with 400 and changes nothing.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "loginIpLongMaxBanSecs": {
+            "description": "Host-only login-throttle knob\n(`PICASU_LOGIN_IP_LONG_MAX_BAN_SECS` / config\n`server.login_ip_long_max_ban_secs`). Any presence in the API body is\nrejected with 400 and changes nothing.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "loginIpLongMaxFailures": {
+            "description": "Host-only login-throttle knob\n(`PICASU_LOGIN_IP_LONG_MAX_FAILURES` / config\n`server.login_ip_long_max_failures`). Any presence in the API body\nis rejected with 400 and changes nothing.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "loginIpLongWindowSecs": {
+            "description": "Host-only login-throttle knob\n(`PICASU_LOGIN_IP_LONG_WINDOW_SECS` / config\n`server.login_ip_long_window_secs`). Any presence in the API body is\nrejected with 400 and changes nothing.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "loginIpMaxBanSecs": {
+            "description": "Host-only login-throttle knob (`PICASU_LOGIN_IP_MAX_BAN_SECS` /\nconfig `server.login_ip_max_ban_secs`). Any presence in the API body\nis rejected with 400 and changes nothing.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "loginIpMaxFailures": {
+            "description": "Host-only login-throttle knob (`PICASU_LOGIN_IP_MAX_FAILURES` /\nconfig `server.login_ip_max_failures`). Any presence in the API body\nis rejected with 400 and changes nothing.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "loginIpWindowSecs": {
+            "description": "Host-only login-throttle knob (`PICASU_LOGIN_IP_WINDOW_SECS` /\nconfig `server.login_ip_window_secs`). Any presence in the API body\nis rejected with 400 and changes nothing.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "loginUserLongBaseBanSecs": {
+            "description": "Host-only login-throttle knob\n(`PICASU_LOGIN_USER_LONG_BASE_BAN_SECS` / config\n`server.login_user_long_base_ban_secs`). Any presence in the API body\nis rejected with 400 and changes nothing.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "loginUserLongMaxBanSecs": {
+            "description": "Host-only login-throttle knob\n(`PICASU_LOGIN_USER_LONG_MAX_BAN_SECS` / config\n`server.login_user_long_max_ban_secs`). Any presence in the API body\nis rejected with 400 and changes nothing.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "loginUserLongMaxFailures": {
+            "description": "Host-only login-throttle knob\n(`PICASU_LOGIN_USER_LONG_MAX_FAILURES` / config\n`server.login_user_long_max_failures`). Any presence in the API body\nis rejected with 400 and changes nothing.",
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "loginUserLongWindowSecs": {
+            "description": "Host-only login-throttle knob\n(`PICASU_LOGIN_USER_LONG_WINDOW_SECS` / config\n`server.login_user_long_window_secs`). Any presence in the API body\nis rejected with 400 and changes nothing.",
+            "format": "int64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "maxUploadSize": {
             "description": "`None` = don't touch; `Some(\"\")` resets to the default (\"100MiB\").",
             "type": [
@@ -770,6 +954,13 @@
           },
           "trivialPasswords": {
             "description": "Host-only (`--trivial-passwords` / `PICASU_TRIVIAL_PASSWORDS` /\nconfig `gallery.trivial_passwords`). Any presence in the API body is\nrejected with 400 and changes nothing.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "trustProxyForwardedFor": {
+            "description": "Host-only (`PICASU_TRUST_PROXY_FORWARDED_FOR` / config\n`server.trust_proxy_forwarded_for`). Any presence in the API body is\nrejected with 400 and changes nothing.",
             "type": [
               "boolean",
               "null"
@@ -2133,7 +2324,7 @@
     },
     "/post/authenticate": {
       "post": {
-        "description": "A `{ userId, password }` object verifies against the user and password\nstores. On success the JWT travels in a `Set-Cookie: jwt=...; HttpOnly;\nSameSite=Strict; Path=/` response header — page JS never sees the token\n— and the body carries only the session profile\n`{ userId, admin }` for the client to display. Tokens are signed with\n`authKey`, or with a secret generated once per process when `authKey`\nis unset, so changing `authKey` invalidates every token issued under\nthe previous one.\n\nCorner cases: While no users exist and `--bootstrap-admin` is set,\nsign-in succeeds without credentials: every parseable login object is\naccepted (open first-run mode), setting an ephemeral admin cookie and\nreturning the ephemeral profile without enrolling anybody.\n\nErrors: 400 the login `userId` is empty or longer than 64 characters, or\nthe body does not parse as a login object — 401 unknown user or wrong\npassword.",
+        "description": "A `{ userId, password }` object verifies against the user and password\nstores. On success the JWT travels in a `Set-Cookie: jwt=...; HttpOnly;\nSameSite=Strict; Path=/` response header — page JS never sees the token\n— and the body carries only the session profile\n`{ userId, admin }` for the client to display. Tokens are signed with\n`authKey`, or with a secret generated once per process when `authKey`\nis unset, so changing `authKey` invalidates every token issued under\nthe previous one.\n\nCorner cases: While no users exist and `--bootstrap-admin` is set,\nsign-in succeeds without credentials: every parseable login object is\naccepted (open first-run mode), setting an ephemeral admin cookie and\nreturning the ephemeral profile without enrolling anybody.\n\nErrors: 400 the login `userId` is empty or longer than 64 characters, or\nthe body does not parse as a login object — 401 unknown user or wrong\npassword — 429 the attempt is throttled (`Retry-After` carries the\nremaining ban seconds) — 500 internal error.\n\nBrute-force throttle: before the KDF runs, every non-open attempt is\nchecked against the IP-short, IP-long, and user-long buckets (see\n[`crate::auth::rate_limit`]); while any bucket bans, a 429 is returned\nwithout hashing. Evaluated failures record into all applicable buckets,\na success clears the caller's entries, and throttled attempts are never\nrecorded. Open bootstrap mode (no users + flag) skips the throttle:\nthere is no credential to guess. The environment-only kill switch\n`PICASU_RATE_LIMITS=false` (exact match) also bypasses the throttle —\nfor fuzzing runs — while the failure logging stays.",
         "operationId": "authenticate",
         "requestBody": {
           "content": {
@@ -2161,6 +2352,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "description": "Too many login attempts; see Retry-After"
           },
           "500": {
             "description": "Internal error"
@@ -2707,7 +2901,7 @@
     },
     "/put/config": {
       "put": {
-        "description": "Every field is optional and a field absent from the body keeps its current\nvalue. `address`, `port`, `allowRegistration`, `trivialPasswords`, and\n`bootstrapAdmin` are host-only (flag / env / config file) and `authKey`\nis managed (secrets file + reset endpoint); any presence of these in the\nbody is a 400. The only other validation is on\n`uploadFolder`, which must be a relative path free of `..` components;\non success `config.toml` is rewritten, the in-memory configuration is\nreplaced and the filesystem watcher is reloaded.\n\nCorner cases: `uploadFolder` and `maxUploadSize` take an empty string\nto reset to their defaults, `uploads` and `100MiB`.\n\nErrors: 400 `uploadFolder` is absolute or contains `..`, the body cannot\nbe parsed, or a host-only or managed knob is present — 401 missing or invalid admin\ncredentials; share tokens are not accepted — 405 read-only mode — 500\nconfig write failure.",
+        "description": "Every field is optional and a field absent from the body keeps its current\nvalue. `address`, `port`, `allowRegistration`, `trivialPasswords`,\n`bootstrapAdmin`, and the login-throttle knobs\n(`trustProxyForwardedFor`, `login*Secs`, `login*MaxFailures`) are\nhost-only (env / config file, restart-required) and `authKey`\nis managed (secrets file + reset endpoint); any presence of these in the\nbody is a 400. The only other validation is on\n`uploadFolder`, which must be a relative path free of `..` components;\non success `config.toml` is rewritten, the in-memory configuration is\nreplaced and the filesystem watcher is reloaded.\n\nCorner cases: `uploadFolder` and `maxUploadSize` take an empty string\nto reset to their defaults, `uploads` and `100MiB`.\n\nErrors: 400 `uploadFolder` is absolute or contains `..`, the body cannot\nbe parsed, or a host-only or managed knob is present — 401 missing or invalid admin\ncredentials; share tokens are not accepted — 405 read-only mode — 500\nconfig write failure.",
         "operationId": "update_config_handler",
         "requestBody": {
           "content": {

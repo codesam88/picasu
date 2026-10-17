@@ -92,7 +92,10 @@ pub fn run() {
 
     // Initialize core subsystems (Config, DB, FFmpeg checks).
     // Must run first so DATA_PATH is resolved from config.
-    initialize();
+    if let Err(err) = initialize() {
+        error!("{err}");
+        std::process::exit(1);
+    }
 
     // Refuse to launch when --bootstrap-admin is set on a store that already
     // exists: either bootstrap happened (remove the flag) or the store needs

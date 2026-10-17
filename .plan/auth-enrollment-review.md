@@ -261,3 +261,14 @@ done 2026-10-16 (`.plan/auth-key-secrets-file.md`), then R26 remainder.
 Sequence findings (R1, R3–R4, R23–R26) outgrew per-case tests and are
 planned as model-based flow conformance in `.plan/flow-model-conformance.md`
 (single golden model, backend-first then e2e drivers).
+
+R7 done 2026-10-17 (`.plan/r7-bruteforce-throttling.md`): three buckets
+on `POST /post/authenticate` (IP-short 3/10min→10s cap 8h, IP-long
+16/24h→30min cap 8h, user-long 18/24h→30min cap 2h; two failures share
+each level), pre-KDF 429 + `Retry-After`, per-claimed-name keying with no
+existence oracle, 13 host-only `[server]` knobs + env overrides,
+`PICASU_RATE_LIMITS=false` env-only kill switch, HttpOnly-safe login UI
+(countdown banner, interceptor silent on 429), live e2e to ban and back.
+Accepted risks: restart-clear in-memory state, single-node only,
+proxy-header trust opt-in, top-18 password burst residual (password
+policy carries it).

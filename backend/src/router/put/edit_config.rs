@@ -47,17 +47,184 @@ pub struct PartialUpdateConfigRequest {
     /// `gallery.bootstrap_admin`). Any presence in the API body is rejected
     /// with 400 and changes nothing.
     pub bootstrap_admin: Option<bool>,
+    /// Host-only (`PICASU_TRUST_PROXY_FORWARDED_FOR` / config
+    /// `server.trust_proxy_forwarded_for`). Any presence in the API body is
+    /// rejected with 400 and changes nothing.
+    pub trust_proxy_forwarded_for: Option<bool>,
+    /// Host-only login-throttle knob (`PICASU_LOGIN_IP_WINDOW_SECS` /
+    /// config `server.login_ip_window_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_ip_window_secs: Option<u64>,
+    /// Host-only login-throttle knob (`PICASU_LOGIN_IP_MAX_FAILURES` /
+    /// config `server.login_ip_max_failures`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_ip_max_failures: Option<u32>,
+    /// Host-only login-throttle knob (`PICASU_LOGIN_IP_BASE_BAN_SECS` /
+    /// config `server.login_ip_base_ban_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_ip_base_ban_secs: Option<u64>,
+    /// Host-only login-throttle knob (`PICASU_LOGIN_IP_MAX_BAN_SECS` /
+    /// config `server.login_ip_max_ban_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_ip_max_ban_secs: Option<u64>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_IP_LONG_WINDOW_SECS` / config
+    /// `server.login_ip_long_window_secs`). Any presence in the API body is
+    /// rejected with 400 and changes nothing.
+    pub login_ip_long_window_secs: Option<u64>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_IP_LONG_MAX_FAILURES` / config
+    /// `server.login_ip_long_max_failures`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_ip_long_max_failures: Option<u32>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_IP_LONG_BASE_BAN_SECS` / config
+    /// `server.login_ip_long_base_ban_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_ip_long_base_ban_secs: Option<u64>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_IP_LONG_MAX_BAN_SECS` / config
+    /// `server.login_ip_long_max_ban_secs`). Any presence in the API body is
+    /// rejected with 400 and changes nothing.
+    pub login_ip_long_max_ban_secs: Option<u64>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_USER_LONG_WINDOW_SECS` / config
+    /// `server.login_user_long_window_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_user_long_window_secs: Option<u64>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_USER_LONG_MAX_FAILURES` / config
+    /// `server.login_user_long_max_failures`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_user_long_max_failures: Option<u32>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_USER_LONG_BASE_BAN_SECS` / config
+    /// `server.login_user_long_base_ban_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_user_long_base_ban_secs: Option<u64>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_USER_LONG_MAX_BAN_SECS` / config
+    /// `server.login_user_long_max_ban_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_user_long_max_ban_secs: Option<u64>,
     /// Managed, never set: the signing key lives in the owner-only secrets
     /// file. Any presence in the API body is rejected with 400; rotate it
     /// with `POST /post/config/auth-key/reset`.
     pub auth_key: Option<String>,
 }
 
+/// Host-only or managed knobs a client may never change at runtime via
+/// this route: `(request field, is present, setter hint)`. The handler
+/// rejects loudly (naming the setters) instead of persisting a value the
+/// next boot would override or refuse. Rotation of the signing key goes
+/// through `POST /post/config/auth-key/reset`.
+fn host_only_knobs(req: &PartialUpdateConfigRequest) -> [(&'static str, bool, &'static str); 19] {
+    [
+        (
+            "address",
+            req.address.is_some(),
+            "PICASU_ADDRESS or config `server.address`",
+        ),
+        (
+            "port",
+            req.port.is_some(),
+            "PICASU_PORT or config `server.port`",
+        ),
+        (
+            "allowRegistration",
+            req.allow_registration.is_some(),
+            "PICASU_ALLOW_REGISTRATION or config `gallery.allow_registration`",
+        ),
+        (
+            "trivialPasswords",
+            req.trivial_passwords.is_some(),
+            "--trivial-passwords, PICASU_TRIVIAL_PASSWORDS, or config `gallery.trivial_passwords`",
+        ),
+        (
+            "bootstrapAdmin",
+            req.bootstrap_admin.is_some(),
+            "--bootstrap-admin, PICASU_BOOTSTRAP_ADMIN, or config `gallery.bootstrap_admin`",
+        ),
+        (
+            "trustProxyForwardedFor",
+            req.trust_proxy_forwarded_for.is_some(),
+            "PICASU_TRUST_PROXY_FORWARDED_FOR or config `server.trust_proxy_forwarded_for`",
+        ),
+        (
+            "loginIpWindowSecs",
+            req.login_ip_window_secs.is_some(),
+            "PICASU_LOGIN_IP_WINDOW_SECS or config `server.login_ip_window_secs`",
+        ),
+        (
+            "loginIpMaxFailures",
+            req.login_ip_max_failures.is_some(),
+            "PICASU_LOGIN_IP_MAX_FAILURES or config `server.login_ip_max_failures`",
+        ),
+        (
+            "loginIpBaseBanSecs",
+            req.login_ip_base_ban_secs.is_some(),
+            "PICASU_LOGIN_IP_BASE_BAN_SECS or config `server.login_ip_base_ban_secs`",
+        ),
+        (
+            "loginIpMaxBanSecs",
+            req.login_ip_max_ban_secs.is_some(),
+            "PICASU_LOGIN_IP_MAX_BAN_SECS or config `server.login_ip_max_ban_secs`",
+        ),
+        (
+            "loginIpLongWindowSecs",
+            req.login_ip_long_window_secs.is_some(),
+            "PICASU_LOGIN_IP_LONG_WINDOW_SECS or config `server.login_ip_long_window_secs`",
+        ),
+        (
+            "loginIpLongMaxFailures",
+            req.login_ip_long_max_failures.is_some(),
+            "PICASU_LOGIN_IP_LONG_MAX_FAILURES or config `server.login_ip_long_max_failures`",
+        ),
+        (
+            "loginIpLongBaseBanSecs",
+            req.login_ip_long_base_ban_secs.is_some(),
+            "PICASU_LOGIN_IP_LONG_BASE_BAN_SECS or config `server.login_ip_long_base_ban_secs`",
+        ),
+        (
+            "loginIpLongMaxBanSecs",
+            req.login_ip_long_max_ban_secs.is_some(),
+            "PICASU_LOGIN_IP_LONG_MAX_BAN_SECS or config `server.login_ip_long_max_ban_secs`",
+        ),
+        (
+            "loginUserLongWindowSecs",
+            req.login_user_long_window_secs.is_some(),
+            "PICASU_LOGIN_USER_LONG_WINDOW_SECS or config `server.login_user_long_window_secs`",
+        ),
+        (
+            "loginUserLongMaxFailures",
+            req.login_user_long_max_failures.is_some(),
+            "PICASU_LOGIN_USER_LONG_MAX_FAILURES or config `server.login_user_long_max_failures`",
+        ),
+        (
+            "loginUserLongBaseBanSecs",
+            req.login_user_long_base_ban_secs.is_some(),
+            "PICASU_LOGIN_USER_LONG_BASE_BAN_SECS or config `server.login_user_long_base_ban_secs`",
+        ),
+        (
+            "loginUserLongMaxBanSecs",
+            req.login_user_long_max_ban_secs.is_some(),
+            "PICASU_LOGIN_USER_LONG_MAX_BAN_SECS or config `server.login_user_long_max_ban_secs`",
+        ),
+        (
+            "authKey",
+            req.auth_key.is_some(),
+            "rotate it with `POST /post/config/auth-key/reset`",
+        ),
+    ]
+}
+
 /// Patch the server configuration with the posted fields.
 ///
 /// Every field is optional and a field absent from the body keeps its current
-/// value. `address`, `port`, `allowRegistration`, `trivialPasswords`, and
-/// `bootstrapAdmin` are host-only (flag / env / config file) and `authKey`
+/// value. `address`, `port`, `allowRegistration`, `trivialPasswords`,
+/// `bootstrapAdmin`, and the login-throttle knobs
+/// (`trustProxyForwardedFor`, `login*Secs`, `login*MaxFailures`) are
+/// host-only (env / config file, restart-required) and `authKey`
 /// is managed (secrets file + reset endpoint); any presence of these in the
 /// body is a 400. The only other validation is on
 /// `uploadFolder`, which must be a relative path free of `..` components;
@@ -93,45 +260,10 @@ pub async fn update_config_handler(
     let req_data = req.into_inner();
 
     spawn_blocking(move || -> Result<Status, AppError> {
-        // `address`, `port`, `allowRegistration`, `trivialPasswords`,
-        // `bootstrapAdmin`, and `authKey` are host-only or managed and never
-        // change at runtime via this route. Reject loudly (naming the
-        // setters) instead of persisting a value the next boot would
-        // override or refuse. Rotation of the signing key goes through
-        // `POST /post/config/auth-key/reset`.
-        let host_only = [
-            (
-                "address",
-                req_data.address.is_some(),
-                "PICASU_ADDRESS or config `server.address`",
-            ),
-            (
-                "port",
-                req_data.port.is_some(),
-                "PICASU_PORT or config `server.port`",
-            ),
-            (
-                "allowRegistration",
-                req_data.allow_registration.is_some(),
-                "PICASU_ALLOW_REGISTRATION or config `gallery.allow_registration`",
-            ),
-            (
-                "trivialPasswords",
-                req_data.trivial_passwords.is_some(),
-                "--trivial-passwords, PICASU_TRIVIAL_PASSWORDS, or config `gallery.trivial_passwords`",
-            ),
-            (
-                "bootstrapAdmin",
-                req_data.bootstrap_admin.is_some(),
-                "--bootstrap-admin, PICASU_BOOTSTRAP_ADMIN, or config `gallery.bootstrap_admin`",
-            ),
-            (
-                "authKey",
-                req_data.auth_key.is_some(),
-                "rotate it with `POST /post/config/auth-key/reset`",
-            ),
-        ];
-        if let Some((name, _, setters)) = host_only.into_iter().find(|(_, present, _)| *present) {
+        if let Some((name, _, setters)) = host_only_knobs(&req_data)
+            .into_iter()
+            .find(|(_, present, _)| *present)
+        {
             return Err(AppError::new(
                 ErrorKind::InvalidInput,
                 format!("{name} cannot be set via the API: {setters}"),
@@ -527,6 +659,57 @@ mod tests {
             .status();
         assert_eq!(status, Status::Ok);
         assert!(!flag(), "absent field must not touch the knob");
+    }
+
+    /// The 13 login-throttle knobs are host-only (TOML / `PICASU_*`, all
+    /// require a restart: the throttle tracker is built once per process).
+    /// Any presence in the API body is a 400 and changes nothing.
+    #[test]
+    fn put_config_rejects_login_throttle_knobs_as_host_only() {
+        let _g = lock();
+        let client = setup();
+        seed("s4e-root", true, None);
+        let snapshot = || {
+            let cfg = crate::model::config::APP_CONFIG
+                .get()
+                .expect("APP_CONFIG")
+                .read()
+                .expect("APP_CONFIG lock");
+            (
+                cfg.trust_proxy_forwarded_for,
+                cfg.login_ip_window_secs,
+                cfg.login_ip_max_failures,
+                cfg.login_ip_max_ban_secs,
+                cfg.login_user_long_max_ban_secs,
+            )
+        };
+        let before = snapshot();
+        let bodies = [
+            json!({ "trustProxyForwardedFor": true }),
+            json!({ "loginIpWindowSecs": 100 }),
+            json!({ "loginIpMaxFailures": 9 }),
+            json!({ "loginIpBaseBanSecs": 20 }),
+            json!({ "loginIpMaxBanSecs": 900 }),
+            json!({ "loginIpLongWindowSecs": 1000 }),
+            json!({ "loginIpLongMaxFailures": 90 }),
+            json!({ "loginIpLongBaseBanSecs": 200 }),
+            json!({ "loginIpLongMaxBanSecs": 9000 }),
+            json!({ "loginUserLongWindowSecs": 1000 }),
+            json!({ "loginUserLongMaxFailures": 91 }),
+            json!({ "loginUserLongBaseBanSecs": 201 }),
+            json!({ "loginUserLongMaxBanSecs": 9001 }),
+        ];
+        for body in bodies {
+            let status = client
+                .put("/put/config")
+                .cookie(cookie("s4e-root", true))
+                .header(ContentType::JSON)
+                .body(body.to_string())
+                .dispatch()
+                .status();
+            assert_eq!(status, Status::BadRequest, "host-only knob, body {body}");
+        }
+        assert_eq!(snapshot(), before, "rejected knobs must change nothing");
     }
 
     #[test]

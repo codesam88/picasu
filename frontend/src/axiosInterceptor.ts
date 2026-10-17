@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { errorDisplay } from '@/script/utils/errorDisplay'
+import { retryAfterSecs } from '@/script/utils/retryAfter'
 import { useSessionStore } from '@/store/sessionStore'
 import { useShareStore } from '@/store/shareStore'
 import { useModalStore } from '@/store/modalStore'
@@ -7,6 +8,7 @@ import { useMessageStore } from '@/store/messageStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
 
 // --- Constants ---
+const AUTHENTICATE_URL = '/post/authenticate'
 const HEADERS = {
   ALBUM_ID: 'x-album-id',
   SHARE_ID: 'x-share-id',
@@ -118,6 +120,19 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
     case 405:
       messageStore.error('Read only mode is on.')
       break
+
+    case 429: {
+      // A 429 is a temporary limiter, not a dead session: the profile is
+      // kept and no redirect happens. LoginPage owns the authenticate
+      // message (inline countdown banner), so no toast there; any other
+      // route gets one toast carrying the retry hint.
+      if (error.config?.url === AUTHENTICATE_URL) break
+      const secs = retryAfterSecs(error)
+      messageStore.error(
+        secs !== null ? `Too many attempts — try again in ${secs}s` : errorDisplay(error)
+      )
+      break
+    }
 
     default: {
       // Generic error handler (400, 404, 500, etc.)
