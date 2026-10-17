@@ -1081,7 +1081,19 @@ returning the ephemeral profile without enrolling anybody.
 
 Errors: 400 the login `userId` is empty or longer than 64 characters, or
 the body does not parse as a login object — 401 unknown user or wrong
-password.
+password — 429 the attempt is throttled (`Retry-After` carries the
+remaining ban seconds) — 500 internal error.
+
+Brute-force throttle: before the KDF runs, every non-open attempt
+reserves a slot and then checks the IP-short, IP-long, and user-long
+buckets (see [`crate::auth::rate_limit`]); while any bucket bans, a
+429 is returned without hashing. Evaluated failures record into all
+applicable buckets, a success drops the username entry and clears the
+IP burst bucket (keeping IP-long history), and throttled attempts are
+never recorded. Open bootstrap mode (no users + flag) skips the
+throttle: there is no credential to guess. The environment-only kill
+switch `PICASU_RATE_LIMITS=false` (exact match) also bypasses the
+throttle — for fuzzing runs — while the failure logging stays.
 
 > Body parameter
 
@@ -1116,6 +1128,7 @@ password.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Session profile; JWT in HttpOnly Set-Cookie                                                | [UserSummary](#schemausersummary) |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                              |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                              |
+| 429    | [Too Many Requests](https://tools.ietf.org/html/rfc6585#section-4)         | Too many login attempts; see Retry-After                                                   | None                              |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                              |
 
 <aside class="success">
@@ -6607,11 +6620,24 @@ const inputBody = '{
   "disableImg": true,
   "fsNotifyWatcher": true,
   "imagePath": "string",
+  "loginIpBaseBanSecs": 0,
+  "loginIpLongBaseBanSecs": 0,
+  "loginIpLongMaxBanSecs": 0,
+  "loginIpLongMaxFailures": 0,
+  "loginIpLongWindowSecs": 0,
+  "loginIpMaxBanSecs": 0,
+  "loginIpMaxFailures": 0,
+  "loginIpWindowSecs": 0,
+  "loginUserLongBaseBanSecs": 0,
+  "loginUserLongMaxBanSecs": 0,
+  "loginUserLongMaxFailures": 0,
+  "loginUserLongWindowSecs": 0,
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
   "trivialPasswords": true,
+  "trustProxyForwardedFor": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
   "validateUploadContent": true
@@ -6765,11 +6791,24 @@ Errors: 400 unusable request body — 401 missing or invalid credentials —
   "disableImg": true,
   "fsNotifyWatcher": true,
   "imagePath": "string",
+  "loginIpBaseBanSecs": 0,
+  "loginIpLongBaseBanSecs": 0,
+  "loginIpLongMaxBanSecs": 0,
+  "loginIpLongMaxFailures": 0,
+  "loginIpLongWindowSecs": 0,
+  "loginIpMaxBanSecs": 0,
+  "loginIpMaxFailures": 0,
+  "loginIpWindowSecs": 0,
+  "loginUserLongBaseBanSecs": 0,
+  "loginUserLongMaxBanSecs": 0,
+  "loginUserLongMaxFailures": 0,
+  "loginUserLongWindowSecs": 0,
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
   "trivialPasswords": true,
+  "trustProxyForwardedFor": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
   "validateUploadContent": true
@@ -6823,11 +6862,24 @@ const inputBody = '{
   "bootstrapAdmin": true,
   "disableImg": true,
   "fsNotifyWatcher": true,
+  "loginIpBaseBanSecs": 0,
+  "loginIpLongBaseBanSecs": 0,
+  "loginIpLongMaxBanSecs": 0,
+  "loginIpLongMaxFailures": 0,
+  "loginIpLongWindowSecs": 0,
+  "loginIpMaxBanSecs": 0,
+  "loginIpMaxFailures": 0,
+  "loginIpWindowSecs": 0,
+  "loginUserLongBaseBanSecs": 0,
+  "loginUserLongMaxBanSecs": 0,
+  "loginUserLongMaxFailures": 0,
+  "loginUserLongWindowSecs": 0,
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
   "trivialPasswords": true,
+  "trustProxyForwardedFor": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
   "validateUploadContent": true
@@ -6954,8 +7006,10 @@ func main() {
 `PUT /put/config`
 
 Every field is optional and a field absent from the body keeps its current
-value. `address`, `port`, `allowRegistration`, `trivialPasswords`, and
-`bootstrapAdmin` are host-only (flag / env / config file) and `authKey`
+value. `address`, `port`, `allowRegistration`, `trivialPasswords`,
+`bootstrapAdmin`, and the login-throttle knobs
+(`trustProxyForwardedFor`, `login*Secs`, `login*MaxFailures`) are
+host-only (env / config file, restart-required) and `authKey`
 is managed (secrets file + reset endpoint); any presence of these in the
 body is a 400. The only other validation is on
 `uploadFolder`, which must be a relative path free of `..` components;
@@ -6980,11 +7034,24 @@ config write failure.
   "bootstrapAdmin": true,
   "disableImg": true,
   "fsNotifyWatcher": true,
+  "loginIpBaseBanSecs": 0,
+  "loginIpLongBaseBanSecs": 0,
+  "loginIpLongMaxBanSecs": 0,
+  "loginIpLongMaxFailures": 0,
+  "loginIpLongWindowSecs": 0,
+  "loginIpMaxBanSecs": 0,
+  "loginIpMaxFailures": 0,
+  "loginIpWindowSecs": 0,
+  "loginUserLongBaseBanSecs": 0,
+  "loginUserLongMaxBanSecs": 0,
+  "loginUserLongMaxFailures": 0,
+  "loginUserLongWindowSecs": 0,
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
   "trivialPasswords": true,
+  "trustProxyForwardedFor": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
   "validateUploadContent": true
@@ -12809,11 +12876,24 @@ This operation does not require authentication
   "disableImg": true,
   "fsNotifyWatcher": true,
   "imagePath": "string",
+  "loginIpBaseBanSecs": 0,
+  "loginIpLongBaseBanSecs": 0,
+  "loginIpLongMaxBanSecs": 0,
+  "loginIpLongMaxFailures": 0,
+  "loginIpLongWindowSecs": 0,
+  "loginIpMaxBanSecs": 0,
+  "loginIpMaxFailures": 0,
+  "loginIpWindowSecs": 0,
+  "loginUserLongBaseBanSecs": 0,
+  "loginUserLongMaxBanSecs": 0,
+  "loginUserLongMaxFailures": 0,
+  "loginUserLongWindowSecs": 0,
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
   "trivialPasswords": true,
+  "trustProxyForwardedFor": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
   "validateUploadContent": true
@@ -12832,11 +12912,24 @@ This operation does not require authentication
 | disableImg               | boolean        | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | fsNotifyWatcher          | boolean        | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | imagePath                | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| loginIpBaseBanSecs       | integer(int64) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| loginIpLongBaseBanSecs   | integer(int64) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| loginIpLongMaxBanSecs    | integer(int64) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| loginIpLongMaxFailures   | integer(int32) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| loginIpLongWindowSecs    | integer(int64) | false    | none         | Login throttle IP-long daily bucket: paced spraying ceiling across<br>many usernames from one source. Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| loginIpMaxBanSecs        | integer(int64) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| loginIpMaxFailures       | integer(int32) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| loginIpWindowSecs        | integer(int64) | false    | none         | Login throttle IP-short burst bucket: `login_ip_max_failures`<br>failures within `login_ip_window_secs` open a ban of<br>`login_ip_base_ban_secs`, doubling per further pair of failures up<br>to `login_ip_max_ban_secs`. Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| loginUserLongBaseBanSecs | integer(int64) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| loginUserLongMaxBanSecs  | integer(int64) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| loginUserLongMaxFailures | integer(int32) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| loginUserLongWindowSecs  | integer(int64) | false    | none         | Login throttle user-long daily bucket: per-account ceiling catching<br>low-and-slow attacks, keyed on the claimed name even when unknown.<br>Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | maxUploadSize            | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | normalizeUploadFilenames | boolean        | false    | none         | NFC-normalize uploaded filenames so macOS NFD names collapse onto<br>their composed form. Optional (unlike the always-on sanitization tiers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | port                     | integer(int32) | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | readOnlyMode             | boolean        | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | trivialPasswords         | boolean        | false    | none         | Disable the default password-strength checks (length floor/ceiling,<br>blocklist, user-id and pattern rules) for new passwords. Default<br>off. Only for development, throwaway installs, or tests that must<br>use weak fixtures — the bypass is warn-logged at first use.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| trustProxyForwardedFor   | boolean        | false    | none         | Trust the `X-Forwarded-For` header when keying the login throttle<br>(leftmost entry, only when it parses as an IP address). Default off:<br>the header is client-spoofable, so only a reverse-proxy deployment<br>that strips or overwrites it may enable this. Host-only (restart<br>required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | uploadFolder             | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | useClientTimestampInfo   | boolean        | false    | none         | Trust the `lastModified` the upload client sends with each file. When<br>enabled, the value is used as the stored file modification time but<br>clamped to `[1970-01-01, now + 24h]` so a broken client clock cannot<br>push an undated file (e.g. a screenshot) into year 1970 or the distant<br>future. Disabled by default: the server uses `now()` instead of the<br>provided value, since a client's clock or timezone cannot be relied on.<br>Only affects files without embedded metadata: photos with a<br>`DateTimeOriginal` EXIF tag keep their EXIF-derived date regardless.<br>See `backend/src/router/post/post_upload.rs`<br>(`resolve_upload_timestamp`).                                                                                                                                                                                                                                                                   |
 | validateUploadContent    | boolean        | false    | none         | Cross-check uploaded content against the type its declared<br>`Content-Type` implies. The declared extension yields the expected<br>format from the supported-format table; the content is then identified<br>and the two are compared. See `backend/src/process/format.rs`.<br><br>Content that cannot be identified at all is always rejected, with or<br>without this setting: there is no way to tell whether such bytes are<br>what the extension claims. This setting governs only the mismatch case,<br>where the content _is_ identified but is not the type the extension<br>claims — for example a video uploaded with an image content type, or an<br>image named with the wrong extension. Enabled (the default) rejects<br>those with `400 InvalidInput`; disabling it stores the file anyway, which<br>misdescribes it and leaves the indexer trusting a wrong extension. Only<br>disable this to tolerate mislabeled files. |
@@ -13461,11 +13554,24 @@ existing destination untouched (the source stays put, outcome `skipped`);
   "bootstrapAdmin": true,
   "disableImg": true,
   "fsNotifyWatcher": true,
+  "loginIpBaseBanSecs": 0,
+  "loginIpLongBaseBanSecs": 0,
+  "loginIpLongMaxBanSecs": 0,
+  "loginIpLongMaxFailures": 0,
+  "loginIpLongWindowSecs": 0,
+  "loginIpMaxBanSecs": 0,
+  "loginIpMaxFailures": 0,
+  "loginIpWindowSecs": 0,
+  "loginUserLongBaseBanSecs": 0,
+  "loginUserLongMaxBanSecs": 0,
+  "loginUserLongMaxFailures": 0,
+  "loginUserLongWindowSecs": 0,
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
   "trivialPasswords": true,
+  "trustProxyForwardedFor": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
   "validateUploadContent": true
@@ -13474,22 +13580,35 @@ existing destination untouched (the source stays put, outcome `skipped`);
 
 ### Properties
 
-| Name                     | Type                | Required | Restrictions | Description                                                                                                                                                                           |
-| ------------------------ | ------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| address                  | string,null         | false    | none         | Host-only (`PICASU_ADDRESS` / config `server.address`). Any presence<br>in the API body is rejected with 400 and changes nothing.                                                     |
-| allowRegistration        | boolean,null        | false    | none         | Host-only (`PICASU_ALLOW_REGISTRATION` / config<br>`gallery.allow_registration`). Any presence in the API body is<br>rejected with 400 and changes nothing.                           |
-| authKey                  | string,null         | false    | none         | Managed, never set: the signing key lives in the owner-only secrets<br>file. Any presence in the API body is rejected with 400; rotate it<br>with `POST /post/config/auth-key/reset`. |
-| bootstrapAdmin           | boolean,null        | false    | none         | Host-only (`--bootstrap-admin` / `PICASU_BOOTSTRAP_ADMIN` / config<br>`gallery.bootstrap_admin`). Any presence in the API body is rejected<br>with 400 and changes nothing.           |
-| disableImg               | boolean,null        | false    | none         | none                                                                                                                                                                                  |
-| fsNotifyWatcher          | boolean,null        | false    | none         | none                                                                                                                                                                                  |
-| maxUploadSize            | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("100MiB").                                                                                                                    |
-| normalizeUploadFilenames | boolean,null        | false    | none         | none                                                                                                                                                                                  |
-| port                     | integer,null(int32) | false    | none         | Host-only (`PICASU_PORT` / config `server.port`). Any presence<br>in the API body is rejected with 400 and changes nothing.                                                           |
-| readOnlyMode             | boolean,null        | false    | none         | none                                                                                                                                                                                  |
-| trivialPasswords         | boolean,null        | false    | none         | Host-only (`--trivial-passwords` / `PICASU_TRIVIAL_PASSWORDS` /<br>config `gallery.trivial_passwords`). Any presence in the API body is<br>rejected with 400 and changes nothing.     |
-| uploadFolder             | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("uploads").                                                                                                                   |
-| useClientTimestampInfo   | boolean,null        | false    | none         | none                                                                                                                                                                                  |
-| validateUploadContent    | boolean,null        | false    | none         | none                                                                                                                                                                                  |
+| Name                     | Type                | Required | Restrictions | Description                                                                                                                                                                                             |
+| ------------------------ | ------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| address                  | string,null         | false    | none         | Host-only (`PICASU_ADDRESS` / config `server.address`). Any presence<br>in the API body is rejected with 400 and changes nothing.                                                                       |
+| allowRegistration        | boolean,null        | false    | none         | Host-only (`PICASU_ALLOW_REGISTRATION` / config<br>`gallery.allow_registration`). Any presence in the API body is<br>rejected with 400 and changes nothing.                                             |
+| authKey                  | string,null         | false    | none         | Managed, never set: the signing key lives in the owner-only secrets<br>file. Any presence in the API body is rejected with 400; rotate it<br>with `POST /post/config/auth-key/reset`.                   |
+| bootstrapAdmin           | boolean,null        | false    | none         | Host-only (`--bootstrap-admin` / `PICASU_BOOTSTRAP_ADMIN` / config<br>`gallery.bootstrap_admin`). Any presence in the API body is rejected<br>with 400 and changes nothing.                             |
+| disableImg               | boolean,null        | false    | none         | none                                                                                                                                                                                                    |
+| fsNotifyWatcher          | boolean,null        | false    | none         | none                                                                                                                                                                                                    |
+| loginIpBaseBanSecs       | integer,null(int64) | false    | none         | Host-only login-throttle knob (`PICASU_LOGIN_IP_BASE_BAN_SECS` /<br>config `server.login_ip_base_ban_secs`). Any presence in the API body<br>is rejected with 400 and changes nothing.                  |
+| loginIpLongBaseBanSecs   | integer,null(int64) | false    | none         | Host-only login-throttle knob<br>(`PICASU_LOGIN_IP_LONG_BASE_BAN_SECS` / config<br>`server.login_ip_long_base_ban_secs`). Any presence in the API body<br>is rejected with 400 and changes nothing.     |
+| loginIpLongMaxBanSecs    | integer,null(int64) | false    | none         | Host-only login-throttle knob<br>(`PICASU_LOGIN_IP_LONG_MAX_BAN_SECS` / config<br>`server.login_ip_long_max_ban_secs`). Any presence in the API body is<br>rejected with 400 and changes nothing.       |
+| loginIpLongMaxFailures   | integer,null(int32) | false    | none         | Host-only login-throttle knob<br>(`PICASU_LOGIN_IP_LONG_MAX_FAILURES` / config<br>`server.login_ip_long_max_failures`). Any presence in the API body<br>is rejected with 400 and changes nothing.       |
+| loginIpLongWindowSecs    | integer,null(int64) | false    | none         | Host-only login-throttle knob<br>(`PICASU_LOGIN_IP_LONG_WINDOW_SECS` / config<br>`server.login_ip_long_window_secs`). Any presence in the API body is<br>rejected with 400 and changes nothing.         |
+| loginIpMaxBanSecs        | integer,null(int64) | false    | none         | Host-only login-throttle knob (`PICASU_LOGIN_IP_MAX_BAN_SECS` /<br>config `server.login_ip_max_ban_secs`). Any presence in the API body<br>is rejected with 400 and changes nothing.                    |
+| loginIpMaxFailures       | integer,null(int32) | false    | none         | Host-only login-throttle knob (`PICASU_LOGIN_IP_MAX_FAILURES` /<br>config `server.login_ip_max_failures`). Any presence in the API body<br>is rejected with 400 and changes nothing.                    |
+| loginIpWindowSecs        | integer,null(int64) | false    | none         | Host-only login-throttle knob (`PICASU_LOGIN_IP_WINDOW_SECS` /<br>config `server.login_ip_window_secs`). Any presence in the API body<br>is rejected with 400 and changes nothing.                      |
+| loginUserLongBaseBanSecs | integer,null(int64) | false    | none         | Host-only login-throttle knob<br>(`PICASU_LOGIN_USER_LONG_BASE_BAN_SECS` / config<br>`server.login_user_long_base_ban_secs`). Any presence in the API body<br>is rejected with 400 and changes nothing. |
+| loginUserLongMaxBanSecs  | integer,null(int64) | false    | none         | Host-only login-throttle knob<br>(`PICASU_LOGIN_USER_LONG_MAX_BAN_SECS` / config<br>`server.login_user_long_max_ban_secs`). Any presence in the API body<br>is rejected with 400 and changes nothing.   |
+| loginUserLongMaxFailures | integer,null(int32) | false    | none         | Host-only login-throttle knob<br>(`PICASU_LOGIN_USER_LONG_MAX_FAILURES` / config<br>`server.login_user_long_max_failures`). Any presence in the API body<br>is rejected with 400 and changes nothing.   |
+| loginUserLongWindowSecs  | integer,null(int64) | false    | none         | Host-only login-throttle knob<br>(`PICASU_LOGIN_USER_LONG_WINDOW_SECS` / config<br>`server.login_user_long_window_secs`). Any presence in the API body<br>is rejected with 400 and changes nothing.     |
+| maxUploadSize            | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("100MiB").                                                                                                                                      |
+| normalizeUploadFilenames | boolean,null        | false    | none         | none                                                                                                                                                                                                    |
+| port                     | integer,null(int32) | false    | none         | Host-only (`PICASU_PORT` / config `server.port`). Any presence<br>in the API body is rejected with 400 and changes nothing.                                                                             |
+| readOnlyMode             | boolean,null        | false    | none         | none                                                                                                                                                                                                    |
+| trivialPasswords         | boolean,null        | false    | none         | Host-only (`--trivial-passwords` / `PICASU_TRIVIAL_PASSWORDS` /<br>config `gallery.trivial_passwords`). Any presence in the API body is<br>rejected with 400 and changes nothing.                       |
+| trustProxyForwardedFor   | boolean,null        | false    | none         | Host-only (`PICASU_TRUST_PROXY_FORWARDED_FOR` / config<br>`server.trust_proxy_forwarded_for`). Any presence in the API body is<br>rejected with 400 and changes nothing.                                |
+| uploadFolder             | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("uploads").                                                                                                                                     |
+| useClientTimestampInfo   | boolean,null        | false    | none         | none                                                                                                                                                                                                    |
+| validateUploadContent    | boolean,null        | false    | none         | none                                                                                                                                                                                                    |
 
 <h2 id="tocS_Prefetch">Prefetch</h2>
 <!-- backwards compatibility -->

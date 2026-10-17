@@ -136,7 +136,7 @@ A request whose ban is still active is rejected with 429 and a
 buckets), distinct from the 401 of a bad credential. Buckets are keyed on
 claimed usernames whether or not the account exists, so throttling
 behaves identically for unknown names and reveals nothing about which
-users are real. A successful login resets the caller's buckets. All
+users are real. A successful login drops the username entry and clears the IP burst bucket (the IP-long history is kept). All
 thresholds are knobs under `[server]` (see
 [Configuration](config.md) for the full table), the client address honors
 `trust_proxy_forwarded_for`, and the env-only switch

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
-import { retryAfterSecs, startRetryCountdown } from './retryAfter'
+import { retryAfterSecs, startRetryCountdown, throttleMessage } from './retryAfter'
 
 /// Build an axios-shaped 429 error. `headers` is the wire header set,
 /// `body` the parsed JSON response body.
@@ -106,5 +106,10 @@ describe('startRetryCountdown', () => {
 
     expect(ticks).toEqual([5])
     expect(onDone).not.toHaveBeenCalled()
+  })
+
+  test('throttle message names the wait in seconds', () => {
+    expect(throttleMessage(10)).toBe('Too many attempts — try again in 10s')
+    expect(throttleMessage(1)).toBe('Too many attempts — try again in 1s')
   })
 })

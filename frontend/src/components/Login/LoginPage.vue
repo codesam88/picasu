@@ -56,7 +56,7 @@
                 class="mb-4"
                 role="status"
               >
-                Too many attempts — try again in {{ throttleSecs }}s
+                {{ throttleText }}
               </v-alert>
 
               <v-btn
@@ -87,7 +87,7 @@ import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
 import { login, type UserSummary } from '@/api/users'
-import { retryAfterSecs, startRetryCountdown } from '@/script/utils/retryAfter'
+import { retryAfterSecs, startRetryCountdown, throttleMessage } from '@/script/utils/retryAfter'
 
 const password = ref('')
 const showPassword = ref(false)
@@ -122,6 +122,10 @@ const rules = {
 // feedback.
 const throttleSecs = ref<number | null>(null)
 let stopCountdown: (() => void) | null = null
+
+const throttleText = computed(() =>
+  throttleSecs.value === null ? '' : throttleMessage(throttleSecs.value)
+)
 
 const startThrottle = (totalSecs: number) => {
   stopCountdown?.()
