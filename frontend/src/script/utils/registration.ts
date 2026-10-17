@@ -1,5 +1,6 @@
 import type { UserSummary } from '@/api/users'
 import axios from 'axios'
+import { isAuthenticateThrottle } from './retryAfter'
 
 export const isRegistrationSubmittable = (
   userId: string,
@@ -44,6 +45,15 @@ export const submitRegistration = async (
     if ((err as { response?: { status?: number } })?.response?.status === 409) {
       await deps.onRaceLost(RACE_LOST_NOTICE)
       return 'race-lost'
+    }
+    // The interceptor stays silent for authenticate 429s by design (the
+    // login page owns that display inline); the register page has no
+    // banner, so surface the throttled login locally exactly once via
+    // onError. Checked before the swallow below: those errors do carry a
+    // response, but nobody else displays them.
+    if (isAuthenticateThrottle(err)) {
+      deps.onError(err)
+      return 'failed'
     }
     // The global axios interceptor already displayed axios errors that
     // carry a response; surface only what it could not (non-axios throws

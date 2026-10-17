@@ -63,6 +63,17 @@
                 {{ throttleText }}
               </v-alert>
 
+              <v-alert
+                v-if="throttleSecs === null && throttleFallback !== null"
+                type="warning"
+                density="compact"
+                variant="tonal"
+                class="mb-4"
+                role="status"
+              >
+                {{ throttleFallback }}
+              </v-alert>
+
               <v-btn
                 type="submit"
                 color="primary"
@@ -91,7 +102,12 @@ import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
 import { login, type UserSummary } from '@/api/users'
-import { retryAfterSecs, startRetryCountdown, throttleMessage } from '@/script/utils/retryAfter'
+import {
+  retryAfterSecs,
+  startRetryCountdown,
+  throttleFallbackMessage,
+  throttleMessage
+} from '@/script/utils/retryAfter'
 
 const password = ref('')
 const showPassword = ref(false)
@@ -123,8 +139,12 @@ const rules = {
 // Login throttling (429 from /post/authenticate): inline countdown banner,
 // credentials kept, submit disabled until the ban expires. The interceptor
 // stays silent for this route (see its 429 case), so the banner is the only
-// feedback.
+// feedback. A 429 with no parsable wait shows a static fallback banner
+// instead (throttleFallback): no countdown is possible, but the click still
+// gets feedback and no snackbar is pushed — the page owns the 429 display
+// inline either way.
 const throttleSecs = ref<number | null>(null)
+const throttleFallback = ref<string | null>(null)
 let stopCountdown: (() => void) | null = null
 
 const throttleText = computed(() =>
@@ -152,6 +172,7 @@ onUnmounted(() => {
 
 const handleLogin = async () => {
   if (throttleSecs.value !== null) return
+  throttleFallback.value = null
   loading.value = true
   try {
     await tryWithMessageStore('mainId', async () => {
@@ -165,6 +186,8 @@ const handleLogin = async () => {
             startThrottle(secs)
             return
           }
+          throttleFallback.value = throttleFallbackMessage(error)
+          return
         }
         throw error
       }
