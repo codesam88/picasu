@@ -24,3 +24,12 @@ describe('LoginPage innocuous login banner', () => {
     expect(bannerSection).not.toMatch(/closable/)
   })
 })
+
+describe('LoginPage hint-less throttle fallback banner', () => {
+  test('a 429 with no parsable wait shows a static fallback alert, not the countdown', () => {
+    // The fallback renders only when no countdown is running and a
+    // fallback copy is set; it binds the static copy, not throttleText.
+    expect(source).toMatch(/v-if="throttleSecs === null && throttleFallback !== null"/)
+    expect(source).toMatch(/{{\s*throttleFallback\s*}}/)
+  })
+})

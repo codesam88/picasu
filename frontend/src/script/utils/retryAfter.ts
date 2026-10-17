@@ -1,4 +1,14 @@
 import axios from 'axios'
+import { serverErrorSchema } from '@/type/schemas'
+
+/// Login endpoint throttled by the login limiter. The response interceptor
+/// stays silent for 429s here by design (the calling page owns the display
+/// inline), so callers without an inline banner must display them locally.
+export const AUTHENTICATE_URL = '/post/authenticate'
+
+/// Generic copy for a throttled request with no known wait: no countdown
+/// is possible, so no seconds are named.
+export const GENERIC_THROTTLE_MESSAGE = 'Too many attempts — try again later'
 
 /// Seconds until a throttled request may be retried: the `Retry-After`
 /// response header first, the JSON body's `retryAfter` field as fallback.
@@ -22,6 +32,28 @@ function parseSecs(value: unknown): number | null {
 /// banner, so the copy cannot drift between the two sites.
 export function throttleMessage(secs: number): string {
   return `Too many attempts — try again in ${secs}s`
+}
+
+/// True for a rate-limited login request: an axios 429 on the authenticate
+/// endpoint, with or without a parsable retry hint. The interceptor never
+/// toasts these; the caller owns the display.
+export function isAuthenticateThrottle(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false
+  return error.response?.status === 429 && error.config?.url === AUTHENTICATE_URL
+}
+
+/// Fallback copy for a hint-less authenticate 429: the server message when
+/// the body carries one, else the generic throttle sentence. Never empty,
+/// never a raw status code.
+export function throttleFallbackMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const parsed = serverErrorSchema.safeParse(error.response?.data)
+    if (parsed.success) {
+      const serverMsg = parsed.data.message ?? parsed.data.error
+      if (serverMsg != null && serverMsg.length > 0) return serverMsg
+    }
+  }
+  return GENERIC_THROTTLE_MESSAGE
 }
 
 /// Drive a per-second countdown: `onTick` receives the remaining whole

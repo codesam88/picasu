@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { retryAfterSecs, startRetryCountdown, throttleMessage } from './retryAfter'
+import { isAuthenticateThrottle, throttleFallbackMessage, AUTHENTICATE_URL } from './retryAfter'
 
 /// Build an axios-shaped 429 error. `headers` is the wire header set,
-/// `body` the parsed JSON response body.
-const axios429 = (headers: Record<string, string>, body?: unknown): AxiosError => {
-  const config = { url: '/post/authenticate', method: 'post' } as InternalAxiosRequestConfig
+/// `body` the parsed JSON response body, `url` the request endpoint.
+const axios429 = (
+  headers: Record<string, string>,
+  body?: unknown,
+  url: string = AUTHENTICATE_URL
+): AxiosError => {
+  const config = { url, method: 'post' } as InternalAxiosRequestConfig
   const response: AxiosResponse = {
     status: 429,
     statusText: 'Too Many Requests',
@@ -111,5 +116,76 @@ describe('startRetryCountdown', () => {
   test('throttle message names the wait in seconds', () => {
     expect(throttleMessage(10)).toBe('Too many attempts — try again in 10s')
     expect(throttleMessage(1)).toBe('Too many attempts — try again in 1s')
+  })
+})
+
+describe('isAuthenticateThrottle', () => {
+  test('is true for an axios 429 on the authenticate endpoint', () => {
+    expect(isAuthenticateThrottle(axios429({}, { retryAfter: 5 }))).toBe(true)
+  })
+
+  test('is true for a hint-less authenticate 429 too (no banner countdown possible)', () => {
+    expect(isAuthenticateThrottle(axios429({}))).toBe(true)
+  })
+
+  test('is false for a 429 on any other route (the interceptor owns those)', () => {
+    expect(isAuthenticateThrottle(axios429({}, { retryAfter: 5 }, '/get/get-data'))).toBe(false)
+  })
+
+  test('is false for non-429 statuses on the authenticate endpoint', () => {
+    const config = { url: AUTHENTICATE_URL, method: 'post' } as InternalAxiosRequestConfig
+    const response: AxiosResponse = {
+      status: 401,
+      statusText: 'Unauthorized',
+      data: {},
+      headers: {},
+      config
+    }
+    expect(
+      isAuthenticateThrottle(
+        new AxiosError(
+          'Request failed with status code 401',
+          'ERR_BAD_REQUEST',
+          config,
+          null,
+          response
+        )
+      )
+    ).toBe(false)
+  })
+
+  test('is false for non-axios errors and responseless failures', () => {
+    expect(isAuthenticateThrottle(new Error('boom'))).toBe(false)
+    expect(isAuthenticateThrottle(undefined)).toBe(false)
+    expect(isAuthenticateThrottle(new AxiosError('Network Error', 'ERR_NETWORK'))).toBe(false)
+  })
+})
+
+describe('throttleFallbackMessage', () => {
+  test('prefers the server message when the body carries one', () => {
+    expect(
+      throttleFallbackMessage(
+        axios429({}, { kind: 'Rate Limited', message: 'Too many login attempts' })
+      )
+    ).toBe('Too many login attempts')
+  })
+
+  test('falls back to a generic throttle copy when the body is missing or unusable', () => {
+    for (const err of [
+      axios429({}),
+      axios429({}, { retryAfter: 5 }),
+      axios429({}, { message: '' }),
+      axios429({}, 'not-an-object')
+    ]) {
+      const copy = throttleFallbackMessage(err)
+      expect(typeof copy).toBe('string')
+      expect(copy.length).toBeGreaterThan(0)
+      expect(copy).not.toContain('429')
+    }
+  })
+
+  test('falls back to the generic copy for non-axios errors', () => {
+    expect(throttleFallbackMessage(new Error('boom')).length).toBeGreaterThan(0)
+    expect(throttleFallbackMessage(undefined).length).toBeGreaterThan(0)
   })
 })

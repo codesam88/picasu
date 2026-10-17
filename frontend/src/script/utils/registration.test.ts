@@ -12,13 +12,18 @@ const axiosError = (status: number) => {
 
 /// Real axios rejection: `axios.isAxiosError` recognizes it, so the global
 /// response interceptor owns its display and the local `onError` callback
-/// must stay silent.
-const realAxiosFailure = (status: number) => {
-  const config = { headers: {} } as InternalAxiosRequestConfig
+/// must stay silent — except on the authenticate endpoint, where the
+/// interceptor stays silent by design and the caller must display locally.
+const realAxiosFailure = (
+  status: number,
+  url = '/post/users/bootstrap',
+  body: unknown = { message: 'boom' }
+) => {
+  const config = { url, headers: {} } as InternalAxiosRequestConfig
   const response = {
     status,
     statusText: String(status),
-    data: { message: 'boom' },
+    data: body,
     headers: {},
     config
   } as AxiosResponse
@@ -181,5 +186,50 @@ describe('submitRegistration', () => {
     )
     expect(deps.onError).toHaveBeenCalledTimes(1)
     expect(deps.onError).toHaveBeenCalledWith(failure)
+  })
+
+  test('throttled register-login round trip surfaces via onError exactly once', async () => {
+    // The login step hits /post/authenticate, where the interceptor stays
+    // silent by design — so the local snackbar is the only signal and must
+    // fire. Both hinted and hint-less 429s take this path: the register
+    // page has no countdown banner.
+    for (const failure of [
+      realAxiosFailure(429, '/post/authenticate', {
+        kind: 'Rate Limited',
+        message: 'Too many login attempts, try again in 10s',
+        status: 'Temporary',
+        context: [],
+        retryAfter: 10
+      }),
+      realAxiosFailure(429, '/post/authenticate', {
+        kind: 'Rate Limited',
+        message: 'Too many login attempts',
+        status: 'Temporary',
+        context: []
+      })
+    ]) {
+      const deps = makeDeps()
+      deps.login = vi.fn().mockRejectedValueOnce(failure)
+
+      await expect(submitRegistration('root', 'new-secret', 'new-secret', deps)).resolves.toBe(
+        'failed'
+      )
+      expect(deps.create).toHaveBeenCalledTimes(1)
+      expect(deps.onRegistered).not.toHaveBeenCalled()
+      expect(deps.onRaceLost).not.toHaveBeenCalled()
+      expect(deps.onError).toHaveBeenCalledTimes(1)
+      expect(deps.onError).toHaveBeenCalledWith(failure)
+    }
+  })
+
+  test('429 on the create step stays swallowed (interceptor toasts those)', async () => {
+    const deps = makeDeps()
+    deps.create = vi.fn().mockRejectedValueOnce(realAxiosFailure(429))
+
+    await expect(submitRegistration('root', 'new-secret', 'new-secret', deps)).resolves.toBe(
+      'failed'
+    )
+    expect(deps.login).not.toHaveBeenCalled()
+    expect(deps.onError).not.toHaveBeenCalled()
   })
 })
