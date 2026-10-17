@@ -28,13 +28,6 @@ export const updateConfig = async (config: Partial<AppConfig>): Promise<void> =>
   await axios.put('/put/config', config)
 }
 
-export const updatePassword = async (oldPassword: string, newPassword?: string): Promise<void> => {
-  await axios.put('/put/config/password', {
-    oldPassword: oldPassword || null,
-    password: newPassword
-  })
-}
-
 /// Rotate the JWT signing key. The server generates a new strong random key
 /// and installs it; all sessions invalidate. The key itself is never
 /// returned — only whether one is now configured.

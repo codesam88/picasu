@@ -41,6 +41,21 @@ export const setUserAdmin = async (userId: string, admin: boolean): Promise<void
   })
 }
 
+/// Change a user's password via `PUT /put/users/password`. A self-change
+/// always presents the current password; only an admin recovering another
+/// user omits it (no UI for that path yet).
+export const setUserPassword = async (
+  userId: string,
+  oldPassword: string,
+  newPassword: string
+): Promise<void> => {
+  await axios.put('/put/users/password', {
+    userId,
+    oldPassword,
+    newPassword
+  })
+}
+
 /// Sign in with `{ userId, password }` and return the session profile.
 ///
 /// The JWT travels in an HttpOnly `Set-Cookie` header the page JS never

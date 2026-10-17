@@ -1,5 +1,5 @@
 ---
-status: open
+status: in-progress
 type: chore
 priority: high
 area: backend
@@ -34,6 +34,8 @@ oldPassword, newPassword)` calling `PUT /put/users/password`; `ChangePassword`
    delete `updatePassword` from `api/config.ts`. Done: `passwordChange` vitest
    plus `ChangePassword` suite green, `tsc/eslint/prettier` clean. Leaves out:
    admin-to-other UI (separate plan).
+   Done 2026-10-17: `setUserPassword` added, `ChangePassword` repointed to
+   session userId, `updatePassword` deleted (169 vitest green).
 2. Backend deletion (scope: `backend/src/router/put/edit_config.rs`,
    `backend/src/router/put/mod.rs`): delete `UpdatePasswordRequest`,
    `update_password_handler`, route registration. Done: `cargo test --lib`

@@ -1,6 +1,14 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest'
 import axios from 'axios'
-import { listUsers, createUser, bootstrapUser, login, logout, setUserAdmin } from './users'
+import {
+  listUsers,
+  createUser,
+  bootstrapUser,
+  login,
+  logout,
+  setUserAdmin,
+  setUserPassword
+} from './users'
 
 vi.mock('axios')
 
@@ -100,6 +108,18 @@ describe('login', () => {
     mockedAxios.post = vi.fn().mockRejectedValueOnce(err)
     await expect(login('bob', 'secret')).rejects.toBe(err)
     expect(mockedAxios.post).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('setUserPassword', () => {
+  test('puts userId, old and new passwords to /put/users/password', async () => {
+    mockedAxios.put = vi.fn().mockResolvedValue({ data: '' })
+    await setUserPassword('alice', 'old-secret', 'new-secret')
+    expect(mockedAxios.put).toHaveBeenCalledWith('/put/users/password', {
+      userId: 'alice',
+      oldPassword: 'old-secret',
+      newPassword: 'new-secret'
+    })
   })
 })
 
