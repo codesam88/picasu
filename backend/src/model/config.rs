@@ -151,9 +151,8 @@ pub struct AppConfig {
     /// Trust the `X-Forwarded-For` header when keying the login throttle
     /// (leftmost entry, only when it parses as an IP address). Default off:
     /// the header is client-spoofable, so only a reverse-proxy deployment
-    /// that strips or overwrites it may enable this. Host-only: the
-    /// throttle tracker is built once at startup, so changing it requires
-    /// a restart.
+    /// that strips or overwrites it may enable this. Host-only (restart
+    /// required).
     #[serde(default)]
     pub trust_proxy_forwarded_for: bool,
     /// Login throttle IP-short burst bucket: `login_ip_max_failures`
@@ -466,6 +465,13 @@ impl From<AppConfig> for TomlFile {
 
 pub static APP_CONFIG: OnceLock<RwLock<AppConfig>> = OnceLock::new();
 
+/// The three login-throttle schedules with their knob names: `(names,
+/// (window_secs, max_failures, base_ban_secs, max_ban_secs))` for
+/// IP-short, IP-long, and user-long, in that order. Single assembly
+/// point for validation and tracker construction, so a transposed field
+/// fails in one place instead of compiling silently in two.
+pub type ThrottleSchedules = [(&'static str, (u64, u32, u64, u64)); 3];
+
 impl AppConfig {
     pub fn get_jwt_secret_key(&self) -> Vec<u8> {
         match self.auth_key.as_ref() {
@@ -487,7 +493,18 @@ impl AppConfig {
     /// Names the offending bucket schedule when any tuple is degenerate.
     pub fn validate_login_throttle(&self) -> anyhow::Result<()> {
         use crate::auth::rate_limit::Bucket;
-        let schedules = [
+        for (knobs, (window, max_failures, base, cap)) in self.login_throttle_schedules() {
+            Bucket::new(window, max_failures, base, cap).map_err(|e| {
+                anyhow::anyhow!("invalid login throttle config [server] {knobs}: {e}")
+            })?;
+        }
+        Ok(())
+    }
+
+    /// The three login-throttle schedules (see [`ThrottleSchedules`]).
+    #[must_use]
+    pub fn login_throttle_schedules(&self) -> ThrottleSchedules {
+        [
             (
                 "login_ip_window_secs/login_ip_max_failures/login_ip_base_ban_secs/login_ip_max_ban_secs",
                 (
@@ -515,13 +532,7 @@ impl AppConfig {
                     self.login_user_long_max_ban_secs,
                 ),
             ),
-        ];
-        for (knobs, (window, max_failures, base, cap)) in schedules {
-            Bucket::new(window, max_failures, base, cap).map_err(|e| {
-                anyhow::anyhow!("invalid login throttle config [server] {knobs}: {e}")
-            })?;
-        }
-        Ok(())
+        ]
     }
 
     /// # Panics

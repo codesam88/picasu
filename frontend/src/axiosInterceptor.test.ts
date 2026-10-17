@@ -47,11 +47,14 @@ const rejectWith = (status: number, headers: Record<string, string>, body: unkno
   }
 }
 
+/// Backend `AppError` body shape for 429 answers (see error.rs): the
+/// `status` is the wire string, `context` the list — never the numeric
+/// code or null.
 const rateLimitBody = (retryAfter?: number) => ({
   kind: 'Rate Limited',
   message: 'Too many login attempts',
-  status: 429,
-  context: null,
+  status: 'Temporary',
+  context: [] as string[],
   ...(retryAfter !== undefined ? { retryAfter } : {})
 })
 
@@ -100,5 +103,19 @@ describe('429 handling', () => {
     const queue = useMessageStore('mainId').queue
     expect(queue).toHaveLength(1)
     expect(queue[0]?.text).toContain('try again in 5s')
+  })
+
+  test('429 from another route without any hint toasts the server message', async () => {
+    rejectWith(
+      429,
+      {},
+      { kind: 'Rate Limited', message: 'Too many login attempts', status: 'Temporary', context: [] }
+    )
+
+    await expect(axios.post('/put/config', {})).rejects.toBeTruthy()
+
+    const queue = useMessageStore('mainId').queue
+    expect(queue).toHaveLength(1)
+    expect(queue[0]?.text).toContain('Too many login attempts')
   })
 })

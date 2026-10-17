@@ -1,8 +1,6 @@
-//! Brute-force throttling oracle + buckets (R7).
-//!
-//! Pure delay functions and clock-free bucket bookkeeping so the
-//! schedules in `.plan/r7-bruteforce-throttling.md` are pinned by unit
-//! tests. Callers pass wall-clock seconds; tests drive a fake counter.
+//! Login brute-force throttle schedules: pure delay functions and
+//! clock-free bucket bookkeeping, pinned by unit tests below. Callers
+//! pass wall-clock seconds; tests drive a fake counter.
 
 /// IP-short window (seconds): 10-minute burst window.
 pub const LOGIN_IP_WINDOW_SECS: u64 = 600;
@@ -36,7 +34,7 @@ pub const LOGIN_USER_LONG_MAX_BAN_SECS: u64 = 7200;
 /// `n` is the ban generation (0 = first ban). Throttled attempts do not
 /// advance `n`; only an evaluated failure does. Success resets.
 #[must_use]
-pub fn ban_delay(base_secs: u64, cap_secs: u64, generation: u32) -> u64 {
+pub(crate) fn ban_delay(base_secs: u64, cap_secs: u64, generation: u32) -> u64 {
     let mut delay = base_secs;
     for _ in 0..generation {
         delay = delay.saturating_mul(2);
@@ -109,6 +107,48 @@ impl Bucket {
         self.ban_until.saturating_sub(now)
     }
 
+    /// In-window failure count at `now` (pure read: prunes nothing,
+    /// records nothing).
+    #[must_use]
+    pub fn failure_count(&self, now: u64) -> u64 {
+        u64::try_from(
+            self.failures
+                .iter()
+                .filter(|old| now.saturating_sub(**old) < self.window_secs)
+                .count(),
+        )
+        .unwrap_or(u64::MAX)
+    }
+
+    /// Ban delay for an in-window count under this bucket's schedule
+    /// (0 while at or under `max_failures`).
+    fn ban_for_count(&self, count: u64) -> u64 {
+        let max = u64::from(self.max_failures);
+        if count <= max {
+            return 0;
+        }
+        let generation = (count - max - 1) / 2;
+        let generation = u32::try_from(generation).unwrap_or(u32::MAX);
+        ban_delay(self.base_ban_secs, self.max_ban_secs, generation)
+    }
+
+    /// `max_failures` for threshold comparisons outside the bucket.
+    pub(crate) fn max_failures(&self) -> u32 {
+        self.max_failures
+    }
+
+    /// Ban that `extra_failures` more evaluated failures would open at
+    /// `now` (pure read). A live ban reports its remainder instead of a
+    /// fresh computation.
+    #[must_use]
+    pub fn peek_ban(&self, now: u64, extra_failures: u64) -> u64 {
+        let remaining = self.ban_remaining(now);
+        if remaining > 0 {
+            return remaining;
+        }
+        self.ban_for_count(self.failure_count(now).saturating_add(extra_failures))
+    }
+
     /// Record an evaluated failure at `now`. Returns the ban applied
     /// (0 = still under threshold). Calls during an active ban are
     /// ignored — they return the remaining ban without recording, so
@@ -125,14 +165,10 @@ impl Bucket {
             self.failures.pop_front();
         }
         self.failures.push_back(now);
-        let count = self.failures.len() as u64;
-        let max = u64::from(self.max_failures);
-        if count <= max {
+        let delay = self.ban_for_count(self.failures.len() as u64);
+        if delay == 0 {
             return 0;
         }
-        let generation = (count - max - 1) / 2;
-        let generation = u32::try_from(generation).unwrap_or(u32::MAX);
-        let delay = ban_delay(self.base_ban_secs, self.max_ban_secs, generation);
         self.ban_until = now.saturating_add(delay);
         delay
     }
@@ -295,6 +331,22 @@ mod tests {
     }
 
     #[test]
+    fn bucket_generation_steps_down_as_failures_age_out() {
+        // Window 100, max 2, base 5: climb to rung 1, then let all but
+        // two failures age out and confirm the next ban is rung 0's
+        // delay again (no frozen escalation).
+        let mut b = Bucket::new(100, 2, 5, 50).expect("valid test config");
+        assert_eq!(b.record_failure(0), 0);
+        assert_eq!(b.record_failure(1), 0);
+        assert_eq!(b.record_failure(2), 5, "3rd failure: rung 0");
+        assert_eq!(b.record_failure(7), 5, "4th failure: still rung 0");
+        assert_eq!(b.record_failure(12), 10, "5th failure: rung 1");
+        // At t=105 the t=0,1,2 failures have aged out; only t=7 and
+        // t=12 count, so this is a rung-0 ban again.
+        assert_eq!(b.record_failure(105), 5, "demoted back to rung 0");
+    }
+
+    #[test]
     fn bucket_window_expiry_forgives() {
         let mut b = ip_short_bucket();
         b.record_failure(0);
@@ -336,6 +388,35 @@ mod tests {
         b.record_success();
         assert_eq!(b.ban_remaining(0), 0);
         assert_eq!(b.record_failure(0), 0);
+    }
+
+    #[test]
+    fn failure_count_is_a_pure_read() {
+        let mut b = Bucket::new(10, 5, 5, 50).expect("valid test config");
+        b.record_failure(0);
+        b.record_failure(1);
+        b.record_failure(2);
+        assert_eq!(b.failure_count(5), 3);
+        assert_eq!(b.failure_count(5), 3, "reading changes nothing");
+        assert_eq!(b.failure_count(11), 1, "t=0 and t=1 aged out");
+        assert_eq!(b.failure_count(100), 0, "all aged out");
+        // Untouched by the reads above: still under threshold.
+        assert_eq!(b.ban_remaining(100), 0);
+    }
+
+    #[test]
+    fn peek_ban_reports_without_recording() {
+        // Window 10, max 2, base 5: two failures recorded.
+        let mut b = Bucket::new(10, 2, 5, 50).expect("valid test config");
+        b.record_failure(0);
+        b.record_failure(1);
+        // One more would trip the first rung; peeking must not record it.
+        assert_eq!(b.peek_ban(2, 1), 5);
+        assert_eq!(b.failure_count(2), 2, "peek recorded nothing");
+        assert_eq!(b.peek_ban(2, 0), 0, "without the extra, still clear");
+        // Live bans report the remainder, not a fresh computation.
+        assert_eq!(b.record_failure(2), 5);
+        assert_eq!(b.peek_ban(3, 100), 4, "remainder wins over hypotheticals");
     }
 
     #[test]

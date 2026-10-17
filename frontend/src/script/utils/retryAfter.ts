@@ -18,6 +18,12 @@ function parseSecs(value: unknown): number | null {
   return Math.ceil(secs)
 }
 
+/// Shared throttling message for the interceptor toast and the login
+/// banner, so the copy cannot drift between the two sites.
+export function throttleMessage(secs: number): string {
+  return `Too many attempts — try again in ${secs}s`
+}
+
 /// Drive a per-second countdown: `onTick` receives the remaining whole
 /// seconds at start and after every tick, `onDone` fires once when the
 /// count reaches zero. The returned stop function cancels the countdown

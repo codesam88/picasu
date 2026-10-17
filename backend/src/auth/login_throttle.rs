@@ -13,10 +13,10 @@ use super::rate_limit::Bucket;
 /// Per-client-IP entry cap, enforced by [`LoginThrottle::sweep`] (and
 /// defensively whenever [`LoginThrottle::record_failure`] creates an
 /// entry, so memory stays bounded between sweeps).
-pub const MAX_IP_ENTRIES: usize = 10_000;
+const MAX_IP_ENTRIES: usize = 10_000;
 
 /// Per-username entry cap; same enforcement as [`MAX_IP_ENTRIES`].
-pub const MAX_USER_ENTRIES: usize = 10_000;
+const MAX_USER_ENTRIES: usize = 10_000;
 
 /// Raw bucket parameters, kept so a fresh [`Bucket`] can be built per
 /// entry. Validated once by [`LoginThrottle::new`] before being stored.
@@ -53,21 +53,28 @@ impl BucketCfg {
     }
 }
 
-/// One client-IP entry: the short and long buckets plus sweep
-/// bookkeeping (`last_seen` and a `banned_until` snapshot, see
+/// One client-IP entry: the short and long buckets, the count of
+/// attempts currently inside their KDF, plus sweep bookkeeping
+/// (`last_seen` and a `banned_until` snapshot, see
 /// [`LoginThrottle::sweep`]).
 #[derive(Debug)]
 struct IpEntry {
     short: Bucket,
     long: Bucket,
+    /// Attempts that reserved a slot and are still verifying: counted by
+    /// [`LoginThrottle::reserve`] so parallel bursts cannot each slip
+    /// under the threshold unseen.
+    in_flight: u32,
     last_seen: u64,
     banned_until: u64,
 }
 
-/// One claimed-username entry: the long bucket plus sweep bookkeeping.
+/// One claimed-username entry: the long bucket, its in-flight count,
+/// plus sweep bookkeeping.
 #[derive(Debug)]
 struct UserEntry {
     long: Bucket,
+    in_flight: u32,
     last_seen: u64,
     banned_until: u64,
 }
@@ -145,6 +152,106 @@ impl LoginThrottle {
         max_ban
     }
 
+    /// Reserve a verification slot for this attempt across all three
+    /// applicable buckets (0 = clear). Two cases block: a live ban
+    /// (returns its remainder), or a crowded flight — other in-flight
+    /// attempts on top of recorded history already exceed a bucket, so
+    /// this one would too (returns the rung they will open, unrecorded).
+    /// A lone attempt always proceeds even with over-threshold history:
+    /// that history's ban was served, and recording this failure opens
+    /// the next rung (answered 401). A 0 return holds one slot per entry
+    /// until [`release`](Self::release),
+    /// [`record_failure`](Self::record_failure), or
+    /// [`record_success`](Self::record_success).
+    ///
+    /// # Panics
+    /// Never in practice: both entries are created at the top of this
+    /// function, so the lookups below always hit; the `expect` names
+    /// that invariant.
+    pub fn reserve(&mut self, ip: &str, user: &str, now: u64) -> u64 {
+        let (short_cfg, long_cfg) = (&self.ip_short, &self.ip_long);
+        let ip_entry = self.ip.entry(ip.to_owned()).or_insert_with(|| IpEntry {
+            short: short_cfg.build(),
+            long: long_cfg.build(),
+            in_flight: 0,
+            last_seen: 0,
+            banned_until: 0,
+        });
+        ip_entry.last_seen = now;
+        let user_cfg = &self.user_long;
+        let user_entry = self
+            .user
+            .entry(user.to_owned())
+            .or_insert_with(|| UserEntry {
+                long: user_cfg.build(),
+                in_flight: 0,
+                last_seen: 0,
+                banned_until: 0,
+            });
+        user_entry.last_seen = now;
+        // Decide on shared borrows first: live bans block outright, and a
+        // crowded flight (recorded history plus *other* in-flight attempts
+        // already exceeds a bucket) blocks at the rung the cohort will
+        // open. Lone attempts always proceed even with over-threshold
+        // history: that history's ban was served, and recording this
+        // failure opens the next rung — otherwise every ban would renew
+        // itself past the window.
+        let crowded_ban = {
+            let ip_entry = self.ip.get(ip).expect("entry created above");
+            let user_entry = self.user.get(user).expect("entry created above");
+            let live = ip_entry
+                .short
+                .ban_remaining(now)
+                .max(ip_entry.long.ban_remaining(now))
+                .max(user_entry.long.ban_remaining(now));
+            if live > 0 {
+                return live;
+            }
+            [
+                (&ip_entry.short, ip_entry.in_flight),
+                (&ip_entry.long, ip_entry.in_flight),
+                (&user_entry.long, user_entry.in_flight),
+            ]
+            .iter()
+            .filter(|(_, others)| *others > 0)
+            .map(|(bucket, others)| {
+                let effective = bucket.failure_count(now).saturating_add(u64::from(*others));
+                if effective > u64::from(bucket.max_failures()) {
+                    bucket.peek_ban(now, u64::from(*others) + 1)
+                } else {
+                    0
+                }
+            })
+            .max()
+            .unwrap_or(0)
+        };
+        if crowded_ban > 0 {
+            return crowded_ban;
+        }
+        if let Some(entry) = self.ip.get_mut(ip) {
+            entry.in_flight = entry.in_flight.saturating_add(1);
+        }
+        if let Some(entry) = self.user.get_mut(user) {
+            entry.in_flight = entry.in_flight.saturating_add(1);
+        }
+        0
+    }
+
+    /// Release a slot held by [`reserve`](Self::reserve) without recording
+    /// anything (unknown keys are a no-op). Every reserved slot must reach
+    /// exactly one of `release`, `record_failure`, or `record_success`:
+    /// a leaked slot over-counts (fail-safe direction — more bans, never
+    /// fewer), so callers keep the release on every path, including
+    /// unexpected errors.
+    pub fn release(&mut self, ip: &str, user: &str) {
+        if let Some(entry) = self.ip.get_mut(ip) {
+            entry.in_flight = entry.in_flight.saturating_sub(1);
+        }
+        if let Some(entry) = self.user.get_mut(user) {
+            entry.in_flight = entry.in_flight.saturating_sub(1);
+        }
+    }
+
     /// Record an evaluated login failure at `now` into the IP-short,
     /// IP-long and user-long buckets (creating entries as needed and
     /// refreshing `last_seen`); returns the largest ban applied
@@ -158,6 +265,7 @@ impl LoginThrottle {
         let entry = self.ip.entry(ip.to_owned()).or_insert_with(|| IpEntry {
             short: short_cfg.build(),
             long: long_cfg.build(),
+            in_flight: 0,
             last_seen: 0,
             banned_until: 0,
         });
@@ -176,6 +284,7 @@ impl LoginThrottle {
             .entry(user.to_owned())
             .or_insert_with(|| UserEntry {
                 long: user_cfg.build(),
+                in_flight: 0,
                 last_seen: 0,
                 banned_until: 0,
             });
@@ -184,15 +293,24 @@ impl LoginThrottle {
         entry.banned_until = entry.banned_until.max(now.saturating_add(user_ban));
         max_ban = max_ban.max(user_ban);
 
-        self.enforce_caps();
+        self.enforce_caps(now);
         max_ban
     }
 
-    /// Successful authentication: drop the IP and username entries
-    /// entirely, clearing any ban and failure history for both keys.
-    pub fn record_success(&mut self, ip: &str, user: &str) {
-        self.ip.remove(ip);
+    /// Successful authentication at `now`: drop the username entry
+    /// entirely, and clear the IP entry's burst bucket. The IP-long
+    /// history is deliberately kept: otherwise any valid account holder
+    /// could wipe a shared IP's daily budget with one login and spray
+    /// forever. The cost — a caller behind the same address inherits the
+    /// 16/day long budget — is the documented trade.
+    pub fn record_success(&mut self, ip: &str, user: &str, now: u64) {
         self.user.remove(user);
+        if let Some(entry) = self.ip.get_mut(ip) {
+            entry.short.record_success();
+            entry.in_flight = entry.in_flight.saturating_sub(1);
+            entry.last_seen = now;
+            entry.banned_until = now.saturating_add(entry.long.ban_remaining(now));
+        }
     }
 
     /// Reap idle entries, then enforce [`MAX_IP_ENTRIES`] /
@@ -209,7 +327,8 @@ impl LoginThrottle {
     /// both its ban snapshot and `last_seen + longest_window`, so an
     /// entry that could still influence any bucket survives.
     ///
-    /// Over cap, the least-recently-`last_seen` entries go first.
+    /// Over cap, the least-recently-`last_seen` entries go first, skipping
+    /// live bans and held reservations (see [`enforce_caps`](Self::enforce_caps)).
     pub fn sweep(&mut self, now: u64) {
         let longest_window = self.longest_window;
         self.ip.retain(|_, entry| {
@@ -218,15 +337,20 @@ impl LoginThrottle {
         self.user.retain(|_, entry| {
             now < entry.banned_until || now.saturating_sub(entry.last_seen) < longest_window
         });
-        self.enforce_caps();
+        self.enforce_caps(now);
     }
 
     /// Evict least-recently-seen entries until each map is within its cap.
-    fn enforce_caps(&mut self) {
+    /// Entries with a live ban or a held reservation are never evicted —
+    /// dropping them would clear the ban (the module's own guarantee) or
+    /// leak an in-flight count. If everything is protected, the maps stay
+    /// over cap until the next sweep rather than loop forever.
+    fn enforce_caps(&mut self, now: u64) {
         while self.ip.len() > MAX_IP_ENTRIES {
             let Some(oldest) = self
                 .ip
                 .iter()
+                .filter(|(_, entry)| now >= entry.banned_until && entry.in_flight == 0)
                 .min_by_key(|(_, entry)| entry.last_seen)
                 .map(|(ip, _)| ip.clone())
             else {
@@ -238,6 +362,7 @@ impl LoginThrottle {
             let Some(oldest) = self
                 .user
                 .iter()
+                .filter(|(_, entry)| now >= entry.banned_until && entry.in_flight == 0)
                 .min_by_key(|(_, entry)| entry.last_seen)
                 .map(|(user, _)| user.clone())
             else {
@@ -245,6 +370,19 @@ impl LoginThrottle {
             };
             self.user.remove(&oldest);
         }
+    }
+}
+
+/// Collapse an IP string to its throttle key: IPv6 to its /64 prefix
+/// (privacy extensions rotate interface IDs per connection, the prefix
+/// is the stable per-subnet identity), IPv4 and anything else verbatim.
+fn throttle_key(ip: &str) -> String {
+    match ip.trim().parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V6(v6)) => {
+            let s = v6.segments();
+            std::net::Ipv6Addr::new(s[0], s[1], s[2], s[3], 0, 0, 0, 0).to_string()
+        }
+        _ => ip.to_owned(),
     }
 }
 
@@ -256,7 +394,8 @@ impl LoginThrottle {
 /// trims to a non-empty string that parses as [`std::net::IpAddr`];
 /// anything else falls back to the socket address — which comes from the
 /// transport layer and is used verbatim — or `"unknown"` when absent or
-/// empty. No Rocket types: pure and fully unit-testable.
+/// empty. Either way the key collapses IPv6 to its /64 (see
+/// [`throttle_key`]). No Rocket types: pure and fully unit-testable.
 #[must_use]
 pub fn select_client_ip(
     forwarded_for: Option<&str>,
@@ -268,11 +407,11 @@ pub fn select_client_ip(
     {
         let candidate = leftmost.trim();
         if candidate.parse::<std::net::IpAddr>().is_ok() {
-            return candidate.to_owned();
+            return throttle_key(candidate);
         }
     }
     match socket_ip {
-        Some(socket) if !socket.is_empty() => socket.to_owned(),
+        Some(socket) if !socket.is_empty() => throttle_key(socket),
         _ => "unknown".to_owned(),
     }
 }
@@ -282,18 +421,30 @@ mod tests {
     use super::*;
     use crate::auth::rate_limit::Bucket;
 
-    /// Literal test config (deliberately not the shipped constants):
-    /// IP-short 2 failures/10s → 5s, IP-long 4/100s → 7s,
-    /// user-long 3/100s → 3s. Longest window = 100s.
+    /// Literal bucket configs shared by the tracker and bare-entry
+    /// helpers (deliberately not the shipped constants): IP-short
+    /// 2 failures/10s → 5s, IP-long 4/100s → 7s, user-long 3/100s → 3s.
+    /// Longest window = 100s.
+    const TEST_SHORT: (u64, u32, u64, u64) = (10, 2, 5, 20);
+    const TEST_IP_LONG: (u64, u32, u64, u64) = (100, 4, 7, 40);
+    const TEST_USER_LONG: (u64, u32, u64, u64) = (100, 3, 3, 30);
+
     fn tracker() -> LoginThrottle {
-        LoginThrottle::new((10, 2, 5, 20), (100, 4, 7, 40), (100, 3, 3, 30))
-            .expect("valid test config")
+        LoginThrottle::new(TEST_SHORT, TEST_IP_LONG, TEST_USER_LONG).expect("valid test config")
     }
 
     fn bare_ip_entry(last_seen: u64) -> IpEntry {
         IpEntry {
-            short: Bucket::new(10, 2, 5, 20).expect("valid test bucket"),
-            long: Bucket::new(100, 4, 7, 40).expect("valid test bucket"),
+            short: Bucket::new(TEST_SHORT.0, TEST_SHORT.1, TEST_SHORT.2, TEST_SHORT.3)
+                .expect("valid test bucket"),
+            long: Bucket::new(
+                TEST_IP_LONG.0,
+                TEST_IP_LONG.1,
+                TEST_IP_LONG.2,
+                TEST_IP_LONG.3,
+            )
+            .expect("valid test bucket"),
+            in_flight: 0,
             last_seen,
             banned_until: 0,
         }
@@ -301,7 +452,14 @@ mod tests {
 
     fn bare_user_entry(last_seen: u64) -> UserEntry {
         UserEntry {
-            long: Bucket::new(100, 3, 3, 30).expect("valid test bucket"),
+            long: Bucket::new(
+                TEST_USER_LONG.0,
+                TEST_USER_LONG.1,
+                TEST_USER_LONG.2,
+                TEST_USER_LONG.3,
+            )
+            .expect("valid test bucket"),
+            in_flight: 0,
             last_seen,
             banned_until: 0,
         }
@@ -314,7 +472,7 @@ mod tests {
     }
 
     #[test]
-    fn ip_short_bucket_trips_on_third_failure() {
+    fn ip_short_bucket_trips_past_threshold() {
         let mut t = tracker();
         assert_eq!(t.record_failure("1.1.1.1", "alice", 0), 0);
         assert_eq!(t.record_failure("1.1.1.1", "bob", 1), 0);
@@ -327,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn ip_long_bucket_trips_on_fifth_failure_from_distinct_users() {
+    fn ip_long_bucket_trips_past_threshold_from_distinct_users() {
         // IP-short and user-long are made lenient here to isolate IP-long.
         let mut t = LoginThrottle::new((1000, 100, 5, 20), (10, 4, 7, 40), (1000, 100, 3, 30))
             .expect("valid test config");
@@ -341,7 +499,7 @@ mod tests {
     }
 
     #[test]
-    fn user_bucket_trips_on_fourth_failure_from_distinct_ips() {
+    fn user_bucket_trips_past_threshold_from_distinct_ips() {
         // Both IP buckets are made lenient here to isolate user-long.
         let mut t = LoginThrottle::new((1000, 100, 5, 20), (1000, 100, 7, 40), (10, 3, 3, 30))
             .expect("valid test config");
@@ -411,28 +569,101 @@ mod tests {
     }
 
     #[test]
-    fn success_clears_both_entries() {
-        let mut t = tracker();
+    fn success_clears_user_and_ip_short_but_keeps_ip_long() {
+        // IP-long tight (4/10s → 7s), short and user-long lenient: the
+        // long ban is the only live one when success lands.
+        let mut t = LoginThrottle::new((1000, 100, 5, 20), (10, 4, 7, 40), (1000, 100, 3, 30))
+            .expect("valid test config");
+        for i in 0..4u64 {
+            assert_eq!(t.record_failure("ip", "u", i), 0);
+        }
+        assert_eq!(t.record_failure("ip", "u", 4), 7, "banned until t=11");
+        t.record_success("ip", "u", 5);
+        assert!(t.user.is_empty(), "user entry removed entirely");
+        assert_eq!(t.ip.len(), 1, "IP entry persists for its long bucket");
+        assert_eq!(t.check("ip", "u", 5), 6, "long ban survives the success");
+        assert_eq!(
+            t.check("ip", "fresh", 5),
+            6,
+            "long ban is per-IP, not per-user"
+        );
+        assert_eq!(t.check("ip", "u", 11), 0, "long ban expires on schedule");
+    }
+
+    #[test]
+    fn reserve_counts_other_in_flight_attempts() {
+        // Short bucket allows 2 recorded failures: three concurrent
+        // reservations still fit (only *other* slots count), the fourth
+        // sees all three and is blocked.
+        let mut t = LoginThrottle::new((60, 2, 5, 50), (1000, 100, 7, 40), (1000, 100, 3, 30))
+            .expect("valid test config");
+        assert_eq!(t.reserve("ip", "u", 0), 0, "first reservation proceeds");
+        assert_eq!(t.reserve("ip", "u", 0), 0, "second still fits the budget");
+        assert_eq!(t.reserve("ip", "u", 0), 0, "third still fits");
+        assert_eq!(
+            t.reserve("ip", "u", 0),
+            5,
+            "fourth concurrent attempt is blocked"
+        );
+        t.release("ip", "u");
+        t.release("ip", "u");
+        t.release("ip", "u");
+        assert_eq!(t.reserve("ip", "u", 0), 0, "released slots proceed again");
+        t.release("ip", "u");
+        // Serial equivalence: the reservations left no trace behind.
+        assert_eq!(t.record_failure("ip", "u", 1), 0);
+        assert_eq!(t.record_failure("ip", "u", 2), 0);
+        assert_eq!(t.reserve("ip", "u", 3), 0, "lone attempt checks clear");
+        t.release("ip", "u");
+        assert_eq!(t.record_failure("ip", "u", 4), 5, "counting undisturbed");
+        t.release("unknown", "unknown");
+    }
+
+    #[test]
+    fn lone_attempt_after_ban_expiry_proceeds_to_record() {
+        // IP-short 2/60s → 5s: trip the ban, wait it out, then a lone
+        // attempt must proceed (0) and record the shared rung — never
+        // renew the served ban as a fresh 429 (that would lock out until
+        // the window slides).
+        let mut t = LoginThrottle::new((60, 2, 5, 50), (1000, 100, 7, 40), (1000, 100, 3, 30))
+            .expect("valid test config");
         assert_eq!(t.record_failure("ip", "u", 0), 0);
         assert_eq!(t.record_failure("ip", "u", 1), 0);
-        assert_eq!(t.record_failure("ip", "u", 2), 5);
-        assert_eq!(t.ip.len(), 1);
-        assert_eq!(t.user.len(), 1);
-        t.record_success("ip", "u");
-        assert!(t.ip.is_empty(), "IP entry removed entirely");
-        assert!(t.user.is_empty(), "user entry removed entirely");
-        assert_eq!(t.check("ip", "u", 2), 0, "ban gone with the entries");
+        assert_eq!(t.record_failure("ip", "u", 2), 5, "banned until t=7");
         assert_eq!(
-            t.record_failure("ip", "u", 3),
+            t.reserve("ip", "u", 8),
             0,
-            "failure counting restarts from zero"
+            "expired ban lets lone attempts through"
+        );
+        t.release("ip", "u");
+        assert_eq!(t.record_failure("ip", "u", 8), 5, "records the shared rung");
+    }
+
+    #[test]
+    fn over_cap_eviction_spares_banned_and_in_flight_entries() {
+        let mut t = tracker();
+        // Ban ip-hot: 3 failures → short bans 5s until t=7.
+        t.record_failure("ip-hot", "u", 0);
+        t.record_failure("ip-hot", "u", 1);
+        t.record_failure("ip-hot", "u", 2);
+        // ip-flight holds a reservation: never recorded, never banned.
+        assert_eq!(t.reserve("ip-flight", "u2", 0), 0);
+        for i in 0..(MAX_IP_ENTRIES + 5) {
+            t.ip.insert(format!("cold-{i}"), bare_ip_entry(0));
+        }
+        t.sweep(3);
+        assert_eq!(t.ip.len(), MAX_IP_ENTRIES, "capped");
+        assert!(t.ip.contains_key("ip-hot"), "live ban survives the cap");
+        assert!(
+            t.ip.contains_key("ip-flight"),
+            "in-flight entry survives the cap"
         );
     }
 
     #[test]
     fn success_on_unknown_keys_is_noop() {
         let mut t = tracker();
-        t.record_success("never-seen", "never-seen");
+        t.record_success("never-seen", "never-seen", 0);
         assert!(t.ip.is_empty());
         assert!(t.user.is_empty());
     }
@@ -601,7 +832,8 @@ mod tests {
         );
         assert_eq!(
             select_client_ip(Some("2001:db8::1,10.0.0.1"), None, true),
-            "2001:db8::1"
+            "2001:db8::",
+            "IPv6 collapses to its /64"
         );
         assert_eq!(
             select_client_ip(Some("203.0.113.7"), None, true),
@@ -653,5 +885,30 @@ mod tests {
             "not-an-ip"
         );
         assert_eq!(select_client_ip(None, Some(""), true), "unknown");
+    }
+
+    #[test]
+    fn select_ip_collapses_ipv6_to_slash_64() {
+        // Privacy extensions rotate the interface ID per connection; the
+        // /64 prefix is the stable per-subnet identity operators throttle.
+        assert_eq!(
+            select_client_ip(Some("2001:db8:1:2::a"), None, true),
+            select_client_ip(Some("2001:db8:1:2::b"), None, true),
+            "same /64, different interface IDs share one bucket"
+        );
+        assert_eq!(
+            select_client_ip(Some("2001:db8:1:2::a"), None, true),
+            "2001:db8:1:2::"
+        );
+        assert_ne!(
+            select_client_ip(Some("2001:db8:1:2::a"), None, true),
+            select_client_ip(Some("2001:db8:1:3::a"), None, true),
+            "different /64 prefixes stay separate"
+        );
+        // IPv4 keys are exact addresses, unchanged.
+        assert_eq!(
+            select_client_ip(Some("203.0.113.7"), None, true),
+            "203.0.113.7"
+        );
     }
 }
