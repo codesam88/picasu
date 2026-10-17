@@ -257,6 +257,27 @@ pub fn reset_backend_state() {
     config.normalize_upload_filenames = true;
     config.validate_upload_content = true;
     config.use_client_timestamp_info = false;
+    // Reset login-throttle knobs to the shipped defaults: throttle tests
+    // shrink them and the tracker rebuilds from whatever is configured.
+    // Canonical values live beside the schedules in `auth::rate_limit`.
+    use crate::auth::rate_limit as throttle;
+    config.trust_proxy_forwarded_for = false;
+    config.login_ip_window_secs = throttle::LOGIN_IP_WINDOW_SECS;
+    config.login_ip_max_failures = throttle::LOGIN_IP_MAX_FAILURES;
+    config.login_ip_base_ban_secs = throttle::LOGIN_IP_BASE_BAN_SECS;
+    config.login_ip_max_ban_secs = throttle::LOGIN_IP_MAX_BAN_SECS;
+    config.login_ip_long_window_secs = throttle::LOGIN_IP_LONG_WINDOW_SECS;
+    config.login_ip_long_max_failures = throttle::LOGIN_IP_LONG_MAX_FAILURES;
+    config.login_ip_long_base_ban_secs = throttle::LOGIN_IP_LONG_BASE_BAN_SECS;
+    config.login_ip_long_max_ban_secs = throttle::LOGIN_IP_LONG_MAX_BAN_SECS;
+    config.login_user_long_window_secs = throttle::LOGIN_USER_LONG_WINDOW_SECS;
+    config.login_user_long_max_failures = throttle::LOGIN_USER_LONG_MAX_FAILURES;
+    config.login_user_long_base_ban_secs = throttle::LOGIN_USER_LONG_BASE_BAN_SECS;
+    config.login_user_long_max_ban_secs = throttle::LOGIN_USER_LONG_MAX_BAN_SECS;
+
+    // Drop the shared login throttle tracker so scenarios never inherit
+    // failure counts or bans from a previous scenario.
+    crate::router::post::authenticate::reset_login_throttle();
 }
 
 /// Build the test Rocket instance with the current APP_CONFIG, without a

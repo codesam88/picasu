@@ -48,7 +48,25 @@
                 :rules="[rules.required]"
               ></v-text-field>
 
-              <v-btn type="submit" color="primary" size="large" block :loading="loading">
+              <v-alert
+                v-if="throttleSecs !== null"
+                type="warning"
+                density="compact"
+                variant="tonal"
+                class="mb-4"
+                role="status"
+              >
+                Too many attempts — try again in {{ throttleSecs }}s
+              </v-alert>
+
+              <v-btn
+                type="submit"
+                color="primary"
+                size="large"
+                block
+                :loading="loading"
+                :disabled="throttleSecs !== null"
+              >
                 Login
               </v-btn>
             </v-form>
@@ -60,14 +78,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import { useRedirectionStore } from '@/store/redirectionStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
-import { login } from '@/api/users'
+import { login, type UserSummary } from '@/api/users'
+import { retryAfterSecs, startRetryCountdown } from '@/script/utils/retryAfter'
 
 const password = ref('')
 const showPassword = ref(false)
@@ -96,11 +116,50 @@ const rules = {
   required: (value: string) => !!value || 'This field is required'
 }
 
+// Login throttling (429 from /post/authenticate): inline countdown banner,
+// credentials kept, submit disabled until the ban expires. The interceptor
+// stays silent for this route (see its 429 case), so the banner is the only
+// feedback.
+const throttleSecs = ref<number | null>(null)
+let stopCountdown: (() => void) | null = null
+
+const startThrottle = (totalSecs: number) => {
+  stopCountdown?.()
+  throttleSecs.value = totalSecs
+  stopCountdown = startRetryCountdown(
+    totalSecs,
+    (remainingSecs) => {
+      throttleSecs.value = remainingSecs
+    },
+    () => {
+      throttleSecs.value = null
+      stopCountdown = null
+    }
+  )
+}
+
+onUnmounted(() => {
+  stopCountdown?.()
+})
+
 const handleLogin = async () => {
+  if (throttleSecs.value !== null) return
   loading.value = true
   try {
     await tryWithMessageStore('mainId', async () => {
-      const profile = await login(userId.value, password.value)
+      let profile: UserSummary
+      try {
+        profile = await login(userId.value, password.value)
+      } catch (error: unknown) {
+        if (axios.isAxiosError(error) && error.response?.status === 429) {
+          const secs = retryAfterSecs(error)
+          if (secs !== null) {
+            startThrottle(secs)
+            return
+          }
+        }
+        throw error
+      }
 
       // The session JWT is in an HttpOnly cookie the page never sees;
       // keep only the display profile in the session store.

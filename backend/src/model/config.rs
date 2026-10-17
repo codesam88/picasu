@@ -31,6 +31,48 @@ fn default_max_upload_size() -> String {
     "100MiB".to_string()
 }
 
+// Login-throttle defaults, pinned to the shipped schedules in
+// `crate::auth::rate_limit` so the config cannot drift from the constants
+// the bucket oracle tests pin. All three buckets reject degenerate values
+// at load (`AppConfig::validate_login_throttle`).
+
+fn default_login_ip_window_secs() -> u64 {
+    crate::auth::rate_limit::LOGIN_IP_WINDOW_SECS
+}
+fn default_login_ip_max_failures() -> u32 {
+    crate::auth::rate_limit::LOGIN_IP_MAX_FAILURES
+}
+fn default_login_ip_base_ban_secs() -> u64 {
+    crate::auth::rate_limit::LOGIN_IP_BASE_BAN_SECS
+}
+fn default_login_ip_max_ban_secs() -> u64 {
+    crate::auth::rate_limit::LOGIN_IP_MAX_BAN_SECS
+}
+fn default_login_ip_long_window_secs() -> u64 {
+    crate::auth::rate_limit::LOGIN_IP_LONG_WINDOW_SECS
+}
+fn default_login_ip_long_max_failures() -> u32 {
+    crate::auth::rate_limit::LOGIN_IP_LONG_MAX_FAILURES
+}
+fn default_login_ip_long_base_ban_secs() -> u64 {
+    crate::auth::rate_limit::LOGIN_IP_LONG_BASE_BAN_SECS
+}
+fn default_login_ip_long_max_ban_secs() -> u64 {
+    crate::auth::rate_limit::LOGIN_IP_LONG_MAX_BAN_SECS
+}
+fn default_login_user_long_window_secs() -> u64 {
+    crate::auth::rate_limit::LOGIN_USER_LONG_WINDOW_SECS
+}
+fn default_login_user_long_max_failures() -> u32 {
+    crate::auth::rate_limit::LOGIN_USER_LONG_MAX_FAILURES
+}
+fn default_login_user_long_base_ban_secs() -> u64 {
+    crate::auth::rate_limit::LOGIN_USER_LONG_BASE_BAN_SECS
+}
+fn default_login_user_long_max_ban_secs() -> u64 {
+    crate::auth::rate_limit::LOGIN_USER_LONG_MAX_BAN_SECS
+}
+
 // ── JSON API format (camelCase) ───────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -106,6 +148,56 @@ pub struct AppConfig {
     /// to start. WARN-logged at boot whenever set.
     #[serde(default)]
     pub bootstrap_admin: bool,
+    /// Trust the `X-Forwarded-For` header when keying the login throttle
+    /// (leftmost entry, only when it parses as an IP address). Default off:
+    /// the header is client-spoofable, so only a reverse-proxy deployment
+    /// that strips or overwrites it may enable this. Host-only: the
+    /// throttle tracker is built once at startup, so changing it requires
+    /// a restart.
+    #[serde(default)]
+    pub trust_proxy_forwarded_for: bool,
+    /// Login throttle IP-short burst bucket: `login_ip_max_failures`
+    /// failures within `login_ip_window_secs` open a ban of
+    /// `login_ip_base_ban_secs`, doubling per further pair of failures up
+    /// to `login_ip_max_ban_secs`. Host-only (restart required).
+    #[serde(default = "default_login_ip_window_secs")]
+    pub login_ip_window_secs: u64,
+    /// See [`Self::login_ip_window_secs`].
+    #[serde(default = "default_login_ip_max_failures")]
+    pub login_ip_max_failures: u32,
+    /// See [`Self::login_ip_window_secs`].
+    #[serde(default = "default_login_ip_base_ban_secs")]
+    pub login_ip_base_ban_secs: u64,
+    /// See [`Self::login_ip_window_secs`].
+    #[serde(default = "default_login_ip_max_ban_secs")]
+    pub login_ip_max_ban_secs: u64,
+    /// Login throttle IP-long daily bucket: paced spraying ceiling across
+    /// many usernames from one source. Host-only (restart required).
+    #[serde(default = "default_login_ip_long_window_secs")]
+    pub login_ip_long_window_secs: u64,
+    /// See [`Self::login_ip_long_window_secs`].
+    #[serde(default = "default_login_ip_long_max_failures")]
+    pub login_ip_long_max_failures: u32,
+    /// See [`Self::login_ip_long_window_secs`].
+    #[serde(default = "default_login_ip_long_base_ban_secs")]
+    pub login_ip_long_base_ban_secs: u64,
+    /// See [`Self::login_ip_long_window_secs`].
+    #[serde(default = "default_login_ip_long_max_ban_secs")]
+    pub login_ip_long_max_ban_secs: u64,
+    /// Login throttle user-long daily bucket: per-account ceiling catching
+    /// low-and-slow attacks, keyed on the claimed name even when unknown.
+    /// Host-only (restart required).
+    #[serde(default = "default_login_user_long_window_secs")]
+    pub login_user_long_window_secs: u64,
+    /// See [`Self::login_user_long_window_secs`].
+    #[serde(default = "default_login_user_long_max_failures")]
+    pub login_user_long_max_failures: u32,
+    /// See [`Self::login_user_long_window_secs`].
+    #[serde(default = "default_login_user_long_base_ban_secs")]
+    pub login_user_long_base_ban_secs: u64,
+    /// See [`Self::login_user_long_window_secs`].
+    #[serde(default = "default_login_user_long_max_ban_secs")]
+    pub login_user_long_max_ban_secs: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_key: Option<String>,
     /// Path to the compiled frontend build directory (contains index.html and assets/).
@@ -132,6 +224,19 @@ impl Default for AppConfig {
             allow_registration: false,
             trivial_passwords: false,
             bootstrap_admin: false,
+            trust_proxy_forwarded_for: false,
+            login_ip_window_secs: default_login_ip_window_secs(),
+            login_ip_max_failures: default_login_ip_max_failures(),
+            login_ip_base_ban_secs: default_login_ip_base_ban_secs(),
+            login_ip_max_ban_secs: default_login_ip_max_ban_secs(),
+            login_ip_long_window_secs: default_login_ip_long_window_secs(),
+            login_ip_long_max_failures: default_login_ip_long_max_failures(),
+            login_ip_long_base_ban_secs: default_login_ip_long_base_ban_secs(),
+            login_ip_long_max_ban_secs: default_login_ip_long_max_ban_secs(),
+            login_user_long_window_secs: default_login_user_long_window_secs(),
+            login_user_long_max_failures: default_login_user_long_max_failures(),
+            login_user_long_base_ban_secs: default_login_user_long_base_ban_secs(),
+            login_user_long_max_ban_secs: default_login_user_long_max_ban_secs(),
             auth_key: None,
             web_root: None,
         }
@@ -159,6 +264,32 @@ pub(crate) struct TomlServer {
     pub(crate) port: u16,
     #[serde(default = "default_max_upload_size")]
     pub(crate) max_upload_size: String,
+    #[serde(default)]
+    pub(crate) trust_proxy_forwarded_for: bool,
+    #[serde(default = "default_login_ip_window_secs")]
+    pub(crate) login_ip_window_secs: u64,
+    #[serde(default = "default_login_ip_max_failures")]
+    pub(crate) login_ip_max_failures: u32,
+    #[serde(default = "default_login_ip_base_ban_secs")]
+    pub(crate) login_ip_base_ban_secs: u64,
+    #[serde(default = "default_login_ip_max_ban_secs")]
+    pub(crate) login_ip_max_ban_secs: u64,
+    #[serde(default = "default_login_ip_long_window_secs")]
+    pub(crate) login_ip_long_window_secs: u64,
+    #[serde(default = "default_login_ip_long_max_failures")]
+    pub(crate) login_ip_long_max_failures: u32,
+    #[serde(default = "default_login_ip_long_base_ban_secs")]
+    pub(crate) login_ip_long_base_ban_secs: u64,
+    #[serde(default = "default_login_ip_long_max_ban_secs")]
+    pub(crate) login_ip_long_max_ban_secs: u64,
+    #[serde(default = "default_login_user_long_window_secs")]
+    pub(crate) login_user_long_window_secs: u64,
+    #[serde(default = "default_login_user_long_max_failures")]
+    pub(crate) login_user_long_max_failures: u32,
+    #[serde(default = "default_login_user_long_base_ban_secs")]
+    pub(crate) login_user_long_base_ban_secs: u64,
+    #[serde(default = "default_login_user_long_max_ban_secs")]
+    pub(crate) login_user_long_max_ban_secs: u64,
 }
 
 impl Default for TomlServer {
@@ -167,6 +298,19 @@ impl Default for TomlServer {
             address: default_address(),
             port: default_port(),
             max_upload_size: default_max_upload_size(),
+            trust_proxy_forwarded_for: false,
+            login_ip_window_secs: default_login_ip_window_secs(),
+            login_ip_max_failures: default_login_ip_max_failures(),
+            login_ip_base_ban_secs: default_login_ip_base_ban_secs(),
+            login_ip_max_ban_secs: default_login_ip_max_ban_secs(),
+            login_ip_long_window_secs: default_login_ip_long_window_secs(),
+            login_ip_long_max_failures: default_login_ip_long_max_failures(),
+            login_ip_long_base_ban_secs: default_login_ip_long_base_ban_secs(),
+            login_ip_long_max_ban_secs: default_login_ip_long_max_ban_secs(),
+            login_user_long_window_secs: default_login_user_long_window_secs(),
+            login_user_long_max_failures: default_login_user_long_max_failures(),
+            login_user_long_base_ban_secs: default_login_user_long_base_ban_secs(),
+            login_user_long_max_ban_secs: default_login_user_long_max_ban_secs(),
         }
     }
 }
@@ -256,6 +400,19 @@ impl From<TomlFile> for AppConfig {
             allow_registration: t.gallery.allow_registration,
             trivial_passwords: t.gallery.trivial_passwords,
             bootstrap_admin: t.gallery.bootstrap_admin,
+            trust_proxy_forwarded_for: t.server.trust_proxy_forwarded_for,
+            login_ip_window_secs: t.server.login_ip_window_secs,
+            login_ip_max_failures: t.server.login_ip_max_failures,
+            login_ip_base_ban_secs: t.server.login_ip_base_ban_secs,
+            login_ip_max_ban_secs: t.server.login_ip_max_ban_secs,
+            login_ip_long_window_secs: t.server.login_ip_long_window_secs,
+            login_ip_long_max_failures: t.server.login_ip_long_max_failures,
+            login_ip_long_base_ban_secs: t.server.login_ip_long_base_ban_secs,
+            login_ip_long_max_ban_secs: t.server.login_ip_long_max_ban_secs,
+            login_user_long_window_secs: t.server.login_user_long_window_secs,
+            login_user_long_max_failures: t.server.login_user_long_max_failures,
+            login_user_long_base_ban_secs: t.server.login_user_long_base_ban_secs,
+            login_user_long_max_ban_secs: t.server.login_user_long_max_ban_secs,
             // The signing key never comes from the file mapping: boot
             // resolves it from the secrets file / legacy text / env.
             auth_key: None,
@@ -271,6 +428,19 @@ impl From<AppConfig> for TomlFile {
                 address: c.address,
                 port: c.port,
                 max_upload_size: c.max_upload_size,
+                trust_proxy_forwarded_for: c.trust_proxy_forwarded_for,
+                login_ip_window_secs: c.login_ip_window_secs,
+                login_ip_max_failures: c.login_ip_max_failures,
+                login_ip_base_ban_secs: c.login_ip_base_ban_secs,
+                login_ip_max_ban_secs: c.login_ip_max_ban_secs,
+                login_ip_long_window_secs: c.login_ip_long_window_secs,
+                login_ip_long_max_failures: c.login_ip_long_max_failures,
+                login_ip_long_base_ban_secs: c.login_ip_long_base_ban_secs,
+                login_ip_long_max_ban_secs: c.login_ip_long_max_ban_secs,
+                login_user_long_window_secs: c.login_user_long_window_secs,
+                login_user_long_max_failures: c.login_user_long_max_failures,
+                login_user_long_base_ban_secs: c.login_user_long_base_ban_secs,
+                login_user_long_max_ban_secs: c.login_user_long_max_ban_secs,
             },
             gallery: TomlGallery {
                 data_home: c.data_home,
@@ -307,9 +477,60 @@ impl AppConfig {
         }
     }
 
+    /// Validate the three login-throttle bucket schedules against
+    /// [`crate::auth::rate_limit::Bucket`]'s rules: no zero window, zero
+    /// `max_failures`, zero base ban, or cap below base on any bucket.
+    /// Called at load so a degenerate schedule fails startup instead of
+    /// silently clamping to a policy nobody asked for.
+    ///
+    /// # Errors
+    /// Names the offending bucket schedule when any tuple is degenerate.
+    pub fn validate_login_throttle(&self) -> anyhow::Result<()> {
+        use crate::auth::rate_limit::Bucket;
+        let schedules = [
+            (
+                "login_ip_window_secs/login_ip_max_failures/login_ip_base_ban_secs/login_ip_max_ban_secs",
+                (
+                    self.login_ip_window_secs,
+                    self.login_ip_max_failures,
+                    self.login_ip_base_ban_secs,
+                    self.login_ip_max_ban_secs,
+                ),
+            ),
+            (
+                "login_ip_long_window_secs/login_ip_long_max_failures/login_ip_long_base_ban_secs/login_ip_long_max_ban_secs",
+                (
+                    self.login_ip_long_window_secs,
+                    self.login_ip_long_max_failures,
+                    self.login_ip_long_base_ban_secs,
+                    self.login_ip_long_max_ban_secs,
+                ),
+            ),
+            (
+                "login_user_long_window_secs/login_user_long_max_failures/login_user_long_base_ban_secs/login_user_long_max_ban_secs",
+                (
+                    self.login_user_long_window_secs,
+                    self.login_user_long_max_failures,
+                    self.login_user_long_base_ban_secs,
+                    self.login_user_long_max_ban_secs,
+                ),
+            ),
+        ];
+        for (knobs, (window, max_failures, base, cap)) in schedules {
+            Bucket::new(window, max_failures, base, cap).map_err(|e| {
+                anyhow::anyhow!("invalid login throttle config [server] {knobs}: {e}")
+            })?;
+        }
+        Ok(())
+    }
+
     /// # Panics
     /// Panics if the global configuration is already initialized.
-    pub fn init() {
+    /// # Errors
+    /// Returns an error when the login-throttle configuration is
+    /// degenerate; the caller must fail startup instead of serving with a
+    /// silently altered throttle policy.
+    pub fn init() -> anyhow::Result<()> {
         let config_path = get_config_path();
         let config_path_display = config_path.display();
 
@@ -406,6 +627,10 @@ impl AppConfig {
 
         Self::apply_env_overrides(&mut config);
 
+        // Degenerate throttle schedules fail startup (the caller maps this
+        // to a non-zero exit) rather than clamp to a silent policy.
+        config.validate_login_throttle()?;
+
         if config.web_root.is_none() {
             let data_home = config
                 .data_home
@@ -433,74 +658,109 @@ impl AppConfig {
 
         // Let the logger know where we ended up
         info!("Configuration loaded successfully.");
+        Ok(())
     }
 
     fn apply_env_overrides(config: &mut AppConfig) {
-        if let Ok(val) = std::env::var("PICASU_DATA_HOME") {
-            let p = val.trim().to_string();
-            if !p.is_empty() {
-                config.data_home = Some(PathBuf::from(p));
-            }
+        Self::apply_env_overrides_with(config, |name| std::env::var(name).ok());
+    }
+
+    /// Env-override application with the variable lookup injected, so
+    /// tests can drive precedence hermetically: the crate denies `unsafe`,
+    /// hence no process-env mutation from tests.
+    fn apply_env_overrides_with(config: &mut AppConfig, get: impl Fn(&str) -> Option<String>) {
+        // Trimmed, non-empty string override into an `Option` field.
+        macro_rules! set_str {
+            ($field:ident, $var:literal) => {
+                if let Some(val) = get($var) {
+                    let p = val.trim().to_string();
+                    if !p.is_empty() {
+                        config.$field = Some(p.into());
+                    }
+                }
+            };
         }
-        if let Ok(val) = std::env::var("PICASU_IMAGE_HOME") {
-            let p = val.trim().to_string();
-            if !p.is_empty() {
-                config.image_home = Some(PathBuf::from(p));
-            }
+        // Parsed scalar override; an unparsable value keeps the current one.
+        macro_rules! set_parse {
+            ($field:ident, $var:literal) => {
+                if let Some(val) = get($var)
+                    && let Ok(parsed) = val.parse()
+                {
+                    config.$field = parsed;
+                }
+            };
         }
-        if let Ok(val) = std::env::var("PICASU_PORT")
-            && let Ok(port) = val.parse()
-        {
-            config.port = port;
-        }
-        if let Ok(val) = std::env::var("PICASU_ADDRESS") {
+        set_str!(data_home, "PICASU_DATA_HOME");
+        set_str!(image_home, "PICASU_IMAGE_HOME");
+        set_parse!(port, "PICASU_PORT");
+        if let Some(val) = get("PICASU_ADDRESS") {
             config.address = val;
         }
-        if let Ok(val) = std::env::var("PICASU_READ_ONLY_MODE")
-            && let Ok(mode) = val.parse()
-        {
-            config.read_only_mode = mode;
-        }
-        if let Ok(val) = std::env::var("PICASU_ALLOW_REGISTRATION")
-            && let Ok(mode) = val.parse()
-        {
-            config.allow_registration = mode;
-        }
-        if let Ok(val) = std::env::var("PICASU_TRIVIAL_PASSWORDS")
-            && let Ok(mode) = val.parse()
-        {
-            config.trivial_passwords = mode;
-        }
-        if let Ok(val) = std::env::var("PICASU_BOOTSTRAP_ADMIN")
-            && let Ok(mode) = val.parse()
-        {
-            config.bootstrap_admin = mode;
-        }
-        if let Ok(val) = std::env::var("PICASU_DISABLE_IMG")
-            && let Ok(disabled) = val.parse()
-        {
-            config.disable_img = disabled;
-        }
-        if let Ok(val) = std::env::var("PICASU_FS_NOTIFY_WATCHER") {
+        set_parse!(read_only_mode, "PICASU_READ_ONLY_MODE");
+        set_parse!(allow_registration, "PICASU_ALLOW_REGISTRATION");
+        set_parse!(trivial_passwords, "PICASU_TRIVIAL_PASSWORDS");
+        set_parse!(bootstrap_admin, "PICASU_BOOTSTRAP_ADMIN");
+        set_parse!(
+            trust_proxy_forwarded_for,
+            "PICASU_TRUST_PROXY_FORWARDED_FOR"
+        );
+        set_parse!(login_ip_window_secs, "PICASU_LOGIN_IP_WINDOW_SECS");
+        set_parse!(login_ip_max_failures, "PICASU_LOGIN_IP_MAX_FAILURES");
+        set_parse!(login_ip_base_ban_secs, "PICASU_LOGIN_IP_BASE_BAN_SECS");
+        set_parse!(login_ip_max_ban_secs, "PICASU_LOGIN_IP_MAX_BAN_SECS");
+        set_parse!(
+            login_ip_long_window_secs,
+            "PICASU_LOGIN_IP_LONG_WINDOW_SECS"
+        );
+        set_parse!(
+            login_ip_long_max_failures,
+            "PICASU_LOGIN_IP_LONG_MAX_FAILURES"
+        );
+        set_parse!(
+            login_ip_long_base_ban_secs,
+            "PICASU_LOGIN_IP_LONG_BASE_BAN_SECS"
+        );
+        set_parse!(
+            login_ip_long_max_ban_secs,
+            "PICASU_LOGIN_IP_LONG_MAX_BAN_SECS"
+        );
+        set_parse!(
+            login_user_long_window_secs,
+            "PICASU_LOGIN_USER_LONG_WINDOW_SECS"
+        );
+        set_parse!(
+            login_user_long_max_failures,
+            "PICASU_LOGIN_USER_LONG_MAX_FAILURES"
+        );
+        set_parse!(
+            login_user_long_base_ban_secs,
+            "PICASU_LOGIN_USER_LONG_BASE_BAN_SECS"
+        );
+        set_parse!(
+            login_user_long_max_ban_secs,
+            "PICASU_LOGIN_USER_LONG_MAX_BAN_SECS"
+        );
+        set_parse!(disable_img, "PICASU_DISABLE_IMG");
+        if let Some(val) = get("PICASU_FS_NOTIFY_WATCHER") {
             if let Ok(enabled) = val.parse() {
                 config.fs_notify_watcher = enabled;
             } else {
                 warn!("PICASU_FS_NOTIFY_WATCHER='{val}' is not 'true' or 'false', ignoring");
             }
         }
-        if let Ok(val) = std::env::var("PICASU_UPLOAD_FOLDER") {
+        if let Some(val) = get("PICASU_UPLOAD_FOLDER") {
             let trimmed = val.trim().to_string();
             if !trimmed.is_empty() {
                 config.upload_folder = trimmed;
             }
         }
-        if let Ok(val) = std::env::var("PICASU_MAX_UPLOAD_SIZE") {
+        if let Some(val) = get("PICASU_MAX_UPLOAD_SIZE") {
             let trimmed = val.trim().to_string();
             if !trimmed.is_empty() {
                 config.max_upload_size = trimmed;
             }
         }
-        if let Ok(val) = std::env::var("PICASU_AUTH_KEY") {
+        if let Some(val) = get("PICASU_AUTH_KEY") {
             let trimmed = val.trim().to_string();
             config.auth_key = if trimmed.is_empty() {
                 None
@@ -508,12 +768,7 @@ impl AppConfig {
                 Some(trimmed)
             };
         }
-        if let Ok(val) = std::env::var("PICASU_WEB_ROOT") {
-            let trimmed = val.trim().to_string();
-            if !trimmed.is_empty() {
-                config.web_root = Some(PathBuf::from(trimmed));
-            }
-        }
+        set_str!(web_root, "PICASU_WEB_ROOT");
     }
 
     /// # Panics
@@ -608,6 +863,19 @@ mod tests {
             allow_registration: true,
             trivial_passwords: true,
             bootstrap_admin: true,
+            trust_proxy_forwarded_for: true,
+            login_ip_window_secs: 100,
+            login_ip_max_failures: 4,
+            login_ip_base_ban_secs: 20,
+            login_ip_max_ban_secs: 200,
+            login_ip_long_window_secs: 2000,
+            login_ip_long_max_failures: 5,
+            login_ip_long_base_ban_secs: 30,
+            login_ip_long_max_ban_secs: 300,
+            login_user_long_window_secs: 3000,
+            login_user_long_max_failures: 6,
+            login_user_long_base_ban_secs: 40,
+            login_user_long_max_ban_secs: 400,
             auth_key: None,
             web_root: Some(PathBuf::from("/tmp/www")),
         };
@@ -714,6 +982,276 @@ port = 9999
     #[test]
     fn bootstrap_admin_defaults_to_false() {
         assert!(!AppConfig::default().bootstrap_admin);
+    }
+
+    fn parse_app_config(toml_str: &str) -> AppConfig {
+        let parsed: TomlFile = toml::from_str(toml_str).expect("failed to deserialize toml");
+        AppConfig::from(parsed)
+    }
+
+    #[test]
+    fn login_throttle_knobs_default_when_absent() {
+        let config = parse_app_config("");
+        assert!(!config.trust_proxy_forwarded_for);
+        assert_eq!(config.login_ip_window_secs, 600);
+        assert_eq!(config.login_ip_max_failures, 3);
+        assert_eq!(config.login_ip_base_ban_secs, 10);
+        assert_eq!(config.login_ip_max_ban_secs, 28_800);
+        assert_eq!(config.login_ip_long_window_secs, 86_400);
+        assert_eq!(config.login_ip_long_max_failures, 16);
+        assert_eq!(config.login_ip_long_base_ban_secs, 1800);
+        assert_eq!(config.login_ip_long_max_ban_secs, 28_800);
+        assert_eq!(config.login_user_long_window_secs, 86_400);
+        assert_eq!(config.login_user_long_max_failures, 18);
+        assert_eq!(config.login_user_long_base_ban_secs, 1800);
+        assert_eq!(config.login_user_long_max_ban_secs, 7200);
+        assert!(
+            config.validate_login_throttle().is_ok(),
+            "the default schedules must validate"
+        );
+    }
+
+    #[test]
+    fn login_throttle_knobs_honor_toml_values() {
+        let config = parse_app_config(
+            r#"
+[server]
+trust_proxy_forwarded_for = true
+login_ip_window_secs = 101
+login_ip_max_failures = 4
+login_ip_base_ban_secs = 7
+login_ip_max_ban_secs = 90
+login_ip_long_window_secs = 202
+login_ip_long_max_failures = 5
+login_ip_long_base_ban_secs = 11
+login_ip_long_max_ban_secs = 91
+login_user_long_window_secs = 303
+login_user_long_max_failures = 6
+login_user_long_base_ban_secs = 13
+login_user_long_max_ban_secs = 92
+"#,
+        );
+        assert!(config.trust_proxy_forwarded_for);
+        assert_eq!(config.login_ip_window_secs, 101);
+        assert_eq!(config.login_ip_max_failures, 4);
+        assert_eq!(config.login_ip_base_ban_secs, 7);
+        assert_eq!(config.login_ip_max_ban_secs, 90);
+        assert_eq!(config.login_ip_long_window_secs, 202);
+        assert_eq!(config.login_ip_long_max_failures, 5);
+        assert_eq!(config.login_ip_long_base_ban_secs, 11);
+        assert_eq!(config.login_ip_long_max_ban_secs, 91);
+        assert_eq!(config.login_user_long_window_secs, 303);
+        assert_eq!(config.login_user_long_max_failures, 6);
+        assert_eq!(config.login_user_long_base_ban_secs, 13);
+        assert_eq!(config.login_user_long_max_ban_secs, 92);
+
+        // The values also survive a save/load round trip under [server].
+        let tf = TomlFile::from(config);
+        let toml_str = toml::to_string_pretty(&tf).expect("serialize toml");
+        let server = toml_str
+            .split("[gallery]")
+            .next()
+            .expect("server section first");
+        assert!(server.contains("trust_proxy_forwarded_for = true"));
+        assert!(server.contains("login_ip_window_secs = 101"));
+        assert!(server.contains("login_user_long_max_ban_secs = 92"));
+        let restored = parse_app_config(&toml_str);
+        assert_eq!(restored.login_ip_long_window_secs, 202);
+        assert!(restored.trust_proxy_forwarded_for);
+    }
+
+    #[test]
+    fn login_throttle_env_overrides_win_over_toml() {
+        // Fake lookup instead of process env (the crate denies `unsafe`,
+        // hence no env mutation from tests): it also pins the exact
+        // variable names — asking for anything else yields `None` and the
+        // assertions below see the TOML values instead.
+        let env: [(&str, &str); 13] = [
+            ("PICASU_TRUST_PROXY_FORWARDED_FOR", "true"),
+            ("PICASU_LOGIN_IP_WINDOW_SECS", "11"),
+            ("PICASU_LOGIN_IP_MAX_FAILURES", "4"),
+            ("PICASU_LOGIN_IP_BASE_BAN_SECS", "21"),
+            ("PICASU_LOGIN_IP_MAX_BAN_SECS", "212"),
+            ("PICASU_LOGIN_IP_LONG_WINDOW_SECS", "111"),
+            ("PICASU_LOGIN_IP_LONG_MAX_FAILURES", "5"),
+            ("PICASU_LOGIN_IP_LONG_BASE_BAN_SECS", "22"),
+            ("PICASU_LOGIN_IP_LONG_MAX_BAN_SECS", "222"),
+            ("PICASU_LOGIN_USER_LONG_WINDOW_SECS", "112"),
+            ("PICASU_LOGIN_USER_LONG_MAX_FAILURES", "6"),
+            ("PICASU_LOGIN_USER_LONG_BASE_BAN_SECS", "23"),
+            ("PICASU_LOGIN_USER_LONG_MAX_BAN_SECS", "232"),
+        ];
+
+        // TOML deliberately carries different values: env must win.
+        let mut config = parse_app_config(
+            r#"
+[server]
+trust_proxy_forwarded_for = false
+login_ip_window_secs = 999
+login_ip_max_failures = 9
+login_ip_base_ban_secs = 90
+login_ip_max_ban_secs = 900
+login_ip_long_window_secs = 998
+login_ip_long_max_failures = 8
+login_ip_long_base_ban_secs = 80
+login_ip_long_max_ban_secs = 800
+login_user_long_window_secs = 997
+login_user_long_max_failures = 7
+login_user_long_base_ban_secs = 70
+login_user_long_max_ban_secs = 700
+"#,
+        );
+        AppConfig::apply_env_overrides_with(&mut config, |name| {
+            env.iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| (*value).to_string())
+        });
+
+        assert!(config.trust_proxy_forwarded_for);
+        assert_eq!(config.login_ip_window_secs, 11);
+        assert_eq!(config.login_ip_max_failures, 4);
+        assert_eq!(config.login_ip_base_ban_secs, 21);
+        assert_eq!(config.login_ip_max_ban_secs, 212);
+        assert_eq!(config.login_ip_long_window_secs, 111);
+        assert_eq!(config.login_ip_long_max_failures, 5);
+        assert_eq!(config.login_ip_long_base_ban_secs, 22);
+        assert_eq!(config.login_ip_long_max_ban_secs, 222);
+        assert_eq!(config.login_user_long_window_secs, 112);
+        assert_eq!(config.login_user_long_max_failures, 6);
+        assert_eq!(config.login_user_long_base_ban_secs, 23);
+        assert_eq!(config.login_user_long_max_ban_secs, 232);
+        assert!(config.validate_login_throttle().is_ok());
+    }
+
+    #[test]
+    fn login_throttle_validation_rejects_degenerate_schedules() {
+        // Zero window / zero max failures / zero base ban and a cap below
+        // the base are rejected on each of the three buckets, never clamped.
+        let cases: Vec<(&str, Box<dyn Fn() -> AppConfig>)> = vec![
+            (
+                "zero IP-short window",
+                Box::new(|| AppConfig {
+                    login_ip_window_secs: 0,
+                    ..AppConfig::default()
+                }),
+            ),
+            (
+                "zero IP-short max failures",
+                Box::new(|| AppConfig {
+                    login_ip_max_failures: 0,
+                    ..AppConfig::default()
+                }),
+            ),
+            (
+                "zero IP-short base ban",
+                Box::new(|| AppConfig {
+                    login_ip_base_ban_secs: 0,
+                    ..AppConfig::default()
+                }),
+            ),
+            (
+                "IP-short cap below base",
+                Box::new(|| AppConfig {
+                    login_ip_base_ban_secs: 20,
+                    login_ip_max_ban_secs: 10,
+                    ..AppConfig::default()
+                }),
+            ),
+            (
+                "zero IP-long window",
+                Box::new(|| AppConfig {
+                    login_ip_long_window_secs: 0,
+                    ..AppConfig::default()
+                }),
+            ),
+            (
+                "zero IP-long max failures",
+                Box::new(|| AppConfig {
+                    login_ip_long_max_failures: 0,
+                    ..AppConfig::default()
+                }),
+            ),
+            (
+                "zero IP-long base ban",
+                Box::new(|| AppConfig {
+                    login_ip_long_base_ban_secs: 0,
+                    ..AppConfig::default()
+                }),
+            ),
+            (
+                "IP-long cap below base",
+                Box::new(|| AppConfig {
+                    login_ip_long_base_ban_secs: 200,
+                    login_ip_long_max_ban_secs: 100,
+                    ..AppConfig::default()
+                }),
+            ),
+            (
+                "zero user-long window",
+                Box::new(|| AppConfig {
+                    login_user_long_window_secs: 0,
+                    ..AppConfig::default()
+                }),
+            ),
+            (
+                "zero user-long max failures",
+                Box::new(|| AppConfig {
+                    login_user_long_max_failures: 0,
+                    ..AppConfig::default()
+                }),
+            ),
+            (
+                "zero user-long base ban",
+                Box::new(|| AppConfig {
+                    login_user_long_base_ban_secs: 0,
+                    ..AppConfig::default()
+                }),
+            ),
+            (
+                "user-long cap below base",
+                Box::new(|| AppConfig {
+                    login_user_long_base_ban_secs: 300,
+                    login_user_long_max_ban_secs: 100,
+                    ..AppConfig::default()
+                }),
+            ),
+        ];
+        for (label, make) in cases {
+            let config = make();
+            let err = config
+                .validate_login_throttle()
+                .expect_err(&format!("{label} must fail validation"));
+            assert!(
+                err.to_string().contains("login"),
+                "error must name the login throttle: {err}"
+            );
+        }
+
+        // Degenerate-but-valid edges still load.
+        let minimal = AppConfig {
+            login_ip_window_secs: 1,
+            login_ip_max_failures: 1,
+            login_ip_base_ban_secs: 1,
+            login_ip_max_ban_secs: 1,
+            login_ip_long_window_secs: 1,
+            login_ip_long_max_failures: 1,
+            login_ip_long_base_ban_secs: 1,
+            login_ip_long_max_ban_secs: 1,
+            login_user_long_window_secs: 1,
+            login_user_long_max_failures: 1,
+            login_user_long_base_ban_secs: 1,
+            login_user_long_max_ban_secs: 1,
+            ..AppConfig::default()
+        };
+        minimal.validate_login_throttle().expect("minimal schedule");
+        let cap_eq_base = AppConfig {
+            login_ip_base_ban_secs: 10,
+            login_ip_max_ban_secs: 10,
+            ..AppConfig::default()
+        };
+        cap_eq_base
+            .validate_login_throttle()
+            .expect("cap equal to base is valid");
     }
 
     #[test]

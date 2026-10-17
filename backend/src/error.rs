@@ -1,4 +1,4 @@
-use rocket::http::Status;
+use rocket::http::{Header, Status};
 use rocket::request::Request;
 use rocket::response::{self, Responder};
 use serde::{Serialize, Serializer};
@@ -17,6 +17,13 @@ pub enum ErrorKind {
     Serialization,
     Auth,
     ReadOnlyMode,
+    /// Throttling answer for brute-force attempts (429).
+    ///
+    /// Renamed in JSON to `"Rate Limited"` (the [`Self::as_str`] spelling);
+    /// the other variants serialize as their derived names.
+    #[allow(dead_code)]
+    #[serde(rename = "Rate Limited")]
+    RateLimited,
 }
 
 impl ErrorKind {
@@ -32,6 +39,7 @@ impl ErrorKind {
             ErrorKind::Serialization => "Serialization Error",
             ErrorKind::Auth => "Authentication Error",
             ErrorKind::ReadOnlyMode => "Read Only Mode",
+            ErrorKind::RateLimited => "Rate Limited",
         }
     }
 }
@@ -50,6 +58,11 @@ pub struct AppError {
     pub status: ErrorStatus,
     pub context: Vec<String>,
     pub source: Option<anyhow::Error>,
+    /// Seconds a client should wait before retrying (throttling answers).
+    ///
+    /// Serialized as camelCase `retryAfter`, omitted entirely when `None` so
+    /// the wire body of non-throttled errors is unchanged.
+    pub retry_after_secs: Option<u64>,
 }
 
 impl Serialize for AppError {
@@ -58,11 +71,22 @@ impl Serialize for AppError {
         S: Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("AppError", 4)?;
+        let field_count = if self.retry_after_secs.is_some() {
+            5
+        } else {
+            4
+        };
+        let mut state = serializer.serialize_struct("AppError", field_count)?;
         state.serialize_field("kind", &self.kind)?;
         state.serialize_field("message", &self.message)?;
         state.serialize_field("status", &self.status)?;
         state.serialize_field("context", &self.context)?;
+        // `AppError` serializes manually (its `source` is not serializable),
+        // so the `skip_serializing_if = "Option::is_none"` equivalent lives
+        // here: no `retryAfter` key at all when unset.
+        if let Some(secs) = self.retry_after_secs {
+            state.serialize_field("retryAfter", &secs)?;
+        }
         state.end()
     }
 }
@@ -75,12 +99,22 @@ impl AppError {
             status: ErrorStatus::Permanent,
             context: Vec::new(),
             source: None,
+            retry_after_secs: None,
         }
     }
 
     #[allow(dead_code)]
     pub fn temporary(mut self) -> Self {
         self.status = ErrorStatus::Temporary;
+        self
+    }
+
+    /// Attach a `Retry-After` hint (seconds) for throttling answers.
+    ///
+    /// The `Responder` impl turns this into the `Retry-After` response header;
+    /// the JSON body carries it as `retryAfter`.
+    pub fn retry_after(mut self, secs: u64) -> Self {
+        self.retry_after_secs = Some(secs);
         self
     }
 
@@ -96,6 +130,7 @@ impl AppError {
             status: ErrorStatus::Permanent,
             context: Vec::new(),
             source: Some(err),
+            retry_after_secs: None,
         }
     }
 
@@ -107,6 +142,7 @@ impl AppError {
             ErrorKind::InvalidInput => Status::BadRequest,
             ErrorKind::Conflict => Status::Conflict,
             ErrorKind::ReadOnlyMode => Status::MethodNotAllowed,
+            ErrorKind::RateLimited => Status::TooManyRequests,
             _ => Status::InternalServerError,
         }
     }
@@ -141,6 +177,7 @@ impl From<anyhow::Error> for AppError {
 impl<'r> Responder<'r, 'static> for AppError {
     fn respond_to(self, req: &'r Request<'_>) -> response::Result<'static> {
         let status = self.http_status();
+        let retry_after_secs = self.retry_after_secs;
 
         // Log the error
         log::error!("API Error: {self}");
@@ -152,6 +189,9 @@ impl<'r> Responder<'r, 'static> for AppError {
             .respond_to(req)
             .map(|mut res| {
                 res.set_status(status);
+                if let Some(secs) = retry_after_secs {
+                    res.set_header(Header::new("Retry-After", secs.to_string()));
+                }
                 res
             })
     }
@@ -187,6 +227,7 @@ where
                 status: ErrorStatus::Permanent,
                 context: vec![],
                 source: Some(e.into()),
+                retry_after_secs: None,
             }
         })
     }
@@ -201,6 +242,7 @@ where
             status: ErrorStatus::Permanent,
             context: vec![ctx.into()],
             source: Some(e.into()),
+            retry_after_secs: None,
         })
     }
 }
@@ -244,4 +286,113 @@ pub fn handle_app_error(error: &AppError) {
         _ => {}
     }
     error!("{:?}", error);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rate_limited_kind_maps_to_429() {
+        assert_eq!(
+            AppError::new(ErrorKind::RateLimited, "throttled").http_status(),
+            Status::TooManyRequests
+        );
+    }
+
+    #[test]
+    fn rate_limited_kind_as_str() {
+        assert_eq!(ErrorKind::RateLimited.as_str(), "Rate Limited");
+    }
+
+    #[test]
+    fn retry_after_builder_sets_field() {
+        let err = AppError::new(ErrorKind::RateLimited, "throttled").retry_after(10);
+        assert_eq!(err.retry_after_secs, Some(10));
+    }
+
+    #[test]
+    fn retry_after_defaults_to_none_in_constructors() {
+        assert_eq!(
+            AppError::new(ErrorKind::RateLimited, "throttled").retry_after_secs,
+            None
+        );
+        let from_err =
+            AppError::from_err(ErrorKind::Internal, anyhow::anyhow!("boom")).retry_after_secs;
+        assert_eq!(from_err, None);
+    }
+
+    #[test]
+    fn serialized_body_omits_retry_field_when_unset() {
+        let err = AppError::new(ErrorKind::RateLimited, "throttled");
+        let serialized = serde_json::to_string(&err).expect("serialize");
+        assert_eq!(
+            serialized,
+            r#"{"kind":"Rate Limited","message":"throttled","status":"Permanent","context":[]}"#
+        );
+    }
+
+    #[test]
+    fn serialized_body_carries_camel_case_retry_field_when_set() {
+        let err = AppError::new(ErrorKind::RateLimited, "throttled").retry_after(10);
+        let serialized = serde_json::to_string(&err).expect("serialize");
+        assert_eq!(
+            serialized,
+            r#"{"kind":"Rate Limited","message":"throttled","status":"Permanent","context":[],"retryAfter":10}"#
+        );
+    }
+
+    // Probes for the Responder header tests. `rocket::Request` has no public
+    // constructor in rocket 0.5, so the only public way to exercise
+    // `respond_to` end-to-end is a real dispatch through a minimal instance
+    // that mounts routes owned by this test module.
+    #[rocket::get("/retry-after-probe-set")]
+    fn retry_after_probe_set() -> AppError {
+        AppError::new(
+            ErrorKind::RateLimited,
+            "Too many login attempts, try again in 10s",
+        )
+        .retry_after(10)
+    }
+
+    #[rocket::get("/retry-after-probe-unset")]
+    fn retry_after_probe_unset() -> AppError {
+        AppError::new(ErrorKind::RateLimited, "Too many login attempts")
+    }
+
+    fn probe_client() -> rocket::local::blocking::Client {
+        let rocket = rocket::build().mount(
+            "/",
+            rocket::routes![retry_after_probe_set, retry_after_probe_unset],
+        );
+        rocket::local::blocking::Client::untracked(rocket).expect("valid rocket instance")
+    }
+
+    #[test]
+    fn responder_sets_retry_after_header_status_and_body_when_set() {
+        let client = probe_client();
+        let resp = client.get("/retry-after-probe-set").dispatch();
+        assert_eq!(resp.status(), Status::TooManyRequests);
+        assert_eq!(resp.headers().get_one("Retry-After"), Some("10"));
+        assert_eq!(
+            resp.into_string().as_deref(),
+            Some(
+                r#"{"kind":"Rate Limited","message":"Too many login attempts, try again in 10s","status":"Permanent","context":[],"retryAfter":10}"#
+            )
+        );
+    }
+
+    #[test]
+    fn responder_omits_retry_after_header_when_unset() {
+        let client = probe_client();
+        let resp = client.get("/retry-after-probe-unset").dispatch();
+        assert_eq!(resp.status(), Status::TooManyRequests);
+        assert!(resp.headers().get_one("Retry-After").is_none());
+        assert_eq!(
+            resp.into_string().as_deref(),
+            Some(
+                r#"{"kind":"Rate Limited","message":"Too many login attempts","status":"Permanent","context":[]}"#
+            )
+        );
+    }
 }
