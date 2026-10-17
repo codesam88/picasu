@@ -61,8 +61,7 @@ admin}` → 200 (`admin` honored); duplicate id → 409.
 ### J5 — Password change
 
 - Self-service: the user supplies the correct old password
-  (`PUT /put/users/password {userId: self, oldPassword, newPassword}`, or
-  the legacy `PUT /put/config/password` route which is caller-only).
+  (`PUT /put/users/password {userId: self, oldPassword, newPassword}`).
 - Admin reset: an admin sets any user's password without the old one.
 - Passwords are trimmed on write and on verify (one canonical form).
 - A change takes effect on the next login; outstanding tokens survive it.
@@ -104,7 +103,6 @@ admin}` → 200 (`admin` honored); duplicate id → 409.
 | `GET /get/users`                 | admin                                                   | 200 list, no hashes                                                                                                                                                                      | 401                                                                                                           |
 | `PUT /put/users/password`        | any authenticated user                                  | 200. Admin: any target, no old needed. Self: correct old required.                                                                                                                       | 400 empty new; 401 wrong old/no creds; 403 cross-user non-admin; 404 unknown (non-empty store); 405 read-only |
 | `PUT /put/users/admin`           | admin                                                   | 200 (no-op same-flag included)                                                                                                                                                           | 400 bad id; 401; 404 unknown; 405 read-only; 409 zero-admin outcome                                           |
-| `PUT /put/config/password`       | any authenticated user                                  | 200, caller-only (delegates to the same rules)                                                                                                                                           | as above; 404 only in the deleted-mid-flight race                                                             |
 | share-guarded reads              | share headers/query or admin cookie                     | scoped data                                                                                                                                                                              | 401; 403/404 on scope violations (F2/F3 fixes)                                                                |
 | `POST /upload`                   | share with `showUpload` + matching album, or admin      | accepted                                                                                                                                                                                 | 401                                                                                                           |
 

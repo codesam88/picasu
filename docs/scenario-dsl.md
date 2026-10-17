@@ -146,16 +146,12 @@ panic message:
 Sets backend runtime configuration before the calls or the browser run.
 The API harness accepts `read_only_mode`, `fs_notify_watcher`,
 `validate_upload_content` and `use_client_timestamp_info`; the UI harness
-additionally accepts `password` and `auth_key`:
+additionally accepts `auth_key`:
 
 ```yaml
 - config:
     read_only_mode: true # PUT /put/config { readOnlyMode: true }
-    password: hunter2 # PUT /put/config/password
 ```
-
-Password is set before `readOnlyMode` so the scenario can configure
-authentication before locking the API behind it.
 
 ## API scenarios (`backend/tests/scenarios/`)
 
@@ -460,7 +456,7 @@ unexercised declaration. Warnings do not fail the test.
 covers:
   api:
     - POST /post/authenticate
-    - PUT /put/config/password
+    - PUT /put/users/password
   ui:
     - textbox/Password
     - route:/home

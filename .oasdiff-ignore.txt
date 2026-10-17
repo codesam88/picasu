@@ -34,3 +34,9 @@ POST /post/users/create api path removed without deprecation
 # HttpOnly `Set-Cookie` and the 200 body is the `{ userId, admin }`
 # session profile. API clients parsing the body must migrate to cookies.
 POST /post/authenticate removed the media type `text/plain` for the response with the status `200`
+
+# 2026-10-17 (R26 config-password alias removal, decided): the self-only
+# `PUT /put/config/password` alias is deleted outright — hard-remove, no
+# deprecation window. Callers migrate one line to the canonical
+# `PUT /put/users/password` with `{userId, oldPassword, newPassword}`.
+PUT /put/config/password api path removed without deprecation
