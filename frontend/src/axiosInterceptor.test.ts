@@ -136,6 +136,17 @@ describe('429 handling', () => {
     expect(queue).toHaveLength(1)
     expect(queue[0]?.text).toContain('Too many login attempts')
   })
+
+  test('unlisted statuses (e.g. 409) toast the server message exactly once', async () => {
+    rejectWith(409, {}, { message: 'User already exists' })
+
+    await expect(axios.post('/post/users/bootstrap', {})).rejects.toBeTruthy()
+
+    const queue = useMessageStore('mainId').queue
+    expect(queue).toHaveLength(1)
+    expect(queue[0]?.text).toContain('User already exists')
+    expect(queue[0]?.color).toBe('error')
+  })
 })
 
 describe('401 handling', () => {

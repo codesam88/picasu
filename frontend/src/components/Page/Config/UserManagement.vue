@@ -47,17 +47,15 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { listUsers, setUserAdmin } from '@/api/users'
 import type { UserSummary } from '@/api/users'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { errorDisplay } from '@/script/utils/errorDisplay'
-import { useCurrentUser, selfRowState, errorToMessage } from '@/script/utils/currentUser'
+import { useCurrentUser, selfRowState } from '@/script/utils/currentUser'
 
 const messageStore = useMessageStore('mainId')
-const router = useRouter()
 const me = useCurrentUser()
 
 // --- State ---
@@ -92,16 +90,10 @@ const applyRoleChange = async (target: UserSummary, admin: boolean) => {
   } catch (error: unknown) {
     // Optimistic toggle failed: revert the switch and reload server state.
     // The global axios interceptor already displays verbatim server messages
-    // and redirects on 401; only fill the gaps it leaves (no-response errors)
-    // and make the login redirect explicit.
+    // and redirects on 401; only fill the gaps it leaves (no-response errors).
     target.admin = previous
-    const status = axios.isAxiosError(error) ? error.response?.status : undefined
     if (!axios.isAxiosError(error) || error.response === undefined) {
       messageStore.error(errorDisplay(error))
-    }
-    const action = errorToMessage(status)
-    if (action.redirectLogin && router.currentRoute.value.name !== 'login') {
-      await router.push({ name: 'login' })
     }
     await refreshUsers()
   } finally {

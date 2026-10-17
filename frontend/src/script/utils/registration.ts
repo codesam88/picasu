@@ -1,4 +1,5 @@
 import type { UserSummary } from '@/api/users'
+import axios from 'axios'
 
 export const isRegistrationSubmittable = (
   userId: string,
@@ -44,7 +45,12 @@ export const submitRegistration = async (
       await deps.onRaceLost(RACE_LOST_NOTICE)
       return 'race-lost'
     }
-    deps.onError(err)
+    // The global axios interceptor already displayed axios errors that
+    // carry a response; surface only what it could not (non-axios throws
+    // and responseless failures).
+    if (!axios.isAxiosError(err) || err.response === undefined) {
+      deps.onError(err)
+    }
     return 'failed'
   }
 }

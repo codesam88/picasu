@@ -130,9 +130,9 @@ const handleRegister = async () => {
 
           await router.replace({ name: 'timeline' })
         },
-        onRaceLost: async (notice: string) => {
-          // 409: another enrollment won the race, fall back to login.
-          messageStore.info(notice)
+        onRaceLost: async () => {
+          // 409: another enrollment won the race. The global interceptor
+          // already toasted the server message; fall back to login silently.
           await router.replace({ name: 'login' })
         },
         onError: (err: unknown) => {
