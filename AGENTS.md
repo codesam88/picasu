@@ -78,11 +78,16 @@ Trivial single-fix tasks skip the plan file; say so in one line and do the work.
 - **Block:** set `status: blocked` and note the blocker in the body.
 - **Validate:** run `just plan-lint` to check; `just plan-format` to auto-format.
 
-## Code documentation
+## Code comments and documentation
 
-Prefer `///` doc comments in the Rust source to document function purpose and any non-obvious design decisions.
-Doc comments live next to the code, get updated with it, serve `cargo doc`, IDEs, and agents equally, and never rot.
-
-Items which do not fit into code documentation such as design decisions and usage instructions belong in separate user-focused documentation.
-
-Only document here what cannot be derived from the code itself.
+- Do inline code comments but keep it concise and conventional: state what
+  the code does not already say. Explain a special implementation aspect
+  when it is not covered in user-facing documentation or specs.
+- Code and documentation must be self-contained: describe the current
+  state, never the progress or plans that led to it (no "new", "now",
+  "recently", "TODO for step X", or pointers at plan files).
+- `.plan/` files and task notes are short-lived developer scratchpads.
+  They may be referenced in git commit messages, but never in code
+  comments or documentation.
+- Architecture, workflows, usage instructions belong in separate
+  user-focused documentation, not into code comments.
