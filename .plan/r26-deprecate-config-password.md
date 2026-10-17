@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: chore
 priority: high
 area: backend
@@ -57,3 +57,5 @@ oldPassword, newPassword)` calling `PUT /put/users/password`; `ChangePassword`
    Playwright givens): delete alias rows, keep canonical `users/password`
    matrix (self 200/401, cross-user 403, unknown 404, empty-store 404).
    Done: full `cargo test`, frontend suite, `just check` green.
+   Done 2026-10-17: alias half of enroll_gate empty-store test removed
+   (canonical 404 assert kept; full lib 715 green, `just check` exit 0).

@@ -232,20 +232,11 @@ fn password_put_on_empty_store_is_404_and_creates_nothing() {
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
     // No cookie: the open window admits the ephemeral admin identity, but
-    // the password route refuses the unknown target.
+    // the canonical password route refuses the unknown target.
     let resp = client
         .put("/put/users/password")
         .header(ContentType::JSON)
         .body(json!({ "userId": "first", "newPassword": test_password("t-put-first") }).to_string())
-        .dispatch();
-    assert_eq!(resp.status(), Status::NotFound);
-
-    // The self-change route is the same call with the caller id;
-    // it must refuse too when the store is empty.
-    let resp = client
-        .put("/put/config/password")
-        .header(ContentType::JSON)
-        .body(json!({ "password": test_password("t-put-first") }).to_string())
         .dispatch();
     assert_eq!(resp.status(), Status::NotFound);
 
