@@ -10,8 +10,6 @@ import { useRowStore } from '@/store/rowStore'
 import { useLocationStore } from '@/store/locationStore'
 import { useModalStore } from '@/store/modalStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
-import { useRedirectionStore } from '@/store/redirectionStore'
-import { useSessionStore } from '@/store/sessionStore'
 import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useTokenStore } from '@/store/tokenStore'
 import { useConstStore } from '@/store/constStore'
@@ -28,7 +26,6 @@ const workerHandlerMap = new Map<Worker, (e: MessageEvent) => void>()
 export function handleDataWorkerReturn(dataWorker: Worker, isolationId: IsolationId) {
   const messageStore = useMessageStore('mainId')
   const modalStore = useModalStore('mainId')
-  const redirectionStore = useRedirectionStore('mainId')
   const tagStore = useTagStore('mainId')
   const constStore = useConstStore('mainId')
   const tokenStore = useTokenStore(isolationId)
@@ -133,9 +130,9 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
       messageStore.push(payload.text, payload.color)
     },
 
-    unauthorized: async () => {
-      useSessionStore('mainId').clearProfile()
-      await redirectionStore.redirectionToLogin()
+    tokenExpired: () => {
+      console.info('data worker token expired, renewing timestamp token')
+      void tokenStore.forceRenewTimestampToken()
     },
 
     refreshTimestampToken: (payload) => {
