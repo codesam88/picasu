@@ -34,6 +34,7 @@ use std::sync::{MutexGuard, OnceLock};
 use openapi_sanity::{HandlerSummary, TreeReport, scan_source_root, vocabulary};
 use rocket::http::Method;
 
+use crate::error::{AppError, ErrorKind};
 use crate::openapi_public::{is_test_only_path, public_json};
 use crate::spec_path::to_spec_path;
 use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, build_test_rocket};
@@ -381,11 +382,11 @@ fn public_spec() -> serde_json::Value {
     serde_json::from_str(&public_json()).expect("public spec must be valid JSON")
 }
 
-/// `GET /unauthorized` is the landing page whose own response body is a 401,
-/// not an API authentication failure, so it keeps an inline response instead of
-/// the shared component. Named explicitly rather than exempted by tag, so a new
-/// page operation cannot bypass the rule.
-fn is_unauthorized_landing_page(method: &str, path: &str) -> bool {
+/// `GET /unauthorized` is a bodiless 401 probe, not an API authentication
+/// failure, so it keeps an inline response instead of the shared component.
+/// Named explicitly rather than exempted by tag, so a new page operation
+/// cannot bypass the rule.
+fn is_unauthorized_probe(method: &str, path: &str) -> bool {
     method == "get" && path == "/unauthorized"
 }
 
@@ -419,6 +420,26 @@ fn spec_registers_the_shared_unauthorized_response() {
     );
 }
 
+/// The shared 401 documents the JSON error body the 401 catcher answers
+/// with, pinned to the catcher's own serialization so the documented
+/// contract cannot rot beside it.
+#[test]
+fn unauthorized_component_documents_the_json_error_body() {
+    let spec = public_spec();
+    let body = &spec["components"]["responses"]["Unauthorized"]["content"]["application/json"];
+    assert_eq!(
+        body["schema"],
+        serde_json::json!({"$ref": "#/components/schemas/UnauthorizedBody"}),
+        "the 401 body must reference the documented error schema"
+    );
+    let answered = serde_json::to_value(AppError::new(ErrorKind::Auth, "Unauthorized"))
+        .expect("the 401 catcher body must serialize");
+    assert_eq!(
+        &body["example"], &answered,
+        "the documented 401 example must equal the 401 catcher's `AppError` serialization"
+    );
+}
+
 #[test]
 fn unauthorized_response_is_referenced_not_inlined() {
     let spec = public_spec();
@@ -431,7 +452,7 @@ fn unauthorized_response_is_referenced_not_inlined() {
             if unauthorized.is_null() {
                 continue;
             }
-            if is_unauthorized_landing_page(method, path) {
+            if is_unauthorized_probe(method, path) {
                 continue;
             }
             let expected = serde_json::json!({

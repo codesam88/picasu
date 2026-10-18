@@ -6,14 +6,14 @@
 //! to keep in sync. Route-set parity against the real mount table is
 //! `--check-openapi` (`crate::openapi_parity`).
 
-use crate::openapi_components::Unauthorized;
+use crate::openapi_components::{Unauthorized, UnauthorizedBody};
 use utoipa::OpenApi;
 use utoipauto::utoipauto;
 
 #[utoipauto(paths = "./backend/src/router")]
 #[derive(OpenApi)]
 #[openapi(
-    components(responses(Unauthorized)),
+    components(schemas(UnauthorizedBody), responses(Unauthorized)),
     info(
         description = "Self-hosted photo gallery API. This document is generated from the `#[utoipa::path]` annotations in `backend/src/router`; see `docs/openapi-generator.md`.",
         contact(name = "picasu", url = "https://github.com/codesam88/picasu")
