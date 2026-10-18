@@ -11,6 +11,12 @@ interface JwtPayload {
   [key: string]: unknown
 }
 
+/**
+ * Renew a serving token handed out with less than this much validity left.
+ * Margin against the dispatch→server window; server TTL is 300 s.
+ */
+export const RENEW_BUFFER_SECS = 120
+
 export const useTokenStore = (isolationId: IsolationId) =>
   defineStore('tokenStore' + isolationId, {
     state: (): {
@@ -41,6 +47,13 @@ export const useTokenStore = (isolationId: IsolationId) =>
       _isTokenExpired(token: string): boolean {
         const decoded = this._decodeToken(token)
         return decoded ? this._isExpired(decoded.exp) : true
+      },
+
+      _withinRenewBuffer(token: string): boolean {
+        const decoded = this._decodeToken(token)
+        if (decoded === null) return true
+        if (typeof decoded.exp !== 'number') return false
+        return decoded.exp - Math.floor(Date.now() / 1000) < RENEW_BUFFER_SECS
       },
 
       _getTimestampFromToken(): number | null {
@@ -113,7 +126,7 @@ export const useTokenStore = (isolationId: IsolationId) =>
           return null
         }
 
-        if (!this._isTokenExpired(currentToken)) {
+        if (!this._withinRenewBuffer(currentToken)) {
           return currentToken
         }
 
@@ -127,8 +140,37 @@ export const useTokenStore = (isolationId: IsolationId) =>
       },
 
       async refreshTimestampTokenIfExpired(): Promise<void> {
-        if (this.timestampToken == null || !this._isTokenExpired(this.timestampToken)) return
+        if (this.timestampToken == null || !this._withinRenewBuffer(this.timestampToken)) return
         await this._refreshTimestampTokenWithLock()
+      },
+
+      /**
+       * Server-authoritative renewal: renews regardless of the local clock.
+       */
+      async forceRenewTimestampToken(): Promise<void> {
+        await this._refreshTimestampTokenWithLock()
+      },
+
+      /**
+       * Server-authoritative renewal of one asset token: refreshes the
+       * timestamp token first when it is within the renew buffer (the
+       * server needs an unexpired bearer), then renews the asset token
+       * regardless of the local clock.
+       */
+      async forceRenewAssetToken(assetId: string): Promise<string | null> {
+        const currentToken = this.assetTokenMap.get(assetId)
+        if (currentToken === undefined) {
+          console.error(`No token found for assetId: ${assetId}`)
+          return null
+        }
+
+        await this.refreshTimestampTokenIfExpired()
+
+        const newToken = await this._updateAssetToken(currentToken)
+        if (newToken !== null) {
+          this.assetTokenMap.set(assetId, newToken)
+        }
+        return newToken
       },
 
       async refreshAssetTokenIfExpired(assetId: string): Promise<void> {
