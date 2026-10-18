@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: medium
 area: frontend
@@ -106,3 +106,16 @@ resilience.md`); the plain buffer gate composes with it independently.
   cheaper single-point shape.
 - `Date`-header anchoring (see `token-expiry-clock-resilience.md`)
   remains out of scope here.
+
+Done 2026-10-18: step-1 verification mapped all renewal-rejection
+statuses (share-revocation at renewal time is 401 `Auth` — never
+escalates to login from a share tab, since the interceptor routes every
+share-tab status to the share flow); step 2 landed the 120 s buffer +
+force-renew actions (`1b5ae33f1`); step 3 the `tokenExpired` rename and
+handler reshuffle (`95ff893db`); step 5 the `docs/auth.md`
+serving-token-lifecycle paragraph. Full `just check` green at close.
+Recorded caveat from verification: a share revoked between guard-time
+and renewal-time answers 403 at the guard but 401 at revalidation, so it
+surfaces as the password modal (`isLinkExpired=false`), not the
+expired-link UX; a guard-time 404 deletion on a share tab stays silent
+(both pre-existing, unchanged).
