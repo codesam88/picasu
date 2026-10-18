@@ -741,7 +741,8 @@ Returns the live `SessionRecord` array (`jti` + `issuedAt`) for the
 authenticated user only. Any authenticated user may call it; it never
 returns another user's sessions.
 
-Errors: 401 missing or invalid credentials — 500 storage failure.
+Errors: 401 missing or invalid credentials — 403 closed install (no
+administrator enrolled) — 500 storage failure.
 
 > Example responses
 
@@ -773,6 +774,7 @@ Errors: 401 missing or invalid credentials — 500 storage failure.
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Live sessions                                                                              | Inline                                      |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <h3 id="list-the-caller's-live-sessions.-responseschema">Response Schema</h3>
@@ -2826,11 +2828,12 @@ rules — see `auth::password::check_strength`).
 Corner cases: Any authenticated user reaches this route (share tokens
 are rejected); unauthenticated callers are denied at dispatch.
 
-Errors: 400 invalid `userId` or `newPassword` violating the password
-policy — 401
-missing or invalid credentials, or wrong `oldPassword` — 403 non-admin
+Errors: 400 invalid `userId`, `newPassword` violating the password
+policy, or a wrong/missing `oldPassword` on self-change — 403 non-admin
 targeting another user — 404 unknown `userId` — 405 read-only mode —
-500 storage failure.
+500 storage failure. 401 is session-tier only: the route's only 401
+source is the `GuardUser` cookie guard rejecting an unauthenticated or
+sessionless caller.
 
 > Body parameter
 
@@ -2866,7 +2869,7 @@ targeting another user — 404 unknown `userId` — 405 read-only mode —
 | Status | Meaning                                                                    | Description                                                                                | Schema                                      |
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Password updated                                                                           | None                                        |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input or wrong current password                                                    | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None                                        |

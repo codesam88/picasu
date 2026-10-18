@@ -35,11 +35,12 @@ pub struct SetUserPasswordRequest {
 /// `POST /post/users/bootstrap` or the `picasu-admin` CLI.
 ///
 /// # Errors
-/// Returns 400 when the id is invalid or the new password is shorter than
-/// [`users::MIN_PASSWORD_LEN`] after trimming, 401 when the old password is
-/// wrong, 403 when a non-admin targets another user, 404 when the target
-/// user is unknown (empty store included), and 500 when either store
-/// fails.
+/// Returns 400 when the id is invalid, the new password is shorter than
+/// [`users::MIN_PASSWORD_LEN`] after trimming, or the old password is wrong
+/// or missing on self-change, 403 when a non-admin targets another user, 404
+/// when the target user is unknown (empty store included), and 500 when
+/// either store fails. Unauthenticated callers are 401 at the guard, before
+/// the handler runs.
 pub(crate) fn set_password_sync(
     caller_id: &str,
     caller_admin: bool,
@@ -78,8 +79,14 @@ pub(crate) fn set_password_sync(
         let store = crate::auth::password::PasswdFile::load(&path)
             .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
         if !store.verify(&target, presented) {
-            return Err(AppError::new(ErrorKind::Auth, "Incorrect current password")
-                .context("Password change failed"));
+            // Value-credential tier: the request's session cookie was
+            // accepted, so this is input validation (400), not
+            // authentication (401) — a 401 here would tear down the SPA
+            // display session although the cookie stays valid.
+            return Err(
+                AppError::new(ErrorKind::InvalidInput, "Incorrect current password")
+                    .context("Password change failed"),
+            );
         }
     }
     // Sessions first, password second: a crash between leaves re-login-with-old-password, the safe direction.
@@ -109,17 +116,18 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::Claims) -> (String, 
 /// Corner cases: Any authenticated user reaches this route (share tokens
 /// are rejected); unauthenticated callers are denied at dispatch.
 ///
-/// Errors: 400 invalid `userId` or `newPassword` violating the password
-/// policy — 401
-/// missing or invalid credentials, or wrong `oldPassword` — 403 non-admin
+/// Errors: 400 invalid `userId`, `newPassword` violating the password
+/// policy, or a wrong/missing `oldPassword` on self-change — 403 non-admin
 /// targeting another user — 404 unknown `userId` — 405 read-only mode —
-/// 500 storage failure.
+/// 500 storage failure. 401 is session-tier only: the route's only 401
+/// source is the `GuardUser` cookie guard rejecting an unauthenticated or
+/// sessionless caller.
 #[utoipa::path(
         tag = "auth",
         request_body = SetUserPasswordRequest,
         responses(
             (status = 200, description = "Password updated"),
-            (status = 400, description = "Invalid input"),
+            (status = 400, description = "Invalid input or wrong current password"),
             (status = 401, response = Unauthorized),
             (status = 403, description = "Forbidden"),
             (status = 404, description = "User not found"),
@@ -130,10 +138,15 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::Claims) -> (String, 
 ]
 #[put("/put/users/password", data = "<body>")]
 pub async fn set_user_password_handler(
-    user: GuardUser,
+    // `GuardResult` catches the guard's `AppError` in the handler so the
+    // `AppError` responder serializes it — a bare guard discards the payload
+    // and only the status reaches the catchers: the no-admin-enrolled 403
+    // would lose its enrollment hint.
+    user: GuardResult<GuardUser>,
     read_only: GuardResult<GuardReadOnlyMode>,
     body: Json<SetUserPasswordRequest>,
 ) -> AppResult<Status> {
+    let user = user?;
     let _ = read_only?;
     let (caller_id, caller_admin) = caller_identity(&user.claims);
     let req = body.into_inner();
@@ -156,7 +169,9 @@ mod tests {
     use rocket::http::{ContentType, Cookie, Status};
     use serde_json::json;
 
-    use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
+    use crate::tests::bootstrap::{
+        TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state, write_config,
+    };
     use crate::tests::fixtures::test_password;
 
     fn lock() -> std::sync::MutexGuard<'static, ()> {
@@ -221,8 +236,11 @@ mod tests {
         assert!(store.verify("s4d-bob", &test_password("t-bob-new")));
     }
 
+    /// A missing old password on self-change is a value-credential failure
+    /// (the request's own session was accepted): input validation → 400,
+    /// never 401 — a 401 here would tear down the SPA display session.
     #[test]
-    fn admin_self_change_without_old_is_401() {
+    fn admin_self_change_without_old_is_400() {
         let _g = lock();
         let client = setup();
         seed(
@@ -235,7 +253,7 @@ mod tests {
             cookie("s4d-admin", true),
             &json!({ "userId": "s4d-admin", "newPassword": test_password("t-admin-new") }),
         );
-        assert_eq!(status, Status::Unauthorized);
+        assert_eq!(status, Status::BadRequest);
     }
 
     #[test]
@@ -272,8 +290,10 @@ mod tests {
         assert_eq!(status, Status::Ok);
     }
 
+    /// A wrong old password on self-change is a value-credential failure
+    /// (the session cookie was accepted): input validation → 400, never 401.
     #[test]
-    fn self_service_with_wrong_old_password_is_401() {
+    fn self_service_with_wrong_old_password_is_400() {
         let _g = lock();
         let client = setup();
         seed("s4d-dave", false, Some("s4d-dave-old"));
@@ -282,7 +302,34 @@ mod tests {
             cookie("s4d-dave", false),
             &json!({ "userId": "s4d-dave", "oldPassword": "nope", "newPassword": "s4d-dave-new" }),
         );
-        assert_eq!(status, Status::Unauthorized);
+        assert_eq!(status, Status::BadRequest);
+    }
+
+    /// Closed install (bootstrap flag off, empty store): the GuardUser
+    /// no-admin-enrolled refusal is a privilege/administration condition, not
+    /// a session failure — 403 with the enrollment hint, keeping the SPA's
+    /// display session intact.
+    #[test]
+    fn closed_install_guard_user_password_put_is_403() {
+        let _g = lock();
+        let client = setup();
+        write_config(&json!({ "bootstrap_admin": false }));
+        assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+        let resp = client
+            .put("/put/users/password")
+            .header(ContentType::JSON)
+            .body(json!({ "userId": "root", "newPassword": "long-enough-pw" }).to_string())
+            .dispatch();
+        assert_eq!(resp.status(), Status::Forbidden);
+        let body = resp.into_string().unwrap_or_default();
+        assert!(
+            body.contains("PermissionDenied"),
+            "closed-install refusal must carry the PermissionDenied kind, got: {body}"
+        );
+        assert!(
+            body.contains("No administrator enrolled"),
+            "closed-install refusal must keep the enrollment hint, got: {body}"
+        );
     }
 
     #[test]

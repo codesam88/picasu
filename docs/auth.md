@@ -184,8 +184,10 @@ cached. Anonymous `GET /get/users` is 401 in all states, including the
 empty store — it never serves enrollment state.
 
 **Bootstrap mode (opt-in):** a fresh install is closed by default — with an
-empty user store and no legacy password, every guarded route answers 401 and
-`authenticate` accepts nothing. Online enrollment of the first administrator
+empty user store and no legacy password, guarded routes reject callers:
+`GuardAuth` routes answer 401 and `GuardUser` routes answer 403 (a
+privilege condition, not a session failure — the SPA keeps its display
+state), and `authenticate` accepts nothing. Online enrollment of the first administrator
 opens only while the `--bootstrap-admin` flag (or `PICASU_BOOTSTRAP_ADMIN`,
 or the `bootstrap_admin` config key) is set **and** the store is empty and no
 legacy password is configured: `try_jwt_cookie_auth` then returns an admin

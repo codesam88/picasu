@@ -12,12 +12,14 @@ use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 /// authenticated user only. Any authenticated user may call it; it never
 /// returns another user's sessions.
 ///
-/// Errors: 401 missing or invalid credentials — 500 storage failure.
+/// Errors: 401 missing or invalid credentials — 403 closed install (no
+/// administrator enrolled) — 500 storage failure.
 #[utoipa::path(
         tag = "auth",
         responses(
             (status = 200, description = "Live sessions", body = Vec<SessionRecord>),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 500, description = "Internal error"),
         )
     )

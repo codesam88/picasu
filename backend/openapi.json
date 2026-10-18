@@ -2189,7 +2189,7 @@
     },
     "/get/sessions": {
       "get": {
-        "description": "Returns the live `SessionRecord` array (`jti` + `issuedAt`) for the\nauthenticated user only. Any authenticated user may call it; it never\nreturns another user's sessions.\n\nErrors: 401 missing or invalid credentials — 500 storage failure.",
+        "description": "Returns the live `SessionRecord` array (`jti` + `issuedAt`) for the\nauthenticated user only. Any authenticated user may call it; it never\nreturns another user's sessions.\n\nErrors: 401 missing or invalid credentials — 403 closed install (no\nadministrator enrolled) — 500 storage failure.",
         "operationId": "list_sessions_handler",
         "responses": {
           "200": {
@@ -2207,6 +2207,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
           },
           "500": {
             "description": "Internal error"
@@ -3406,7 +3409,7 @@
     },
     "/put/users/password": {
       "put": {
-        "description": "A self-change (target == caller) always requires the correct\n`oldPassword`, admins included; an admin may set another user's password\nwithout the old one (recovery path). A non-admin may only change their\nown. The new\npassword is trimmed and must satisfy the default password policy\nafter trimming (length floor/ceiling, blocklist, user-id and pattern\nrules — see `auth::password::check_strength`).\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch.\n\nErrors: 400 invalid `userId` or `newPassword` violating the password\npolicy — 401\nmissing or invalid credentials, or wrong `oldPassword` — 403 non-admin\ntargeting another user — 404 unknown `userId` — 405 read-only mode —\n500 storage failure.",
+        "description": "A self-change (target == caller) always requires the correct\n`oldPassword`, admins included; an admin may set another user's password\nwithout the old one (recovery path). A non-admin may only change their\nown. The new\npassword is trimmed and must satisfy the default password policy\nafter trimming (length floor/ceiling, blocklist, user-id and pattern\nrules — see `auth::password::check_strength`).\n\nCorner cases: Any authenticated user reaches this route (share tokens\nare rejected); unauthenticated callers are denied at dispatch.\n\nErrors: 400 invalid `userId`, `newPassword` violating the password\npolicy, or a wrong/missing `oldPassword` on self-change — 403 non-admin\ntargeting another user — 404 unknown `userId` — 405 read-only mode —\n500 storage failure. 401 is session-tier only: the route's only 401\nsource is the `GuardUser` cookie guard rejecting an unauthenticated or\nsessionless caller.",
         "operationId": "set_user_password_handler",
         "requestBody": {
           "content": {
@@ -3423,7 +3426,7 @@
             "description": "Password updated"
           },
           "400": {
-            "description": "Invalid input"
+            "description": "Invalid input or wrong current password"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
