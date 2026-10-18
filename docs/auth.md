@@ -153,6 +153,24 @@ arrived without any session (deep link, bookmark), so the banner asserts
 nothing about expiry. Repetition is safe by construction — the
 navigation call is a no-op once the router is on the login route.
 
+**Serving-token lifecycle (frontend):** the gallery's serving tokens
+(snapshot and per-asset, 300 s TTL) are renewed on the main thread only —
+`tokenStore` renews whenever a token is within a 120 s margin of its
+expiry at hand-off time, so workers should never process a request with
+a barely-valid token. A worker whose request is answered 401 reports
+that once over its `tokenExpired` message channel (data worker: timestamp
+token rejected; image worker: the rejected asset's id); the main-thread
+handler force-renews server-authoritatively — the renewal endpoints
+accept signature-valid tokens regardless of expiry — and recovery is
+ambient (unfetched batches refill on the next scroll trigger, re-queued
+images read the renewed token). No worker retries, and the worker realms
+hold no escalation policy: if the session itself is dead, the force-renew
+call 401s on the main axios instance and flows into the same
+session-denial contract above. Share contexts are exempt from that
+escalation by construction — the interceptor routes every status inside
+the share flow to the share handlers (password modal / expired-link
+state), never to the login redirect.
+
 **Enrollment signal (frontend boot):** anonymous `GET /get/server-info`
 answers 200 in every install state with exactly `{ enrolled,
 enrollmentOpen, captcha: null }` (`Cache-Control: no-store`): `enrolled`
