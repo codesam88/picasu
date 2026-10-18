@@ -205,6 +205,15 @@ This is the suggested tackle order, not a commitment to fix all items.
   tail (ceremony dup, orphaned config bindings, stale comments/docs) ->
   `frontend-vue-consolidation.md`. Superseded 2026-10-18 by
   `.plan/r26-remainder-bugset.md`, which owns fixes from here.
+  Executed 2026-10-18 → done (`7728075d4`…`c8d4147f1`): O2 backend
+  401 retype (privilege → 403, value-credential → 400, 401 left
+  session-terminal; `GuardResult` keeps reason-bearing bodies),
+  interceptor authenticate carve-out + single `AUTHENTICATE_URL`
+  source, share-create single display owner, boot-guard decision →
+  `route/bootGuard.ts` behavior tests with ping-rejection degrade,
+  phantom shareStore members deleted. Caveat: `interpreter.spec.ts`
+  scenario red predates execution (baseline `2ee4ea835`), tracked in
+  `.plan/e2e-boot-guard-scenario-red.md`.
 - R27 PARTIAL (S2/MED/LOW). Fixed-string 422 (`catchers.rs:33-40`) and
   false `/unauthorized` no-body doc confirmed; "only bare-Status hits
   catchers" refuted — bare guard params also lose detail via codegen.
@@ -269,7 +278,7 @@ R3, R4, R7–R16, R18–R22, R24, R25, R26–R35 (R25–R27, R30–R31 partial).
 In progress: R4+R3 done 2026-10-16, R8+R9+R12 done 2026-10-16, host-only
 knob extension + `secrets.password` doc done, auth-key secrets-file slice
 done 2026-10-16 (`.plan/auth-key-secrets-file.md`), then R26 remainder.
-R26 remainder re-scoped 2026-10-18: fixes now owned by
+R26 remainder re-scoped then executed 2026-10-18 — now done in
 `.plan/r26-remainder-bugset.md`; S3 ride-along tail parked in
 `.plan/frontend-vue-consolidation.md`.
 
