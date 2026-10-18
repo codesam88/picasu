@@ -870,10 +870,21 @@ impl<'r> FromRequest<'r> for GuardUser {
     type Error = GuardError;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        // Tier taxonomy: 401 means the presented credential (cookie) was not
+        // accepted — session-tier only, so the SPA may clear its display
+        // profile. Privilege/administration refusals (no-admin-enrolled) are
+        // not session failures: they return 403 so a client never loses its
+        // display state over an install-state condition.
         let denied = |msg: &str| {
             Outcome::Error((
                 Status::Unauthorized,
                 AppError::new(ErrorKind::Auth, msg).context("Authentication error"),
+            ))
+        };
+        let forbidden = |msg: &str| {
+            Outcome::Error((
+                Status::Forbidden,
+                AppError::new(ErrorKind::PermissionDenied, msg).context("Authorization error"),
             ))
         };
         let non_empty = match crate::auth::users::user_count() {
@@ -894,7 +905,7 @@ impl<'r> FromRequest<'r> for GuardUser {
                     claims: Claims::new_user("admin".to_string(), true),
                 });
             }
-            return denied(
+            return forbidden(
                 "No administrator enrolled: start the server with --bootstrap-admin or provision a user with the picasu-admin CLI",
             );
         }
