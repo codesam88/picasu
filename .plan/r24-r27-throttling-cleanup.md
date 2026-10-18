@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: chore
 priority: high
 area: frontend
@@ -153,6 +153,12 @@ backend contract work (T5), token-refresh wiring (declared
 `refreshTimestampToken`/`refreshHashToken` channel remains reserved).
 
 ### T5 — backend error contract
+
+Done 2026-10-17: T1–T5 landed on `auth-enrollment-review` in eight commits
+(`adee2358f`…`4fd98860a`); T5 chose the fixed-string 422 (user decision),
+documented the UP 401 body via `UnauthorizedBody`, corrected the
+`/unauthorized` probe prose, and regenerated `openapi.json` plus the
+widdershins reference. Full `just check` green at close.
 
 Scope: `backend/src/router/catchers.rs`, `backend/src/openapi_components.rs`,
 `backend/src/router/get/get_page.rs` docs, `backend/openapi.json`
