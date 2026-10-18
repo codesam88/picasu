@@ -152,10 +152,12 @@ pub fn redirect_to_login() -> Redirect {
     Redirect::to(uri!("/login"))
 }
 
-/// Answer the 401 status a rejected sign-in lands on.
+/// Bodiless 401 probe for diagnostics.
 ///
 /// Returns the status alone — no body and no `Location` header — so the
-/// browser renders its own error page for it.
+/// browser renders its own error page for it. Nothing navigates here: no
+/// route redirects to this path and it is not a login page; it exists so
+/// monitoring and tests can observe a bare 401.
 ///
 /// Corner cases: Every request to this path gets that status; the SPA shell
 /// is never returned here.

@@ -2,6 +2,19 @@
   "components": {
     "responses": {
       "Unauthorized": {
+        "content": {
+          "application/json": {
+            "example": {
+              "context": [],
+              "kind": "Auth",
+              "message": "Unauthorized",
+              "status": "Permanent"
+            },
+            "schema": {
+              "$ref": "#/components/schemas/UnauthorizedBody"
+            }
+          }
+        },
         "description": "Authentication credentials are missing, malformed, expired, or invalid for this operation."
       }
     },
@@ -1409,6 +1422,40 @@
         "required": [
           "tag",
           "number"
+        ],
+        "type": "object"
+      },
+      "UnauthorizedBody": {
+        "description": "The JSON body of the shared `401 Unauthorized` response.\n\nEvery 401 carries an `AppError` serialization: `kind` is always `\"Auth\"`,\n`status` is always `\"Permanent\"` (throttling answers are 429, never 401),\nand `retryAfter` never appears on a 401. `message` is the fixed\n`\"Unauthorized\"` string for framework rejections answered by the 401\ncatcher, and the handler's reason for credential rejections raised in a\nhandler body.",
+        "properties": {
+          "context": {
+            "description": "Empty on framework rejections; handler context otherwise.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "description": "The error kind, always `\"Auth\"` on a 401.",
+            "example": "Auth",
+            "type": "string"
+          },
+          "message": {
+            "description": "The fixed `\"Unauthorized\"` string for framework rejections; the\nhandler's reason for credential rejections raised in a handler.",
+            "example": "Unauthorized",
+            "type": "string"
+          },
+          "status": {
+            "description": "The error status, always `\"Permanent\"` on a 401.",
+            "example": "Permanent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "message",
+          "status",
+          "context"
         ],
         "type": "object"
       },
@@ -3612,14 +3659,14 @@
     },
     "/unauthorized": {
       "get": {
-        "description": "Returns the status alone — no body and no `Location` header — so the\nbrowser renders its own error page for it.\n\nCorner cases: Every request to this path gets that status; the SPA shell\nis never returned here.\n\nErrors: 401 always returned, whatever the request carries.",
+        "description": "Returns the status alone — no body and no `Location` header — so the\nbrowser renders its own error page for it. Nothing navigates here: no\nroute redirects to this path and it is not a login page; it exists so\nmonitoring and tests can observe a bare 401.\n\nCorner cases: Every request to this path gets that status; the SPA shell\nis never returned here.\n\nErrors: 401 always returned, whatever the request carries.",
         "operationId": "unauthorized",
         "responses": {
           "401": {
             "description": "Unauthorized status"
           }
         },
-        "summary": "Answer the 401 status a rejected sign-in lands on.",
+        "summary": "Bodiless 401 probe for diagnostics.",
         "tags": [
           "pages"
         ]

@@ -7,8 +7,11 @@
 //!
 //! - `401`: guard/handler rejections with no other responder (also
 //!   silences Rocket's "No 401 catcher registered" warning).
-//! - `422`: data-guard failures, e.g. a well-formed JSON body of the
-//!   wrong shape.
+//! - `422`: Rocket data-guard rejections — a well-formed JSON body the
+//!   route's `Json<T>` guard refuses (a shape mismatch, or unknown or
+//!   mistyped fields under `deny_unknown_fields`). The body is the fixed
+//!   `"Unprocessable entity"` string by contract: per-field detail is not
+//!   delivered.
 //! - `500`: panics and uncaught internal errors. The body carries no
 //!   internals by construction (fresh [`AppError`], no source).
 //!

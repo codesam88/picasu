@@ -84,7 +84,7 @@ The goal is an exact, auditable mapping between:
    ```rust
    #[utoipauto(paths = "./backend/src/router")]
    #[derive(OpenApi)]
-   #[openapi(components(responses(Unauthorized)))]
+   #[openapi(components(schemas(UnauthorizedBody), responses(Unauthorized)))]
    pub struct ApiDoc;
    ```
 
@@ -94,8 +94,9 @@ The goal is an exact, auditable mapping between:
    alone. Every function carrying `#[utoipa::path]` contributes its `__path_*`
    item to `paths(...)`; every struct deriving `ToSchema` or `ToResponse`
    contributes to `components(schemas(...))` / `components(responses(...))`.
-   The `Unauthorized` response component is registered explicitly because it
-   lives in `backend/src/openapi_components.rs`, outside the scanned tree.
+   The `Unauthorized` response component and its `UnauthorizedBody` JSON
+   schema are registered explicitly because they live in
+   `backend/src/openapi_components.rs`, outside the scanned tree.
 
    The directory is spelled relative to the **workspace root**, not the package,
    because that is the working directory cargo runs rustc in.

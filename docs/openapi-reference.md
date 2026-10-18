@@ -39,18 +39,27 @@ Authentication and token renewal
 
 ```shell
 # You can also use wget
-curl -X DELETE /delete/invites/{invite_id}
+curl -X DELETE /delete/invites/{invite_id} \
+  -H 'Accept: application/json'
 
 ```
 
 ```http
 DELETE /delete/invites/{invite_id} HTTP/1.1
 
+Accept: application/json
+
 ```
 
 ```javascript
+const headers = {
+  Accept: "application/json",
+};
+
 fetch("/delete/invites/{invite_id}", {
   method: "DELETE",
+
+  headers: headers,
 })
   .then(function (res) {
     return res.json();
@@ -64,9 +73,13 @@ fetch("/delete/invites/{invite_id}", {
 require 'rest-client'
 require 'json'
 
+headers = {
+  'Accept' => 'application/json'
+}
+
 result = RestClient.delete '/delete/invites/{invite_id}',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -74,8 +87,11 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Accept': 'application/json'
+}
 
-r = requests.delete('/delete/invites/{invite_id}')
+r = requests.delete('/delete/invites/{invite_id}', headers = headers)
 
 print(r.json())
 
@@ -85,6 +101,10 @@ print(r.json())
 <?php
 
 require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
 
 $client = new \GuzzleHttp\Client();
 
@@ -135,6 +155,10 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
     req, err := http.NewRequest("DELETE", "/delete/invites/{invite_id}", data)
     req.Header = headers
@@ -165,15 +189,28 @@ id — 405 read-only mode — 500 storage failure.
 | --------- | ---- | ------ | -------- | --------------------------------------- |
 | invite_id | path | string | true     | Invite id as listed by GET /get/invites |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="revoke-an-invite-token.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Invite revoked                                                                             | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Unknown invite id                                                                          | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Invite revoked                                                                             | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Unknown invite id                                                                          | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -347,13 +384,24 @@ Errors: 401 missing or invalid admin credentials — 500 storage failure.
 ]
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="list-invite-tokens'-metadata.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Invite metadata, never tokens                                                              | Inline |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Invite metadata, never tokens                                                              | Inline                                      |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <h3 id="list-invite-tokens'-metadata.-responseschema">Response Schema</h3>
 
@@ -708,13 +756,24 @@ Errors: 401 missing or invalid credentials — 500 storage failure.
 ]
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="list-the-caller's-live-sessions.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Live sessions                                                                              | Inline |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Live sessions                                                                              | Inline                                      |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <h3 id="list-the-caller's-live-sessions.-responseschema">Response Schema</h3>
 
@@ -890,13 +949,24 @@ accepted — 500 storage failure.
 ]
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="list-all-users-as-`{-userid,-admin-}`-pairs-ordered-by-id.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | User list                                                                                  | Inline |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | User list                                                                                  | Inline                                      |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <h3 id="list-all-users-as-`{-userid,-admin-}`-pairs-ordered-by-id.-responseschema">Response Schema</h3>
 
@@ -1121,15 +1191,26 @@ throttle — for fuzzing runs — while the failure logging stays.
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="sign-in-and-issue-the-session-cookie-(`httponly`).-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema                            |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Session profile; JWT in HttpOnly Set-Cookie                                                | [UserSummary](#schemausersummary) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                              |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                              |
-| 429    | [Too Many Requests](https://tools.ietf.org/html/rfc6585#section-4)         | Too many login attempts; see Retry-After                                                   | None                              |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                              |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Session profile; JWT in HttpOnly Set-Cookie                                                | [UserSummary](#schemausersummary)           |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 429    | [Too Many Requests](https://tools.ietf.org/html/rfc6585#section-4)         | Too many login attempts; see Retry-After                                                   | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -1332,13 +1413,24 @@ credentials — 405 read-only mode — 500 storage failure.
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="create-a-single-use-invite-token.-responses">Responses</h3>
 
 | Status | Meaning                                                                    | Description                                                                                | Schema                                              |
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Invite created; token returned once                                                        | [CreateInviteResponse](#schemacreateinviteresponse) |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                                |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)         |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                                |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                |
 
@@ -1667,13 +1759,24 @@ failure.
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="exchange-an-expired-image-serving-token-for-a-freshly-issued-one.-responses">Responses</h3>
 
 | Status | Meaning                                                                    | Description                                                                                | Schema                                              |
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Hash token renewed                                                                         | [RenewHashTokenReturn](#schemarenewhashtokenreturn) |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                                |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)         |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                |
 
 <aside class="success">
@@ -1876,13 +1979,24 @@ signature — 500 internal failure.
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="exchange-an-expired-prefetch-timestamp-token-for-a-freshly-issued-one.-responses">Responses</h3>
 
 | Status | Meaning                                                                    | Description                                                                                | Schema                                                        |
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Timestamp token renewed                                                                    | [RenewTimestampTokenReturn](#schemarenewtimestamptokenreturn) |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                          |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                                          |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)                   |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                          |
 
 <aside class="success">
@@ -2081,16 +2195,27 @@ the bootstrap window is closed (flag off, or the store is non-empty) —
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="enroll-the-first-administrator.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema                            |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | First administrator enrolled                                                               | [UserSummary](#schemausersummary) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                              |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                              |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                              |
-| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | User already exists                                                                        | None                              |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                              |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | First administrator enrolled                                                               | [UserSummary](#schemausersummary)           |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | User already exists                                                                        | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -2297,18 +2422,29 @@ or invite already used — 500 storage failure.
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="register-a-new-user-account.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema                            |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Account registered (non-admin)                                                             | [UserSummary](#schemausersummary) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                              |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                              |
-| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Registration disabled or invite expired                                                    | None                              |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Unknown or revoked invite token                                                            | None                              |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                              |
-| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | User already exists or invite already used                                                 | None                              |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                              |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Account registered (non-admin)                                                             | [UserSummary](#schemausersummary)           |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Registration disabled or invite expired                                                    | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Unknown or revoked invite token                                                            | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | User already exists or invite already used                                                 | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -2323,7 +2459,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/users/admin \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -2331,6 +2468,7 @@ curl -X PUT /put/users/admin \
 PUT /put/users/admin HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -2340,7 +2478,8 @@ const inputBody = '{
   "userId": "string"
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/put/users/admin',
@@ -2362,7 +2501,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/users/admin',
@@ -2376,7 +2516,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/users/admin', headers = headers)
@@ -2392,6 +2533,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -2445,6 +2587,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -2489,17 +2632,30 @@ failure.
 | ---- | ---- | ------------------------------------------------- | -------- | ----------- |
 | body | body | [SetUserAdminRequest](#schemasetuseradminrequest) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="grant-or-revoke-a-user's-admin-role.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Admin role updated                                                                         | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | Demotion would leave zero admins                                                           | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Admin role updated                                                                         | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | Demotion would leave zero admins                                                           | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -2514,7 +2670,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/users/password \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -2522,6 +2679,7 @@ curl -X PUT /put/users/password \
 PUT /put/users/password HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -2532,7 +2690,8 @@ const inputBody = '{
   "userId": "string"
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/put/users/password',
@@ -2554,7 +2713,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/users/password',
@@ -2568,7 +2728,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/users/password', headers = headers)
@@ -2584,6 +2745,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -2637,6 +2799,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -2685,17 +2848,30 @@ targeting another user — 404 unknown `userId` — 405 read-only mode —
 | ---- | ---- | ------------------------------------------------------- | -------- | ----------- |
 | body | body | [SetUserPasswordRequest](#schemasetuserpasswordrequest) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="change-a-user's-password.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Password updated                                                                           | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Password updated                                                                           | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -2892,12 +3068,23 @@ Errors: 401 no valid admin credentials.
 ]
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="list-every-album-the-metadata-tree-knows.-responses">Responses</h3>
 
-| Status | Meaning                                                         | Description                                                                                | Schema |
-| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | List of albums                                                                             | Inline |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                         | Description                                                                                | Schema                                      |
+| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | List of albums                                                                             | Inline                                      |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 
 <h3 id="list-every-album-the-metadata-tree-knows.-responseschema">Response Schema</h3>
 
@@ -3113,15 +3300,26 @@ could not be created or the album not registered.
 "string"
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="create-a-subdirectory-under-a-dir-album-and-register-it-as-an-album.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | New album ID                                                                               | string |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | New album ID                                                                               | string                                      |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -3327,16 +3525,27 @@ Errors: 400 unusable request body — 401 missing or invalid credentials —
 "string"
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="create-a-share-for-an-album-and-return-its-generated-id.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share link created                                                                         | string |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Album not found                                                                            | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share link created                                                                         | string                                      |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Album not found                                                                            | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -3544,15 +3753,26 @@ mode — 500 storage failure.
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="move-one-asset,-or-one-album-directory,-into-another-album.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema                              |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Item assigned to album                                                                     | [AssignResult](#schemaassignresult) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input or item not found                                                            | None                                |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Item assigned to album                                                                     | [AssignResult](#schemaassignresult)         |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input or item not found                                                            | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -3567,7 +3787,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/delete_share \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -3575,6 +3796,7 @@ curl -X PUT /put/delete_share \
 PUT /put/delete_share HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -3584,7 +3806,8 @@ const inputBody = '{
   "shareId": "string"
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/put/delete_share',
@@ -3606,7 +3829,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/delete_share',
@@ -3620,7 +3844,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/delete_share', headers = headers)
@@ -3636,6 +3861,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -3689,6 +3915,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -3731,15 +3958,28 @@ tokens are not accepted — 405 read-only mode — 500 storage failure.
 | ---- | ---- | --------------------------------- | -------- | ----------- |
 | body | body | [DeleteShare](#schemadeleteshare) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="remove-one-share-from-an-album.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share deleted                                                                              | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share deleted                                                                              | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -3754,7 +3994,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/edit_share \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -3762,6 +4003,7 @@ curl -X PUT /put/edit_share \
 PUT /put/edit_share HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -3779,7 +4021,8 @@ const inputBody = '{
   }
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/put/edit_share',
@@ -3801,7 +4044,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/edit_share',
@@ -3815,7 +4059,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/edit_share', headers = headers)
@@ -3831,6 +4076,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -3884,6 +4130,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -3935,15 +4182,28 @@ tokens are not accepted — 405 read-only mode — 500 storage failure.
 | ---- | ---- | ----------------------------- | -------- | ----------- |
 | body | body | [EditShare](#schemaeditshare) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="create-or-replace-one-of-an-album's-share-entries.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share updated                                                                              | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Share updated                                                                              | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -3958,7 +4218,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/set_album_cover \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -3966,6 +4227,7 @@ curl -X PUT /put/set_album_cover \
 PUT /put/set_album_cover HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -3975,7 +4237,8 @@ const inputBody = '{
   "coverAssetId": "string"
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/put/set_album_cover',
@@ -3997,7 +4260,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/set_album_cover',
@@ -4011,7 +4275,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/set_album_cover', headers = headers)
@@ -4027,6 +4292,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -4080,6 +4346,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -4123,16 +4390,29 @@ names no record — 405 read-only mode — 500 storage failure.
 | ---- | ---- | ------------------------------------- | -------- | ----------- |
 | body | body | [SetAlbumCover](#schemasetalbumcover) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="set-the-cover-image-of-an-album.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Album cover updated                                                                        | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Album cover updated                                                                        | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -4147,7 +4427,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/set_album_title \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -4155,6 +4436,7 @@ curl -X PUT /put/set_album_title \
 PUT /put/set_album_title HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -4164,7 +4446,8 @@ const inputBody = '{
   "title": "string"
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/put/set_album_title',
@@ -4186,7 +4469,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/set_album_title',
@@ -4200,7 +4484,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/set_album_title', headers = headers)
@@ -4216,6 +4501,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -4269,6 +4555,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -4312,16 +4599,29 @@ credentials — 403 a share targeting an album other than its own —
 | ---- | ---- | ------------------------------------- | -------- | ----------- |
 | body | body | [SetAlbumTitle](#schemasetalbumtitle) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="set-the-display-title-of-an-album.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Album title updated                                                                        | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Share targeting another album                                                              | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Album title updated                                                                        | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Share targeting another album                                                              | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -4336,7 +4636,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/set_user_defined_description \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -4344,6 +4645,7 @@ curl -X PUT /put/set_user_defined_description \
 PUT /put/set_user_defined_description HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -4354,7 +4656,8 @@ const inputBody = '{
   "timestamp": 0
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/put/set_user_defined_description',
@@ -4376,7 +4679,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/set_user_defined_description',
@@ -4390,7 +4694,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/set_user_defined_description', headers = headers)
@@ -4406,6 +4711,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -4459,6 +4765,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -4508,16 +4815,29 @@ mode — 500 unknown snapshot, out-of-range index, or storage failure.
 | ---- | ---- | ------------------------------------------------------------- | -------- | ----------- |
 | body | body | [SetUserDefinedDescription](#schemasetuserdefineddescription) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="set-or-clear-the-user-defined-description-of-an-asset.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Description updated                                                                        | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Share targeting another album's asset                                                      | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Description updated                                                                        | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Share targeting another album's asset                                                      | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -4536,7 +4856,8 @@ Per-asset metadata and editing: flags, rating, tags, rotation, thumbnails, delet
 ```shell
 # You can also use wget
 curl -X DELETE /delete/delete-data \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -4544,6 +4865,7 @@ curl -X DELETE /delete/delete-data \
 DELETE /delete/delete-data HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -4555,7 +4877,8 @@ const inputBody = '{
   "timestamp": 0
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/delete/delete-data',
@@ -4577,7 +4900,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.delete '/delete/delete-data',
@@ -4591,7 +4915,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.delete('/delete/delete-data', headers = headers)
@@ -4607,6 +4932,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -4660,6 +4986,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -4705,16 +5032,29 @@ or invalid credentials — 404 an ID names no asset — 405 read-only mode —
 | ---- | ---- | ------------------------------- | -------- | ----------- |
 | body | body | [DeleteList](#schemadeletelist) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="delete-the-listed-assets:-files,-sidecars-and-metadata-rows-are-removed.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Data deleted                                                                               | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Asset not found                                                                            | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Data deleted                                                                               | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Asset not found                                                                            | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -4728,18 +5068,27 @@ This operation does not require authentication
 
 ```shell
 # You can also use wget
-curl -X GET /get/metadata/{asset_id}?timestamp=0
+curl -X GET /get/metadata/{asset_id}?timestamp=0 \
+  -H 'Accept: application/json'
 
 ```
 
 ```http
 GET /get/metadata/{asset_id}?timestamp=0 HTTP/1.1
 
+Accept: application/json
+
 ```
 
 ```javascript
+const headers = {
+  Accept: "application/json",
+};
+
 fetch("/get/metadata/{asset_id}?timestamp=0", {
   method: "GET",
+
+  headers: headers,
 })
   .then(function (res) {
     return res.json();
@@ -4753,10 +5102,14 @@ fetch("/get/metadata/{asset_id}?timestamp=0", {
 require 'rest-client'
 require 'json'
 
+headers = {
+  'Accept' => 'application/json'
+}
+
 result = RestClient.get '/get/metadata/{asset_id}',
   params: {
   'timestamp' => 'integer(int64)'
-}
+}, headers: headers
 
 p JSON.parse(result)
 
@@ -4764,10 +5117,13 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Accept': 'application/json'
+}
 
 r = requests.get('/get/metadata/{asset_id}', params={
   'timestamp': '0'
-})
+}, headers = headers)
 
 print(r.json())
 
@@ -4777,6 +5133,10 @@ print(r.json())
 <?php
 
 require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
 
 $client = new \GuzzleHttp\Client();
 
@@ -4827,6 +5187,10 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
     req, err := http.NewRequest("GET", "/get/metadata/{asset_id}", data)
     req.Header = headers
@@ -4864,15 +5228,28 @@ composed.
 | asset_id  | path  | string         | true     | Asset to read the full metadata for             |
 | timestamp | query | integer(int64) | true     | Must equal the prefetch token's timestamp claim |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="serve-the-full-metadata-of-a-single-asset.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Full metadata record for the asset                                                         | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Unknown asset_id                                                                           | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Full metadata record for the asset                                                         | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Unknown asset_id                                                                           | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -4887,7 +5264,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/edit_flags \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -4895,6 +5273,7 @@ curl -X PUT /put/edit_flags \
 PUT /put/edit_flags HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -4907,7 +5286,8 @@ const inputBody = '{
   "timestamp": 0
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/put/edit_flags',
@@ -4929,7 +5309,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/edit_flags',
@@ -4943,7 +5324,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/edit_flags', headers = headers)
@@ -4959,6 +5341,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -5012,6 +5395,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -5061,15 +5445,28 @@ out-of-range index, or storage failure.
 | ---- | ---- | ------------------------------------- | -------- | ----------- |
 | body | body | [EditFlagsData](#schemaeditflagsdata) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="set-or-clear-the-trash-flag-on-the-listed-assets.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Flags updated                                                                              | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Flags updated                                                                              | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -5084,7 +5481,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/edit_rating \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -5092,6 +5490,7 @@ curl -X PUT /put/edit_rating \
 PUT /put/edit_rating HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -5104,7 +5503,8 @@ const inputBody = '{
   "timestamp": 0
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/put/edit_rating',
@@ -5126,7 +5526,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/edit_rating',
@@ -5140,7 +5541,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/edit_rating', headers = headers)
@@ -5156,6 +5558,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -5209,6 +5612,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -5254,15 +5658,28 @@ mode — 500 unknown snapshot, out-of-range index, or storage failure.
 | ---- | ---- | --------------------------------------- | -------- | ----------- |
 | body | body | [EditRatingData](#schemaeditratingdata) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="rate-the-listed-assets-0–5,-or-clear-the-rating.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Rating updated                                                                             | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Rating updated                                                                             | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -5474,15 +5891,26 @@ out-of-range index, or storage failure.
 ]
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="add-and-remove-tags-on-the-listed-assets-and-return-the-resulting-tag-list.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Tags updated                                                                               | Inline |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Tags updated                                                                               | Inline                                      |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <h3 id="add-and-remove-tags-on-the-listed-assets-and-return-the-resulting-tag-list.-responseschema">Response Schema</h3>
 
@@ -5507,7 +5935,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/regenerate-thumbnail-with-frame \
-  -H 'Content-Type: multipart/form-data'
+  -H 'Content-Type: multipart/form-data' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -5515,6 +5944,7 @@ curl -X PUT /put/regenerate-thumbnail-with-frame \
 PUT /put/regenerate-thumbnail-with-frame HTTP/1.1
 
 Content-Type: multipart/form-data
+Accept: application/json
 
 ```
 
@@ -5522,6 +5952,7 @@ Content-Type: multipart/form-data
 const inputBody = "{}";
 const headers = {
   "Content-Type": "multipart/form-data",
+  Accept: "application/json",
 };
 
 fetch("/put/regenerate-thumbnail-with-frame", {
@@ -5542,7 +5973,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'multipart/form-data'
+  'Content-Type' => 'multipart/form-data',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/regenerate-thumbnail-with-frame',
@@ -5556,7 +5988,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'multipart/form-data'
+  'Content-Type': 'multipart/form-data',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/regenerate-thumbnail-with-frame', headers = headers)
@@ -5572,6 +6005,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'multipart/form-data',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -5625,6 +6059,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"multipart/form-data"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -5669,16 +6104,29 @@ decode, or storage failure.
 | ---- | ---- | ------ | -------- | ----------- |
 | body | body | object | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="replace-an-asset's-compressed-thumbnail-with-an-uploaded-frame.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Thumbnail regenerated                                                                      | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Thumbnail regenerated                                                                      | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -5693,7 +6141,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/rotate-image \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -5701,6 +6150,7 @@ curl -X PUT /put/rotate-image \
 PUT /put/rotate-image HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -5709,7 +6159,8 @@ const inputBody = '{
   "asset_id": "string"
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/put/rotate-image',
@@ -5731,7 +6182,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/rotate-image',
@@ -5745,7 +6197,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/rotate-image', headers = headers)
@@ -5761,6 +6214,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -5814,6 +6268,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -5857,16 +6312,29 @@ thumbnail write, or storage failure.
 | ---- | ---- | ----------------------------------------------- | -------- | ----------- |
 | body | body | [RotateImageRequest](#schemarotateimagerequest) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="rotate-an-image-90°-counter-clockwise-and-rebuild-its-derivatives.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Image rotated                                                                              | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Image rotated                                                                              | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -6051,13 +6519,24 @@ Errors: 400 half-supplied share credentials or an id that is not an album —
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="serve-the-client-visible-server-configuration.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema                                  |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Public configuration                                                                       | [ConfigResponse](#schemaconfigresponse) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                    |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                    |
+| Status | Meaning                                                          | Description                                                                                | Schema                                      |
+| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Public configuration                                                                       | [ConfigResponse](#schemaconfigresponse)     |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 
 <aside class="success">
 This operation does not require authentication
@@ -6219,13 +6698,24 @@ Errors: 400 invalid input — 401 no valid admin credentials.
 "string"
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="export-the-full-server-configuration-as-json.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Exported configuration                                                                     | string |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                          | Description                                                                                | Schema                                      |
+| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Exported configuration                                                                     | string                                      |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 
 <aside class="success">
 This operation does not require authentication
@@ -6404,15 +6894,26 @@ matched no directory — 500 the directory could not be read.
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="complete-a-filesystem-directory-path-for-the-path-completion-field.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema                              |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Filesystem path completion                                                                 | [FsCompletion](#schemafscompletion) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Filesystem path completion                                                                 | [FsCompletion](#schemafscompletion)         |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -6578,12 +7079,23 @@ could not be stored.
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="rotate-the-jwt-signing-key.-responses">Responses</h3>
 
 | Status | Meaning                                                                    | Description                                                                                | Schema                                              |
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Signing key rotated                                                                        | [AuthKeyResetResponse](#schemaauthkeyresetresponse) |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                                |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)         |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                |
 
 <aside class="success">
@@ -6599,7 +7111,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X POST /post/config/import \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -6607,6 +7120,7 @@ curl -X POST /post/config/import \
 POST /post/config/import HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -6643,7 +7157,8 @@ const inputBody = '{
   "validateUploadContent": true
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/post/config/import',
@@ -6665,7 +7180,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.post '/post/config/import',
@@ -6679,7 +7195,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.post('/post/config/import', headers = headers)
@@ -6695,6 +7212,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -6748,6 +7266,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -6821,14 +7340,27 @@ Errors: 400 unusable request body — 401 missing or invalid credentials —
 | ---- | ---- | ----------------------------- | -------- | ----------- |
 | body | body | [AppConfig](#schemaappconfig) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="replace-the-server-configuration-with-the-posted-one.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Config imported                                                                            | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Config imported                                                                            | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -6843,7 +7375,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X PUT /put/config \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -6851,6 +7384,7 @@ curl -X PUT /put/config \
 PUT /put/config HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -6885,7 +7419,8 @@ const inputBody = '{
   "validateUploadContent": true
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/put/config',
@@ -6907,7 +7442,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.put '/put/config',
@@ -6921,7 +7457,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.put('/put/config', headers = headers)
@@ -6937,6 +7474,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -6990,6 +7528,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -7064,15 +7603,28 @@ config write failure.
 | ---- | ---- | --------------------------------------------------------------- | -------- | ----------- |
 | body | body | [PartialUpdateConfigRequest](#schemapartialupdateconfigrequest) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="patch-the-server-configuration-with-the-posted-fields.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Config updated                                                                             | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Config updated                                                                             | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -7253,12 +7805,23 @@ Errors: 401 no valid admin credentials.
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="report-the-state-of-the-most-recently-started-album-indexing-job.-responses">Responses</h3>
 
 | Status | Meaning                                                         | Description                                                                                | Schema                                      |
 | ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | Album index status                                                                         | [AlbumIndexStatus](#schemaalbumindexstatus) |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 
 <aside class="success">
 This operation does not require authentication
@@ -7273,7 +7836,8 @@ This operation does not require authentication
 ```shell
 # You can also use wget
 curl -X POST /post/index/album \
-  -H 'Content-Type: application/json'
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -7281,6 +7845,7 @@ curl -X POST /post/index/album \
 POST /post/index/album HTTP/1.1
 
 Content-Type: application/json
+Accept: application/json
 
 ```
 
@@ -7289,7 +7854,8 @@ const inputBody = '{
   "album": "string"
 }';
 const headers = {
-  'Content-Type':'application/json'
+  'Content-Type':'application/json',
+  'Accept':'application/json'
 };
 
 fetch('/post/index/album',
@@ -7311,7 +7877,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'application/json'
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.post '/post/index/album',
@@ -7325,7 +7892,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'application/json'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.post('/post/index/album', headers = headers)
@@ -7341,6 +7909,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -7394,6 +7963,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -7436,15 +8006,28 @@ credentials — 405 read-only mode — 409 an index job is already running.
 | ---- | ---- | --------------------------------------------- | -------- | ----------- |
 | body | body | [IndexAlbumRequest](#schemaindexalbumrequest) | true     | none        |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="index-every-media-file-under-a-directory-tree-in-the-background.-responses">Responses</h3>
 
-| Status | Meaning                                                                 | Description                                                                                | Schema |
-| ------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 202    | [Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)           | Album indexing started                                                                     | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)        | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)         | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5) | Read-only mode                                                                             | None   |
-| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)           | An index job is already running                                                            | None   |
+| Status | Meaning                                                                 | Description                                                                                | Schema                                      |
+| ------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 202    | [Accepted](https://tools.ietf.org/html/rfc7231#section-6.3.3)           | Album indexing started                                                                     | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)        | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)         | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5) | Read-only mode                                                                             | None                                        |
+| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)           | An index job is already running                                                            | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -7458,18 +8041,27 @@ This operation does not require authentication
 
 ```shell
 # You can also use wget
-curl -X POST /post/index/cancel
+curl -X POST /post/index/cancel \
+  -H 'Accept: application/json'
 
 ```
 
 ```http
 POST /post/index/cancel HTTP/1.1
 
+Accept: application/json
+
 ```
 
 ```javascript
+const headers = {
+  Accept: "application/json",
+};
+
 fetch("/post/index/cancel", {
   method: "POST",
+
+  headers: headers,
 })
   .then(function (res) {
     return res.json();
@@ -7483,9 +8075,13 @@ fetch("/post/index/cancel", {
 require 'rest-client'
 require 'json'
 
+headers = {
+  'Accept' => 'application/json'
+}
+
 result = RestClient.post '/post/index/cancel',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -7493,8 +8089,11 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Accept': 'application/json'
+}
 
-r = requests.post('/post/index/cancel')
+r = requests.post('/post/index/cancel', headers = headers)
 
 print(r.json())
 
@@ -7504,6 +8103,10 @@ print(r.json())
 <?php
 
 require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
 
 $client = new \GuzzleHttp\Client();
 
@@ -7554,6 +8157,10 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
     req, err := http.NewRequest("POST", "/post/index/cancel", data)
     req.Header = headers
@@ -7578,14 +8185,27 @@ the state settles as `canceled` only once the walk has actually stopped.
 Errors: 400 malformed request — 401 missing or invalid credentials —
 404 no index job is active.
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="request-cancellation-of-the-running-album-index-job.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Album index cancelled                                                                      | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | No active index job                                                                        | None   |
+| Status | Meaning                                                          | Description                                                                                | Schema                                      |
+| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Album index cancelled                                                                      | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | No active index job                                                                        | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -7761,15 +8381,26 @@ image root or writing the tables.
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="rebuild-the-asset-tables-and-metadata-cache-from-the-filesystem-under-`image_home`.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema                              |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Rebuild complete                                                                           | [RebuildStats](#schemarebuildstats) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Rebuild complete                                                                           | [RebuildStats](#schemarebuildstats)         |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -7787,18 +8418,27 @@ Media byte delivery (compressed and original files)
 
 ```shell
 # You can also use wget
-curl -X GET /object/compressed/{file_path}
+curl -X GET /object/compressed/{file_path} \
+  -H 'Accept: application/json'
 
 ```
 
 ```http
 GET /object/compressed/{file_path} HTTP/1.1
 
+Accept: application/json
+
 ```
 
 ```javascript
+const headers = {
+  Accept: "application/json",
+};
+
 fetch("/object/compressed/{file_path}", {
   method: "GET",
+
+  headers: headers,
 })
   .then(function (res) {
     return res.json();
@@ -7812,9 +8452,13 @@ fetch("/object/compressed/{file_path}", {
 require 'rest-client'
 require 'json'
 
+headers = {
+  'Accept' => 'application/json'
+}
+
 result = RestClient.get '/object/compressed/{file_path}',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -7822,8 +8466,11 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Accept': 'application/json'
+}
 
-r = requests.get('/object/compressed/{file_path}')
+r = requests.get('/object/compressed/{file_path}', headers = headers)
 
 print(r.json())
 
@@ -7833,6 +8480,10 @@ print(r.json())
 <?php
 
 require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
 
 $client = new \GuzzleHttp\Client();
 
@@ -7883,6 +8534,10 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
     req, err := http.NewRequest("GET", "/object/compressed/{file_path}", data)
     req.Header = headers
@@ -7915,14 +8570,27 @@ compressed file could not be opened.
 | --------- | ---- | ------ | -------- | -------------------------------------------------------------------------------------- |
 | file_path | path | string | true     | Path of the file below DATA_HOME/object/compressed; the extension must be .jpg or .mp4 |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="serve-the-compressed-thumbnail-or-preview-of-a-hashed-asset.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Compressed file                                                                            | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Compressed file                                                                            | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -7936,18 +8604,27 @@ This operation does not require authentication
 
 ```shell
 # You can also use wget
-curl -X GET /object/imported/{file_path}
+curl -X GET /object/imported/{file_path} \
+  -H 'Accept: application/json'
 
 ```
 
 ```http
 GET /object/imported/{file_path} HTTP/1.1
 
+Accept: application/json
+
 ```
 
 ```javascript
+const headers = {
+  Accept: "application/json",
+};
+
 fetch("/object/imported/{file_path}", {
   method: "GET",
+
+  headers: headers,
 })
   .then(function (res) {
     return res.json();
@@ -7961,9 +8638,13 @@ fetch("/object/imported/{file_path}", {
 require 'rest-client'
 require 'json'
 
+headers = {
+  'Accept' => 'application/json'
+}
+
 result = RestClient.get '/object/imported/{file_path}',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -7971,8 +8652,11 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Accept': 'application/json'
+}
 
-r = requests.get('/object/imported/{file_path}')
+r = requests.get('/object/imported/{file_path}', headers = headers)
 
 print(r.json())
 
@@ -7982,6 +8666,10 @@ print(r.json())
 <?php
 
 require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
 
 $client = new \GuzzleHttp\Client();
 
@@ -8032,6 +8720,10 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
     req, err := http.NewRequest("GET", "/object/imported/{file_path}", data)
     req.Header = headers
@@ -8064,15 +8756,28 @@ share credentials, or no image-serving token granting original access —
 | --------- | ---- | ------ | -------- | -------------------------------------------------------------------- |
 | file_path | path | string | true     | Path of the original below imagePath; the last segment is <id>.<ext> |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="serve-the-original-file-from-its-current-location-under-`imagepath`.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Imported original file                                                                     | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Imported original file                                                                     | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -8267,14 +8972,25 @@ read.
 ]
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="serve-one-page-of-timeline/list-rows-for-a-snapshot-timestamp.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Data by timestamp range                                                                    | Inline |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Data by timestamp range                                                                    | Inline                                      |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <h3 id="serve-one-page-of-timeline/list-rows-for-a-snapshot-timestamp.-responseschema">Response Schema</h3>
 
@@ -8301,18 +9017,27 @@ This operation does not require authentication
 
 ```shell
 # You can also use wget
-curl -X GET /get/get-export
+curl -X GET /get/get-export \
+  -H 'Accept: application/json'
 
 ```
 
 ```http
 GET /get/get-export HTTP/1.1
 
+Accept: application/json
+
 ```
 
 ```javascript
+const headers = {
+  Accept: "application/json",
+};
+
 fetch("/get/get-export", {
   method: "GET",
+
+  headers: headers,
 })
   .then(function (res) {
     return res.json();
@@ -8326,9 +9051,13 @@ fetch("/get/get-export", {
 require 'rest-client'
 require 'json'
 
+headers = {
+  'Accept' => 'application/json'
+}
+
 result = RestClient.get '/get/get-export',
   params: {
-  }
+  }, headers: headers
 
 p JSON.parse(result)
 
@@ -8336,8 +9065,11 @@ p JSON.parse(result)
 
 ```python
 import requests
+headers = {
+  'Accept': 'application/json'
+}
 
-r = requests.get('/get/get-export')
+r = requests.get('/get/get-export', headers = headers)
 
 print(r.json())
 
@@ -8347,6 +9079,10 @@ print(r.json())
 <?php
 
 require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
 
 $client = new \GuzzleHttp\Client();
 
@@ -8397,6 +9133,10 @@ import (
 
 func main() {
 
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
     data := bytes.NewBuffer([]byte{jsonReq})
     req, err := http.NewRequest("GET", "/get/get-export", data)
     req.Header = headers
@@ -8422,14 +9162,27 @@ instead of the array.
 Errors: 400 invalid input — 401 no valid admin credentials — 500 the tables
 could not be opened.
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="export-the-whole-tree-as-json.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Export data as JSON                                                                        | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Export data as JSON                                                                        | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -8618,14 +9371,25 @@ index is out of bounds.
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="serve-the-display-layout-of-one-batched-row-of-a-snapshot.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema            |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Row data                                                                                   | [Row](#schemarow) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None              |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None              |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None              |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Row data                                                                                   | [Row](#schemarow)                           |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -8802,13 +9566,24 @@ mismatched prefetch token.
 ]
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Scroll bar data                                                                            | Inline |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                          | Description                                                                                | Schema                                      |
+| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | Scroll bar data                                                                            | Inline                                      |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 
 <h3 id="serve-the-scroll-bar-positions-of-a-snapshot.-responseschema">Response Schema</h3>
 
@@ -8988,13 +9763,24 @@ Errors: 400 invalid input — 401 no valid admin credentials.
 ]
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="list-every-tag-in-the-tree-with-the-number-of-assets-carrying-it.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | List of tags                                                                               | Inline |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                          | Description                                                                                | Schema                                      |
+| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | List of tags                                                                               | Inline                                      |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 
 <h3 id="list-every-tag-in-the-tree-with-the-number-of-assets-carrying-it.-responseschema">Response Schema</h3>
 
@@ -9220,14 +10006,25 @@ null
 }
 ```
 
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="evaluate-a-list-query,-snapshot-its-result,-and-return-the-snapshot-id.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema                                  |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Prefetch result                                                                            | [PrefetchReturn](#schemaprefetchreturn) |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                    |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                    |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                    |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Prefetch result                                                                            | [PrefetchReturn](#schemaprefetchreturn)     |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -9246,7 +10043,8 @@ File upload
 ```shell
 # You can also use wget
 curl -X POST /upload \
-  -H 'Content-Type: multipart/form-data'
+  -H 'Content-Type: multipart/form-data' \
+  -H 'Accept: application/json'
 
 ```
 
@@ -9254,6 +10052,7 @@ curl -X POST /upload \
 POST /upload HTTP/1.1
 
 Content-Type: multipart/form-data
+Accept: application/json
 
 ```
 
@@ -9261,6 +10060,7 @@ Content-Type: multipart/form-data
 const inputBody = "{}";
 const headers = {
   "Content-Type": "multipart/form-data",
+  Accept: "application/json",
 };
 
 fetch("/upload", {
@@ -9281,7 +10081,8 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'multipart/form-data'
+  'Content-Type' => 'multipart/form-data',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.post '/upload',
@@ -9295,7 +10096,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'multipart/form-data'
+  'Content-Type': 'multipart/form-data',
+  'Accept': 'application/json'
 }
 
 r = requests.post('/upload', headers = headers)
@@ -9311,6 +10113,7 @@ require 'vendor/autoload.php';
 
 $headers = array(
     'Content-Type' => 'multipart/form-data',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -9364,6 +10167,7 @@ func main() {
 
     headers := map[string][]string{
         "Content-Type": []string{"multipart/form-data"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -9416,15 +10220,28 @@ mode — 500 storage failure.
 | auto_rename            | query | boolean | false    | When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error. |
 | body                   | body  | object  | true     | none                                                                                                                                                                                                                                                                                                                                                                              |
 
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
 <h3 id="upload-media-files-into-an-album-or-the-upload-folder-and-index-each-one.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Upload successful                                                                          | None   |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Upload successful                                                                          | None                                        |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -11858,7 +12675,7 @@ the client router cannot resolve into an asset id.
 This operation does not require authentication
 </aside>
 
-## Answer the 401 status a rejected sign-in lands on.
+## Bodiless 401 probe for diagnostics.
 
 <a id="opIdunauthorized"></a>
 
@@ -11976,14 +12793,16 @@ func main() {
 `GET /unauthorized`
 
 Returns the status alone — no body and no `Location` header — so the
-browser renders its own error page for it.
+browser renders its own error page for it. Nothing navigates here: no
+route redirects to this path and it is not a login page; it exists so
+monitoring and tests can observe a bare 401.
 
 Corner cases: Every request to this path gets that status; the SPA shell
 is never returned here.
 
 Errors: 401 always returned, whatever the request carries.
 
-<h3 id="answer-the-401-status-a-rejected-sign-in-lands-on.-responses">Responses</h3>
+<h3 id="bodiless-401-probe-for-diagnostics.-responses">Responses</h3>
 
 | Status | Meaning                                                         | Description         | Schema |
 | ------ | --------------------------------------------------------------- | ------------------- | ------ |
@@ -13962,6 +14781,40 @@ Body for `PUT /put/users/password`.
 | ------ | ------- | -------- | ------------ | ----------- |
 | number | integer | true     | none         | none        |
 | tag    | string  | true     | none         | none        |
+
+<h2 id="tocS_UnauthorizedBody">UnauthorizedBody</h2>
+<!-- backwards compatibility -->
+<a id="schemaunauthorizedbody"></a>
+<a id="schema_UnauthorizedBody"></a>
+<a id="tocSunauthorizedbody"></a>
+<a id="tocsunauthorizedbody"></a>
+
+```json
+{
+  "context": ["string"],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
+The JSON body of the shared `401 Unauthorized` response.
+
+Every 401 carries an `AppError` serialization: `kind` is always `"Auth"`,
+`status` is always `"Permanent"` (throttling answers are 429, never 401),
+and `retryAfter` never appears on a 401. `message` is the fixed
+`"Unauthorized"` string for framework rejections answered by the 401
+catcher, and the handler's reason for credential rejections raised in a
+handler body.
+
+### Properties
+
+| Name    | Type     | Required | Restrictions | Description                                                                                                                        |
+| ------- | -------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| context | [string] | true     | none         | Empty on framework rejections; handler context otherwise.                                                                          |
+| kind    | string   | true     | none         | The error kind, always `"Auth"` on a 401.                                                                                          |
+| message | string   | true     | none         | The fixed `"Unauthorized"` string for framework rejections; the<br>handler's reason for credential rejections raised in a handler. |
+| status  | string   | true     | none         | The error status, always `"Permanent"` on a 401.                                                                                   |
 
 <h2 id="tocS_UserSummary">UserSummary</h2>
 <!-- backwards compatibility -->
