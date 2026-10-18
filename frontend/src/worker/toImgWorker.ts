@@ -155,6 +155,9 @@ const handler = createHandler<typeof toImgWorker>({
       postToMainImg.smallImageProcessed({ index: event.index, url: objectUrl })
     } catch (error) {
       if (axios.isCancel(error)) return
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        postToMainImg.tokenExpired({ assetId: event.assetId })
+      }
       // Purge potentially corrupt blob from caches so the next attempt re-fetches
       void purgeFromCaches(event.assetId)
       console.error(error)
@@ -212,6 +215,9 @@ const handler = createHandler<typeof toImgWorker>({
 
       postToMainImg.imageProcessed({ index: event.index, url: objectUrl })
     } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        postToMainImg.tokenExpired({ assetId: event.assetId })
+      }
       // Purge potentially corrupt blob from caches so the next attempt re-fetches
       void purgeFromCaches(event.assetId)
       console.error(error)

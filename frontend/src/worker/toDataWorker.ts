@@ -26,7 +26,7 @@ const workerAxios = axios.create()
 
 setupWorkerAxiosInterceptor(
   workerAxios,
-  { notify: postToMainData.notification, onUnauthorized: postToMainData.unauthorized },
+  { notify: postToMainData.notification, onUnauthorized: postToMainData.tokenExpired },
   'data'
 )
 

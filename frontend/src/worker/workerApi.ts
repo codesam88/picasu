@@ -114,7 +114,7 @@ export const toImgWorker = createActionCreators({
 export const fromImgWorker = createActionCreators({
   smallImageProcessed: (payload: SmallImageProcessedPayload) => payload,
   imageProcessed: (payload: ImageProcessedPayload) => payload,
-  unauthorized: () => ({}),
+  tokenExpired: (payload: { assetId: string }) => payload,
   notification: (payload: NotificationPayload) => payload
 })
 
@@ -128,7 +128,7 @@ export const fromDataWorker = createActionCreators({
   fetchRowReturn: (payload: FetchRowReturnPayload) => payload,
   editTagsReturn: (payload: EditTagsReturnPayload) => payload,
   notification: (payload: NotificationPayload) => payload,
-  unauthorized: () => ({}),
+  tokenExpired: () => ({}),
   refreshTimestampToken: (payload: RefreshTimestampTokenPayload) => payload,
   refreshHashToken: (payload: RefreshHashTokenPayload) => payload
 })
@@ -151,7 +151,7 @@ export interface PostToDataWorker {
 export interface PostFromImgWorker {
   smallImageProcessed: (payload: SmallImageProcessedPayload) => void
   imageProcessed: (payload: ImageProcessedPayload) => void
-  unauthorized: () => void
+  tokenExpired: (payload: { assetId: string }) => void
   notification: (payload: NotificationPayload) => void
 }
 
@@ -160,7 +160,7 @@ export interface PostFromDataWorker {
   fetchRowReturn: (payload: FetchRowReturnPayload) => void
   editTagsReturn: (payload: EditTagsReturnPayload) => void
   notification: (payload: NotificationPayload) => void
-  unauthorized: () => void
+  tokenExpired: () => void
   refreshTimestampToken: (payload: RefreshTimestampTokenPayload) => void
   refreshHashToken: (payload: RefreshHashTokenPayload) => void
 }
