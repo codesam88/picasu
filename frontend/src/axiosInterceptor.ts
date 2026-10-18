@@ -1,14 +1,12 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
+import { AUTHENTICATE_URL, retryAfterSecs, throttleMessage } from '@/script/utils/retryAfter'
 import { errorDisplay } from '@/script/utils/errorDisplay'
-import { retryAfterSecs, throttleMessage } from '@/script/utils/retryAfter'
 import { useSessionStore } from '@/store/sessionStore'
 import { useShareStore } from '@/store/shareStore'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
 
-// --- Constants ---
-const AUTHENTICATE_URL = '/post/authenticate'
 const HEADERS = {
   ALBUM_ID: 'x-album-id',
   SHARE_ID: 'x-share-id',
@@ -86,6 +84,11 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
 
   switch (status) {
     case 401:
+      // Tier taxonomy: the backend means 401 to be "the presented cookie
+      // was rejected" — a session-tier failure. The only other source is
+      // the failed login itself (POST /post/authenticate, a wired 401),
+      // which the login page owns its display for; it is caller-owned.
+      if (error.config?.url === AUTHENTICATE_URL) break
       // The session is gone server-side: drop the persisted display
       // profile too, so a stale admin badge can never outlive the
       // session that backed it. No snackbar here: the login page

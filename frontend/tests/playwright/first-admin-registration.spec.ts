@@ -138,20 +138,26 @@ test.describe('first admin registration', () => {
       await expect(page).toHaveURL(/\/login/)
     })
 
-    // (6) Wrong password stays on /login with a clean unauthorized error.
-    // Counter-proof: the snackbar surfaces a real message (fails on silent
-    // failure) containing no HTML blob and no 422 (fails on raw error pages
-    // or the legacy bare-string shape).
+    // (6) Wrong password stays on /login with no snackbar at all. Tier
+    // taxonomy: a failed login 401 is caller-owned by the login page (its
+    // static info banner), not session destruction — the interceptor's
+    // authenticate carve-out neither clears the profile nor redirects, and
+    // snackbar display belongs to its non-401/non-throttle branches only.
+    // Counter-proof: the login page renders intact (banner visible), and
+    // the main content shows no HTML blob and no 422 (fails on raw error
+    // pages or the legacy bare-string shape).
     await test.step('wrong password stays on login with a clean error', async () => {
       await page.getByPlaceholder('User ID').fill(ADMIN_ID)
       await page.getByPlaceholder('Password', { exact: true }).fill(WRONG_PASSWORD)
       await page.getByRole('button', { name: 'Login' }).click()
       await expect(page).toHaveURL(/\/login/)
 
-      const snackbar = page.locator('.v-snackbar__content').first()
-      await expect(snackbar).toBeVisible()
-      await expect(snackbar).not.toContainText('<')
-      await expect(snackbar).not.toContainText('422')
+      await expect(page.locator('.v-snackbar__content')).toHaveCount(0)
+      await expect(page.getByText('Please log in to continue')).toBeVisible()
+
+      const main = page.locator('#app')
+      await expect(main).not.toContainText('<')
+      await expect(main).not.toContainText('422')
     })
 
     // (7) Correct login reaches /timeline.

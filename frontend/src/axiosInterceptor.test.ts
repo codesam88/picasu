@@ -150,6 +150,37 @@ describe('429 handling', () => {
 })
 
 describe('401 handling', () => {
+  test('authenticate 401 keeps the profile and redirects nowhere', async () => {
+    useSessionStore('mainId').setProfile({ userId: 'alice', admin: true })
+    const redirectionStore = useRedirectionStore('mainId')
+    const redirectSpy = vi.spyOn(redirectionStore, 'redirectionToLogin')
+    rejectWith(401, {}, { message: 'Unknown user or wrong password' })
+
+    await expect(
+      axios.post('/post/authenticate', { userId: 'alice', password: 'wrong' })
+    ).rejects.toBeTruthy()
+
+    expect(useSessionStore('mainId').profile).toEqual({ userId: 'alice', admin: true })
+    expect(redirectSpy).not.toHaveBeenCalled()
+    expect(mockedRouter.push).not.toHaveBeenCalled()
+  })
+
+  test('password-change 400 toasts the server message once, session untouched', async () => {
+    useSessionStore('mainId').setProfile({ userId: 'alice', admin: true })
+    const redirectionStore = useRedirectionStore('mainId')
+    const redirectSpy = vi.spyOn(redirectionStore, 'redirectionToLogin')
+    rejectWith(400, {}, { message: 'Incorrect current password' })
+
+    await expect(axios.put('/put/users/password', { old: 'x', new: 'y' })).rejects.toBeTruthy()
+
+    const queue = useMessageStore('mainId').queue
+    expect(queue).toHaveLength(1)
+    expect(queue[0]?.text).toContain('Incorrect current password')
+    expect(queue[0]?.color).toBe('error')
+    expect(useSessionStore('mainId').profile).toEqual({ userId: 'alice', admin: true })
+    expect(redirectSpy).not.toHaveBeenCalled()
+  })
+
   test('clears the session profile', async () => {
     useSessionStore('mainId').setProfile({ userId: 'alice', admin: true })
     rejectWith(401, {}, {})
