@@ -64,22 +64,23 @@ const createLink = async (formData: ShareFormData) => {
       : 0
 
   try {
-    const result = await axios.post<string>('/post/create_share', {
-      albumId: props.albumId,
-      description: formData.description,
-      password: formData.passwordRequired ? formData.password : null,
-      showMetadata: formData.showMetadata,
-      showDownload: formData.showDownload,
-      showUpload: formData.showUpload,
-      exp: expirationTimestamp
-    })
+    await tryWithMessageStore('mainId', async () => {
+      const result = await axios.post<string>('/post/create_share', {
+        albumId: props.albumId,
+        description: formData.description,
+        password: formData.passwordRequired ? formData.password : null,
+        showMetadata: formData.showMetadata,
+        showDownload: formData.showDownload,
+        showUpload: formData.showUpload,
+        exp: expirationTimestamp
+      })
 
-    createdShareKey.value = result.data
-    shareLink.value = `${window.location.origin}/share/${props.albumId}-${result.data}`
-    messageStore.success('Share link created successfully.')
+      createdShareKey.value = result.data
+      shareLink.value = `${window.location.origin}/share/${props.albumId}-${result.data}`
+      messageStore.success('Share link created successfully.')
+    })
   } catch (e) {
-    console.error(e)
-    messageStore.error('Failed to create share link.')
+    console.error('Create failed', e)
   } finally {
     loading.value = false
   }
