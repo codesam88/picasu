@@ -1,11 +1,11 @@
 ---
-status: open
+status: in-progress
 type: bug
 priority: high
-area: frontend
+area: full-stack
 ---
 
-# R26 remainder bug set (interceptor 401, display ownership, guard coverage)
+# R26 remainder bug set (401 taxonomy, display ownership, guard coverage)
 
 Supersedes the R26 remainder tracking previously folded into
 `.plan/auth-enrollment-review.md` (its R26 entry now points here). The
@@ -15,22 +15,43 @@ finding source is the two-round R26 review run of 2026-10-18; the
 
 ## Problem (consolidated, verified)
 
-### B1 — failed-login 401 ends the SPA display session (S2/MED)
+### B1 — non-session 401s end the SPA display session (S2/MED)
 
-The interceptor's 401 branch has no `AUTHENTICATE_URL` exclusion (only
-the 429 branch does, `axiosInterceptor.ts:116`). A failed login on
-`/login` while a valid-cookie user is signed in clears the display
-profile (`clearProfile()`), while the backend authenticate error path
-returns `Err` without cookie mutation (`backend/src/router/post/
-authenticate.rs:429-458`). The guard then treats the profile-less user
-as sessionless (`routes.ts:135`). A mistyped password silently logs the
-user out of the SPA despite the cookie being valid. No test pins an
-authenticate-401 case today (coverage is `/get/get-data` only,
+The interceptor's 401 branch is URL-blind, so _every_ response 401
+clears the display profile and redirects — including 401s that did not
+come from the session tier. The backend emits four families under one
+`ErrorKind::Auth` umbrella (`error.rs:138` maps kind → 401):
+
+| Situation                                                                                                                                                                                    | Today                                                                                             | Correct tier                                                                                                 |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Cookie/session guard rejection (expired, revoked, absent)                                                                                                                                    | 401 + **fixed** body `"Unauthorized"` (catcher `catchers.rs:32`, contract via `UnauthorizedBody`) | session — `/login` redirect is right                                                                         |
+| Privilege misuse: non-admin PUT on another user's password (`GuardUser::denied`, `auth.rs:875-885`), also the no-admin-enrolled closed-install case                                          | 401 + human message                                                                               | privilege → 403 (`PermissionDenied` already maps to Forbidden, `error.rs:137`)                               |
+| Value-credential failure: wrong _current password_ on self-change (`users_password.rs:81`, pinned by `self_service_with_wrong_old_password_is_401` + `admin_self_change_without_old_is_401`) | 401 + `"Incorrect current password"`                                                              | input validation → 400 (`InvalidInput`) — the request's own credential was accepted; the body value is wrong |
+| Login credential failure (`authenticate.rs:292`, `"Invalid credentials"`, throttle reservation released on it)                                                                               | 401                                                                                               | stays 401 — the presented body password **is** the credential; caller-owned display                          |
+
+Neither of the first two middle families invalidates the cookie — but
+the client-side destruction is durable: `clearProfile()` removes
+`SESSION_PROFILE_KEY` from localStorage and nothing rebuilds the display
+profile except a full re-login (`sessionStore.ts`). So a wrong current
+password, or a non-admin attempting a privilege action the SPA's own UI
+already gates, silently logs the user out of the SPA while the cookie
+remains valid (`routes.ts:135` treats the profile-less display as
+sessionless). No test pins an authenticate-401 or password-401 case on
+the interceptor today (401 coverage is `/get/get-data` only,
 `axiosInterceptor.test.ts:152-191`).
 
-Fix: exclude `AUTHENTICATE_URL` from the 401 branch, mirroring the
-settled 429 rationale (transient, not a dead session); the LoginPage
-inline banner owns the message.
+**Settled solution (O2, approved 2026-10-18) — retype to the true
+taxonomy and make 401 session-terminal by invariant:**
+
+> 401 ⇒ the presented credential (cookie) was not accepted ⇒
+> session-tier ⇒ clear display profile + redirect. Everything else is
+> not a 401.
+
+The interceptor then needs token-URL knowledge for exactly one case
+(failed login on `/login`, whose 401 is legitimate but caller-owned),
+the same carve-out shape the 429 branch already uses. This generalizes
+the classification the worker tier already performs (serving-token
+`tokenExpired` → renew vs unexpected → `unauthorized` channel).
 
 ### B2 — double snackbar on share creation (S2)
 
@@ -93,29 +114,112 @@ Fix: delete `fetchAllShares`/`allShares`/`fetched`; no behavior change.
 
 ## Implementation steps (iterative TDD)
 
-1. **B1 + B4** (scope: `frontend/src/axiosInterceptor.ts`,
-   `axiosInterceptor.test.ts`). RED: authenticate-401 test clears the
-   profile today; GREEN with the exclusion. Also add the constant import
-   and pin the no-cycle/no-test-impact facts. Gate: full frontend suite
-   green, `just frontend-check`.
-2. **B2** (scope: `frontend/src/components/Modal/CreateShareModal.vue`
-   - test). Follow the established `tryWithMessageStore` pattern;
-     `updateLink` is the in-file template.
-3. **B3** (scope: `frontend/src/route/` guard decision module +
-   tests). Injected fetch; five behavior cases; regex pins updated as
-   tripwires; backend keeps its own module tests untouched.
-4. **B5** (scope: `frontend/src/store/shareStore.ts`). Delete dead
-   members only; grep-verify `resolvedShare` consumers untouched.
-5. Plan-text update in `.plan/auth-enrollment-review.md` (R26 entry +
-   follow-up): premises corrected, remainder dispositions recorded,
-   pointer here.
+(tier order: backend retyping first so the 401 invariant holds on the
+wire, then the frontend consumes it)
+
+### Step 1 — B1(+b): backend taxonomy retype (contract change)
+
+Scope: `backend/src/router/auth.rs` (`GuardUser::denied`),
+`backend/src/router/put/users_password.rs`, error-kind mappings in
+`backend/src/error.rs` (mapping already exists — no change expected),
+OpenAPI annotations + `backend/openapi.json` + generated reference,
+`docs/auth.md` / `docs/config.md` mentions of the affected statuses.
+
+1. `GuardUser::denied` (privilege + no-admin-enrolled cases):
+   `ErrorKind::PermissionDenied` → 403. Keep the human message text;
+   add the machine tier via the existing kind machinery. RED first:
+   a module test asserting the non-admin-PUT-on-other case is 401
+   today flips to `403`.
+
+   Done (2026-10-18), with two corrections against the tree: the
+   non-admin-PUT-on-other case was already 403 (`PermissionDenied` in
+   `users_password.rs`, pinned by `cross_user_by_non_admin_is_403`) —
+   the actual remaining privilege case on the wire was the GuardUser
+   no-admin-enrolled branch, now 403 JSON (kind + enrollment hint). A
+   bare guard's `AppError` payload is discarded by Rocket codegen
+   (status only → catchers), so the route consumes the guard via
+   `GuardResult<GuardUser>` (dominant house pattern) to keep the 403
+   reason-bearing; catchers untouched.
+
+2. `users_password.rs` wrong-current-password: `ErrorKind::InvalidInput`
+   → 400. This reverses a pinned design — update both module tests
+   (`self_service_with_wrong_old_password_is_401`,
+   `admin_self_change_without_old_is_401` — the latter encodes the same
+   value-failure semantics for the missing-old case) and the endpoint's
+   `401` OpenAPI annotation + doc-comment rationale (`:39`, `:113`).
+3. Session tier untouched: guards keep the fixed `"Unauthorized"` body;
+   the catcher keeps its fixed string. Add one named test/comment pin:
+   guards never emit reason-bearing 401 bodies; handler-raised Auth
+   401s only reach the login endpoint after this change.
+4. Regenerate `openapi.json` + widdershins reference
+   (`just docs-openapi`), rerun `just check` (backend), audit the YAML
+   scenarios / e2e for any password-401 expectations flipped by this.
+
+Rejected here: adding a machine `code` field to `AppError` (O3) — the
+existing kind level already carries the tier; revisit only when external
+API consumers are planned.
+
+### Step 2 — B1(+a): frontend consumes the invariant
+
+Scope: `frontend/src/axiosInterceptor.ts` + `axiosInterceptor.test.ts`,
+`frontend/src/script/utils/passwordChange.ts` flow display check,
+`changePasswordForm` display wiring.
+
+1. RED: authenticate-401 test (signed-in user, failed login) clears the
+   profile today.
+2. GREEN: 401 branch gains the `AUTHENTICATE_URL` carve-out mirroring
+   the 429 branch — a login-401 never clears the profile; the login
+   page owns the display. After step 1 every _other_ handler-401 has
+   been retyped away, so the remaining 401 set is uniformly
+   session-tier: keep `clearProfile()` + redirect unconditional in that
+   set. B4 folds in here (the constant import from `retryAfter.ts`
+   removes the URL-literal triplication).
+3. Password-change flow: wrong-current-password now arrives as 400 —
+   display comes from the interceptor's default branch (+ legacy
+   `errorDisplay` mapping); confirm no caller-side handler keys on the
+   old 401 (`passwordChange.ts` has none today — behavior display only).
+4. Privilege case has no SPA caller (no UI path to administer another
+   user from the self-change modal); no new branch needed — the
+   existing 403 branch (`"Access denied."`) covers the future admin
+   panel case.
+5. With the invariant holding, drop the 401 branch's speculative
+   URL-knowledge to the single shared carve-out; net frontend delta is
+   small and the interceptor's semantics become "session-tier only".
+
+### Step 3 — B2: single-owner share-create display
+
+Scope: `frontend/src/components/Modal/CreateShareModal.vue` + a
+behavior test. Route `createLink` through `tryWithMessageStore`
+(`updateLink` at `:98` is the in-file template).
+
+### Step 4 — B3: guard decision module with behavior tests
+
+Scope: extract the `routes.ts:128-146` guard decision into an
+injectable pure module; behavior cases: profile-present, needs-
+enrollment, enrolled-redirect, share-exempt, ping-rejection → degrade.
+Existing regex pins (S7–S10) shrink to tripwires; note them as R31
+rewrite candidates.
+
+### Step 5 — B5: delete phantom share-store members
+
+Scope: `frontend/src/store/shareStore.ts` only — delete
+`fetchAllShares`/`allShares`/`fetched`; grep-verify `resolvedShare`
+consumers untouched.
+
+### Step 6 — plan-text sync
+
+Update `.plan/auth-enrollment-review.md` (R26 entry + follow-up):
+record the O2 retype, disposition chain, and pointer here.
 
 ## Verification
 
-Per step: `just frontend-test` (vitest) green; step 1 additionally
-`just frontend-check`; final state additionally a manual Playwright
-first-admin matrix re-run comment if the guard module changes
+Backend per step 1: `cargo test -p picasu --lib`, `just openapi-check`,
+`just check`. Frontend per steps 2-4: `just frontend-test` (vitest),
+`just frontend-check` at step 2. Playwright: the guard-related suites as
+a regression matrix at step 4; the first-admin-linked password flows at
+step 1-2.
 
 Out of scope: full api-layer merge (deferred by the session-slice
-scoping decision), backend endpoint changes, Playwright spec changes
-beyond the guard regression matrix, admin panel work.
+scoping decision), machine `code` field (O3), share-flow 401 handling
+(split-modal owns it), Playwright spec changes beyond the regression
+matrix, admin panel work, R31 test rewrites.
