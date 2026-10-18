@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: bug
 priority: high
 area: full-stack
@@ -210,6 +210,41 @@ consumers untouched.
 
 Update `.plan/auth-enrollment-review.md` (R26 entry + follow-up):
 record the O2 retype, disposition chain, and pointer here.
+
+## Outcome (executed 2026-10-18; commits `7728075d4`…`c8d4147f1`)
+
+- Step 1 (backend retype): see the annotation under item 1 above;
+  additionally both password tests flipped to `..._is_400`, the
+  endpoint's OpenAPI/doc errors were retyped (its only 401 source is
+  now the session guard), `sessions.rs` declares the newly-possible
+  403, openapi + reference regenerated. The plan's "guards emit the
+  fixed `Unauthorized` body" claim was inverted by measurement: bare
+  guard payloads are discarded by Rocket codegen (the status reaches
+  catchers, so a bare-guard 403 would render HTML); reason-bearing
+  bodies come from `GuardResult` routes, which is why the password
+  route consumes its guard through `GuardResult`.
+- Step 2: the 401 branch gained the `AUTHENTICATE_URL` carve-out
+  (mirror of the 429 one); B4 folded in (single constant source,
+  `retryAfter.ts`); the password-400 display path is test-pinned.
+  "Login page owns the display" resolves to the static banner plus
+  the inline 429 throttle — no 401 has produced a snackbar since
+  `294355f7c`, which made the first-admin e2e spec's wrong-password
+  step stale; that step was updated here (regression matrix scope).
+- Step 3: `createLink` routed through `tryWithMessageStore`; display
+  contract pinned structurally (vitest has no component mount
+  harness — same pattern as `shareLoginModal.test.ts`).
+- Step 4: decision extracted to `route/bootGuard.ts` with six
+  behavior tests; a rejected ping degrades to the login fall-through
+  (previously an unhandled rejection aborted navigation); the S7–S10
+  regex pins shrank to tripwires (R31 rewrite candidates).
+- Step 5: phantom members deleted; grep found no consumers and no
+  backend route for `/get/get-all-shares`.
+
+Record: pre-existing at execution time — `interpreter.spec.ts`
+scenarios end on the Create Admin screen even at the pre-execution
+baseline `2ee4ea835` (verified in a throwaway worktree), so it is not
+regression from this bug set; root cause (boot-guard flow vs scenario
+seeding) tracked in `.plan/e2e-boot-guard-scenario-red.md`.
 
 ## Verification
 
