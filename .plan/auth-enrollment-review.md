@@ -30,7 +30,7 @@ This is the suggested tackle order, not a commitment to fix all items.
 | 1     | R23 | CONFIRMED  | S1  | HIGH   | MED     | Auth state triplication + probe overload (root of R1)                    |
 | 2     | R5  | CONFIRMED  | S1  | HIGH   | MED     | Session cookie not HttpOnly (client-set)                                 |
 | 3     | R6  | CONFIRMED  | S2  | HIGH   | HIGH    | No server-side session revocation                                        |
-| 4     | R26 | CONFIRMED  | S2  | HIGH   | MED     | Frontend auth layer fragmentation                                        |
+| 4     | R26 | PARTIAL    | S2  | HIGH   | MED     | Frontend auth layer fragmentation                                        |
 | 5     | R3  | CONFIRMED  | S1  | MED    | MED     | Bootstrap race (check-then-act, no lock)                                 |
 | 6     | R4  | CONFIRMED  | S1  | MED    | LOW     | Open registration squats first-user slot                                 |
 | 7     | R1  | CONFIRMED  | S0  | LOW    | LOW     | Stale probe bounces post-login to /login                                 |
@@ -193,6 +193,18 @@ This is the suggested tackle order, not a commitment to fix all items.
 - R26 CONFIRMED (S2/HIGH/MED). `api/users.ts` vs `api/config.ts:31` vs
   six utils modules; login setup duplicated in two pages; users-scoped
   password route has no SPA caller. Fix: consolidate to one auth module.
+  Re-triaged 2026-10-18 against HEAD `331641244` (two-round critical
+  review): the password-route sub-point is stale (`ChangePassword.vue:114`
+  calls it via `setUserPassword`); the utils/auth modules no longer send
+  HTTP; the "one auth module" merge is deferred by the session-slice
+  scoping decision (`r26-frontend-auth-consolidation.md`), not a pending
+  fix — `api/users.ts` already is that module. Verified remainder is a
+  bug set (failed-login 401 clears a live display session; share-create
+  double snackbar; guard behavior-coverage hole; `AUTHENTICATE_URL`
+  literal ×3; phantom `/get/get-all-shares` call) plus an S3 ride-along
+  tail (ceremony dup, orphaned config bindings, stale comments/docs) ->
+  `frontend-vue-consolidation.md`. Superseded 2026-10-18 by
+  `.plan/r26-remainder-bugset.md`, which owns fixes from here.
 - R27 PARTIAL (S2/MED/LOW). Fixed-string 422 (`catchers.rs:33-40`) and
   false `/unauthorized` no-body doc confirmed; "only bare-Status hits
   catchers" refuted — bare guard params also lose detail via codegen.
@@ -257,6 +269,9 @@ R3, R4, R7–R16, R18–R22, R24, R25, R26–R35 (R25–R27, R30–R31 partial).
 In progress: R4+R3 done 2026-10-16, R8+R9+R12 done 2026-10-16, host-only
 knob extension + `secrets.password` doc done, auth-key secrets-file slice
 done 2026-10-16 (`.plan/auth-key-secrets-file.md`), then R26 remainder.
+R26 remainder re-scoped 2026-10-18: fixes now owned by
+`.plan/r26-remainder-bugset.md`; S3 ride-along tail parked in
+`.plan/frontend-vue-consolidation.md`.
 
 Sequence findings (R1, R3–R4, R23–R26) outgrew per-case tests and are
 planned as model-based flow conformance in `.plan/flow-model-conformance.md`
