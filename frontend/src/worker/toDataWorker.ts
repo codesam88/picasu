@@ -24,7 +24,11 @@ const fetchedRowData = new Map<number, Row>()
 const postToMainData = bindActionDispatch(fromDataWorker, self.postMessage.bind(self))
 const workerAxios = axios.create()
 
-setupWorkerAxiosInterceptor(workerAxios, postToMainData.notification)
+setupWorkerAxiosInterceptor(
+  workerAxios,
+  { notify: postToMainData.notification, onUnauthorized: postToMainData.unauthorized },
+  'data'
+)
 
 self.addEventListener('message', (e) => {
   const handler = createHandler<typeof toDataWorker>({

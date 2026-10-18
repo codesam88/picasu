@@ -25,7 +25,7 @@ axiosRetry(workerAxios, {
   }
 })
 
-setupWorkerAxiosInterceptor(workerAxios, postToMainImg.notification)
+setupWorkerAxiosInterceptor(workerAxios, { notify: postToMainImg.notification }, 'image')
 
 // ================== Blob Cache ==================
 
