@@ -49,18 +49,13 @@ describe('register route', () => {
   })
 
   test('S7 guard allows with profile present before any fetch (fast path)', () => {
-    // Routing-grade fast path: a present session profile allows without
-    // touching the network. Assert the profile read precedes the only
-    // fetch (getServerInfo) in guard source order.
+    // R31 rewrite candidate: source tripwire, superseded by the
+    // bootGuard.test.ts behavior tests. The decision lives in
+    // bootGuard.ts; routes.ts only wires the fast-path profile read.
     const source = readRoute('routes.ts')
     expect(source).toContain("useSessionStore('mainId')")
     expect(source).toMatch(/\.profile !== null/)
-    expect(source).toContain('getServerInfo')
-    const profileAt = source.indexOf('.profile !== null')
-    const fetchAt = source.indexOf('await getServerInfo()')
-    expect(profileAt).toBeGreaterThanOrEqual(0)
-    expect(fetchAt).toBeGreaterThanOrEqual(0)
-    expect(profileAt).toBeLessThan(fetchAt)
+    expect(source).toMatch(/profilePresent:/)
   })
 
   test('S7 guard performs no probe and holds no cache', () => {
@@ -74,34 +69,34 @@ describe('register route', () => {
   })
 
   test('S8 guard sessionless + needs-enrollment redirects to register', () => {
-    // Fresh ping says unenrolled with enrollment open: force register
-    // unless already there.
+    // R31 rewrite candidate: source tripwire, superseded by the
+    // bootGuard.test.ts behavior tests. routes.ts only injects the ping.
     const source = readRoute('routes.ts')
-    expect(source).toMatch(/!enrolled && enrollmentOpen/)
-    expect(source).toMatch(/return to\.name === 'register' \? true : \{\s*name:\s*'register'\s*\}/)
+    expect(source).toContain('decideBootRoute')
+    expect(source).toContain('serverInfo: getServerInfo')
   })
 
   test('S9 guard sessionless + enrolled redirects to login', () => {
-    // Otherwise (enrolled store, or closed install): force login unless
-    // already there. The register arm absorbs the deleted RegisterPage
-    // leave-redirect: a sessionless /register visit lands on /login
-    // instead of rendering a dead enrollment form.
+    // R31 rewrite candidate: source tripwire, superseded by the
+    // bootGuard.test.ts behavior tests. The register arm absorbs the
+    // deleted RegisterPage leave-redirect: a sessionless /register visit
+    // lands on /login instead of rendering a dead enrollment form.
     const source = readRoute('routes.ts')
-    expect(source).toMatch(/return to\.name === 'login' \? true : \{\s*name:\s*'login'\s*\}/)
+    expect(source).toContain('decideBootRoute')
   })
 
   test('S10 guard never redirects share links', () => {
-    // Capability URLs authenticate out-of-band: the share exemption must
-    // precede both the profile fast path and the server-info fetch.
+    // R31 rewrite candidate: source tripwire, superseded by the
+    // bootGuard.test.ts behavior tests. The share exemption lives in the
+    // module; routes.ts only passes isShareTarget, and the ordering pin
+    // below checks the module source instead of routes.ts.
     const source = readRoute('routes.ts')
-    const shareAt = source.indexOf("to.name === 'share'")
-    const profileAt = source.indexOf('.profile !== null')
-    const fetchAt = source.indexOf('await getServerInfo()')
+    expect(source).toContain('isShareTarget')
+    const guard = readRoute('bootGuard.ts')
+    const shareAt = guard.indexOf('deps.isShareTarget')
+    const pingAt = guard.indexOf('await deps.serverInfo()')
     expect(shareAt).toBeGreaterThanOrEqual(0)
-    expect(profileAt).toBeGreaterThanOrEqual(0)
-    expect(fetchAt).toBeGreaterThanOrEqual(0)
-    expect(shareAt).toBeLessThan(profileAt)
-    expect(shareAt).toBeLessThan(fetchAt)
-    expect(source).toMatch(/shareViewPage/)
+    expect(pingAt).toBeGreaterThanOrEqual(0)
+    expect(shareAt).toBeLessThan(pingAt)
   })
 })

@@ -10,6 +10,7 @@ import AlbumsPage from '@/components/Page/AlbumsPage.vue'
 import AlbumContentsPage from '@/components/Page/AlbumContentsPage.vue'
 import VideosPage from '@/components/Page/VideosPage.vue'
 import ViewPage from '@/components/View/ViewPage.vue'
+import { decideBootRoute } from './bootGuard'
 import { createRoute } from './createRoute'
 import { tagsRoute } from './tagsRoute'
 import { linksRoute } from './linksRoute'
@@ -124,25 +125,16 @@ const router = createRouter({
 // anonymous `getServerInfo()` ping decides: needs-enrollment forces the
 // register screen, anything else (enrolled store, closed install) falls
 // through to the normal login. Nothing is cached — the ping runs only
-// when sessionless, so there is no stale state to invalidate.
+// when sessionless, so there is no stale state to invalidate. A failed
+// ping degrades to that same login fall-through instead of aborting
+// navigation; the decision logic lives in ./bootGuard.
 router.beforeEach(async (to) => {
-  // Share links are capability URLs: they authenticate out-of-band and
-  // must work without login — including on installs where the ping below
-  // reports a closed install. Never redirect them.
-  if (to.name === 'share' || to.name === 'shareViewPage') {
-    return true
-  }
-  if (useSessionStore('mainId').profile !== null) {
-    return true
-  }
-  const { enrolled, enrollmentOpen } = await getServerInfo()
-  if (!enrolled && enrollmentOpen) {
-    return to.name === 'register' ? true : { name: 'register' }
-  }
-  // Enrolled store or closed install: sessionless means login. This also
-  // absorbs the deleted RegisterPage leave-redirect — a sessionless visit
-  // to /register lands on /login instead of rendering a dead form.
-  return to.name === 'login' ? true : { name: 'login' }
+  return decideBootRoute({
+    isShareTarget: to.name === 'share' || to.name === 'shareViewPage',
+    profilePresent: useSessionStore('mainId').profile !== null,
+    toName: typeof to.name === 'string' ? to.name : undefined,
+    serverInfo: getServerInfo
+  })
 })
 
 // Update the browser tab title based on the current route
