@@ -127,12 +127,30 @@ banner/interceptor hand-off. Done: a hint-less 429 shows a message; the
 interceptor-continues-silent contract still holds; suites green. Leaves
 out: T4.
 
-### T4 — worker auth-error ownership
+### T4 — worker auth-error ownership (W1: wire the declared 401 channel)
 
-Scope: `worker/workerAxiosInterceptor.ts` and its callers. Implement the
-D2 decision (forward to main thread, or document-and-pin); the change is
-the cheaper coherent step with one pinning test. Done: worker 401/429 has
-exactly one defined UX path. Leaves out: backend contract work (T5).
+Decided 2026-10-17 (user): W1 — the data worker routes 401 through the
+already-declared `unauthorized` postMessage channel (main-thread handlers
+exist in `fromDataWorker.ts`/`fromImgWorker.ts` but nothing emitted).
+The image worker stays console-silent per W1 (per-image scroll failures
+are expected by design; session expiry surfaces via the data worker).
+In the shared worker interceptor, statuses outside the handled set are
+"never expected" and get an info-level log naming the worker and the code
+(`worker <name> got unexpected return code <status>`; network errors
+without a response log a no-response variant). Expected: data worker
+401 → `unauthorized` → main thread clears the session profile and
+redirects once (same contract as the axios interceptor); both workers
+500 → `notification` push (unchanged). T4's "worker 429" half is moot:
+the login rate limiter does not apply to worker GET endpoints.
+
+Scope: `worker/workerAxiosInterceptor.ts`, `worker/toDataWorker.ts`,
+`worker/toImgWorker.ts`, main-thread `unauthorized` handler
+(`fromDataWorker.ts`, `fromImgWorker.ts`). Tests: behavior tests on the
+interceptor (mocked axios instance + dispatch spies); the message handler
+update mirrors the interceptor contract. Done: worker 401 has exactly one
+defined UX path, unexpected codes are logged at info level. Leaves out:
+backend contract work (T5), token-refresh wiring (declared
+`refreshTimestampToken`/`refreshHashToken` channel remains reserved).
 
 ### T5 — backend error contract
 

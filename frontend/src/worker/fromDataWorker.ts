@@ -11,6 +11,7 @@ import { useLocationStore } from '@/store/locationStore'
 import { useModalStore } from '@/store/modalStore'
 import { useOptimisticStore } from '@/store/optimisticUpateStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
+import { useSessionStore } from '@/store/sessionStore'
 import { useScrollTopStore } from '@/store/scrollTopStore'
 import { useTokenStore } from '@/store/tokenStore'
 import { useConstStore } from '@/store/constStore'
@@ -133,6 +134,7 @@ export function handleDataWorkerReturn(dataWorker: Worker, isolationId: Isolatio
     },
 
     unauthorized: async () => {
+      useSessionStore('mainId').clearProfile()
       await redirectionStore.redirectionToLogin()
     },
 

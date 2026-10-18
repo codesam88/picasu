@@ -4,6 +4,7 @@ import { fromImgWorker } from '@/worker/workerApi'
 import { IsolationId, MessageColor } from '@type/types'
 import { useMessageStore } from '@/store/messageStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
+import { useSessionStore } from '@/store/sessionStore'
 const workerHandlerMap = new Map<Worker, (e: MessageEvent) => void>()
 
 export function handleImgWorker(imgWorker: Worker, isolationId: IsolationId) {
@@ -19,6 +20,7 @@ export function handleImgWorker(imgWorker: Worker, isolationId: IsolationId) {
       imgStore.imgOriginal.set(index, url)
     },
     unauthorized: async () => {
+      useSessionStore('mainId').clearProfile()
       await redirectionStore.redirectionToLogin()
     },
     notification: function (payload: { text: string; color: MessageColor }): void {
