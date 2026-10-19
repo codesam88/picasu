@@ -143,14 +143,22 @@ This is the suggested tackle order, not a commitment to fix all items.
   but swallows guard failure (`:83-89` → 403/404/409); `extract_bearer_token`
   falls back to `?token=` (`auth.rs:446-451`, no frontend caller);
   `picasu-admin` cited in 4 messages but no such binary. Fix: drop query
-  fallback, align spec or propagate, reword CLI remedy.
+  fallback, align spec or propagate, reword CLI remedy. Partial
+  2026-10-19: the `?token=` fallback is gone (no hits in `auth.rs`);
+  remaining = the register 401 annotation vs behavior, and the
+  `picasu-admin` references — the CLI is planned as H1a of
+  `.plan/e2e-given-reshaping.md`, which makes those references true.
 - R15 CONFIRMED (S2/LOW/LOW). No TLS in backend; cookie `secure`
   conditional with rationale; docs point at reverse proxy. Fix: docs
-  deployment note only.
+  deployment note only. Fixed 2026-10-19: HTTP + 14-day-JWT deployment
+  note in `docs/config.md` (TLS at the proxy, `X-Forwarded-Proto` /
+  `trust_proxy_forwarded_for` forwarding).
 - R16 CONFIRMED (S2/LOW/LOW). `POST /post/users/create` in zero backend
   files yet documented in `auth.md:97`, `auth-flows.md:22,44,100,114`;
   bare-string/legacy-password text postdates removal commits. Fix: rewrite
-  three docs against bootstrap/register flow.
+  three docs against bootstrap/register flow. Fixed 2026-10-19:
+  `docs/auth-flows.md` + `docs/auth.md` rewritten against the
+  bootstrap/register reality; zero `users/create` hits in `docs/`.
 - R17 CONFIRMED (S3/LOW/LOW). Reference documents `hasPassword` (spec has
   only `hasAuthKey`) and blank-clears-password text; regen recipe
   (`justfile:219-223`) not rerun since 2026-10-08. Fix: run
@@ -159,18 +167,31 @@ This is the suggested tackle order, not a commitment to fix all items.
 - R18 CONFIRMED (S3/LOW/LOW). `playwright_generator.md:142-143,195` and
   `scenario-dsl.md:147-156` show `config.password`; code has `givenUser`
   (`schema.json:71-85`, `executeGiven.ts:190-191`); scenarios migrated.
-  Fix: replace examples with `user:` given.
+  Fix: replace examples with `user:` given. Fixed 2026-10-19: both docs
+  carry the `user:` given form and the current config-given fields.
 - R19 CONFIRMED (S2/LOW/LOW). Brief cites deleted `post/users.rs` (`:113`)
   and `BOOTSTRAP_LOCK` (`:119`) plus legacy-migration rules. Fix: repoint
-  at bootstrap/register or retire the brief.
+  at bootstrap/register or retire the brief. Fixed 2026-10-19, genre
+  correction: `docs/briefs/*.md` are upstream-knowledge digests, so the
+  brief was rewritten project-independent against the Rocket 0.5.1
+  `FromRequest` docs (Outcome trio, `Option`/`Result` catch impls,
+  guard ordering, request-local caching) with upstream-only sources —
+  project churn can no longer stale it.
 - R20 CONFIRMED (S3/LOW/LOW). `frontend.md:103` omits `/register`
   (`routes.ts:17,31` has it); `:235` stale password wording; `e2e.rs`
   renamed to `api_*.rs`. Fix: refresh route list + wording + reference.
+  Fixed 2026-10-19: `/register` + boot-guard routing + current password
+  wording in `docs/frontend.md`; `e2e.rs`/gap staleness cleared in
+  `docs/test-strategy.md`.
 - R21 CONFIRMED (S2/LOW/LOW). Three contradictions: `auth-flows.md` row 1
   legacy-migrate `done` vs no migration in code; `create_user_handler`
   named vs deleted; pending-revert password-PUT entry vs already-applied
   (`users_password.rs:70-77` 404 + comment). Fix: fold applied reverts
-  back into both plans.
+  back into both plans. Fixed 2026-10-19: the two plan rows/notes folded
+  to the proven state, the enrollment plan's pending-revert entries moved
+  to applied with pin names, `create_user_handler` references cleared —
+  and the tracker file (`.plan/auth-flows.md`) subsequently removed as
+  redundant (`f1877ed7e`); per-flow state lives in the plan files.
 - R22 CONFIRMED (S3/LOW/LOW). `createUser` has no `.vue` caller (register
   page uses `bootstrapUser`); `executeGiven.ts:191-198` states the admin
   flag is ignored. Fix: wire or delete when admin-create form lands.
@@ -185,7 +206,10 @@ This is the suggested tackle order, not a commitment to fix all items.
 - R24 CONFIRMED (S2/MED/LOW). Interceptor (`axiosInterceptor.ts:101-104`)
   replaces all 401 messages then callers toast again; 1s throttle drops
   toast and redirect. Fix: single 401 display owner; scope throttle to
-  redirects.
+  redirects. Fixed 2026-10-17: the interceptor became the single 401
+  display owner (`294355f7c`), the caller-side sweep completed
+  (`4b6c23aba`), and the 1s throttle was deleted as a consumer of it
+  (`a42e7f2af`).
 - R25 PARTIAL (S2/MED/MED). Two-step create→login with no rollback
   confirmed (`registration.ts:37-39`); retry-after-success yields 401
   (spec-pinned `:148-168`), not the claimed 409 — 409 needs a true race.
@@ -218,7 +242,12 @@ This is the suggested tackle order, not a commitment to fix all items.
   false `/unauthorized` no-body doc confirmed; "only bare-Status hits
   catchers" refuted — bare guard params also lose detail via codegen.
   Fix: explicit body parsing for 422 detail; route guards through
-  `GuardResult`; fix doc.
+  `GuardResult`; fix doc. Re-verdicted 2026-10-19: the fixed-string 422
+  and the 401 JSON body are now the documented contract
+  (`4fd98860a`), and `GuardResult` propagation (established while
+  retyping `users_password`) is the bare-guard-detail rollout vehicle —
+  residual is that rollout plus any remaining bare-guard routes, not a
+  catcher change.
 - R28 CONFIRMED (S3/MED/MED). Three knob read styles; PUT accepts knobs
   GET never returns; frontend `AppConfig` stale both ways; plus
   stringly-typed status and `/post/invites/create` verb. Fix: knob
@@ -273,8 +302,12 @@ No fixes applied in this change; no behavior changed.
 
 Retriage 2026-10-16 (branch `auth-enrollment-review` @ `c3d0822`, five
 read-only batch checks + spot-checks): resolved R1, R2, R5, R6, R17, R23
-(session slice; R26 remains partial, session module only). Still open:
-R3, R4, R7–R16, R18–R22, R24, R25, R26–R35 (R25–R27, R30–R31 partial).
+(session slice; R26 remains partial, session module only).
+Still open after the 2026-10-19 docs/closure pass: R10, R13, R14
+(residual: register-401 annotation + planned CLI), R22 (record-only),
+R25, R27 (residual `GuardResult` rollout), R28–R35 (R30–R31 partial);
+R11 is an accepted risk with no fix. Closed since that triage: R3, R4,
+R7–R9, R12, R15–R16, R18–R21, R24, R26 — per-verdict annotations above.
 In progress: R4+R3 done 2026-10-16, R8+R9+R12 done 2026-10-16, host-only
 knob extension + `secrets.password` doc done, auth-key secrets-file slice
 done 2026-10-16 (`.plan/auth-key-secrets-file.md`), then R26 remainder.
