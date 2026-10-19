@@ -1,5 +1,5 @@
 ---
-status: open
+status: backlog
 type: feature
 priority: medium
 area: testing
