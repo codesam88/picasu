@@ -7,7 +7,9 @@ covers:
     - textbox/User ID
     - textbox/Password
     - route:/timeline
-    - toast:error:unauthorized
+    - route:/login
+    - Please log in to continue
+    - .v-snackbar__content
     - snapshot:login-page
 session: none
 given:
@@ -29,9 +31,12 @@ steps:
         value: wrong_password
       - click: button/Login
     assert:
-      - ui.toast:
-          type: error
-          contains: unauthorized
+      # 401 arrival UX per docs/auth.md: the response interceptor raises no
+      # snackbar for unauthorized; the static login banner owns the message.
+      - ui.route: /login
+      - ui.text_visible: Please log in to continue
+      - ui.count: .v-snackbar__content
+        equals: 0
   - when:
       - fill: textbox/User ID
         value: admin
