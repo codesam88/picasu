@@ -46,28 +46,10 @@ pub fn list_users_handler(_auth: GuardAuth) -> AppResult<Json<Vec<UserSummary>>>
 
 #[cfg(test)]
 mod tests {
-    use rocket::http::{Cookie, Status};
+    use rocket::http::Status;
 
     use crate::router::post::register::UserSummary;
-    use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
-
-    fn lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_SERIAL_GUARD
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    fn setup() -> rocket::local::blocking::Client {
-        let _ = &*TEST_ENV;
-        reset_backend_state();
-        make_client()
-    }
-
-    fn cookie(id: &str, admin: bool) -> Cookie<'static> {
-        let claims = crate::router::auth::Claims::new_user(id.to_string(), admin);
-        let _ = crate::auth::users::add_session(id, &claims.jti);
-        Cookie::new("jwt", claims.encode())
-    }
+    use crate::tests::bootstrap::{cookie, lock, setup};
 
     #[test]
     fn admin_lists_users_without_hashes() {

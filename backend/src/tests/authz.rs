@@ -13,29 +13,10 @@ use rocket::local::blocking::Client;
 use serde_json::{Value, json};
 use snapfab::{PhotoSpec, generate_batch};
 
-use crate::tests::bootstrap::{
-    TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state, test_image_home,
-};
+use crate::tests::bootstrap::{lock, setup_image_home, test_image_home};
 use crate::tests::fixtures::{
-    auth_cookie, discover_album_id, discover_asset_id, set_image_home, wait_for_album_index,
+    auth_cookie, discover_album_id, discover_asset_id, wait_for_album_index,
 };
-
-/// Serialize tests and reset shared backend state, matching the scenario
-/// harness contract. `set_image_home` is required because the discovery
-/// fixtures resolve paths through a module-level `OnceLock`, not the config.
-fn setup() -> Client {
-    let _ = &*TEST_ENV;
-    reset_backend_state();
-    let data = test_image_home();
-    set_image_home(data);
-    make_client()
-}
-
-fn lock() -> std::sync::MutexGuard<'static, ()> {
-    TEST_SERIAL_GUARD
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
 
 /// Generate one photo at `photo_rel`, index its directory, and return the
 /// album id and the photo's asset id. The share in every test is created on
@@ -184,7 +165,7 @@ fn album_title(client: &Client, album_id: &str) -> Option<String> {
 #[test]
 fn asset_token_is_rejected_where_a_snapshot_token_is_required() {
     let _g = lock();
-    let client = setup();
+    let client = setup_image_home();
     let (album, asset) = create_album(&client, "/authz_asset_token/album/photo.jpg");
     let share = create_share(&client, &album, false, false);
     let (ts, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
@@ -240,7 +221,7 @@ fn asset_token_is_rejected_where_a_snapshot_token_is_required() {
 #[test]
 fn snapshot_token_is_rejected_where_an_asset_token_is_required() {
     let _g = lock();
-    let client = setup();
+    let client = setup_image_home();
     let (album, asset) = create_album(&client, "/authz_snapshot_token/album/photo.jpg");
     let share = create_share(&client, &album, true, true);
     let (_, snapshot_token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));
@@ -270,7 +251,7 @@ fn snapshot_token_is_rejected_where_an_asset_token_is_required() {
 #[test]
 fn original_serving_without_allow_original_is_401() {
     let _g = lock();
-    let client = setup();
+    let client = setup_image_home();
     let asset: arrayvec::ArrayString<64> = "a".repeat(64).parse().expect("asset id");
     let hash: arrayvec::ArrayString<64> = "b".repeat(64).parse().expect("hash");
     let token = crate::router::auth::ClaimsHash::new(
@@ -298,7 +279,7 @@ fn original_serving_without_allow_original_is_401() {
 #[test]
 fn metadata_is_scoped_to_the_shares_album() {
     let _g = lock();
-    let client = setup();
+    let client = setup_image_home();
     let (_album_a, asset_a) = create_album(&client, "/authz_scope_a/album/photo.jpg");
     let (album_b, _asset_b) = create_album(&client, "/authz_scope_b/album/photo.jpg");
     let share_b = create_share(&client, &album_b, true, false);
@@ -321,7 +302,7 @@ fn metadata_is_scoped_to_the_shares_album() {
 #[test]
 fn share_cannot_rename_another_album() {
     let _g = lock();
-    let client = setup();
+    let client = setup_image_home();
     let (album_a, _asset_a) = create_album(&client, "/authz_rename_a/album/photo.jpg");
     let (album_b, _asset_b) = create_album(&client, "/authz_rename_b/album/photo.jpg");
     let share_b = create_share(&client, &album_b, true, false);
@@ -351,7 +332,7 @@ fn share_cannot_rename_another_album() {
 #[test]
 fn share_cannot_write_another_albums_asset() {
     let _g = lock();
-    let client = setup();
+    let client = setup_image_home();
     let (album_a, _asset_a) = create_album(&client, "/authz_desc_a/album/photo.jpg");
     let (_album_b, asset_b) = create_album(&client, "/authz_desc_b/album/photo.jpg");
     let share_a = create_share(&client, &album_a, true, false);
@@ -378,7 +359,7 @@ fn share_cannot_write_another_albums_asset() {
 #[test]
 fn renewal_is_bound_to_the_presenters_share() {
     let _g = lock();
-    let client = setup();
+    let client = setup_image_home();
     let (album_a, _asset_a) = create_album(&client, "/authz_renew_a/album/photo.jpg");
     let (album_b, _asset_b) = create_album(&client, "/authz_renew_b/album/photo.jpg");
     let share_a = create_share(&client, &album_a, true, false);
@@ -404,7 +385,7 @@ fn renewal_is_bound_to_the_presenters_share() {
 #[test]
 fn renewal_revalidates_the_embedded_share() {
     let _g = lock();
-    let client = setup();
+    let client = setup_image_home();
     let (album, asset) = create_album(&client, "/authz_renew_expired/album/photo.jpg");
     let share = create_share(&client, &album, true, false);
     let (_, token, _) = prefetch_as_share(&client, &album, &share, Some(&asset));

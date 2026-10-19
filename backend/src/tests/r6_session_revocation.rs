@@ -1,47 +1,20 @@
 use rocket::http::{ContentType, Cookie, Status};
 use serde_json::json;
 
-use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
+use crate::tests::bootstrap::{lock, login, seed, setup};
 use crate::tests::fixtures::test_password;
-
-fn lock() -> std::sync::MutexGuard<'static, ()> {
-    TEST_SERIAL_GUARD
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-fn setup() -> rocket::local::blocking::Client {
-    let _ = &*TEST_ENV;
-    reset_backend_state();
-    make_client()
-}
-fn create_user(id: &str, admin: bool, password: &str) {
-    crate::auth::users::create_user(id, admin).expect("create user");
-    let path = crate::auth::users::passwd_file_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).expect("auth dir");
-    }
-    let mut store = crate::auth::password::PasswdFile::load(&path).expect("load passwd");
-    store.set_password(id, password).expect("set password");
-}
-fn login(client: &rocket::local::blocking::Client, id: &str, pw: &str) -> String {
-    let resp = client
-        .post("/post/authenticate")
-        .header(ContentType::JSON)
-        .body(json!({ "userId": id, "password": pw }).to_string())
-        .dispatch();
-    assert_eq!(resp.status(), Status::Ok);
-    let set_cookie = resp.headers().get_one("Set-Cookie").expect("Set-Cookie");
-    let pair = set_cookie.split(';').next().expect("cookie pair");
-    pair.strip_prefix("jwt=").expect("jwt").to_string()
-}
 
 #[test]
 fn logout_kills_only_its_session() {
     let _g = lock();
     let client = setup();
-    create_user("r6-alice", true, &test_password("t-alice"));
-    let tok_a = login(&client, "r6-alice", &test_password("t-alice"));
-    let tok_b = login(&client, "r6-alice", &test_password("t-alice"));
+    seed("r6-alice", true, Some(test_password("t-alice").as_str()));
+    let (status, _, tok_a) = login(&client, "r6-alice", &test_password("t-alice"));
+    assert_eq!(status, Status::Ok);
+    let tok_a = tok_a.expect("Set-Cookie");
+    let (status, _, tok_b) = login(&client, "r6-alice", &test_password("t-alice"));
+    assert_eq!(status, Status::Ok);
+    let tok_b = tok_b.expect("Set-Cookie");
     // Both valid before logout
     assert_eq!(
         client
@@ -90,8 +63,10 @@ fn logout_kills_only_its_session() {
 fn logout_with_garbage_still_204() {
     let _g = lock();
     let client = setup();
-    create_user("r6-bob", true, &test_password("t-bob"));
-    let tok = login(&client, "r6-bob", &test_password("t-bob"));
+    seed("r6-bob", true, Some(test_password("t-bob").as_str()));
+    let (status, _, tok) = login(&client, "r6-bob", &test_password("t-bob"));
+    assert_eq!(status, Status::Ok);
+    let tok = tok.expect("Set-Cookie");
     let resp = client
         .post("/post/logout")
         .cookie(Cookie::new("jwt", "garbage.token.here"))
@@ -114,9 +89,17 @@ fn logout_with_garbage_still_204() {
 fn password_change_wipes_all_sessions() {
     let _g = lock();
     let client = setup();
-    create_user("r6-carol", false, &test_password("t-carol-old"));
-    let tok_a = login(&client, "r6-carol", &test_password("t-carol-old"));
-    let tok_b = login(&client, "r6-carol", &test_password("t-carol-old"));
+    seed(
+        "r6-carol",
+        false,
+        Some(test_password("t-carol-old").as_str()),
+    );
+    let (status, _, tok_a) = login(&client, "r6-carol", &test_password("t-carol-old"));
+    assert_eq!(status, Status::Ok);
+    let tok_a = tok_a.expect("Set-Cookie");
+    let (status, _, tok_b) = login(&client, "r6-carol", &test_password("t-carol-old"));
+    assert_eq!(status, Status::Ok);
+    let tok_b = tok_b.expect("Set-Cookie");
     // Self password change
     let resp = client
         .put("/put/users/password")
@@ -143,7 +126,9 @@ fn password_change_wipes_all_sessions() {
         Status::Unauthorized
     );
     // Re-login with new password works (use sessions inventory as GuardUser check, since /get/index/status is admin-only)
-    let tok_new = login(&client, "r6-carol", &test_password("t-carol-new"));
+    let (status, _, tok_new) = login(&client, "r6-carol", &test_password("t-carol-new"));
+    assert_eq!(status, Status::Ok);
+    let tok_new = tok_new.expect("Set-Cookie");
     assert_eq!(
         client
             .get("/get/sessions")
@@ -158,10 +143,18 @@ fn password_change_wipes_all_sessions() {
 fn admin_reset_wipes_target_sessions() {
     let _g = lock();
     let client = setup();
-    create_user("r6-admin", true, &test_password("t-admin-old"));
-    create_user("r6-dave", false, &test_password("t-dave-old"));
-    let tok_admin = login(&client, "r6-admin", &test_password("t-admin-old"));
-    let tok_dave = login(&client, "r6-dave", &test_password("t-dave-old"));
+    seed(
+        "r6-admin",
+        true,
+        Some(test_password("t-admin-old").as_str()),
+    );
+    seed("r6-dave", false, Some(test_password("t-dave-old").as_str()));
+    let (status, _, tok_admin) = login(&client, "r6-admin", &test_password("t-admin-old"));
+    assert_eq!(status, Status::Ok);
+    let tok_admin = tok_admin.expect("Set-Cookie");
+    let (status, _, tok_dave) = login(&client, "r6-dave", &test_password("t-dave-old"));
+    assert_eq!(status, Status::Ok);
+    let tok_dave = tok_dave.expect("Set-Cookie");
     let resp = client
         .put("/put/users/password")
         .cookie(Cookie::new("jwt", tok_admin.clone()))
@@ -192,9 +185,13 @@ fn admin_reset_wipes_target_sessions() {
 fn inventory_lists_live_sessions() {
     let _g = lock();
     let client = setup();
-    create_user("r6-eve", true, &test_password("t-eve"));
-    let tok_a = login(&client, "r6-eve", &test_password("t-eve"));
-    let tok_b = login(&client, "r6-eve", &test_password("t-eve"));
+    seed("r6-eve", true, Some(test_password("t-eve").as_str()));
+    let (status, _, tok_a) = login(&client, "r6-eve", &test_password("t-eve"));
+    assert_eq!(status, Status::Ok);
+    let tok_a = tok_a.expect("Set-Cookie");
+    let (status, _, tok_b) = login(&client, "r6-eve", &test_password("t-eve"));
+    assert_eq!(status, Status::Ok);
+    let tok_b = tok_b.expect("Set-Cookie");
     let val = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
     let jti_a = crate::router::auth::decode_typed::<crate::router::auth::Claims>(&tok_a, &val)
         .unwrap()
@@ -236,7 +233,7 @@ fn inventory_lists_live_sessions() {
 fn unauthenticated_inventory_is_401() {
     let _g = lock();
     let client = setup();
-    create_user("r6-frank", true, &test_password("t-frank"));
+    seed("r6-frank", true, Some(test_password("t-frank").as_str()));
     let resp = client.get("/get/sessions").dispatch();
     assert_eq!(resp.status(), Status::Unauthorized);
 }

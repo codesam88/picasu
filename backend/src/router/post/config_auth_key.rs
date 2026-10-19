@@ -59,29 +59,7 @@ mod tests {
     use rocket::http::{ContentType, Cookie, Status};
     use serde_json::{Value, json};
 
-    use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
-
-    fn lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_SERIAL_GUARD
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    fn setup() -> rocket::local::blocking::Client {
-        let _ = &*TEST_ENV;
-        reset_backend_state();
-        make_client()
-    }
-
-    fn cookie(id: &str, admin: bool) -> Cookie<'static> {
-        let claims = crate::router::auth::Claims::new_user(id.to_string(), admin);
-        let _ = crate::auth::users::add_session(id, &claims.jti);
-        Cookie::new("jwt", claims.encode())
-    }
-
-    fn seed(id: &str, admin: bool) {
-        crate::auth::users::create_user(id, admin).expect("seed user");
-    }
+    use crate::tests::bootstrap::{cookie, lock, seed, setup};
 
     fn reset(client: &rocket::local::blocking::Client, cookie: Option<Cookie<'static>>) -> Status {
         let mut req = client
@@ -104,7 +82,7 @@ mod tests {
     fn reset_rotates_key_and_invalidates_old_sessions() {
         let _g = lock();
         let client = setup();
-        seed("s4k-root", true);
+        seed("s4k-root", true, None);
         let old = cookie("s4k-root", true);
         assert_eq!(list_status(&client, old.clone()), Status::Ok);
 
@@ -146,7 +124,7 @@ mod tests {
     fn consecutive_resets_mint_different_keys() {
         let _g = lock();
         let client = setup();
-        seed("s4k-root", true);
+        seed("s4k-root", true, None);
         assert_eq!(reset(&client, Some(cookie("s4k-root", true))), Status::Ok);
         let first = crate::auth::secret_key::load_secret_key().expect("load first");
         assert_eq!(reset(&client, Some(cookie("s4k-root", true))), Status::Ok);
@@ -159,8 +137,8 @@ mod tests {
     fn reset_requires_admin() {
         let _g = lock();
         let client = setup();
-        seed("s4k-root", true);
-        seed("s4k-bob", false);
+        seed("s4k-root", true, None);
+        seed("s4k-bob", false, None);
         assert_eq!(reset(&client, None), Status::Unauthorized);
         assert_eq!(
             reset(&client, Some(cookie("s4k-bob", false))),

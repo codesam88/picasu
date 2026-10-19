@@ -169,40 +169,8 @@ mod tests {
     use rocket::http::{ContentType, Cookie, Status};
     use serde_json::json;
 
-    use crate::tests::bootstrap::{
-        TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state, write_config,
-    };
+    use crate::tests::bootstrap::{cookie, lock, seed, setup, write_config};
     use crate::tests::fixtures::test_password;
-
-    fn lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_SERIAL_GUARD
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    fn setup() -> rocket::local::blocking::Client {
-        let _ = &*TEST_ENV;
-        reset_backend_state();
-        make_client()
-    }
-
-    fn cookie(id: &str, admin: bool) -> Cookie<'static> {
-        let claims = crate::router::auth::Claims::new_user(id.to_string(), admin);
-        let _ = crate::auth::users::add_session(id, &claims.jti);
-        Cookie::new("jwt", claims.encode())
-    }
-
-    fn seed(id: &str, admin: bool, password: Option<&str>) {
-        crate::auth::users::create_user(id, admin).expect("seed user");
-        if let Some(pw) = password {
-            let path = crate::auth::users::passwd_file_path();
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).expect("auth dir");
-            }
-            let mut store = crate::auth::password::PasswdFile::load(&path).expect("load passwd");
-            store.set_password(id, pw).expect("set password");
-        }
-    }
 
     fn put_password(
         client: &rocket::local::blocking::Client,

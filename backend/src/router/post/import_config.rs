@@ -61,32 +61,10 @@ pub fn import_config_handler(_auth: GuardAuth, file: Json<AppConfig>) -> AppResu
 
 #[cfg(test)]
 mod tests {
-    use rocket::http::{ContentType, Cookie, Status};
+    use rocket::http::{ContentType, Status};
     use serde_json::json;
 
-    use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
-
-    fn lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_SERIAL_GUARD
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    fn setup() -> rocket::local::blocking::Client {
-        let _ = &*TEST_ENV;
-        reset_backend_state();
-        make_client()
-    }
-
-    fn cookie(id: &str, admin: bool) -> Cookie<'static> {
-        let claims = crate::router::auth::Claims::new_user(id.to_string(), admin);
-        let _ = crate::auth::users::add_session(id, &claims.jti);
-        Cookie::new("jwt", claims.encode())
-    }
-
-    fn seed(id: &str, admin: bool) {
-        crate::auth::users::create_user(id, admin).expect("seed user");
-    }
+    use crate::tests::bootstrap::{cookie, lock, seed, setup};
 
     fn current_key() -> Option<String> {
         crate::model::config::APP_CONFIG
@@ -105,7 +83,7 @@ mod tests {
     fn import_ignores_smuggled_auth_key() {
         let _g = lock();
         let client = setup();
-        seed("s4i-root", true);
+        seed("s4i-root", true, None);
         let admin = cookie("s4i-root", true);
         assert_eq!(
             client

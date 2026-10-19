@@ -21,46 +21,14 @@ use rocket::local::blocking::Client;
 use serde_json::json;
 
 use crate::tests::bootstrap::{
-    TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state, write_config,
+    TEST_ENV, lock, login_status as login, make_client, reset_backend_state, set_bootstrap_admin,
+    setup, write_config,
 };
 use crate::tests::fixtures::test_password;
-
-/// Serialize a test against the shared backend state.
-fn lock() -> std::sync::MutexGuard<'static, ()> {
-    TEST_SERIAL_GUARD
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// Reset shared state and return a fresh client. The harness resets into
-/// bootstrap mode (flag on, empty store).
-fn setup() -> Client {
-    let _ = &*TEST_ENV;
-    reset_backend_state();
-    make_client()
-}
-
-fn set_bootstrap_admin(enabled: bool) {
-    let mut config = crate::model::config::APP_CONFIG
-        .get()
-        .expect("APP_CONFIG")
-        .write()
-        .expect("APP_CONFIG lock");
-    config.bootstrap_admin = enabled;
-}
 
 fn bootstrap_user(client: &Client, id: &str, password: &str) -> Status {
     client
         .post("/post/users/bootstrap")
-        .header(ContentType::JSON)
-        .body(json!({ "userId": id, "password": password }).to_string())
-        .dispatch()
-        .status()
-}
-
-fn login(client: &Client, id: &str, password: &str) -> Status {
-    client
-        .post("/post/authenticate")
         .header(ContentType::JSON)
         .body(json!({ "userId": id, "password": password }).to_string())
         .dispatch()

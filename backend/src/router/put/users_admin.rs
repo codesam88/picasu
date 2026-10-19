@@ -86,29 +86,7 @@ mod tests {
     use rocket::http::{ContentType, Cookie, Header, Status};
     use serde_json::json;
 
-    use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
-
-    fn lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_SERIAL_GUARD
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    fn setup() -> rocket::local::blocking::Client {
-        let _ = &*TEST_ENV;
-        reset_backend_state();
-        make_client()
-    }
-
-    fn cookie(id: &str, admin: bool) -> Cookie<'static> {
-        let claims = crate::router::auth::Claims::new_user(id.to_string(), admin);
-        let _ = crate::auth::users::add_session(id, &claims.jti);
-        Cookie::new("jwt", claims.encode())
-    }
-
-    fn seed(id: &str, admin: bool) {
-        crate::auth::users::create_user(id, admin).expect("seed user");
-    }
+    use crate::tests::bootstrap::{cookie, lock, seed, setup};
 
     fn put_admin(
         client: &rocket::local::blocking::Client,
@@ -129,7 +107,7 @@ mod tests {
     fn unknown_user_is_404() {
         let _g = lock();
         let client = setup();
-        seed("s5-root", true);
+        seed("s5-root", true, None);
         let status = put_admin(
             &client,
             Some(cookie("s5-root", true)),
@@ -144,8 +122,8 @@ mod tests {
     fn unknown_field_on_admin_body_is_422() {
         let _g = lock();
         let client = setup();
-        seed("s5-root", true);
-        seed("s5-bob", false);
+        seed("s5-root", true, None);
+        seed("s5-bob", false, None);
         let status = put_admin(
             &client,
             Some(cookie("s5-root", true)),
@@ -162,7 +140,7 @@ mod tests {
     fn sole_admin_demoting_self_is_409() {
         let _g = lock();
         let client = setup();
-        seed("s5-sole", true);
+        seed("s5-sole", true, None);
         let status = put_admin(
             &client,
             Some(cookie("s5-sole", true)),
@@ -175,8 +153,8 @@ mod tests {
     fn demoting_sole_other_admin_is_409() {
         let _g = lock();
         let client = setup();
-        seed("s5-root", true);
-        seed("s5-victim", true);
+        seed("s5-root", true, None);
+        seed("s5-victim", true, None);
         // Demote the other admin first so only the victim remains, then
         // demoting the victim must be refused.
         let status = put_admin(
@@ -197,8 +175,8 @@ mod tests {
     fn self_demotion_with_other_admin_present_is_200() {
         let _g = lock();
         let client = setup();
-        seed("s5-a", true);
-        seed("s5-b", true);
+        seed("s5-a", true, None);
+        seed("s5-b", true, None);
         let status = put_admin(
             &client,
             Some(cookie("s5-a", true)),
@@ -220,8 +198,8 @@ mod tests {
     fn grant_and_noop_write_are_200() {
         let _g = lock();
         let client = setup();
-        seed("s5-root", true);
-        seed("s5-bob", false);
+        seed("s5-root", true, None);
+        seed("s5-bob", false, None);
         let status = put_admin(
             &client,
             Some(cookie("s5-root", true)),
@@ -240,8 +218,8 @@ mod tests {
     fn non_admin_caller_is_401() {
         let _g = lock();
         let client = setup();
-        seed("s5-root", true);
-        seed("s5-bob", false);
+        seed("s5-root", true, None);
+        seed("s5-bob", false, None);
         let status = put_admin(
             &client,
             Some(cookie("s5-bob", false)),
@@ -254,8 +232,8 @@ mod tests {
     fn share_headers_without_cookie_is_401() {
         let _g = lock();
         let client = setup();
-        seed("s5-root", true);
-        seed("s5-bob", false);
+        seed("s5-root", true, None);
+        seed("s5-bob", false, None);
         let status = client
             .put("/put/users/admin")
             .header(ContentType::JSON)
@@ -271,7 +249,7 @@ mod tests {
     fn unauthenticated_is_401() {
         let _g = lock();
         let client = setup();
-        seed("s5-root", true);
+        seed("s5-root", true, None);
         let status = put_admin(
             &client,
             None,
@@ -284,7 +262,7 @@ mod tests {
     fn bad_id_is_400() {
         let _g = lock();
         let client = setup();
-        seed("s5-root", true);
+        seed("s5-root", true, None);
         let status = put_admin(
             &client,
             Some(cookie("s5-root", true)),
@@ -304,8 +282,8 @@ mod tests {
     fn read_only_mode_is_405() {
         let _g = lock();
         let client = setup();
-        seed("s5-root", true);
-        seed("s5-bob", false);
+        seed("s5-root", true, None);
+        seed("s5-bob", false, None);
         crate::tests::bootstrap::write_config(&json!({ "read_only_mode": true }));
         let status = put_admin(
             &client,
