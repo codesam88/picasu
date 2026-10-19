@@ -217,11 +217,16 @@ gates — rather than inventing its own.
 
 ### Known gaps
 
-- **XMP keyword extraction from real file metadata** remains a stub; tags
-  can only be injected via fixtures. Porting the `extract_keywords` unit
-  tests and `scenario_n` to passing will close this gap and unblock
-  format-coverage for video files.
-- **Prefetch snapshot expiry** has a race where a snapshot can be deleted
-  almost immediately after creation. Tracked in `TODO.md` and pinned by
-  intentionally-red tests in the legacy `e2e.rs`, which is being phased out
-  as scenarios are ported to the DSL.
+Gaps in the strategy itself (product-behavior gaps live in bug tasks,
+not here):
+
+- No frontend component mount harness (`@vue/test-utils`/jsdom absent):
+  component contracts are pinned structurally from source, with
+  behavior-level rewrites outstanding.
+- The full Playwright suite is not part of the precommit gate (it runs
+  via `just test` / `just frontend-playwright`), so e2e regressions are
+  only caught when someone runs it.
+- Scenario `covers` declarations are advisory: `tracer.compare` warns
+  on missing API/UI coverage but no run fails on it.
+- Sequence/flow-level behavior has no conformance layer yet; flows are
+  pinned per-case only (planned in `flow-model-conformance.md`).

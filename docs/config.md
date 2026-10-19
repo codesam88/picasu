@@ -233,3 +233,12 @@ keep_alive = 30
 
 > HTTPS is best handled at a reverse proxy (nginx, Caddy) rather than
 > through Rocket's built-in TLS.
+>
+> Deploy HTTPS for anything beyond a trusted LAN: the backend itself
+> serves plain HTTP and the login stores the 14-day session JWT in a
+> cookie whose `Secure` flag engages only when the proxy forwards
+> `X-Forwarded-Proto: https` — over plain HTTP, every bearer of the
+> token can replay the session until it expires. A TLS-terminating proxy
+> must forward that header (and set `X-Forwarded-For`, with
+> `trust_proxy_forwarded_for` enabled, for login throttling to key by
+> client IP).

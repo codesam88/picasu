@@ -46,16 +46,17 @@ enrolled`. No probe list, no enroll, no login.
 
 - `just run`: bootstrap flag only (drop `ALLOW_REGISTRATION`,
   `TRIVIAL_PASSWORDS`, `PBKDF_ITERATIONS=100` demo conveniences).
+- Password-PUT auto-create: removed. `set_password_sync` never enrolls —
+  an unknown target is 404 even on an empty store
+  (`users_password.rs` rule comment); pinned by
+  `enroll_gate.rs::password_put_on_empty_store_is_404_and_creates_nothing`.
+- `authenticate` open-mint: the open window mints an ephemeral admin
+  cookie and creates nothing (route doc comment), and `docs/auth.md`
+  documents the same "creates nothing" rule. Enroll entry is
+  `POST /post/users/bootstrap` only; the UI's registration flow is
+  server-info ping → `bootstrapUser` → `login`.
 - Keep: gate, freshness refusal, harness opt-in, launcher env,
   provision/policy/invite backend, matrices.
-
-## Reverts pending (TDD, with test updates)
-
-- Password-PUT auto-create (`set_password_sync` empty-store branch):
-  remove silent enrollment; unknown target ⇒ 404 even on empty store.
-  Update `users_password::empty_store_bootstraps_first_user_as_admin`.
-- `authenticate` open-mint: keep route but document "creates nothing";
-  UI never calls it during enrollment (probe + create + login only).
 
 ## Test cases (backend matrices)
 
