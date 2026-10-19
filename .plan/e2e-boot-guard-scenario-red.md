@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: bug
 priority: medium
 area: frontend
@@ -100,11 +100,13 @@ expectations to the settled contract (mirror of first-admin spec step
 stored aria snapshot if stale. If diagnosis shows a real product gap
 instead, stop and report — do not paper over it.
 
-### H3 — full-suite gate
+### H3 — full-suite gate (done)
 
-`just frontend-playwright` fully green (all 4 interpreter suites, the
-guard matrix, `album-tree`), `just frontend-check`, coverage-warning
-counts before/after (no new `missing_api`/`missing_ui` warnings).
+`just frontend-playwright`: **42 passed / 0 failed** (exit 0) —
+interpreter 39/39, siblings green; `just frontend-check` exit 0;
+coverage-warning deltas from H1 were unmasking only (scenarios that
+never reached `tracer.compare` while red). Long-term replacement:
+`.plan/e2e-given-reshaping.md`.
 
 ## Verification
 
