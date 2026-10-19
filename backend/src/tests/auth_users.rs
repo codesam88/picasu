@@ -10,91 +10,14 @@
 //! writes, and login verifications pay a KDF round.
 
 use rocket::http::{ContentType, Cookie, Header, Status};
-use rocket::local::blocking::Client;
 use serde_json::{Value, json};
 
 use crate::router::auth::{Claims, Role};
-use crate::tests::bootstrap::{
-    TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state, test_image_home,
-};
+use crate::tests::bootstrap::{cookie, decode, lock, login, seed, setup_image_home};
 use crate::tests::fixtures::authz::{
     create_album, create_share, get_data_asset_token, get_data_rows, prefetch_as_share,
 };
-use crate::tests::fixtures::{set_image_home, test_password};
-
-/// Serialize a test against the shared backend state.
-fn lock() -> std::sync::MutexGuard<'static, ()> {
-    TEST_SERIAL_GUARD
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// Reset shared state and return a fresh client. `set_image_home` is required
-/// because the discovery fixtures resolve paths through a module-level
-/// `OnceLock`, not the config.
-fn setup() -> Client {
-    let _ = &*TEST_ENV;
-    reset_backend_state();
-    let data = test_image_home();
-    set_image_home(data);
-    make_client()
-}
-
-/// Create a user record plus its password hash directly in the stores.
-/// Each call pays one PBKDF2 round; callers batch assertions afterwards.
-fn seed_user(id: &str, admin: bool, password: &str) {
-    crate::auth::users::create_user(id, admin).expect("seed user");
-    let path = crate::auth::users::passwd_file_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).expect("auth dir");
-    }
-    let mut store = crate::auth::password::PasswdFile::load(&path).expect("load passwd");
-    store.set_password(id, password).expect("set password");
-}
-
-/// Mint a `jwt` cookie without hashing (signs locally, no store access).
-fn user_cookie(id: &str, admin: bool) -> Cookie<'static> {
-    let claims = Claims::new_user(id.to_string(), admin);
-    // Session must exist for the token to be accepted by guards (R6 step 2).
-    // Callers ensure the user record already exists via `seed_user`.
-    let _ = crate::auth::users::add_session(id, &claims.jti);
-    Cookie::new("jwt", claims.encode())
-}
-
-/// Log in over HTTP; returns the status and, on success, the session
-/// profile plus the raw token from the `Set-Cookie` header.
-/// Each call pays one PBKDF2 round (two for unknown users: dummy verify).
-fn login(
-    client: &Client,
-    user_id: &str,
-    password: &str,
-) -> (Status, Option<Value>, Option<String>) {
-    let resp = client
-        .post("/post/authenticate")
-        .header(ContentType::JSON)
-        .body(json!({ "userId": user_id, "password": password }).to_string())
-        .dispatch();
-    let status = resp.status();
-    let ok = status == Status::Ok;
-    let token = resp
-        .headers()
-        .get_one("Set-Cookie")
-        .and_then(|h| h.split(';').next())
-        .and_then(|pair| pair.strip_prefix("jwt="))
-        .map(str::to_string)
-        .filter(|_| ok);
-    let profile: Option<Value> = resp
-        .into_string()
-        .and_then(|b| serde_json::from_str(&b).ok())
-        .filter(|_| ok);
-    (status, profile, token)
-}
-
-/// Decode a session cookie token back into claims (no hashing).
-fn decode(token: &str) -> Claims {
-    let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
-    crate::router::auth::decode_typed(token, &validation).expect("decode token")
-}
+use crate::tests::fixtures::test_password;
 
 fn role_of(claims: &Claims) -> (String, bool) {
     match &claims.role {
@@ -114,7 +37,7 @@ fn role_of(claims: &Claims) -> (String, bool) {
 #[test]
 fn bootstrap_open_mode_and_first_user_forced_admin() {
     let _g = lock();
-    let client = setup();
+    let client = setup_image_home();
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
     // Open first-run mode accepts any login body and mints an admin token.
@@ -164,9 +87,17 @@ fn bootstrap_open_mode_and_first_user_forced_admin() {
 #[test]
 fn two_users_admin_route_distinguishes_roles() {
     let _g = lock();
-    let client = setup();
-    seed_user("matrix-root", true, &test_password("t-root-pw"));
-    seed_user("matrix-bob", false, &test_password("t-bob-pw"));
+    let client = setup_image_home();
+    seed(
+        "matrix-root",
+        true,
+        Some(test_password("t-root-pw").as_str()),
+    );
+    seed(
+        "matrix-bob",
+        false,
+        Some(test_password("t-bob-pw").as_str()),
+    );
 
     let (status, profile, token) = login(&client, "matrix-root", &test_password("t-root-pw"));
     assert_eq!(status, Status::Ok);
@@ -189,12 +120,12 @@ fn two_users_admin_route_distinguishes_roles() {
     // Admin route: OK for root, 401 for bob.
     let resp = client
         .get("/get/users")
-        .cookie(user_cookie("matrix-root", true))
+        .cookie(cookie("matrix-root", true))
         .dispatch();
     assert_eq!(resp.status(), Status::Ok);
     let resp = client
         .get("/get/users")
-        .cookie(user_cookie("matrix-bob", false))
+        .cookie(cookie("matrix-bob", false))
         .dispatch();
     assert_eq!(resp.status(), Status::Unauthorized);
 
@@ -222,7 +153,7 @@ fn two_users_admin_route_distinguishes_roles() {
 #[test]
 fn guest_share_prefetch_get_data_and_serving() {
     let _g = lock();
-    let client = setup();
+    let client = setup_image_home();
 
     // Album + share setup in open mode, reusing the shared fixtures exactly.
     let (album_id, asset_id) = create_album(&client, "/matrix_guest/album/photo.jpg");
@@ -255,8 +186,16 @@ fn guest_share_prefetch_get_data_and_serving() {
     assert_eq!(resp.status(), Status::Ok, "anonymous share serving");
 
     // Users afterwards: seeding does not invalidate the share above.
-    seed_user("matrix-host", true, &test_password("t-host-pw"));
-    seed_user("matrix-guest", false, &test_password("t-guest-pw"));
+    seed(
+        "matrix-host",
+        true,
+        Some(test_password("t-host-pw").as_str()),
+    );
+    seed(
+        "matrix-guest",
+        false,
+        Some(test_password("t-guest-pw").as_str()),
+    );
     let (status, _, _) = login(&client, "matrix-host", &test_password("t-host-pw"));
     assert_eq!(status, Status::Ok, "host login must work");
     let (status, _, _) = login(&client, "matrix-guest", &test_password("t-guest-pw"));
@@ -265,7 +204,7 @@ fn guest_share_prefetch_get_data_and_serving() {
     // Admin-role user passes the share-guarded prefetch without share headers.
     let resp = client
         .post(format!("/get/prefetch?locate={asset_id}"))
-        .cookie(user_cookie("matrix-host", true))
+        .cookie(cookie("matrix-host", true))
         .header(ContentType::JSON)
         .dispatch();
     assert_eq!(resp.status(), Status::Ok, "admin without share headers");
@@ -273,7 +212,7 @@ fn guest_share_prefetch_get_data_and_serving() {
     // Non-admin user with share headers passes too.
     let resp = client
         .post(format!("/get/prefetch?locate={asset_id}"))
-        .cookie(user_cookie("matrix-guest", false))
+        .cookie(cookie("matrix-guest", false))
         .header(Header::new("x-album-id", album_id.clone()))
         .header(Header::new("x-share-id", share_id.clone()))
         .header(ContentType::JSON)
@@ -283,7 +222,7 @@ fn guest_share_prefetch_get_data_and_serving() {
     // Companion: the same non-admin user without share headers is denied.
     let resp = client
         .post(format!("/get/prefetch?locate={asset_id}"))
-        .cookie(user_cookie("matrix-guest", false))
+        .cookie(cookie("matrix-guest", false))
         .header(ContentType::JSON)
         .dispatch();
     assert_eq!(resp.status(), Status::Unauthorized);
@@ -301,14 +240,22 @@ fn guest_share_prefetch_get_data_and_serving() {
 #[test]
 fn password_change_and_demotion_take_effect() {
     let _g = lock();
-    let client = setup();
-    seed_user("matrix-admin", true, &test_password("t-admin-old"));
-    seed_user("matrix-member", false, &test_password("t-member-old"));
+    let client = setup_image_home();
+    seed(
+        "matrix-admin",
+        true,
+        Some(test_password("t-admin-old").as_str()),
+    );
+    seed(
+        "matrix-member",
+        false,
+        Some(test_password("t-member-old").as_str()),
+    );
 
     // Admin rotates the member's password without the old one.
     let resp = client
         .put("/put/users/password")
-        .cookie(user_cookie("matrix-admin", true))
+        .cookie(cookie("matrix-admin", true))
         .header(ContentType::JSON)
         .body(
             json!({ "userId": "matrix-member", "newPassword": test_password("t-member-new") })
@@ -331,7 +278,7 @@ fn password_change_and_demotion_take_effect() {
     // the token-embedded flag still gates — but a fresh login after
     // promotion mints an admin token, and that token loses access on
     // demotion without re-login (role re-read per request).
-    let member_cookie = user_cookie("matrix-member", false);
+    let member_cookie = cookie("matrix-member", false);
     let resp = client
         .get("/get/users")
         .cookie(member_cookie.clone())

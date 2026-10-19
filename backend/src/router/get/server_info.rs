@@ -83,21 +83,7 @@ mod tests {
     use rocket::http::Status;
     use serde_json::{Value, json};
 
-    use crate::tests::bootstrap::{
-        TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state, write_config,
-    };
-
-    fn lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_SERIAL_GUARD
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    fn setup() -> rocket::local::blocking::Client {
-        let _ = &*TEST_ENV;
-        reset_backend_state();
-        make_client()
-    }
+    use crate::tests::bootstrap::{lock, setup, write_config};
 
     #[test]
     fn anonymous_server_info_has_exactly_three_keys() {

@@ -15,39 +15,7 @@ use rocket::http::{ContentType, Status};
 use rocket::local::blocking::Client;
 use serde_json::{Value, json};
 
-use crate::tests::bootstrap::{
-    TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state, write_config,
-};
-
-/// Serialize a test against the shared backend state.
-fn lock() -> std::sync::MutexGuard<'static, ()> {
-    TEST_SERIAL_GUARD
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
-/// Reset shared state and return a fresh client (knob off, no users).
-fn setup() -> Client {
-    let _ = &*TEST_ENV;
-    reset_backend_state();
-    make_client()
-}
-
-/// Create a user record (no password hash — nothing to KDF) and mint the
-/// matching admin cookie.
-fn seed_admin(id: &str) -> rocket::http::Cookie<'static> {
-    crate::auth::users::create_user(id, true).expect("seed admin");
-    let claims = crate::router::auth::Claims::new_user(id.to_string(), true);
-    crate::auth::users::add_session(id, &claims.jti).expect("add session");
-    rocket::http::Cookie::new("jwt", claims.encode())
-}
-
-/// Mint a cookie for an existing non-admin user (no hashing).
-fn user_cookie(id: &str) -> rocket::http::Cookie<'static> {
-    let claims = crate::router::auth::Claims::new_user(id.to_string(), false);
-    crate::auth::users::add_session(id, &claims.jti).expect("add session");
-    rocket::http::Cookie::new("jwt", claims.encode())
-}
+use crate::tests::bootstrap::{cookie, lock, seed, setup, write_config};
 
 /// POST /post/users/register with the given body; returns the response.
 fn register(client: &Client, body: &Value) -> (Status, Option<String>) {
@@ -92,7 +60,8 @@ fn open_registration_creates_non_admin_user() {
     write_config(&json!({ "allow_registration": true }));
     // Registration never creates the first user: the store is already
     // non-empty here, so the knob gates normally.
-    let _admin = seed_admin("s6-root");
+    seed("s6-root", true, None);
+    let _admin = cookie("s6-root", true);
 
     let pw = crate::tests::fixtures::test_password("t-reg-open");
     let (status, body) = register(&client, &json!({ "userId": "s6-open", "password": pw }));
@@ -303,7 +272,8 @@ fn double_use_invite_is_409() {
 fn revoked_invite_is_404() {
     let _g = lock();
     let client = setup();
-    let admin = seed_admin("s6-root");
+    seed("s6-root", true, None);
+    let admin = cookie("s6-root", true);
     let (token, _) = crate::auth::invites::create_invite("s6-root").expect("create invite");
     let invite_id = crate::auth::invites::hash_token(&token);
 
@@ -397,7 +367,8 @@ fn trivial_passwords_flag_opens_registration_to_weak_passwords() {
 fn admin_session_creates_without_invite() {
     let _g = lock();
     let client = setup();
-    let admin = seed_admin("s6-root");
+    seed("s6-root", true, None);
+    let admin = cookie("s6-root", true);
     assert!(
         !crate::model::config::APP_CONFIG
             .get()
@@ -434,14 +405,15 @@ fn admin_session_creates_without_invite() {
 fn non_admin_session_without_invite_when_disabled_is_403() {
     let _g = lock();
     let client = setup();
-    seed_admin("s6-root");
+    seed("s6-root", true, None);
+    cookie("s6-root", true);
     crate::auth::users::create_user("s6-bob", false).expect("seed bob");
     let pw = crate::tests::fixtures::test_password("t-reg-bob");
 
     let (status, _) = {
         let resp = client
             .post("/post/users/register")
-            .cookie(user_cookie("s6-bob"))
+            .cookie(cookie("s6-bob", false))
             .header(ContentType::JSON)
             .body(json!({ "userId": "s6-bob-friend", "password": pw }).to_string())
             .dispatch();
@@ -487,7 +459,8 @@ fn register_rejects_unknown_admin_field() {
 fn invite_routes_require_admin_and_never_leak_tokens() {
     let _g = lock();
     let client = setup();
-    let admin = seed_admin("s6-root");
+    seed("s6-root", true, None);
+    let admin = cookie("s6-root", true);
     crate::auth::users::create_user("s6-bob", false).expect("seed bob");
 
     // Unauthenticated and non-admin callers are refused on both routes.
@@ -495,7 +468,7 @@ fn invite_routes_require_admin_and_never_leak_tokens() {
     assert_eq!(status, Status::Unauthorized);
     let (status, _) = create_invite_route(
         &client,
-        Some(user_cookie("s6-bob")),
+        Some(cookie("s6-bob", false)),
         &json!({"expiresInHours": 168}),
     );
     assert_eq!(status, Status::Unauthorized);
@@ -548,7 +521,8 @@ fn invite_routes_require_admin_and_never_leak_tokens() {
 fn invite_expiry_is_configurable_in_hours() {
     let _g = lock();
     let client = setup();
-    let admin = seed_admin("s6-root");
+    seed("s6-root", true, None);
+    let admin = cookie("s6-root", true);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("clock")

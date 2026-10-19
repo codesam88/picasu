@@ -504,29 +504,8 @@ mod tests {
     use rocket::http::{ContentType, Status};
     use serde_json::json;
 
-    use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
+    use crate::tests::bootstrap::{decode, lock, seed, set_bootstrap_admin, setup};
     use crate::tests::fixtures::{test_password, test_password_padded};
-
-    fn lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_SERIAL_GUARD
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    fn setup() -> rocket::local::blocking::Client {
-        let _ = &*TEST_ENV;
-        reset_backend_state();
-        make_client()
-    }
-
-    fn set_bootstrap_admin(enabled: bool) {
-        let mut config = crate::model::config::APP_CONFIG
-            .get()
-            .expect("APP_CONFIG set")
-            .write()
-            .expect("APP_CONFIG lock");
-        config.bootstrap_admin = enabled;
-    }
 
     /// Shrink the user-long bucket for one test (IP buckets stay lenient)
     /// so the user wiring trips within a few attempts. `reset_backend_state`
@@ -582,21 +561,6 @@ mod tests {
             swept,
             "second login within 60s skips the pass"
         );
-    }
-
-    fn create_user_with_password(id: &str, admin: bool, password: &str) {
-        crate::auth::users::create_user(id, admin).expect("create user");
-        let path = crate::auth::users::passwd_file_path();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("create auth dir");
-        }
-        let mut store = crate::auth::password::PasswdFile::load(&path).expect("load passwd");
-        store.set_password(id, password).expect("set password");
-    }
-
-    fn decode_claims(token: &str) -> crate::router::auth::Claims {
-        let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
-        crate::router::auth::decode_typed(token, &validation).expect("decode token")
     }
 
     /// Extract the `jwt` value from the `Set-Cookie` response header.
@@ -683,7 +647,7 @@ mod tests {
     fn authenticate_throttled_login_is_429_with_retry_after() {
         let _g = lock();
         let client = setup();
-        create_user_with_password("t7-alice", false, &test_password("t7-pw"));
+        seed("t7-alice", false, Some(test_password("t7-pw").as_str()));
         let wrong = test_password("t7-wrong");
         for _ in 0..4 {
             let resp = post_login(&client, "t7-alice", &wrong);
@@ -701,7 +665,7 @@ mod tests {
         use std::sync::atomic::Ordering;
         let _g = lock();
         let client = setup();
-        create_user_with_password("t7-fast", false, &test_password("t7-fast-pw"));
+        seed("t7-fast", false, Some(test_password("t7-fast-pw").as_str()));
         let wrong = test_password("t7-fast-wrong");
         let rounds = || crate::auth::password::VERIFY_CALLS.load(Ordering::Relaxed);
         // Sanity first: an evaluated (401) failure hashes — the counter
@@ -734,7 +698,11 @@ mod tests {
     fn authenticate_success_resets_throttle_history() {
         let _g = lock();
         let client = setup();
-        create_user_with_password("t7-reset", false, &test_password("t7-reset-pw"));
+        seed(
+            "t7-reset",
+            false,
+            Some(test_password("t7-reset-pw").as_str()),
+        );
         let wrong = test_password("t7-reset-wrong");
         for _ in 0..3 {
             assert_eq!(
@@ -784,7 +752,7 @@ mod tests {
     fn authenticate_invalid_user_id_never_trips_throttle() {
         let _g = lock();
         let client = setup();
-        create_user_with_password("t7-id", false, &test_password("t7-id-pw"));
+        seed("t7-id", false, Some(test_password("t7-id-pw").as_str()));
         // More 400s than the bucket threshold: they never enter it.
         for _ in 0..6 {
             let resp = post_login(&client, "   ", &test_password("t7-id-wrong"));
@@ -870,7 +838,11 @@ mod tests {
         let client = setup();
         set_trust_proxy(true);
         set_tight_user_long(600, 2, 5);
-        create_user_with_password("t9-victim", false, &test_password("t9-victim-pw"));
+        seed(
+            "t9-victim",
+            false,
+            Some(test_password("t9-victim-pw").as_str()),
+        );
         assert_eq!(
             attempt_login(&client, "10.9.0.1").status(),
             Status::Unauthorized
@@ -897,7 +869,7 @@ mod tests {
         let _g = lock();
         let client = setup();
         set_trust_proxy(false);
-        create_user_with_password("t9-rot", false, &test_password("t9-rot-pw"));
+        seed("t9-rot", false, Some(test_password("t9-rot-pw").as_str()));
         for i in 0..4 {
             let resp = client
                 .post("/post/authenticate")
@@ -929,7 +901,11 @@ mod tests {
         let _g = lock();
         let client = setup();
         set_tight_ip_long(600, 2, 7);
-        create_user_with_password("t9-iplong", false, &test_password("t9-iplong-pw"));
+        seed(
+            "t9-iplong",
+            false,
+            Some(test_password("t9-iplong-pw").as_str()),
+        );
         let wrong = test_password("t9-iplong-wrong");
         assert_eq!(
             post_login(&client, "t9-iplong", &wrong).status(),
@@ -953,7 +929,11 @@ mod tests {
     fn authenticate_login_runs_opportunistic_sweep() {
         let _g = lock();
         let client = setup();
-        create_user_with_password("t9-sweep", false, &test_password("t9-sweep-pw"));
+        seed(
+            "t9-sweep",
+            false,
+            Some(test_password("t9-sweep-pw").as_str()),
+        );
         assert_sweep_ran_once(&client);
     }
 
@@ -1011,7 +991,7 @@ mod tests {
         let _g = lock();
         with_rate_limits_forced(Some(true), || {
             let client = setup();
-            create_user_with_password("t8-off", false, &test_password("t8-off-pw"));
+            seed("t8-off", false, Some(test_password("t8-off-pw").as_str()));
             let wrong = test_password("t8-off-wrong");
             // One more failure than the IP-short bucket needs to trip.
             for _ in 0..7 {
@@ -1031,7 +1011,7 @@ mod tests {
     #[test]
     fn rate_limits_env_values_other_than_false_keep_throttle() {
         let trip = |client: &rocket::local::blocking::Client| {
-            create_user_with_password("t8-on", false, &test_password("t8-on-pw"));
+            seed("t8-on", false, Some(test_password("t8-on-pw").as_str()));
             let wrong = test_password("t8-on-wrong");
             for _ in 0..4 {
                 assert_eq!(
@@ -1078,7 +1058,7 @@ mod tests {
         let _g = lock();
         with_rate_limits_forced(Some(true), || {
             let client = setup();
-            create_user_with_password("t8-log", false, &test_password("t8-log-pw"));
+            seed("t8-log", false, Some(test_password("t8-log-pw").as_str()));
             let before = super::LOGIN_FAILED_WARNS.load(std::sync::atomic::Ordering::Relaxed);
             let resp = post_login(&client, "t8-log", &test_password("t8-log-wrong"));
             assert_eq!(resp.status(), Status::Unauthorized);
@@ -1098,7 +1078,7 @@ mod tests {
     fn authenticate_login_sets_httponly_cookie_and_returns_profile() {
         let _g = lock();
         let client = setup();
-        create_user_with_password("s3c-alice", true, &test_password("t-alice"));
+        seed("s3c-alice", true, Some(test_password("t-alice").as_str()));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
@@ -1121,7 +1101,7 @@ mod tests {
     fn authenticate_cookie_token_matches_profile() {
         let _g = lock();
         let client = setup();
-        create_user_with_password("s3c-alice", true, &test_password("t-alice"));
+        seed("s3c-alice", true, Some(test_password("t-alice").as_str()));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
@@ -1133,7 +1113,7 @@ mod tests {
         let token = session_cookie_token(&resp);
         let body = resp.into_string().expect("profile body");
         let profile: serde_json::Value = serde_json::from_str(&body).expect("profile json");
-        let claims = decode_claims(&token);
+        let claims = decode(&token);
         match claims.role {
             crate::router::auth::Role::User { id, admin } => {
                 assert_eq!(id, profile["userId"]);
@@ -1147,7 +1127,7 @@ mod tests {
     fn authenticate_login_wrong_and_unknown_user_are_401() {
         let _g = lock();
         let client = setup();
-        create_user_with_password("s3c-bob", false, &test_password("t-bob"));
+        seed("s3c-bob", false, Some(test_password("t-bob").as_str()));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
@@ -1204,7 +1184,7 @@ mod tests {
     fn bare_string_body_is_422_on_non_empty_store() {
         let _g = lock();
         let client = setup();
-        create_user_with_password("s3d-carol", true, &test_password("t-carol"));
+        seed("s3d-carol", true, Some(test_password("t-carol").as_str()));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
@@ -1220,7 +1200,7 @@ mod tests {
         let _g = lock();
         let client = setup();
         set_bootstrap_admin(false);
-        create_user_with_password("s3d-dave", false, &test_password("t-dave"));
+        seed("s3d-dave", false, Some(test_password("t-dave").as_str()));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
@@ -1270,7 +1250,7 @@ mod tests {
         let profile: serde_json::Value = serde_json::from_str(&body).expect("profile json");
         assert_eq!(profile["userId"], "admin");
         assert_eq!(profile["admin"], true);
-        let claims = decode_claims(&token);
+        let claims = decode(&token);
         match claims.role {
             crate::router::auth::Role::User { id, admin } => {
                 assert_eq!(id, "admin");
@@ -1300,7 +1280,7 @@ mod tests {
         let _g = lock();
         let client = setup();
         set_bootstrap_admin(false);
-        create_user_with_password("s3d-erin", false, &test_password("t-erin"));
+        seed("s3d-erin", false, Some(test_password("t-erin").as_str()));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
@@ -1318,7 +1298,11 @@ mod tests {
     fn login_trims_padded_password() {
         let _g = lock();
         let client = setup();
-        create_user_with_password("s4-trim-user", false, &test_password("t-trim"));
+        seed(
+            "s4-trim-user",
+            false,
+            Some(test_password("t-trim").as_str()),
+        );
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
@@ -1334,7 +1318,7 @@ mod tests {
     fn logout_clears_session_cookie_and_is_idempotent() {
         let _g = lock();
         let client = setup();
-        create_user_with_password("s3c-zed", false, &test_password("t-zed"));
+        seed("s3c-zed", false, Some(test_password("t-zed").as_str()));
         let login = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
@@ -1367,7 +1351,7 @@ mod tests {
     fn forwarded_https_proto_sets_secure_flag() {
         let _g = lock();
         let client = setup();
-        create_user_with_password("s3c-sec", false, &test_password("t-sec"));
+        seed("s3c-sec", false, Some(test_password("t-sec").as_str()));
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
@@ -1405,7 +1389,7 @@ mod tests {
     fn live_login_cookie_jti_is_accepted_and_forged_is_401_and_open_mode_works() {
         let _g = lock();
         let client = setup();
-        create_user_with_password("s3c-live", true, &test_password("t-live"));
+        seed("s3c-live", true, Some(test_password("t-live").as_str()));
         // Live login mints and stores jti; the cookie must be accepted by a guarded route.
         let resp = client
             .post("/post/authenticate")
@@ -1414,7 +1398,7 @@ mod tests {
             .dispatch();
         assert_eq!(resp.status(), Status::Ok);
         let token = session_cookie_token(&resp);
-        let claims = decode_claims(&token);
+        let claims = decode(&token);
         // Session store must contain the jti.
         let record = crate::auth::users::get_user("s3c-live")
             .expect("get user")

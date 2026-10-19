@@ -115,31 +115,9 @@ pub fn export_config_handler(auth: GuardResult<GuardAuth>) -> AppResult<(Content
 
 #[cfg(test)]
 mod tests {
-    use rocket::http::{ContentType, Cookie, Status};
+    use rocket::http::{ContentType, Status};
 
-    use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state};
-
-    fn lock() -> std::sync::MutexGuard<'static, ()> {
-        TEST_SERIAL_GUARD
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    fn setup() -> rocket::local::blocking::Client {
-        let _ = &*TEST_ENV;
-        reset_backend_state();
-        make_client()
-    }
-
-    fn cookie(id: &str, admin: bool) -> Cookie<'static> {
-        let claims = crate::router::auth::Claims::new_user(id.to_string(), admin);
-        let _ = crate::auth::users::add_session(id, &claims.jti);
-        Cookie::new("jwt", claims.encode())
-    }
-
-    fn seed(id: &str, admin: bool) {
-        crate::auth::users::create_user(id, admin).expect("seed user");
-    }
+    use crate::tests::bootstrap::{cookie, lock, seed, setup};
 
     /// The config export must never carry the signing key: even with a key
     /// configured, the body redacts it while keeping the other fields.
@@ -147,7 +125,7 @@ mod tests {
     fn config_export_redacts_auth_key() {
         let _g = lock();
         let client = setup();
-        seed("s4g-root", true);
+        seed("s4g-root", true, None);
         let admin = cookie("s4g-root", true);
         let status = client
             .post("/post/config/auth-key/reset")

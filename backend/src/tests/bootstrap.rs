@@ -298,6 +298,109 @@ pub fn make_client() -> Client {
     Client::tracked(build_test_rocket()).expect("valid rocket instance")
 }
 
+/// Serialize a test against the shared backend state; every test module
+/// funnels through here instead of module-local copies.
+pub fn lock() -> std::sync::MutexGuard<'static, ()> {
+    TEST_SERIAL_GUARD
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Reset shared state and return a fresh client (bootstrap mode, empty
+/// store).
+pub fn setup() -> Client {
+    let _ = &*TEST_ENV;
+    reset_backend_state();
+    make_client()
+}
+
+/// [`setup`] plus `set_image_home`: required by discovery fixtures that
+/// resolve paths through a module-level `OnceLock`, not the config.
+pub fn setup_image_home() -> Client {
+    let _ = &*TEST_ENV;
+    reset_backend_state();
+    crate::tests::fixtures::set_image_home(test_image_home());
+    make_client()
+}
+
+/// Mint a `jwt` cookie for an existing user id without hashing (signs
+/// locally). The session write is best-effort: a failed write surfaces as
+/// a guard rejection on the request instead of here.
+pub fn cookie(id: &str, admin: bool) -> rocket::http::Cookie<'static> {
+    let claims = crate::router::auth::Claims::new_user(id.to_string(), admin);
+    let _ = crate::auth::users::add_session(id, &claims.jti);
+    rocket::http::Cookie::new("jwt", claims.encode())
+}
+
+/// Create the user record and, when a password is given, write its hash
+/// directly to the passwd file. Each given password pays one PBKDF2 round.
+pub fn seed(id: &str, admin: bool, password: Option<&str>) {
+    crate::auth::users::create_user(id, admin).expect("seed user");
+    if let Some(pw) = password {
+        let path = crate::auth::users::passwd_file_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("auth dir");
+        }
+        let mut store = crate::auth::password::PasswdFile::load(&path).expect("load passwd");
+        store.set_password(id, pw).expect("set password");
+    }
+}
+
+/// Temporarily flip the bootstrap flag (enrollment-window tests opt out of
+/// the harness default); `reset_backend_state` restores it.
+pub fn set_bootstrap_admin(enabled: bool) {
+    let mut config = crate::model::config::APP_CONFIG
+        .get()
+        .expect("APP_CONFIG set")
+        .write()
+        .expect("APP_CONFIG lock");
+    config.bootstrap_admin = enabled;
+}
+
+/// Log in over HTTP; returns the status and, on success, the session
+/// profile plus the raw token from the `Set-Cookie` header. Each call
+/// pays one PBKDF2 round (two for unknown users: dummy verify).
+pub fn login(
+    client: &Client,
+    user_id: &str,
+    password: &str,
+) -> (
+    rocket::http::Status,
+    Option<serde_json::Value>,
+    Option<String>,
+) {
+    let resp = client
+        .post("/post/authenticate")
+        .header(rocket::http::ContentType::JSON)
+        .body(serde_json::json!({ "userId": user_id, "password": password }).to_string())
+        .dispatch();
+    let status = resp.status();
+    let ok = status == rocket::http::Status::Ok;
+    let token = resp
+        .headers()
+        .get_one("Set-Cookie")
+        .and_then(|h| h.split(';').next())
+        .and_then(|pair| pair.strip_prefix("jwt="))
+        .map(str::to_string)
+        .filter(|_| ok);
+    let profile: Option<serde_json::Value> = resp
+        .into_string()
+        .and_then(|b| serde_json::from_str(&b).ok())
+        .filter(|_| ok);
+    (status, profile, token)
+}
+
+/// [`login`] reduced to the status, for call sites that only assert codes.
+pub fn login_status(client: &Client, user_id: &str, password: &str) -> rocket::http::Status {
+    login(client, user_id, password).0
+}
+
+/// Decode a session cookie token back into claims (no hashing).
+pub fn decode(token: &str) -> crate::router::auth::Claims {
+    let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
+    crate::router::auth::decode_typed(token, &validation).expect("decode token")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
