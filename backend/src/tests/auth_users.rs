@@ -57,23 +57,36 @@ fn user_cookie(id: &str, admin: bool) -> Cookie<'static> {
     Cookie::new("jwt", Claims::new_user(id.to_string(), admin).encode())
 }
 
-/// Log in over HTTP; returns the status and, on success, the raw token.
+/// Log in over HTTP; returns the status and, on success, the session
+/// profile plus the raw token from the `Set-Cookie` header.
 /// Each call pays one PBKDF2 round (two for unknown users: dummy verify).
-fn login(client: &Client, user_id: &str, password: &str) -> (Status, Option<String>) {
+fn login(
+    client: &Client,
+    user_id: &str,
+    password: &str,
+) -> (Status, Option<Value>, Option<String>) {
     let resp = client
         .post("/post/authenticate")
         .header(ContentType::JSON)
         .body(json!({ "userId": user_id, "password": password }).to_string())
         .dispatch();
     let status = resp.status();
+    let ok = status == Status::Ok;
     let token = resp
+        .headers()
+        .get_one("Set-Cookie")
+        .and_then(|h| h.split(';').next())
+        .and_then(|pair| pair.strip_prefix("jwt="))
+        .map(str::to_string)
+        .filter(|_| ok);
+    let profile: Option<Value> = resp
         .into_string()
-        .map(|b| b.trim_matches('"').to_string())
-        .filter(|_| status == Status::Ok);
-    (status, token)
+        .and_then(|b| serde_json::from_str(&b).ok())
+        .filter(|_| ok);
+    (status, profile, token)
 }
 
-/// Decode a login token body back into claims (no hashing).
+/// Decode a session cookie token back into claims (no hashing).
 fn decode(token: &str) -> Claims {
     let validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
     crate::router::auth::decode_typed(token, &validation).expect("decode token")
@@ -101,8 +114,11 @@ fn bootstrap_open_mode_and_first_user_forced_admin() {
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
     // Open first-run mode accepts any login body and mints an admin token.
-    let (status, token) = login(&client, "anything", &test_password("t-open"));
+    let (status, profile, token) = login(&client, "anything", &test_password("t-open"));
     assert_eq!(status, Status::Ok);
+    let profile = profile.expect("open-mode profile");
+    assert_eq!(profile["userId"], "admin");
+    assert_eq!(profile["admin"], true);
     let (id, admin) = role_of(&decode(&token.expect("open-mode token")));
     assert_eq!(id, "admin");
     assert!(admin, "open-mode identity must be admin");
@@ -145,14 +161,20 @@ fn two_users_admin_route_distinguishes_roles() {
     seed_user("matrix-root", true, &test_password("t-root-pw"));
     seed_user("matrix-bob", false, &test_password("t-bob-pw"));
 
-    let (status, token) = login(&client, "matrix-root", &test_password("t-root-pw"));
+    let (status, profile, token) = login(&client, "matrix-root", &test_password("t-root-pw"));
     assert_eq!(status, Status::Ok);
+    let profile = profile.expect("root profile");
+    assert_eq!(profile["userId"], "matrix-root");
+    assert_eq!(profile["admin"], true);
     let (id, admin) = role_of(&decode(&token.expect("root token")));
     assert_eq!(id, "matrix-root");
     assert!(admin, "root login must mint an admin token");
 
-    let (status, token) = login(&client, "matrix-bob", &test_password("t-bob-pw"));
+    let (status, profile, token) = login(&client, "matrix-bob", &test_password("t-bob-pw"));
     assert_eq!(status, Status::Ok);
+    let profile = profile.expect("bob profile");
+    assert_eq!(profile["userId"], "matrix-bob");
+    assert_eq!(profile["admin"], false);
     let (id, admin) = role_of(&decode(&token.expect("bob token")));
     assert_eq!(id, "matrix-bob");
     assert!(!admin, "bob login must mint a non-admin token");
@@ -170,9 +192,9 @@ fn two_users_admin_route_distinguishes_roles() {
     assert_eq!(resp.status(), Status::Unauthorized);
 
     // Unknown user and wrong password are 401 (generic, no oracle).
-    let (status, _) = login(&client, "matrix-ghost", &test_password("t-ghost"));
+    let (status, _, _) = login(&client, "matrix-ghost", &test_password("t-ghost"));
     assert_eq!(status, Status::Unauthorized);
-    let (status, _) = login(&client, "matrix-bob", &test_password("t-wrong"));
+    let (status, _, _) = login(&client, "matrix-bob", &test_password("t-wrong"));
     assert_eq!(status, Status::Unauthorized);
 }
 
@@ -228,9 +250,9 @@ fn guest_share_prefetch_get_data_and_serving() {
     // Users afterwards: seeding does not invalidate the share above.
     seed_user("matrix-host", true, &test_password("t-host-pw"));
     seed_user("matrix-guest", false, &test_password("t-guest-pw"));
-    let (status, _) = login(&client, "matrix-host", &test_password("t-host-pw"));
+    let (status, _, _) = login(&client, "matrix-host", &test_password("t-host-pw"));
     assert_eq!(status, Status::Ok, "host login must work");
-    let (status, _) = login(&client, "matrix-guest", &test_password("t-guest-pw"));
+    let (status, _, _) = login(&client, "matrix-guest", &test_password("t-guest-pw"));
     assert_eq!(status, Status::Ok, "guest login must work");
 
     // Admin-role user passes the share-guarded prefetch without share headers.
@@ -289,9 +311,9 @@ fn password_change_and_demotion_take_effect() {
     assert_eq!(resp.status(), Status::Ok);
 
     // Liveness: new password logs in, old password is 401.
-    let (status, _) = login(&client, "matrix-member", &test_password("t-member-new"));
+    let (status, _, _) = login(&client, "matrix-member", &test_password("t-member-new"));
     assert_eq!(status, Status::Ok, "new password must work");
-    let (status, _) = login(&client, "matrix-member", &test_password("t-member-old"));
+    let (status, _, _) = login(&client, "matrix-member", &test_password("t-member-old"));
     assert_eq!(
         status,
         Status::Unauthorized,
@@ -310,7 +332,7 @@ fn password_change_and_demotion_take_effect() {
     assert_eq!(resp.status(), Status::Unauthorized);
 
     crate::auth::users::set_admin("matrix-member", true).expect("promote member");
-    let (status, token) = login(&client, "matrix-member", &test_password("t-member-new"));
+    let (status, _, token) = login(&client, "matrix-member", &test_password("t-member-new"));
     assert_eq!(status, Status::Ok, "login must work after promotion");
     let (_, admin) = role_of(&decode(&token.clone().expect("member token")));
     assert!(admin, "post-promotion login must mint an admin token");

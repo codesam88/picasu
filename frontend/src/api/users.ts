@@ -41,10 +41,22 @@ export const setUserAdmin = async (userId: string, admin: boolean): Promise<void
   })
 }
 
-/// Sign in with `{ userId, password }` and return the JWT on success.
-/// Rejects with the backend error unchanged (401 on unknown user or wrong
-/// password); there is no legacy fallback path.
-export const login = async (userId: string, password: string): Promise<string> => {
+/// Sign in with `{ userId, password }` and return the session profile.
+///
+/// The JWT travels in an HttpOnly `Set-Cookie` header the page JS never
+/// sees (R5); the body carries only `{ userId, admin }` for the client to
+/// keep in the session store. Rejects with the backend error unchanged
+/// (401 on unknown user or wrong password); there is no legacy fallback
+/// path.
+export const login = async (userId: string, password: string): Promise<UserSummary> => {
   const response = await axios.post('/post/authenticate', { userId, password })
-  return z.string().parse(response.data)
+  return z.object({ userId: z.string(), admin: z.boolean() }).parse(response.data)
+}
+
+/// Sign out: clears the HttpOnly session cookie server-side (page JS
+/// cannot clear HttpOnly cookies itself). Idempotent — succeeds with or
+/// without a live session. Callers still clear local state unconditionally
+/// so logout sticks even when the round trip fails.
+export const logout = async (): Promise<void> => {
+  await axios.post('/post/logout')
 }

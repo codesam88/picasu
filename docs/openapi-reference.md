@@ -31,38 +31,182 @@ License: MIT
 
 Authentication and token renewal
 
-## Sign in with the account password and return a 14-day admin JWT.
+## Revoke an invite token.
 
-<a id="opIdauthenticate"></a>
+<a id="opIddelete_invite"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X POST /post/authenticate \
-  -H 'Content-Type: text/plain' \
-  -H 'Accept: text/plain'
+curl -X DELETE /delete/invites/{invite_id}
 
 ```
 
 ```http
-POST /post/authenticate HTTP/1.1
-
-Content-Type: text/plain
-Accept: text/plain
+DELETE /delete/invites/{invite_id} HTTP/1.1
 
 ```
 
 ```javascript
-const inputBody = "string";
+fetch("/delete/invites/{invite_id}", {
+  method: "DELETE",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.delete '/delete/invites/{invite_id}',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.delete('/delete/invites/{invite_id}')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('DELETE','/delete/invites/{invite_id}', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/delete/invites/{invite_id}");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("DELETE");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("DELETE", "/delete/invites/{invite_id}", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`DELETE /delete/invites/{invite_id}`
+
+Admin-only. The invite's row is removed, so its token stops redeeming
+immediately; a registration attempt afterwards answers 404. Ids come
+from `GET /get/invites`.
+
+Corner cases: Revoking an already-removed id is a 404, not a success —
+the second caller cannot distinguish "revoked twice" from "never
+existed", which leaks nothing.
+
+Errors: 401 missing or invalid admin credentials — 404 unknown invite
+id — 405 read-only mode — 500 storage failure.
+
+<h3 id="revoke-an-invite-token.-parameters">Parameters</h3>
+
+| Name      | In   | Type   | Required | Description                             |
+| --------- | ---- | ------ | -------- | --------------------------------------- |
+| invite_id | path | string | true     | Invite id as listed by GET /get/invites |
+
+<h3 id="revoke-an-invite-token.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Invite revoked                                                                             | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Unknown invite id                                                                          | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## List invite tokens' metadata.
+
+<a id="opIdlist_invites_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/invites \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/invites HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
 const headers = {
-  "Content-Type": "text/plain",
-  Accept: "text/plain",
+  Accept: "application/json",
 };
 
-fetch("/post/authenticate", {
-  method: "POST",
-  body: inputBody,
+fetch("/get/invites", {
+  method: "GET",
+
   headers: headers,
 })
   .then(function (res) {
@@ -78,8 +222,391 @@ require 'rest-client'
 require 'json'
 
 headers = {
-  'Content-Type' => 'text/plain',
-  'Accept' => 'text/plain'
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/invites',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/invites', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/invites', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/invites");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/invites", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/invites`
+
+Admin-only. Returns every invite with its display `prefix`, creator,
+expiry and — once redeemed — the `usedBy` user id. Tokens themselves are
+never returned: `id` is the blake3 hash of the token (preimage-resistant
+and useless as a bearer) and identifies the invite for
+`DELETE /delete/invites/{invite_id}`.
+
+Corner cases: A store that has never seen an invite returns an empty
+list rather than an error.
+
+Errors: 401 missing or invalid admin credentials — 500 storage failure.
+
+> Example responses
+
+> 200 Response
+
+```json
+[
+  {
+    "createdBy": "string",
+    "expiresAt": 0,
+    "id": "string",
+    "prefix": "string",
+    "usedBy": "string"
+  }
+]
+```
+
+<h3 id="list-invite-tokens'-metadata.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Invite metadata, never tokens                                                              | Inline |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+
+<h3 id="list-invite-tokens'-metadata.-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+| Name        | Type                              | Required | Restrictions | Description                                                                                                            |
+| ----------- | --------------------------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| _anonymous_ | [[InviteView](#schemainviteview)] | false    | none         | [Listing view of an invite: the stored metadata plus the row id (the<br>token hash). Never contains the token itself.] |
+| » createdBy | string                            | true     | none         | none                                                                                                                   |
+| » expiresAt | integer,null(int64)               | false    | none         | none                                                                                                                   |
+| » id        | string                            | true     | none         | Row id — blake3 hash hex of the token; identifies the invite for<br>revoke. Preimage-resistant, useless as a token.    |
+| » prefix    | string                            | true     | none         | none                                                                                                                   |
+| » usedBy    | string,null                       | false    | none         | none                                                                                                                   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## List all users as `{ userId, admin }` pairs ordered by id.
+
+<a id="opIdlist_users_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/users \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/users HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/users", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/users',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/users', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/users', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/users");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/users", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/users`
+
+Password hashes are never exported. Admin-only: a non-admin or missing
+credential is denied at dispatch with 401.
+
+Errors: 401 missing or invalid admin credentials; share tokens are not
+accepted — 500 storage failure.
+
+> Example responses
+
+> 200 Response
+
+```json
+[
+  {
+    "admin": true,
+    "userId": "string"
+  }
+]
+```
+
+<h3 id="list-all-users-as-`{-userid,-admin-}`-pairs-ordered-by-id.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | User list                                                                                  | Inline |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+
+<h3 id="list-all-users-as-`{-userid,-admin-}`-pairs-ordered-by-id.-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+| Name        | Type                                | Required | Restrictions | Description                                                     |
+| ----------- | ----------------------------------- | -------- | ------------ | --------------------------------------------------------------- |
+| _anonymous_ | [[UserSummary](#schemausersummary)] | false    | none         | [Summary of a user record. Password hashes are never exported.] |
+| » admin     | boolean                             | true     | none         | none                                                            |
+| » userId    | string                              | true     | none         | none                                                            |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Sign in and issue the session cookie (`HttpOnly`).
+
+<a id="opIdauthenticate"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X POST /post/authenticate \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
+
+```
+
+```http
+POST /post/authenticate HTTP/1.1
+
+Content-Type: application/json
+Accept: application/json
+
+```
+
+```javascript
+const inputBody = '{
+  "password": "string",
+  "userId": "string"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('/post/authenticate',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
 }
 
 result = RestClient.post '/post/authenticate',
@@ -93,8 +620,8 @@ p JSON.parse(result)
 ```python
 import requests
 headers = {
-  'Content-Type': 'text/plain',
-  'Accept': 'text/plain'
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
 }
 
 r = requests.post('/post/authenticate', headers = headers)
@@ -109,8 +636,8 @@ print(r.json())
 require 'vendor/autoload.php';
 
 $headers = array(
-    'Content-Type' => 'text/plain',
-    'Accept' => 'text/plain',
+    'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
 );
 
 $client = new \GuzzleHttp\Client();
@@ -163,8 +690,8 @@ import (
 func main() {
 
     headers := map[string][]string{
-        "Content-Type": []string{"text/plain"},
-        "Accept": []string{"text/plain"},
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
@@ -180,44 +707,401 @@ func main() {
 
 `POST /post/authenticate`
 
-The posted password is trimmed and compared against the configured one; a
-match returns the signed admin token as a JSON string. Tokens are signed
-with `authKey`, or with a secret generated once per process when `authKey`
-is unset, so changing `authKey` invalidates every token issued under the
-previous one.
+A `{ userId, password }` object verifies against the user and password
+stores. On success the JWT travels in a `Set-Cookie: jwt=...; HttpOnly;
+SameSite=Strict; Path=/` response header — page JS never sees the token
+(R5) — and the body carries only the session profile
+`{ userId, admin }` for the client to display. Tokens are signed with
+`authKey`, or with a secret generated once per process when `authKey`
+is unset, so changing `authKey` invalidates every token issued under
+the previous one.
 
-Corner cases: While no password is configured, sign-in succeeds without
-one: every input, including an empty string, is accepted.
+Corner cases: While no users exist and `--bootstrap-admin` is set,
+sign-in succeeds without credentials: every parseable login object is
+accepted (open first-run mode), setting an ephemeral admin cookie and
+returning the ephemeral profile without enrolling anybody.
 
-Errors: 401 password does not match the configured one.
+Errors: 400 the login `userId` is empty or longer than 64 characters, or
+the body does not parse as a login object — 401 unknown user or wrong
+password.
 
 > Body parameter
 
+```json
+{
+  "password": "string",
+  "userId": "string"
+}
 ```
-string
 
-```
+<h3 id="sign-in-and-issue-the-session-cookie-(`httponly`).-parameters">Parameters</h3>
 
-<h3 id="sign-in-with-the-account-password-and-return-a-14-day-admin-jwt.-parameters">Parameters</h3>
-
-| Name | In   | Type   | Required | Description |
-| ---- | ---- | ------ | -------- | ----------- |
-| body | body | string | true     | none        |
+| Name | In   | Type                                | Required | Description |
+| ---- | ---- | ----------------------------------- | -------- | ----------- |
+| body | body | [LoginRequest](#schemaloginrequest) | true     | none        |
 
 > Example responses
 
 > 200 Response
 
-```
-"string"
+```json
+{
+  "admin": true,
+  "userId": "string"
+}
 ```
 
-<h3 id="sign-in-with-the-account-password-and-return-a-14-day-admin-jwt.-responses">Responses</h3>
+<h3 id="sign-in-and-issue-the-session-cookie-(`httponly`).-responses">Responses</h3>
 
-| Status | Meaning                                                         | Description                                                                                | Schema |
-| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | JWT token                                                                                  | string |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| Status | Meaning                                                                    | Description                                                                                | Schema                            |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Session profile; JWT in HttpOnly Set-Cookie                                                | [UserSummary](#schemausersummary) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                              |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                              |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                              |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Create a single-use invite token.
+
+<a id="opIdcreate_invite_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X POST /post/invites/create \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
+
+```
+
+```http
+POST /post/invites/create HTTP/1.1
+
+Content-Type: application/json
+Accept: application/json
+
+```
+
+```javascript
+const inputBody = '{
+  "expiresInHours": 0
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('/post/invites/create',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
+}
+
+result = RestClient.post '/post/invites/create',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
+}
+
+r = requests.post('/post/invites/create', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('POST','/post/invites/create', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/post/invites/create");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("POST");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("POST", "/post/invites/create", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`POST /post/invites/create`
+
+Admin-only. The `token` field is shown exactly once: only its blake3
+hash is stored, so the value cannot be retrieved again — the admin
+distributes it out of band (for example as
+`${origin}/register?invite=${token}`). Expiry is required, in hours
+(`0` never expires — pass 168 for the conventional 7-day lifetime);
+the invite redeems once, for a single registration.
+
+Corner cases: In open mode the ephemeral admin identity creates the
+invite. Listing, expiry, use and revoke are handled by
+`GET /get/invites` and `DELETE /delete/invites/{invite_id}`.
+
+Errors: 400 negative `expiresInHours` — 401 missing or invalid admin
+credentials — 405 read-only mode — 500 storage failure.
+
+> Body parameter
+
+```json
+{
+  "expiresInHours": 0
+}
+```
+
+<h3 id="create-a-single-use-invite-token.-parameters">Parameters</h3>
+
+| Name | In   | Type                                              | Required | Description |
+| ---- | ---- | ------------------------------------------------- | -------- | ----------- |
+| body | body | [CreateInviteRequest](#schemacreateinviterequest) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "invite": {
+    "createdBy": "string",
+    "expiresAt": 0,
+    "id": "string",
+    "prefix": "string",
+    "usedBy": "string"
+  },
+  "token": "string"
+}
+```
+
+<h3 id="create-a-single-use-invite-token.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                                              |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Invite created; token returned once                                                        | [CreateInviteResponse](#schemacreateinviteresponse) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                                |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                                |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Clear the session cookie.
+
+<a id="opIdlogout"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X POST /post/logout
+
+```
+
+```http
+POST /post/logout HTTP/1.1
+
+```
+
+```javascript
+fetch("/post/logout", {
+  method: "POST",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.post '/post/logout',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.post('/post/logout')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('POST','/post/logout', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/post/logout");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("POST");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("POST", "/post/logout", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`POST /post/logout`
+
+`HttpOnly` cookies cannot be removed by page JS, so logout is a server
+round trip. Idempotent: succeeds with or without a live session; the
+JWT itself stays cryptographically valid until expiry or `auth_key`
+rotation (no server-side session store — see R6).
+
+<h3 id="clear-the-session-cookie.-responses">Responses</h3>
+
+| Status | Meaning                                                         | Description            | Schema |
+| ------ | --------------------------------------------------------------- | ---------------------- | ------ |
+| 204    | [No Content](https://tools.ietf.org/html/rfc7231#section-6.3.5) | Session cookie cleared | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -583,12 +1467,19 @@ submitted token is decoded with expiration checking disabled and reissued
 with its original snapshot `timestamp` and resolved share intact, expiring
 300 seconds later.
 
+A share presenter may only renew its own share's snapshot; the embedded
+share is also re-resolved from the DB before re-issue, so a share that has
+since been disabled or expired stops yielding refreshed tokens. An admin
+presenter may renew any snapshot, but the embedded share is still
+re-validated.
+
 Corner cases: Re-renewing keeps addressing the same snapshot, so only the
 expiry changes and the underlying data is not re-read.
 
 Errors: 400 only one of the share credential header or query pair given —
-401 missing or invalid credentials, or an unverifiable token signature —
-500 internal failure.
+401 missing or invalid credentials, a token whose share differs from the
+presenter's, an expired or removed embedded share, or an unverifiable token
+signature — 500 internal failure.
 
 > Body parameter
 
@@ -622,6 +1513,818 @@ Errors: 400 only one of the share credential header or query pair given —
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                          |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                                                          |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                          |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Enroll the first administrator.
+
+<a id="opIdbootstrap_admin_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X POST /post/users/bootstrap \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
+
+```
+
+```http
+POST /post/users/bootstrap HTTP/1.1
+
+Content-Type: application/json
+Accept: application/json
+
+```
+
+```javascript
+const inputBody = '{
+  "password": "string",
+  "userId": "string"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('/post/users/bootstrap',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
+}
+
+result = RestClient.post '/post/users/bootstrap',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
+}
+
+r = requests.post('/post/users/bootstrap', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('POST','/post/users/bootstrap', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/post/users/bootstrap");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("POST");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("POST", "/post/users/bootstrap", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`POST /post/users/bootstrap`
+
+The only online admin-granting path. Open only while the user store is
+empty **and `--bootstrap-admin` is set**; the created user is forced to
+`admin: true`. Closed by default: with the flag off an empty store
+rejects with the same 401 as every other guarded surface, and once any
+user exists the window stays shut (further users come from
+`POST /post/users/register`; role changes from `PUT /put/users/admin`).
+
+Corner cases: The password is trimmed before hashing.
+
+Errors: 400 invalid `userId` or password violating the policy — 401
+the bootstrap window is closed (flag off, or the store is non-empty) —
+405 read-only mode — 409 `userId` already exists — 500 storage failure.
+
+> Body parameter
+
+```json
+{
+  "password": "string",
+  "userId": "string"
+}
+```
+
+<h3 id="enroll-the-first-administrator.-parameters">Parameters</h3>
+
+| Name | In   | Type                                        | Required | Description |
+| ---- | ---- | ------------------------------------------- | -------- | ----------- |
+| body | body | [BootstrapRequest](#schemabootstraprequest) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "admin": true,
+  "userId": "string"
+}
+```
+
+<h3 id="enroll-the-first-administrator.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                            |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | First administrator enrolled                                                               | [UserSummary](#schemausersummary) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                              |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                              |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                              |
+| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | User already exists                                                                        | None                              |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                              |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Register a new user account.
+
+<a id="opIdregister_user_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X POST /post/users/register \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
+
+```
+
+```http
+POST /post/users/register HTTP/1.1
+
+Content-Type: application/json
+Accept: application/json
+
+```
+
+```javascript
+const inputBody = '{
+  "invite": "string",
+  "password": "string",
+  "userId": "string"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('/post/users/register',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
+}
+
+result = RestClient.post '/post/users/register',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
+}
+
+r = requests.post('/post/users/register', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('POST','/post/users/register', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/post/users/register");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("POST");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("POST", "/post/users/register", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`POST /post/users/register`
+
+Public route (no auth guard) behind the read-only guard. Three gates, in
+order: a valid admin session registers without an invite; with
+`allowRegistration` on, anyone registers without an invite; otherwise a
+valid, unexpired, unused invite is required. Non-admin sessions count as
+anonymous for gating. The account is always created with `admin: false` —
+`POST /post/users/bootstrap` (flag ∧ empty store) is the only online
+admin-granting path. While an invite is not needed (admin session or open
+knob), an `invite` in the body is ignored: it neither fails nor gets
+burned.
+
+Corner cases: The password is trimmed once and must satisfy the
+default policy (see `auth::password::check_strength`); an empty `invite` string counts as absent. Invite redemption
+marks the token used and inserts the user record in one transaction, so
+a failed request never half-consumes an invite.
+
+Errors: 400 invalid `userId` or password violating the policy — 403
+registration disabled (no invite) or invite expired — 404 unknown or
+revoked invite token — 405 read-only mode — 409 `userId` already exists
+or invite already used — 500 storage failure.
+
+> Body parameter
+
+```json
+{
+  "invite": "string",
+  "password": "string",
+  "userId": "string"
+}
+```
+
+<h3 id="register-a-new-user-account.-parameters">Parameters</h3>
+
+| Name | In   | Type                                      | Required | Description |
+| ---- | ---- | ----------------------------------------- | -------- | ----------- |
+| body | body | [RegisterRequest](#schemaregisterrequest) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "admin": true,
+  "userId": "string"
+}
+```
+
+<h3 id="register-a-new-user-account.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                            |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Account registered (non-admin)                                                             | [UserSummary](#schemausersummary) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                              |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None                              |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Registration disabled or invite expired                                                    | None                              |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Unknown or revoked invite token                                                            | None                              |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                              |
+| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | User already exists or invite already used                                                 | None                              |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                              |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Grant or revoke a user's admin role.
+
+<a id="opIdset_user_admin_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X PUT /put/users/admin \
+  -H 'Content-Type: application/json'
+
+```
+
+```http
+PUT /put/users/admin HTTP/1.1
+
+Content-Type: application/json
+
+```
+
+```javascript
+const inputBody = '{
+  "admin": true,
+  "userId": "string"
+}';
+const headers = {
+  'Content-Type':'application/json'
+};
+
+fetch('/put/users/admin',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Content-Type' => 'application/json'
+}
+
+result = RestClient.put '/put/users/admin',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json'
+}
+
+r = requests.put('/put/users/admin', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Content-Type' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('PUT','/put/users/admin', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/put/users/admin");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("PUT");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("PUT", "/put/users/admin", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`PUT /put/users/admin`
+
+Admin-only: a non-admin, share, or missing credential is denied at
+dispatch with 401. A change that would leave zero admins is refused,
+whether the target is the caller or the sole other admin; self-demotion
+with another admin present succeeds (transfer). No-op same-flag writes
+succeed without an audit line.
+
+Corner cases: Unknown `userId` names no user. The caller id is read from
+the dispatch-validated claims, never from the body.
+
+Errors: 400 invalid `userId` — 401 missing or invalid credentials,
+non-admin caller, or share credentials — 404 unknown `userId` — 405
+read-only mode — 409 demotion would leave zero admins — 500 storage
+failure.
+
+> Body parameter
+
+```json
+{
+  "admin": true,
+  "userId": "string"
+}
+```
+
+<h3 id="grant-or-revoke-a-user's-admin-role.-parameters">Parameters</h3>
+
+| Name | In   | Type                                              | Required | Description |
+| ---- | ---- | ------------------------------------------------- | -------- | ----------- |
+| body | body | [SetUserAdminRequest](#schemasetuseradminrequest) | true     | none        |
+
+<h3 id="grant-or-revoke-a-user's-admin-role.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Admin role updated                                                                         | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 409    | [Conflict](https://tools.ietf.org/html/rfc7231#section-6.5.8)              | Demotion would leave zero admins                                                           | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Change a user's password.
+
+<a id="opIdset_user_password_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X PUT /put/users/password \
+  -H 'Content-Type: application/json'
+
+```
+
+```http
+PUT /put/users/password HTTP/1.1
+
+Content-Type: application/json
+
+```
+
+```javascript
+const inputBody = '{
+  "newPassword": "string",
+  "oldPassword": "string",
+  "userId": "string"
+}';
+const headers = {
+  'Content-Type':'application/json'
+};
+
+fetch('/put/users/password',
+{
+  method: 'PUT',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Content-Type' => 'application/json'
+}
+
+result = RestClient.put '/put/users/password',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json'
+}
+
+r = requests.put('/put/users/password', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Content-Type' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('PUT','/put/users/password', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/put/users/password");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("PUT");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("PUT", "/put/users/password", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`PUT /put/users/password`
+
+A self-change (target == caller) always requires the correct
+`oldPassword`, admins included; an admin may set another user's password
+without the old one (recovery path). A non-admin may only change their
+own. The new
+password is trimmed and must satisfy the default password policy
+after trimming (length floor/ceiling, blocklist, user-id and pattern
+rules — see `auth::password::check_strength`).
+
+Corner cases: Any authenticated user reaches this route (share tokens
+are rejected); unauthenticated callers are denied at dispatch.
+
+Errors: 400 invalid `userId` or `newPassword` violating the password
+policy — 401
+missing or invalid credentials, or wrong `oldPassword` — 403 non-admin
+targeting another user — 404 unknown `userId` — 405 read-only mode —
+500 storage failure.
+
+> Body parameter
+
+```json
+{
+  "newPassword": "string",
+  "oldPassword": "string",
+  "userId": "string"
+}
+```
+
+<h3 id="change-a-user's-password.-parameters">Parameters</h3>
+
+| Name | In   | Type                                                    | Required | Description |
+| ---- | ---- | ------------------------------------------------------- | -------- | ----------- |
+| body | body | [SetUserPasswordRequest](#schemasetuserpasswordrequest) | true     | none        |
+
+<h3 id="change-a-user's-password.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Password updated                                                                           | None   |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None   |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
 <aside class="success">
 This operation does not require authentication
@@ -2220,7 +3923,8 @@ the directory-derived default, so a cleared title leaves no empty string
 behind.
 
 Errors: 400 malformed body — 401 missing or invalid admin or share
-credentials — 405 read-only mode — 500 storage failure.
+credentials — 403 a share targeting an album other than its own —
+405 read-only mode — 500 storage failure.
 
 > Body parameter
 
@@ -2244,6 +3948,7 @@ credentials — 405 read-only mode — 500 storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Album title updated                                                                        | None   |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Share targeting another album                                                              | None   |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
@@ -2407,13 +4112,14 @@ the in-memory tree is rebuilt before the call returns. Share credentials
 alongside the admin JWT cookie.
 
 Corner cases: the share's `showMetadata` flag is not consulted, so a share
-without metadata rights may still write a description. An index whose asset
-record no longer exists is skipped and still answers 200, and a failed
-sidecar write is logged rather than failing the request.
+without metadata rights may still write a description, but a share may only
+target assets that belong to its own album — any other asset is refused. An
+index whose asset record no longer exists is skipped and still answers 200,
+and a failed sidecar write is logged rather than failing the request.
 
 Errors: 400 malformed body — 401 missing or invalid admin or share
-credentials — 405 read-only mode — 500 unknown snapshot, out-of-range index,
-or storage failure.
+credentials — 403 a share targeting another album's asset — 405 read-only
+mode — 500 unknown snapshot, out-of-range index, or storage failure.
 
 > Body parameter
 
@@ -2438,6 +4144,7 @@ or storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Description updated                                                                        | None   |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None   |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | None   |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Share targeting another album's asset                                                      | None   |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None   |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None   |
 
@@ -2771,7 +4478,9 @@ Corner cases: `timestamp` is required and must equal the prefetch token's
 `timestamp` claim. When the token resolves to a share with
 `show_metadata: false`, the metadata fields — including the stored path —
 are cleared before responding, so a share that hides metadata cannot leak it
-here.
+here. A share token may only read assets that belong to its own album; any
+other `asset_id` answers 404, so the route does not reveal that the id
+exists.
 
 Errors: 400 invalid `asset_id` — 401 missing, invalid, or mismatched
 prefetch token — 404 unknown `asset_id` — 500 the asset record could not be
@@ -2948,8 +4657,12 @@ func main() {
 `PUT /put/edit_flags`
 
 `indexArray` addresses the assets in the snapshot named by `timestamp`, and
-a sent `isTrashed` value lands on each asset's own record; no file on disk
-is touched. Every album that lost or regained a member is refreshed in the
+a sent `isTrashed` value lands on each asset's own record _and_ on its XMP
+sidecar as the `picasu:Trashed` marker: the record is a cache, so without
+the marker a rebuild from the filesystem would bring trashed files back as
+normal assets. A restore removes the marker. The sidecar is written before
+the record, and a write that cannot land fails the request without storing
+anything. Every album that lost or regained a member is refreshed in the
 background, so its counts may still be catching up when the call returns.
 
 Corner cases: the removed `isFavorite` and `isArchived` keys are still
@@ -3937,10 +5650,10 @@ Returns the values a client needs to drive the other operations: address
 and port, the image library root (`imagePath`), `uploadFolder`,
 `maxUploadSize`, `readOnlyMode`, `disableImg`, `fsNotifyWatcher`,
 `normalizeUploadFilenames`, `validateUploadContent`,
-`useClientTimestampInfo`, plus `hasPassword` and `hasAuthKey`.
+`useClientTimestampInfo`, plus `hasAuthKey`.
 
-Corner cases: secrets are never returned — `hasPassword` and `hasAuthKey`
-only report whether a password or an auth key is configured. `imagePath` is
+Corner cases: secrets are never returned — `hasAuthKey` only reports
+whether an auth key is configured. `imagePath` is
 the absolute library root and serializes as `null` when it is unset.
 
 Errors: 400 half-supplied share credentials or an id that is not an album —
@@ -3956,7 +5669,6 @@ Errors: 400 half-supplied share credentials or an id that is not an album —
   "disableImg": true,
   "fsNotifyWatcher": true,
   "hasAuthKey": true,
-  "hasPassword": true,
   "imagePath": "string",
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
@@ -4121,9 +5833,9 @@ func main() {
 
 `GET /get/config/export`
 
-Returns the complete serialized configuration, including `password` and
-`authKey` in plaintext whenever they are set, so the response has to be
-handled as a secret. `webRoot` is the only field never serialized.
+Returns the complete serialized configuration, including `authKey` in
+plaintext whenever it is set, so the response has to be handled as a
+secret. `webRoot` is the only field never serialized.
 
 Errors: 400 invalid input — 401 no valid admin credentials.
 
@@ -4357,16 +6069,18 @@ Content-Type: application/json
 ```javascript
 const inputBody = '{
   "address": "string",
+  "allowRegistration": true,
   "authKey": "string",
+  "bootstrapAdmin": true,
   "dataHome": "string",
   "disableImg": true,
   "fsNotifyWatcher": true,
   "imagePath": "string",
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
-  "password": "string",
   "port": 0,
   "readOnlyMode": true,
+  "trivialPasswords": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
   "validateUploadContent": true
@@ -4512,16 +6226,18 @@ Errors: 400 unusable request body — 401 missing or invalid credentials —
 ```json
 {
   "address": "string",
+  "allowRegistration": true,
   "authKey": "string",
+  "bootstrapAdmin": true,
   "dataHome": "string",
   "disableImg": true,
   "fsNotifyWatcher": true,
   "imagePath": "string",
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
-  "password": "string",
   "port": 0,
   "readOnlyMode": true,
+  "trivialPasswords": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
   "validateUploadContent": true
@@ -4570,13 +6286,16 @@ Content-Type: application/json
 ```javascript
 const inputBody = '{
   "address": "string",
+  "allowRegistration": true,
   "authKey": "string",
+  "bootstrapAdmin": true,
   "disableImg": true,
   "fsNotifyWatcher": true,
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
+  "trivialPasswords": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
   "validateUploadContent": true
@@ -4722,13 +6441,16 @@ accepted — 405 read-only mode — 500 config write failure.
 ```json
 {
   "address": "string",
+  "allowRegistration": true,
   "authKey": "string",
+  "bootstrapAdmin": true,
   "disableImg": true,
   "fsNotifyWatcher": true,
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
+  "trivialPasswords": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
   "validateUploadContent": true
@@ -4755,7 +6477,7 @@ accepted — 405 read-only mode — 500 config write failure.
 This operation does not require authentication
 </aside>
 
-## Change or clear the account password.
+## Change the caller's own password.
 
 <a id="opIdupdate_password_handler"></a>
 
@@ -4901,19 +6623,21 @@ func main() {
 
 `PUT /put/config/password`
 
-`oldPassword` is compared verbatim against the stored password, and
-`password` supplies the new one, which is trimmed before it is stored. Only
-the password moves — `authKey` is untouched — so tokens already signed with
-it stay valid across the change.
+This route changes the password of the authenticated caller only. A
+self-change always requires the correct `oldPassword`, admins included.
+The new `password` is trimmed and must satisfy
+the default password policy after trimming (there is no "clear to open": open
+mode is store-empty only). To change another user's password, use
+`PUT /put/users/password`.
 
-Corner cases: an omitted or blank `password` clears the password, after
-which any input to the sign-in operation is accepted. Because `oldPassword`
-is compared verbatim against the stored value, it must be omitted rather
-than sent empty while no password is set.
+Corner cases: Any authenticated user reaches this route (share tokens
+are rejected); unauthenticated callers are denied at dispatch. A missing
+(`None`), blank, or too-short `password` is 400.
 
-Errors: 400 `oldPassword` does not match the stored password, or the body
-cannot be parsed — 401 missing or invalid admin credentials; share tokens
-are not accepted — 405 read-only mode — 500 config write failure.
+Errors: 400 missing, blank, or under-12 `password`, or the body cannot
+be parsed — 401 missing or invalid credentials, or wrong `oldPassword`;
+share tokens are not accepted — 405 read-only mode — 500 storage
+failure.
 
 > Body parameter
 
@@ -4924,13 +6648,13 @@ are not accepted — 405 read-only mode — 500 config write failure.
 }
 ```
 
-<h3 id="change-or-clear-the-account-password.-parameters">Parameters</h3>
+<h3 id="change-the-caller's-own-password.-parameters">Parameters</h3>
 
 | Name | In   | Type                                                  | Required | Description |
 | ---- | ---- | ----------------------------------------------------- | -------- | ----------- |
 | body | body | [UpdatePasswordRequest](#schemaupdatepasswordrequest) | true     | none        |
 
-<h3 id="change-or-clear-the-account-password.-responses">Responses</h3>
+<h3 id="change-the-caller's-own-password.-responses">Responses</h3>
 
 | Status | Meaning                                                                    | Description                                                                                | Schema |
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------ |
@@ -8369,6 +10093,138 @@ sign-in page route, which renders the password prompt.
 This operation does not require authentication
 </aside>
 
+## Serve the SPA shell for the first-admin registration page.
+
+<a id="opIdregister"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /register
+
+```
+
+```http
+GET /register HTTP/1.1
+
+```
+
+```javascript
+fetch("/register", {
+  method: "GET",
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+result = RestClient.get '/register',
+  params: {
+  }
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+
+r = requests.get('/register')
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/register', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/register");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/register", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /register`
+
+Returns `index.html` like every other page route. The client boot
+guard forces this page on an empty store with `--bootstrap-admin`;
+without a backend route here a browser reload on `/register` answers
+404 instead of the shell.
+
+<h3 id="serve-the-spa-shell-for-the-first-admin-registration-page.-responses">Responses</h3>
+
+| Status | Meaning                                                 | Description     | Schema |
+| ------ | ------------------------------------------------------- | --------------- | ------ |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1) | SPA page (HTML) | None   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 ## Serve the service worker registration script.
 
 <a id="opIdsregister_sw"></a>
@@ -10412,16 +12268,18 @@ This operation does not require authentication
 ```json
 {
   "address": "string",
+  "allowRegistration": true,
   "authKey": "string",
+  "bootstrapAdmin": true,
   "dataHome": "string",
   "disableImg": true,
   "fsNotifyWatcher": true,
   "imagePath": "string",
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
-  "password": "string",
   "port": 0,
   "readOnlyMode": true,
+  "trivialPasswords": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
   "validateUploadContent": true
@@ -10433,16 +12291,18 @@ This operation does not require authentication
 | Name                     | Type           | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | ------------------------ | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | address                  | string         | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| allowRegistration        | boolean        | false    | none         | Allow self-registration via `POST /post/users/register` without an<br>invite token. Default off: registration then requires a valid invite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | authKey                  | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| bootstrapAdmin           | boolean        | false    | none         | Enable the online first-admin bootstrap window. While set **and the<br>user store is empty**, unauthenticated `POST /post/users/bootstrap`<br>enrolls the first admin and open `POST /post/authenticate` mints a<br>token without enrolling anybody. Default<br>off: a fresh install answers 401 everywhere until an operator opts<br>in (or provisions the store via the `picasu-admin` CLI). Enabling<br>the flag against an existing `passwd.json` makes the server refuse<br>to start. WARN-logged at boot whenever set.                                                                                                                                                                                                                                                                                                                                                                                                               |
 | dataHome                 | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | disableImg               | boolean        | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | fsNotifyWatcher          | boolean        | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | imagePath                | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | maxUploadSize            | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | normalizeUploadFilenames | boolean        | false    | none         | NFC-normalize uploaded filenames so macOS NFD names collapse onto<br>their composed form. Optional (unlike the always-on sanitization tiers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| password                 | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | port                     | integer(int32) | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | readOnlyMode             | boolean        | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| trivialPasswords         | boolean        | false    | none         | Disable the default password-strength checks (length floor/ceiling,<br>blocklist, user-id and pattern rules) for new passwords. Default<br>off. Only for development, throwaway installs, or tests that must<br>use weak fixtures — the bypass is warn-logged at first use.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | uploadFolder             | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | useClientTimestampInfo   | boolean        | false    | none         | Trust the `lastModified` the upload client sends with each file. When<br>enabled, the value is used as the stored file modification time but<br>clamped to `[1970-01-01, now + 24h]` so a broken client clock cannot<br>push an undated file (e.g. a screenshot) into year 1970 or the distant<br>future. Disabled by default: the server uses `now()` instead of the<br>provided value, since a client's clock or timezone cannot be relied on.<br>Only affects files without embedded metadata: photos with a<br>`DateTimeOriginal` EXIF tag keep their EXIF-derived date regardless.<br>See `backend/src/router/post/post_upload.rs`<br>(`resolve_upload_timestamp`).                                                                                                                                                                                                                                                                   |
 | validateUploadContent    | boolean        | false    | none         | Cross-check uploaded content against the type its declared<br>`Content-Type` implies. The declared extension yields the expected<br>format from the supported-format table; the content is then identified<br>and the two are compared. See `backend/src/process/format.rs`.<br><br>Content that cannot be identified at all is always rejected, with or<br>without this setting: there is no way to tell whether such bytes are<br>what the extension claims. This setting governs only the mismatch case,<br>where the content _is_ identified but is not the type the extension<br>claims — for example a video uploaded with an image content type, or an<br>image named with the wrong extension. Enabled (the default) rejects<br>those with `400 InvalidInput`; disabling it stores the file anyway, which<br>misdescribes it and leaves the indexer trusting a wrong extension. Only<br>disable this to tolerate mislabeled files. |
@@ -10524,6 +12384,31 @@ silent about what happened to the selected item.
 | ------- | ------------------------------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | outcome | [AssignOutcome](#schemaassignoutcome) | true     | none         | The concrete result of a successful assign: `moved`, `renamedFrom` (an<br>auto-`-001` suffix collision), or `skipped` (destination already exists and<br>strategy is skip). |
 
+<h2 id="tocS_BootstrapRequest">BootstrapRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemabootstraprequest"></a>
+<a id="schema_BootstrapRequest"></a>
+<a id="tocSbootstraprequest"></a>
+<a id="tocsbootstraprequest"></a>
+
+```json
+{
+  "password": "string",
+  "userId": "string"
+}
+```
+
+Body for `POST /post/users/bootstrap`. There is deliberately no `admin`
+field: creation never grants admin through a body flag, and bootstrap
+always forces `admin: true`.
+
+### Properties
+
+| Name     | Type   | Required | Restrictions | Description |
+| -------- | ------ | -------- | ------------ | ----------- |
+| password | string | true     | none         | none        |
+| userId   | string | true     | none         | none        |
+
 <h2 id="tocS_ConfigResponse">ConfigResponse</h2>
 <!-- backwards compatibility -->
 <a id="schemaconfigresponse"></a>
@@ -10537,7 +12422,6 @@ silent about what happened to the selected item.
   "disableImg": true,
   "fsNotifyWatcher": true,
   "hasAuthKey": true,
-  "hasPassword": true,
   "imagePath": "string",
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
@@ -10557,7 +12441,6 @@ silent about what happened to the selected item.
 | disableImg               | boolean        | true     | none         | none        |
 | fsNotifyWatcher          | boolean        | true     | none         | none        |
 | hasAuthKey               | boolean        | true     | none         | none        |
-| hasPassword              | boolean        | true     | none         | none        |
 | imagePath                | string,null    | false    | none         | none        |
 | maxUploadSize            | string         | true     | none         | none        |
 | normalizeUploadFilenames | boolean        | true     | none         | none        |
@@ -10587,6 +12470,56 @@ silent about what happened to the selected item.
 | ------------- | ------ | -------- | ------------ | ----------- |
 | name          | string | true     | none         | none        |
 | parentAlbumId | string | true     | none         | none        |
+
+<h2 id="tocS_CreateInviteRequest">CreateInviteRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemacreateinviterequest"></a>
+<a id="schema_CreateInviteRequest"></a>
+<a id="tocScreateinviterequest"></a>
+<a id="tocscreateinviterequest"></a>
+
+```json
+{
+  "expiresInHours": 0
+}
+```
+
+Body for `POST /post/invites/create`.
+
+### Properties
+
+| Name           | Type           | Required | Restrictions | Description                                                                                                                                                      |
+| -------------- | -------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| expiresInHours | integer(int64) | true     | none         | Lifetime of the invite in hours, required: `0` means the invite<br>never expires. Negative values are rejected. Pass 168 for the<br>conventional 7-day lifetime. |
+
+<h2 id="tocS_CreateInviteResponse">CreateInviteResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemacreateinviteresponse"></a>
+<a id="schema_CreateInviteResponse"></a>
+<a id="tocScreateinviteresponse"></a>
+<a id="tocscreateinviteresponse"></a>
+
+```json
+{
+  "invite": {
+    "createdBy": "string",
+    "expiresAt": 0,
+    "id": "string",
+    "prefix": "string",
+    "usedBy": "string"
+  },
+  "token": "string"
+}
+```
+
+Response for `POST /post/invites/create`.
+
+### Properties
+
+| Name   | Type                            | Required | Restrictions | Description                                                                                                     |
+| ------ | ------------------------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------- |
+| invite | [InviteView](#schemainviteview) | true     | none         | The stored invite as it appears in listings (no token material).                                                |
+| token  | string                          | true     | none         | Plaintext invite token — returned exactly once and never stored;<br>it cannot be recovered after this response. |
 
 <h2 id="tocS_CreateShare">CreateShare</h2>
 <!-- backwards compatibility -->
@@ -10851,6 +12784,60 @@ silent about what happened to the selected item.
 | ----- | ------ | -------- | ------------ | ----------- |
 | album | string | true     | none         | none        |
 
+<h2 id="tocS_InviteView">InviteView</h2>
+<!-- backwards compatibility -->
+<a id="schemainviteview"></a>
+<a id="schema_InviteView"></a>
+<a id="tocSinviteview"></a>
+<a id="tocsinviteview"></a>
+
+```json
+{
+  "createdBy": "string",
+  "expiresAt": 0,
+  "id": "string",
+  "prefix": "string",
+  "usedBy": "string"
+}
+```
+
+Listing view of an invite: the stored metadata plus the row id (the
+token hash). Never contains the token itself.
+
+### Properties
+
+| Name      | Type                | Required | Restrictions | Description                                                                                                         |
+| --------- | ------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------- |
+| createdBy | string              | true     | none         | none                                                                                                                |
+| expiresAt | integer,null(int64) | false    | none         | none                                                                                                                |
+| id        | string              | true     | none         | Row id — blake3 hash hex of the token; identifies the invite for<br>revoke. Preimage-resistant, useless as a token. |
+| prefix    | string              | true     | none         | none                                                                                                                |
+| usedBy    | string,null         | false    | none         | none                                                                                                                |
+
+<h2 id="tocS_LoginRequest">LoginRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemaloginrequest"></a>
+<a id="schema_LoginRequest"></a>
+<a id="tocSloginrequest"></a>
+<a id="tocsloginrequest"></a>
+
+```json
+{
+  "password": "string",
+  "userId": "string"
+}
+```
+
+Request body for `POST /post/authenticate`: a user login object. There is
+deliberately no `admin` field: unknown keys are rejected, never honored.
+
+### Properties
+
+| Name     | Type   | Required | Restrictions | Description |
+| -------- | ------ | -------- | ------------ | ----------- |
+| password | string | true     | none         | none        |
+| userId   | string | true     | none         | none        |
+
 <h2 id="tocS_OnConflict">OnConflict</h2>
 <!-- backwards compatibility -->
 <a id="schemaonconflict"></a>
@@ -10891,13 +12878,16 @@ existing destination untouched (the source stays put, outcome `skipped`);
 ```json
 {
   "address": "string",
+  "allowRegistration": true,
   "authKey": "string",
+  "bootstrapAdmin": true,
   "disableImg": true,
   "fsNotifyWatcher": true,
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
   "port": 0,
   "readOnlyMode": true,
+  "trivialPasswords": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
   "validateUploadContent": true
@@ -10909,13 +12899,16 @@ existing destination untouched (the source stays put, outcome `skipped`);
 | Name                     | Type                | Required | Restrictions | Description                                                         |
 | ------------------------ | ------------------- | -------- | ------------ | ------------------------------------------------------------------- |
 | address                  | string,null         | false    | none         | none                                                                |
+| allowRegistration        | boolean,null        | false    | none         | none                                                                |
 | authKey                  | string,null         | false    | none         | none                                                                |
+| bootstrapAdmin           | boolean,null        | false    | none         | none                                                                |
 | disableImg               | boolean,null        | false    | none         | none                                                                |
 | fsNotifyWatcher          | boolean,null        | false    | none         | none                                                                |
 | maxUploadSize            | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("100MiB").  |
 | normalizeUploadFilenames | boolean,null        | false    | none         | none                                                                |
 | port                     | integer,null(int32) | false    | none         | none                                                                |
 | readOnlyMode             | boolean,null        | false    | none         | none                                                                |
+| trivialPasswords         | boolean,null        | false    | none         | none                                                                |
 | uploadFolder             | string,null         | false    | none         | `None` = don't touch; `Some("")` resets to the default ("uploads"). |
 | useClientTimestampInfo   | boolean,null        | false    | none         | none                                                                |
 | validateUploadContent    | boolean,null        | false    | none         | none                                                                |
@@ -11025,6 +13018,33 @@ Statistics from a clean filesystem rebuild.
 | hashErrors         | integer | true     | none         | none        |
 | mediaCreated       | integer | true     | none         | none        |
 | unsupportedSkipped | integer | true     | none         | none        |
+
+<h2 id="tocS_RegisterRequest">RegisterRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemaregisterrequest"></a>
+<a id="schema_RegisterRequest"></a>
+<a id="tocSregisterrequest"></a>
+<a id="tocsregisterrequest"></a>
+
+```json
+{
+  "invite": "string",
+  "password": "string",
+  "userId": "string"
+}
+```
+
+Body for `POST /post/users/register`. There is deliberately no `admin`
+field: registration always creates standard users; elevation is
+`PUT /put/users/admin` only.
+
+### Properties
+
+| Name     | Type        | Required | Restrictions | Description                                                                                                                                                       |
+| -------- | ----------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| invite   | string,null | false    | none         | Single-use invite token. Required while `allowRegistration` is off<br>and the caller holds no admin session; ignored while it is on or<br>the caller is an admin. |
+| password | string      | true     | none         | none                                                                                                                                                              |
+| userId   | string      | true     | none         | none                                                                                                                                                              |
 
 <h2 id="tocS_RenewHashToken">RenewHashToken</h2>
 <!-- backwards compatibility -->
@@ -11251,6 +13271,29 @@ Payload for renaming an album.
 | albumId | string      | true     | none         | none        |
 | title   | string,null | false    | none         | none        |
 
+<h2 id="tocS_SetUserAdminRequest">SetUserAdminRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemasetuseradminrequest"></a>
+<a id="schema_SetUserAdminRequest"></a>
+<a id="tocSsetuseradminrequest"></a>
+<a id="tocssetuseradminrequest"></a>
+
+```json
+{
+  "admin": true,
+  "userId": "string"
+}
+```
+
+Body for `PUT /put/users/admin`.
+
+### Properties
+
+| Name   | Type    | Required | Restrictions | Description |
+| ------ | ------- | -------- | ------------ | ----------- |
+| admin  | boolean | true     | none         | none        |
+| userId | string  | true     | none         | none        |
+
 <h2 id="tocS_SetUserDefinedDescription">SetUserDefinedDescription</h2>
 <!-- backwards compatibility -->
 <a id="schemasetuserdefineddescription"></a>
@@ -11273,6 +13316,31 @@ Payload for renaming an album.
 | description | string,null    | false    | none         | none        |
 | index       | integer        | true     | none         | none        |
 | timestamp   | integer(int64) | true     | none         | none        |
+
+<h2 id="tocS_SetUserPasswordRequest">SetUserPasswordRequest</h2>
+<!-- backwards compatibility -->
+<a id="schemasetuserpasswordrequest"></a>
+<a id="schema_SetUserPasswordRequest"></a>
+<a id="tocSsetuserpasswordrequest"></a>
+<a id="tocssetuserpasswordrequest"></a>
+
+```json
+{
+  "newPassword": "string",
+  "oldPassword": "string",
+  "userId": "string"
+}
+```
+
+Body for `PUT /put/users/password`.
+
+### Properties
+
+| Name        | Type        | Required | Restrictions | Description |
+| ----------- | ----------- | -------- | ------------ | ----------- |
+| newPassword | string      | true     | none         | none        |
+| oldPassword | string,null | false    | none         | none        |
+| userId      | string      | true     | none         | none        |
 
 <h2 id="tocS_Share">Share</h2>
 <!-- backwards compatibility -->
@@ -11346,3 +13414,26 @@ Payload for renaming an album.
 | ----------- | ----------- | -------- | ------------ | ----------- |
 | oldPassword | string,null | false    | none         | none        |
 | password    | string,null | false    | none         | none        |
+
+<h2 id="tocS_UserSummary">UserSummary</h2>
+<!-- backwards compatibility -->
+<a id="schemausersummary"></a>
+<a id="schema_UserSummary"></a>
+<a id="tocSusersummary"></a>
+<a id="tocsusersummary"></a>
+
+```json
+{
+  "admin": true,
+  "userId": "string"
+}
+```
+
+Summary of a user record. Password hashes are never exported.
+
+### Properties
+
+| Name   | Type    | Required | Restrictions | Description |
+| ------ | ------- | -------- | ------------ | ----------- |
+| admin  | boolean | true     | none         | none        |
+| userId | string  | true     | none         | none        |

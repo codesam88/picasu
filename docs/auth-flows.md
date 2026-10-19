@@ -48,12 +48,15 @@ admin}` → 200 (`admin` honored); duplicate id → 409.
 
 ### J4 — Login and logout
 
-- Login: `POST /post/authenticate {userId, password}` → 200 + 14-day token
-  in the body, stored by the client in the `jwt` cookie. Unknown user and
+- Login: `POST /post/authenticate {userId, password}` → 200 + session
+  profile `{ userId, admin }` in the body; the 14-day JWT travels in an
+  HttpOnly `Set-Cookie` the page never sees (R5). Unknown user and
   wrong password both answer 401 with no distinguishing detail, and the
   unknown-user path still costs one KDF round (no timing oracle).
-- Logout is client-side only (cookie removed); the token stays valid to
-  expiry. There is no server-side session to invalidate.
+- Logout is `POST /post/logout` → 204, clearing the cookie server-side
+  (idempotent); the client also drops its session profile and capability
+  tokens. The token stays cryptographically valid to expiry. There is no
+  server-side session to invalidate.
 
 ### J5 — Password change
 

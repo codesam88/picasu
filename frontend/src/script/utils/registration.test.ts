@@ -11,7 +11,7 @@ const axiosError = (status: number) => {
 
 const makeDeps = () => ({
   create: vi.fn().mockResolvedValue({ userId: 'root', admin: true }),
-  login: vi.fn().mockResolvedValue('jwt-token'),
+  login: vi.fn().mockResolvedValue({ userId: 'root', admin: true }),
   onRegistered: vi.fn().mockResolvedValue(undefined),
   onRaceLost: vi.fn().mockResolvedValue(undefined),
   onError: vi.fn()
@@ -46,7 +46,7 @@ describe('submitRegistration', () => {
     expect(deps.login).not.toHaveBeenCalled()
   })
 
-  test('create then login then onRegistered with the token', async () => {
+  test('create then login then onRegistered with the profile', async () => {
     const deps = makeDeps()
 
     await expect(submitRegistration('root', 'new-secret', 'new-secret', deps)).resolves.toBe(
@@ -57,7 +57,7 @@ describe('submitRegistration', () => {
     expect(deps.login).toHaveBeenCalledTimes(1)
     expect(deps.login).toHaveBeenCalledWith('root', 'new-secret')
     expect(deps.onRegistered).toHaveBeenCalledTimes(1)
-    expect(deps.onRegistered).toHaveBeenCalledWith('jwt-token')
+    expect(deps.onRegistered).toHaveBeenCalledWith({ userId: 'root', admin: true })
     expect(deps.onRaceLost).not.toHaveBeenCalled()
     expect(deps.onError).not.toHaveBeenCalled()
   })
