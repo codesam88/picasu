@@ -8,19 +8,18 @@ states the intended behavior at the user/API boundary.
 
 ## User journeys
 
-### J1 — First startup (empty store)
+### J1 — First startup (empty store, `--bootstrap-admin` on)
 
-The store has no users. The browser holds no token, so the user panel is
+No user exists yet. The browser holds no token, so the user panel is
 hidden until sign-in.
 
-1. User opens the app. With the store empty, the SPA's boot guard pings
-   `GET /get/server-info`, which answers `{enrolled: false, enrollmentOpen,
-captcha: null}`:
+1. User opens the app. The SPA's boot guard pings `GET /get/server-info`,
+   which answers `{enrolled: false, enrollmentOpen: true, captcha: null}`:
    - `enrollmentOpen: true` (empty store + `--bootstrap-admin`) → the app
      shows the admin registration screen (username, password, confirm).
-   - `enrollmentOpen: false` (flag off, empty or non-empty) → the app falls
-     through to `/login`; every guarded route answers 401 `no administrator
-enrolled` (J2).
+   - `enrollmentOpen: false` (flag off, or an enrolled store) → the app
+     falls through to `/login` and every guarded route answers 401
+     `no administrator enrolled` (J2, closed install).
 2. Registering submits the new administrator (any id — never a forced
    invisible name) and auto-logins:
    - API: `POST /post/users/bootstrap {userId, password}` → 200. This is
@@ -53,8 +52,8 @@ enrolled` (J2).
 1. Admin lists users: `GET /get/users` → `[{userId, admin}]` (hashes never
    included).
 2. Admin registers the user: `POST /post/users/register {userId,
-password}` → 200; the account is always `admin: false` (the body has no
-   `admin` field; elevation is `PUT /put/users/admin`); duplicate id → 409. With the `allowRegistration` knob off, the admin session is the
+password}` → 200; the account is always `admin: false` (the body has
+   no `admin` field; elevation is `PUT /put/users/admin`); duplicate id → 409. With the `allowRegistration` knob off, the admin session is the
    gate that skips the invite; a non-admin or anonymous caller needs a
    valid invite (403 registration disabled / 404 unknown, revoked or
    expired invite token).
@@ -119,7 +118,7 @@ password}` → 200; the account is always `admin: false` (the body has no
 | `POST /post/users/bootstrap` | none while the window is open (`--bootstrap-admin` ∧ empty store); a shut window answers 401 (an authenticated caller falls through to the same missing-enrollment 401) | 200 + `{userId, admin: true}` (forced)                                                                                                                                                                                                                                           | 400 bad id/weak pw; 401 window shut; 405 read-only; 409 duplicate; 500 storage                                                                                            |
 | `POST /post/users/register`  | admin session, or none with `allowRegistration` on, or a valid unexpired unused invite; always non-admin, never the first user (empty store → 401)                      | 200 + `{userId, admin: false}`                                                                                                                                                                                                                                                   | 400 bad id/weak pw; 401 empty store; 403 registration disabled or invite expired; 404 unknown/revoked invite; 405 read-only; 409 duplicate id or used invite; 500 storage |
 | `GET /get/users`             | admin                                                                                                                                                                   | 200 list, no hashes                                                                                                                                                                                                                                                              | 401                                                                                                                                                                       |
-| `PUT /put/users/password`    | any authenticated user                                                                                                                                                  | 200. Admin: any target, no old needed. Self: correct old required.                                                                                                                                                                                                               | 400 empty new/wrong old; 401 no session; 403 closed install or cross-user non-admin; 404 unknown (non-empty store); 405 read-only                                         |
+| `PUT /put/users/password`    | any authenticated user                                                                                                                                                  | 200. Self-change (target == caller, admins included): correct old required. Admin reset: any target, no old needed. Wipes the target's live sessions.                                                                                                                            | 400 weak new / wrong-old-self; 401 no session; 403 cross-user non-admin; 404 unknown target (empty store included); 405 read-only                                         |
 | `PUT /put/users/admin`       | admin                                                                                                                                                                   | 200 (no-op same-flag included)                                                                                                                                                                                                                                                   | 400 bad id; 401; 404 unknown; 405 read-only; 409 zero-admin outcome                                                                                                       |
 | share-guarded reads          | share headers/query or admin cookie                                                                                                                                     | scoped data                                                                                                                                                                                                                                                                      | 401; 403/404 on scope violations (F2/F3 fixes)                                                                                                                            |
 | `POST /upload`               | share with `showUpload` + matching album, or admin                                                                                                                      | accepted                                                                                                                                                                                                                                                                         | 401                                                                                                                                                                       |
@@ -129,9 +128,15 @@ password}` → 200; the account is always `admin: false` (the body has no
 - **R1 — zero-admin refusal** is one atomic transaction (check + write, single
   redb writer). Pinned: sole-admin self-demote 409, sole-other demote 409,
   transfer-then-demote 200.
-- **R2 — bootstrap is one-shot.** Empty-store creation/migration paths 401
-  once any user exists. Pinned: second unauthenticated create 401, second
-  legacy attempt 401.
+- **R2 — enrollment windows are one-shot and non-first.** Only
+  `POST /post/users/bootstrap` can create an admin: open while
+  `--bootstrap-admin` ∧ empty store, closed afterwards (a second attempt
+  401s). `POST /post/users/register` refuses an empty store whatever the
+  gate that would otherwise pass (admin session, open knob, valid
+  invite). Pinned: bootstrap on a seeded store 401 with the count
+  unchanged, register on an empty store 401 with knob on and with a
+  valid invite, second concurrent bootstrap → exactly one user
+  (first-create race).
 - **R3 — deny is live, grant needs re-login.** Demotion/removal is honored
   before token expiry (per-request re-read); promotion mints only via fresh
   login. Pinned both directions.
@@ -148,38 +153,34 @@ password}` → 200; the account is always `admin: false` (the body has no
 
 ## Coverage map (use-case → tests)
 
-| Use-case                                            | Tests                                                                                                                  |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| J1 bootstrap + forced admin + one-shot              | `auth_users::bootstrap_open_mode_and_first_user_forced_admin`, `post/users.rs::bootstrap_create_forces_admin`          |
-| J2 legacy object bootstrap + string migration       | `authenticate.rs::legacy_login_registers_claimed_id_as_admin`, `legacy_string_migrates_to_admin_user`, rejection twins |
-| J3 create/list/duplicates                           | `post/users.rs` (5), `get/users.rs` (3)                                                                                |
-| J4 login right/wrong/unknown/trim                   | `authenticate.rs` (9), `auth_users::two_users…`                                                                        |
-| J5 self/admin/legacy/empty/403-ordering             | `users_password.rs` (7+1), `edit_config.rs` legacy tests                                                               |
-| J6 transfer/promotion/demotion/liveness             | `users_admin.rs` (10), `auth_users::password_change_and_demotion…`                                                     |
-| J7 anonymous + role interplay + scope               | `auth_users::guest_share…`, `authz.rs` (7)                                                                             |
-| Liveness (demoted/removed/unknown/non-admin tokens) | `auth.rs::jwt_auth_*` (5)                                                                                              |
-| KDF/file store unit properties                      | `auth/password.rs` (10), `auth/users.rs` (7+4)                                                                         |
+| Use-case                                            | Tests                                                                                                                                                                              |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| J1 bootstrap window + forced admin + one-shot       | `tests/enroll_gate.rs` (closed-by-default, open-window, concurrency, freshness/bootstrap-gate rows), `auth_users::bootstrap_open_mode_and_first_user_forced_admin`                 |
+| J2 closed install + open-mode `authenticate`        | `enroll_gate.rs` (closed rows, no-legacy row), `router/post/authenticate.rs` (`authenticate_open_mode_skips_throttle`, `bare_string_body_is_*`)                                    |
+| J3 register gates / list / duplicates               | `tests/register.rs` (open knob, invite, admin-session, empty-store refusal, duplicate/used/expired/revoked/weak rows), `router/get/users.rs` tests                                 |
+| J4 login right/wrong/unknown                        | `router/post/authenticate.rs` (login, 401 twins, throttle, kill-switch tests), `auth_users::two_users_admin_route_distinguishes_roles`                                             |
+| J5 self/admin password change, never enrolls        | `router/put/users_password.rs` tests, `enroll_gate.rs::password_put_on_empty_store_is_404_and_creates_nothing`, `enroll_gate.rs::bootstrap_boot_gate_refuses_existing_passwd_file` |
+| J6 transfer/promotion/demotion/liveness             | `router/put/users_admin.rs` tests, `auth_users::password_change_and_demotion_take_effect`                                                                                          |
+| J6/J4 logout + session revocation                   | `tests/r6_session_revocation.rs`                                                                                                                                                   |
+| J7 anonymous + role interplay + scope               | `auth_users::guest_share_prefetch_get_data_and_serving`, `tests/authz.rs`                                                                                                          |
+| Liveness (demoted/removed/unknown/non-admin tokens) | `router/auth.rs` decode/guard tests, `tests/authz.rs`                                                                                                                              |
+| KDF/file store unit properties                      | `auth/password.rs`, `auth/users.rs` tests                                                                                                                                          |
 
 ## Gaps (no API tests)
 
-- **G1 — create-user UI missing.** J3 is API-only; backend covered, no
-  frontend path exists.
-- **G2 — read-only 405 untested** for create, set-password (both routes),
-  legacy-password route, and login-while-read-only (should still work).
-  Only set-admin pins 405.
+- **G1 — create-user UI missing.** J3 is API-only; the register page
+  covers only first-admin enrollment (`bootstrapUser`), no admin-create
+  form exists.
+- **G2 — read-only 405 untested** for `users/bootstrap`,
+  `users/register`, and `users/password`; login-while-read-only is also
+  unpinned. Only `users/admin` pins 405
+  (`read_only_mode_is_405`).
 - **G3 — password-protected share flow** end-to-end (share with password →
   correct/wrong/missing `x-share-password`).
 - **G4 — identity-token expiry** → 401 (craft an expired token; timestamp
   tokens have the mint-expired helper, identity tokens do not).
-- **G5 — token survives password change** (documented behavior, unpinned).
-- **G6 — login fallback chain against a live backend** (object→string→object
-  covered only with mocked HTTP; Playwright login scenarios updated but
-  unexecuted).
-- **G7 — concurrent bootstrap race** (by construction via mutex; accepted
-  untested — record, do not chase deterministically).
-- **G8 — share-credential callers on create/list/password routes** (only
+- **G8 — share-credential callers on register/list/password routes** (only
   set-admin pins the share-headers 401).
 - **G9 — demoted user's share access still works** (by design — share caps
   are independent; worth pinning so a future change cannot silently couple
   them).
-- **G10 — open-mode bare-string acceptance** (implicit; no explicit test).

@@ -66,11 +66,15 @@ resolve server-side, per request, against the stored share record.
 
 ### Secrets and token signing
 
-| Secret       | Source                                                 | Role                                                                                           |
-| ------------ | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `password`   | `[secrets]` in `config.toml` (legacy)                  | bootstrap-only: migrates onto user `admin` at first legacy login; ignored once any user exists |
-| `auth_key`   | `[secrets]` in `config.toml`, or env `PICASU_AUTH_KEY` | HS256 key for **all** JWT types                                                                |
-| fallback key | 32 random bytes, generated once per process            | used only when `auth_key` is unset; a restart invalidates every outstanding token              |
+| Secret       | Source                                                                                                            | Role                                                                              |
+| ------------ | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `auth_key`   | `<DATA_HOME>/auth/secrets.json` (owner-only file), or env `PICASU_AUTH_KEY` (in-memory override, never persisted) | HS256 key for **all** JWT types                                                   |
+| fallback key | 32 random bytes, generated once per process                                                                       | used only when `auth_key` is unset; a restart invalidates every outstanding token |
+
+The legacy `[secrets] password` and `[secrets] auth_key` config keys are
+gone: an old `config.toml` still parses, but the values are ignored (a
+legacy `password` triggers a boot warning). Passwords live per-user in the
+password store; the signing key lives in the secrets file.
 
 `AppConfig::get_jwt_secret_key` (`model/config.rs`) selects the key. All tokens
 are HS256-encoded with it; validation pins the algorithm list to `[HS256]`
@@ -120,8 +124,11 @@ Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    returns the caller's live `SessionRecord { jti, issuedAt }` array; it never
    returns another user's sessions, and an unknown post-guard id maps to 401.
 5. Users are managed through `GET /get/users`,
-   `PUT /put/users/password`, and `PUT /put/users/admin` (admin-only,
-   except unauthenticated creation of the first user, which is forced admin).
+   `POST /post/users/register`, `PUT /put/users/password`, and
+   `PUT /put/users/admin` (admin-only). The first administrator is
+   enrolled only by `POST /post/users/bootstrap` (`--bootstrap-admin` ∧
+   empty store, forced admin); `register` always creates non-admin
+   accounts — elevation is `PUT /put/users/admin` alone.
 
 **Login throttling (brute-force resistance):** `POST /post/authenticate`
 checks three sliding-window buckets before running the password KDF, so a
@@ -184,28 +191,30 @@ cached. Anonymous `GET /get/users` is 401 in all states, including the
 empty store — it never serves enrollment state.
 
 **Bootstrap mode (opt-in):** a fresh install is closed by default — with an
-empty user store and no legacy password, guarded routes reject callers:
+empty user store, guarded routes reject callers:
 `GuardAuth` routes answer 401 and `GuardUser` routes answer 403 (a
 privilege condition, not a session failure — the SPA keeps its display
 state), and `authenticate` accepts nothing. Online enrollment of the first administrator
 opens only while the `--bootstrap-admin` flag (or `PICASU_BOOTSTRAP_ADMIN`,
-or the `bootstrap_admin` config key) is set **and** the store is empty and no
-legacy password is configured: `try_jwt_cookie_auth` then returns an admin
-identity without reading a credential and `authenticate` accepts any
-parseable input, until the first user is created. The flag is WARN-logged at
+or the `bootstrap_admin` config key) is set **and** the store is empty:
+`try_jwt_cookie_auth` then returns an ephemeral admin identity without
+reading a credential — it creates no user record — and `authenticate`
+accepts any parseable login
+object, until the first user is enrolled (`POST /post/users/bootstrap`).
+The flag is WARN-logged at
 boot, the server refuses to start when the flag is set against an existing
 `<DATA_HOME>/auth/passwd.json` (bootstrap already happened, or the store
-needs repair — provision via the CLI instead), and a configured legacy
-password always wins over the flag. This closes Finding F6 for the default
+needs repair — provision via the CLI instead). This closes Finding F6 for the default
 path; a network-exposed install is only ever open if the operator opted in.
 
-**Legacy bootstrap:** a bare JSON string body to `authenticate` is accepted
-only while the user store is empty; it verifies the legacy config `password`
-and migrates it onto user `admin`. The same first-login bootstrap is
-available through the object path: the first login with the legacy password
-registers the claimed `userId` as the first admin. The legacy config password is ignored once
-any user exists, and pre-migration identity tokens do not decode under the new
-`Role` shape.
+**No legacy sign-in path:** the legacy single-password world is gone. A
+bare JSON string body to `authenticate` answers 422 (well-formed JSON of
+the wrong shape — Rocket's `Json` guard), never migration: no user is
+created, nothing is enrolled. A legacy `password` key in an old
+`config.toml` is ignored with a boot warning; empty installs enroll only
+via the bootstrap route on an empty store or the `picasu-admin` CLI.
+Tokens predating the `jti` claim or the `Role::User { id, admin }` shape
+do not decode.
 
 ### The three token types
 
@@ -270,16 +279,16 @@ expiry.
 
 ### Request guards (the authorization manifest)
 
-| Guard               | Accepts                                                                     | Used by                                                                                                                                                                                                                                                                                      |
-| ------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GuardAuth`         | cookie of a user with the admin role (or open first-run mode)               | config write/export/import (incl. password change), user management (create/list/set-admin), album cover/assign/create-dir, delete, index jobs, rebuild, rotate, regenerate thumbnail, tags/flags/rating, share create/edit, album/tag lists, fs completion, album-index status, test probes |
-| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected      | `PUT /put/users/password`                                                                                                                                                                                                                                                                    |
-| `GuardShare`        | share headers/query, or cookie of a user with the admin role                | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                                                                                                                                    |
-| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter | get-data, get-metadata, get-scroll-bar                                                                                                                                                                                                                                                       |
-| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                 | `GET /object/compressed/...`                                                                                                                                                                                                                                                                 |
-| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim               | `GET /object/imported/...`                                                                                                                                                                                                                                                                   |
-| `GuardUpload`       | share with `showUpload` + matching `presigned_album_id`, or admin-role user | `POST /upload`                                                                                                                                                                                                                                                                               |
-| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                  | every mutating route                                                                                                                                                                                                                                                                         |
+| Guard               | Accepts                                                                     | Used by                                                                                                                                                                                                                                                                               |
+| ------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GuardAuth`         | cookie of a user with the admin role (or open first-run mode)               | config write/export/import (incl. password change), user management (list/set-admin), album cover/assign/create-dir, delete, index jobs, rebuild, rotate, regenerate thumbnail, tags/flags/rating, share create/edit, album/tag lists, fs completion, album-index status, test probes |
+| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected      | `PUT /put/users/password`                                                                                                                                                                                                                                                             |
+| `GuardShare`        | share headers/query, or cookie of a user with the admin role                | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                                                                                                                             |
+| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter | get-data, get-metadata, get-scroll-bar                                                                                                                                                                                                                                                |
+| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                 | `GET /object/compressed/...`                                                                                                                                                                                                                                                          |
+| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim               | `GET /object/imported/...`                                                                                                                                                                                                                                                            |
+| `GuardUpload`       | share with `showUpload` + matching `presigned_album_id`, or admin-role user | `POST /upload`                                                                                                                                                                                                                                                                        |
+| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                  | every mutating route                                                                                                                                                                                                                                                                  |
 
 ### Configuration surface
 
@@ -292,9 +301,9 @@ expiry.
   for `GuardAuth`/`GuardShare`/`GuardUser`, so it takes effect before token
   expiry; promotion requires re-login. A password change does **not** touch
   `auth_key`, so outstanding tokens survive it.
-- **Export** (`GET /get/config/export`) returns the full config including the
-  legacy `password` and `authKey` in plaintext to an admin, by design. The
-  legacy config password is ignored once any user exists.
+- **Export** (`GET /get/config/export`) returns the serialized
+  configuration to an admin. The signing key is redacted (`authKey` is
+  removed, never exported); no plaintext secret leaves via the API.
 
 ---
 

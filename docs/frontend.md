@@ -100,7 +100,10 @@ route structure, parameterized by `baseName`:
   child name `albumViewPage`); `albumId` is the album's asset ID
 - `share` — 2 levels (`/share/:albumId-:shareId` and
   `/share/:albumId-:shareId/view/:assetId`, child name `shareViewPage`)
-- `tags`, `config`, `links`, `login` — flat single pages
+- `tags`, `config`, `links`, `login`, `register` — flat single pages
+  (`register` is the first-admin enrollment screen; the boot guard
+  routes there only when the anonymous `GET /get/server-info` ping
+  reports `enrolled: false` + `enrollmentOpen: true`)
 
 ---
 
@@ -232,7 +235,7 @@ The config page at `ConfigPage.vue` contains:
 | Section           | Component        | Features                                                                                                                                                                                                             |
 | ----------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Display           | `FrontendConfig` | Frontend-only UI preferences (light/dark mode, chips, etc.)                                                                                                                                                          |
-| Password          | `ChangePassword` | Set or change the admin password                                                                                                                                                                                     |
+| Password          | `ChangePassword` | Set or change the signed-in user's password (requires the current password)                                                                                                                                          |
 | Image Paths       | `StorageAndSync` | Monitored path display, Scan Now button, scan status with counters (scanned/matched/processed/failed), Cancel button. Also has editable `maxUploadSize` and `uploadFolder` fields. Save writes to `PUT /put/config`. |
 | Advanced Settings | `AdvancedConfig` | Read-only mode toggle, disable image processing, JWT auth key                                                                                                                                                        |
 

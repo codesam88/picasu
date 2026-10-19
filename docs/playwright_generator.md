@@ -133,13 +133,14 @@ Each file declares one scenario with optional `covers:`, required
 name: Login via button click succeeds
 covers:
   api:
+    - POST /post/users/bootstrap
     - POST /post/authenticate
-    - PUT /put/users/password
   ui:
     - route:/home
 given:
   - empty: true
-  - config:
+  - user:
+      user_id: admin
       password: e2e_test_pwd
 when:
   - navigate: /login
@@ -194,13 +195,14 @@ time in the Playwright worker process.
 
 Maps `given:` entries to real backend calls:
 
-| YAML form         | Action                                            |
-| ----------------- | ------------------------------------------------- |
-| `empty: true`     | No-op                                             |
-| `dir_album: ...`  | Creates directory on disk under `IMAGE_HOME`      |
-| `photo: ...`      | Writes a minimal JPEG to `IMAGE_HOME`             |
-| `remove: ...`     | Deletes a file from `IMAGE_HOME`                  |
-| `config: { ... }` | Sets `readOnlyMode` and/or `password` via PUT API |
+| YAML form         | Action                                                                                                                                                                            |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `empty: true`     | No-op                                                                                                                                                                             |
+| `dir_album: ...`  | Creates directory on disk under `IMAGE_HOME`                                                                                                                                      |
+| `photo: ...`      | Writes a minimal JPEG to `IMAGE_HOME`                                                                                                                                             |
+| `remove: ...`     | Deletes a file from `IMAGE_HOME`                                                                                                                                                  |
+| `user: { ... }`   | Enrolls `{userId, password}` as the first user via `POST /post/users/bootstrap` (forced admin; the given's optional `admin` flag is ignored). Valid only while the store is empty |
+| `config: { ... }` | Sets `readOnlyMode` and/or `fsNotifyWatcher` and/or `authKey` via PUT API                                                                                                         |
 
 Variables bound by `id_as` are stored in `GivenContext.vars` and
 interpolated as `${name}` in when-step strings.
