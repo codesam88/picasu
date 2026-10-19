@@ -1,32 +1,15 @@
 import { computed } from 'vue'
 import type { ComputedRef } from 'vue'
-import Cookies from 'js-cookie'
-import { jwtDecode } from 'jwt-decode'
+import { useSessionStore } from '@/store/sessionStore'
 
-/// Identity of the caller, decoded from the readable `jwt` session cookie.
+/// Identity of the caller, from the session-store profile.
 ///
-/// The backend mints externally-tagged role claims: a user session carries
-/// `role: { user: { id, admin } }`, while share sessions carry
-/// `role: { share: ... }`. Only the user shape yields a `CurrentUser`.
+/// The session JWT lives in an HttpOnly cookie the page JS can never read
+/// (R5), so identity comes from the `{ userId, admin }` profile the login
+/// response carried — never from decoding a token client-side.
 export interface CurrentUser {
   id: string
   isAdmin: boolean
-}
-
-/// Decode a session token into `{ id, isAdmin }`, or `null` when the token
-/// is missing, unparseable, or carries a non-user role (e.g. share tokens).
-export function parseCurrentUser(token: string | undefined): CurrentUser | null {
-  if (token === undefined || token === '') return null
-  try {
-    const decoded = jwtDecode<{ role?: { user?: { id?: unknown; admin?: unknown } } }>(token)
-    const user = decoded?.role?.user
-    if (typeof user?.id === 'string' && typeof user?.admin === 'boolean') {
-      return { id: user.id, isAdmin: user.admin }
-    }
-    return null
-  } catch {
-    return null
-  }
 }
 
 /// Whether the user-management panel is visible: admins only.
@@ -64,9 +47,13 @@ export function errorToMessage(
   return { redirectLogin: false, message: 'Failed to update admin role' }
 }
 
-/// Lazy current-user role state: reads and decodes the `jwt` cookie on each
-/// access inside a `computed`, so the role is always fresh with no hydration
-/// wiring to rot. Deliberately not a store.
+/// Current-user role state: maps the session-store profile (set at login)
+/// to `{ id, isAdmin }`, or `null` when no session is known. Deliberately
+/// not a second store — a thin view over the session store.
 export function useCurrentUser(): ComputedRef<CurrentUser | null> {
-  return computed(() => parseCurrentUser(Cookies.get('jwt')))
+  return computed(() => {
+    const profile = useSessionStore('mainId').profile
+    if (profile === null) return null
+    return { id: profile.userId, isAdmin: profile.admin }
+  })
 }

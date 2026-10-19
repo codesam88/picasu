@@ -2010,7 +2010,7 @@
     },
     "/post/authenticate": {
       "post": {
-        "description": "A `{ userId, password }` object verifies against the user and password\nstores and mints a token carrying the user's id and admin flag. Tokens\nare signed with `authKey`, or with a secret generated once per process\nwhen `authKey` is unset, so changing `authKey` invalidates every token\nissued under the previous one.\n\nCorner cases: While no users exist and `--bootstrap-admin` is set,\nsign-in succeeds without credentials: every parseable login object is\naccepted (open first-run mode).\n\nErrors: 400 the login `userId` is empty or longer than 64 characters, or\nthe body does not parse as a login object — 401 unknown user or wrong\npassword.",
+        "description": "A `{ userId, password }` object verifies against the user and password\nstores. On success the JWT travels in a `Set-Cookie: jwt=...; HttpOnly;\nSameSite=Strict; Path=/` response header — page JS never sees the token\n(R5) — and the body carries only the session profile\n`{ userId, admin }` for the client to display. Tokens are signed with\n`authKey`, or with a secret generated once per process when `authKey`\nis unset, so changing `authKey` invalidates every token issued under\nthe previous one.\n\nCorner cases: While no users exist and `--bootstrap-admin` is set,\nsign-in succeeds without credentials: every parseable login object is\naccepted (open first-run mode), setting an ephemeral admin cookie and\nreturning the ephemeral profile without enrolling anybody.\n\nErrors: 400 the login `userId` is empty or longer than 64 characters, or\nthe body does not parse as a login object — 401 unknown user or wrong\npassword.",
         "operationId": "authenticate",
         "requestBody": {
           "content": {
@@ -2025,13 +2025,13 @@
         "responses": {
           "200": {
             "content": {
-              "text/plain": {
+              "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/UserSummary"
                 }
               }
             },
-            "description": "JWT token"
+            "description": "Session profile; JWT in HttpOnly Set-Cookie"
           },
           "400": {
             "description": "Invalid input"
@@ -2043,7 +2043,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Sign in and return a 14-day user-bound JWT.",
+        "summary": "Sign in and issue the session cookie (`HttpOnly`).",
         "tags": [
           "auth"
         ]
@@ -2274,6 +2274,21 @@
           }
         },
         "summary": "Create a single-use invite token.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/post/logout": {
+      "post": {
+        "description": "`HttpOnly` cookies cannot be removed by page JS, so logout is a server\nround trip. Idempotent: succeeds with or without a live session; the\nJWT itself stays cryptographically valid until expiry or `auth_key`\nrotation (no server-side session store — see R6).",
+        "operationId": "logout",
+        "responses": {
+          "204": {
+            "description": "Session cookie cleared"
+          }
+        },
+        "summary": "Clear the session cookie.",
         "tags": [
           "auth"
         ]

@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { errorDisplay } from '@/script/utils/errorDisplay'
+import { useSessionStore } from '@/store/sessionStore'
 import { useShareStore } from '@/store/shareStore'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
@@ -98,6 +99,11 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
 
   switch (status) {
     case 401:
+      // The session is gone server-side: drop the persisted display
+      // profile too, before the throttle gate, so a stale admin badge can
+      // never outlive the session that backed it (R5). Share pages never
+      // reach here — their 401s are share-password flow, not sessions.
+      useSessionStore('mainId').clearProfile()
       if (isThrottled401()) return // Prevent duplicate snackbars/redirects
       messageStore.error('Session expired or unauthorized. Please login.')
       await redirectionStore.redirectionToLogin()

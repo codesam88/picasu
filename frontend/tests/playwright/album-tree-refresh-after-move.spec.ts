@@ -1,6 +1,11 @@
 import { expect } from '@playwright/test'
 import { test } from './scenarioFixtures'
-import { executeGiven, createGivenContext, resetAuthToken } from './executeGiven'
+import {
+  executeGiven,
+  createGivenContext,
+  resetAuthToken,
+  sessionTokenFromLogin
+} from './executeGiven'
 import type { GivenItem } from './types'
 
 test.describe('Album tree refresh after move', () => {
@@ -30,7 +35,7 @@ test.describe('Album tree refresh after move', () => {
       data: { userId: 'admin', password: backendPaths.ADMIN_PASSWORD },
       headers: { 'Content-Type': 'application/json' }
     })
-    const authToken = String(await authRes.json())
+    const authToken = sessionTokenFromLogin(authRes)
     const headers = {
       Authorization: `Bearer ${authToken}`,
       'Content-Type': 'application/json',

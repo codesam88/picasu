@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest'
 import axios from 'axios'
-import { listUsers, createUser, bootstrapUser, login, setUserAdmin } from './users'
+import { listUsers, createUser, bootstrapUser, login, logout, setUserAdmin } from './users'
 
 vi.mock('axios')
 
@@ -78,9 +78,9 @@ describe('login', () => {
     return err
   }
 
-  test('object-success costs one POST and returns the token', async () => {
-    mockedAxios.post = vi.fn().mockResolvedValue({ data: 'jwt-token' })
-    await expect(login('bob', 'secret')).resolves.toBe('jwt-token')
+  test('object-success costs one POST and returns the session profile, never a token', async () => {
+    mockedAxios.post = vi.fn().mockResolvedValue({ data: { userId: 'bob', admin: false } })
+    await expect(login('bob', 'secret')).resolves.toEqual({ userId: 'bob', admin: false })
     expect(mockedAxios.post).toHaveBeenCalledTimes(1)
     expect(mockedAxios.post).toHaveBeenCalledWith('/post/authenticate', {
       userId: 'bob',
@@ -100,5 +100,14 @@ describe('login', () => {
     mockedAxios.post = vi.fn().mockRejectedValueOnce(err)
     await expect(login('bob', 'secret')).rejects.toBe(err)
     expect(mockedAxios.post).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('logout', () => {
+  test('posts to /post/logout with no body', async () => {
+    mockedAxios.post = vi.fn().mockResolvedValue({ data: '' })
+    await expect(logout()).resolves.toBeUndefined()
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
+    expect(mockedAxios.post).toHaveBeenCalledWith('/post/logout')
   })
 })

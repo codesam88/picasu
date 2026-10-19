@@ -34,7 +34,7 @@ This is the suggested tackle order, not a commitment to fix all items.
 | 5     | R3  | CONFIRMED  | S1  | MED    | MED     | Bootstrap race (check-then-act, no lock)                                 |
 | 6     | R4  | CONFIRMED  | S1  | MED    | LOW     | Open registration squats first-user slot                                 |
 | 7     | R1  | CONFIRMED  | S0  | LOW    | LOW     | Stale probe bounces post-login to /login                                 |
-| 8     | R2  | CONFIRMED* | S0  | LOW    | LOW     | Backend tests don't compile (api_config; *api_watcher is runtime-only)   |
+| 8     | R2  | CONFIRMED* | S0  | LOW    | LOW     | Backend tests don't compile (api_config; _api_watcher is runtime-only_)  |
 | 9     | R7  | CONFIRMED  | S2  | MED    | MED     | No brute-force throttling                                                |
 | 10    | R25 | PARTIAL    | S2  | MED    | MED     | Register-then-login non-atomic (retry yields 401, not 409)               |
 | 11    | R24 | CONFIRMED  | S2  | MED    | LOW     | 401 interceptor double-toast + throttle-drop                             |

@@ -28,3 +28,9 @@ POST /post/authenticate the request's body `type` changed from `any` to `object`
 # it. No deprecation window: the old route's `admin` body flag is the
 # defect being removed.
 POST /post/users/create api path removed without deprecation
+
+# 2026-10-15 (R5 HttpOnly session cookie): `POST /post/authenticate`
+# no longer returns the raw JWT in the body — the token travels in an
+# HttpOnly `Set-Cookie` and the 200 body is the `{ userId, admin }`
+# session profile. API clients parsing the body must migrate to cookies.
+POST /post/authenticate removed the media type `text/plain` for the response with the status `200`

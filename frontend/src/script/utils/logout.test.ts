@@ -1,16 +1,16 @@
-import { describe, expect, test, vi, beforeEach, type Mock } from 'vitest'
+import { describe, expect, test, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import Cookies from 'js-cookie'
+import axios from 'axios'
+import { useSessionStore } from '@/store/sessionStore'
 import { useTokenStore } from '@/store/tokenStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
 import { performLogout } from './logout'
 
-vi.mock('js-cookie', () => ({
-  default: {
-    set: vi.fn(),
-    remove: vi.fn()
-  }
-}))
+vi.mock('axios')
+
+const mockedAxios = axios as unknown as {
+  post: ReturnType<typeof vi.fn>
+}
 
 // The router module imports .vue page components, which the node-env vitest
 // setup cannot parse (same reason routes.test.ts checks source instead of
@@ -23,23 +23,28 @@ vi.mock('@/route/routes', () => ({
   }
 }))
 
-const mockedCookies = Cookies as unknown as {
-  remove: Mock
-}
-
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
+  mockedAxios.post = vi.fn().mockResolvedValue({ data: '' })
 })
 
 const push = () => vi.fn().mockResolvedValue(undefined)
 
 describe('performLogout', () => {
-  test('removes the session cookie', async () => {
+  test('clears the session cookie server-side via POST /post/logout', async () => {
     await performLogout(push())
 
-    expect(mockedCookies.remove).toHaveBeenCalledTimes(1)
-    expect(mockedCookies.remove.mock.calls[0]?.[0]).toBe('jwt')
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1)
+    expect(mockedAxios.post).toHaveBeenCalledWith('/post/logout')
+  })
+
+  test('clears the session profile', async () => {
+    useSessionStore('mainId').setProfile({ userId: 'alice', admin: true })
+
+    await performLogout(push())
+
+    expect(useSessionStore('mainId').profile).toBeNull()
   })
 
   test('resets tokenStore state', async () => {
@@ -60,6 +65,30 @@ describe('performLogout', () => {
     await performLogout(push())
 
     expect(redirectionStore.redirection).toBeNull()
+  })
+
+  test('still clears local state when the logout round trip fails', async () => {
+    mockedAxios.post = vi.fn().mockRejectedValueOnce(new Error('Network Error'))
+    useSessionStore('mainId').setProfile({ userId: 'alice', admin: true })
+
+    const pushMock = push()
+    await performLogout(pushMock)
+
+    expect(useSessionStore('mainId').profile).toBeNull()
+    expect(pushMock).toHaveBeenCalledWith({ name: 'login' })
+  })
+
+  test('resets the cached enrollment probe', async () => {
+    const { getEnrollmentProbe, resetEnrollmentProbe } = await import('./enrollment')
+    resetEnrollmentProbe()
+    await getEnrollmentProbe(() => Promise.resolve({ ok: false }))
+
+    await performLogout(push())
+
+    // A new injectable probe runs only when the logout cleared the cache.
+    await expect(
+      getEnrollmentProbe(() => Promise.resolve({ ok: true, users: [] }))
+    ).resolves.toEqual({ ok: true, users: [] })
   })
 
   test('navigates to login', async () => {

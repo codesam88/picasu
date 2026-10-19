@@ -71,6 +71,20 @@ describe('register route', () => {
     expect(enrollmentSource).toMatch(/export const resetEnrollmentProbe/)
   })
 
+  test('LoginPage resets the cached probe after login (R1)', () => {
+    // A 401 cached while logged out (or on a closed install) must not be
+    // re-read post-login, or the timeline navigation bounces to /login.
+    const page = readFileSync(join(routeDir, '../components/Login/LoginPage.vue'), 'utf8')
+    expect(page).toContain('resetEnrollmentProbe')
+  })
+
+  test('logout resets the cached probe (R1)', () => {
+    // A cached authenticated result must not outlive the session, or the
+    // next navigation renders app routes sessionless.
+    const source = readSrc('script/utils/logout.ts')
+    expect(source).toContain('resetEnrollmentProbe')
+  })
+
   test('routes.ts never redirects share links (capability URLs)', () => {
     const source = readRoute('routes.ts')
     expect(source).toMatch(/to\.name === 'share'/)
