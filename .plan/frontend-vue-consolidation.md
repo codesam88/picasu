@@ -5,68 +5,91 @@ priority: low
 area: frontend
 ---
 
-## Frontend Vue architecture — consolidation opportunities
+# Frontend consolidation and cleanup pass
 
-Low-effort survey of the frontend Vue codebase (not tied to a specific diff)
-for obvious, cheap-to-fix duplication/simplification. Not urgent; pick up
-opportunistically or when touching adjacent code.
+Opportunistic cleanup vehicle — items execute as ride-alongs when
+adjacent code is next touched, or as one dedicated pass if scheduled.
+Re-verified against the tree 2026-10-19 (the 2026-07-01 survey re-checked
+item by item; items absorbed from the auth-enrollment re-review are
+labeled where they originate).
 
-### 1. `getIsolationIdByRoute(route)` is dead indirection (lowest risk, do first)
+## 1. Dead `getIsolationIdByRoute` indirection (lowest risk, do first — re-verified)
 
-20 files repeat:
+17 `.vue` files still call `getIsolationIdByRoute(route)`
+(`script/utils/getter.ts:8`), which has always returned `'mainId'` since
+the route-flattening refactor (`'subId'`, the only other historical
+value, has no producers left).
 
-```ts
-const route = useRoute();
-const isolationId = getIsolationIdByRoute(route);
-```
+Fix: inline `'mainId'` at call sites, delete the function, and drop
+`'subId'` from the `IsolationId` union in `type/types.ts:56`. Keep
+`'tempId'` and — an update vs the 2026-07-01 note — `'shareId'`
+(used across 17 files, legitimate member).
 
-Since the route-flattening refactor (`feat/ui-overlays`), this function always
-returns `'mainId'` regardless of the route — `'subId'` (the only other value
-it used to return) has no consumers left. Fix: inline `'mainId'` at call
-sites and delete `getIsolationIdByRoute` from `script/utils/getter.ts`. Also
-drop `'subId'` from the `IsolationId` union in `type/types.ts` (keep
-`'tempId'` — still used by `GalleryTemp.vue`/`GalleryTempBar.vue`).
+## 2. Dead API bindings: `exportConfig` / `importConfig` (from R26 tail — verified)
 
-### 2. `BaseModal.vue` is under-used
+`api/config.ts:39-52` exports `exportConfig` and `importConfig` with
+zero importers repo-wide (verified 2026-10-19). Delete both and any
+`AppConfig`/axios scaffolding only they use. Check `api/config.ts` for
+further orphaned members while there.
 
-`components/Modal/BaseModal.vue` is a clean, generic modal shell (title,
-loading state, close button, actions slot). Currently only used by the
-Share-related modals (via `ShareModalBase.vue`). These hand-roll their own
-`<v-dialog>` + `<v-card>` + title/close/actions structure instead:
+## 3. T1 — auth util module consolidation (from auth review R30)
 
-- `AlbumInfoModal.vue`
-- `AssignAlbumModal.vue`
-- `EditBatchTagsModal.vue`
-- `EditTagsModal.vue`
-- `ShareDeleteConfirmModal.vue`
+Five `script/utils/` modules, re-measured 2026-10-19: `passwordChange`
+(18 src / 55 test, 1 caller), `registration` (66 / 235, 1 caller),
+`logout` (29 / 89, 1 caller), `currentUser` (59 / 78, **4** callers),
+`retryAfter` (80 / 191, **2** callers).
 
-Migrating them to `BaseModal` would delete a meaningful chunk of repeated
-markup per file. Medium effort (touches 5 files' templates), do as a
-dedicated pass rather than incidentally.
+Merge toward two modules, keep suites as orchestration tests: saves
+mostly file/import ceremony (~−20…−40 src, ~−60…−80 with test re-homing).
+Constraints: the 235-line `registration.test.ts` stays — sole pin for
+race-lost / throttle-vs-interceptor display contracts (no component
+harness: `@vue/test-utils`/jsdom absent, vitest `environment: 'node'`);
+`registration.ts` couples to `first-admin-registration.spec.ts` via an
+inlined `RACE_LOST_NOTICE` copy — de-duplicate the constant first.
+Effort ~2 units; not worth standalone scheduling.
 
-### 3. "Edit X" API helpers split inconsistently across two directories
+## 4. T2 — bootGuard tripwire trim (from auth review R31)
 
-Same category of function (PUT an edit to the backend, patch local store),
-two homes with no apparent rule:
+`route/registerRoute.test.ts` S7–S10 carry in-code "R31 rewrite
+candidate" marks (superseded by `bootGuard.test.ts` behavior tests), but
+the settled r26 B3 decision keeps them as tripwires. Verified split:
+only S9 (~−7 lines, pure dup of S8's first assertion) is freely
+deletable; S7/S8 wiring pins are the only routes-side injection checks —
+keep. Coverage fact to carry, not fix here: the change-password form has
+zero e2e contact; `changePasswordForm.test.ts` remains its only check.
+Effort ~1 unit for S9 + mark-comment cleanup.
 
-- `api/editFlags.ts`, `api/editRating.ts`, `api/editTags.ts`
-- `script/utils/editDescription.ts`, `script/utils/createAlbums.ts`,
-  `script/utils/quickEditTags.ts`
+## 5. `BaseModal` adoption for hand-rolled modals (re-verified)
 
-Lower priority than #1/#2 — fixing means touching every importer, not just
-deleting code. Worth doing only if establishing a convention going forward
-(e.g. picking `api/` as the one true home and moving the rest).
+`BaseModal.vue` is used by `ShareModalBase`, `UploadOptionsModal`,
+`UserSettingsModal`. Still hand-rolling `<v-dialog>` + card scaffolding:
+`AssignAlbumModal`, `EditBatchTagsModal`, `ShareDeleteConfirmModal`,
+`EditTagsModal`, `ShareLoginModal` (new vs the 2026-07-01 list),
+`AlbumInfoModal`. Medium effort (six templates); dedicated pass, do not
+ride along.
 
-### Not consolidation targets (checked, no action needed)
+## 6. Edit helpers split across two homes (unchanged)
 
-- `components/Menu/MenuItem/*.vue` (17 files) — already appropriately small
-  and single-purpose.
-- Pinia stores (28 files, mostly tiny single-field stores using the
-  `useXStore(isolationId)` factory pattern) — idiomatic for this codebase's
-  per-isolation-id store design, not duplication worth collapsing.
+Same category (PUT an edit, patch local store), two homes with no rule:
+`api/edit{Flags,Rating,Tags}.ts` vs `script/utils/{editDescription,
+createAlbums,quickEditTags}.ts`. Only worth doing while establishing a
+convention going forward (e.g. `api/` as the single home); explicit
+decision needed, else leave.
+
+## Not consolidation targets (re-checked 2026-10-19)
+
+- `components/Menu/MenuItem|MenuButton` family — still appropriately
+  small and single-purpose.
+- Pinia stores (33 files, mostly tiny `useXStore(isolationId)` factory
+  stores) — idiomatic per-isolation-id design, not duplication.
+- Backend-side review minors stay in their tracker (R28 residual typed
+  knob helper / verb alias / status typing; R29's 1-line comment drift
+  rides with R33 in `.plan/auth-enrollment-review.md`) — not frontend.
 
 ## Notes
 
-- 2026-07-01: Findings from a low-effort ad hoc scan requested by the user,
-  separate from the `feat/ui-overlays`/`feat/album-metadata` diff review.
-  Not yet actioned.
+- 2026-07-01: initial low-effort ad hoc scan requested by the user.
+- 2026-10-19: full re-verification of every item against the tree;
+  T1/T2/T3 absorbed from the auth-enrollment re-review
+  (`.plan/auth-enrollment-review.md`, § Re-verification 2026-10-19) —
+  the earlier dangling pointers now resolve here.

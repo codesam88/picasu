@@ -25,43 +25,41 @@ the fix causes behavior change or coverage loss.
 Ordered by severity, then HIGH impact first, discounted by HIGH fix risk.
 This is the suggested tackle order, not a commitment to fix all items.
 
-| Order | ID  | Verdict    | Sev | Impact | Risk    | Title                                                                    |
-| ----- | --- | ---------- | --- | ------ | ------- | ------------------------------------------------------------------------ |
-| 1     | R23 | CONFIRMED  | S1  | HIGH   | MED     | Auth state triplication + probe overload (root of R1)                    |
-| 2     | R5  | CONFIRMED  | S1  | HIGH   | MED     | Session cookie not HttpOnly (client-set)                                 |
-| 3     | R6  | CONFIRMED  | S2  | HIGH   | HIGH    | No server-side session revocation                                        |
-| 4     | R26 | PARTIAL    | S2  | HIGH   | MED     | Frontend auth layer fragmentation                                        |
-| 5     | R3  | CONFIRMED  | S1  | MED    | MED     | Bootstrap race (check-then-act, no lock)                                 |
-| 6     | R4  | CONFIRMED  | S1  | MED    | LOW     | Open registration squats first-user slot                                 |
-| 7     | R1  | CONFIRMED  | S0  | LOW    | LOW     | Stale probe bounces post-login to /login                                 |
-| 8     | R2  | CONFIRMED* | S0  | LOW    | LOW     | Backend tests don't compile (api_config; _api_watcher is runtime-only_)  |
-| 9     | R7  | CONFIRMED  | S2  | MED    | MED     | No brute-force throttling                                                |
-| 10    | R25 | PARTIAL    | S2  | MED    | MED     | Register-then-login non-atomic (retry yields 401, not 409)               |
-| 11    | R24 | CONFIRMED  | S2  | MED    | LOW     | 401 interceptor double-toast + throttle-drop                             |
-| 12    | R27 | PARTIAL    | S2  | MED    | LOW     | 422 catcher detail loss; /unauthorized doc false; bare-guard detail loss |
-| 13    | R12 | CONFIRMED  | S2  | MED    | LOW     | Runtime bootstrap_admin flip → next-boot refusal                         |
-| 14    | R13 | CONFIRMED  | S2  | MED    | LOW     | GET /get/config via GuardShare discloses paths                           |
-| 15    | R8  | CONFIRMED  | S2  | LOW    | LOW     | GuardHashOriginal Forward masks denial as 200                            |
-| 16    | R9  | CONFIRMED  | S2  | LOW    | LOW     | PUT bodies lack deny_unknown_fields                                      |
-| 17    | R14 | CONFIRMED  | S2  | LOW    | LOW     | Unreachable register 401 + ?token= + phantom CLI refs                    |
-| 18    | R16 | CONFIRMED  | S2  | LOW    | LOW     | auth-flows/auth/config docs describe deleted world                       |
-| 19    | R19 | CONFIRMED  | S2  | LOW    | LOW     | rocket-guards brief points at deleted files/symbols                      |
-| 20    | R21 | CONFIRMED  | S2  | LOW    | LOW     | Plan notes contradict code (3 items)                                     |
-| 21    | R30 | PARTIAL    | S2  | MED    | HIGH    | Frontend 5→2 collapse (~−60 realistic, not −200)                         |
-| 22    | R31 | PARTIAL    | S2  | LOW    | MED     | Source-regex tests (changePasswordForm is the only form check)           |
-| 23    | R29 | CONFIRMED  | S3  | LOW    | MED     | Backend test dedup (keep per-struct admin-422; ~−110 not −160)           |
-| 24    | R28 | CONFIRMED  | S3  | MED    | MED     | Config knob naming/read-back asymmetry                                   |
-| 25    | R10 | CONFIRMED  | S3  | LOW    | LOW     | Closed-install UX vs plan flow A (plan or code must change)              |
-| 26    | R15 | CONFIRMED  | S2  | LOW    | LOW     | HTTP-by-default exposes 14-day JWT (deploy note)                         |
-| 27    | R11 | CONFIRMED  | S3  | LOW    | LOW     | 409 enumeration (plan-pinned, accepted risk)                             |
-| 28    | R18 | CONFIRMED  | S3  | LOW    | LOW     | Playwright/scenario docs use deleted config.password                     |
-| 29    | R17 | CONFIRMED  | S3  | LOW    | LOW     | openapi-reference stale (regen not rerun)                                |
-| 30    | R20 | CONFIRMED  | S3  | LOW    | LOW     | frontend.md / test-strategy.md staleness                                 |
-| 31    | R22 | CONFIRMED  | S3  | LOW    | LOW     | createUser caller-less + GivenUser.admin ignored (intentional-for-now)   |
-| 32    | R32 | CONFIRMED  | S3  | LOW    | LOW     | Provision helper reuse (~−22)                                            |
-| 33    | R33 | CONFIRMED  | S3  | LOW    | LOW     | Shared test-harness helpers (~−60)                                       |
-| 34    | R34 | CONFIRMED  | S3  | LOW    | LOW-MED | Playwright API re-assertions (~−15)                                      |
-| 35    | R35 | CONFIRMED  | S3  | MED    | MED     | Spawn/error boilerplate (~−50, optional, widest diff)                    |
+| Order | ID  | Verdict    | Sev | Impact | Risk | Title                                                                    |
+| ----- | --- | ---------- | --- | ------ | ---- | ------------------------------------------------------------------------ |
+| 1     | R23 | CONFIRMED  | S1  | HIGH   | MED  | Auth state triplication + probe overload (root of R1)                    |
+| 2     | R5  | CONFIRMED  | S1  | HIGH   | MED  | Session cookie not HttpOnly (client-set)                                 |
+| 3     | R6  | CONFIRMED  | S2  | HIGH   | HIGH | No server-side session revocation                                        |
+| 4     | R26 | PARTIAL    | S2  | HIGH   | MED  | Frontend auth layer fragmentation                                        |
+| 5     | R3  | CONFIRMED  | S1  | MED    | MED  | Bootstrap race (check-then-act, no lock)                                 |
+| 6     | R4  | CONFIRMED  | S1  | MED    | LOW  | Open registration squats first-user slot                                 |
+| 7     | R1  | CONFIRMED  | S0  | LOW    | LOW  | Stale probe bounces post-login to /login                                 |
+| 8     | R2  | CONFIRMED* | S0  | LOW    | LOW  | Backend tests don't compile (api_config; _api_watcher is runtime-only_)  |
+| 9     | R7  | CONFIRMED  | S2  | MED    | MED  | No brute-force throttling                                                |
+| 11    | R24 | CONFIRMED  | S2  | MED    | LOW  | 401 interceptor double-toast + throttle-drop                             |
+| 12    | R27 | PARTIAL    | S2  | MED    | LOW  | 422 catcher detail loss; /unauthorized doc false; bare-guard detail loss |
+| 13    | R12 | CONFIRMED  | S2  | MED    | LOW  | Runtime bootstrap_admin flip → next-boot refusal                         |
+| 14    | R13 | CONFIRMED  | S2  | MED    | LOW  | GET /get/config via GuardShare discloses paths                           |
+| 15    | R8  | CONFIRMED  | S2  | LOW    | LOW  | GuardHashOriginal Forward masks denial as 200                            |
+| 16    | R9  | CONFIRMED  | S2  | LOW    | LOW  | PUT bodies lack deny_unknown_fields                                      |
+| 17    | R14 | CONFIRMED  | S2  | LOW    | LOW  | Unreachable register 401 + ?token= + phantom CLI refs                    |
+| 18    | R16 | CONFIRMED  | S2  | LOW    | LOW  | auth-flows/auth/config docs describe deleted world                       |
+| 19    | R19 | CONFIRMED  | S2  | LOW    | LOW  | rocket-guards brief points at deleted files/symbols                      |
+| 20    | R21 | CONFIRMED  | S2  | LOW    | LOW  | Plan notes contradict code (3 items)                                     |
+| 24    | R28 | CONFIRMED  | S3  | MED    | MED  | Config knob asymmetry (residual: typed helper, verb alias, status)       |
+| 26    | R15 | CONFIRMED  | S2  | LOW    | LOW  | HTTP-by-default exposes 14-day JWT (deploy note)                         |
+| 27    | R11 | REOPENED   | S3  | LOW    | LOW  | 409 enumeration (re-opened 2026-10-19, no longer accepted risk)          |
+| 28    | R18 | CONFIRMED  | S3  | LOW    | LOW  | Playwright/scenario docs use deleted config.password                     |
+| 29    | R17 | CONFIRMED  | S3  | LOW    | LOW  | openapi-reference stale (regen not rerun)                                |
+| 30    | R20 | CONFIRMED  | S3  | LOW    | LOW  | frontend.md / test-strategy.md staleness                                 |
+| 32    | R32 | CONFIRMED  | S3  | LOW    | LOW  | Provision helper reuse (~−14…−18, ride-along with R11)                   |
+| 33    | R33 | CONFIRMED  | S3  | LOW    | LOW  | Shared test-harness helpers (~−180…−220, highest RoI)                    |
+
+Discharged 2026-10-19 — rows removed from the tackle order, analysis
+folded into the verdict lines below: R10, R22, R25 → owning plans
+(`flow-model-conformance.md`, `auth-admin-panel.md`); R30, R31 →
+`.plan/frontend-vue-consolidation.md` T1/T2; R29, R34, R35 struck as
+churn/no benefit.
 
 ## Verdicts with evidence (one line each)
 
@@ -116,14 +114,21 @@ This is the suggested tackle order, not a commitment to fix all items.
   and `users_admin.rs:12-17`; row-6 coverage exists only for the former
   three. Fix: add attribute to both PUT bodies + extend coverage.
   Fixed 2026-10-16: attribute added to both bodies with one 422 test each.
-- R10 CONFIRMED (S3/LOW/LOW). Plan demands locked screen naming
-  `--bootstrap-admin`; code maps any probe failure to `login`
-  (`enrollment.ts:12-17`, pinned by `enrollment.test.ts:32-34`). Fix:
-  add `locked` destination or amend plan flow A + test case 2.
-- R11 CONFIRMED (S3/LOW/LOW). `register.rs:128-136` and
-  `invites.rs:334-339` return distinguishable 409; login stays uniform;
-  reachable only with open knob/valid invite; plan-pinned. Fix: none —
-  record as accepted risk.
+- R10 → carried by `.plan/flow-model-conformance.md`. Discharged
+  2026-10-19. The stale-probe mechanism cited at report time is gone
+  (R1/R23 fix — probe deleted; the closed-install decision now lives in
+  `route/bootGuard.ts` behavior tests). Residual = the flow A
+  locked-screen demand vs the current boot-to-login mapping; the Layer-2
+  model task encodes flows A–C and forces the plan-vs-code
+  reconciliation, so the decision lands there rather than as an
+  isolated change.
+- R11 REOPENED (S3/LOW/LOW). `register.rs:148` and
+  `invites.rs:317,338` return distinguishable 409 bodies; invites even
+  echoes the probed id (`"user already exists: {id}"`). Reachable on the
+  invite path without any session. Owner decision 2026-10-19: not an
+  accepted risk. Fix: uniform conflict body on all three sites and drop
+  the `{id}` echo; pins `double_use_invite_is_409` need message
+  relaxation.
 - R12 CONFIRMED (S2/MED/LOW). `PUT /put/config` accepts `bootstrapAdmin`
   (`edit_config.rs:36,133-135`); `update()` persists with no gate
   (`config.rs:507-544`); gate runs only in `run()` (`lib.rs:100`).
@@ -192,9 +197,10 @@ This is the suggested tackle order, not a commitment to fix all items.
   to applied with pin names, `create_user_handler` references cleared —
   and the tracker file (`.plan/auth-flows.md`) subsequently removed as
   redundant (`f1877ed7e`); per-flow state lives in the plan files.
-- R22 CONFIRMED (S3/LOW/LOW). `createUser` has no `.vue` caller (register
-  page uses `bootstrapUser`); `executeGiven.ts:191-198` states the admin
-  flag is ignored. Fix: wire or delete when admin-create form lands.
+- R22 → carried by `.plan/auth-admin-panel.md` (step 2: the
+  admin-create form wires `createUser` to `POST /post/users/register`
+  or deletes it — no dead export remains either way). Discharged
+  2026-10-19.
 - R23 CONFIRMED (S1/HIGH/MED). Cookie + module probe cache
   (`enrollment.ts:66`) + Pinia with no single owner; probe overloads
   admin `GET /get/users` with `validateStatus: () => true`, mapping every
@@ -210,10 +216,15 @@ This is the suggested tackle order, not a commitment to fix all items.
   display owner (`294355f7c`), the caller-side sweep completed
   (`4b6c23aba`), and the 1s throttle was deleted as a consumer of it
   (`a42e7f2af`).
-- R25 PARTIAL (S2/MED/MED). Two-step create→login with no rollback
-  confirmed (`registration.ts:37-39`); retry-after-success yields 401
-  (spec-pinned `:148-168`), not the claimed 409 — 409 needs a true race.
-  Fix: return token from create round trip; re-scope race copy.
+- R25 → carried by `.plan/flow-model-conformance.md`. Discharged
+  2026-10-19. The two-step create→login split (with no rollback;
+  retry-after-success yields 401 per the spec pin) was confirmed, but
+  the original fix text ("return token from create") predates the R5
+  HttpOnly change — the post-cookie decision is
+  register-issues-session vs keep the two-step, which the Layer-1/2
+  model task forces when it encodes the enrollment flow; the
+  per-case sequencing tests are absorbed by the conformance drivers
+  rather than duplicated.
 - R26 CONFIRMED (S2/HIGH/MED). `api/users.ts` vs `api/config.ts:31` vs
   six utils modules; login setup duplicated in two pages; users-scoped
   password route has no SPA caller. Fix: consolidate to one auth module.
@@ -248,35 +259,63 @@ This is the suggested tackle order, not a commitment to fix all items.
   retyping `users_password`) is the bare-guard-detail rollout vehicle —
   residual is that rollout plus any remaining bare-guard routes, not a
   catcher change.
-- R28 CONFIRMED (S3/MED/MED). Three knob read styles; PUT accepts knobs
-  GET never returns; frontend `AppConfig` stale both ways; plus
-  stringly-typed status and `/post/invites/create` verb. Fix: knob
-  accessor + `ConfigResponse` parity + typed helper + route alias.
-- R29 CONFIRMED, estimate HIGH (S3/LOW/MED). Real dupes, but three
-  `admin`-422 tests pin three different structs (one has live divergence
-  per R9); realistic saving ~−110 not −160. Fix: keep one test per struct
-  with shared setup.
-- R30 PARTIAL, estimate HIGH (S2/MED/HIGH). Single call sites confirmed;
-  −200 requires deleting 236 lines of tests with no component harness
-  (`@vue/test-utils`/jsdom absent). Realistic ~−60 with re-homed tests.
-  Fix: merge + keep suites as orchestration tests.
-- R31 PARTIAL (S2/LOW/MED). `registerRoute` redundancy confirmed; but no
-  e2e touches the change-password form, so `changePasswordForm.test.ts`
-  is the only check of a plan step-5 requirement. Fix: delete only the
-  redundant half; rewrite the form check as behavior test.
-- R32 CONFIRMED, estimate plausible (S3/LOW/LOW). Non-invite branch
-  duplicates `provision_user` order and error kinds (~−14); bootstrap
-  delegate ~−5. Fix: call `provision_user(..., false)`; fold mapping.
+- R28 CONFIRMED, residual (S3/MED/MED). Re-scoped 2026-10-19: the
+  `ConfigResponse` read-back/parity half is owned by
+  `.plan/auth-admin-panel.md` step 1, and the R12 host-only split
+  already redefined what API-vs-host parity means. Remaining here:
+  typed knob accessor, `/post/invites/create` verb alias,
+  stringly-typed status. Ride-along in the next config/invites touch.
+- R29 STRUCK 2026-10-19 (churn). Re-verified: the named 422 tests are
+  one-per-struct (tracker policy), the four bare-string tests are
+  distinct store-state matrix rows — there is no duplicate to delete.
+  Real residue: a ~7-line bare-string block embedded in
+  `no_legacy_gate_flag_controls_empty_store` and a one-line comment
+  drift (`tests/auth_users.rs` says bare-string "is 400"; the cited
+  tests assert 422) — the comment fix rides along with R33. The ~−110
+  estimate was harness-copy mass that belongs to R33 instead.
+- R30 → carried by `.plan/frontend-vue-consolidation.md` T1
+  (~−60…−80 / ~2 units). Discharged 2026-10-19. Correction folded in:
+  "single call sites" was wrong for 2 of 5 modules (`currentUser` ×4,
+  `retryAfter` ×2); the merge saves mostly file/import ceremony and
+  requires re-homing 5 test suites with no functional benefit —
+  ride-along only when those modules are next touched.
+- R31 → carried by `.plan/frontend-vue-consolidation.md` T2.
+  Discharged 2026-10-19. Correction folded in: only S9 (~−7) is freely
+  deletable — S7/S8 are the only routes-side wiring pins, B3 keeps the
+  rest as tripwires, and the change-password form keeps zero e2e
+  contact (coverage fact, not a deletion). Change-password "rewrite as
+  behavior test" adds code without adding coverage: churn.
+- R32 ride-along (S3/LOW/LOW). The gated register branch duplicates
+  `provision_user` byte-identically, including the conflict message;
+  delegation is ordering-safe (the empty-store refusal precedes it) and
+  pin-free (no test greps the message). Corrected −14…−18 — the
+  bootstrap half was already a thin delegate. Execute inside the R11
+  fix (same file) or the next register touch; not a standalone slice.
 - R33 CONFIRMED, estimate plausible (S3/LOW/LOW). Eight modules copy
   `lock()`/`setup()` (~−56); `authz::setup` needs a variant flag. Fix:
-  one `tests/harness.rs`.
-- R34 CONFIRMED, estimate plausible (S3/LOW/LOW-MED). Matrix already pins
-  both API halves; keep UI halves + one status assertion per direction.
-  Fix: drop two API round trips in the spec.
-- R35 CONFIRMED, estimate mixed (S3/MED/MED). Join sites collapse
-  (~−26…52); `db_err` saves characters not lines (all single-line);
-  `?` vs `??` semantics must not merge. Fix: two helpers, per-crate,
-  optional.
+  one `tests/harness.rs`. Re-verified 2026-10-19: census is now
+  15×`lock()` + 15×`setup()` (2 image-home variants: `authz.rs`,
+  `auth_users.rs`), 9 cookie-family helpers, 2×`set_bootstrap_admin`,
+  3×`login()` return shapes, 3 seed helpers — net ~−180…−220, safe to
+  centralize (TEST_SERIAL_GUARD is a process-global static, TEST_ENV is
+  `LazyLock` — no double-init). Cheapest form: `pub fn
+lock/setup[_image_home]/cookie(id, admin)` in `tests/bootstrap.rs`,
+  no new harness.rs. Highest-RoI item of the re-verification pass;
+  stands alone (details: § Re-verification 2026-10-19).
+- R34 STRUCK 2026-10-19 (churn). Steps 2 and 3 proved load-bearing
+  counter-proofs, not re-assertions: step 2's probe is the
+  creates-nothing proof for the mismatch path, and step 3's
+  `GET /get/users` round trip is the only e2e proof that a UI submit
+  persisted `admin:true` (the `given:` provisioning writes the store
+  directly, bypassing the UI). Only step-9's closed-window 401
+  (~−4…−8 lines) is trimmable — not worth a slice.
+- R35 STRUCK 2026-10-19 (no benefit). All 24 join sites are already
+  single logical lines — a `run_blocking` helper is a ~30-chars/site
+  readability aid with ≈0 line delta, as are the 67 narrow / 87
+  all-form `map_err(Database)` sites. The `??` caveat is real for eager
+  call-operand evaluation but harmless at the two named pure sites.
+  Two units of diff churn across 19 files for nothing — do not
+  schedule.
 
 ## What was checked by the parent (spot)
 
@@ -303,10 +342,14 @@ No fixes applied in this change; no behavior changed.
 Retriage 2026-10-16 (branch `auth-enrollment-review` @ `c3d0822`, five
 read-only batch checks + spot-checks): resolved R1, R2, R5, R6, R17, R23
 (session slice; R26 remains partial, session module only).
-Still open after the 2026-10-19 docs/closure pass: R10, R13, R14
-(residual: register-401 annotation + planned CLI), R22 (record-only),
-R25, R27 (residual `GuardResult` rollout), R28–R35 (R30–R31 partial);
-R11 is an accepted risk with no fix. Closed since that triage: R3, R4,
+Re-triage 2026-10-19 (post re-verification, churn/absorption pass):
+live items = R11 (re-opened, not accepted risk), R13, R14 (residual:
+register-401 annotation), R27 (residual `GuardResult` rollout), R28
+(residual: typed helper + verb alias + status), R32 (ride-along with
+R11), R33 (standalone slice). Discharged to owning plans: R10, R25 →
+`.plan/flow-model-conformance.md`; R22 → `.plan/auth-admin-panel.md`;
+R30, R31 → `.plan/frontend-vue-consolidation.md` (T1/T2). Struck as
+churn/no benefit: R29, R34, R35. Closed since that triage: R3, R4,
 R7–R9, R12, R15–R16, R18–R21, R24, R26 — per-verdict annotations above.
 In progress: R4+R3 done 2026-10-16, R8+R9+R12 done 2026-10-16, host-only
 knob extension + `secrets.password` doc done, auth-key secrets-file slice
@@ -343,3 +386,50 @@ IP-long wiring, proxy-header trust on/off, and sweep cadence; log
 reservations. Deliberately deferred: IPv6 /64 keying, trusted-proxy
 CIDR list, log sampling, openapi 429 body schema, named-config struct,
 share-password hardening, password-PUT throttling (separate slice).
+
+## Re-verification 2026-10-19 (R29–R35 critical review, standard tier)
+
+Two-pass (discover + challenge) re-check against HEAD; R33 census and
+the consolidation parking point spot-checked by the parent:
+
+- R29 DOWNGRADED: the three-to-five named 422 tests are one-per-struct
+  (tracker policy), the four bare-string tests are distinct store-state
+  rows — only the ~7-line bare-string block embedded in
+  `no_legacy_gate_flag_controls_empty_store` is a real row overlap.
+  Real content −1…−8 (plus one comment-line drift:
+  `tests/auth_users.rs` says bare-string "is 400", tests assert 422).
+  No standalone slice; residue folds into R33.
+- R30 accepted, −60…−80 as estimated, but the "single call sites" rate
+  was wrong for 2 of 5 modules (`currentUser` ×4, `retryAfter` ×2);
+  merger still saves ~−20…−40 src with suites re-homed. Harness
+  (@vue/test-utils/jsdom) still absent. Now owned as T1 in
+  `.plan/frontend-vue-consolidation.md`.
+- R31 DOWNGRADED: S7–S10 tripwires verified, but only S9 (~−7) is
+  freely deletable — the rest is load-bearing wiring pins or blocked by
+  the r26-remainder B3 keep decision. Now owned as T2 there.
+- R32 accepted, corrected −14…−18 (bootstrap half already a delegate);
+  delegation verified ordering-safe (R4 refusal precedes the gated
+  branch) and pin-free (no test greps the message string). Ride-along
+  in any register touch.
+- R33 DOWNGRADED upward: census is 15×`lock()`, 15×`setup()`
+  (2 image-home variants), 9×`cookie()`-family, 2×`set_bootstrap_admin`,
+  3×`login()` shape variants, 3 seed helpers — net ~−180…−220, safe
+  (TEST_SERIAL_GUARD is a process-global static; TEST_ENV is LazyLock;
+  no per-module init to double-run). Cheapest realization: add
+  `pub fn lock/setup[_image_home]/cookie(id, admin)` to
+  `tests/bootstrap.rs` directly — no new harness.rs. Highest RoI of the
+  set; the only standalone-slice-worthy item.
+- R34 DOWNGRADED: only the step-9 closed-window 401 (~−4…−8) is
+  trimmable; steps 2 and 3 assertions are load-bearing counter-proofs
+  (step 3 is the only e2e proof a UI submit persisted admin:true;
+  `executeGiven` provisions DB directly). Do not cut step 3.
+- R35 DOWNGRADED: line savings ≈ 0 — all 24 join sites and the 67
+  narrow / 87 all-form `map_err(Database)` sites are already single
+  logical lines; a `run_blocking`/`db_from` helper is a readability
+  aid (~30 chars/site), not a reduction. The `??` caveat is real for
+  call-operand eagerness but does not change behavior at the two named
+  pure sites. Optional polish only; do not schedule for lines.
+- Miss-hunt M1: the S3 ride-along tail pointers into
+  `.plan/frontend-vue-consolidation.md` were dangling (none of the
+  promised items were present) — fixed by parking the tail there
+  (T1–T3) alongside this note.

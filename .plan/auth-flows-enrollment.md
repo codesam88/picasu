@@ -97,11 +97,11 @@ weak → 400.
    other keeps no-old recovery. Change form requires current
    client-side; settings modal header shows username + role
    read-only. Gates: `cargo test`, vitest, both checks.
-6. Admin panel UI: admin-create-user form, set-password control,
-   registration toggle, invite create (link shown once) / list /
-   revoke; needs `ConfigResponse.allowRegistration` read-back (add
-   the field backend-side in this step). Gates: vitest,
-   `frontend-check`, `openapi-check` after regen.
+6. Admin panel UI — extracted to `.plan/auth-admin-panel.md` (open,
+   owns the form/set-password/invite UI, the R22 `createUser` caller,
+   and the `ConfigResponse` read-back; registration-toggle requirement
+   re-decided there against the R12 host-only extension). Out of scope
+   for this plan's gates from here on.
 7. CLI provisioning: separate `picasu-admin` binary (`add-user`,
    `set-password`, `set-admin`) with lockfile discipline vs a live
    server; Dockerfile ships it. Gates: `cargo test`, `backend-check`.
