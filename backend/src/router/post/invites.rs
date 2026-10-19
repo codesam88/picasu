@@ -39,8 +39,9 @@ pub struct CreateInviteResponse {
 /// (`0` never expires — pass 168 for the conventional 7-day lifetime);
 /// the invite redeems once, for a single registration.
 ///
-/// Corner cases: In open mode the ephemeral admin identity creates the
-/// invite. Listing, expiry, use and revoke are handled by
+/// Corner cases: Creating an invite requires a live admin session, so on
+/// an empty store invites are created only after the first bootstrap.
+/// Listing, expiry, use and revoke are handled by
 /// `GET /get/invites` and `DELETE /delete/invites/{invite_id}`.
 ///
 /// Errors: 400 negative `expiresInHours` — 401 missing or invalid admin

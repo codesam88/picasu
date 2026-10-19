@@ -31,9 +31,9 @@ when:
       ext: response.[0].abstractData.ext
     then:
       - response.status: 200
-  # Use the hash token to fetch the compressed image.
+  # Use the hash token to fetch the compressed image. The fixture admin
+  # cookie satisfies GuardShare; the Bearer token exercises GuardHash.
   - call: "GET /object/compressed/${content_hash:0:2}/${content_hash}.jpg"
-    auth: false
     headers:
       Authorization: "Bearer ${hash_token}"
 then:

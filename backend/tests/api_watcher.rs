@@ -25,17 +25,32 @@ fn make_client() -> Client {
 }
 
 fn auth_cookie(client: &Client) -> rocket::http::Cookie<'static> {
-    // Open first-run mode accepts any parseable login object. The JWT now
-    // travels in the HttpOnly `Set-Cookie` header (R5), never the body.
-    let r = client
-        .post("/post/authenticate")
-        .header(ContentType::JSON)
-        .body(r#"{"userId":"admin","password":""}"#)
-        .dispatch();
-    assert_eq!(r.status(), Status::Ok, "authenticate");
-    let set_cookie = r.headers().get_one("Set-Cookie").expect("Set-Cookie");
-    let pair = set_cookie.split(';').next().expect("cookie pair");
-    let token = pair.strip_prefix("jwt=").expect("jwt cookie").to_owned();
+    // The bootstrap window enrolls only via POST /post/users/bootstrap:
+    // enroll the first admin once, then log in with its credentials. The
+    // token is cached: nothing in this test revokes sessions, and each
+    // login would otherwise pay a full-KDF round (integration tests link
+    // the lib without cfg(test)).
+    static ADMIN_TOKEN: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let token = ADMIN_TOKEN
+        .get_or_init(|| {
+            let body = r#"{"userId":"admin","password":"secret123"}"#;
+            let r = client
+                .post("/post/users/bootstrap")
+                .header(ContentType::JSON)
+                .body(body)
+                .dispatch();
+            assert_eq!(r.status(), Status::Ok, "bootstrap");
+            let r = client
+                .post("/post/authenticate")
+                .header(ContentType::JSON)
+                .body(body)
+                .dispatch();
+            assert_eq!(r.status(), Status::Ok, "authenticate");
+            let set_cookie = r.headers().get_one("Set-Cookie").expect("Set-Cookie");
+            let pair = set_cookie.split(';').next().expect("cookie pair");
+            pair.strip_prefix("jwt=").expect("jwt cookie").to_owned()
+        })
+        .clone();
     rocket::http::Cookie::new("jwt", token)
 }
 
@@ -133,8 +148,8 @@ fn watcher_disabled_and_album_index_targeting() {
 
     AppConfig::init();
 
-    // The open first-run window (empty store + flag) is what this test
-    // authenticates through; production defaults to closed.
+    // The first admin is enrolled through the bootstrap window (empty
+    // store + flag); production defaults to closed.
     {
         let mut cfg = APP_CONFIG.get().unwrap().write().unwrap();
         cfg.bootstrap_admin = true;

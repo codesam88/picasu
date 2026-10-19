@@ -91,14 +91,11 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
     let client = setup();
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
-    // Tie-off: the admin-only user list refuses on an empty store.
+    // Tie-off: the admin-only user list refuses on an empty store. (A bare
+    // guard carries status only; the enrollment hint surfaces on
+    // GuardResult routes.)
     let resp = client.get("/get/users").dispatch();
     assert_eq!(resp.status(), Status::Unauthorized);
-    let body = resp.into_string().unwrap_or_default();
-    assert!(
-        body.to_lowercase().contains("no administrator enrolled"),
-        "empty-store refusal must name the missing enrollment, got: {body}"
-    );
 
     // Open-window enrollment is proven via server-info shape instead.
     let resp = client.get("/get/server-info").dispatch();
@@ -188,25 +185,24 @@ fn concurrent_first_bootstraps_enroll_exactly_one_admin() {
 
 // ── Row: password-PUT never enrolls ─────────────────────────────────────────
 
-/// A password PUT on an empty store must not enroll: the unknown target is
-/// 404 even while the bootstrap window is open, and no user record or
-/// password entry is written. Enrollment happens only via
-/// `POST /post/users/bootstrap` (or the CLI); the first-run flow through
-/// the settings password form is gone.
+/// A password PUT on an empty store must not enroll: no session exists
+/// pre-enrollment, so the GuardUser privilege refusal (403) fires before
+/// the handler and no user record or password entry is written. Enrollment
+/// happens only via `POST /post/users/bootstrap` (or the CLI); the
+/// first-run flow through the settings password form is gone.
 #[test]
-fn password_put_on_empty_store_is_404_and_creates_nothing() {
+fn password_put_on_empty_store_is_403_and_creates_nothing() {
     let _g = lock();
     let client = setup();
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
-    // No cookie: the open window admits the ephemeral admin identity, but
-    // the canonical password route refuses the unknown target.
+    // No cookie: the guard refuses before the unknown-target check.
     let resp = client
         .put("/put/users/password")
         .header(ContentType::JSON)
         .body(json!({ "userId": "first", "newPassword": test_password("t-put-first") }).to_string())
         .dispatch();
-    assert_eq!(resp.status(), Status::NotFound);
+    assert_eq!(resp.status(), Status::Forbidden);
 
     assert_eq!(
         crate::auth::users::get_user("first").expect("get user"),

@@ -354,7 +354,33 @@ live items = R11 (re-opened, not accepted risk), R13, R14 (residual:
 register-401 annotation), R27 (residual `GuardResult` rollout), R28
 (residual: typed helper + verb alias + status). Done: R33 2026-10-19
 (`fb34594dd`, net −246 lines, incl. R29's comment residue). Ride-along
-inside the R11 touch: R32. Discharged to owning plans: R10, R25 →
+inside the R11 touch: R32.
+
+Decision 2026-10-19 (open-mode removal, owner-approved this session):
+the `ephemeral-open-mode` structure is deleted, not just the mint.
+Removed: `POST /post/authenticate`'s no-credential arm
+(`authenticate.rs:363-370`, minted `Claims::new_user("admin", true)`
+for any parseable body, throttle-skipped) and the guard arms returning
+an ephemeral admin identity in-window (`auth.rs:605-609` and the second
+family at `:903-908`). Rationale: no consumer (the UI pre-enrollment
+touches only `server-info` + `bootstrapUser`; the guard already opened
+admin access cookie-less, making the mint redundant), the explicit-act
+principle (bootstrap is the _only_ first act), and a uniform
+source-of-truth rule instead of per-route conditionals. Resulting
+semantics: `flag ∧ empty` exposes exactly `GET /get/server-info` and
+`POST /post/users/bootstrap`; every guarded route and `authenticate`
+answer 401 "not enrolled" (authenticate's case inherits the unknown-
+user path with its uniform dummy-KDF cost; the throttle now applies
+in-window too). Status stays uniform per the O2 retype; the _message_
+branches on window state (open → "enroll via
+`POST /post/users/bootstrap`"; closed → the existing
+`--bootstrap-admin`/CLI wording, `enroll_gate.rs:390` pin intact).
+`POST /post/users/bootstrap` remains anonymous by design — still
+bootstrap-only enrollment. Fold-outs: R14 residual (register-401
+annotation wording) unchanged; R10 unchanged; R11 unchanged. Updates in
+this change: flow-model plan drops the `ephemeral-open-mode` state;
+`docs/auth.md`/`auth-flows.md` open-mode text; OpenAPI auth
+descriptions + regen. Discharged to owning plans: R10, R25 →
 `.plan/flow-model-conformance.md`; R22 → `.plan/auth-admin-panel.md`;
 R30, R31 → `.plan/frontend-vue-consolidation.md` (T1/T2). Struck as
 churn/no benefit: R29, R34, R35. Closed since that triage: R3, R4,

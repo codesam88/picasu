@@ -1,4 +1,4 @@
-use rocket::http::{ContentType, Cookie};
+use rocket::http::Cookie;
 use rocket::local::blocking::Client;
 
 /// Deterministic non-literal test password derived from a tag.
@@ -23,17 +23,17 @@ pub fn test_password_padded(tag: &str) -> String {
     format!("  {}  ", test_password(tag))
 }
 
-pub fn auth_cookie(client: &Client) -> Cookie<'static> {
-    // Open first-run mode accepts any parseable body, so post the login
-    // shape: this keeps the fixture exercising the current API. The JWT
-    // now travels in the HttpOnly `Set-Cookie` header, never the body.
-    let r = client
-        .post("/post/authenticate")
-        .header(ContentType::JSON)
-        .body(r#"{"userId":"admin","password":""}"#)
-        .dispatch();
-    let set_cookie = r.headers().get_one("Set-Cookie").expect("Set-Cookie");
-    let pair = set_cookie.split(';').next().expect("cookie pair");
-    let token = pair.strip_prefix("jwt=").expect("jwt cookie").to_owned();
-    Cookie::new("jwt", token)
+/// Admin session cookie for tests that need an authenticated admin without
+/// paying a login round-trip: ensures a real `admin` record exists (an empty
+/// store holds no sessions by design) and mints a live session for it
+/// locally. Tests that exercise enrollment or login itself must not use
+/// this helper.
+pub fn auth_cookie(_client: &Client) -> Cookie<'static> {
+    if crate::auth::users::get_user("admin")
+        .expect("read admin record")
+        .is_none()
+    {
+        crate::auth::users::create_user("admin", true).expect("seed fixture admin");
+    }
+    crate::tests::bootstrap::cookie("admin", true)
 }
