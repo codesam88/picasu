@@ -447,6 +447,11 @@
           "type": "array",
           "items": { "$ref": "#/definitions/uiAssertItem" },
           "minItems": 1
+        },
+        "session": {
+          "type": "string",
+          "enum": ["none"],
+          "description": "Session policy. Absent = harness-managed (enroll the resolved account, then UI login before the steps); 'none' = the scenario drives enrollment/login itself."
         }
       },
       "required": ["name"],

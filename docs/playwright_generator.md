@@ -165,6 +165,14 @@ After the scenario runs, the tracer compares expected vs actual and logs
 advisory warnings for any declared entry that was never exercised.
 Warnings do not fail the test.
 
+#### `session:` (optional)
+
+- `none` — the scenario drives enrollment/login itself and the harness boots
+  no session for it.
+- Absent (default) — harness-managed session: the harness enrolls the resolved
+  account (the first `user:` given when present, else `admin`) and performs a
+  UI login before the first step.
+
 ### Type definitions (`types.ts`)
 
 Zod schemas for the full DSL: given items, when verbs, assert assertions,

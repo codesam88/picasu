@@ -6,6 +6,7 @@ covers:
     - PUT /put/config
     - POST /post/index/album
     - GET /get/index/status
+session: none
 given:
   - user:
       user_id: admin
