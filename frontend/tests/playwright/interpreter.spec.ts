@@ -2,6 +2,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { loadAllScenarios } from './loadScenarios'
 import { executeGiven, createGivenContext, resetAuthToken } from './executeGiven'
+import { enrollIfNeeded, resolveSessionCreds, uiLogin } from './sessionBoot'
 import { executeWhen, executeAssert, executeSteps } from './interpreter'
 import { CoverageTracer } from './tracer'
 import { test } from './scenarioFixtures'
@@ -20,6 +21,11 @@ test.describe('UI scenarios', () => {
       resetAuthToken()
       const tracer = new CoverageTracer()
       const ctx = createGivenContext()
+      // Harness-managed scenarios (no `session: none`) enroll the resolved
+      // account before `given:` so `config:` auth runs against a real user,
+      // then log in through the UI so the first step starts authenticated.
+      const managed = scenario.session !== 'none'
+      if (managed) await enrollIfNeeded(request, scenario, backendPaths)
       const seeded = await executeGiven(request, scenario.given, ctx, tracer, backendPaths)
 
       // Record backend API calls the browser makes (e.g. POST /upload) so
@@ -30,6 +36,8 @@ test.describe('UI scenarios', () => {
           tracer.recordAPI(req.method(), url.pathname)
         }
       })
+
+      if (managed) await uiLogin(page, resolveSessionCreds(scenario))
 
       if (scenario.steps) {
         await executeSteps(page, scenario.steps, seeded, tracer)

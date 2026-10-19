@@ -9,6 +9,7 @@ covers:
     - route:/timeline
     - toast:error:unauthorized
     - snapshot:login-page
+session: none
 given:
   - empty: true
   - user:

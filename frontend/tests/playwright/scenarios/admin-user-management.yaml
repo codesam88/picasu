@@ -8,6 +8,7 @@ covers:
     - textbox/User ID
     - route:/timeline
     - route:/config
+session: none
 given:
   - empty: true
   - user:
