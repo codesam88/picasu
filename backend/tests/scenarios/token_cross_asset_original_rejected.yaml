@@ -49,8 +49,9 @@ when:
       - response.status: 200
   # Try to use asset A's token to access asset B's original.
   # GuardHashOriginal should reject because asset_id in URL != claims.asset_id.
+  # The fixture admin cookie satisfies GuardShare so the rejection comes
+  # from GuardHashOriginal.
   - call: "GET /object/imported/${asset_b:0:2}/${asset_b}.${ext_b}"
-    auth: false
     headers:
       Authorization: "Bearer ${hash_token_a}"
 then:

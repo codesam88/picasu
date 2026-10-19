@@ -191,17 +191,16 @@ cached. Anonymous `GET /get/users` is 401 in all states, including the
 empty store — it never serves enrollment state.
 
 **Bootstrap mode (opt-in):** a fresh install is closed by default — with an
-empty user store, guarded routes reject callers:
-`GuardAuth` routes answer 401 and `GuardUser` routes answer 403 (a
-privilege condition, not a session failure — the SPA keeps its display
-state), and `authenticate` accepts nothing. Online enrollment of the first administrator
-opens only while the `--bootstrap-admin` flag (or `PICASU_BOOTSTRAP_ADMIN`,
-or the `bootstrap_admin` config key) is set **and** the store is empty:
-`try_jwt_cookie_auth` then returns an ephemeral admin identity without
-reading a credential — it creates no user record — and `authenticate`
-accepts any parseable login
-object, until the first user is enrolled (`POST /post/users/bootstrap`).
-The flag is WARN-logged at
+empty user store, `POST /post/authenticate` takes the unknown-user path
+(401) and guarded routes reject callers: `GuardAuth` routes answer 401 and
+`GuardUser` routes answer 403 (a privilege condition, not a session
+failure — the SPA keeps its display state). No session exists
+pre-enrollment. Online enrollment of the first administrator opens only
+while the `--bootstrap-admin` flag (or `PICASU_BOOTSTRAP_ADMIN`, or the
+`bootstrap_admin` config key) is set **and** the store is empty, and only
+via `POST /post/users/bootstrap` (forced `admin: true`). The refusal
+message names that endpoint while the window is open; with the flag off it
+names the flag/CLI remedies instead. The flag is WARN-logged at
 boot, the server refuses to start when the flag is set against an existing
 `<DATA_HOME>/auth/passwd.json` (bootstrap already happened, or the store
 needs repair — provision via the CLI instead). This closes Finding F6 for the default
@@ -281,7 +280,7 @@ expiry.
 
 | Guard               | Accepts                                                                     | Used by                                                                                                                                                                                                                                                                               |
 | ------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GuardAuth`         | cookie of a user with the admin role (or open first-run mode)               | config write/export/import (incl. password change), user management (list/set-admin), album cover/assign/create-dir, delete, index jobs, rebuild, rotate, regenerate thumbnail, tags/flags/rating, share create/edit, album/tag lists, fs completion, album-index status, test probes |
+| `GuardAuth`         | cookie of a user with the admin role                                        | config write/export/import (incl. password change), user management (list/set-admin), album cover/assign/create-dir, delete, index jobs, rebuild, rotate, regenerate thumbnail, tags/flags/rating, share create/edit, album/tag lists, fs completion, album-index status, test probes |
 | `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected      | `PUT /put/users/password`                                                                                                                                                                                                                                                             |
 | `GuardShare`        | share headers/query, or cookie of a user with the admin role                | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                                                                                                                             |
 | `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter | get-data, get-metadata, get-scroll-bar                                                                                                                                                                                                                                                |

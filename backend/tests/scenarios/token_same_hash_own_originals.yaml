@@ -50,16 +50,15 @@ when:
       hash_token_b: response.[0].token
     then:
       - response.status: 200
-  # Asset A's original serves from album_a path.
+  # Asset A's original serves from album_a path. The fixture admin cookie
+  # satisfies GuardShare; the Bearer token exercises GuardHashOriginal.
   - call: "GET /object/imported/${asset_a:0:2}/${asset_a}.${ext_a}"
-    auth: false
     headers:
       Authorization: "Bearer ${hash_token_a}"
     then:
       - response.status: 200
   # Asset B's original serves from album_b path.
   - call: "GET /object/imported/${asset_b:0:2}/${asset_b}.${ext_a}"
-    auth: false
     headers:
       Authorization: "Bearer ${hash_token_b}"
     then:

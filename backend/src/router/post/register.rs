@@ -76,10 +76,10 @@ pub async fn register_user_handler(
     body: Json<RegisterRequest>,
 ) -> AppResult<Json<UserSummary>> {
     let _ = read_only?;
-    // A valid admin session is a gate on its own. The ephemeral bootstrap
-    // identity (empty store, flag on) never counts: only a real admin record
-    // does, so anonymous callers cannot squat the first-user slot as a
-    // non-admin. Non-admin sessions fall through to the knob/invite gates.
+    // A valid admin session is a gate on its own. No session exists on an
+    // empty store (the bootstrap window mints none), so anonymous callers
+    // cannot squat the first-user slot as a non-admin. Non-admin sessions
+    // fall through to the knob/invite gates.
     let admin_session = match &auth {
         Ok(guard) => {
             guard.claims.is_admin()
@@ -132,7 +132,7 @@ fn register_user_sync(
     if users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))? == 0 {
         return Err(AppError::new(
             ErrorKind::Auth,
-            "No administrator enrolled: enroll the first administrator via POST /post/users/bootstrap (--bootstrap-admin on an empty store)",
+            crate::router::auth::not_enrolled_message(),
         ));
     }
     if admin_session || allow_registration {

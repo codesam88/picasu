@@ -30,7 +30,7 @@ use crate::router::auth::ClaimsHash;
 use crate::tests::bootstrap::{
     TEST_ENV, TEST_SERIAL_GUARD, make_client, reset_backend_state, test_image_home,
 };
-use crate::tests::fixtures::wait_for_album_index;
+use crate::tests::fixtures::{auth_cookie, wait_for_album_index};
 
 /// Photo indexed for this test, relative to `IMAGE_HOME`.
 const PHOTO_REL: &str = "torn_thumb/album/photo.jpg";
@@ -71,6 +71,7 @@ fn photo_album() -> String {
 fn post_index_album(client: &Client, album: &str) {
     let resp = client
         .post("/post/index/album")
+        .cookie(auth_cookie(client))
         .header(ContentType::JSON)
         .body(serde_json::json!({ "album": album }).to_string())
         .dispatch();
@@ -178,7 +179,14 @@ fn compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated() {
     let url = format!("/object/compressed/{}/{}.jpg", &hash[..2], hash);
 
     // ── Sanity: the endpoint must serve a complete JPEG before we race it ──
-    let resp = client.get(&url).header(auth_header(&token)).dispatch();
+    // The fixture admin cookie satisfies GuardShare; the Bearer token
+    // exercises GuardHash.
+    let cookie = auth_cookie(&client);
+    let resp = client
+        .get(&url)
+        .cookie(cookie.clone())
+        .header(auth_header(&token))
+        .dispatch();
     assert_eq!(
         resp.status(),
         Status::Ok,
@@ -205,10 +213,15 @@ fn compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated() {
             let good_reads = Arc::clone(&good_reads);
             let url = url.clone();
             let token = token.clone();
+            let cookie = cookie.clone();
             std::thread::spawn(move || {
                 let client = make_client();
                 while !stop.load(Ordering::Acquire) {
-                    let resp = client.get(&url).header(auth_header(&token)).dispatch();
+                    let resp = client
+                        .get(&url)
+                        .cookie(cookie.clone())
+                        .header(auth_header(&token))
+                        .dispatch();
                     reads.fetch_add(1, Ordering::Relaxed);
                     let status = resp.status();
                     let body = resp.into_bytes().unwrap_or_default();

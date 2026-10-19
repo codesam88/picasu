@@ -316,24 +316,20 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
 /// is unset, so changing `authKey` invalidates every token issued under
 /// the previous one.
 ///
-/// Corner cases: While no users exist and `--bootstrap-admin` is set,
-/// sign-in succeeds without credentials: every parseable login object is
-/// accepted (open first-run mode), setting an ephemeral admin cookie and
-/// returning the ephemeral profile without enrolling anybody.
-///
 /// Errors: 400 the login `userId` is empty or longer than 64 characters, or
 /// the body does not parse as a login object — 401 unknown user or wrong
-/// password — 429 the attempt is throttled (`Retry-After` carries the
+/// password (on an empty store every login is unknown: enrollment happens
+/// only via `POST /post/users/bootstrap`) — 429 the attempt is throttled
+/// (`Retry-After` carries the
 /// remaining ban seconds) — 500 internal error.
 ///
-/// Brute-force throttle: before the KDF runs, every non-open attempt
+/// Brute-force throttle: before the KDF runs, every attempt
 /// reserves a slot and then checks the IP-short, IP-long, and user-long
 /// buckets (see [`crate::auth::rate_limit`]); while any bucket bans, a
 /// 429 is returned without hashing. Evaluated failures record into all
 /// applicable buckets, a success drops the username entry and clears the
 /// IP burst bucket (keeping IP-long history), and throttled attempts are
-/// never recorded. Open bootstrap mode (no users + flag) skips the
-/// throttle: there is no credential to guess. The environment-only kill
+/// never recorded. The environment-only kill
 /// switch `PICASU_RATE_LIMITS=false` (exact match) also bypasses the
 /// throttle — for fuzzing runs — while the failure logging stays.
 #[utoipa::path(
@@ -355,20 +351,6 @@ pub async fn authenticate(
     ip: ThrottleClientIp,
     body: Json<LoginRequest>,
 ) -> AppResult<Json<UserSummary>> {
-    // Open bootstrap mode: no users and the `--bootstrap-admin` flag set
-    // accept any parseable login object without touching the stores.
-    let open_mode = users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))?
-        == 0
-        && crate::router::auth::bootstrap_open();
-    if open_mode {
-        let token = Claims::new_user("admin".to_string(), true).encode();
-        set_session_cookie(jar, https.0, token);
-        return Ok(Json(UserSummary {
-            user_id: "admin".to_string(),
-            admin: true,
-        }));
-    }
-
     let login = body.into_inner();
     let user_id = validate_user_id(&login.user_id)?;
 
@@ -769,17 +751,26 @@ mod tests {
     }
 
     #[test]
-    fn authenticate_open_mode_skips_throttle() {
+    fn open_window_login_is_throttled() {
         let _g = lock();
         let client = setup();
         set_bootstrap_admin(true);
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
-        // Open bootstrap has no credential to brute-force (every parseable
-        // login succeeds), so repeated logins stay 200 and unthrottled.
-        for i in 0..6 {
-            let resp = post_login(&client, &format!("t7-open-{i}"), &test_password("t7-open"));
-            assert_eq!(resp.status(), Status::Ok, "attempt {i}");
+        // The window enrolls only via bootstrap: every login takes the
+        // throttled unknown-user path, so repeated failures trip the
+        // IP-short bucket exactly like a seeded store would.
+        let wrong = test_password("t7-open-wrong");
+        for _ in 0..4 {
+            let resp = post_login(&client, "t7-open-ghost", &wrong);
+            assert_eq!(resp.status(), Status::Unauthorized);
         }
+        let resp = post_login(&client, "t7-open-ghost", &wrong);
+        assert_throttled_countdown(resp, 10);
+        assert_eq!(
+            crate::auth::users::user_count().expect("count"),
+            0,
+            "no user may be created by the hammering"
+        );
     }
 
     /// Unit pins for the small pure helpers: log sanitizing keeps
@@ -1233,32 +1224,23 @@ mod tests {
     }
 
     #[test]
-    fn empty_store_flag_on_login_opens_without_creating_user() {
+    fn open_window_login_refuses_401() {
         let _g = lock();
         let client = setup();
         set_bootstrap_admin(true);
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
+        // The bootstrap window enrolls only via POST /post/users/bootstrap:
+        // a login with any credentials takes the unknown-user path (401)
+        // and enrolls nobody.
         let resp = client
             .post("/post/authenticate")
             .header(ContentType::JSON)
-            .body(json!({ "userId": "anything", "password": test_password("t-open") }).to_string())
+            .body(
+                json!({ "userId": "anything", "password": test_password("t-open-refused") })
+                    .to_string(),
+            )
             .dispatch();
-        assert_eq!(resp.status(), Status::Ok);
-        assert_session_cookie_flags(&resp);
-        let token = session_cookie_token(&resp);
-        let body = resp.into_string().expect("profile body");
-        let profile: serde_json::Value = serde_json::from_str(&body).expect("profile json");
-        assert_eq!(profile["userId"], "admin");
-        assert_eq!(profile["admin"], true);
-        let claims = decode(&token);
-        match claims.role {
-            crate::router::auth::Role::User { id, admin } => {
-                assert_eq!(id, "admin");
-                assert!(admin);
-            }
-            crate::router::auth::Role::Share(_) => panic!("expected user role"),
-        }
-        // Open mode mints a token without enrolling anybody.
+        assert_eq!(resp.status(), Status::Unauthorized);
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
     }
 
@@ -1386,7 +1368,7 @@ mod tests {
     }
 
     #[test]
-    fn live_login_cookie_jti_is_accepted_and_forged_is_401_and_open_mode_works() {
+    fn live_login_cookie_jti_is_accepted_and_forged_is_401() {
         let _g = lock();
         let client = setup();
         seed("s3c-live", true, Some(test_password("t-live").as_str()));
@@ -1464,18 +1446,5 @@ mod tests {
                 );
             assert!(res.is_err(), "legacy without jti must fail");
         }
-
-        // Open-mode ephemeral token still works with no record.
-        crate::tests::bootstrap::reset_backend_state();
-        let client2 = setup();
-        // Store is empty, bootstrap flag is true by default after reset.
-        let resp = client2.get("/get/index/status").dispatch();
-        assert_eq!(
-            resp.status(),
-            Status::Ok,
-            "open-mode without cookie must still be 200"
-        );
-        // Also an ephemeral token minted without a record should be irrelevant — open-mode
-        // bypasses session check, but we verify the unauthenticated open path still succeeds.
     }
 }

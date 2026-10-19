@@ -30,7 +30,7 @@ pub fn list_users_handler(_auth: GuardAuth) -> AppResult<Json<Vec<UserSummary>>>
     if users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))? == 0 {
         return Err(AppError::new(
             ErrorKind::Auth,
-            "No administrator enrolled: start the server with --bootstrap-admin (or PICASU_BOOTSTRAP_ADMIN=true) to enroll the first admin, or provision a user with the picasu-admin CLI",
+            crate::router::auth::not_enrolled_message(),
         ));
     }
     let rows = users::list_users().map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
@@ -110,13 +110,10 @@ mod tests {
         let client = setup();
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
         // Enrollment state is served by GET /get/server-info; an empty
-        // store has no admins, so this admin-only route refuses.
+        // store has no admins, so this admin-only route refuses. A bare
+        // guard carries status only — the enrollment hint surfaces on
+        // GuardResult routes (register, users/password, bootstrap).
         let resp = client.get("/get/users").dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
-        let body = resp.into_string().unwrap_or_default();
-        assert!(
-            body.to_lowercase().contains("no administrator enrolled"),
-            "empty-store refusal must name the missing enrollment, got: {body}"
-        );
     }
 }

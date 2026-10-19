@@ -353,12 +353,38 @@ mod tests {
     }
 
     #[test]
-    fn jwt_auth_open_mode_without_password_allows_without_cookie() {
+    fn jwt_auth_open_window_anonymous_is_401() {
         let _g = s3b_lock();
         let client = s3b_client();
         s3b_set_bootstrap_admin(true);
+        // No user record exists: the bootstrap window exposes only
+        // server-info and users/bootstrap, so an anonymous admin-guard
+        // request is refused. (A bare guard carries status only; the
+        // enrollment hint surfaces on GuardResult routes.)
         let resp = client.get("/get/index/status").dispatch();
-        assert_eq!(resp.status(), rocket::http::Status::Ok);
+        assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
+    }
+
+    #[test]
+    fn not_enrolled_message_branches_on_window() {
+        let _g = s3b_lock();
+        let _client = s3b_client();
+        s3b_set_bootstrap_admin(true);
+        assert!(
+            super::not_enrolled_message().contains("POST /post/users/bootstrap"),
+            "open window must name the bootstrap endpoint"
+        );
+        s3b_set_bootstrap_admin(false);
+        let closed = super::not_enrolled_message();
+        assert!(
+            closed.contains("picasu-admin"),
+            "closed wording must keep naming the CLI remedy, got: {closed}"
+        );
+        assert!(
+            closed.contains("--bootstrap-admin"),
+            "closed wording must keep naming the flag, got: {closed}"
+        );
+        s3b_set_bootstrap_admin(true);
     }
 
     #[test]
@@ -465,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn forged_jti_rejected_and_open_mode_still_works() {
+    fn forged_jti_rejected() {
         let _g = s3b_lock();
         let client = s3b_client();
         // Store non-empty: forged jti (minted but never stored) must be 401.
@@ -480,26 +506,6 @@ mod tests {
             rocket::http::Status::Unauthorized,
             "forged/unknown jti must be 401"
         );
-
-        // Open-mode ephemeral token still works with no record.
-        // Reset to empty store for open-mode check.
-        {
-            let _ = &*crate::tests::bootstrap::TEST_ENV;
-            crate::tests::bootstrap::reset_backend_state();
-        }
-        let client2 = s3b_client();
-        s3b_set_bootstrap_admin(true);
-        let resp = client2.get("/get/index/status").dispatch();
-        assert_eq!(
-            resp.status(),
-            rocket::http::Status::Ok,
-            "open-mode must still work"
-        );
-        // Explicit empty-store ephemeral token via Claims::new_user without session should also work
-        // when store is empty and flag is on (but our guard skips check in that branch).
-        // We verify that decoding still requires jti even for ephemeral, but the guard bypasses it.
-        // So just the above unauthenticated open check suffices.
-        s3b_set_bootstrap_admin(true);
     }
 }
 
@@ -591,25 +597,36 @@ pub(crate) fn bootstrap_open() -> bool {
         .bootstrap_admin
 }
 
+/// Refusal message for an empty user store, branched once on the window
+/// state: while the bootstrap window is open the message names the only
+/// enrollment act (`POST /post/users/bootstrap`); otherwise it keeps the
+/// closed wording (flag/CLI remedies).
+pub(crate) fn not_enrolled_message() -> &'static str {
+    if bootstrap_open() {
+        "No administrator enrolled: enroll the first administrator via POST /post/users/bootstrap"
+    } else {
+        "No administrator enrolled: start the server with --bootstrap-admin (or PICASU_BOOTSTRAP_ADMIN=true) to enroll the first admin, or provision a user with the picasu-admin CLI"
+    }
+}
+
+/// [`not_enrolled_message`] as an `anyhow::Error` for the `try_*` guards.
+pub(crate) fn not_enrolled_error() -> anyhow::Error {
+    anyhow::anyhow!(not_enrolled_message())
+}
+
 /// Try to authenticate via JWT cookie and check if user is admin.
 ///
-/// When the user store is non-empty, the token must carry
-/// [`Role::User`] with `admin: true`, and the user record is re-read from
+/// No session exists on an empty store: the bootstrap window enrolls only
+/// via `POST /post/users/bootstrap`, so every guarded route refuses with
+/// [`not_enrolled_error`] (the message alone branches on the window state).
+/// On a non-empty store the token must carry [`Role::User`] with
+/// `admin: true`, and the user record is re-read from
 /// the database on every call so demotion or removal takes effect before
-/// the token expires. When the store is empty the bootstrap behavior
-/// applies: only while `--bootstrap-admin` is set is every request open
-/// (minting an ephemeral `admin` identity); otherwise the install is closed
-/// by default.
+/// the token expires.
 pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
     let store_non_empty = crate::auth::users::user_count().map(|count| count > 0)?;
     if !store_non_empty {
-        // Open bootstrap window: flag set, no users.
-        if bootstrap_open() {
-            return Ok(Claims::new_user("admin".to_string(), true));
-        }
-        return Err(anyhow!(
-            "No administrator enrolled: start the server with --bootstrap-admin (or PICASU_BOOTSTRAP_ADMIN=true) to enroll the first admin, or provision a user with the picasu-admin CLI"
-        ));
+        return Err(not_enrolled_error());
     }
 
     if let Some(jwt_cookie) = req.cookies().get("jwt") {
@@ -897,17 +914,10 @@ impl<'r> FromRequest<'r> for GuardUser {
             }
         };
         if !non_empty {
-            // Mirror `try_jwt_cookie_auth` open-mode semantics: only the
-            // bootstrap flag on an empty store is open (ephemeral admin);
-            // otherwise the install is closed by default.
-            if bootstrap_open() {
-                return Outcome::Success(GuardUser {
-                    claims: Claims::new_user("admin".to_string(), true),
-                });
-            }
-            return forbidden(
-                "No administrator enrolled: start the server with --bootstrap-admin or provision a user with the picasu-admin CLI",
-            );
+            // No session exists pre-enrollment: refuse with the
+            // privilege-tier status (403, never a session failure) and the
+            // window-state message.
+            return forbidden(not_enrolled_message());
         }
         let Some(jwt_cookie) = req.cookies().get("jwt") else {
             return denied("JWT not found in cookies");

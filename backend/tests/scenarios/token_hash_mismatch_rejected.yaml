@@ -48,9 +48,9 @@ when:
     then:
       - response.status: 200
   # Try to use asset A's token to fetch photo_b's compressed image.
-  # GuardHash should reject because URL hash != claims.hash.
+  # GuardHash should reject because URL hash != claims.hash. The fixture
+  # admin cookie satisfies GuardShare so the rejection comes from GuardHash.
   - call: "GET /object/compressed/${hash_b:0:2}/${hash_b}.jpg"
-    auth: false
     headers:
       Authorization: "Bearer ${hash_token_a}"
 then:

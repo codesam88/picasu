@@ -28,27 +28,25 @@ fn role_of(claims: &Claims) -> (String, bool) {
 
 // ── Row 1: bootstrap ─────────────────────────────────────────────────────
 
-/// Empty store is open (login with anything mints an admin token) and the
-/// first bootstrapped user is forced admin.
+/// The bootstrap window refuses logins and the first bootstrapped user is
+/// forced admin.
 ///
 /// Falsification companion: a second, unauthenticated bootstrap once the
 /// store is non-empty must be 401 — otherwise bootstrap would stay open
 /// forever and anyone could mint users.
 #[test]
-fn bootstrap_open_mode_and_first_user_forced_admin() {
+fn bootstrap_window_refuses_login_and_first_user_forced_admin() {
     let _g = lock();
     let client = setup_image_home();
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
-    // Open first-run mode accepts any login body and mints an admin token.
+    // The window enrolls only via POST /post/users/bootstrap: a login with
+    // any credentials takes the unknown-user path (401) and enrolls nobody.
     let (status, profile, token) = login(&client, "anything", &test_password("t-open"));
-    assert_eq!(status, Status::Ok);
-    let profile = profile.expect("open-mode profile");
-    assert_eq!(profile["userId"], "admin");
-    assert_eq!(profile["admin"], true);
-    let (id, admin) = role_of(&decode(&token.expect("open-mode token")));
-    assert_eq!(id, "admin");
-    assert!(admin, "open-mode identity must be admin");
+    assert_eq!(status, Status::Unauthorized);
+    assert!(profile.is_none(), "refused login must carry no profile");
+    assert!(token.is_none(), "refused login must set no cookie");
+    assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
     // First bootstrap forces `admin: true`: the body carries no `admin` key.
     let resp = client
@@ -74,6 +72,16 @@ fn bootstrap_open_mode_and_first_user_forced_admin() {
         .body(json!({ "userId": "late", "password": test_password("t-late-pw") }).to_string())
         .dispatch();
     assert_eq!(resp.status(), Status::Unauthorized);
+
+    // The enrolled admin logs in with the bootstrapped credentials.
+    let (status, profile, token) = login(&client, "root", &test_password("t-root-pw"));
+    assert_eq!(status, Status::Ok);
+    let profile = profile.expect("root profile");
+    assert_eq!(profile["userId"], "root");
+    assert_eq!(profile["admin"], true);
+    let (id, admin) = role_of(&decode(&token.expect("root token")));
+    assert_eq!(id, "root");
+    assert!(admin, "root login must mint an admin token");
 }
 
 // ── Row 2: two users ─────────────────────────────────────────────────────
@@ -142,8 +150,8 @@ fn two_users_admin_route_distinguishes_roles() {
 /// with no cookie; an admin-role user passes the share-guarded prefetch
 /// without share headers; a non-admin user with share headers passes too.
 ///
-/// The album + share are built while the store is still empty (open mode,
-/// so the shared fixtures' `auth_cookie` works); users are seeded after,
+/// The album + share are built first via the shared fixtures (which mint a
+/// local admin session for a fixture record); users are seeded after,
 /// since seeding does not invalidate shares. This keeps the fixture reuse
 /// exact and the hashing budget at two seeds plus two logins.
 ///
@@ -155,7 +163,7 @@ fn guest_share_prefetch_get_data_and_serving() {
     let _g = lock();
     let client = setup_image_home();
 
-    // Album + share setup in open mode, reusing the shared fixtures exactly.
+    // Album + share setup via the shared fixtures (local admin session).
     let (album_id, asset_id) = create_album(&client, "/matrix_guest/album/photo.jpg");
     let share_id = create_share(&client, &album_id, true, true, false);
 

@@ -35,9 +35,9 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
     let image_home = data_path.join("images");
     std::fs::create_dir_all(&image_home).unwrap();
     test_config.image_home = Some(image_home);
-    // Opt the whole test binary into bootstrap mode: scenario tests exercise
-    // the open first-run behavior (ephemeral admin, open `authenticate`,
-    // unauthenticated first create). Production's default is closed, so the
+    // Opt the whole test binary into bootstrap mode: scenario tests start
+    // with the empty-store window open (unauthenticated first create via
+    // `POST /post/users/bootstrap`). Production's default is closed, so the
     // closed-mode behavior needs its own explicit test (`tests/enroll_gate`).
     test_config.bootstrap_admin = true;
     APP_CONFIG
@@ -229,7 +229,7 @@ pub fn reset_backend_state() {
         .unwrap_or_else(|e| panic!("create image_home {}: {e}", image_home.display()));
 
     // Remove the password store so authenticated scenarios never leak
-    // password hashes into later (open-mode) scenarios. The DATA_PATH wipe
+    // password hashes into later (empty-store) scenarios. The DATA_PATH wipe
     // above already removes it in practice; this makes the guarantee
     // explicit and independent of wipe ordering.
     let passwd_path = crate::auth::users::passwd_file_path();
@@ -250,7 +250,7 @@ pub fn reset_backend_state() {
     config.read_only_mode = false;
     config.allow_registration = false;
     config.trivial_passwords = false;
-    // Tests run in bootstrap mode (open first-run behavior); production's
+    // Tests run in bootstrap mode (empty-store window open); production's
     // default is closed. Individual tests opt out via `write_config`.
     config.bootstrap_admin = true;
     config.fs_notify_watcher = true;
@@ -433,11 +433,15 @@ mod tests {
 
     /// `reset_backend_state` must clear the user store (redb `USERS` table)
     /// and remove the password file, so authenticated scenarios never leak
-    /// users or password hashes into later (open-mode) scenarios.
+    /// users or password hashes into later (empty-store) scenarios.
     #[test]
     fn reset_backend_state_clears_user_store() {
         let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         let _ = &*TEST_ENV;
+
+        // Establish entry state: sibling scenario tests leave user rows
+        // behind (their setup cleans at start, not at end).
+        reset_backend_state();
 
         crate::auth::users::create_user("s2b-reset-user", true).expect("create user");
         let passwd_path = crate::auth::users::passwd_file_path();

@@ -370,20 +370,32 @@ mod tests {
     }
 
     #[test]
-    fn empty_store_password_put_is_404_and_creates_nothing() {
+    fn empty_store_password_put_is_403_and_creates_nothing() {
         let _g = lock();
         let client = setup();
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
-        // No cookie: open first-run mode admits the GuardUser ephemeral id,
-        // but a password PUT must never enroll — an unknown target is 404
-        // even on an empty store, and nothing is written.
-        let status = client
+        // No session exists pre-enrollment: the GuardUser privilege refusal
+        // (403, never a session failure) fires before the handler, and
+        // nothing is written.
+        let resp = client
             .put("/put/users/password")
             .header(ContentType::JSON)
             .body(json!({ "userId": "first", "newPassword": "s4d-first-pw" }).to_string())
-            .dispatch()
-            .status();
-        assert_eq!(status, Status::NotFound);
+            .dispatch();
+        assert_eq!(resp.status(), Status::Forbidden);
+        let body = resp.into_string().unwrap_or_default();
+        assert!(
+            body.contains("PermissionDenied"),
+            "refusal must carry the PermissionDenied kind, got: {body}"
+        );
+        assert!(
+            body.contains("No administrator enrolled"),
+            "refusal must keep the enrollment hint, got: {body}"
+        );
+        assert!(
+            body.contains("POST /post/users/bootstrap"),
+            "open-window refusal must name the bootstrap endpoint, got: {body}"
+        );
         assert_eq!(
             crate::auth::users::get_user("first").expect("get user"),
             None
