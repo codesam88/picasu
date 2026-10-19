@@ -301,7 +301,14 @@ churn/no benefit.
   `LazyLock` — no double-init). Cheapest form: `pub fn
 lock/setup[_image_home]/cookie(id, admin)` in `tests/bootstrap.rs`,
   no new harness.rs. Highest-RoI item of the re-verification pass;
-  stands alone (details: § Re-verification 2026-10-19).
+  stands alone (details: § Re-verification 2026-10-19). Executed
+  2026-10-19 (`fb34594dd`): 16 files, +300/−546 (net −246) — helpers are
+  pub fns in `tests/bootstrap.rs`; enroll_gate aliases
+  `login_status as login`; r6 logins keep strict-Ok asserts at adapted
+  call sites; `auth/invites.rs` untouched (different `setup` semantics);
+  R29's comment drift (`tests/auth_users.rs` "400"→422) folded in.
+  Gates: cargo test 727 passed / 0 failed (fresh), fmt + clippy clean,
+  no test deleted or renamed.
 - R34 STRUCK 2026-10-19 (churn). Steps 2 and 3 proved load-bearing
   counter-proofs, not re-assertions: step 2's probe is the
   creates-nothing proof for the mismatch path, and step 3's
@@ -345,8 +352,9 @@ read-only batch checks + spot-checks): resolved R1, R2, R5, R6, R17, R23
 Re-triage 2026-10-19 (post re-verification, churn/absorption pass):
 live items = R11 (re-opened, not accepted risk), R13, R14 (residual:
 register-401 annotation), R27 (residual `GuardResult` rollout), R28
-(residual: typed helper + verb alias + status), R32 (ride-along with
-R11), R33 (standalone slice). Discharged to owning plans: R10, R25 →
+(residual: typed helper + verb alias + status). Done: R33 2026-10-19
+(`fb34594dd`, net −246 lines, incl. R29's comment residue). Ride-along
+inside the R11 touch: R32. Discharged to owning plans: R10, R25 →
 `.plan/flow-model-conformance.md`; R22 → `.plan/auth-admin-panel.md`;
 R30, R31 → `.plan/frontend-vue-consolidation.md` (T1/T2). Struck as
 churn/no benefit: R29, R34, R35. Closed since that triage: R3, R4,
