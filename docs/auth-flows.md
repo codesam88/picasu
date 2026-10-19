@@ -8,43 +8,58 @@ states the intended behavior at the user/API boundary.
 
 ## User journeys
 
-### J1 — First startup (fresh install, empty store)
+### J1 — First startup (empty store)
 
-The server is open: no users, no legacy password. The browser holds no
-token, so the user panel is hidden until sign-in.
+The store has no users. The browser holds no token, so the user panel is
+hidden until sign-in.
 
-1. User opens the app and logs in with any id + password (UI: Login page).
-   - API: `POST /post/authenticate {userId, password}` → 200, admin token
-     (open mode accepts any parseable body).
-2. User opens Settings → User Management (now visible — the token carries
-   the admin role) and creates their real admin account (any id; the first
-   created user is forced `admin: true` regardless of the flag sent).
-   - API: `POST /post/users/create` (unauthenticated bootstrap) → 200.
-3. User logs out and back in as the new account. The open-mode token is
-   discarded; all further access uses the created identity.
+1. User opens the app. With the store empty, the SPA's boot guard pings
+   `GET /get/server-info`, which answers `{enrolled: false, enrollmentOpen,
+captcha: null}`:
+   - `enrollmentOpen: true` (empty store + `--bootstrap-admin`) → the app
+     shows the admin registration screen (username, password, confirm).
+   - `enrollmentOpen: false` (flag off, empty or non-empty) → the app falls
+     through to `/login`; every guarded route answers 401 `no administrator
+enrolled` (J2).
+2. Registering submits the new administrator (any id — never a forced
+   invisible name) and auto-logins:
+   - API: `POST /post/users/bootstrap {userId, password}` → 200. This is
+     the only online path that can create an admin: the request body has
+     no `admin` field, and the user is always forced `admin: true`.
+   - The page then issues `POST /post/authenticate` with the entered
+     credentials and receives the 14-day session cookie. A failed enroll
+     (409 — another administrator won the first-create race) falls back
+     to `/login` with a notice.
+3. All further access uses the enrolled identity: the session was minted
+   by the login round-trip in step 2, and guarded routes re-check the
+   user's live record on every request.
 
-### J2 — Legacy upgrade (config password set, empty store)
+### J2 — Closed install (store empty and `--bootstrap-admin` off)
 
-1. User opens the app and logs in with a chosen User ID + the legacy
-   password (UI: same Login form).
-   - API: `POST /post/authenticate {userId, password}` → 200. The first
-     login with the legacy password **registers the claimed id as the
-     first admin**; the legacy password is then dead (further bare-string
-     attempts are 401).
-   - The UI fallback chain (object → string → object) is invisible; it only
-     matters for bare-string API clients, which migrate onto `admin`.
-2. Subsequent logins are normal user logins. The id typed at first login
-   becomes the admin name — there is no rename, so it should be chosen
-   deliberately.
+1. Every guarded route answers 401 with the same refusal message, and
+   `POST /post/authenticate` accepts nothing (the login page shows the
+   ordinary form; any attempt is refused). There is no enrollment
+   surface online — an unauthenticated caller cannot reach the user
+   panel, list users, or log in. The browser falls through to `/login`.
+2. Recovery is operator-only: restart with `--bootstrap-admin` on the
+   empty store (J1, step 2), or provision via the `picasu-admin` CLI.
+   `POST /post/users/register` can still create non-admin accounts while
+   registration is open or a valid invite exists, but no online path ever
+   grants admin — an admin-less store gains an administrator only through
+   the CLI.
 
 ### J3 — Admin adds a user (API only — no UI yet)
 
 1. Admin lists users: `GET /get/users` → `[{userId, admin}]` (hashes never
    included).
-2. Admin creates the user: `POST /post/users/create {userId, password,
-admin}` → 200 (`admin` honored); duplicate id → 409.
-3. The new user logs in (J4). There is currently no create-user form in the
-   frontend; this flow is API-only (gap G1).
+2. Admin registers the user: `POST /post/users/register {userId,
+password}` → 200; the account is always `admin: false` (the body has no
+   `admin` field; elevation is `PUT /put/users/admin`); duplicate id → 409. With the `allowRegistration` knob off, the admin session is the
+   gate that skips the invite; a non-admin or anonymous caller needs a
+   valid invite (403 registration disabled / 404 unknown, revoked or
+   expired invite token).
+3. The new user logs in (J4). There is currently no create-user form in
+   the frontend; this flow is API-only (gap G1).
 
 ### J4 — Login and logout
 
@@ -53,10 +68,11 @@ admin}` → 200 (`admin` honored); duplicate id → 409.
   HttpOnly `Set-Cookie` the page never sees (R5). Unknown user and
   wrong password both answer 401 with no distinguishing detail, and the
   unknown-user path still costs one KDF round (no timing oracle).
-- Logout is `POST /post/logout` → 204, clearing the cookie server-side
+- Logout is `POST /post/logout` → 204: it removes the presented `jti`
+  from the caller's live sessions and clears the cookie server-side
   (idempotent); the client also drops its session profile and capability
-  tokens. The token stays cryptographically valid to expiry. There is no
-  server-side session to invalidate.
+  tokens. Only the presented device is logged out — other sessions
+  survive, and they remain listed under `GET /get/sessions` until expiry.
 
 ### J5 — Password change
 
@@ -64,7 +80,9 @@ admin}` → 200 (`admin` honored); duplicate id → 409.
   (`PUT /put/users/password {userId: self, oldPassword, newPassword}`).
 - Admin reset: an admin sets any user's password without the old one.
 - Passwords are trimmed on write and on verify (one canonical form).
-- A change takes effect on the next login; outstanding tokens survive it.
+- Outstanding sessions die with the change: every `jti` of the target is
+  wiped before the new hash is written, so all devices re-login with the
+  new password.
 - Empty new password → 400. There is no "clear to open": open mode is
   store-empty only.
 
@@ -95,16 +113,16 @@ admin}` → 200 (`admin` honored); duplicate id → 409.
 
 ## API semantics
 
-| Endpoint                         | Auth                                                    | Success                                                                                                                                                                                  | Refusals                                                                                                                          |
-| -------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /post/authenticate` object | none                                                    | 200 + token. Empty store + legacy password + match → bootstrap claimed id as admin. Empty store, no legacy password → open token. Else verify → 401 unknown/wrong (generic, +dummy KDF). | 400 bad id/body; 401                                                                                                              |
-| `POST /post/authenticate` string | none                                                    | 200 only while store empty + legacy match (migrates onto `admin`)                                                                                                                        | 401 otherwise                                                                                                                     |
-| `POST /post/users/create`        | none iff store empty (forces `admin: true`); else admin | 200 + `{userId, admin}`                                                                                                                                                                  | 400 bad id/empty pw; 401 non-admin/anon-nonempty; 405 read-only; 409 duplicate                                                    |
-| `GET /get/users`                 | admin                                                   | 200 list, no hashes                                                                                                                                                                      | 401                                                                                                                               |
-| `PUT /put/users/password`        | any authenticated user                                  | 200. Admin: any target, no old needed. Self: correct old required.                                                                                                                       | 400 empty new/wrong old; 401 no session; 403 closed install or cross-user non-admin; 404 unknown (non-empty store); 405 read-only |
-| `PUT /put/users/admin`           | admin                                                   | 200 (no-op same-flag included)                                                                                                                                                           | 400 bad id; 401; 404 unknown; 405 read-only; 409 zero-admin outcome                                                               |
-| share-guarded reads              | share headers/query or admin cookie                     | scoped data                                                                                                                                                                              | 401; 403/404 on scope violations (F2/F3 fixes)                                                                                    |
-| `POST /upload`                   | share with `showUpload` + matching album, or admin      | accepted                                                                                                                                                                                 | 401                                                                                                                               |
+| Endpoint                     | Auth                                                                                                                                                                    | Success                                                                                                                                                                                                                                                                          | Refusals                                                                                                                                                                  |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /post/authenticate`    | none                                                                                                                                                                    | 200 + session profile `{userId, admin}`; 14-day JWT in an HttpOnly `Set-Cookie`. Empty store + `--bootstrap-admin` → open mode: any parseable body is accepted (ephemeral admin, creates nothing). Else verify vs. the password store → 401 unknown/wrong (generic, +dummy KDF). | 400 bad id/body; 401; 429 throttled (+`Retry-After`)                                                                                                                      |
+| `POST /post/users/bootstrap` | none while the window is open (`--bootstrap-admin` ∧ empty store); a shut window answers 401 (an authenticated caller falls through to the same missing-enrollment 401) | 200 + `{userId, admin: true}` (forced)                                                                                                                                                                                                                                           | 400 bad id/weak pw; 401 window shut; 405 read-only; 409 duplicate; 500 storage                                                                                            |
+| `POST /post/users/register`  | admin session, or none with `allowRegistration` on, or a valid unexpired unused invite; always non-admin, never the first user (empty store → 401)                      | 200 + `{userId, admin: false}`                                                                                                                                                                                                                                                   | 400 bad id/weak pw; 401 empty store; 403 registration disabled or invite expired; 404 unknown/revoked invite; 405 read-only; 409 duplicate id or used invite; 500 storage |
+| `GET /get/users`             | admin                                                                                                                                                                   | 200 list, no hashes                                                                                                                                                                                                                                                              | 401                                                                                                                                                                       |
+| `PUT /put/users/password`    | any authenticated user                                                                                                                                                  | 200. Admin: any target, no old needed. Self: correct old required.                                                                                                                                                                                                               | 400 empty new/wrong old; 401 no session; 403 closed install or cross-user non-admin; 404 unknown (non-empty store); 405 read-only                                         |
+| `PUT /put/users/admin`       | admin                                                                                                                                                                   | 200 (no-op same-flag included)                                                                                                                                                                                                                                                   | 400 bad id; 401; 404 unknown; 405 read-only; 409 zero-admin outcome                                                                                                       |
+| share-guarded reads          | share headers/query or admin cookie                                                                                                                                     | scoped data                                                                                                                                                                                                                                                                      | 401; 403/404 on scope violations (F2/F3 fixes)                                                                                                                            |
+| `POST /upload`               | share with `showUpload` + matching album, or admin                                                                                                                      | accepted                                                                                                                                                                                                                                                                         | 401                                                                                                                                                                       |
 
 ## Enforcement rules (server-side, test-pinned)
 
