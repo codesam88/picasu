@@ -2,9 +2,6 @@ import axios from 'axios'
 import { z } from 'zod'
 
 export interface AppConfig {
-  // Rocket settings
-  address: string
-  port: number
   limits: Record<string, string>
 
   // App settings
@@ -15,7 +12,7 @@ export interface AppConfig {
   authKey: string | null
   hasAuthKey: boolean
   imagePath: string | null
-  uploadFolder: string
+  uploadFolder: string | null
   maxUploadSize: string
 }
 

@@ -47,3 +47,15 @@ PUT /put/config/password api path removed without deprecation
 # (`users_authenticate.rs`). The old path is deleted outright — hard-remove,
 # no deprecation window; login callers move one path segment.
 POST /post/authenticate api path removed without deprecation
+
+# 2026-10-20 (auth-enrollment-review R13, decided: option B+C): `GET
+# /get/config` no longer exposes host fields to any tier — `address`/`port`
+# are deleted from `ConfigResponse` (dead fields; the SPA never consumed
+# them), and `imagePath`/`uploadFolder` serialize as `null` for the share
+# tier (share credentials; non-admin sessions are still refused by
+# `GuardShare` before the handler). Share-visitor boot and the admin
+# settings page are unaffected.
+GET /get/config removed the required property `address` from the response with the `200` status
+GET /get/config removed the required property `port` from the response with the `200` status
+GET /get/config the response property `uploadFolder` became optional for the status `200`
+GET /get/config the response property `uploadFolder` became nullable for the status `200`

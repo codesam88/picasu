@@ -6485,15 +6485,21 @@ func main() {
 
 `GET /get/config`
 
-Returns the values a client needs to drive the other operations: address
-and port, the image library root (`imagePath`), `uploadFolder`,
-`maxUploadSize`, `readOnlyMode`, `disableImg`, `fsNotifyWatcher`,
+Returns the values a client needs to drive the other operations: the
+image library root (`imagePath`), `uploadFolder`, `maxUploadSize`,
+`readOnlyMode`, `disableImg`, `fsNotifyWatcher`,
 `normalizeUploadFilenames`, `validateUploadContent`,
 `useClientTimestampInfo`, plus `hasAuthKey`.
 
 Corner cases: secrets are never returned — `hasAuthKey` only reports
 whether an auth key is configured. `imagePath` is
 the absolute library root and serializes as `null` when it is unset.
+The endpoint stays `GuardShare`-gated so a share visitor's SPA boots
+normally, but share credentials receive `null` for
+`imagePath`/`uploadFolder`: only the admin tier sees the real
+filesystem paths. Non-admin sessions never reach the handler —
+`GuardShare` admits admins and shares only, so they are refused with
+401 first.
 
 Errors: 400 half-supplied share credentials or an id that is not an album —
 401 no valid admin or share credentials.
@@ -6504,14 +6510,12 @@ Errors: 400 half-supplied share credentials or an id that is not an album —
 
 ```json
 {
-  "address": "string",
   "disableImg": true,
   "fsNotifyWatcher": true,
   "hasAuthKey": true,
   "imagePath": "string",
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
-  "port": 0,
   "readOnlyMode": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
@@ -13717,14 +13721,12 @@ _None_
 
 ```json
 {
-  "address": "string",
   "disableImg": true,
   "fsNotifyWatcher": true,
   "hasAuthKey": true,
   "imagePath": "string",
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
-  "port": 0,
   "readOnlyMode": true,
   "uploadFolder": "string",
   "useClientTimestampInfo": true,
@@ -13734,20 +13736,18 @@ _None_
 
 ### Properties
 
-| Name                     | Type           | Required | Restrictions | Description |
-| ------------------------ | -------------- | -------- | ------------ | ----------- |
-| address                  | string         | true     | none         | none        |
-| disableImg               | boolean        | true     | none         | none        |
-| fsNotifyWatcher          | boolean        | true     | none         | none        |
-| hasAuthKey               | boolean        | true     | none         | none        |
-| imagePath                | string,null    | false    | none         | none        |
-| maxUploadSize            | string         | true     | none         | none        |
-| normalizeUploadFilenames | boolean        | true     | none         | none        |
-| port                     | integer(int32) | true     | none         | none        |
-| readOnlyMode             | boolean        | true     | none         | none        |
-| uploadFolder             | string         | true     | none         | none        |
-| useClientTimestampInfo   | boolean        | true     | none         | none        |
-| validateUploadContent    | boolean        | true     | none         | none        |
+| Name                     | Type        | Required | Restrictions | Description |
+| ------------------------ | ----------- | -------- | ------------ | ----------- |
+| disableImg               | boolean     | true     | none         | none        |
+| fsNotifyWatcher          | boolean     | true     | none         | none        |
+| hasAuthKey               | boolean     | true     | none         | none        |
+| imagePath                | string,null | false    | none         | none        |
+| maxUploadSize            | string      | true     | none         | none        |
+| normalizeUploadFilenames | boolean     | true     | none         | none        |
+| readOnlyMode             | boolean     | true     | none         | none        |
+| uploadFolder             | string,null | false    | none         | none        |
+| useClientTimestampInfo   | boolean     | true     | none         | none        |
+| validateUploadContent    | boolean     | true     | none         | none        |
 
 <h2 id="tocS_CreateDirAlbumData">CreateDirAlbumData</h2>
 <!-- backwards compatibility -->

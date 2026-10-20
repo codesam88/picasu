@@ -68,9 +68,7 @@ const localSettings = reactive<AppConfig>({
   imagePath: null,
   uploadFolder: 'uploads',
   maxUploadSize: '100MiB',
-  address: '',
 
-  port: 0,
   limits: {}
 })
 
