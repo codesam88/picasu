@@ -19,7 +19,7 @@ use crate::openapi_components::Unauthorized;
 use crate::router::auth::{Claims, Role, VALIDATION, decode_typed};
 use crate::router::{AppError, AppResult, ErrorKind};
 
-use super::register::UserSummary;
+use super::users_register::UserSummary;
 
 /// Name of the session cookie. Read by the auth guards; written only by
 /// the server via `Set-Cookie` (`HttpOnly`).
@@ -233,7 +233,7 @@ impl<'r> FromRequest<'r> for ThrottleClientIp {
     }
 }
 
-/// Request body for `POST /post/authenticate`: a user login object. There is
+/// Request body for `POST /post/users/authenticate`: a user login object. There is
 /// deliberately no `admin` field: unknown keys are rejected, never honored.
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -344,7 +344,7 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
         )
     )
 ]
-#[post("/post/authenticate", data = "<body>")]
+#[post("/post/users/authenticate", data = "<body>")]
 pub async fn authenticate(
     jar: &CookieJar<'_>,
     https: ForwardedHttps,
@@ -580,7 +580,7 @@ mod tests {
         password: &str,
     ) -> rocket::local::blocking::LocalResponse<'c> {
         client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(json!({ "userId": user_id, "password": password }).to_string())
             .dispatch()
@@ -808,7 +808,7 @@ mod tests {
     ) -> rocket::local::blocking::LocalResponse<'c> {
         use rocket::http::Header;
         client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .header(Header::new("X-Forwarded-For", ip.to_string()))
             .body(
@@ -863,7 +863,7 @@ mod tests {
         seed("t9-rot", false, Some(test_password("t9-rot-pw").as_str()));
         for i in 0..4 {
             let resp = client
-                .post("/post/authenticate")
+                .post("/post/users/authenticate")
                 .header(ContentType::JSON)
                 .header(Header::new("X-Forwarded-For", format!("10.8.0.{i}")))
                 .body(
@@ -874,7 +874,7 @@ mod tests {
             assert_eq!(resp.status(), Status::Unauthorized, "attempt {i}");
         }
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .header(Header::new("X-Forwarded-For", "10.8.0.99"))
             .body(
@@ -1071,7 +1071,7 @@ mod tests {
         let client = setup();
         seed("s3c-alice", true, Some(test_password("t-alice").as_str()));
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(
                 json!({ "userId": "s3c-alice", "password": test_password("t-alice") }).to_string(),
@@ -1094,7 +1094,7 @@ mod tests {
         let client = setup();
         seed("s3c-alice", true, Some(test_password("t-alice").as_str()));
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(
                 json!({ "userId": "s3c-alice", "password": test_password("t-alice") }).to_string(),
@@ -1120,13 +1120,13 @@ mod tests {
         let client = setup();
         seed("s3c-bob", false, Some(test_password("t-bob").as_str()));
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(json!({ "userId": "s3c-bob", "password": test_password("t-wrong") }).to_string())
             .dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(
                 json!({ "userId": "s3c-ghost", "password": test_password("t-ghost") }).to_string(),
@@ -1142,7 +1142,7 @@ mod tests {
         set_bootstrap_admin(false);
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(json!(test_password("t-closed")).to_string())
             .dispatch();
@@ -1161,7 +1161,7 @@ mod tests {
         // The bare-string shape no longer parses as `LoginRequest`, so even
         // the open window answers 400: there is no legacy bootstrap path.
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(json!(test_password("t-closed")).to_string())
             .dispatch();
@@ -1177,7 +1177,7 @@ mod tests {
         let client = setup();
         seed("s3d-carol", true, Some(test_password("t-carol").as_str()));
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(json!(test_password("t-s3d-str")).to_string())
             .dispatch();
@@ -1193,7 +1193,7 @@ mod tests {
         set_bootstrap_admin(false);
         seed("s3d-dave", false, Some(test_password("t-dave").as_str()));
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(json!(test_password("t-s3d-pin")).to_string())
             .dispatch();
@@ -1210,7 +1210,7 @@ mod tests {
         let client = setup();
         set_bootstrap_admin(false);
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(json!({ "userId": "s3e-bob", "password": test_password("t-wrong") }).to_string())
             .dispatch();
@@ -1233,7 +1233,7 @@ mod tests {
         // a login with any credentials takes the unknown-user path (401)
         // and enrolls nobody.
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(
                 json!({ "userId": "anything", "password": test_password("t-open-refused") })
@@ -1250,7 +1250,7 @@ mod tests {
         let client = setup();
         set_bootstrap_admin(false);
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(json!({ "userId": "   ", "password": test_password("t-s3e-str") }).to_string())
             .dispatch();
@@ -1264,7 +1264,7 @@ mod tests {
         set_bootstrap_admin(false);
         seed("s3d-erin", false, Some(test_password("t-erin").as_str()));
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(
                 json!({ "userId": "s3d-erin", "password": test_password("t-erin"), "admin": true })
@@ -1286,7 +1286,7 @@ mod tests {
             Some(test_password("t-trim").as_str()),
         );
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(
                 json!({ "userId": "s4-trim-user", "password": test_password_padded("t-trim") })
@@ -1302,7 +1302,7 @@ mod tests {
         let client = setup();
         seed("s3c-zed", false, Some(test_password("t-zed").as_str()));
         let login = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(json!({ "userId": "s3c-zed", "password": test_password("t-zed") }).to_string())
             .dispatch();
@@ -1335,7 +1335,7 @@ mod tests {
         let client = setup();
         seed("s3c-sec", false, Some(test_password("t-sec").as_str()));
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .header(rocket::http::Header::new("X-Forwarded-Proto", "https"))
             .body(json!({ "userId": "s3c-sec", "password": test_password("t-sec") }).to_string())
@@ -1374,7 +1374,7 @@ mod tests {
         seed("s3c-live", true, Some(test_password("t-live").as_str()));
         // Live login mints and stores jti; the cookie must be accepted by a guarded route.
         let resp = client
-            .post("/post/authenticate")
+            .post("/post/users/authenticate")
             .header(ContentType::JSON)
             .body(json!({ "userId": "s3c-live", "password": test_password("t-live") }).to_string())
             .dispatch();

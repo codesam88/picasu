@@ -17,11 +17,12 @@ export function resetAuthToken(): void {
 async function ensureAuthenticated(
   request: APIRequestContext,
   backendUrl: string,
+  adminId: string,
   adminPassword: string
 ): Promise<string> {
   if (authToken) return authToken
-  const res = await request.post(`${backendUrl}/post/authenticate`, {
-    data: { userId: 'admin', password: adminPassword },
+  const res = await request.post(`${backendUrl}/post/users/authenticate`, {
+    data: { userId: adminId, password: adminPassword },
     headers: { 'Content-Type': 'application/json' }
   })
   if (!res.ok()) throw new Error(`Auth failed: ${res.status()}`)
@@ -121,13 +122,21 @@ export async function executeGiven(
   given: GivenItem[],
   ctx: GivenContext,
   tracer: CoverageTracer | undefined,
-  overridePaths: WorkerPaths
+  overridePaths: WorkerPaths,
+  auth?: { userId: string; password: string }
 ): Promise<GivenContext> {
   const {
     IMAGE_HOME: imageHome,
     BACKEND_URL: backendUrl,
-    ADMIN_PASSWORD: adminPassword
+    ADMIN_PASSWORD: pathAdminPassword
   } = overridePaths
+  // Admin identity for the internal state-building requests. Specs that
+  // enroll their own first admin (differently named) pass that identity
+  // here; API writes against an empty running store are refused (offline
+  // CLI provisioning is outside the harness), so seeding always follows
+  // enrollment.
+  const adminId = auth?.userId ?? 'admin'
+  const adminPassword = auth?.password ?? pathAdminPassword
 
   const request = tracer ? tracedRequest(baseRequest, tracer) : baseRequest
   const result: GivenContext = {
@@ -221,7 +230,7 @@ export async function executeGiven(
           fs_notify_watcher?: boolean
         }
       }
-      const token = await ensureAuthenticated(request, backendUrl, adminPassword)
+      const token = await ensureAuthenticated(request, backendUrl, adminId, adminPassword)
       const headers = authHeaders(token)
 
       if (cfg.config.read_only_mode !== undefined) {
@@ -310,7 +319,7 @@ export async function executeGiven(
   }
 
   if (seedEntries.length > 0) {
-    const token = await ensureAuthenticated(request, backendUrl, adminPassword)
+    const token = await ensureAuthenticated(request, backendUrl, adminId, adminPassword)
     const allHeaders = authHeaders(token)
 
     const indexRes = await request.fetch(`${backendUrl}/post/index/album`, {
@@ -387,7 +396,7 @@ export async function executeGiven(
       throw new Error(`Failed to move ${fromPath} to ${toPath}`)
     }
 
-    const token = await ensureAuthenticated(request, backendUrl, adminPassword)
+    const token = await ensureAuthenticated(request, backendUrl, adminId, adminPassword)
     if (knownJwtSecret) {
       const ext = path.extname(fromPath).slice(1) || 'jpg'
       const ts = Math.floor(Date.now() / 1000)

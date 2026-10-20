@@ -136,7 +136,7 @@ const rules = {
   required: (value: string) => !!value || 'This field is required'
 }
 
-// Login throttling (429 from /post/authenticate): inline countdown banner,
+// Login throttling (429 from /post/users/authenticate): inline countdown banner,
 // credentials kept, submit disabled until the ban expires. The interceptor
 // stays silent for this route (see its 429 case), so the banner is the only
 // feedback. A 429 with no parsable wait shows a static fallback banner

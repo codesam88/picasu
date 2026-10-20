@@ -144,7 +144,7 @@
             ]
           },
           "bootstrapAdmin": {
-            "description": "Enable the online first-admin bootstrap window. While set **and the\nuser store is empty**, unauthenticated `POST /post/users/bootstrap`\nenrolls the first admin; until then `POST /post/authenticate` takes\nthe unknown-user path and every guarded route refuses with\n`No administrator enrolled` (the refusal names the bootstrap\nendpoint while the window is open). Default\noff: a fresh install answers 401 everywhere until an operator opts\nin (or provisions the store via the `picasu-admin` CLI). Enabling\nthe flag against an existing `passwd.json` makes the server refuse\nto start. WARN-logged at boot whenever set.",
+            "description": "Enable the online first-admin bootstrap window. While set **and the\nuser store is empty**, unauthenticated `POST /post/users/bootstrap`\nenrolls the first admin; until then `POST /post/users/authenticate` takes\nthe unknown-user path and every guarded route refuses with\n`No administrator enrolled` (the refusal names the bootstrap\nendpoint while the window is open). Default\noff: a fresh install answers 401 everywhere until an operator opts\nin (or provisions the store via the `picasu-admin` CLI). Enabling\nthe flag against an existing `passwd.json` makes the server refuse\nto start. WARN-logged at boot whenever set.",
             "type": "boolean"
           },
           "dataHome": {
@@ -764,7 +764,7 @@
       },
       "LoginRequest": {
         "additionalProperties": false,
-        "description": "Request body for `POST /post/authenticate`: a user login object. There is\ndeliberately no `admin` field: unknown keys are rejected, never honored.",
+        "description": "Request body for `POST /post/users/authenticate`: a user login object. There is\ndeliberately no `admin` field: unknown keys are rejected, never honored.",
         "properties": {
           "password": {
             "type": "string"
@@ -2355,50 +2355,6 @@
         ]
       }
     },
-    "/post/authenticate": {
-      "post": {
-        "description": "A `{ userId, password }` object verifies against the user and password\nstores. On success the JWT travels in a `Set-Cookie: jwt=...; HttpOnly;\nSameSite=Strict; Path=/` response header — page JS never sees the token\n— and the body carries only the session profile\n`{ userId, admin }` for the client to display. Tokens are signed with\n`authKey`, or with a secret generated once per process when `authKey`\nis unset, so changing `authKey` invalidates every token issued under\nthe previous one.\n\nErrors: 400 the login `userId` is empty or longer than 64 characters, or\nthe body does not parse as a login object — 401 unknown user or wrong\npassword (on an empty store every login is unknown: enrollment happens\nonly via `POST /post/users/bootstrap`) — 429 the attempt is throttled\n(`Retry-After` carries the\nremaining ban seconds) — 500 internal error.\n\nBrute-force throttle: before the KDF runs, every attempt\nreserves a slot and then checks the IP-short, IP-long, and user-long\nbuckets (see [`crate::auth::rate_limit`]); while any bucket bans, a\n429 is returned without hashing. Evaluated failures record into all\napplicable buckets, a success drops the username entry and clears the\nIP burst bucket (keeping IP-long history), and throttled attempts are\nnever recorded. The environment-only kill\nswitch `PICASU_RATE_LIMITS=false` (exact match) also bypasses the\nthrottle — for fuzzing runs — while the failure logging stays.",
-        "operationId": "authenticate",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LoginRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserSummary"
-                }
-              }
-            },
-            "description": "Session profile; JWT in HttpOnly Set-Cookie"
-          },
-          "400": {
-            "description": "Invalid input"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "429": {
-            "description": "Too many login attempts; see Retry-After"
-          },
-          "500": {
-            "description": "Internal error"
-          }
-        },
-        "summary": "Sign in and issue the session cookie (`HttpOnly`).",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/post/config/auth-key/reset": {
       "post": {
         "description": "Generates a new strong random key, persists it to the owner-only\nsecrets file, and installs it in memory. All previously issued tokens\nstop verifying, so every session is invalidated by construction.\nOverrides from `PICASU_AUTH_KEY` still win at the next boot (they are\nnever persisted).\n\nErrors: 401 missing or invalid admin credentials — 500 the new key\ncould not be stored.",
@@ -2783,6 +2739,50 @@
           }
         },
         "summary": "Exchange an expired prefetch timestamp token for a freshly issued one.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/post/users/authenticate": {
+      "post": {
+        "description": "A `{ userId, password }` object verifies against the user and password\nstores. On success the JWT travels in a `Set-Cookie: jwt=...; HttpOnly;\nSameSite=Strict; Path=/` response header — page JS never sees the token\n— and the body carries only the session profile\n`{ userId, admin }` for the client to display. Tokens are signed with\n`authKey`, or with a secret generated once per process when `authKey`\nis unset, so changing `authKey` invalidates every token issued under\nthe previous one.\n\nErrors: 400 the login `userId` is empty or longer than 64 characters, or\nthe body does not parse as a login object — 401 unknown user or wrong\npassword (on an empty store every login is unknown: enrollment happens\nonly via `POST /post/users/bootstrap`) — 429 the attempt is throttled\n(`Retry-After` carries the\nremaining ban seconds) — 500 internal error.\n\nBrute-force throttle: before the KDF runs, every attempt\nreserves a slot and then checks the IP-short, IP-long, and user-long\nbuckets (see [`crate::auth::rate_limit`]); while any bucket bans, a\n429 is returned without hashing. Evaluated failures record into all\napplicable buckets, a success drops the username entry and clears the\nIP burst bucket (keeping IP-long history), and throttled attempts are\nnever recorded. The environment-only kill\nswitch `PICASU_RATE_LIMITS=false` (exact match) also bypasses the\nthrottle — for fuzzing runs — while the failure logging stays.",
+        "operationId": "authenticate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSummary"
+                }
+              }
+            },
+            "description": "Session profile; JWT in HttpOnly Set-Cookie"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "description": "Too many login attempts; see Retry-After"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "Sign in and issue the session cookie (`HttpOnly`).",
         "tags": [
           "auth"
         ]

@@ -8,7 +8,7 @@ use crate::auth::users;
 use crate::error::ResultExt;
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::{GuardAuth, GuardReadOnlyMode, bootstrap_open};
-use crate::router::post::register::UserSummary;
+use crate::router::post::users_register::UserSummary;
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
 /// Body for `POST /post/users/bootstrap`. There is deliberately no `admin`

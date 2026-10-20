@@ -64,7 +64,7 @@ export const setUserPassword = async (
 /// (401 on unknown user or wrong password); there is no legacy fallback
 /// path.
 export const login = async (userId: string, password: string): Promise<UserSummary> => {
-  const response = await axios.post('/post/authenticate', { userId, password })
+  const response = await axios.post('/post/users/authenticate', { userId, password })
   return z.object({ userId: z.string(), admin: z.boolean() }).parse(response.data)
 }
 

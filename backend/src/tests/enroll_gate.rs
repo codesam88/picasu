@@ -64,7 +64,7 @@ fn closed_by_default_denies_enrollment() {
     // The bare-string shape no longer parses as a login object: Rocket's
     // `Json` guard answers 422 for well-formed JSON of the wrong shape.
     let resp = client
-        .post("/post/authenticate")
+        .post("/post/users/authenticate")
         .header(ContentType::JSON)
         .body(json!(test_password("t-closed")).to_string())
         .dispatch();
@@ -256,7 +256,7 @@ fn no_legacy_gate_flag_controls_empty_store() {
     assert_eq!(info["enrollmentOpen"], serde_json::Value::Bool(true));
     // The bare-string shape is unparseable on an open store too (422).
     let resp = client
-        .post("/post/authenticate")
+        .post("/post/users/authenticate")
         .header(ContentType::JSON)
         .body(json!(test_password("t-enroll-nolegacy")).to_string())
         .dispatch();

@@ -18,9 +18,18 @@ in the meantime; this task replaces it with the declaration-first shape.
 
 1. **API acrobatics for state.** `given: user:` rides
    `POST /post/users/bootstrap`, which only works inside the bootstrap
-   window (launcher sets `PICASU_BOOTSTRAP_ADMIN=true` unconditionally),
-   only for the _first_ user, and open-mode `POST /post/authenticate`
-   mints tokens without creating anybody. None of that scales to the
+   window (launcher sets `PICASU_BOOTSTRAP_ADMIN=true` unconditionally)
+   and only for the _first_ user. Since the ephemeral open-mode mint was
+   removed, the HTTP API on an empty running store offers nothing else:
+   logins answer the uniform unknown-user 401 and guarded writes refuse,
+   so every online seeding must enroll first. The scaling path is
+   offline provisioning, which the `picasu-admin` CLI provides once H1a
+   lands: it seeds user records before boot, the existing passwd file
+   loads at startup, and `/post/users/authenticate` then works normally.
+   Interplay: the harness cannot keep forcing the flag — flag on against
+   a non-empty passwd store refuses to boot (`lib.rs`), so the CLI path
+   pairs with dropping the unconditional launcher flag (or flagging only
+   genuinely empty installs). None of the bootstrap riding scales to the
    planned "create more users and switch between them" scenarios.
 2. **A documented tool that doesn't exist.** Error messages and
    `docs/openapi-reference.md` promise a `picasu-admin` CLI for store

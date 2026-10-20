@@ -134,7 +134,7 @@ name: Login via button click succeeds
 covers:
   api:
     - POST /post/users/bootstrap
-    - POST /post/authenticate
+    - POST /post/users/authenticate
   ui:
     - route:/home
 given:
@@ -156,7 +156,7 @@ assert:
 Declares what the scenario intends to exercise:
 
 - `covers.api` — HTTP method + path pairs the given phase calls (seed
-  operations). Each entry is a string like `"POST /post/authenticate"`.
+  operations). Each entry is a string like `"POST /post/users/authenticate"`.
 - `covers.ui` — assertion targets the assert phase uses. Format depends on
   the verb: for role/label assertions the raw target (e.g. `main/`), for
   others a prefixed string (`route:/home`, `toast:error:unauthorized`,

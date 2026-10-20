@@ -365,7 +365,8 @@ an ephemeral admin identity in-window (`auth.rs:605-609` and the second
 family at `:903-908`). Rationale: no consumer (the UI pre-enrollment
 touches only `server-info` + `bootstrapUser`; the guard already opened
 admin access cookie-less, making the mint redundant), the explicit-act
-principle (bootstrap is the _only_ first act), and a uniform
+principle (through the HTTP API, bootstrap is the only first act on an
+empty store — CLI provisioning edits the store offline), and a uniform
 source-of-truth rule instead of per-route conditionals. Resulting
 semantics: `flag ∧ empty` exposes exactly `GET /get/server-info` and
 `POST /post/users/bootstrap`; every guarded route and `authenticate`

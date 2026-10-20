@@ -90,7 +90,7 @@ describe('login', () => {
     mockedAxios.post = vi.fn().mockResolvedValue({ data: { userId: 'bob', admin: false } })
     await expect(login('bob', 'secret')).resolves.toEqual({ userId: 'bob', admin: false })
     expect(mockedAxios.post).toHaveBeenCalledTimes(1)
-    expect(mockedAxios.post).toHaveBeenCalledWith('/post/authenticate', {
+    expect(mockedAxios.post).toHaveBeenCalledWith('/post/users/authenticate', {
       userId: 'bob',
       password: 'secret'
     })

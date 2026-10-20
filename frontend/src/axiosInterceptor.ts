@@ -86,7 +86,7 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
     case 401:
       // Tier taxonomy: the backend means 401 to be "the presented cookie
       // was rejected" — a session-tier failure. The only other source is
-      // the failed login itself (POST /post/authenticate, a wired 401),
+      // the failed login itself (POST /post/users/authenticate, a wired 401),
       // which the login page owns its display for; it is caller-owned.
       if (error.config?.url === AUTHENTICATE_URL) break
       // The session is gone server-side: drop the persisted display

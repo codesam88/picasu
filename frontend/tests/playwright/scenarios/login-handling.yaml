@@ -1,7 +1,7 @@
 name: Login handling covers all states
 covers:
   api:
-    - POST /post/authenticate
+    - POST /post/users/authenticate
     - POST /post/users/bootstrap
   ui:
     - textbox/User ID

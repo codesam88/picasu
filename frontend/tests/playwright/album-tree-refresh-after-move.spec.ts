@@ -31,7 +31,7 @@ test.describe('Album tree refresh after move', () => {
     const source_album = seeded.vars['$source_album']
 
     // Authenticate (object login; the legacy bare-string path is gone)
-    const authRes = await request.post(`${backendPaths.BACKEND_URL}/post/authenticate`, {
+    const authRes = await request.post(`${backendPaths.BACKEND_URL}/post/users/authenticate`, {
       data: { userId: 'admin', password: backendPaths.ADMIN_PASSWORD },
       headers: { 'Content-Type': 'application/json' }
     })

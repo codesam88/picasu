@@ -51,7 +51,7 @@ Server-level settings including web server and upload limits.
 
 #### Login throttling
 
-`POST /post/authenticate` checks three buckets before verifying the
+`POST /post/users/authenticate` checks three buckets before verifying the
 password (throttled requests skip the KDF and answer `429` with a
 `Retry-After` header: the max remaining ban across all three). Two
 evaluated over-threshold failures share each ban generation (both ban),

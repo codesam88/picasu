@@ -316,8 +316,8 @@ fn password_change_and_demotion_take_effect() {
 
 // ── Row 5: no legacy migration ───────────────────────────────────────────
 //
-// There is no bare-string bootstrap path: `POST /post/authenticate` takes a
+// There is no bare-string bootstrap path: `POST /post/users/authenticate` takes a
 // `{ userId, password }` object only, and a JSON string body is 422 (covered
-// by `router::post::authenticate::{bare_string_body_is_422_*}`). No migration
+// by `router::post::users_authenticate::{bare_string_body_is_422_*}`). No migration
 // registers users; enrollment is `POST /post/users/bootstrap` (open window)
 // or the `picasu-admin` CLI.

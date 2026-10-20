@@ -41,7 +41,7 @@ fn auth_cookie(client: &Client) -> rocket::http::Cookie<'static> {
                 .dispatch();
             assert_eq!(r.status(), Status::Ok, "bootstrap");
             let r = client
-                .post("/post/authenticate")
+                .post("/post/users/authenticate")
                 .header(ContentType::JSON)
                 .body(body)
                 .dispatch();

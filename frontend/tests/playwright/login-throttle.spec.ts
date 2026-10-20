@@ -1,7 +1,7 @@
 import { test, expect, type Response } from '@playwright/test'
 import { createPaths } from './paths'
 import { startBackend } from './backendLauncher'
-import { createGivenContext, executeGiven } from './executeGiven'
+import { createGivenContext, executeGiven, resetAuthToken } from './executeGiven'
 
 test.describe('login throttle', () => {
   test('failure burst is throttled with a countdown banner and recovers after the ban', async ({
@@ -11,6 +11,10 @@ test.describe('login throttle', () => {
     const ADMIN_ID = 'throttle-admin'
     const WRONG_PASSWORD = 'wrong-password-1'
 
+    // Private fresh backend per test: drop any leftover worker-cached
+    // session token (signed with a previous backend's authKey) before the
+    // state-building requests below.
+    resetAuthToken()
     const paths = await createPaths()
     // Shrink the first IP-short ban to ~2s so the spec can wait it out.
     // All logins run at the launcher's reduced PBKDF effort; no iteration
@@ -21,6 +25,15 @@ test.describe('login throttle', () => {
     const context = await browser.newContext({ baseURL: paths.BACKEND_URL })
     const page = await context.newPage()
     try {
+      // Enroll the first admin through the open bootstrap window. Seeding
+      // follows, after the store is non-empty: API writes against an
+      // empty running store are refused.
+      const enroll = await request.post(`${paths.BACKEND_URL}/post/users/bootstrap`, {
+        data: { userId: ADMIN_ID, password: paths.ADMIN_PASSWORD },
+        headers: { 'Content-Type': 'application/json' }
+      })
+      expect(enroll.status()).toBe(200)
+
       // One photo so the empty-library onboarding dialog never covers the
       // login form on the final successful login.
       await executeGiven(
@@ -28,22 +41,16 @@ test.describe('login throttle', () => {
         [{ dir_album: '/library' }, { photo: '/library/photo.jpg' }],
         createGivenContext('e2e_login_throttle'),
         undefined,
-        paths
+        paths,
+        { userId: ADMIN_ID, password: paths.ADMIN_PASSWORD }
       )
-
-      // Enroll the first admin through the open bootstrap window.
-      const enroll = await request.post(`${paths.BACKEND_URL}/post/users/bootstrap`, {
-        data: { userId: ADMIN_ID, password: paths.ADMIN_PASSWORD },
-        headers: { 'Content-Type': 'application/json' }
-      })
-      expect(enroll.status()).toBe(200)
 
       await page.goto('/login')
       await expect(page.getByPlaceholder('User ID')).toBeVisible()
 
       const authResponses: Response[] = []
       page.on('response', (res) => {
-        if (res.url().endsWith('/post/authenticate')) {
+        if (res.url().endsWith('/post/users/authenticate')) {
           authResponses.push(res)
         }
       })

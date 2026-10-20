@@ -1,7 +1,7 @@
 name: Image metadata shown in sidebar
 covers:
   api:
-    - POST /post/authenticate
+    - POST /post/users/authenticate
     - POST /post/users/bootstrap
     - PUT /put/config
     - POST /post/index/album
