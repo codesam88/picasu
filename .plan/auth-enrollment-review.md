@@ -31,9 +31,8 @@ R31; struck as churn/no benefit: R29, R34, R35; R11+R32 closed
 
 | Order | ID  | Sev | Impact | Risk | Remaining work                                                                 |
 | ----- | --- | --- | ------ | ---- | ------------------------------------------------------------------------------ |
-| 1     | R27 | S2  | MED    | LOW  | `GuardResult` rollout for bare-guard detail loss (owns R14's leftover)         |
-| 2     | R28 | S3  | MED    | MED  | Typed knob accessor, `/post/invites/create` verb alias, stringly-typed status  |
-| 3     | R14 | S3  | LOW    | LOW  | `picasu-admin` references — satisfied by H1a of `.plan/e2e-given-reshaping.md` |
+| 1     | R28 | S3  | MED    | MED  | Typed knob accessor, `/post/invites/create` verb alias, stringly-typed status  |
+| 2     | R14 | S3  | LOW    | LOW  | `picasu-admin` references — satisfied by H1a of `.plan/e2e-given-reshaping.md` |
 
 Discharged 2026-10-19 — rows removed from the tackle order, analysis
 folded into the verdict lines below: R10, R22, R25 → owning plans
@@ -247,7 +246,15 @@ churn/no benefit.
   (`4fd98860a`), and `GuardResult` propagation (established while
   retyping `users_password`) is the bare-guard-detail rollout vehicle —
   residual is that rollout plus any remaining bare-guard routes, not a
-  catcher change.
+  catcher change. Executed 2026-10-20 (`bcf65697e`): all ten bare
+  `GuardAuth` holders flipped (`GuardResult<GuardAuth>` + `let _ =
+auth?;`); denial bodies now carry the guard's real `AppError`
+  (window-aware enrollment hint). The enroll_gate Tie-off body
+  assertion, dropped when the swallow forced bodyless pins, is
+  restored. Sweep residue: `TimestampGuardModified` stays bare by
+  construction (Forward-selected presenter guard, `()` error type —
+  `GuardResult` cannot express it); no other bare-guard sites. Statuses
+  unchanged; catcher remains for framework-level rejections.
 - R28 CONFIRMED, residual (S3/MED/MED). Re-scoped 2026-10-19: the
   `ConfigResponse` read-back/parity half is owned by
   `.plan/auth-admin-panel.md` step 1, and the R12 host-only split
@@ -345,9 +352,11 @@ register-401 annotation), R27 (residual `GuardResult` rollout), R28
 (`fb34594dd`, net −246 lines, incl. R29's comment residue). Ride-along
 inside the R11 touch: R32. R11+R32 done 2026-10-20 (`f677f67f1`).
 R13 decided 2026-10-20 (option B+C, owner-approved) and fixed the same
-day (`69d37ed37`). Live after the 2026-10-20 pass: R27 residual (owns
-R14's guard-error propagation), R28 residual; R14 itself closes when
-H1a ships the CLI.
+day (`69d37ed37`). R27 residual executed 2026-10-20 (`bcf65697e`) —
+all bare `GuardAuth` guards propagate detail; the 422/401 catcher
+contract and `TimestampGuardModified` stand as documented. Live after
+the 2026-10-20 pass: R28 residual; R14 itself closes when H1a ships
+the CLI.
 
 Decision 2026-10-19 (open-mode removal, owner-approved this session):
 the `ephemeral-open-mode` structure is deleted, not just the mint.

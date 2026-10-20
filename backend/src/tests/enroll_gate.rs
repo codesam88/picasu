@@ -91,11 +91,19 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
     let client = setup();
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
-    // Tie-off: the admin-only user list refuses on an empty store. (A bare
-    // guard carries status only; the enrollment hint surfaces on
-    // GuardResult routes.)
+    // Tie-off: the admin-only user list refuses on an empty store with the
+    // window-aware enrollment hint.
     let resp = client.get("/get/users").dispatch();
     assert_eq!(resp.status(), Status::Unauthorized);
+    let body = resp.into_string().unwrap_or_default();
+    assert!(
+        body.to_lowercase().contains("no administrator enrolled"),
+        "open window refusal must name the missing enrollment, got: {body}"
+    );
+    assert!(
+        body.contains("POST /post/users/bootstrap"),
+        "open window refusal must name the bootstrap endpoint, got: {body}"
+    );
 
     // Open-window enrollment is proven via server-info shape instead.
     let resp = client.get("/get/server-info").dispatch();

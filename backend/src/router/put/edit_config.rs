@@ -250,10 +250,11 @@ fn host_only_knobs(req: &PartialUpdateConfigRequest) -> [(&'static str, bool, &'
 ]
 #[put("/put/config", data = "<req>")]
 pub async fn update_config_handler(
-    _auth: GuardAuth,
+    auth: GuardResult<GuardAuth>,
     read_only: GuardResult<GuardReadOnlyMode>,
     req: Json<PartialUpdateConfigRequest>,
 ) -> AppResult<Status> {
+    let _ = auth?;
     let _ = read_only?;
     let req_data = req.into_inner();
 

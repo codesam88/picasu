@@ -67,11 +67,12 @@ fn set_admin_sync(actor_id: &str, target_user_id: &str, admin: bool) -> AppResul
 ]
 #[put("/put/users/admin", data = "<body>")]
 pub fn set_user_admin_handler(
-    auth: GuardAuth,
+    auth: GuardResult<GuardAuth>,
     read_only: GuardResult<GuardReadOnlyMode>,
     body: Json<SetUserAdminRequest>,
 ) -> AppResult<Status> {
     let _ = read_only?;
+    let auth = auth?;
     let GuardAuth { claims } = auth;
     let Role::User { id: actor_id, .. } = claims.role else {
         return Err(AppError::new(ErrorKind::Auth, "Share token not accepted"));

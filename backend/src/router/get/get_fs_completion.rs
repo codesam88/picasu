@@ -1,5 +1,5 @@
 use crate::openapi_components::Unauthorized;
-use crate::router::{AppError, AppResult, ErrorKind, auth::GuardAuth};
+use crate::router::{AppError, AppResult, ErrorKind, GuardResult, auth::GuardAuth};
 use rocket::get;
 // use rocket::http::Status;
 use rocket::serde::json::Json;
@@ -62,7 +62,11 @@ fn absolutize(p: &Path) -> PathBuf {
     )
 ]
 #[get("/get/path-completion?<path>")]
-pub fn get_fs_completion(_auth: GuardAuth, path: Option<String>) -> AppResult<Json<FsCompletion>> {
+pub fn get_fs_completion(
+    auth: GuardResult<GuardAuth>,
+    path: Option<String>,
+) -> AppResult<Json<FsCompletion>> {
+    let _ = auth?;
     let query = path.unwrap_or_default();
 
     // If empty, return roots separated from current directory contents
