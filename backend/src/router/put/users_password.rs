@@ -61,7 +61,7 @@ pub(crate) fn set_password_sync(
             "cannot change another user's password",
         ));
     }
-    let target_exists = users::get_user(&target)
+    let target_exists = users::user_record(&target)
         .map_err(|e| AppError::from_err(ErrorKind::Database, e))?
         .is_some();
     if !target_exists {
@@ -89,8 +89,9 @@ pub(crate) fn set_password_sync(
             );
         }
     }
-    // Sessions first, password second: a crash between leaves re-login-with-old-password, the safe direction.
-    users::clear_sessions(&target)?;
+    // The store write bumps the user's token version: every outstanding
+    // token of that user dies with the old password, in the same
+    // transaction as the new hash.
     users::store_password(&target, &canonical_new)?;
     log::info!("auth: password set for user {target}");
     Ok(())
@@ -397,7 +398,7 @@ mod tests {
             "open-window refusal must name the bootstrap endpoint, got: {body}"
         );
         assert_eq!(
-            crate::auth::users::get_user("first").expect("get user"),
+            crate::auth::users::user_record("first").expect("get user"),
             None
         );
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);

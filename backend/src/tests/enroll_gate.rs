@@ -125,10 +125,11 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
     let created: serde_json::Value =
         serde_json::from_str(&resp.into_string().expect("body")).expect("created body");
     assert_eq!(created["admin"], true, "bootstrap must force admin:true");
-    assert_eq!(
-        crate::auth::users::get_user("root").expect("get user"),
-        Some(crate::auth::users::SessionBundle { sessions: vec![] })
-    );
+    let record = crate::auth::users::user_record("root")
+        .expect("get user")
+        .expect("the user must exist");
+    assert_eq!(record.admin, true);
+    assert!(record.hash.is_some(), "the password hash must be stored");
 
     // The store is non-empty now, so enrollment is closed again.
     assert_eq!(
@@ -216,7 +217,7 @@ fn password_put_on_empty_store_is_403_and_creates_nothing() {
     assert_eq!(resp.status(), Status::Forbidden);
 
     assert_eq!(
-        crate::auth::users::get_user("first").expect("get user"),
+        crate::auth::users::user_record("first").expect("get user"),
         None
     );
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);

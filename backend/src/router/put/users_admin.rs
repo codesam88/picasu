@@ -188,14 +188,13 @@ mod tests {
             .expect("get admin")
             .unwrap_or(false);
         assert!(!admin, "admin flag must be cleared");
-        // Session added by the cookie helper persists; the demotion itself must not clear it.
-        let record = crate::auth::users::get_user("s5-a")
+        // The demotion bumps the user's token version: the role travels in
+        // the token, so the outstanding tokens die and the new role appears
+        // at the next sign-in.
+        let record = crate::auth::users::user_record("s5-a")
             .expect("get user")
             .expect("record");
-        assert!(
-            !record.sessions.is_empty(),
-            "session from the acting cookie must survive demotion"
-        );
+        assert_eq!(record.ver, 1, "the demotion must invalidate the tokens");
     }
 
     #[test]

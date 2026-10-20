@@ -268,9 +268,12 @@ pub(crate) fn run_dummy_verify() -> bool {
 /// when either store cannot be read.
 fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)> {
     let canonical = password.trim();
+    // The user store is the userdb of record: existence, role and token
+    // version all come from there. A user provisioned offline (by the
+    // `picasu-cmd` CLI) is a first-class user.
     let record =
-        users::get_user(user_id).map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
-    let Some(_record) = record else {
+        users::user_record(user_id).map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
+    let Some(record) = record else {
         // Pay one KDF round so unknown users are not measurably faster
         // than wrong passwords (user-enumeration timing oracle).
         let _ = run_dummy_verify();
@@ -287,9 +290,10 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
             AppError::new(ErrorKind::Auth, "Invalid credentials").context("Authentication failed")
         );
     }
-    let admin = users::get_admin(user_id).ok().flatten().unwrap_or(false);
-    let claims = Claims::new_user(user_id.to_string(), admin);
-    users::add_session(user_id, &claims.jti)?;
+    let admin = record.admin;
+    // The token is the session: it carries the role and the version it was
+    // minted with. Nothing is written server-side.
+    let claims = Claims::new_user(user_id.to_string(), admin, record.ver);
     let token = claims.encode();
     let profile = UserSummary {
         user_id: user_id.to_string(),
@@ -445,9 +449,10 @@ pub async fn authenticate(
 /// Clear the session cookie.
 ///
 /// `HttpOnly` cookies cannot be removed by page JS, so logout is a server
-/// round trip. Idempotent: succeeds with or without a live session; the
-/// JWT itself stays cryptographically valid until expiry or `auth_key`
-/// rotation (server-side sessions revoke on logout and password change).
+/// round trip. Idempotent: succeeds with or without a live session. The
+/// presented token is revoked (filed in the revocation list until its
+/// expiry), so it stops working even though it stays cryptographically
+/// valid; the cookie is always cleared and the answer is always 204.
 #[utoipa::path(
         tag = "auth",
         responses(
@@ -458,16 +463,19 @@ pub async fn authenticate(
 #[post("/post/logout")]
 pub fn logout(jar: &CookieJar<'_>) -> Status {
     // Revoke only the presented session (logout is local): a missing,
-    // undecodable, or expired token simply skips removal. The cookie is
-    // always cleared and the answer is always 204.
+    // undecodable, or expired token simply skips the revocation. The cookie
+    // is always cleared and the answer is always 204.
     let presented = jar
         .get(SESSION_COOKIE_NAME)
         .map(|cookie| cookie.value().to_string())
         .and_then(|token| decode_typed::<Claims>(&token, &VALIDATION).ok());
     if let Some(claims) = presented
-        && let Role::User { id, .. } = &claims.role
+        && let Role::User { .. } = &claims.role
     {
-        let _ = users::remove_session(id, &claims.jti);
+        let _ = crate::auth::revocations::revoke(
+            &crate::auth::revocations::session_key(&claims.jti),
+            claims.exp,
+        );
     }
     jar.remove(Cookie::build(SESSION_COOKIE_NAME).path("/").build());
     Status::NoContent
@@ -1213,7 +1221,7 @@ mod tests {
         assert_eq!(resp.status(), Status::Unauthorized);
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
         assert!(
-            crate::auth::users::get_user("s3e-bob")
+            crate::auth::users::user_record("s3e-bob")
                 .expect("get")
                 .is_none()
         );
@@ -1377,11 +1385,12 @@ mod tests {
         assert_eq!(resp.status(), Status::Ok);
         let token = session_cookie_token(&resp);
         let claims = decode(&token);
-        // Session store must contain the jti.
-        let record = crate::auth::users::get_user("s3c-live")
+        // The token carries the version it was minted with; the server keeps
+        // no session list.
+        let record = crate::auth::users::user_record("s3c-live")
             .expect("get user")
             .expect("record");
-        assert!(record.sessions.iter().any(|s| s.jti == claims.jti));
+        assert_eq!(claims.ver, record.ver);
 
         let resp = client
             .get("/get/index/status")
@@ -1393,16 +1402,19 @@ mod tests {
             "live login cookie must be accepted"
         );
 
-        // Forged/unknown jti on same user must be 401.
-        let forged = crate::router::auth::Claims::new_user("s3c-live".to_string(), true).encode();
+        // A token minted with a stale version is 401: the password or the
+        // role changed, or the tokens were invalidated explicitly.
+        let stale =
+            crate::router::auth::Claims::new_user("s3c-live".to_string(), true, record.ver + 1)
+                .encode();
         let resp = client
             .get("/get/index/status")
-            .cookie(rocket::http::Cookie::new("jwt", forged))
+            .cookie(rocket::http::Cookie::new("jwt", stale))
             .dispatch();
         assert_eq!(
             resp.status(),
             Status::Unauthorized,
-            "forged jti must be 401"
+            "a token with a stale version must be 401"
         );
 
         // Legacy-shaped payload without jti must fail decode.

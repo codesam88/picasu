@@ -46,12 +46,22 @@ pub struct Claims {
     #[serde(rename = "typ")]
     pub typ: TokenType,
     pub jti: String,
+    /// Token version of the user this token was minted for. The guard
+    /// rejects a token whose version is not the user's current one: a
+    /// password change, a role change or an explicit invalidation bumps the
+    /// version and kills every outstanding token.
+    ///
+    /// Defaults to zero, so a token minted before the version existed still
+    /// matches a record that never changed.
+    #[serde(default)]
+    pub ver: u64,
 }
 
 impl Claims {
-    /// Mint an identity token for `id` with the given admin flag.
+    /// Mint an identity token for `id` with the given admin flag and token
+    /// version.
     #[must_use]
-    pub fn new_user(id: String, admin: bool) -> Self {
+    pub fn new_user(id: String, admin: bool, ver: u64) -> Self {
         #[allow(clippy::cast_sign_loss)]
         let exp = (Utc::now().timestamp_millis() / 1000) as u64 + 14 * 86_400; // 14 days
 
@@ -60,6 +70,7 @@ impl Claims {
             exp,
             typ: TokenType::Admin,
             jti: Uuid::new_v4().to_string(),
+            ver,
         }
     }
 
@@ -72,6 +83,7 @@ impl Claims {
             exp,
             typ: TokenType::Admin,
             jti: Uuid::new_v4().to_string(),
+            ver: 0,
         }
     }
     pub fn is_admin(&self) -> bool {
@@ -256,7 +268,7 @@ mod tests {
     fn claims_new_user_round_trip_preserves_identity() {
         use super::{Claims, decode_typed};
         let _ = &*crate::tests::bootstrap::TEST_ENV;
-        let claims = Claims::new_user("alice".to_string(), true);
+        let claims = Claims::new_user("alice".to_string(), true, 0);
         let token = claims.encode();
         let decoded: Claims = decode_typed(&token, &VALIDATION).expect("decode round-trip");
         assert!(decoded.is_admin());
@@ -268,7 +280,7 @@ mod tests {
             }
             super::Role::Share(_) => panic!("expected user role"),
         }
-        let non_admin = Claims::new_user("bob".to_string(), false);
+        let non_admin = Claims::new_user("bob".to_string(), false, 0);
         assert!(!non_admin.is_admin());
         let token = non_admin.encode();
         let decoded: Claims = decode_typed(&token, &VALIDATION).expect("decode round-trip");
@@ -387,8 +399,7 @@ mod tests {
         let _g = s3b_lock();
         let client = s3b_client();
         crate::auth::users::create_user("s3b-admin-user", true).expect("create user");
-        let claims = super::Claims::new_user("s3b-admin-user".to_string(), true);
-        crate::auth::users::add_session("s3b-admin-user", &claims.jti).expect("add session");
+        let claims = super::Claims::new_user("s3b-admin-user".to_string(), true, 0);
         let token = claims.encode();
         let resp = client
             .get("/get/index/status")
@@ -403,8 +414,7 @@ mod tests {
         let client = s3b_client();
         crate::auth::users::create_user("s3b-demoted-user", true).expect("create user");
         crate::auth::users::create_user("s3b-other-admin", true).expect("create other admin");
-        let claims = super::Claims::new_user("s3b-demoted-user".to_string(), true);
-        crate::auth::users::add_session("s3b-demoted-user", &claims.jti).expect("add session");
+        let claims = super::Claims::new_user("s3b-demoted-user".to_string(), true, 0);
         let token = claims.encode();
         crate::auth::users::set_admin("s3b-demoted-user", false).expect("demote user");
         let resp = client
@@ -420,14 +430,14 @@ mod tests {
         let client = s3b_client();
         crate::auth::users::create_user("s3b-other-user", false).expect("create user");
         // Unknown user: store is non-empty but the id has no record.
-        let ghost = super::Claims::new_user("s3b-ghost-user".to_string(), true).encode();
+        let ghost = super::Claims::new_user("s3b-ghost-user".to_string(), true, 0).encode();
         let resp = client
             .get("/get/index/status")
             .cookie(rocket::http::Cookie::new("jwt", ghost))
             .dispatch();
         assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
         // Non-admin user with a non-admin token.
-        let plain = super::Claims::new_user("s3b-other-user".to_string(), false).encode();
+        let plain = super::Claims::new_user("s3b-other-user".to_string(), false, 0).encode();
         let resp = client
             .get("/get/index/status")
             .cookie(rocket::http::Cookie::new("jwt", plain))
@@ -477,12 +487,14 @@ mod tests {
     }
 
     #[test]
-    fn forged_jti_rejected() {
+    fn token_with_a_stale_version_rejected() {
         let _g = s3b_lock();
         let client = s3b_client();
-        // Store non-empty: forged jti (minted but never stored) must be 401.
+        // The token version is the user's current one plus one: a password
+        // change, a role change or an explicit invalidation bumped it, so
+        // the token is stale and must be refused.
         crate::auth::users::create_user("s3b-jti-user", true).expect("create user");
-        let token = super::Claims::new_user("s3b-jti-user".to_string(), true).encode();
+        let token = super::Claims::new_user("s3b-jti-user".to_string(), true, 1).encode();
         let resp = client
             .get("/get/index/status")
             .cookie(rocket::http::Cookie::new("jwt", token))
@@ -490,8 +502,27 @@ mod tests {
         assert_eq!(
             resp.status(),
             rocket::http::Status::Unauthorized,
-            "forged/unknown jti must be 401"
+            "a token with a stale version must be 401"
         );
+    }
+
+    #[test]
+    fn token_with_the_current_version_accepted() {
+        let _g = s3b_lock();
+        let client = s3b_client();
+        // The server keeps no session list: a token is accepted because it
+        // carries the current version, not because the server remembers it.
+        crate::auth::users::create_user("s3b-ver-user", true).expect("create user");
+        let ver = crate::auth::users::user_record("s3b-ver-user")
+            .expect("get")
+            .expect("the user must exist")
+            .ver;
+        let token = super::Claims::new_user("s3b-ver-user".to_string(), true, ver).encode();
+        let resp = client
+            .get("/get/index/status")
+            .cookie(rocket::http::Cookie::new("jwt", token))
+            .dispatch();
+        assert_eq!(resp.status(), rocket::http::Status::Ok);
     }
 }
 
@@ -597,9 +628,9 @@ pub(crate) fn not_enrolled_error() -> anyhow::Error {
 /// via `POST /post/users/bootstrap`, so every guarded route refuses with
 /// [`not_enrolled_error`] (the message alone branches on the window state).
 /// On a non-empty store the token must carry [`Role::User`] with
-/// `admin: true`, and the user record is re-read from
-/// the database on every call so demotion or removal takes effect before
-/// the token expires.
+/// `admin: true`, and the identity record is re-read from the user store on
+/// every call, so a demotion, a removal or an invalidated token takes
+/// effect before the token expires.
 pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
     let store_non_empty =
         !crate::auth::user_store::is_empty(&crate::auth::users::user_store_path());
@@ -620,9 +651,14 @@ pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result
             .ok()
             .flatten()
             .unwrap_or(false);
-        match crate::auth::users::get_user(id)? {
+        match crate::auth::users::user_record(id)? {
             Some(record) if passwd_admin => {
-                if !record.sessions.iter().any(|s| s.jti == claims.jti) {
+                if record.ver != claims.ver {
+                    return Err(anyhow!("User is not an admin"));
+                }
+                if crate::auth::revocations::is_revoked(&crate::auth::revocations::session_key(
+                    &claims.jti,
+                )) {
                     return Err(anyhow!("User is not an admin"));
                 }
                 return Ok(claims);
@@ -912,31 +948,37 @@ impl<'r> FromRequest<'r> for GuardUser {
             Role::User { id, .. } => id.clone(),
             Role::Share(_) => return denied("Share token not accepted"),
         };
-        match crate::auth::users::get_user(&id) {
-            Ok(Some(record)) => {
-                if !record.sessions.iter().any(|s| s.jti == claims.jti) {
-                    return denied("Unknown user");
-                }
-                // Refresh the token-embedded admin flag from the passwd store
-                // (promotion requires re-login, demotion takes effect here),
-                // but keep the presented `jti`/`exp`: minting fresh claims
-                // would manufacture a live-looking session id that was never
-                // stored.
-                let mut claims = claims;
-                if let Role::User { admin, .. } = &mut claims.role {
-                    *admin = crate::auth::users::get_admin(&id)
-                        .ok()
-                        .flatten()
-                        .unwrap_or(false);
-                }
-                Outcome::Success(GuardUser { claims })
+        // Identity lives in the user store; the token carries the version it
+        // was minted with. A token whose version is stale was invalidated by
+        // a password change, a role change or an explicit invalidation.
+        let record = match crate::auth::users::user_record(&id) {
+            Ok(Some(record)) => record,
+            Ok(None) => return denied("Unknown user"),
+            Err(err) => {
+                return Outcome::Error((
+                    Status::InternalServerError,
+                    AppError::from_err(ErrorKind::Database, err),
+                ));
             }
-            Ok(None) => denied("Unknown user"),
-            Err(err) => Outcome::Error((
-                Status::InternalServerError,
-                AppError::from_err(ErrorKind::Database, err),
-            )),
+        };
+        if record.ver != claims.ver {
+            return denied("Invalid token version");
         }
+        // A revoked session (this device logged out) is dead even though its
+        // token still verifies.
+        if crate::auth::revocations::is_revoked(&crate::auth::revocations::session_key(&claims.jti))
+        {
+            return denied("Session revoked");
+        }
+        // The admin flag comes from the record, not the token: a demotion
+        // takes effect at once. A promotion bumps the version, so the old
+        // token is already dead and the new role appears at the next
+        // sign-in.
+        let mut claims = claims;
+        if let Role::User { admin, .. } = &mut claims.role {
+            *admin = record.admin;
+        }
+        Outcome::Success(GuardUser { claims })
     }
 }
 

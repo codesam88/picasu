@@ -15,9 +15,18 @@ picasu-cmd [--userdb <PATH>] user list|add|mod|del|passwd [<USER>]
 ## The user store
 
 The userdb of record is one file: `<data home>/auth/users.redb`. It holds
-`username ⇒ {hash?, admin, home}` — one table, one redb write transaction
-per change, so every mutation is atomic and serial. Sessions live
-elsewhere (the rebuildable gallery index); `user del` purges them.
+`username ⇒ {hash?, admin, home, ver}` — one table, one redb write
+transaction per change, so every mutation is atomic and serial.
+
+`ver` is the user's token version. Every sign-in token carries the version
+it was minted with, and the server refuses a token whose version is stale —
+so bumping `ver` kills every outstanding token of that user. The CLI bumps
+it whenever it changes something that must invalidate them: a password
+change, a role change, or `user invalidate` on its own.
+
+The server keeps no session list, so the CLI has nothing to purge: deleting
+the identity record is enough — a token for a user that no longer exists is
+refused by the server.
 
 Hashes are never exported. `user list` prints whether a password is set, not
 the password.
@@ -80,22 +89,19 @@ The store file can also be named directly, without touching the data home:
 picasu-cmd --userdb /var/lib/picasu/auth/users.redb user list
 ```
 
-`--userdb` points at the _file_. The data home stays unknown in that case,
-which matters for `user del`: the sessions live in the index database next
-to the data home, so without one the CLI deletes the account and reports
-that the sessions were not purged. Those sessions cannot authenticate any
-more (the passwd entry is gone), so the state is harmless — but a purging
-delete is cleaner.
+`--userdb` points at the _file_. Nothing else is needed: the identity
+record is the only file the CLI touches.
 
 ## Commands
 
-| Command            | Effect                                                                  |
-| ------------------ | ----------------------------------------------------------------------- |
-| `user list [USER]` | Table of all users, or one entry. Hashes stay hidden.                   |
-| `user add USER`    | Creates a user. `--admin`, `--home`, `--password`.                      |
-| `user mod USER`    | Changes attributes: `--home`, `--admin`, `--no-admin`.                  |
-| `user del USER`    | Deletes the user and purges its sessions. `--force` for the last admin. |
-| `user passwd USER` | Re-keys the password, keeping `admin` and `home`.                       |
+| Command                | Effect                                                                                         |
+| ---------------------- | ---------------------------------------------------------------------------------------------- |
+| `user list [USER]`     | Table of all users, or one entry. Hashes stay hidden.                                          |
+| `user add USER`        | Creates a user. `--admin`, `--home`, `--password`.                                             |
+| `user mod USER`        | Changes attributes: `--home`, `--admin`, `--no-admin`.                                         |
+| `user del USER`        | Deletes the user. `--force` for the last admin.                                                |
+| `user passwd USER`     | Re-keys the password, keeping `admin` and `home`. The user's tokens die with the old password. |
+| `user invalidate USER` | Kills every outstanding token of the user, changing nothing else.                              |
 
 `add` and `passwd` prompt for the password twice with no echo when
 `--password` is absent; `--password` exists for scripts and tests.

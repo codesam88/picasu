@@ -54,8 +54,8 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
             .expect("create ASSET_BY_ID");
         txn.open_table(crate::storage::db::DUPE_INDEX)
             .expect("create DUPE_INDEX");
-        txn.open_table(crate::storage::db::SESSIONS)
-            .expect("create SESSIONS");
+        txn.open_table(crate::storage::db::REVOCATIONS)
+            .expect("create REVOCATIONS");
         txn.commit().expect("commit");
     }
 
@@ -183,8 +183,8 @@ pub fn reset_backend_state() {
         crate::storage::db::ASSET_BY_PATH,
         crate::storage::db::ASSET_BY_ID,
         crate::storage::db::DUPE_INDEX,
-        crate::storage::db::SESSIONS,
         crate::storage::db::INVITES,
+        crate::storage::db::REVOCATIONS,
     ] {
         let mut table = txn
             .open_table(table_def)
@@ -320,11 +320,15 @@ pub fn setup_image_home() -> Client {
 }
 
 /// Mint a `jwt` cookie for an existing user id without hashing (signs
-/// locally). The session write is best-effort: a failed write surfaces as
-/// a guard rejection on the request instead of here.
+/// locally). The token carries the user's current token version, so the
+/// guard accepts it exactly like a freshly minted one.
 pub fn cookie(id: &str, admin: bool) -> rocket::http::Cookie<'static> {
-    let claims = crate::router::auth::Claims::new_user(id.to_string(), admin);
-    let _ = crate::auth::users::add_session(id, &claims.jti);
+    let ver = crate::auth::users::user_record(id)
+        .ok()
+        .flatten()
+        .map(|record| record.ver)
+        .unwrap_or_default();
+    let claims = crate::router::auth::Claims::new_user(id.to_string(), admin, ver);
     rocket::http::Cookie::new("jwt", claims.encode())
 }
 
@@ -453,7 +457,7 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(
-            crate::auth::users::get_user("s2b-reset-user").expect("get user after reset"),
+            crate::auth::users::user_record("s2b-reset-user").expect("get user after reset"),
             None
         );
         assert!(

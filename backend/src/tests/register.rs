@@ -71,10 +71,11 @@ fn open_registration_creates_non_admin_user() {
     assert_eq!(created["admin"], false, "register is always non-admin");
 
     // The record exists as non-admin, and the password verifies.
-    assert_eq!(
-        crate::auth::users::get_user("s6-open").expect("get user"),
-        Some(crate::auth::users::SessionBundle { sessions: vec![] })
-    );
+    let record = crate::auth::users::user_record("s6-open")
+        .expect("get user")
+        .expect("the user must exist");
+    assert_eq!(record.admin, false);
+    assert!(record.hash.is_some(), "the password hash must be stored");
     let resp = client
         .post("/post/users/authenticate")
         .header(ContentType::JSON)
@@ -114,10 +115,11 @@ fn invite_registration_works_with_knob_off() {
         &json!({ "userId": "s6-invited", "password": pw, "invite": token }),
     );
     assert_eq!(status, Status::Ok, "body: {body:?}");
-    assert_eq!(
-        crate::auth::users::get_user("s6-invited").expect("get user"),
-        Some(crate::auth::users::SessionBundle { sessions: vec![] })
-    );
+    let record = crate::auth::users::user_record("s6-invited")
+        .expect("get user")
+        .expect("the user must exist");
+    assert_eq!(record.admin, false);
+    assert!(record.hash.is_some(), "the password hash must be stored");
     let listed = crate::auth::invites::list_invites().expect("list");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].used_by.as_deref(), Some("s6-invited"));
@@ -197,7 +199,7 @@ fn register_on_empty_store_is_401_even_with_valid_invite() {
     assert_eq!(status, Status::Unauthorized, "body: {body:?}");
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
     assert!(
-        crate::auth::users::get_user("s6-r4-invited")
+        crate::auth::users::user_record("s6-r4-invited")
             .expect("get")
             .is_none(),
         "refused registration must create nobody"
@@ -263,7 +265,7 @@ fn double_use_invite_is_409() {
     // Seed + first user; the second registration created nobody.
     assert_eq!(crate::auth::users::user_count().expect("count"), 2);
     assert!(
-        crate::auth::users::get_user("s6-second")
+        crate::auth::users::user_record("s6-second")
             .expect("get")
             .is_none()
     );
@@ -381,10 +383,10 @@ fn duplicate_id_is_409() {
     assert_eq!(status, Status::Conflict, "trimmed id must collide");
     assert_eq!(crate::auth::users::user_count().expect("count"), 2);
     // The original record is untouched.
-    assert_eq!(
-        crate::auth::users::get_user("s6-dup").expect("get"),
-        Some(crate::auth::users::SessionBundle { sessions: vec![] })
-    );
+    let record = crate::auth::users::user_record("s6-dup")
+        .expect("get")
+        .expect("the user must exist");
+    assert!(record.hash.is_some(), "the password hash must survive");
 }
 
 // ── Row: short-password ────────────────────────────────────────────────────
@@ -452,10 +454,11 @@ fn admin_session_creates_without_invite() {
     let created: Value = serde_json::from_str(&resp.into_string().expect("body")).expect("summary");
     assert_eq!(created["userId"], "s6-by-admin");
     assert_eq!(created["admin"], false, "register is always non-admin");
-    assert_eq!(
-        crate::auth::users::get_user("s6-by-admin").expect("get user"),
-        Some(crate::auth::users::SessionBundle { sessions: vec![] })
-    );
+    let record = crate::auth::users::user_record("s6-by-admin")
+        .expect("get user")
+        .expect("the user must exist");
+    assert_eq!(record.admin, false);
+    assert!(record.hash.is_some(), "the password hash must be stored");
 }
 
 /// A non-admin session is anonymous for gating: without the knob or an
@@ -480,7 +483,7 @@ fn non_admin_session_without_invite_when_disabled_is_403() {
     };
     assert_eq!(status, Status::Forbidden);
     assert!(
-        crate::auth::users::get_user("s6-bob-friend")
+        crate::auth::users::user_record("s6-bob-friend")
             .expect("get")
             .is_none()
     );

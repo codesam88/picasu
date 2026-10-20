@@ -2,6 +2,7 @@ pub mod invites;
 pub mod login_throttle;
 pub mod password;
 pub mod rate_limit;
+pub mod revocations;
 pub mod secret_key;
 pub mod store_location;
 pub mod user_store;

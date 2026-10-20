@@ -31,7 +31,7 @@ pub fn test_password_padded(tag: &str) -> String {
 /// locally. Tests that exercise enrollment or login itself must not use
 /// this helper.
 pub fn auth_cookie(_client: &Client) -> Cookie<'static> {
-    if crate::auth::users::get_user("admin")
+    if crate::auth::users::user_record("admin")
         .expect("read admin record")
         .is_none()
     {

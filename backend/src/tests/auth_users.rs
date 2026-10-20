@@ -57,10 +57,11 @@ fn bootstrap_window_refuses_login_and_first_user_forced_admin() {
     assert_eq!(resp.status(), Status::Ok);
     let created: Value = resp.into_json().expect("created user json");
     assert_eq!(created["admin"], true, "first user must be forced admin");
-    assert_eq!(
-        crate::auth::users::get_user("root").expect("get root"),
-        Some(crate::auth::users::SessionBundle { sessions: vec![] })
-    );
+    let record = crate::auth::users::user_record("root")
+        .expect("get user")
+        .expect("the user must exist");
+    assert_eq!(record.admin, true);
+    assert!(record.hash.is_some(), "the password hash must be stored");
 
     // Companion: bootstrap is one-shot — unauthenticated bootstrap now 401.
     let resp = client
@@ -318,3 +319,50 @@ fn password_change_and_demotion_take_effect() {
 // by `router::post::users_authenticate::{bare_string_body_is_422_*}`). No migration
 // registers users; enrollment is `POST /post/users/bootstrap` (open window)
 // or the `picasu-cmd` CLI.
+
+// ── Row 6: an offline-provisioned user ───────────────────────────────────
+
+/// A user provisioned through the user store alone — the `picasu-cmd` CLI's
+/// path — logs in and shows up in the admin listing. The store is the userdb
+/// of record; the server keeps no second copy of the identity, so a user
+/// that exists there is a user.
+#[test]
+fn offline_provisioned_user_can_log_in() {
+    let _g = lock();
+    let client = setup_image_home();
+    // Provision exactly like the CLI does: the identity record only.
+    crate::auth::user_store::provision(
+        &crate::auth::users::user_store_path(),
+        "matrix-offline",
+        &test_password("t-offline-pw"),
+        true,
+        None,
+    )
+    .expect("provision offline");
+
+    let (status, profile, _token) =
+        login(&client, "matrix-offline", &test_password("t-offline-pw"));
+    assert_eq!(
+        status,
+        Status::Ok,
+        "an offline-provisioned user must be able to log in"
+    );
+    let profile = profile.expect("offline profile");
+    assert_eq!(profile["userId"], "matrix-offline");
+    assert_eq!(profile["admin"], true);
+
+    // The admin listing reads the same store, so the user is in it.
+    let resp = client
+        .get("/get/users")
+        .cookie(cookie("matrix-offline", true))
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok);
+    let body: Value = resp.into_json().expect("user list");
+    assert!(
+        body.as_array()
+            .expect("array")
+            .iter()
+            .any(|user| user["userId"] == "matrix-offline"),
+        "the offline-provisioned user must be listed"
+    );
+}

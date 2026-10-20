@@ -4,6 +4,26 @@ use serde_json::json;
 use crate::tests::bootstrap::{lock, login, seed, setup};
 use crate::tests::fixtures::test_password;
 
+/// Ask a GuardUser route about a token. The body names another user, so a
+/// live non-admin token reaches the handler and is refused with 403 (it may
+/// not change another user's password), while a dead token is rejected by
+/// the guard with 401. Nothing is written either way.
+fn probe(client: &rocket::local::blocking::Client, token: &str) -> Status {
+    client
+        .put("/put/users/password")
+        .cookie(Cookie::new("jwt", token.to_string()))
+        .header(ContentType::JSON)
+        .body(
+            json!({
+                "userId": "r6-somebody-else",
+                "newPassword": test_password("t-probe"),
+            })
+            .to_string(),
+        )
+        .dispatch()
+        .status()
+}
+
 #[test]
 fn logout_kills_only_its_session() {
     let _g = lock();
@@ -108,34 +128,18 @@ fn password_change_wipes_all_sessions() {
         .body(json!({"userId":"r6-carol","oldPassword": test_password("t-carol-old"), "newPassword": test_password("t-carol-new")}).to_string())
         .dispatch();
     assert_eq!(resp.status(), Status::Ok);
-    // Both old cookies 401 on a GuardUser route
-    assert_eq!(
-        client
-            .get("/get/sessions")
-            .cookie(Cookie::new("jwt", tok_a))
-            .dispatch()
-            .status(),
-        Status::Unauthorized
-    );
-    assert_eq!(
-        client
-            .get("/get/sessions")
-            .cookie(Cookie::new("jwt", tok_b))
-            .dispatch()
-            .status(),
-        Status::Unauthorized
-    );
-    // Re-login with new password works (use sessions inventory as GuardUser check, since /get/index/status is admin-only)
+    // Both old cookies are refused: the password change bumped the user's
+    // token version, so the tokens they carry are stale.
+    assert_eq!(probe(&client, &tok_a), Status::Unauthorized);
+    assert_eq!(probe(&client, &tok_b), Status::Unauthorized);
+    // Re-login with the new password works.
     let (status, _, tok_new) = login(&client, "r6-carol", &test_password("t-carol-new"));
     assert_eq!(status, Status::Ok);
     let tok_new = tok_new.expect("Set-Cookie");
-    assert_eq!(
-        client
-            .get("/get/sessions")
-            .cookie(Cookie::new("jwt", tok_new))
-            .dispatch()
-            .status(),
-        Status::Ok
+    assert_ne!(
+        probe(&client, &tok_new),
+        Status::Unauthorized,
+        "the fresh token must be accepted"
     );
 }
 
@@ -163,12 +167,9 @@ fn admin_reset_wipes_target_sessions() {
         .dispatch();
     assert_eq!(resp.status(), Status::Ok);
     assert_eq!(
-        client
-            .get("/get/sessions")
-            .cookie(Cookie::new("jwt", tok_dave))
-            .dispatch()
-            .status(),
-        Status::Unauthorized
+        probe(&client, &tok_dave),
+        Status::Unauthorized,
+        "the target's tokens must die with the reset"
     );
     // admin still valid
     assert_eq!(
@@ -179,61 +180,4 @@ fn admin_reset_wipes_target_sessions() {
             .status(),
         Status::Ok
     );
-}
-
-#[test]
-fn inventory_lists_live_sessions() {
-    let _g = lock();
-    let client = setup();
-    seed("r6-eve", true, Some(test_password("t-eve").as_str()));
-    let (status, _, tok_a) = login(&client, "r6-eve", &test_password("t-eve"));
-    assert_eq!(status, Status::Ok);
-    let tok_a = tok_a.expect("Set-Cookie");
-    let (status, _, tok_b) = login(&client, "r6-eve", &test_password("t-eve"));
-    assert_eq!(status, Status::Ok);
-    let tok_b = tok_b.expect("Set-Cookie");
-    let val = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::HS256);
-    let jti_a = crate::router::auth::decode_typed::<crate::router::auth::Claims>(&tok_a, &val)
-        .unwrap()
-        .jti;
-    let jti_b = crate::router::auth::decode_typed::<crate::router::auth::Claims>(&tok_b, &val)
-        .unwrap()
-        .jti;
-    // Inventory should have 2
-    let resp = client
-        .get("/get/sessions")
-        .cookie(Cookie::new("jwt", tok_b.clone()))
-        .dispatch();
-    if resp.status() == Status::NotFound {
-        panic!("GET /get/sessions not found — inventory not implemented");
-    }
-    assert_eq!(resp.status(), Status::Ok);
-    let body = resp.into_string().expect("body");
-    let listed: Vec<crate::auth::users::SessionRecord> = serde_json::from_str(&body).expect("json");
-    assert_eq!(listed.len(), 2);
-    // logout A
-    let resp = client
-        .post("/post/logout")
-        .cookie(Cookie::new("jwt", tok_a))
-        .dispatch();
-    assert_eq!(resp.status(), Status::NoContent);
-    let resp = client
-        .get("/get/sessions")
-        .cookie(Cookie::new("jwt", tok_b.clone()))
-        .dispatch();
-    assert_eq!(resp.status(), Status::Ok);
-    let body = resp.into_string().expect("body");
-    let listed: Vec<crate::auth::users::SessionRecord> = serde_json::from_str(&body).expect("json");
-    assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0].jti, jti_b);
-    assert_ne!(listed[0].jti, jti_a, "logged-out session must be gone");
-}
-
-#[test]
-fn unauthenticated_inventory_is_401() {
-    let _g = lock();
-    let client = setup();
-    seed("r6-frank", true, Some(test_password("t-frank").as_str()));
-    let resp = client.get("/get/sessions").dispatch();
-    assert_eq!(resp.status(), Status::Unauthorized);
 }

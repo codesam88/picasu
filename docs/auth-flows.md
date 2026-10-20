@@ -67,11 +67,11 @@ password}` → 200; the account is always `admin: false` (the body has
   HttpOnly `Set-Cookie` the page never sees (R5). Unknown user and
   wrong password both answer 401 with no distinguishing detail, and the
   unknown-user path still costs one KDF round (no timing oracle).
-- Logout is `POST /post/logout` → 204: it removes the presented `jti`
-  from the caller's live sessions and clears the cookie server-side
-  (idempotent); the client also drops its session profile and capability
-  tokens. Only the presented device is logged out — other sessions
-  survive, and they remain listed under `GET /get/sessions` until expiry.
+- Logout is `POST /post/logout` → 204: it revokes the presented `jti`
+  (the token stops working until its expiry) and clears the cookie
+  server-side (idempotent); the client also drops its session profile and
+  capability tokens. Only the presented device is logged out — other
+  sessions survive.
 
 ### J5 — Password change
 
@@ -79,9 +79,9 @@ password}` → 200; the account is always `admin: false` (the body has
   (`PUT /put/users/password {userId: self, oldPassword, newPassword}`).
 - Admin reset: an admin sets any user's password without the old one.
 - Passwords are trimmed on write and on verify (one canonical form).
-- Outstanding sessions die with the change: every `jti` of the target is
-  wiped before the new hash is written, so all devices re-login with the
-  new password.
+- Outstanding sessions die with the change: the new hash and the user's
+  token version are written in one transaction, so every token the target
+  holds is stale and all devices re-login with the new password.
 - Empty new password → 400. There is no "clear to open": the bootstrap
   window is store-empty only.
 

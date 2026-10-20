@@ -1247,23 +1247,6 @@
         ],
         "type": "object"
       },
-      "SessionRecord": {
-        "properties": {
-          "issued_at": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "jti": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "jti",
-          "issued_at"
-        ],
-        "type": "object"
-      },
       "SetAlbumCover": {
         "description": "Payload for updating a specific album's cover image.",
         "properties": {
@@ -2172,40 +2155,6 @@
         ]
       }
     },
-    "/get/sessions": {
-      "get": {
-        "description": "Returns the live `SessionRecord` array (`jti` + `issuedAt`) for the\nauthenticated user only. Any authenticated user may call it; it never\nreturns another user's sessions.\n\nErrors: 401 missing or invalid credentials — 403 closed install (no\nadministrator enrolled) — 500 storage failure.",
-        "operationId": "list_sessions_handler",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/SessionRecord"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "Live sessions"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden"
-          },
-          "500": {
-            "description": "Internal error"
-          }
-        },
-        "summary": "List the caller's live sessions.",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/get/users": {
       "get": {
         "description": "Password hashes are never exported. Admin-only: a non-admin or missing\ncredential is denied at dispatch with 401.\n\nErrors: 401 missing or invalid admin credentials; share tokens are not\naccepted — 500 storage failure.",
@@ -2600,7 +2549,7 @@
     },
     "/post/logout": {
       "post": {
-        "description": "`HttpOnly` cookies cannot be removed by page JS, so logout is a server\nround trip. Idempotent: succeeds with or without a live session; the\nJWT itself stays cryptographically valid until expiry or `auth_key`\nrotation (server-side sessions revoke on logout and password change).",
+        "description": "`HttpOnly` cookies cannot be removed by page JS, so logout is a server\nround trip. Idempotent: succeeds with or without a live session. The\npresented token is revoked (filed in the revocation list until its\nexpiry), so it stops working even though it stays cryptographically\nvalid; the cookie is always cleared and the answer is always 204.",
         "operationId": "logout",
         "responses": {
           "204": {

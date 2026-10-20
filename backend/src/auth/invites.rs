@@ -17,7 +17,7 @@ use subtle::ConstantTimeEq;
 
 use crate::auth::users::REGISTRATION_CONFLICT_MESSAGE;
 use crate::error::{AppError, ErrorKind};
-use crate::storage::db::{INVITES, SESSIONS, TREE};
+use crate::storage::db::{INVITES, TREE};
 
 /// Default token lifetime when the creation request names none: 7 days.
 pub const DEFAULT_EXPIRY_HOURS: i64 = 7 * 24;
@@ -346,12 +346,10 @@ pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), 
                 "invite has expired",
             ));
         }
-        let mut users = txn
-            .open_table(SESSIONS)
-            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        if users
-            .get(id.as_str())
-            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
+        // The identity record is the userdb of record; the check here is an
+        // early exit — the store write below re-checks it inside its own
+        // transaction.
+        if crate::auth::user_store::read(&crate::auth::users::user_store_path(), id.as_str())
             .is_some()
         {
             return Err(AppError::new(
@@ -364,12 +362,6 @@ pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), 
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
         invites
             .insert(candidate.as_str(), json.as_str())
-            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        let user_json =
-            serde_json::to_string(&crate::auth::users::SessionBundle { sessions: vec![] })
-                .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        users
-            .insert(id.as_str(), user_json.as_str())
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
     }
     txn.commit()
@@ -395,6 +387,7 @@ pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), 
                 hash: Some(hash),
                 admin: false,
                 home: None,
+                ver: 0,
             },
         );
         Ok(())
@@ -472,10 +465,12 @@ mod tests {
 
         let (token, _) = super::create_invite("s6-root").expect("create");
         super::redeem_invite("s6-reg", &token, "long-enough-pw1").expect("redeem");
-        assert_eq!(
-            crate::auth::users::get_user("s6-reg").expect("get user"),
-            Some(crate::auth::users::SessionBundle { sessions: vec![] })
-        );
+        let record = crate::auth::users::user_record("s6-reg")
+            .expect("get user")
+            .expect("the user must exist");
+        assert!(record.hash.is_some(), "the password hash must be stored");
+        assert!(!record.admin, "a redeemed invite never grants admin");
+        assert_eq!(record.ver, 0);
         let used = super::get_invite(&super::hash_token(&token))
             .expect("get invite")
             .expect("invite exists");
@@ -532,6 +527,7 @@ mod tests {
                     hash: None,
                     admin: false,
                     home: None,
+                    ver: 0,
                 },
             );
             Ok(())
