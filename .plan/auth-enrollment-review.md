@@ -20,40 +20,21 @@ auth/token architecture, or module boundaries; MED changes data flow or
 multi-file behavior; LOW is narrow lines, tests, or docs. Risk: chance
 the fix causes behavior change or coverage loss.
 
-## Priority order (high architecture/code impact first)
+## Priority order (live items; refreshed 2026-10-20)
 
-Ordered by severity, then HIGH impact first, discounted by HIGH fix risk.
-This is the suggested tackle order, not a commitment to fix all items.
+The original 2026-10-15 table listed every finding and is preserved in
+git history. Below is the live set — everything else is fixed, struck,
+or discharged (per-verdict annotations in the verdict lines; fixed
+R1–R9, R12, R15–R26; discharged to owning plans: R10, R22, R25, R30,
+R31; struck as churn/no benefit: R29, R34, R35; R11+R32 closed
+`f677f67f1`).
 
-| Order | ID  | Verdict    | Sev | Impact | Risk | Title                                                                    |
-| ----- | --- | ---------- | --- | ------ | ---- | ------------------------------------------------------------------------ |
-| 1     | R23 | CONFIRMED  | S1  | HIGH   | MED  | Auth state triplication + probe overload (root of R1)                    |
-| 2     | R5  | CONFIRMED  | S1  | HIGH   | MED  | Session cookie not HttpOnly (client-set)                                 |
-| 3     | R6  | CONFIRMED  | S2  | HIGH   | HIGH | No server-side session revocation                                        |
-| 4     | R26 | PARTIAL    | S2  | HIGH   | MED  | Frontend auth layer fragmentation                                        |
-| 5     | R3  | CONFIRMED  | S1  | MED    | MED  | Bootstrap race (check-then-act, no lock)                                 |
-| 6     | R4  | CONFIRMED  | S1  | MED    | LOW  | Open registration squats first-user slot                                 |
-| 7     | R1  | CONFIRMED  | S0  | LOW    | LOW  | Stale probe bounces post-login to /login                                 |
-| 8     | R2  | CONFIRMED* | S0  | LOW    | LOW  | Backend tests don't compile (api_config; _api_watcher is runtime-only_)  |
-| 9     | R7  | CONFIRMED  | S2  | MED    | MED  | No brute-force throttling                                                |
-| 11    | R24 | CONFIRMED  | S2  | MED    | LOW  | 401 interceptor double-toast + throttle-drop                             |
-| 12    | R27 | PARTIAL    | S2  | MED    | LOW  | 422 catcher detail loss; /unauthorized doc false; bare-guard detail loss |
-| 13    | R12 | CONFIRMED  | S2  | MED    | LOW  | Runtime bootstrap_admin flip → next-boot refusal                         |
-| 14    | R13 | CONFIRMED  | S2  | MED    | LOW  | GET /get/config via GuardShare discloses paths                           |
-| 15    | R8  | CONFIRMED  | S2  | LOW    | LOW  | GuardHashOriginal Forward masks denial as 200                            |
-| 16    | R9  | CONFIRMED  | S2  | LOW    | LOW  | PUT bodies lack deny_unknown_fields                                      |
-| 17    | R14 | CONFIRMED  | S2  | LOW    | LOW  | Unreachable register 401 + ?token= + phantom CLI refs                    |
-| 18    | R16 | CONFIRMED  | S2  | LOW    | LOW  | auth-flows/auth/config docs describe deleted world                       |
-| 19    | R19 | CONFIRMED  | S2  | LOW    | LOW  | rocket-guards brief points at deleted files/symbols                      |
-| 20    | R21 | CONFIRMED  | S2  | LOW    | LOW  | Plan notes contradict code (3 items)                                     |
-| 24    | R28 | CONFIRMED  | S3  | MED    | MED  | Config knob asymmetry (residual: typed helper, verb alias, status)       |
-| 26    | R15 | CONFIRMED  | S2  | LOW    | LOW  | HTTP-by-default exposes 14-day JWT (deploy note)                         |
-| 27    | R11 | REOPENED   | S3  | LOW    | LOW  | 409 enumeration (re-opened 2026-10-19, no longer accepted risk)          |
-| 28    | R18 | CONFIRMED  | S3  | LOW    | LOW  | Playwright/scenario docs use deleted config.password                     |
-| 29    | R17 | CONFIRMED  | S3  | LOW    | LOW  | openapi-reference stale (regen not rerun)                                |
-| 30    | R20 | CONFIRMED  | S3  | LOW    | LOW  | frontend.md / test-strategy.md staleness                                 |
-| 32    | R32 | CONFIRMED  | S3  | LOW    | LOW  | Provision helper reuse (~−14…−18, ride-along with R11)                   |
-| 33    | R33 | CONFIRMED  | S3  | LOW    | LOW  | Shared test-harness helpers (~−180…−220, highest RoI)                    |
+| Order | ID  | Sev | Impact | Risk | Remaining work                                                                 |
+| ----- | --- | --- | ------ | ---- | ------------------------------------------------------------------------------ |
+| 1     | R13 | S2  | MED    | LOW  | Share-tier config disclosure (decision B+C: drop dead fields, tier-hide paths) |
+| 2     | R27 | S2  | MED    | LOW  | `GuardResult` rollout for bare-guard detail loss (owns R14's leftover)         |
+| 3     | R28 | S3  | MED    | MED  | Typed knob accessor, `/post/invites/create` verb alias, stringly-typed status  |
+| 4     | R14 | S3  | LOW    | LOW  | `picasu-admin` references — satisfied by H1a of `.plan/e2e-given-reshaping.md` |
 
 Discharged 2026-10-19 — rows removed from the tackle order, analysis
 folded into the verdict lines below: R10, R22, R25 → owning plans
@@ -122,13 +103,14 @@ churn/no benefit.
   model task encodes flows A–C and forces the plan-vs-code
   reconciliation, so the decision lands there rather than as an
   isolated change.
-- R11 REOPENED (S3/LOW/LOW). `register.rs:148` and
-  `invites.rs:317,338` return distinguishable 409 bodies; invites even
-  echoes the probed id (`"user already exists: {id}"`). Reachable on the
-  invite path without any session. Owner decision 2026-10-19: not an
-  accepted risk. Fix: uniform conflict body on all three sites and drop
-  the `{id}` echo; pins `double_use_invite_is_409` need message
-  relaxation.
+- R11 REOPENED (S3/LOW/LOW). `users_register.rs` and
+  `invites.rs` (two sites) return distinguishable 409 bodies; both
+  echo the probed id. Reachable on the invite path without any session.
+  Owner decision 2026-10-19: not an accepted risk. Fixed 2026-10-20
+  (`f677f67f1`): every surface emits the shared
+  `REGISTRATION_CONFLICT_MESSAGE` ("the invite or the userId is already
+  taken"), no id echo; byte-identical bodies pinned by
+  `registration_conflict_bodies_are_indistinguishable`.
 - R12 CONFIRMED (S2/MED/LOW). `PUT /put/config` accepts `bootstrapAdmin`
   (`edit_config.rs:36,133-135`); `update()` persists with no gate
   (`config.rs:507-544`); gate runs only in `run()` (`lib.rs:100`).
@@ -140,19 +122,25 @@ churn/no benefit.
   likewise host-only (per-key 400 + setters, assignments deleted,
   `docs/config.md` documents the API-vs-host split). The remaining
   knob-matrix work is folded into that section.
-- R13 CONFIRMED (S2/MED/LOW). `get_config.rs:57-59` takes `GuardShare`
-  and returns absolute `imagePath`, `uploadFolder`, address/port; already
-  noted in `auth-hardening.md:125-126`. Fix: confirm intent; narrow share
-  response or re-gate to `GuardAuth`.
-- R14 CONFIRMED (S2/LOW/LOW). Register declares 401 (`register.rs:63`)
-  but swallows guard failure (`:83-89` → 403/404/409); `extract_bearer_token`
-  falls back to `?token=` (`auth.rs:446-451`, no frontend caller);
-  `picasu-admin` cited in 4 messages but no such binary. Fix: drop query
-  fallback, align spec or propagate, reword CLI remedy. Partial
-  2026-10-19: the `?token=` fallback is gone (no hits in `auth.rs`);
-  remaining = the register 401 annotation vs behavior, and the
-  `picasu-admin` references — the CLI is planned as H1a of
-  `.plan/e2e-given-reshaping.md`, which makes those references true.
+- R13 CONFIRMED (S2/MED/LOW). `get_config.rs` takes `GuardShare` and
+  returns bind `address`/`port` and absolute `imagePath`/`uploadFolder`
+  to any share holder; noted in `auth-hardening.md:125-126`.
+  Owner decision 2026-10-20 (option B+C): drop `address`/`port` from the
+  response entirely (no SPA consumer — typed-only), keep the `GuardShare`
+  gate, and omit `imagePath`/`uploadFolder` at share tier (tier visible
+  via `GuardShare.claims.role`); admin tier keeps the full response.
+  TDD first pin: share-credential `GET /get/config` answers 200 without
+  the host fields while an admin session keeps them.
+- R14 CONFIRMED (S2/LOW/LOW). Register declares 401 but swallows guard
+  failure (→ 403/404/409 at the handler); `extract_bearer_token` fell
+  back to `?token=`; `picasu-admin` cited in messages but no such
+  binary. Partial 2026-10-19: the `?token=` fallback is gone. Converged
+  2026-10-20: the 401 annotation is backed by the reachable empty-store
+  refusal in `register_user_sync` (401 `not_enrolled_message`,
+  added with the open-mode removal); the guard-`Err` swallow is owned
+  by R27's `GuardResult` rollout; the CLI references become true via
+  H1a of `.plan/e2e-given-reshaping.md`. Nothing left to fix in R14
+  itself.
 - R15 CONFIRMED (S2/LOW/LOW). No TLS in backend; cookie `secure`
   conditional with rationale; docs point at reverse proxy. Fix: docs
   deployment note only. Fixed 2026-10-19: HTTP + 14-day-JWT deployment
@@ -285,12 +273,12 @@ churn/no benefit.
   rest as tripwires, and the change-password form keeps zero e2e
   contact (coverage fact, not a deletion). Change-password "rewrite as
   behavior test" adds code without adding coverage: churn.
-- R32 ride-along (S3/LOW/LOW). The gated register branch duplicates
-  `provision_user` byte-identically, including the conflict message;
-  delegation is ordering-safe (the empty-store refusal precedes it) and
-  pin-free (no test greps the message). Corrected −14…−18 — the
-  bootstrap half was already a thin delegate. Execute inside the R11
-  fix (same file) or the next register touch; not a standalone slice.
+- R32 ride-along (S3/LOW/LOW). Executed 2026-10-20 inside the R11 fix
+  (`f677f67f1`): the gated register branch delegates to
+  `users::provision_user`; the invite path keeps `redeem_invite`
+  (atomic mark-insert). Same file states as `bootstrap_user_sync`;
+  empty-store refusal ordering untouched; `create_user`'s defensive
+  duplicate bail stays (unreachable through the pre-check).
 - R33 CONFIRMED, estimate plausible (S3/LOW/LOW). Eight modules copy
   `lock()`/`setup()` (~−56); `authz::setup` needs a variant flag. Fix:
   one `tests/harness.rs`. Re-verified 2026-10-19: census is now
@@ -354,7 +342,14 @@ live items = R11 (re-opened, not accepted risk), R13, R14 (residual:
 register-401 annotation), R27 (residual `GuardResult` rollout), R28
 (residual: typed helper + verb alias + status). Done: R33 2026-10-19
 (`fb34594dd`, net −246 lines, incl. R29's comment residue). Ride-along
-inside the R11 touch: R32.
+inside the R11 touch: R32. R11+R32 done 2026-10-20 (`f677f67f1`).
+R13 decided 2026-10-20 (option B+C, owner-approved): drop the
+SPA-dead `address`/`port` from `ConfigResponse` and tier-hide
+`imagePath`/`uploadFolder` for share-tier callers; TDD pin first
+(share 200 without host fields, admin 200 with them). Live after the
+2026-10-20 pass: R13 (decided, unsliced), R27 residual (owns R14's
+guard-error propagation), R28 residual; R14 itself closes when H1a
+ships the CLI.
 
 Decision 2026-10-19 (open-mode removal, owner-approved this session):
 the `ephemeral-open-mode` structure is deleted, not just the mint.
