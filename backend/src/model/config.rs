@@ -48,6 +48,38 @@ fn default_login_ip_base_ban_secs() -> u64 {
 fn default_login_ip_max_ban_secs() -> u64 {
     crate::auth::rate_limit::LOGIN_IP_MAX_BAN_SECS
 }
+/// The parsed config file, or `None` when it is absent, unreadable, or
+/// malformed. Read-only: nothing is created and no global state is set.
+fn read_config_file() -> Option<TomlFile> {
+    let raw = fs::read_to_string(crate::storage::files::config_path_readonly()).ok()?;
+    toml::from_str(&raw).ok()
+}
+
+/// The data home the server is configured with, read from `config.toml`
+/// without side effects: no file is created, no global state is set. `None`
+/// when the file is absent, unreadable, or carries no `data_home`.
+///
+/// The offline CLI uses it to find the user store the server actually uses;
+/// the server itself resolves the data home through [`AppConfig::init`].
+#[must_use]
+pub fn configured_data_home() -> Option<PathBuf> {
+    read_config_file()?
+        .gallery
+        .data_home
+        .filter(|home| !home.as_os_str().is_empty())
+}
+
+/// Whether the server is configured to accept weak passwords, read from
+/// `config.toml` without side effects. `None` when the file is absent,
+/// unreadable, or carries no `trivial_passwords` key.
+///
+/// The offline CLI uses it to mirror the server's password policy; the
+/// `PICASU_TRIVIAL_PASSWORDS` environment variable overrides it there.
+#[must_use]
+pub fn configured_trivial_passwords() -> Option<bool> {
+    Some(read_config_file()?.gallery.trivial_passwords)
+}
+
 fn default_login_ip_long_window_secs() -> u64 {
     crate::auth::rate_limit::LOGIN_IP_LONG_WINDOW_SECS
 }

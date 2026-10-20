@@ -28,7 +28,7 @@ pub fn list_users_handler(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Us
     let _ = auth?;
     // An empty store has no admins, so an admin-only route refuses in all
     // states; enrollment state is served by GET /get/server-info.
-    if crate::auth::passwd_store::count(&users::user_store_path()) == 0 {
+    if crate::auth::user_store::count(&users::user_store_path()) == 0 {
         return Err(AppError::new(
             ErrorKind::Auth,
             crate::router::auth::not_enrolled_message(),

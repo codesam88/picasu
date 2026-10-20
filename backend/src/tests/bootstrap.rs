@@ -54,8 +54,8 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
             .expect("create ASSET_BY_ID");
         txn.open_table(crate::storage::db::DUPE_INDEX)
             .expect("create DUPE_INDEX");
-        txn.open_table(crate::storage::db::USERS)
-            .expect("create USERS");
+        txn.open_table(crate::storage::db::SESSIONS)
+            .expect("create SESSIONS");
         txn.commit().expect("commit");
     }
 
@@ -183,7 +183,7 @@ pub fn reset_backend_state() {
         crate::storage::db::ASSET_BY_PATH,
         crate::storage::db::ASSET_BY_ID,
         crate::storage::db::DUPE_INDEX,
-        crate::storage::db::USERS,
+        crate::storage::db::SESSIONS,
         crate::storage::db::INVITES,
     ] {
         let mut table = txn
@@ -232,7 +232,7 @@ pub fn reset_backend_state() {
     // password hashes into later (empty-store) scenarios. The DATA_PATH wipe
     // above already removes it in practice; this makes the guarantee
     // explicit and independent of wipe ordering.
-    crate::auth::passwd_store::remove_store(&crate::auth::users::user_store_path());
+    crate::auth::user_store::remove_store(&crate::auth::users::user_store_path());
 
     // Clear directory album cache so stale album IDs are not reused.
     dir_album::reset_dir_album_cache();
@@ -420,7 +420,7 @@ mod tests {
         assert!(test_image_home().exists(), "image_home must be recreated");
     }
 
-    /// `reset_backend_state` must clear the user store (redb `USERS` table)
+    /// `reset_backend_state` must clear the user store (redb `SESSIONS` table)
     /// and remove the password file, so authenticated scenarios never leak
     /// users or password hashes into later (empty-store) scenarios.
     #[test]
@@ -445,7 +445,7 @@ mod tests {
         assert_eq!(
             crate::auth::users::user_count().expect("user count after reset"),
             0,
-            "USERS table must be empty after reset"
+            "SESSIONS table must be empty after reset"
         );
         assert!(
             crate::auth::users::list_users()

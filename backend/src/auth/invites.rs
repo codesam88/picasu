@@ -17,7 +17,7 @@ use subtle::ConstantTimeEq;
 
 use crate::auth::users::REGISTRATION_CONFLICT_MESSAGE;
 use crate::error::{AppError, ErrorKind};
-use crate::storage::db::{INVITES, TREE, USERS};
+use crate::storage::db::{INVITES, SESSIONS, TREE};
 
 /// Default token lifetime when the creation request names none: 7 days.
 pub const DEFAULT_EXPIRY_HOURS: i64 = 7 * 24;
@@ -289,7 +289,7 @@ pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), 
     let id = crate::auth::users::validate_user_id(user_id)?;
     // Identity lives in the user store; an id already present there is a
     // conflict even if no redb session row exists yet.
-    if crate::auth::passwd_store::read(&crate::auth::users::user_store_path(), &id).is_some() {
+    if crate::auth::user_store::read(&crate::auth::users::user_store_path(), &id).is_some() {
         return Err(AppError::new(
             ErrorKind::Conflict,
             REGISTRATION_CONFLICT_MESSAGE,
@@ -347,7 +347,7 @@ pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), 
             ));
         }
         let mut users = txn
-            .open_table(USERS)
+            .open_table(SESSIONS)
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
         if users
             .get(id.as_str())
@@ -365,8 +365,9 @@ pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), 
         invites
             .insert(candidate.as_str(), json.as_str())
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        let user_json = serde_json::to_string(&crate::auth::users::UserRecord { sessions: vec![] })
-            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+        let user_json =
+            serde_json::to_string(&crate::auth::users::SessionBundle { sessions: vec![] })
+                .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
         users
             .insert(id.as_str(), user_json.as_str())
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
@@ -381,7 +382,7 @@ pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), 
     // Second and last store write: the identity entry with its hash, in
     // one rmw. If this fails the invite stays consumed and the entry is
     // absent (fail-safe direction, see the doc comment).
-    crate::auth::passwd_store::rmw(&crate::auth::users::user_store_path(), |users| {
+    crate::auth::user_store::rmw(&crate::auth::users::user_store_path(), |users| {
         if users.contains_key(&id) {
             return Err(AppError::new(
                 ErrorKind::Conflict,
@@ -390,7 +391,7 @@ pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), 
         }
         users.insert(
             id.clone(),
-            crate::auth::password::UserEntry {
+            crate::auth::user_store::UserRecord {
                 hash: Some(hash),
                 admin: false,
                 home: None,
@@ -473,7 +474,7 @@ mod tests {
         super::redeem_invite("s6-reg", &token, "long-enough-pw1").expect("redeem");
         assert_eq!(
             crate::auth::users::get_user("s6-reg").expect("get user"),
-            Some(crate::auth::users::UserRecord { sessions: vec![] })
+            Some(crate::auth::users::SessionBundle { sessions: vec![] })
         );
         let used = super::get_invite(&super::hash_token(&token))
             .expect("get invite")
@@ -500,8 +501,9 @@ mod tests {
 
         let (token, _) = super::create_invite("s6-root").expect("create");
         super::redeem_invite("s6-i5", &token, "long-enough-pw1").expect("redeem");
-        let store = crate::auth::password::PasswdFile::load(&crate::auth::users::user_store_path())
-            .expect("load store");
+        let store =
+            crate::auth::user_store::UserStore::load(&crate::auth::users::user_store_path())
+                .expect("load store");
         assert!(
             store.verify("s6-i5", "long-enough-pw1"),
             "the redeemed entry must verify the registered password"
@@ -523,10 +525,10 @@ mod tests {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).expect("auth dir");
         }
-        crate::auth::passwd_store::rmw(&path, |users| {
+        crate::auth::user_store::rmw(&path, |users| {
             users.insert(
                 "s6-takeover".to_string(),
-                crate::auth::password::UserEntry {
+                crate::auth::user_store::UserRecord {
                     hash: None,
                     admin: false,
                     home: None,

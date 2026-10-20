@@ -166,7 +166,7 @@ mod tests {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).expect("auth dir");
         }
-        crate::auth::passwd_store::provision(&path, "passwd-only", "long-enough-pw1", false, None)
+        crate::auth::user_store::provision(&path, "passwd-only", "long-enough-pw1", false, None)
             .expect("provision passwd-only");
         let resp = client.get("/get/server-info").dispatch();
         assert_eq!(resp.status(), Status::Ok);

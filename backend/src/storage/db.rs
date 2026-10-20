@@ -171,10 +171,10 @@ pub const ASSET_BY_ID: TableDefinition<&str, &str> = TableDefinition::new("asset
 /// but remain independently addressable.
 pub const DUPE_INDEX: TableDefinition<&str, &str> = TableDefinition::new("dupe_index");
 
-/// Maps user id → JSON-serialized [`crate::auth::users::UserRecord`].
-/// One row per user. Follows the same JSON-string value pattern as
-/// [`ASSET_BY_ID`].
-pub const USERS: TableDefinition<&str, &str> = TableDefinition::new("users");
+/// Maps user id → JSON-serialized [`crate::auth::users::SessionBundle`]:
+/// the live sessions of that user. One row per user. Follows the same
+/// JSON-string value pattern as [`ASSET_BY_ID`].
+pub const SESSIONS: TableDefinition<&str, &str> = TableDefinition::new("sessions");
 
 /// Maps invite id (blake3 hash hex of the token) → JSON-serialized
 /// [`crate::auth::invites::InviteRecord`]. Only the token hash is ever

@@ -127,7 +127,7 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
     assert_eq!(created["admin"], true, "bootstrap must force admin:true");
     assert_eq!(
         crate::auth::users::get_user("root").expect("get user"),
-        Some(crate::auth::users::UserRecord { sessions: vec![] })
+        Some(crate::auth::users::SessionBundle { sessions: vec![] })
     );
 
     // The store is non-empty now, so enrollment is closed again.
@@ -220,7 +220,7 @@ fn password_put_on_empty_store_is_403_and_creates_nothing() {
         None
     );
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
-    let store = crate::auth::password::PasswdFile::load(&crate::auth::users::user_store_path())
+    let store = crate::auth::user_store::UserStore::load(&crate::auth::users::user_store_path())
         .expect("load passwd");
     assert!(store.is_empty(), "no password entry may be written");
 }
@@ -370,7 +370,7 @@ fn bootstrap_boot_gate_refuses_existing_passwd_file() {
     reset_backend_state();
 
     let path = crate::auth::users::user_store_path();
-    crate::auth::passwd_store::rmw(&path, |_| Ok(())).expect("materialize empty store");
+    crate::auth::user_store::rmw(&path, |_| Ok(())).expect("materialize empty store");
 
     // Flag off: the store is not our business, launch.
     set_bootstrap_admin(false);
@@ -390,7 +390,7 @@ fn bootstrap_boot_gate_refuses_existing_passwd_file() {
     );
 
     // Removing the store re-opens bootstrap.
-    crate::auth::passwd_store::remove_store(&path);
+    crate::auth::user_store::remove_store(&path);
     assert!(crate::bootstrap_boot_gate().is_ok());
 
     reset_backend_state();

@@ -210,25 +210,9 @@ fn derive(password: &str, salt: &[u8], iterations: u32) -> [u8; HASH_LEN] {
     out
 }
 
-/// A flattened passwd entry: the password hash fields plus identity
-/// attributes. Pre-change (hash-only) entries still deserialize because
-/// `admin` and `home` default.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UserEntry {
-    #[serde(flatten)]
-    #[serde(default)]
-    pub hash: Option<PasswordHash>,
-    #[serde(default)]
-    pub admin: bool,
-    #[serde(default)]
-    pub home: Option<String>,
-}
-
-// PasswdFile implementation lives in `passwd_store` (one redb write
-// transaction per mutation); re-exported here for backwards-compatible
-// `crate::auth::password::PasswdFile`.
-pub use crate::auth::passwd_store::PasswdFile;
-
+/// The identity record lives in [`crate::auth::user_store`] — the store
+/// owns its row type. This module keeps the hash primitives.
+///
 /// Best-effort `0600` on the user store file; permission errors are
 /// ignored and non-unix platforms are a no-op.
 pub(crate) fn restrict_permissions(path: &std::path::Path) {

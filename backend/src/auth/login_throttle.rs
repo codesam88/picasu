@@ -72,7 +72,7 @@ struct IpEntry {
 /// One claimed-username entry: the long bucket, its in-flight count,
 /// plus sweep bookkeeping.
 #[derive(Debug)]
-struct UserEntry {
+struct ThrottleEntry {
     long: Bucket,
     in_flight: u32,
     last_seen: u64,
@@ -96,7 +96,7 @@ pub struct LoginThrottle {
     /// Per client IP: short + long buckets.
     ip: HashMap<String, IpEntry>,
     /// Per claimed username: long bucket.
-    user: HashMap<String, UserEntry>,
+    user: HashMap<String, ThrottleEntry>,
     ip_short: BucketCfg,
     ip_long: BucketCfg,
     user_long: BucketCfg,
@@ -182,7 +182,7 @@ impl LoginThrottle {
         let user_entry = self
             .user
             .entry(user.to_owned())
-            .or_insert_with(|| UserEntry {
+            .or_insert_with(|| ThrottleEntry {
                 long: user_cfg.build(),
                 in_flight: 0,
                 last_seen: 0,
@@ -282,7 +282,7 @@ impl LoginThrottle {
         let entry = self
             .user
             .entry(user.to_owned())
-            .or_insert_with(|| UserEntry {
+            .or_insert_with(|| ThrottleEntry {
                 long: user_cfg.build(),
                 in_flight: 0,
                 last_seen: 0,
@@ -450,8 +450,8 @@ mod tests {
         }
     }
 
-    fn bare_user_entry(last_seen: u64) -> UserEntry {
-        UserEntry {
+    fn bare_user_entry(last_seen: u64) -> ThrottleEntry {
+        ThrottleEntry {
             long: Bucket::new(
                 TEST_USER_LONG.0,
                 TEST_USER_LONG.1,

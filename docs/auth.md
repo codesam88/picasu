@@ -298,13 +298,15 @@ expiry.
   `username ⇒ {hash?, admin, home}` (PBKDF2 hash optional — a hash-less
   entry cannot log in). Every read-modify-write is one redb write
   transaction, so mutations are atomic and serial; the engine's file lock
-  is held for the server's whole lifetime, which excludes every other
-  process — the offline CLI must run while the server is stopped and fails
-  loudly otherwise. redb holds only per-user sessions
+  excludes other processes while the server holds the store open. The
+  server opens the store with the first authentication, so the offline CLI
+  must run while the server is stopped — a conflicting write fails loudly
+  instead of corrupting the store. redb holds only per-user sessions
   (temporary, high-churn, safe to lose — the index database stays
   rebuildable); identity reads and enrollment emptiness derive from the
   user store. The offline `picasu-cmd user list|add|mod|del|passwd`
-  administers it; hashes are never exported. Demotion/removal is re-checked per
+  administers it (see [Admin CLI](admin-cli.md)); hashes are never exported.
+  Demotion/removal is re-checked per
   request for `GuardAuth`/`GuardShare`/`GuardUser`, so it takes effect before token
   expiry; promotion requires re-login. A password change does **not** touch
   `auth_key`, so outstanding tokens survive it.
