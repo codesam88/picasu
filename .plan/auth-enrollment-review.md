@@ -31,10 +31,9 @@ R31; struck as churn/no benefit: R29, R34, R35; R11+R32 closed
 
 | Order | ID  | Sev | Impact | Risk | Remaining work                                                                 |
 | ----- | --- | --- | ------ | ---- | ------------------------------------------------------------------------------ |
-| 1     | R13 | S2  | MED    | LOW  | Share-tier config disclosure (decision B+C: drop dead fields, tier-hide paths) |
-| 2     | R27 | S2  | MED    | LOW  | `GuardResult` rollout for bare-guard detail loss (owns R14's leftover)         |
-| 3     | R28 | S3  | MED    | MED  | Typed knob accessor, `/post/invites/create` verb alias, stringly-typed status  |
-| 4     | R14 | S3  | LOW    | LOW  | `picasu-admin` references — satisfied by H1a of `.plan/e2e-given-reshaping.md` |
+| 1     | R27 | S2  | MED    | LOW  | `GuardResult` rollout for bare-guard detail loss (owns R14's leftover)         |
+| 2     | R28 | S3  | MED    | MED  | Typed knob accessor, `/post/invites/create` verb alias, stringly-typed status  |
+| 3     | R14 | S3  | LOW    | LOW  | `picasu-admin` references — satisfied by H1a of `.plan/e2e-given-reshaping.md` |
 
 Discharged 2026-10-19 — rows removed from the tackle order, analysis
 folded into the verdict lines below: R10, R22, R25 → owning plans
@@ -123,14 +122,16 @@ churn/no benefit.
   `docs/config.md` documents the API-vs-host split). The remaining
   knob-matrix work is folded into that section.
 - R13 CONFIRMED (S2/MED/LOW). `get_config.rs` takes `GuardShare` and
-  returns bind `address`/`port` and absolute `imagePath`/`uploadFolder`
-  to any share holder; noted in `auth-hardening.md:125-126`.
-  Owner decision 2026-10-20 (option B+C): drop `address`/`port` from the
-  response entirely (no SPA consumer — typed-only), keep the `GuardShare`
-  gate, and omit `imagePath`/`uploadFolder` at share tier (tier visible
-  via `GuardShare.claims.role`); admin tier keeps the full response.
-  TDD first pin: share-credential `GET /get/config` answers 200 without
-  the host fields while an admin session keeps them.
+  returned bind `address`/`port` and absolute `imagePath`/
+  `uploadFolder` to any share holder; noted in
+  `auth-hardening.md:125-126`. Owner decision 2026-10-20 (option B+C).
+  Fixed 2026-10-20 (`69d37ed37`): `address`/`port` deleted from
+  `ConfigResponse` (no SPA consumer), share-credential callers get
+  `imagePath`/`uploadFolder` as `null`, admin tier keeps the real
+  values; pin `share_tier_config_hides_host_fields`. Discovered
+  constraint: `GuardShare` admits admins and shares only — non-admin
+  sessions are refused 401 before the handler, so the hide applies to
+  share claims alone and the tier split needs no user-tier distinction.
 - R14 CONFIRMED (S2/LOW/LOW). Register declares 401 but swallows guard
   failure (→ 403/404/409 at the handler); `extract_bearer_token` fell
   back to `?token=`; `picasu-admin` cited in messages but no such
@@ -343,13 +344,10 @@ register-401 annotation), R27 (residual `GuardResult` rollout), R28
 (residual: typed helper + verb alias + status). Done: R33 2026-10-19
 (`fb34594dd`, net −246 lines, incl. R29's comment residue). Ride-along
 inside the R11 touch: R32. R11+R32 done 2026-10-20 (`f677f67f1`).
-R13 decided 2026-10-20 (option B+C, owner-approved): drop the
-SPA-dead `address`/`port` from `ConfigResponse` and tier-hide
-`imagePath`/`uploadFolder` for share-tier callers; TDD pin first
-(share 200 without host fields, admin 200 with them). Live after the
-2026-10-20 pass: R13 (decided, unsliced), R27 residual (owns R14's
-guard-error propagation), R28 residual; R14 itself closes when H1a
-ships the CLI.
+R13 decided 2026-10-20 (option B+C, owner-approved) and fixed the same
+day (`69d37ed37`). Live after the 2026-10-20 pass: R27 residual (owns
+R14's guard-error propagation), R28 residual; R14 itself closes when
+H1a ships the CLI.
 
 Decision 2026-10-19 (open-mode removal, owner-approved this session):
 the `ephemeral-open-mode` structure is deleted, not just the mint.
