@@ -25,13 +25,18 @@ the fix causes behavior change or coverage loss.
 The original 2026-10-15 table listed every finding and is preserved in
 git history. Below is the live set — everything else is fixed, struck,
 or discharged (per-verdict annotations in the verdict lines; fixed
-R1–R9, R12, R15–R28; discharged to owning plans: R10, R22, R25, R30,
+R1–R9, R12–R28; discharged to owning plans: R10, R22, R25, R30,
 R31; struck as churn/no benefit: R29, R34, R35; R11+R32 closed
 `f677f67f1`).
 
-| Order | ID  | Sev | Impact | Risk | Remaining work                                                                 |
-| ----- | --- | --- | ------ | ---- | ------------------------------------------------------------------------------ |
-| 1     | R14 | S3  | LOW    | LOW  | `picasu-admin` references — satisfied by H1a of `.plan/e2e-given-reshaping.md` |
+**Live set is empty.** R14 closed 2026-10-20: the `picasu-cmd` CLI now
+exists (`.plan/user-store-redb.md`), so the references the findings
+flagged point at a real tool. The remaining e2e-harness adoption is
+tracked by `.plan/e2e-given-reshaping.md` (H1b–H1e), not here.
+
+| Order | ID  | Sev | Impact | Risk | Remaining work |
+| ----- | --- | --- | ------ | ---- | -------------- |
+| —     | —   | —   | —      | —    | none           |
 
 Discharged 2026-10-19 — rows removed from the tackle order, analysis
 folded into the verdict lines below: R10, R22, R25 → owning plans
@@ -137,9 +142,11 @@ churn/no benefit.
   2026-10-20: the 401 annotation is backed by the reachable empty-store
   refusal in `register_user_sync` (401 `not_enrolled_message`,
   added with the open-mode removal); the guard-`Err` swallow is owned
-  by R27's `GuardResult` rollout; the CLI references become true via
-  H1a of `.plan/e2e-given-reshaping.md`. Nothing left to fix in R14
-  itself.
+  by R27's `GuardResult` rollout; the CLI references are now true —
+  the `picasu-cmd` binary is delivered (`.plan/user-store-redb.md`;
+  the reference rename shipped with S3). Nothing left to fix in R14 itself.
+  Closed 2026-10-20: delivered `picasu-cmd` satisfies the reference
+  obligation; harness adoption is H1b–H1e of `.plan/e2e-given-reshaping.md`.
 - R15 CONFIRMED (S2/LOW/LOW). No TLS in backend; cookie `secure`
   conditional with rationale; docs point at reverse proxy. Fix: docs
   deployment note only. Fixed 2026-10-19: HTTP + 14-day-JWT deployment
@@ -367,7 +374,9 @@ day (`69d37ed37`). R27 residual executed 2026-10-20 (`bcf65697e`) —
 all bare `GuardAuth` guards propagate detail; the 422/401 catcher
 contract and `TimestampGuardModified` stand as documented. R28 done
 2026-10-20 (`4551928f2` — knob accessor, invites verb rename, wire
-status drop). Live: R14 itself closes when H1a ships the CLI.
+status drop). R14 done 2026-10-20 — the `picasu-cmd` CLI is delivered,
+so the cited tool exists. Live set empty; harness
+adoption continues in `.plan/e2e-given-reshaping.md`.
 
 Decision 2026-10-19 (open-mode removal, owner-approved this session):
 the `ephemeral-open-mode` structure is deleted, not just the mint.

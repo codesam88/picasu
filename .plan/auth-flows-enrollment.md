@@ -67,7 +67,7 @@ enrolled`. No probe list, no enroll, no login.
    401 → login 200.
 3. Flag on, seeded non-admin: `bootstrap` 401, count unchanged.
 4. Password-PUT empty store, no cookie: 404, no user made.
-5. Freshness predicate + boot-gate on real `passwd.json`.
+5. Freshness predicate + boot-gate on the real user store.
 6. No `admin` field accepted anywhere (unknown-field shape → 4xx).
 
 `register.rs` (merged route, always non-admin): 7. Admin session creates without invite → 200, `admin: false`. 8. Non-admin/anonymous + knob on → 200, invite ignored not burned. 9. Knob off + invite → 200, invite burned; without → 403, count 0. 10. Expired → 403; used/duplicate → 409; revoked/unknown → 404;
@@ -102,9 +102,9 @@ weak → 400.
    and the `ConfigResponse` read-back; registration-toggle requirement
    re-decided there against the R12 host-only extension). Out of scope
    for this plan's gates from here on.
-7. CLI provisioning: separate `picasu-admin` binary (`add-user`,
-   `set-password`, `set-admin`) with lockfile discipline vs a live
-   server; Dockerfile ships it. Gates: `cargo test`, `backend-check`.
+7. CLI provisioning: delivered as `picasu-cmd` (`user list|add|mod|del|
+passwd`), built on the userdb of record and its guarded store
+   (`.plan/user-store-redb.md`); Dockerfile ships it.
 8. First-create race: prove with a test whether concurrent
    unauthenticated bootstraps both land; share the bootstrap lock only
    if confirmed, else close with the negative result. Done 2026-10-16:
