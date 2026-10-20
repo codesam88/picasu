@@ -143,7 +143,7 @@
             ]
           },
           "bootstrapAdmin": {
-            "description": "Enable the online first-admin bootstrap window. While set **and the\nuser store is empty**, unauthenticated `POST /post/users/bootstrap`\nenrolls the first admin; until then `POST /post/users/authenticate` takes\nthe unknown-user path and every guarded route refuses with\n`No administrator enrolled` (the refusal names the bootstrap\nendpoint while the window is open). Default\noff: a fresh install answers 401 everywhere until an operator opts\nin (or provisions the store via the `picasu-admin` CLI). Enabling\nthe flag against an existing `passwd.json` makes the server refuse\nto start. WARN-logged at boot whenever set.",
+            "description": "Enable the online first-admin bootstrap window. While set **and the\nuser store is empty**, unauthenticated `POST /post/users/bootstrap`\nenrolls the first admin; until then `POST /post/users/authenticate` takes\nthe unknown-user path and every guarded route refuses with\n`No administrator enrolled` (the refusal names the bootstrap\nendpoint while the window is open). Default\noff: a fresh install answers 401 everywhere until an operator opts\nin (or provisions the store via the `picasu-cmd` CLI). Enabling\nthe flag against an existing user store makes the server refuse\nto start. WARN-logged at boot whenever set.",
             "type": "boolean"
           },
           "dataHome": {

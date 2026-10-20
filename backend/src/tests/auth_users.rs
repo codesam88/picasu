@@ -59,10 +59,7 @@ fn bootstrap_window_refuses_login_and_first_user_forced_admin() {
     assert_eq!(created["admin"], true, "first user must be forced admin");
     assert_eq!(
         crate::auth::users::get_user("root").expect("get root"),
-        Some(crate::auth::users::UserRecord {
-            admin: true,
-            sessions: vec![]
-        })
+        Some(crate::auth::users::UserRecord { sessions: vec![] })
     );
 
     // Companion: bootstrap is one-shot — unauthenticated bootstrap now 401.
@@ -320,4 +317,4 @@ fn password_change_and_demotion_take_effect() {
 // `{ userId, password }` object only, and a JSON string body is 422 (covered
 // by `router::post::users_authenticate::{bare_string_body_is_422_*}`). No migration
 // registers users; enrollment is `POST /post/users/bootstrap` (open window)
-// or the `picasu-admin` CLI.
+// or the `picasu-cmd` CLI.

@@ -228,15 +228,11 @@ pub fn reset_backend_state() {
     std::fs::create_dir_all(&image_home)
         .unwrap_or_else(|e| panic!("create image_home {}: {e}", image_home.display()));
 
-    // Remove the password store so authenticated scenarios never leak
+    // Remove the user store so authenticated scenarios never leak
     // password hashes into later (empty-store) scenarios. The DATA_PATH wipe
     // above already removes it in practice; this makes the guarantee
     // explicit and independent of wipe ordering.
-    let passwd_path = crate::auth::users::passwd_file_path();
-    if passwd_path.exists() {
-        std::fs::remove_file(&passwd_path)
-            .unwrap_or_else(|e| panic!("remove {}: {e}", passwd_path.display()));
-    }
+    crate::auth::passwd_store::remove_store(&crate::auth::users::user_store_path());
 
     // Clear directory album cache so stale album IDs are not reused.
     dir_album::reset_dir_album_cache();
@@ -335,15 +331,8 @@ pub fn cookie(id: &str, admin: bool) -> rocket::http::Cookie<'static> {
 /// Create the user record and, when a password is given, write its hash
 /// directly to the passwd file. Each given password pays one PBKDF2 round.
 pub fn seed(id: &str, admin: bool, password: Option<&str>) {
-    crate::auth::users::create_user(id, admin).expect("seed user");
-    if let Some(pw) = password {
-        let path = crate::auth::users::passwd_file_path();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("auth dir");
-        }
-        let mut store = crate::auth::password::PasswdFile::load(&path).expect("load passwd");
-        store.set_password(id, pw).expect("set password");
-    }
+    let pw = password.unwrap_or("seed-placeholder-pw-123");
+    crate::auth::users::provision_user(id, pw, admin).expect("seed user");
 }
 
 /// Temporarily flip the bootstrap flag (enrollment-window tests opt out of
@@ -444,11 +433,7 @@ mod tests {
         reset_backend_state();
 
         crate::auth::users::create_user("s2b-reset-user", true).expect("create user");
-        let passwd_path = crate::auth::users::passwd_file_path();
-        if let Some(parent) = passwd_path.parent() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
-        std::fs::write(&passwd_path, b"{\"users\":{}}").unwrap();
+        let passwd_path = crate::auth::users::user_store_path();
         assert_eq!(
             crate::auth::users::user_count().expect("user count before reset"),
             1

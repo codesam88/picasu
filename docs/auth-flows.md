@@ -41,7 +41,7 @@ hidden until sign-in.
    surface online — an unauthenticated caller cannot reach the user
    panel, list users, or log in. The browser falls through to `/login`.
 2. Recovery is operator-only: restart with `--bootstrap-admin` on the
-   empty store (J1, step 2), or provision via the `picasu-admin` CLI.
+   empty store (J1, step 2), or provision via the `picasu-cmd` CLI.
    `POST /post/users/register` can still create non-admin accounts while
    registration is open or a valid invite exists, but no online path ever
    grants admin — an admin-less store gains an administrator only through

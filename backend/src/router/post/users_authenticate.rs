@@ -269,7 +269,7 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
     let canonical = password.trim();
     let record =
         users::get_user(user_id).map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
-    let Some(record) = record else {
+    let Some(_record) = record else {
         // Pay one KDF round so unknown users are not measurably faster
         // than wrong passwords (user-enumeration timing oracle).
         let _ = run_dummy_verify();
@@ -277,7 +277,7 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
             AppError::new(ErrorKind::Auth, "Invalid credentials").context("Authentication failed")
         );
     };
-    let store = PasswdFile::load(&users::passwd_file_path())
+    let store = PasswdFile::load(&users::user_store_path())
         .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
     #[cfg(test)]
     crate::auth::password::VERIFY_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -286,12 +286,13 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
             AppError::new(ErrorKind::Auth, "Invalid credentials").context("Authentication failed")
         );
     }
-    let claims = Claims::new_user(user_id.to_string(), record.admin);
+    let admin = users::get_admin(user_id).ok().flatten().unwrap_or(false);
+    let claims = Claims::new_user(user_id.to_string(), admin);
     users::add_session(user_id, &claims.jti)?;
     let token = claims.encode();
     let profile = UserSummary {
         user_id: user_id.to_string(),
-        admin: record.admin,
+        admin,
     };
     Ok((token, profile))
 }

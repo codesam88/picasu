@@ -1,5 +1,6 @@
+#![allow(clippy::missing_errors_doc, clippy::must_use_candidate)]
 use anyhow::{Context, Result};
-use redb::{ReadableDatabase, ReadableTable, ReadableTableMetadata};
+use redb::{ReadableDatabase, ReadableTable};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, ErrorKind};
@@ -19,18 +20,29 @@ pub struct SessionRecord {
 /// Deliberately minimal; extended with new optional fields later.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserRecord {
-    pub admin: bool,
     #[serde(default)]
     pub sessions: Vec<SessionRecord>,
 }
 
-/// Create a user. Fails if the id already exists.
+/// Create a user. Fails if the id already exists in either store.
 ///
 /// Opening the table on a write transaction auto-creates it on first use.
+/// The identity (admin flag) is written to the user store without a
+/// password hash, so the user exists in the userdb of record but cannot
+/// log in until a password is set.
 ///
 /// # Errors
-/// Returns an error if the id already exists or the database cannot be written.
+/// Returns an error if the id already exists or either store cannot be written.
 pub fn create_user(id: &str, admin: bool) -> Result<()> {
+    let target = validate_user_id(id)?;
+    // Existence check across both stores.
+    if get_user(&target)?.is_some() {
+        anyhow::bail!("user already exists: {target}");
+    }
+    if crate::auth::passwd_store::read(&user_store_path(), &target).is_some() {
+        anyhow::bail!("user already exists: {target}");
+    }
+    // redb session record.
     let txn = TREE
         .in_disk
         .begin_write()
@@ -39,22 +51,37 @@ pub fn create_user(id: &str, admin: bool) -> Result<()> {
         let mut table = txn
             .open_table(USERS)
             .context("Failed to open USERS for write")?;
-        if table.get(id)?.is_some() {
-            anyhow::bail!("user already exists: {id}");
-        }
         let value = serde_json::to_string(&UserRecord {
-            admin,
             sessions: Vec::new(),
         })
         .context("Failed to serialize UserRecord")?;
         table
-            .insert(id, value.as_str())
+            .insert(target.as_str(), value.as_str())
             .context("Failed to insert into USERS")?;
     }
-    txn.commit().context("Failed to commit USERS insert")
+    txn.commit().context("Failed to commit USERS insert")?;
+    // passwd entry with no password hash: identity exists, login impossible
+    // until a password is set.
+    crate::auth::passwd_store::rmw(&user_store_path(), |users| {
+        if users.contains_key(&target) {
+            return Err(AppError::new(ErrorKind::Conflict, "user already exists"));
+        }
+        users.insert(
+            target.clone(),
+            crate::auth::password::UserEntry {
+                hash: None,
+                admin,
+                home: None,
+            },
+        );
+        Ok(())
+    })
+    .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    Ok(())
 }
 
-/// Look up a user by id. A never-created table reads as empty
+/// Look up the session record for `id`. Identity/existence is tracked in
+/// the passwd store, not redb; a never-created table reads as empty
 /// (tables are only created on write paths, never here).
 ///
 /// # Errors
@@ -93,68 +120,15 @@ pub fn get_user(id: &str) -> Result<Option<UserRecord>> {
 /// [`ErrorKind::Conflict`] when the demotion would leave zero admins, and
 /// [`ErrorKind::Database`] when the database cannot be read or written.
 pub fn set_admin_role(id: &str, admin: bool) -> Result<bool, AppError> {
-    use redb::ReadableTable;
     let target = validate_user_id(id)?;
-    let txn = TREE
-        .in_disk
-        .begin_write()
-        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-    let changed = {
-        let mut table = txn
-            .open_table(USERS)
-            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        let current: UserRecord = match table
-            .get(target.as_str())
-            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
-        {
-            Some(guard) => serde_json::from_str(guard.value()).map_err(|e| {
-                AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e))
-            })?,
-            None => {
-                return Err(AppError::new(
-                    ErrorKind::NotFound,
-                    format!("unknown user: {target}"),
-                ));
-            }
-        };
-        if current.admin == admin {
-            return Ok(false);
-        }
-        if !admin {
-            let mut admins = 0;
-            for entry in table
-                .iter()
-                .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
-            {
-                let (_, guard) =
-                    entry.map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-                let record: UserRecord = serde_json::from_str(guard.value()).map_err(|e| {
-                    AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e))
-                })?;
-                if record.admin {
-                    admins += 1;
-                }
-            }
-            if admins <= 1 {
-                return Err(AppError::new(
-                    ErrorKind::Conflict,
-                    "demotion would leave zero admins",
-                ));
-            }
-        }
-        let value = serde_json::to_string(&UserRecord {
-            admin,
-            sessions: current.sessions.clone(),
-        })
-        .map_err(|e| AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e)))?;
-        table
-            .insert(target.as_str(), value.as_str())
-            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        true
-    };
-    txn.commit()
-        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-    Ok(changed)
+    // Existence in passwd store is authoritative for identity.
+    if crate::auth::passwd_store::read(&user_store_path(), &target).is_none() {
+        return Err(AppError::new(
+            ErrorKind::NotFound,
+            format!("unknown user: {target}"),
+        ));
+    }
+    crate::auth::passwd_store::set_admin(&user_store_path(), &target, admin)
 }
 
 /// Set the admin flag for an existing user. Fails for unknown ids.
@@ -162,30 +136,13 @@ pub fn set_admin_role(id: &str, admin: bool) -> Result<bool, AppError> {
 /// # Errors
 /// Returns an error if the id is unknown or the database cannot be written.
 pub fn set_admin(id: &str, admin: bool) -> Result<()> {
-    let txn = TREE
-        .in_disk
-        .begin_write()
-        .context("Failed to begin write transaction for USERS")?;
-    {
-        let mut table = txn
-            .open_table(USERS)
-            .context("Failed to open USERS for write")?;
-        let current: UserRecord = match table.get(id)? {
-            Some(guard) => {
-                serde_json::from_str(guard.value()).context("Failed to deserialize UserRecord")?
-            }
-            None => anyhow::bail!("unknown user: {id}"),
-        };
-        let value = serde_json::to_string(&UserRecord {
-            admin,
-            sessions: current.sessions,
-        })
-        .context("Failed to serialize UserRecord")?;
-        table
-            .insert(id, value.as_str())
-            .context("Failed to update USERS")?;
+    let target = validate_user_id(id)?;
+    if crate::auth::passwd_store::read(&user_store_path(), &target).is_none() {
+        anyhow::bail!("unknown user: {target}");
     }
-    txn.commit().context("Failed to commit USERS update")
+    crate::auth::passwd_store::set_admin(&user_store_path(), &target, admin)
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    Ok(())
 }
 
 #[allow(clippy::cast_sign_loss)]
@@ -211,6 +168,12 @@ pub fn add_session(id: &str, jti: &str) -> Result<(), AppError> {
         ));
     }
     let now = now_secs();
+    if crate::auth::passwd_store::read(&user_store_path(), &target).is_none() {
+        return Err(AppError::new(
+            ErrorKind::NotFound,
+            format!("unknown user: {target}"),
+        ));
+    }
     let txn = TREE
         .in_disk
         .begin_write()
@@ -226,12 +189,9 @@ pub fn add_session(id: &str, jti: &str) -> Result<(), AppError> {
             Some(guard) => serde_json::from_str(guard.value()).map_err(|e| {
                 AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e))
             })?,
-            None => {
-                return Err(AppError::new(
-                    ErrorKind::NotFound,
-                    format!("unknown user: {target}"),
-                ));
-            }
+            None => UserRecord {
+                sessions: Vec::new(),
+            },
         };
         // Lazy-prune expired sessions.
         record
@@ -271,6 +231,9 @@ pub fn remove_session(id: &str, jti: &str) -> Result<bool, AppError> {
         Err(e) => return Err(e),
     };
     if jti.is_empty() {
+        return Ok(false);
+    }
+    if crate::auth::passwd_store::read(&user_store_path(), &target).is_none() {
         return Ok(false);
     }
     let txn = TREE
@@ -316,6 +279,12 @@ pub fn remove_session(id: &str, jti: &str) -> Result<bool, AppError> {
 /// [`ErrorKind::Database`] when the database cannot be read or written.
 pub fn clear_sessions(id: &str) -> Result<(), AppError> {
     let target = validate_user_id(id)?;
+    if crate::auth::passwd_store::read(&user_store_path(), &target).is_none() {
+        return Err(AppError::new(
+            ErrorKind::NotFound,
+            format!("unknown user: {target}"),
+        ));
+    }
     let txn = TREE
         .in_disk
         .begin_write()
@@ -376,21 +345,13 @@ pub fn list_users() -> Result<Vec<(String, UserRecord)>> {
     Ok(users)
 }
 
-/// Count users. A never-created table counts as zero.
+/// Count users. The passwd store is the userdb of record, so this counts
+/// passwd entries (single source of truth); a missing store counts as zero.
 ///
 /// # Errors
-/// Returns an error if the database cannot be read.
+/// Returns an error if the store cannot be read.
 pub fn user_count() -> Result<usize> {
-    let txn = TREE
-        .in_disk
-        .begin_read()
-        .context("Failed to begin read transaction for USERS")?;
-    let table = match txn.open_table(USERS) {
-        Ok(table) => table,
-        Err(redb::TableError::TableDoesNotExist(_)) => return Ok(0),
-        Err(e) => return Err(e).context("Failed to open USERS")?,
-    };
-    usize::try_from(table.len()?).context("USERS row count exceeds usize")
+    Ok(crate::auth::passwd_store::count(&user_store_path()))
 }
 
 /// Validate a user id: trim surrounding whitespace, then require 1..=64 chars.
@@ -466,23 +427,14 @@ pub fn validate_new_password(user_id: &str, password: &str) -> Result<String, Ap
     Ok(canonical)
 }
 
-/// Write the password hash for `id` into `passwd.json`, creating the auth
-/// directory on first use. The password must already be validated and
-/// trimmed by the caller.
+/// Write the password hash for `id` into the user store. The password
+/// must already be validated and trimmed by the caller.
 ///
 /// # Errors
-/// Returns an [`AppError`] with [`ErrorKind::IO`] when the directory or
-/// the store cannot be written.
+/// Returns an [`AppError`] when the store cannot be written.
 pub(crate) fn store_password(id: &str, password: &str) -> Result<(), AppError> {
-    let path = passwd_file_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| AppError::from_err(ErrorKind::IO, e.into()))?;
-    }
-    let mut store = crate::auth::password::PasswdFile::load(&path)
-        .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
-    store
-        .set_password(id, password)
-        .map_err(|e| AppError::from_err(ErrorKind::IO, e))
+    crate::auth::passwd_store::set_password(&user_store_path(), id, password)?;
+    Ok(())
 }
 
 /// Uniform HTTP copy for every registration-conflict surface (used invite
@@ -492,7 +444,7 @@ pub(crate) const REGISTRATION_CONFLICT_MESSAGE: &str =
     "registration conflict: the invite or the userId is already taken";
 
 /// Provision a new user: validate the id and password, insert the redb
-/// record, and write the password hash to `passwd.json`.
+/// record, and write the password hash to the user store.
 ///
 /// The password is trimmed once and the trimmed (canonical) form is stored;
 /// login verifies trimmed input, so write-then-login stays consistent.
@@ -506,6 +458,15 @@ pub(crate) const REGISTRATION_CONFLICT_MESSAGE: &str =
 /// fails. A failure after the redb insert leaves a user record without a
 /// password hash — no login is possible until it is reprovisioned.
 pub fn provision_user(id: &str, password: &str, admin: bool) -> Result<String, AppError> {
+    provision_user_with_home(id, password, admin, None)
+}
+
+pub fn provision_user_with_home(
+    id: &str,
+    password: &str,
+    admin: bool,
+    home: Option<String>,
+) -> Result<String, AppError> {
     let id = validate_user_id(id)?;
     let canonical = validate_new_password(&id, password)?;
     if get_user(&id)
@@ -517,19 +478,71 @@ pub fn provision_user(id: &str, password: &str, admin: bool) -> Result<String, A
             REGISTRATION_CONFLICT_MESSAGE,
         ));
     }
-    create_user(&id, admin).map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
-    store_password(&id, &canonical)?;
+    if crate::auth::passwd_store::read(&user_store_path(), &id).is_some() {
+        return Err(AppError::new(
+            ErrorKind::Conflict,
+            REGISTRATION_CONFLICT_MESSAGE,
+        ));
+    }
+    // redb session record.
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    {
+        let mut table = txn
+            .open_table(USERS)
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+        let value = serde_json::to_string(&UserRecord {
+            sessions: Vec::new(),
+        })
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+        table
+            .insert(id.as_str(), value.as_str())
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    }
+    txn.commit()
+        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    // passwd entry (locked) with hash + admin + home.
+    crate::auth::passwd_store::provision(&user_store_path(), &id, &canonical, admin, home)
+        .map_err(|e| AppError::from_err(ErrorKind::IO, e.into()))?;
     Ok(id)
 }
 
-/// Path of the JSON password store: `<DATA_HOME>/auth/passwd.json`.
-/// The store itself takes an explicit path (see [`crate::auth::password`]);
+/// Path of the user store: `<DATA_HOME>/auth/users.redb`.
+/// The store itself takes an explicit path (see [`crate::auth::passwd_store`]);
 /// this helper only resolves the production location.
 #[must_use]
-pub fn passwd_file_path() -> std::path::PathBuf {
+pub fn user_store_path() -> std::path::PathBuf {
     crate::storage::files::get_data_path()
         .join("auth")
-        .join("passwd.json")
+        .join("users.redb")
+}
+
+/// Read the admin flag for `id` from the passwd store.
+pub fn get_admin(id: &str) -> Result<Option<bool>> {
+    Ok(crate::auth::passwd_store::read(&user_store_path(), id).map(|e| e.admin))
+}
+
+/// Read the full passwd entry for `id` (identity attributes).
+pub fn get_passwd_entry(id: &str) -> Result<Option<crate::auth::password::UserEntry>> {
+    Ok(crate::auth::passwd_store::read(&user_store_path(), id))
+}
+
+/// Purge all session state for `id` (removes the redb row). Used by `user del`.
+pub fn purge_sessions(id: &str) -> Result<()> {
+    let target = validate_user_id(id)?;
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .context("Failed to begin write transaction for USERS")?;
+    {
+        let mut table = txn
+            .open_table(USERS)
+            .context("Failed to open USERS for write")?;
+        let _ = table.remove(target.as_str());
+    }
+    txn.commit().context("Failed to commit USERS purge")
 }
 
 #[cfg(test)]
@@ -562,6 +575,8 @@ mod tests {
             }
         }
         txn.commit().expect("commit clear");
+        // Also clear the user store so identity state stays in sync.
+        crate::auth::passwd_store::remove_store(&crate::auth::users::user_store_path());
     }
 
     #[test]
@@ -574,13 +589,7 @@ mod tests {
 
         crate::auth::users::create_user(ROUNDTRIP_ID, true).expect("create user");
         let found = crate::auth::users::get_user(ROUNDTRIP_ID).expect("get user");
-        assert_eq!(
-            found,
-            Some(UserRecord {
-                admin: true,
-                sessions: vec![]
-            })
-        );
+        assert_eq!(found, Some(UserRecord { sessions: vec![] }));
 
         clear_users_table();
     }
@@ -624,13 +633,7 @@ mod tests {
         crate::auth::users::create_user(ADMIN_ID, false).expect("create user");
         crate::auth::users::set_admin(ADMIN_ID, true).expect("set admin");
         let found = crate::auth::users::get_user(ADMIN_ID).expect("get user");
-        assert_eq!(
-            found,
-            Some(UserRecord {
-                admin: true,
-                sessions: vec![]
-            })
-        );
+        assert_eq!(found, Some(UserRecord { sessions: vec![] }));
         assert!(crate::auth::users::set_admin("s2a-no-such-user", true).is_err());
 
         clear_users_table();
@@ -653,20 +656,8 @@ mod tests {
         assert_eq!(
             listed,
             vec![
-                (
-                    LIST_A_ID.to_string(),
-                    UserRecord {
-                        admin: true,
-                        sessions: vec![]
-                    }
-                ),
-                (
-                    LIST_B_ID.to_string(),
-                    UserRecord {
-                        admin: false,
-                        sessions: vec![]
-                    }
-                ),
+                (LIST_A_ID.to_string(), UserRecord { sessions: vec![] }),
+                (LIST_B_ID.to_string(), UserRecord { sessions: vec![] }),
             ]
         );
 
@@ -674,13 +665,13 @@ mod tests {
     }
 
     #[test]
-    fn passwd_file_path_lives_under_data_home() {
+    fn user_store_path_lives_under_data_home() {
         let _guard = TEST_SERIAL_GUARD
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
-        let path = crate::auth::users::passwd_file_path();
-        assert_eq!(path.file_name().expect("file name"), "passwd.json");
+        let path = crate::auth::users::user_store_path();
+        assert_eq!(path.file_name().expect("file name"), "users.redb");
         assert_eq!(
             path.parent()
                 .expect("parent")
@@ -797,10 +788,7 @@ mod tests {
         // The existing record is untouched by the failed duplicate.
         assert_eq!(
             super::get_user("s3-dup").expect("get"),
-            Some(UserRecord {
-                admin: true,
-                sessions: vec![]
-            })
+            Some(UserRecord { sessions: vec![] })
         );
 
         reset_backend_state();
@@ -819,16 +807,60 @@ mod tests {
         assert_eq!(id, "s3-trim");
         assert_eq!(
             super::get_user("s3-trim").expect("get"),
-            Some(UserRecord {
-                admin: false,
-                sessions: vec![]
-            })
+            Some(UserRecord { sessions: vec![] })
         );
         // Login verifies the trimmed input against the stored (trimmed)
         // canonical form — write-then-login must stay consistent.
         let store =
-            crate::auth::password::PasswdFile::load(&super::passwd_file_path()).expect("load");
+            crate::auth::password::PasswdFile::load(&super::user_store_path()).expect("load");
         assert!(store.verify("s3-trim", &test_password("s3-trim")));
+
+        reset_backend_state();
+    }
+
+    #[test]
+    fn s9_pin_a_entry_carries_admin_and_home_keys() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        super::provision_user("s9-pin-a", "long-enough-pw1", true).expect("provision");
+        let entry =
+            crate::auth::passwd_store::read(&super::user_store_path(), "s9-pin-a").expect("entry");
+        assert!(entry.admin, "admin flag must be present");
+        assert_eq!(entry.home, None, "home attribute must be present as None");
+        assert!(entry.hash.is_some(), "password hash must be present");
+
+        reset_backend_state();
+    }
+
+    #[test]
+    fn s9_pin_create_user_refuses_login() {
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+
+        super::create_user("s9-nopw", false).expect("create user");
+
+        // Arbitrary password fails.
+        let store =
+            crate::auth::password::PasswdFile::load(&super::user_store_path()).expect("load");
+        assert!(!store.verify("s9-nopw", "anything-12345"));
+
+        // Old placeholder literal also fails.
+        assert!(!store.verify("s9-nopw", "create-user-placeholder-s9-nopw"));
+
+        // Entry has no password hash.
+        let entry =
+            crate::auth::passwd_store::read(&super::user_store_path(), "s9-nopw").expect("entry");
+        assert!(
+            entry.hash.is_none(),
+            "hash must be absent for no-password user"
+        );
 
         reset_backend_state();
     }
@@ -888,13 +920,7 @@ mod tests {
         assert_eq!(err.kind, crate::error::ErrorKind::Conflict);
         // Refusal leaves the flag untouched.
         let found = crate::auth::users::get_user("s5-sole").expect("get user");
-        assert_eq!(
-            found,
-            Some(UserRecord {
-                admin: true,
-                sessions: vec![]
-            })
-        );
+        assert_eq!(found, Some(UserRecord { sessions: vec![] }));
 
         clear_users_table();
     }
@@ -912,17 +938,11 @@ mod tests {
         assert!(super::set_admin_role("s5-a", false).expect("transfer demotion"));
         assert_eq!(
             crate::auth::users::get_user("s5-a").expect("get a"),
-            Some(UserRecord {
-                admin: false,
-                sessions: vec![]
-            })
+            Some(UserRecord { sessions: vec![] })
         );
         assert_eq!(
             crate::auth::users::get_user("s5-b").expect("get b"),
-            Some(UserRecord {
-                admin: true,
-                sessions: vec![]
-            })
+            Some(UserRecord { sessions: vec![] })
         );
 
         clear_users_table();
@@ -940,10 +960,7 @@ mod tests {
         assert!(super::set_admin_role("s5-c", true).expect("promote"));
         assert_eq!(
             crate::auth::users::get_user("s5-c").expect("get c"),
-            Some(UserRecord {
-                admin: true,
-                sessions: vec![]
-            })
+            Some(UserRecord { sessions: vec![] })
         );
         // Same-flag write is a no-op reporting no change.
         assert!(!super::set_admin_role("s5-c", true).expect("noop promote"));
@@ -972,13 +989,7 @@ mod tests {
         txn.commit().expect("commit");
 
         let found = super::get_user("s6-legacy").expect("get legacy");
-        assert_eq!(
-            found,
-            Some(UserRecord {
-                admin: true,
-                sessions: vec![]
-            })
-        );
+        assert_eq!(found, Some(UserRecord { sessions: vec![] }));
 
         clear_users_table();
     }
@@ -1093,7 +1104,6 @@ mod tests {
             now.saturating_sub(super::SESSION_TTL_SECS + 10)
         };
         let stale = UserRecord {
-            admin: false,
             sessions: vec![
                 super::SessionRecord {
                     jti: "old".to_string(),

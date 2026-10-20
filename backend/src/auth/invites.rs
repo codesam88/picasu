@@ -6,7 +6,7 @@
 //! candidate hash against every stored key with [`subtle::ConstantTimeEq`]
 //! and marks the invite used in the same redb write transaction that
 //! inserts the new user record (`admin: false`). The password hash lives in
-//! `passwd.json` outside that transaction — a crash between the two halves
+//! the user store outside that transaction — a crash between the two halves
 //! fails safe, because login needs both.
 
 use base64::{Engine as _, engine::general_purpose};
@@ -273,8 +273,17 @@ pub fn revoke_invite(invite_id: &str) -> Result<bool, AppError> {
 ///
 /// The transaction commits or rolls back as a unit: a failed redeem never
 /// marks the invite used and never inserts the user.
+#[allow(clippy::too_many_lines)]
 pub fn redeem_invite(user_id: &str, token: &str) -> Result<(), AppError> {
     let id = crate::auth::users::validate_user_id(user_id)?;
+    // Identity lives in the passwd store; an id already present there is a
+    // conflict even if no redb session row exists yet.
+    if crate::auth::passwd_store::read(&crate::auth::users::user_store_path(), &id).is_some() {
+        return Err(AppError::new(
+            ErrorKind::Conflict,
+            REGISTRATION_CONFLICT_MESSAGE,
+        ));
+    }
     let candidate = hash_token(token);
     let now = now_secs()?;
     let txn = TREE
@@ -345,17 +354,35 @@ pub fn redeem_invite(user_id: &str, token: &str) -> Result<(), AppError> {
         invites
             .insert(candidate.as_str(), json.as_str())
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        let user_json = serde_json::to_string(&crate::auth::users::UserRecord {
-            admin: false,
-            sessions: vec![],
-        })
-        .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+        let user_json = serde_json::to_string(&crate::auth::users::UserRecord { sessions: vec![] })
+            .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
         users
             .insert(id.as_str(), user_json.as_str())
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
     }
     txn.commit()
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
+    // Identity lives in the passwd store of record; create the entry without
+    // a password hash (set later by the registration path). A redeem that
+    // stops here leaves a no-password user, consistent with create_user.
+    crate::auth::passwd_store::rmw(&crate::auth::users::user_store_path(), |users| {
+        if users.contains_key(&id) {
+            return Err(AppError::new(
+                ErrorKind::Conflict,
+                REGISTRATION_CONFLICT_MESSAGE,
+            ));
+        }
+        users.insert(
+            id.clone(),
+            crate::auth::password::UserEntry {
+                hash: None,
+                admin: false,
+                home: None,
+            },
+        );
+        Ok(())
+    })
+    .map_err(|e| AppError::from_err(ErrorKind::IO, e.into()))?;
     log::info!("enrollment: invited user {id} registered");
     Ok(())
 }
@@ -430,10 +457,7 @@ mod tests {
         super::redeem_invite("s6-reg", &token).expect("redeem");
         assert_eq!(
             crate::auth::users::get_user("s6-reg").expect("get user"),
-            Some(crate::auth::users::UserRecord {
-                admin: false,
-                sessions: vec![]
-            })
+            Some(crate::auth::users::UserRecord { sessions: vec![] })
         );
         let used = super::get_invite(&super::hash_token(&token))
             .expect("get invite")
@@ -444,6 +468,48 @@ mod tests {
         let err = super::redeem_invite("s6-reg2", &token).expect_err("double use must fail");
         assert_eq!(err.kind, ErrorKind::Conflict);
         assert_eq!(crate::auth::users::user_count().expect("count"), 1);
+
+        reset_backend_state();
+    }
+
+    #[test]
+    fn s9_pin_invite_cannot_takeover_passwd_only_user() {
+        let _g = setup();
+
+        let (token, _) = super::create_invite("s6-root").expect("create");
+        let invite_id = super::hash_token(&token);
+
+        // Seed a passwd-only user (identity in passwd store, no redb row).
+        let path = crate::auth::users::user_store_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("auth dir");
+        }
+        crate::auth::passwd_store::rmw(&path, |users| {
+            users.insert(
+                "s6-takeover".to_string(),
+                crate::auth::password::UserEntry {
+                    hash: None,
+                    admin: false,
+                    home: None,
+                },
+            );
+            Ok(())
+        })
+        .expect("seed passwd-only");
+
+        let err = super::redeem_invite("s6-takeover", &token)
+            .expect_err("passwd-only user must refuse redeem");
+        assert_eq!(err.kind, ErrorKind::Conflict);
+        assert!(
+            err.to_string()
+                .contains(crate::auth::users::REGISTRATION_CONFLICT_MESSAGE),
+            "uniform conflict message required: {err}"
+        );
+
+        // Invite must remain unconsumed.
+        let row = raw_row(&invite_id).expect("invite row must exist");
+        let rec: super::InviteRecord = serde_json::from_str(&row).expect("parse invite");
+        assert!(rec.used_by.is_none(), "invite must not be consumed");
 
         reset_backend_state();
     }

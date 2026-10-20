@@ -85,7 +85,7 @@ attacks are excluded by construction.
 
 1. `POST /post/users/authenticate` takes `{ userId, password }`, trims the password,
    and verifies it against the PBKDF2 password store
-   (`<DATA_HOME>/auth/passwd.json`) for that user id. A match mints a random
+   (`<DATA_HOME>/auth/users.redb`) for that user id. A match mints a random
    `jti` (UUID v4), stores it as a live session for that user, and sets a
    14-day `Claims { role: User { id, admin }, exp, jti }` JWT in an HttpOnly
    session cookie, returning the session profile `{ userId, admin }` in the
@@ -202,7 +202,7 @@ via `POST /post/users/bootstrap` (forced `admin: true`). The refusal
 message names that endpoint while the window is open; with the flag off it
 names the flag/CLI remedies instead. The flag is WARN-logged at
 boot, the server refuses to start when the flag is set against an existing
-`<DATA_HOME>/auth/passwd.json` (bootstrap already happened, or the store
+`<DATA_HOME>/auth/users.redb` (bootstrap already happened, or the store
 needs repair — provision via the CLI instead). This closes Finding F6 for the default
 path; a network-exposed install is only ever open if the operator opted in.
 
@@ -211,7 +211,7 @@ bare JSON string body to `authenticate` answers 422 (well-formed JSON of
 the wrong shape — Rocket's `Json` guard), never migration: no user is
 created, nothing is enrolled. A legacy `password` key in an old
 `config.toml` is ignored with a boot warning; empty installs enroll only
-via the bootstrap route on an empty store or the `picasu-admin` CLI.
+via the bootstrap route on an empty store or the `picasu-cmd` CLI.
 Tokens predating the `jti` claim or the `Role::User { id, admin }` shape
 do not decode.
 
@@ -294,10 +294,18 @@ expiry.
 - **`read_only_mode`** — global write kill-switch (405 on all mutations).
 - **`auth_key` rotation** — changing it invalidates every outstanding token of
   all three types at once.
-- **User passwords** live as PBKDF2 hashes in `<DATA_HOME>/auth/passwd.json`
-  (separate from config and the database) with role records in the `users`
-  table; hashes are never exported. Demotion/removal is re-checked per request
-  for `GuardAuth`/`GuardShare`/`GuardUser`, so it takes effect before token
+- **User store** — `<DATA_HOME>/auth/users.redb` is the userdb of record:
+  `username ⇒ {hash?, admin, home}` (PBKDF2 hash optional — a hash-less
+  entry cannot log in). Every read-modify-write is one redb write
+  transaction, so mutations are atomic and serial; the engine's file lock
+  is held for the server's whole lifetime, which excludes every other
+  process — the offline CLI must run while the server is stopped and fails
+  loudly otherwise. redb holds only per-user sessions
+  (temporary, high-churn, safe to lose — the index database stays
+  rebuildable); identity reads and enrollment emptiness derive from the
+  user store. The offline `picasu-cmd user list|add|mod|del|passwd`
+  administers it; hashes are never exported. Demotion/removal is re-checked per
+  request for `GuardAuth`/`GuardShare`/`GuardUser`, so it takes effect before token
   expiry; promotion requires re-login. A password change does **not** touch
   `auth_key`, so outstanding tokens survive it.
 - **Export** (`GET /get/config/export`) returns the serialized
