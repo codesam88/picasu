@@ -23,16 +23,17 @@ in the meantime; this task replaces it with the declaration-first shape.
    removed, the HTTP API on an empty running store offers nothing else:
    logins answer the uniform unknown-user 401 and guarded writes refuse,
    so every online seeding must enroll first. The scaling path is
-   offline provisioning, which the `picasu-admin` CLI provides once H1a
-   lands: it seeds user records before boot, the existing passwd file
-   loads at startup, and `/post/users/authenticate` then works normally.
-   Interplay: the harness cannot keep forcing the flag — flag on against
-   a non-empty passwd store refuses to boot (`lib.rs`), so the CLI path
+   offline provisioning, which the `picasu-cmd` CLI provides (shipped in
+   `.plan/user-store-redb.md`): it seeds user records before boot, the
+   store is read live at request time, and `/post/users/authenticate`
+   then works normally. Interplay: the harness cannot keep forcing the
+   flag — flag on against
+   a non-empty user store refuses to boot (`lib.rs`), so the CLI path
    pairs with dropping the unconditional launcher flag (or flagging only
    genuinely empty installs). None of the bootstrap riding scales to the
    planned "create more users and switch between them" scenarios.
 2. **A documented tool that doesn't exist.** Error messages and
-   `docs/openapi-reference.md` promise a `picasu-admin` CLI for store
+   `docs/openapi-reference.md` promise a `picasu-cmd` CLI for store
    provisioning; the binary has one clap surface with no subcommands
    (`main.rs`).
 3. **Watchers fire on every launch.** The backend fixture starts first
@@ -64,12 +65,11 @@ in the meantime; this task replaces it with the declaration-first shape.
 
 ### Store-level user provisioning (replaces the HTTP bootstrap path)
 
-- Implement the promised **`picasu-admin` one-shot provision command**
-  (clap subcommand or sibling bin): creates the user record (redb
-  `USERS` table) + `passwd.json` entry by reusing the lib's
-  `create_user`/`set_password`. Offline: it must run **before**
-  `startBackend` — redb has no safe concurrent access while the server
-  holds it.
+- Implement the promised **`picasu-cmd` provision command** (shipped:
+  `.plan/user-store-redb.md` — `user add|mod|del|passwd|list` on the
+  `users.redb` userdb of record). Offline and strictly so: the store's
+  engine lock is held by a running server, so the CLI must run **before**
+  `startBackend` and fails loudly if the server holds the store.
 - `given: user:` keeps its declaration shape; its `executeGiven` branch
   stops calling HTTP and instead feeds declarations to the launcher.
 - Bootstrap-window usage becomes an explicit, separate declaration
@@ -118,8 +118,8 @@ from the step, credited to the scenario that declares it. The
 
 ## Work split (iterative, worker-delegated, TDD where applicable)
 
-- **H1a** — backend `picasu-admin` provisioning command + tests
-  (backend, TDD).
+- **H1a** — backend `picasu-cmd` provisioning command + tests
+  (delivered: `.plan/user-store-redb.md`).
 - **H1b** — harness plumbing: scenario known before backend start
   (`test.use` in the spec loop or backend start in the body), phase-A
   seeding (users via CLI, snapfab), `server:` declaration +
