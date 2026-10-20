@@ -84,7 +84,7 @@ describe('429 handling', () => {
     rejectWith(429, { 'retry-after': '2' }, rateLimitBody(2))
 
     await expect(
-      axios.post('/post/authenticate', { userId: 'alice', password: 'wrong' })
+      axios.post('/post/users/authenticate', { userId: 'alice', password: 'wrong' })
     ).rejects.toBeTruthy()
 
     expect(useMessageStore('mainId').queue).toHaveLength(0)
@@ -96,7 +96,7 @@ describe('429 handling', () => {
     rejectWith(429, {}, rateLimitBody())
 
     await expect(
-      axios.post('/post/authenticate', { userId: 'alice', password: 'wrong' })
+      axios.post('/post/users/authenticate', { userId: 'alice', password: 'wrong' })
     ).rejects.toBeTruthy()
 
     expect(useMessageStore('mainId').queue).toHaveLength(0)
@@ -157,7 +157,7 @@ describe('401 handling', () => {
     rejectWith(401, {}, { message: 'Unknown user or wrong password' })
 
     await expect(
-      axios.post('/post/authenticate', { userId: 'alice', password: 'wrong' })
+      axios.post('/post/users/authenticate', { userId: 'alice', password: 'wrong' })
     ).rejects.toBeTruthy()
 
     expect(useSessionStore('mainId').profile).toEqual({ userId: 'alice', admin: true })

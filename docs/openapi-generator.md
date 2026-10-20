@@ -397,7 +397,7 @@ operations by, so the vocabulary stays small and subject-oriented.
 
 | Tag        | Subject                                                                             | Example                            |
 | ---------- | ----------------------------------------------------------------------------------- | ---------------------------------- |
-| `auth`     | Authentication and token renewal                                                    | `POST /post/authenticate`          |
+| `auth`     | Authentication and token renewal                                                    | `POST /post/users/authenticate`    |
 | `albums`   | Albums and shares: creation, assignment, covers, titles, descriptions, share links  | `PUT /put/assign_album`            |
 | `assets`   | Per-asset metadata and editing: flags, rating, tags, rotation, thumbnails, deletion | `PUT /put/edit_tag`                |
 | `config`   | Server configuration: read, write, password, export/import, path completion         | `PUT /put/config`                  |

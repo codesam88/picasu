@@ -83,7 +83,7 @@ attacks are excluded by construction.
 
 ### Sign-in
 
-1. `POST /post/authenticate` takes `{ userId, password }`, trims the password,
+1. `POST /post/users/authenticate` takes `{ userId, password }`, trims the password,
    and verifies it against the PBKDF2 password store
    (`<DATA_HOME>/auth/passwd.json`) for that user id. A match mints a random
    `jti` (UUID v4), stores it as a live session for that user, and sets a
@@ -93,7 +93,7 @@ attacks are excluded by construction.
    distinguishing detail; the unknown-user path still pays one KDF round so
    timing leaks nothing.
 2. The **server** issues the session cookie via `Set-Cookie`
-   (`router/post/authenticate.rs`): `jwt=...; HttpOnly; SameSite=Strict;
+   (`router/post/users/authenticate.rs`): `jwt=...; HttpOnly; SameSite=Strict;
 Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    `X-Forwarded-Proto: https` (a TLS-terminating proxy must forward that
    header; plain-HTTP LAN deploys get a non-Secure cookie). Page JS never
@@ -130,7 +130,7 @@ Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    empty store, forced admin); `register` always creates non-admin
    accounts — elevation is `PUT /put/users/admin` alone.
 
-**Login throttling (brute-force resistance):** `POST /post/authenticate`
+**Login throttling (brute-force resistance):** `POST /post/users/authenticate`
 checks three sliding-window buckets before running the password KDF, so a
 throttled request stays cheap: an IP-short burst bucket (3 failures per
 10 min, first ban 10 s, doubling), an IP-long bucket per client address
@@ -191,7 +191,7 @@ cached. Anonymous `GET /get/users` is 401 in all states, including the
 empty store — it never serves enrollment state.
 
 **Bootstrap mode (opt-in):** a fresh install is closed by default — with an
-empty user store, `POST /post/authenticate` takes the unknown-user path
+empty user store, `POST /post/users/authenticate` takes the unknown-user path
 (401) and guarded routes reject callers: `GuardAuth` routes answer 401 and
 `GuardUser` routes answer 403 (a privilege condition, not a session
 failure — the SPA keeps its display state). No session exists

@@ -4,7 +4,7 @@ import { serverErrorSchema } from '@/type/schemas'
 /// Login endpoint throttled by the login limiter. The response interceptor
 /// stays silent for 429s here by design (the calling page owns the display
 /// inline), so callers without an inline banner must display them locally.
-export const AUTHENTICATE_URL = '/post/authenticate'
+export const AUTHENTICATE_URL = '/post/users/authenticate'
 
 /// Generic copy for a throttled request with no known wait: no countdown
 /// is possible, so no seconds are named.

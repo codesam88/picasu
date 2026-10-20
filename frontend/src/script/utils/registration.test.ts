@@ -189,19 +189,19 @@ describe('submitRegistration', () => {
   })
 
   test('throttled register-login round trip surfaces via onError exactly once', async () => {
-    // The login step hits /post/authenticate, where the interceptor stays
+    // The login step hits /post/users/authenticate, where the interceptor stays
     // silent by design — so the local snackbar is the only signal and must
     // fire. Both hinted and hint-less 429s take this path: the register
     // page has no countdown banner.
     for (const failure of [
-      realAxiosFailure(429, '/post/authenticate', {
+      realAxiosFailure(429, '/post/users/authenticate', {
         kind: 'Rate Limited',
         message: 'Too many login attempts, try again in 10s',
         status: 'Temporary',
         context: [],
         retryAfter: 10
       }),
-      realAxiosFailure(429, '/post/authenticate', {
+      realAxiosFailure(429, '/post/users/authenticate', {
         kind: 'Rate Limited',
         message: 'Too many login attempts',
         status: 'Temporary',

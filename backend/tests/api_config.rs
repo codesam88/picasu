@@ -24,7 +24,7 @@ fn auth_and_config(client: &Client) -> Value {
     );
 
     let auth_res = client
-        .post("/post/authenticate")
+        .post("/post/users/authenticate")
         .header(ContentType::JSON)
         .body(r#"{"userId":"admin","password":"secret123"}"#)
         .dispatch();
@@ -111,7 +111,7 @@ auth_key = "jwt-key-from-toml"
     // Open the first-run bootstrap window for this test binary (like
     // api_watcher and the shared bootstrap harness). Without it,
     // `POST /post/users/bootstrap` would 401 on a non-empty check and
-    // `POST /post/authenticate` would require a pre-existing user.
+    // `POST /post/users/authenticate` would require a pre-existing user.
     {
         let mut cfg = APP_CONFIG.get().unwrap().write().unwrap();
         cfg.bootstrap_admin = true;

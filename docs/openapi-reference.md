@@ -984,236 +984,6 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
-## Sign in and issue the session cookie (`HttpOnly`).
-
-<a id="opIdauthenticate"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X POST /post/authenticate \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json'
-
-```
-
-```http
-POST /post/authenticate HTTP/1.1
-
-Content-Type: application/json
-Accept: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "password": "string",
-  "userId": "string"
-}';
-const headers = {
-  'Content-Type':'application/json',
-  'Accept':'application/json'
-};
-
-fetch('/post/authenticate',
-{
-  method: 'POST',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json',
-  'Accept' => 'application/json'
-}
-
-result = RestClient.post '/post/authenticate',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json',
-  'Accept': 'application/json'
-}
-
-r = requests.post('/post/authenticate', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('POST','/post/authenticate', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/post/authenticate");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("POST");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/post/authenticate", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`POST /post/authenticate`
-
-A `{ userId, password }` object verifies against the user and password
-stores. On success the JWT travels in a `Set-Cookie: jwt=...; HttpOnly;
-SameSite=Strict; Path=/` response header — page JS never sees the token
-— and the body carries only the session profile
-`{ userId, admin }` for the client to display. Tokens are signed with
-`authKey`, or with a secret generated once per process when `authKey`
-is unset, so changing `authKey` invalidates every token issued under
-the previous one.
-
-Errors: 400 the login `userId` is empty or longer than 64 characters, or
-the body does not parse as a login object — 401 unknown user or wrong
-password (on an empty store every login is unknown: enrollment happens
-only via `POST /post/users/bootstrap`) — 429 the attempt is throttled
-(`Retry-After` carries the
-remaining ban seconds) — 500 internal error.
-
-Brute-force throttle: before the KDF runs, every attempt
-reserves a slot and then checks the IP-short, IP-long, and user-long
-buckets (see [`crate::auth::rate_limit`]); while any bucket bans, a
-429 is returned without hashing. Evaluated failures record into all
-applicable buckets, a success drops the username entry and clears the
-IP burst bucket (keeping IP-long history), and throttled attempts are
-never recorded. The environment-only kill
-switch `PICASU_RATE_LIMITS=false` (exact match) also bypasses the
-throttle — for fuzzing runs — while the failure logging stays.
-
-> Body parameter
-
-```json
-{
-  "password": "string",
-  "userId": "string"
-}
-```
-
-<h3 id="sign-in-and-issue-the-session-cookie-(`httponly`).-parameters">Parameters</h3>
-
-| Name | In   | Type                                | Required | Description |
-| ---- | ---- | ----------------------------------- | -------- | ----------- |
-| body | body | [LoginRequest](#schemaloginrequest) | true     | none        |
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "admin": true,
-  "userId": "string"
-}
-```
-
-> 401 Response
-
-```json
-{
-  "context": [],
-  "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
-}
-```
-
-<h3 id="sign-in-and-issue-the-session-cookie-(`httponly`).-responses">Responses</h3>
-
-| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Session profile; JWT in HttpOnly Set-Cookie                                                | [UserSummary](#schemausersummary)           |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
-| 429    | [Too Many Requests](https://tools.ietf.org/html/rfc6585#section-4)         | Too many login attempts; see Retry-After                                                   | None                                        |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
 ## Create a single-use invite token.
 
 <a id="opIdcreate_invite_handler"></a>
@@ -1997,6 +1767,236 @@ signature — 500 internal failure.
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                          |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)                   |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                          |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Sign in and issue the session cookie (`HttpOnly`).
+
+<a id="opIdauthenticate"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X POST /post/users/authenticate \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json'
+
+```
+
+```http
+POST /post/users/authenticate HTTP/1.1
+
+Content-Type: application/json
+Accept: application/json
+
+```
+
+```javascript
+const inputBody = '{
+  "password": "string",
+  "userId": "string"
+}';
+const headers = {
+  'Content-Type':'application/json',
+  'Accept':'application/json'
+};
+
+fetch('/post/users/authenticate',
+{
+  method: 'POST',
+  body: inputBody,
+  headers: headers
+})
+.then(function(res) {
+    return res.json();
+}).then(function(body) {
+    console.log(body);
+});
+
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Content-Type' => 'application/json',
+  'Accept' => 'application/json'
+}
+
+result = RestClient.post '/post/users/authenticate',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Content-Type': 'application/json',
+  'Accept': 'application/json'
+}
+
+r = requests.post('/post/users/authenticate', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Content-Type' => 'application/json',
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('POST','/post/users/authenticate', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/post/users/authenticate");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("POST");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Content-Type": []string{"application/json"},
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("POST", "/post/users/authenticate", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`POST /post/users/authenticate`
+
+A `{ userId, password }` object verifies against the user and password
+stores. On success the JWT travels in a `Set-Cookie: jwt=...; HttpOnly;
+SameSite=Strict; Path=/` response header — page JS never sees the token
+— and the body carries only the session profile
+`{ userId, admin }` for the client to display. Tokens are signed with
+`authKey`, or with a secret generated once per process when `authKey`
+is unset, so changing `authKey` invalidates every token issued under
+the previous one.
+
+Errors: 400 the login `userId` is empty or longer than 64 characters, or
+the body does not parse as a login object — 401 unknown user or wrong
+password (on an empty store every login is unknown: enrollment happens
+only via `POST /post/users/bootstrap`) — 429 the attempt is throttled
+(`Retry-After` carries the
+remaining ban seconds) — 500 internal error.
+
+Brute-force throttle: before the KDF runs, every attempt
+reserves a slot and then checks the IP-short, IP-long, and user-long
+buckets (see [`crate::auth::rate_limit`]); while any bucket bans, a
+429 is returned without hashing. Evaluated failures record into all
+applicable buckets, a success drops the username entry and clears the
+IP burst bucket (keeping IP-long history), and throttled attempts are
+never recorded. The environment-only kill
+switch `PICASU_RATE_LIMITS=false` (exact match) also bypasses the
+throttle — for fuzzing runs — while the failure logging stays.
+
+> Body parameter
+
+```json
+{
+  "password": "string",
+  "userId": "string"
+}
+```
+
+<h3 id="sign-in-and-issue-the-session-cookie-(`httponly`).-parameters">Parameters</h3>
+
+| Name | In   | Type                                | Required | Description |
+| ---- | ---- | ----------------------------------- | -------- | ----------- |
+| body | body | [LoginRequest](#schemaloginrequest) | true     | none        |
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "admin": true,
+  "userId": "string"
+}
+```
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized",
+  "status": "Permanent"
+}
+```
+
+<h3 id="sign-in-and-issue-the-session-cookie-(`httponly`).-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Session profile; JWT in HttpOnly Set-Cookie                                                | [UserSummary](#schemausersummary)           |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 429    | [Too Many Requests](https://tools.ietf.org/html/rfc6585#section-4)         | Too many login attempts; see Retry-After                                                   | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -13535,7 +13535,7 @@ This operation does not require authentication
 | address                  | string         | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | allowRegistration        | boolean        | false    | none         | Allow self-registration via `POST /post/users/register` without an<br>invite token. Default off: registration then requires a valid invite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | authKey                  | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| bootstrapAdmin           | boolean        | false    | none         | Enable the online first-admin bootstrap window. While set **and the<br>user store is empty**, unauthenticated `POST /post/users/bootstrap`<br>enrolls the first admin; until then `POST /post/authenticate` takes<br>the unknown-user path and every guarded route refuses with<br>`No administrator enrolled` (the refusal names the bootstrap<br>endpoint while the window is open). Default<br>off: a fresh install answers 401 everywhere until an operator opts<br>in (or provisions the store via the `picasu-admin` CLI). Enabling<br>the flag against an existing `passwd.json` makes the server refuse<br>to start. WARN-logged at boot whenever set.                                                                                                                                                                                                                                                                             |
+| bootstrapAdmin           | boolean        | false    | none         | Enable the online first-admin bootstrap window. While set **and the<br>user store is empty**, unauthenticated `POST /post/users/bootstrap`<br>enrolls the first admin; until then `POST /post/users/authenticate` takes<br>the unknown-user path and every guarded route refuses with<br>`No administrator enrolled` (the refusal names the bootstrap<br>endpoint while the window is open). Default<br>off: a fresh install answers 401 everywhere until an operator opts<br>in (or provisions the store via the `picasu-admin` CLI). Enabling<br>the flag against an existing `passwd.json` makes the server refuse<br>to start. WARN-logged at boot whenever set.                                                                                                                                                                                                                                                                       |
 | dataHome                 | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | disableImg               | boolean        | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | fsNotifyWatcher          | boolean        | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -14127,7 +14127,7 @@ token hash). Never contains the token itself.
 }
 ```
 
-Request body for `POST /post/authenticate`: a user login object. There is
+Request body for `POST /post/users/authenticate`: a user login object. There is
 deliberately no `admin` field: unknown keys are rejected, never honored.
 
 ### Properties

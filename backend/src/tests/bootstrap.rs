@@ -277,7 +277,7 @@ pub fn reset_backend_state() {
 
     // Drop the shared login throttle tracker so scenarios never inherit
     // failure counts or bans from a previous scenario.
-    crate::router::post::authenticate::reset_login_throttle();
+    crate::router::post::users_authenticate::reset_login_throttle();
 }
 
 /// Build the test Rocket instance with the current APP_CONFIG, without a
@@ -370,7 +370,7 @@ pub fn login(
     Option<String>,
 ) {
     let resp = client
-        .post("/post/authenticate")
+        .post("/post/users/authenticate")
         .header(rocket::http::ContentType::JSON)
         .body(serde_json::json!({ "userId": user_id, "password": password }).to_string())
         .dispatch();

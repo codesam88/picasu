@@ -40,3 +40,10 @@ POST /post/authenticate removed the media type `text/plain` for the response wit
 # deprecation window. Callers migrate one line to the canonical
 # `PUT /put/users/password` with `{userId, oldPassword, newPassword}`.
 PUT /put/config/password api path removed without deprecation
+
+# 2026-10-19 (auth-enrollment-review uniform naming, decided):
+# `POST /post/authenticate` becomes `POST /post/users/authenticate` so every
+# `/post/users/*` route lives in an identically named file
+# (`users_authenticate.rs`). The old path is deleted outright — hard-remove,
+# no deprecation window; login callers move one path segment.
+POST /post/authenticate api path removed without deprecation

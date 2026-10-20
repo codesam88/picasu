@@ -79,7 +79,7 @@ fn open_registration_creates_non_admin_user() {
         })
     );
     let resp = client
-        .post("/post/authenticate")
+        .post("/post/users/authenticate")
         .header(ContentType::JSON)
         .body(json!({ "userId": "s6-open", "password": pw }).to_string())
         .dispatch();

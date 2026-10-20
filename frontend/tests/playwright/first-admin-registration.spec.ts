@@ -2,7 +2,12 @@ import { expect } from '@playwright/test'
 import { test } from './scenarioFixtures'
 import { createPaths } from './paths'
 import { startBackend } from './backendLauncher'
-import { createGivenContext, executeGiven, sessionTokenFromLogin } from './executeGiven'
+import {
+  createGivenContext,
+  executeGiven,
+  resetAuthToken,
+  sessionTokenFromLogin
+} from './executeGiven'
 
 // Keep in sync with RACE_LOST_NOTICE in src/script/utils/registration.ts.
 // It is inlined (not imported) because the Playwright project
@@ -33,22 +38,15 @@ test.describe('first admin registration', () => {
     backendPaths,
     browser
   }) => {
+    // Private fresh backend per test: drop any leftover worker-cached
+    // session token (signed with a previous backend's authKey) before the
+    // state-building requests below. Same reset discipline as the other
+    // launcher-isolated specs.
+    resetAuthToken()
     const ADMIN_ID = 'first-admin'
     const ADMIN_PASSWORD = backendPaths.ADMIN_PASSWORD
     const WRONG_PASSWORD = 'wrong-password-1'
     const base = backendPaths.BACKEND_URL
-
-    // One photo so the empty-library onboarding dialog never appears: this
-    // spec is about auth, and the modal would cover the account menu that
-    // the logout step needs to click. Media presence does not affect the
-    // enrollment signal, which only reads the user store.
-    await executeGiven(
-      request,
-      [{ dir_album: '/library' }, { photo: '/library/photo.jpg' }],
-      createGivenContext('e2e_first_admin'),
-      undefined,
-      backendPaths
-    )
 
     // (1) A fresh backend boots to /register, with no timeline content.
     // Counter-proof: the timeline shell (GalleryBar search) is absent, so a
@@ -63,9 +61,7 @@ test.describe('first admin registration', () => {
     // (2) Mismatched confirm submits nothing and stays on /register.
     // Counter-proof: anonymous server-info still reports an empty store with
     // the window open, so a submit path that created the user anyway (which
-    // would flip `enrolled` to true) would fail here. (Object-login
-    // cannot prove this: in the open window ANY parseable login object mints
-    // a token, even for unknown ids.)
+    // would flip `enrolled` to true) would fail here.
     await test.step('mismatched confirm creates nothing', async () => {
       await page.getByPlaceholder('User ID').fill(ADMIN_ID)
       await page.getByPlaceholder('Password', { exact: true }).fill(ADMIN_PASSWORD)
@@ -92,7 +88,7 @@ test.describe('first admin registration', () => {
       await expect(page).toHaveURL(/\/timeline/)
       await expect(page.locator('#nav-search-input')).toBeVisible()
 
-      const loginRes = await request.post(`${base}/post/authenticate`, {
+      const loginRes = await request.post(`${base}/post/users/authenticate`, {
         data: { userId: ADMIN_ID, password: ADMIN_PASSWORD },
         headers: { 'Content-Type': 'application/json' }
       })
@@ -106,6 +102,23 @@ test.describe('first admin registration', () => {
       expect(users).toHaveLength(1)
       expect(users[0]).toMatchObject({ userId: ADMIN_ID, admin: true })
     })
+
+    // Media seeding happens here, inside the (now non-empty) install:
+    // API writes against an empty running store are refused (this spec
+    // enrolls online; offline CLI provisioning is not part of the
+    // harness), and step 1 needs the empty store to back its
+    // register-signal proof. One photo so the empty-library onboarding
+    // dialog never appears: the modal would cover the account menu that
+    // the logout step needs to click. Media presence does not affect the
+    // enrollment signal, which only reads the user store.
+    await executeGiven(
+      request,
+      [{ dir_album: '/library' }, { photo: '/library/photo.jpg' }],
+      createGivenContext('e2e_first_admin'),
+      undefined,
+      backendPaths,
+      { userId: ADMIN_ID, password: ADMIN_PASSWORD }
+    )
 
     // (4) Reload keeps the timeline session: the cookie survived, and the
     // guard's profile fast path still allows /timeline. Counter-proof:

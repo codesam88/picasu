@@ -30,7 +30,7 @@ then: ... # required key; may be an empty list
 name: Human-readable name for the scenario
 covers: # optional — see § Coverage intent
   api:
-    - POST /post/authenticate
+    - POST /post/users/authenticate
   ui:
     - textbox/Password
 given: # optional — fixture definitions
@@ -457,7 +457,7 @@ unexercised declaration. Warnings do not fail the test.
 ```yaml
 covers:
   api:
-    - POST /post/authenticate
+    - POST /post/users/authenticate
     - PUT /put/users/password
   ui:
     - textbox/Password
