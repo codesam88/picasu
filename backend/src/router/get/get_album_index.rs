@@ -3,6 +3,7 @@ use rocket::serde::json::Json;
 
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
+use crate::router::{AppResult, GuardResult};
 use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
 
 /// Report the state of the most recently started album-indexing job.
@@ -27,6 +28,7 @@ use crate::tasks::actor::album_index::{AlbumIndexStatus, album_index_status};
     )
 ]
 #[get("/get/index/status")]
-pub fn get_album_index_status(_auth: GuardAuth) -> Json<AlbumIndexStatus> {
-    Json(album_index_status())
+pub fn get_album_index_status(auth: GuardResult<GuardAuth>) -> AppResult<Json<AlbumIndexStatus>> {
+    let _ = auth?;
+    Ok(Json(album_index_status()))
 }

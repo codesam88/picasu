@@ -359,8 +359,7 @@ mod tests {
         s3b_set_bootstrap_admin(true);
         // No user record exists: the bootstrap window exposes only
         // server-info and users/bootstrap, so an anonymous admin-guard
-        // request is refused. (A bare guard carries status only; the
-        // enrollment hint surfaces on GuardResult routes.)
+        // request is refused with the window-aware enrollment hint.
         let resp = client.get("/get/index/status").dispatch();
         assert_eq!(resp.status(), rocket::http::Status::Unauthorized);
     }

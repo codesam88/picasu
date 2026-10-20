@@ -8,8 +8,8 @@ use rocket::serde::json::Json;
 use crate::error::{AppError, ErrorKind};
 use crate::model::config::{APP_CONFIG, AppConfig};
 use crate::openapi_components::Unauthorized;
-use crate::router::AppResult;
 use crate::router::auth::GuardAuth;
+use crate::router::{AppResult, GuardResult};
 
 /// Replace the server configuration with the posted one.
 ///
@@ -40,7 +40,11 @@ use crate::router::auth::GuardAuth;
     )
 ]
 #[post("/post/config/import", data = "<file>")]
-pub fn import_config_handler(_auth: GuardAuth, file: Json<AppConfig>) -> AppResult<Status> {
+pub fn import_config_handler(
+    auth: GuardResult<GuardAuth>,
+    file: Json<AppConfig>,
+) -> AppResult<Status> {
+    let _ = auth?;
     let mut incoming = file.into_inner();
     incoming.auth_key.clone_from(
         &APP_CONFIG

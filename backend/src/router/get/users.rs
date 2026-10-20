@@ -5,7 +5,7 @@ use crate::auth::users;
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::post::users_register::UserSummary;
-use crate::router::{AppError, AppResult, ErrorKind};
+use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
 /// List all users as `{ userId, admin }` pairs ordered by id.
 ///
@@ -24,7 +24,8 @@ use crate::router::{AppError, AppResult, ErrorKind};
     )
 ]
 #[get("/get/users")]
-pub fn list_users_handler(_auth: GuardAuth) -> AppResult<Json<Vec<UserSummary>>> {
+pub fn list_users_handler(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<UserSummary>>> {
+    let _ = auth?;
     // An empty store has no admins, so an admin-only route refuses in all
     // states; enrollment state is served by GET /get/server-info.
     if users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))? == 0 {
@@ -110,9 +111,8 @@ mod tests {
         let client = setup();
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
         // Enrollment state is served by GET /get/server-info; an empty
-        // store has no admins, so this admin-only route refuses. A bare
-        // guard carries status only — the enrollment hint surfaces on
-        // GuardResult routes (register, users/password, bootstrap).
+        // store has no admins, so this admin-only route refuses with the
+        // window-aware enrollment hint in the body.
         let resp = client.get("/get/users").dispatch();
         assert_eq!(resp.status(), Status::Unauthorized);
     }

@@ -42,10 +42,11 @@ pub struct IndexAlbumRequest {
 ]
 #[post("/post/index/album", data = "<req>")]
 pub fn index_album_handler(
-    _auth: GuardAuth,
+    auth: GuardResult<GuardAuth>,
     read_only: GuardResult<GuardReadOnlyMode>,
     req: Json<IndexAlbumRequest>,
 ) -> AppResult<Status> {
+    let _ = auth?;
     let _ = read_only?;
     index_album(&req.into_inner().album)?;
     Ok(Status::Accepted)
@@ -74,7 +75,8 @@ pub fn index_album_handler(
     )
 ]
 #[post("/post/index/cancel")]
-pub fn cancel_album_index_handler(_auth: GuardAuth) -> AppResult<Status> {
+pub fn cancel_album_index_handler(auth: GuardResult<GuardAuth>) -> AppResult<Status> {
+    let _ = auth?;
     cancel_album_index()?;
     Ok(Status::Ok)
 }

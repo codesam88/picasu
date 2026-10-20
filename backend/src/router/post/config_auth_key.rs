@@ -5,8 +5,8 @@ use rocket::serde::json::Json;
 use serde::Serialize;
 
 use crate::openapi_components::Unauthorized;
-use crate::router::AppResult;
 use crate::router::auth::GuardAuth;
+use crate::router::{AppResult, GuardResult};
 
 /// Result of rotating the JWT signing key. Always true after a successful
 /// reset; the client drives its key-state display off this (the key itself
@@ -37,11 +37,14 @@ pub struct AuthKeyResetResponse {
     )
 ]
 #[post("/post/config/auth-key/reset")]
-pub fn reset_auth_key_handler(_auth: GuardAuth) -> AppResult<Json<AuthKeyResetResponse>> {
+pub fn reset_auth_key_handler(
+    auth: GuardResult<GuardAuth>,
+) -> AppResult<Json<AuthKeyResetResponse>> {
     use crate::auth::secret_key;
     use crate::model::config::{APP_CONFIG, generate_secret_key};
     use crate::router::{AppError, ErrorKind};
 
+    let _ = auth?;
     let key = generate_secret_key();
     secret_key::store_secret_key(&key).map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
     APP_CONFIG
