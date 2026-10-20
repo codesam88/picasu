@@ -312,6 +312,50 @@ expiry.
   configuration to an admin. The signing key is redacted (`authKey` is
   removed, never exported); no plaintext secret leaves via the API.
 
+### User store consistency model
+
+The user store is a file with compare-and-swap semantics, not a database
+with interactive transactions. Four rules describe what it guarantees:
+
+- **M1 — single writer, single critical section.** Every mutation runs
+  inside one store read-modify-write (one redb write transaction). The
+  mutation reads the state it needs inside that section; no operation
+  spans two. Concurrent cooperating writers serialize.
+- **M2 — last-writer-wins per field, deterministic.** Serialization
+  makes concurrent same-field edits deterministic, not merged: whichever
+  commits last is retained. Non-overlapping field edits converge (both
+  apply). Like unix `vipw`, the store warns, it does not merge — intent
+  conflicts are the operators' problem.
+- **M3 — one authoritative store per fact.** Identity, hash, `admin`,
+  `home` live only in the user store; sessions live only in the gallery
+  index redb. An operation touching both (deletion: entry + sessions;
+  invited registration: invite consumption + entry) executes in a
+  fixed, crash-safe order and accepts the documented intermediate state.
+- **M4 — durable, atomic publication.** A reader never observes a torn
+  store; a crash leaves the pre- or post-state, never a partial one.
+  The engine guarantees this, not application code.
+
+Explicit **non-promises** — stated so no caller relies on them:
+
+- No lost-update protection for two clients editing the same field from
+  stale reads (that needs a version/`updated_at` pre-image; not
+  implemented). Two admins editing one user: last writer wins (M2).
+- No bounded staleness bound for a running server's view of the store;
+  readers go through the store, but no reload signal exists to bound how
+  stale a cached view may be.
+
+The invariants derived from this model are pinned as tests where a test
+can force the condition: zero-admin guard, fail-closed verification
+(`hash: None`, corrupt store), concurrent-write convergence, and
+kill-during-write durability (a SIGKILLed writer leaves the store at the
+committed state) in `backend/src/auth/passwd_store.rs`; invite-redeem
+atomicity and the register-then-login end state in
+`backend/src/auth/invites.rs` and `backend/src/tests/register.rs`.
+Deletion ordering (store entry before session purge) is a code-level
+rule in `picasu-cmd` — `backend/tests/cmd_user.rs` pins the end state
+(both removed, last-admin refusal), and the per-request store re-check
+on every guard ensures a leftover session row cannot authenticate.
+
 ---
 
 ## Security assessment

@@ -153,10 +153,11 @@ fn register_user_sync(
                 "registration is disabled; an invite is required",
             )
         })?;
-    // Atomic: marks the invite used and inserts the user record in one
-    // redb write transaction.
-    invites::redeem_invite(&id, token)?;
-    users::store_password(&id, &canonical)?;
+    // Atomic per store, fixed order across stores: marks the invite used
+    // and inserts the user record in one redb write transaction, then
+    // writes the identity entry with its hash in one store rmw (see
+    // `redeem_invite` for the crash-window semantics).
+    invites::redeem_invite(&id, token, &canonical)?;
     log::info!("enrollment: registered user {id}");
     Ok(UserSummary {
         user_id: id,

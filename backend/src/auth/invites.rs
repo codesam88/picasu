@@ -259,9 +259,19 @@ pub fn revoke_invite(invite_id: &str) -> Result<bool, AppError> {
     Ok(removed)
 }
 
-/// Redeem `token` for `user_id`: in ONE redb write transaction, verify the
-/// token against every stored invite (constant-time compare), mark the
-/// invite used, and insert `UserRecord { admin: false, sessions: vec![] }`.
+/// Redeem `token` for `user_id` with `canonical` (already validated and
+/// trimmed password): in ONE redb write transaction, verify the token
+/// against every stored invite (constant-time compare), mark the invite
+/// used, and insert `UserRecord { admin: false, sessions: vec![] }`;
+/// then write the identity entry — hash included — to the user store in
+/// one read-modify-write.
+///
+/// The two stores are separate files, so no single transaction can span
+/// them; the order is fixed and fails safe. A crash after the redb
+/// commit leaves a consumed invite with no user store entry: registration
+/// can be retried only with a fresh invite, and the half-registered id
+/// never verifies a password. The reverse order (entry first) would risk
+/// a login-capable orphan, so it is deliberately not taken.
 ///
 /// # Errors
 /// - [`ErrorKind::InvalidInput`] — invalid user id
@@ -271,12 +281,13 @@ pub fn revoke_invite(invite_id: &str) -> Result<bool, AppError> {
 /// - [`ErrorKind::PermissionDenied`] — invite expired
 /// - [`ErrorKind::Database`] / [`ErrorKind::Serialization`] — store failure
 ///
-/// The transaction commits or rolls back as a unit: a failed redeem never
-/// marks the invite used and never inserts the user.
+/// Each transaction commits or rolls back as a unit: a failed redeem
+/// never marks the invite used, never inserts the session record, and
+/// never writes the identity entry.
 #[allow(clippy::too_many_lines)]
-pub fn redeem_invite(user_id: &str, token: &str) -> Result<(), AppError> {
+pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), AppError> {
     let id = crate::auth::users::validate_user_id(user_id)?;
-    // Identity lives in the passwd store; an id already present there is a
+    // Identity lives in the user store; an id already present there is a
     // conflict even if no redb session row exists yet.
     if crate::auth::passwd_store::read(&crate::auth::users::user_store_path(), &id).is_some() {
         return Err(AppError::new(
@@ -362,9 +373,14 @@ pub fn redeem_invite(user_id: &str, token: &str) -> Result<(), AppError> {
     }
     txn.commit()
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-    // Identity lives in the passwd store of record; create the entry without
-    // a password hash (set later by the registration path). A redeem that
-    // stops here leaves a no-password user, consistent with create_user.
+    // Hash between the two store writes: PBKDF2 is CPU-bound and must not
+    // sit inside a write transaction. It cannot fail, so placing it after
+    // the invite commit widens no failure window — and error paths (expired,
+    // unknown, revoked) never pay the cost.
+    let hash = crate::auth::password::hash_password(canonical);
+    // Second and last store write: the identity entry with its hash, in
+    // one rmw. If this fails the invite stays consumed and the entry is
+    // absent (fail-safe direction, see the doc comment).
     crate::auth::passwd_store::rmw(&crate::auth::users::user_store_path(), |users| {
         if users.contains_key(&id) {
             return Err(AppError::new(
@@ -375,7 +391,7 @@ pub fn redeem_invite(user_id: &str, token: &str) -> Result<(), AppError> {
         users.insert(
             id.clone(),
             crate::auth::password::UserEntry {
-                hash: None,
+                hash: Some(hash),
                 admin: false,
                 home: None,
             },
@@ -454,7 +470,7 @@ mod tests {
         let _g = setup();
 
         let (token, _) = super::create_invite("s6-root").expect("create");
-        super::redeem_invite("s6-reg", &token).expect("redeem");
+        super::redeem_invite("s6-reg", &token, "long-enough-pw1").expect("redeem");
         assert_eq!(
             crate::auth::users::get_user("s6-reg").expect("get user"),
             Some(crate::auth::users::UserRecord { sessions: vec![] })
@@ -465,9 +481,32 @@ mod tests {
         assert_eq!(used.used_by.as_deref(), Some("s6-reg"));
 
         // Double use: rejected, and no second user is created.
-        let err = super::redeem_invite("s6-reg2", &token).expect_err("double use must fail");
+        let err = super::redeem_invite("s6-reg2", &token, "long-enough-pw2")
+            .expect_err("double use must fail");
         assert_eq!(err.kind, ErrorKind::Conflict);
         assert_eq!(crate::auth::users::user_count().expect("count"), 1);
+
+        reset_backend_state();
+    }
+
+    /// I5: one redeem leaves a login-capable entry — the hash lands in the
+    /// same call, so no caller-side second store write can be skipped or
+    /// reordered. The invite being consumed while the entry is missing
+    /// (crash between the two stores) stays possible and fails safe; the
+    /// entry never exists without the invite having been consumed.
+    #[test]
+    fn redeem_leaves_login_capable_entry_in_one_call() {
+        let _g = setup();
+
+        let (token, _) = super::create_invite("s6-root").expect("create");
+        super::redeem_invite("s6-i5", &token, "long-enough-pw1").expect("redeem");
+        let store = crate::auth::password::PasswdFile::load(&crate::auth::users::user_store_path())
+            .expect("load store");
+        assert!(
+            store.verify("s6-i5", "long-enough-pw1"),
+            "the redeemed entry must verify the registered password"
+        );
+        assert!(!store.verify("s6-i5", "wrong-pw-12345"));
 
         reset_backend_state();
     }
@@ -497,7 +536,7 @@ mod tests {
         })
         .expect("seed passwd-only");
 
-        let err = super::redeem_invite("s6-takeover", &token)
+        let err = super::redeem_invite("s6-takeover", &token, "long-enough-pw1")
             .expect_err("passwd-only user must refuse redeem");
         assert_eq!(err.kind, ErrorKind::Conflict);
         assert!(
@@ -519,7 +558,8 @@ mod tests {
         let _g = setup();
         let past = super::now_secs().expect("now") - 60;
         let (token, _) = super::create_invite_with_expiry("s6-root", Some(past)).expect("create");
-        let err = super::redeem_invite("s6-reg", &token).expect_err("expired must fail");
+        let err = super::redeem_invite("s6-reg", &token, "long-enough-pw1")
+            .expect_err("expired must fail");
         assert_eq!(err.kind, ErrorKind::PermissionDenied);
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
         reset_backend_state();
@@ -528,8 +568,8 @@ mod tests {
     #[test]
     fn redeem_rejects_unknown_token() {
         let _g = setup();
-        let err =
-            super::redeem_invite("s6-reg", "not-a-real-token").expect_err("unknown must fail");
+        let err = super::redeem_invite("s6-reg", "not-a-real-token", "long-enough-pw1")
+            .expect_err("unknown must fail");
         assert_eq!(err.kind, ErrorKind::NotFound);
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
         reset_backend_state();
@@ -540,7 +580,8 @@ mod tests {
         let _g = setup();
         crate::auth::users::create_user("s6-taken", false).expect("seed user");
         let (token, _) = super::create_invite("s6-root").expect("create");
-        let err = super::redeem_invite("s6-taken", &token).expect_err("duplicate must fail");
+        let err = super::redeem_invite("s6-taken", &token, "long-enough-pw1")
+            .expect_err("duplicate must fail");
         assert_eq!(err.kind, ErrorKind::Conflict);
         // The invite survives the failed redeem for another attempt.
         let rec = super::get_invite(&super::hash_token(&token))
@@ -554,7 +595,7 @@ mod tests {
     fn list_reports_metadata_and_never_the_token() {
         let _g = setup();
         let (token, _) = super::create_invite("s6-root").expect("create");
-        super::redeem_invite("s6-reg", &token).expect("redeem");
+        super::redeem_invite("s6-reg", &token, "long-enough-pw1").expect("redeem");
 
         let listed = super::list_invites().expect("list");
         assert_eq!(listed.len(), 1);
@@ -594,7 +635,8 @@ mod tests {
             "unknown id reports false"
         );
         assert!(super::list_invites().expect("list").is_empty());
-        let err = super::redeem_invite("s6-reg", &token).expect_err("revoked must fail");
+        let err = super::redeem_invite("s6-reg", &token, "long-enough-pw1")
+            .expect_err("revoked must fail");
         assert_eq!(err.kind, ErrorKind::NotFound);
         reset_backend_state();
     }
@@ -627,7 +669,8 @@ mod tests {
             record.expires_at.is_none(),
             "None means the invite never expires"
         );
-        super::redeem_invite("s6-reg", &token).expect("never-expiring invite redeems");
+        super::redeem_invite("s6-reg", &token, "long-enough-pw1")
+            .expect("never-expiring invite redeems");
         reset_backend_state();
     }
 }
