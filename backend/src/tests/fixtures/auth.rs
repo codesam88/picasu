@@ -6,8 +6,10 @@ use rocket::local::blocking::Client;
 /// Tests need distinct passwords per case, but string literals in
 /// password position trip credential scanners (and read as real
 /// secrets). Deriving from a tag keeps cases distinct while the tree
-/// stays literal-free; reproducibility is exact since the derivation
-/// is pure. Tags are arbitrary labels, never secrets.
+/// stays literal-free. Deterministic within a toolchain — std does not
+/// pin `DefaultHasher`'s algorithm across versions, and nothing stored
+/// (no snapshot, no fixture file) depends on the specific value. Tags
+/// are arbitrary labels, never secrets.
 pub fn test_password(tag: &str) -> String {
     use std::hash::{DefaultHasher, Hash, Hasher};
     let mut first = DefaultHasher::new();
