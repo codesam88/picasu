@@ -7,8 +7,7 @@
             "example": {
               "context": [],
               "kind": "Auth",
-              "message": "Unauthorized",
-              "status": "Permanent"
+              "message": "Unauthorized"
             },
             "schema": {
               "$ref": "#/components/schemas/UnauthorizedBody"
@@ -424,7 +423,7 @@
         "type": "object"
       },
       "CreateInviteRequest": {
-        "description": "Body for `POST /post/invites/create`.",
+        "description": "Body for `POST /post/invites`.",
         "properties": {
           "expiresInHours": {
             "description": "Lifetime of the invite in hours, required: `0` means the invite\nnever expires. Negative values are rejected. Pass 168 for the\nconventional 7-day lifetime.",
@@ -438,7 +437,7 @@
         "type": "object"
       },
       "CreateInviteResponse": {
-        "description": "Response for `POST /post/invites/create`.",
+        "description": "Response for `POST /post/invites`.",
         "properties": {
           "invite": {
             "$ref": "#/components/schemas/InviteView",
@@ -1418,7 +1417,7 @@
         "type": "object"
       },
       "UnauthorizedBody": {
-        "description": "The JSON body of the shared `401 Unauthorized` response.\n\nEvery 401 carries an `AppError` serialization: `kind` is always `\"Auth\"`,\n`status` is always `\"Permanent\"` (throttling answers are 429, never 401),\nand `retryAfter` never appears on a 401. `message` is the fixed\n`\"Unauthorized\"` string for framework rejections answered by the 401\ncatcher, and the handler's reason for credential rejections raised in a\nhandler body.",
+        "description": "The JSON body of the shared `401 Unauthorized` response.\n\nEvery 401 carries an `AppError` serialization: `kind` is always `\"Auth\"`,\nand `retryAfter` never appears on a 401. `message` is the fixed\n`\"Unauthorized\"` string for framework rejections answered by the 401\ncatcher, and the handler's reason for credential rejections raised in a\nhandler body.",
         "properties": {
           "context": {
             "description": "Empty on framework rejections; handler context otherwise.",
@@ -1436,17 +1435,11 @@
             "description": "The fixed `\"Unauthorized\"` string for framework rejections; the\nhandler's reason for credential rejections raised in a handler.",
             "example": "Unauthorized",
             "type": "string"
-          },
-          "status": {
-            "description": "The error status, always `\"Permanent\"` on a 401.",
-            "example": "Permanent",
-            "type": "string"
           }
         },
         "required": [
           "kind",
           "message",
-          "status",
           "context"
         ],
         "type": "object"
@@ -2561,7 +2554,7 @@
         ]
       }
     },
-    "/post/invites/create": {
+    "/post/invites": {
       "post": {
         "description": "Admin-only. The `token` field is shown exactly once: only its blake3\nhash is stored, so the value cannot be retrieved again — the admin\ndistributes it out of band (for example as\n`${origin}/register?invite=${token}`). Expiry is required, in hours\n(`0` never expires — pass 168 for the conventional 7-day lifetime);\nthe invite redeems once, for a single registration.\n\nCorner cases: Creating an invite requires a live admin session, so on\nan empty store invites are created only after the first bootstrap.\nListing, expiry, use and revoke are handled by\n`GET /get/invites` and `DELETE /delete/invites/{invite_id}`.\n\nErrors: 400 negative `expiresInHours` — 401 missing or invalid admin\ncredentials — 405 read-only mode — 500 storage failure.",
         "operationId": "create_invite_handler",

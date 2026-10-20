@@ -27,7 +27,7 @@ fn register(client: &Client, body: &Value) -> (Status, Option<String>) {
     (resp.status(), resp.into_string())
 }
 
-/// POST /post/invites/create as `cookie` (or unauthenticated when `None`)
+/// POST /post/invites as `cookie` (or unauthenticated when `None`)
 /// with the given JSON body.
 fn create_invite_route(
     client: &Client,
@@ -35,7 +35,7 @@ fn create_invite_route(
     body: &Value,
 ) -> (Status, Option<Value>) {
     let mut req = client
-        .post("/post/invites/create")
+        .post("/post/invites")
         .header(ContentType::JSON)
         .body(body.to_string());
     if let Some(c) = cookie {
@@ -640,4 +640,21 @@ fn invite_expiry_is_configurable_in_hours() {
     // Negative: rejected, nothing stored.
     let (status, _) = create_invite_route(&client, Some(admin), &json!({"expiresInHours": -5}));
     assert_eq!(status, Status::BadRequest);
+}
+
+/// The create route lives at the noun path `/post/invites` (no verb in the
+/// path); the operationId keeps the verb.
+#[test]
+fn invite_create_uses_noun_path() {
+    let _g = lock();
+    let client = setup();
+    seed("s6-root", true, None);
+    let admin = cookie("s6-root", true);
+    let resp = client
+        .post("/post/invites")
+        .header(ContentType::JSON)
+        .cookie(admin)
+        .body(json!({"expiresInHours": 168}).to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::Ok);
 }

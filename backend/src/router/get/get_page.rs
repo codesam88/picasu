@@ -17,11 +17,9 @@ use std::borrow::Cow;
 
 #[cfg(not(feature = "embed-frontend"))]
 fn resolve_path(filename: &str) -> PathBuf {
-    use crate::model::config::APP_CONFIG;
-    APP_CONFIG
+    crate::model::config::APP_CONFIG
         .get()
-        .and_then(|l| l.read().ok())
-        .and_then(|c| c.web_root.clone())
+        .and_then(|_| crate::model::config::with_config(|c| c.web_root.clone()))
         .map_or_else(
             // Deliberately unreachable in production (AppConfig::init always sets web_root).
             // Intentionally impossible so tests that omit web_root get clean 404s

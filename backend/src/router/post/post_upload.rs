@@ -1,5 +1,4 @@
 use crate::error::{AppError, ErrorKind, ResultExt};
-use crate::model::config::APP_CONFIG;
 use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::get_dir_path_for_album;
 use crate::process::format::{self, Detection, kind_for_extension};
@@ -128,13 +127,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
         )
     })?;
 
-    let upload_folder = APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned")
-        .upload_folder
-        .clone();
+    let upload_folder = crate::model::config::with_config(|c| c.upload_folder.clone());
     let target_dir = image_root.join(upload_folder);
 
     std::fs::create_dir_all(&target_dir).map_err(|e| {
@@ -502,16 +495,11 @@ struct UploadPolicy {
 }
 
 fn read_upload_policy() -> UploadPolicy {
-    let config = APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned");
-    UploadPolicy {
+    crate::model::config::with_config(|config| UploadPolicy {
         normalize_nfc: config.normalize_upload_filenames,
         validate_content: config.validate_upload_content,
         use_client_timestamp: config.use_client_timestamp_info,
-    }
+    })
 }
 
 /// Whether any index record references the uploaded file as either the

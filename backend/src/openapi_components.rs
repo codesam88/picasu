@@ -10,7 +10,6 @@ use utoipa::openapi::{ContentBuilder, Ref, ResponseBuilder};
 /// The JSON body of the shared `401 Unauthorized` response.
 ///
 /// Every 401 carries an `AppError` serialization: `kind` is always `"Auth"`,
-/// `status` is always `"Permanent"` (throttling answers are 429, never 401),
 /// and `retryAfter` never appears on a 401. `message` is the fixed
 /// `"Unauthorized"` string for framework rejections answered by the 401
 /// catcher, and the handler's reason for credential rejections raised in a
@@ -24,9 +23,6 @@ pub struct UnauthorizedBody {
     /// handler's reason for credential rejections raised in a handler.
     #[schema(example = "Unauthorized")]
     pub message: String,
-    /// The error status, always `"Permanent"` on a 401.
-    #[schema(example = "Permanent")]
-    pub status: String,
     /// Empty on framework rejections; handler context otherwise.
     pub context: Vec<String>,
 }
@@ -62,7 +58,6 @@ impl<'__r> utoipa::ToResponse<'__r> for Unauthorized {
                         .example(Some(serde_json::json!({
                             "kind": "Auth",
                             "message": "Unauthorized",
-                            "status": "Permanent",
                             "context": [],
                         })))
                         .build(),

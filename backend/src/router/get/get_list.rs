@@ -1,6 +1,5 @@
 use crate::error::AppError;
 use crate::model::album::Share;
-use crate::model::config::APP_CONFIG;
 use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::get_parent_album_id;
 use crate::router::auth::GuardAuth;
@@ -80,13 +79,7 @@ pub struct AlbumInfo {
 pub async fn get_albums(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<AlbumInfo>>> {
     let _ = auth?;
     tokio::task::spawn_blocking(move || {
-        let image_home = APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned")
-            .image_home
-            .clone();
+        let image_home = crate::model::config::with_config(|c| c.image_home.clone());
 
         let album_list = TREE
             .read_albums()

@@ -6,7 +6,7 @@ use rocket::post;
 use rocket::serde::json::Json;
 
 use crate::error::{AppError, ErrorKind};
-use crate::model::config::{APP_CONFIG, AppConfig};
+use crate::model::config::AppConfig;
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::{AppResult, GuardResult};
@@ -46,14 +46,7 @@ pub fn import_config_handler(
 ) -> AppResult<Status> {
     let _ = auth?;
     let mut incoming = file.into_inner();
-    incoming.auth_key.clone_from(
-        &APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned")
-            .auth_key,
-    );
+    incoming.auth_key = crate::model::config::with_config(|c| c.auth_key.clone());
     match AppConfig::update(incoming) {
         Ok(()) => Ok(Status::Ok),
         Err(e) => {

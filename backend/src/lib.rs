@@ -62,12 +62,7 @@ pub fn bootstrap_freshness_ok(flag: bool, passwd_exists: bool) -> bool {
 /// # Errors
 /// Returns an error when [`bootstrap_freshness_ok`] is false.
 pub(crate) fn bootstrap_boot_gate() -> anyhow::Result<()> {
-    let flag = APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned")
-        .bootstrap_admin;
+    let flag = crate::model::config::with_config(|c| c.bootstrap_admin);
     if flag {
         warn!(
             "bootstrap_admin is enabled: the first administrator may be enrolled online while the user store is empty"

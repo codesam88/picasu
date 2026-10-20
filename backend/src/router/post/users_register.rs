@@ -6,7 +6,6 @@ use tokio::task::spawn_blocking;
 use crate::auth::invites;
 use crate::auth::users::{self, validate_new_password, validate_user_id};
 use crate::error::ResultExt;
-use crate::model::config::APP_CONFIG;
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::{GuardAuth, GuardReadOnlyMode};
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
@@ -87,12 +86,7 @@ pub async fn register_user_handler(
         }
         Err(_) => false,
     };
-    let allow_registration = APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned")
-        .allow_registration;
+    let allow_registration = crate::model::config::with_config(|c| c.allow_registration);
     let req = body.into_inner();
     // Password hashing is CPU-bound: the whole sync flow runs on the
     // blocking pool.

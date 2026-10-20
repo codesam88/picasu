@@ -5,7 +5,7 @@ use super::delete::generate_delete_routes;
 use super::get::generate_get_routes;
 use super::post::generate_post_routes;
 use super::put::generate_put_routes;
-use crate::model::config::{APP_CONFIG, AppConfig};
+use crate::model::config::AppConfig;
 use rocket::data::{ByteUnit, Limits};
 #[cfg(not(feature = "embed-frontend"))]
 use rocket::fs::FileServer;
@@ -40,12 +40,7 @@ async fn assets(
 
 /// Load configuration from the already-initialized global config.
 pub fn load_config() -> AppConfig {
-    APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned")
-        .clone()
+    crate::model::config::with_config(crate::model::config::AppConfig::clone)
 }
 
 /// Build and configure Rocket instance

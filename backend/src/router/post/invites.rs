@@ -9,7 +9,7 @@ use crate::router::auth::GuardReadOnlyMode;
 use crate::router::put::users_password::caller_identity;
 use crate::router::{AppResult, GuardResult};
 
-/// Body for `POST /post/invites/create`.
+/// Body for `POST /post/invites`.
 #[derive(Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateInviteRequest {
@@ -19,7 +19,7 @@ pub struct CreateInviteRequest {
     pub expires_in_hours: i64,
 }
 
-/// Response for `POST /post/invites/create`.
+/// Response for `POST /post/invites`.
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateInviteResponse {
@@ -58,7 +58,7 @@ pub struct CreateInviteResponse {
         )
     )
 ]
-#[post("/post/invites/create", data = "<body>")]
+#[post("/post/invites", data = "<body>")]
 pub fn create_invite_handler(
     auth: GuardResult<GuardAuth>,
     read_only: GuardResult<GuardReadOnlyMode>,

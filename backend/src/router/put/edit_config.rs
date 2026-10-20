@@ -6,7 +6,7 @@ use std::path::{Component, Path};
 use tokio::task::spawn_blocking;
 
 use crate::error::{AppError, ErrorKind, ResultExt};
-use crate::model::config::{APP_CONFIG, AppConfig};
+use crate::model::config::AppConfig;
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
@@ -278,14 +278,8 @@ pub async fn update_config_handler(
             }
         }
 
-        let mut current_config = {
-            let read_lock = APP_CONFIG
-                .get()
-                .expect("APP_CONFIG not initialized")
-                .read()
-                .expect("lock poisoned");
-            read_lock.clone()
-        };
+        let mut current_config =
+            crate::model::config::with_config(crate::model::config::AppConfig::clone);
 
         if let Some(upload_folder) = req_data.upload_folder {
             current_config.upload_folder = upload_folder;
