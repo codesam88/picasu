@@ -28,9 +28,6 @@ pub struct UserStoreLocation {
     pub path: PathBuf,
     /// Where the location came from.
     pub source: UserStoreSource,
-    /// The data home, when one is known. `user del` needs it to reach the
-    /// session database; with an explicit store path alone it is unknown.
-    pub data_home: Option<PathBuf>,
 }
 
 /// The user store file inside `data_home`.
@@ -51,12 +48,10 @@ pub fn resolve_user_store(
     env_data_home: Option<&Path>,
     config_data_home: Option<&Path>,
 ) -> Option<UserStoreLocation> {
-    let data_home = env_data_home.or(config_data_home);
     if let Some(explicit) = explicit {
         return Some(UserStoreLocation {
             path: explicit.to_path_buf(),
             source: UserStoreSource::Explicit,
-            data_home: data_home.map(Path::to_path_buf),
         });
     }
     let (home, source) = match (env_data_home, config_data_home) {
@@ -67,7 +62,6 @@ pub fn resolve_user_store(
     Some(UserStoreLocation {
         path: user_store_path_in(home),
         source,
-        data_home: Some(home.to_path_buf()),
     })
 }
 
@@ -106,7 +100,6 @@ mod tests {
         .expect("explicit path must resolve");
         assert_eq!(location.path, path("/explicit/users.redb"));
         assert_eq!(location.source, UserStoreSource::Explicit);
-        assert_eq!(location.data_home, Some(path("/env")));
     }
 
     #[test]
@@ -115,7 +108,6 @@ mod tests {
             .expect("explicit path must resolve");
         assert_eq!(location.path, path("/explicit/users.redb"));
         assert_eq!(location.source, UserStoreSource::Explicit);
-        assert_eq!(location.data_home, None);
     }
 
     #[test]
@@ -124,7 +116,6 @@ mod tests {
             .expect("env must resolve");
         assert_eq!(location.path, path("/env/auth/users.redb"));
         assert_eq!(location.source, UserStoreSource::DataHomeEnv);
-        assert_eq!(location.data_home, Some(path("/env")));
     }
 
     #[test]
@@ -133,7 +124,6 @@ mod tests {
             resolve_user_store(None, None, Some(&path("/config"))).expect("config must resolve");
         assert_eq!(location.path, path("/config/auth/users.redb"));
         assert_eq!(location.source, UserStoreSource::ConfigFile);
-        assert_eq!(location.data_home, Some(path("/config")));
     }
 
     #[test]

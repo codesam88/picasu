@@ -71,3 +71,10 @@ POST /post/invites/create api path removed without deprecation
 # retry timing from `retryAfter`). Every guarded 401 response loses the
 # required `status` property.
 removed the required property `status` from the response with the `401` status
+
+# 2026-10-20 (auth-state-model): `GET /get/sessions` is deleted with the
+# live session list it reported. The server keeps no session list any more
+# — a token is the session — so the inventory has no subject. The
+# capabilities that must not work (a logged-out session) are recorded as
+# revocations until they expire.
+GET /get/sessions api path removed without deprecation

@@ -80,18 +80,20 @@ listing and the password-change route, so a user provisioned offline (by
 
 ## Implementation steps (TDD, one slice per commit)
 
-**S1 — legacy artifacts.** Rename `auth/passwd_store.rs` → `auth/user_store.rs`,
-`PasswdFile`/`PasswdStore` → `UserStore`, `UserEntry` → `UserRecord`, the
-index DB's `UserRecord` → `SessionBundle`, table `users` → `sessions`,
-`storage::db::USERS` → `SESSIONS`, store values `&[u8]` → `&str` (JSON text,
-one encoding rule).
+**S1 — legacy artifacts.** _(done)_ Rename `auth/passwd_store.rs` →
+`auth/user_store.rs`, `PasswdFile`/`PasswdStore` → `UserStore`, `UserEntry`
+→ `UserRecord`, the index DB's `UserRecord` → `SessionBundle`, table
+`users` → `sessions`, `storage::db::USERS` → `SESSIONS`, store values
+`&[u8]` → `&str` (JSON text, one encoding rule).
 
-**S2 — stateless identity.** `ver` in the identity record; the token carries
-it; the guard checks it; the index DB's session table becomes the revocation
-table; login writes nothing; logout revokes; the password change bumps
-`ver`; `GET /get/sessions` goes.
+**S2 — stateless identity.** _(done)_ `ver` in the identity record; the
+token carries it; the guard checks it; the index DB's session table becomes
+the revocation table (`auth/revocations.rs`); login writes nothing; logout
+revokes; the password change and the role change bump `ver`; the existence
+checks read the store, so a user provisioned offline can log in;
+`GET /get/sessions` goes.
 
-**S3 — CLI token control.** `passwd` and `mod` bump `ver`; a new
+**S3 — CLI token control.** _(done)_ `passwd` and `mod` bump `ver`; a new
 `user invalidate <user>` bumps it alone; `user del` no longer purges
 sessions (there are none) — `--userdb` alone becomes a complete operation.
 

@@ -12,7 +12,7 @@ use crate::error::{AppError, ErrorKind};
 
 /// The identity record: the password hash fields plus the identity
 /// attributes, flattened into one row. Pre-change (hash-only) entries still
-/// deserialize because `admin` and `home` default.
+/// deserialize because `admin`, `home` and `ver` default.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UserRecord {
     #[serde(flatten)]
@@ -22,6 +22,12 @@ pub struct UserRecord {
     pub admin: bool,
     #[serde(default)]
     pub home: Option<String>,
+    /// Token version. Every token carries the version it was minted with;
+    /// the guard rejects a token whose version is not the current one. Bumped
+    /// by every change that must invalidate the outstanding tokens (password,
+    /// role) and by an explicit invalidation.
+    #[serde(default)]
+    pub ver: u64,
 }
 
 /// The single table of the user store: user id to the JSON encoding of
@@ -186,12 +192,17 @@ pub fn provision(
                 hash: Some(hash_password(&canonical)),
                 admin,
                 home,
+                ver: 0,
             },
         );
         Ok(id)
     })
 }
 
+/// Write a new password hash for `id` and invalidate the user's outstanding
+/// tokens. The version bump happens in the same transaction as the hash
+/// write: a crash between the two would leave the old tokens working
+/// against a new password.
 pub fn set_password(path: &Path, id: &str, password: &str) -> Result<(), AppError> {
     let id = id.trim().to_string();
     let canonical = password.trim().to_string();
@@ -199,6 +210,7 @@ pub fn set_password(path: &Path, id: &str, password: &str) -> Result<(), AppErro
     rmw(path, |users| {
         if let Some(entry) = users.get_mut(&id) {
             entry.hash = Some(hash.clone());
+            entry.ver = entry.ver.wrapping_add(1);
         } else {
             users.insert(
                 id.clone(),
@@ -206,6 +218,7 @@ pub fn set_password(path: &Path, id: &str, password: &str) -> Result<(), AppErro
                     hash: Some(hash.clone()),
                     admin: false,
                     home: None,
+                    ver: 1,
                 },
             );
         }
@@ -213,6 +226,10 @@ pub fn set_password(path: &Path, id: &str, password: &str) -> Result<(), AppErro
     })
 }
 
+/// Set the admin flag of an existing user and invalidate the user's
+/// outstanding tokens: the role lives in the token, so the new role takes
+/// effect at the next sign-in. Returns `Ok(false)` when the flag already
+/// had that value — a no-op must not kill the user's sessions.
 pub fn set_admin(path: &Path, id: &str, admin: bool) -> Result<bool, AppError> {
     let target = id.trim().to_string();
     rmw(path, |users| {
@@ -234,8 +251,29 @@ pub fn set_admin(path: &Path, id: &str, admin: bool) -> Result<bool, AppError> {
         }
         let mut current = current;
         current.admin = admin;
+        current.ver = current.ver.wrapping_add(1);
         users.insert(target, current);
         Ok(true)
+    })
+}
+
+/// Invalidate every outstanding token of `id` by bumping its version. The
+/// user keeps its password, role and attributes; only the tokens die.
+///
+/// # Errors
+/// Returns [`ErrorKind::NotFound`] when the id is unknown.
+pub fn bump_ver(path: &Path, id: &str) -> Result<u64, AppError> {
+    let target = id.trim().to_string();
+    rmw(path, |users| {
+        let current = users
+            .get(&target)
+            .cloned()
+            .ok_or_else(|| AppError::new(ErrorKind::NotFound, format!("unknown user: {target}")))?;
+        let mut current = current;
+        current.ver = current.ver.wrapping_add(1);
+        let ver = current.ver;
+        users.insert(target, current);
+        Ok(ver)
     })
 }
 
@@ -404,6 +442,11 @@ mod tests {
 
     fn store_path(dir: &tempfile::TempDir) -> PathBuf {
         dir.path().join("users.redb")
+    }
+
+    /// The token version of a stored user.
+    fn ver_of(path: &Path, id: &str) -> u64 {
+        read(path, id).expect("entry must exist").ver
     }
 
     /// Substrate + integrity assertion: every store test calls this after
@@ -704,6 +747,7 @@ mod tests {
                     hash: None,
                     admin: false,
                     home: None,
+                    ver: 0,
                 },
             );
             Ok(())
@@ -785,6 +829,7 @@ mod tests {
                         hash: Some(hash_password("long-enough-pw1")),
                         admin: false,
                         home: None,
+                        ver: 0,
                     })
                     .expect("encode");
                     table.insert(id.as_str(), raw.as_str()).expect("insert");
@@ -841,5 +886,72 @@ mod tests {
         );
         assert_eq!(entries[0].0, "pre-user");
         assert_store_parses(&path);
+    }
+
+    // ── token version ──────────────────────────────────────────────────────
+
+    #[test]
+    fn a_new_user_starts_at_version_zero() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = store_path(&dir);
+        provision(&path, "alice", "long-enough-pw1", true, None).expect("provision");
+        assert_eq!(ver_of(&path, "alice"), 0);
+    }
+
+    #[test]
+    fn changing_the_password_bumps_the_version() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = store_path(&dir);
+        provision(&path, "alice", "long-enough-pw1", true, None).expect("provision");
+        set_password(&path, "alice", "another-long-pw2").expect("set password");
+        assert_eq!(
+            ver_of(&path, "alice"),
+            1,
+            "a new password must invalidate the outstanding tokens"
+        );
+    }
+
+    #[test]
+    fn changing_the_role_bumps_the_version() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = store_path(&dir);
+        provision(&path, "alice", "long-enough-pw1", false, None).expect("provision");
+        provision(&path, "root", "long-enough-pw2", true, None).expect("provision");
+        set_admin(&path, "alice", true).expect("promote");
+        assert_eq!(ver_of(&path, "alice"), 1);
+        set_admin(&path, "alice", false).expect("demote");
+        assert_eq!(ver_of(&path, "alice"), 2);
+    }
+
+    #[test]
+    fn setting_the_home_keeps_the_version() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = store_path(&dir);
+        provision(&path, "alice", "long-enough-pw1", true, None).expect("provision");
+        set_home(&path, "alice", Some("/home/alice".to_string())).expect("set home");
+        assert_eq!(
+            ver_of(&path, "alice"),
+            0,
+            "the home attribute carries no authority and must not kill tokens"
+        );
+    }
+
+    #[test]
+    fn bumping_the_version_invalidates_the_outstanding_tokens() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = store_path(&dir);
+        provision(&path, "alice", "long-enough-pw1", true, None).expect("provision");
+        assert_eq!(bump_ver(&path, "alice").expect("bump"), 1);
+        assert_eq!(ver_of(&path, "alice"), 1);
+        assert_eq!(bump_ver(&path, "alice").expect("bump"), 2);
+        assert_eq!(ver_of(&path, "alice"), 2);
+    }
+
+    #[test]
+    fn bumping_the_version_of_an_unknown_user_fails() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = store_path(&dir);
+        let err = bump_ver(&path, "nobody").expect_err("unknown user must fail");
+        assert_eq!(err.kind, ErrorKind::NotFound);
     }
 }

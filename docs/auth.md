@@ -84,14 +84,14 @@ attacks are excluded by construction.
 ### Sign-in
 
 1. `POST /post/users/authenticate` takes `{ userId, password }`, trims the password,
-   and verifies it against the PBKDF2 password store
-   (`<DATA_HOME>/auth/users.redb`) for that user id. A match mints a random
-   `jti` (UUID v4), stores it as a live session for that user, and sets a
-   14-day `Claims { role: User { id, admin }, exp, jti }` JWT in an HttpOnly
+   and verifies it against the user store (`<DATA_HOME>/auth/users.redb`) for
+   that user id. A match mints a random `jti` (UUID v4) and sets a 14-day
+   `Claims { role: User { id, admin }, exp, jti, ver }` JWT in an HttpOnly
    session cookie, returning the session profile `{ userId, admin }` in the
-   body. Unknown users and wrong passwords both answer 401 with no
-   distinguishing detail; the unknown-user path still pays one KDF round so
-   timing leaks nothing.
+   body. **Nothing is written server-side**: the token is the session, and
+   `ver` is the user's token version at mint time. Unknown users and wrong
+   passwords both answer 401 with no distinguishing detail; the unknown-user
+   path still pays one KDF round so timing leaks nothing.
 2. The **server** issues the session cookie via `Set-Cookie`
    (`router/post/users/authenticate.rs`): `jwt=...; HttpOnly; SameSite=Strict;
 Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
@@ -101,28 +101,29 @@ Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    client keeps only the `{ userId, admin }` profile from the login body in
    its session store for display.
 3. `GuardAuth` (and `GuardUser`) read the cookie, decode it with `VALIDATION`
-   (expiry enforced), and require the `jti` to be live for that user — the
-   user record is re-read on every request, so demotion or session revocation
-   takes effect before token expiry. Admin routes additionally require the
-   admin role from the record (promotion requires re-login; demotion takes
-   effect here). Tokens without a `jti` are rejected (hard cut — pre-`jti`
-   tokens do not decode).
+   (expiry enforced) and check it against the state the server keeps:
+   the identity record (existence, role, token version) and the revocation
+   list. A token whose `ver` is not the user's current version was
+   invalidated by a password change, a role change or an explicit
+   invalidation; a token whose `jti` is in the revocation list was logged
+   out. Both checks read the store on every request, so a revocation takes
+   effect before token expiry. The admin role comes from the record, so a
+   demotion takes effect at once. Tokens without a `jti` are rejected (hard
+   cut — pre-`jti` tokens do not decode).
 4. Logout is `POST /post/logout`, which decodes the presented `jwt` cookie
-   with the same validation the guards use; on success it removes that `jti`
-   from the caller's live sessions (absent or unknown `jti` is ignored), then
-   clears the cookie server-side (HttpOnly cookies cannot be removed by page
-   JS) and answers 204. Missing, undecodable, or expired tokens skip removal
-   but still clear the cookie and still answer 204 — idempotent with or
-   without a live session. Only the presented device is logged out; other
-   sessions survive. The client also clears its session profile and capability
-   tokens unconditionally, so logout sticks even when the round trip fails.
+   with the same validation the guards use; on success it files that `jti` in
+   the revocation list (until the token's expiry), then clears the cookie
+   server-side (HttpOnly cookies cannot be removed by page JS) and answers 204. Missing, undecodable, or expired tokens skip the revocation but
+   still clear the cookie and still answer 204 — idempotent with or without
+   a live session. Only the presented device is logged out; other sessions
+   survive. The client also clears its session profile and capability tokens
+   unconditionally, so logout sticks even when the round trip fails.
    Password change (`PUT /put/users/password`, self-change and admin reset
-   alike) wipes all `jti`s for the target user before writing the new hash —
-   sessions first, password second, so a crash between leaves
-   re-login-with-old-password, the safe direction — and therefore logs every
-   device out. `GET /get/sessions` (any authenticated user via `GuardUser`)
-   returns the caller's live `SessionRecord { jti, issuedAt }` array; it never
-   returns another user's sessions, and an unknown post-guard id maps to 401.
+   alike) writes the new hash **and bumps the user's token version in the
+   same transaction**, so every outstanding token of that user dies with the
+   old password and logs every device out. The same bump happens on a role
+   change (`PUT /put/users/admin`): the role travels in the token, so the
+   new role appears at the next sign-in.
 5. Users are managed through `GET /get/users`,
    `POST /post/users/register`, `PUT /put/users/password`, and
    `PUT /put/users/admin` (admin-only). The first administrator is
@@ -295,24 +296,54 @@ expiry.
 - **`auth_key` rotation** — changing it invalidates every outstanding token of
   all three types at once.
 - **User store** — `<DATA_HOME>/auth/users.redb` is the userdb of record:
-  `username ⇒ {hash?, admin, home}` (PBKDF2 hash optional — a hash-less
+  `username ⇒ {hash?, admin, home, ver}` (PBKDF2 hash optional — a hash-less
   entry cannot log in). Every read-modify-write is one redb write
   transaction, so mutations are atomic and serial; the engine's file lock
   excludes other processes while the server holds the store open. The
   server opens the store with the first authentication, so the offline CLI
   must run while the server is stopped — a conflicting write fails loudly
-  instead of corrupting the store. redb holds only per-user sessions
-  (temporary, high-churn, safe to lose — the index database stays
-  rebuildable); identity reads and enrollment emptiness derive from the
-  user store. The offline `picasu-cmd user list|add|mod|del|passwd`
-  administers it (see [Admin CLI](admin-cli.md)); hashes are never exported.
-  Demotion/removal is re-checked per
-  request for `GuardAuth`/`GuardShare`/`GuardUser`, so it takes effect before token
-  expiry; promotion requires re-login. A password change does **not** touch
-  `auth_key`, so outstanding tokens survive it.
+  instead of corrupting the store. Identity reads, the user list and the
+  enrollment emptiness all derive from this one store. The offline
+  `picasu-cmd user list|add|mod|del|passwd|invalidate` administers it (see
+  [Admin CLI](admin-cli.md)); hashes are never exported. Existence, role
+  and token version are re-checked per request for
+  `GuardAuth`/`GuardShare`/`GuardUser`, so a removal, a demotion or an
+  invalidated token takes effect before token expiry.
 - **Export** (`GET /get/config/export`) returns the serialized
   configuration to an admin. The signing key is redacted (`authKey` is
   removed, never exported); no plaintext secret leaves via the API.
+
+### Auth state model
+
+Authentication keeps **no session state**. A token is a self-contained
+capability: it carries the role, the expiry, a `jti` and the user's token
+version. Two files hold what the server must remember, and they have
+different lifetimes:
+
+| File                           | Holds                                                                                                           | Lifetime                          |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `<DATA_HOME>/auth/users.redb`  | the **identity record**: `username ⇒ {hash?, admin, home, ver}`                                                 | persistent — the userdb of record |
+| `<DATA_HOME>/db/index_v5.redb` | the **revocation list**: capabilities that must not work any more, each with the expiry of the thing it revokes | ephemeral — runtime state         |
+
+The guard checks a presented token against both:
+
+1. the identity record — the user must exist, and the token's `ver` must be
+   the user's current version;
+2. the revocation list — the token's `jti` must not be revoked.
+
+`ver` is a per-user counter in the identity record. It is bumped by every
+change that must kill the outstanding tokens of that user: a password
+change, a role change, an explicit invalidation (`picasu-cmd user
+invalidate`). The bump happens in the same transaction as the change, so a
+crash cannot leave a new password with live old tokens. The signing secret
+(`auth_key`) is the global epoch: rotating it invalidates every token at
+once, because no signature verifies any more.
+
+Everything the server no longer needs is gone with the session list: there
+is no live-session inventory, no stored invite record beyond the
+revocation that marks one used, and no server-side copy of the identity —
+existence, role and password come from the user store, so a user
+provisioned offline by `picasu-cmd` is a user like any other.
 
 ### User store consistency model
 
@@ -329,10 +360,11 @@ with interactive transactions. Four rules describe what it guarantees:
   apply). Like unix `vipw`, the store warns, it does not merge — intent
   conflicts are the operators' problem.
 - **M3 — one authoritative store per fact.** Identity, hash, `admin`,
-  `home` live only in the user store; sessions live only in the gallery
-  index redb. An operation touching both (deletion: entry + sessions;
-  invited registration: invite consumption + entry) executes in a
-  fixed, crash-safe order and accepts the documented intermediate state.
+  `home` and the token version live only in the user store; revocations
+  live only in the gallery index redb. An operation touching both
+  (deletion: entry + revocations; invited registration: invite consumption
+  - entry) executes in a fixed, crash-safe order and accepts the
+    documented intermediate state.
 - **M4 — durable, atomic publication.** A reader never observes a torn
   store; a crash leaves the pre- or post-state, never a partial one.
   The engine guarantees this, not application code.
@@ -348,15 +380,16 @@ Explicit **non-promises** — stated so no caller relies on them:
 
 The invariants derived from this model are pinned as tests where a test
 can force the condition: zero-admin guard, fail-closed verification
-(`hash: None`, corrupt store), concurrent-write convergence, and
-kill-during-write durability (a SIGKILLed writer leaves the store at the
-committed state) in `backend/src/auth/passwd_store.rs`; invite-redeem
-atomicity and the register-then-login end state in
-`backend/src/auth/invites.rs` and `backend/src/tests/register.rs`.
-Deletion ordering (store entry before session purge) is a code-level
-rule in `picasu-cmd` — `backend/tests/cmd_user.rs` pins the end state
-(both removed, last-admin refusal), and the per-request store re-check
-on every guard ensures a leftover session row cannot authenticate.
+(`hash: None`, corrupt store), concurrent-write convergence, the token
+version bumps, and kill-during-write durability (a SIGKILLed writer leaves
+the store at the committed state) in `backend/src/auth/user_store.rs`;
+invite-redeem atomicity and the register-then-login end state in
+`backend/src/auth/invites.rs` and `backend/src/tests/register.rs`. The
+state-model invariants — a stale version is refused, a revoked `jti` is
+refused, a password change kills every token of that user, a user
+provisioned offline can log in — are pinned in
+`backend/src/router/auth.rs`, `backend/src/tests/r6_session_revocation.rs`
+and `backend/src/tests/auth_users.rs`.
 
 ---
 

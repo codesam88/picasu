@@ -65,6 +65,17 @@ app's other managed properties), so it is rebuilt with the record instead of
 dying with the database cache. The database remains a cache of the file plus
 its sidecar for those fields; it is never the only copy.
 
+User identity follows the same rule with the roles swapped: the account
+record (`<DATA_HOME>/auth/users.redb` — id, password hash, role, home) is
+the persistent copy and the only one; the gallery index database holds
+nothing about it. What the index database keeps for authentication is
+runtime state — the capabilities that must not work any more (a logged-out
+session, a redeemed invite) — and that state is disposable: losing it
+revokes nothing that matters, because the tokens it describes are already
+dead. A token is a self-contained capability: it carries the role, the
+expiry and the user's token version, so the server never has to remember
+that a session exists.
+
 Database updates and filesystem operations are not one atomic transaction. A
 journal records the intended filesystem operation and its progress; startup
 recovery and indexing rebuild or reconcile generated state from the repository.

@@ -226,10 +226,9 @@ fn pin3_interactive_add_prompts_twice_over_piped_stdin() {
     );
 }
 
-// Pin 4: `user del` refuses the last admin, `--force` removes the entry and
-// purges the redb session row.
+// Pin 4: `user del` refuses the last admin, `--force` removes the entry.
 #[test]
-fn pin4_user_del_guards_last_admin_and_purges_sessions() {
+fn pin4_user_del_guards_last_admin() {
     let dir = tempfile::tempdir().expect("tempdir");
     let out = run(
         dir.path(),
@@ -237,12 +236,6 @@ fn pin4_user_del_guards_last_admin_and_purges_sessions() {
         None,
     );
     assert!(out.status.success());
-
-    // Seed a live session row directly in the index DB: the CLI under test
-    // is the only writer, so open/close around it and never hold the DB
-    // across the subprocess boundary.
-    seed_session_row(dir.path(), "alice", "jti-pin4");
-    assert!(session_row_present(dir.path(), "alice"));
 
     let out = run(dir.path(), &["user", "del", "alice"], None);
     assert!(
@@ -261,10 +254,6 @@ fn pin4_user_del_guards_last_admin_and_purges_sessions() {
     assert!(
         raw_entry(dir.path(), "alice").is_none(),
         "forced delete must remove the entry"
-    );
-    assert!(
-        !session_row_present(dir.path(), "alice"),
-        "forced delete must purge the redb session row"
     );
 }
 
@@ -628,49 +617,59 @@ fn pin15_locked_store_fails_loudly_instead_of_reporting_an_empty_store() {
     drop(holder);
 }
 
-// ── redb helpers (pin 4) ────────────────────────────────────────────────
-// The `USERS` table definition lives in the lib-private `storage::db`
-// module, so tests redeclare its stable shape here: on-disk name `users`
-// with JSON-string values (pinned by the `users_table_uses_json_string_values`
-// unit test). Rows serialize the public `UserRecord`; handles are opened,
-// used, and dropped inside each helper so the CLI subprocess never
-// contends for the database lock.
-fn sessions_table() -> redb::TableDefinition<'static, &'static str, &'static str> {
-    redb::TableDefinition::new("sessions")
+// Pin 16: a password change, a role change and an explicit invalidation
+// bump the user's token version — the outstanding tokens die with it.
+#[test]
+fn pin16_password_role_and_invalidate_bump_the_token_version() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out = run(
+        dir.path(),
+        &["user", "add", "alice", "--password", ALICE_PW, "--admin"],
+        None,
+    );
+    assert!(out.status.success());
+    assert_eq!(version(dir.path(), "alice"), 0);
+
+    let out = run(
+        dir.path(),
+        &["user", "passwd", "alice", "--password", ALICE_PW2],
+        None,
+    );
+    assert!(
+        out.status.success(),
+        "passwd must exit 0, stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(version(dir.path(), "alice"), 1);
+
+    // A second admin, so the demotion of the first one is allowed.
+    let out = run(
+        dir.path(),
+        &["user", "add", "bob", "--password", BOB_PW, "--admin"],
+        None,
+    );
+    assert!(out.status.success());
+    let out = run(dir.path(), &["user", "mod", "alice", "--no-admin"], None);
+    assert!(
+        out.status.success(),
+        "mod must exit 0, stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(version(dir.path(), "alice"), 2);
+
+    let out = run(dir.path(), &["user", "invalidate", "alice"], None);
+    assert!(
+        out.status.success(),
+        "invalidate must exit 0, stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(version(dir.path(), "alice"), 3);
 }
 
-fn index_db_path(data_home: &Path) -> PathBuf {
-    data_home.join("db").join("index_v5.redb")
-}
-
-fn seed_session_row(data_home: &Path, id: &str, jti: &str) {
-    let db_path = index_db_path(data_home);
-    std::fs::create_dir_all(db_path.parent().expect("db parent")).expect("create db dir");
-    let db = redb::Database::create(&db_path).expect("open index db for seeding");
-    let record = picasu::auth::users::SessionBundle {
-        sessions: vec![picasu::auth::users::SessionRecord {
-            jti: jti.to_string(),
-            issued_at: 1_700_000_000,
-        }],
-    };
-    let value = serde_json::to_string(&record).expect("serialize session record");
-    let txn = db.begin_write().expect("begin seed write");
-    {
-        let mut table = txn
-            .open_table(sessions_table())
-            .expect("open USERS for seeding");
-        table
-            .insert(id, value.as_str())
-            .expect("insert session row");
-    }
-    txn.commit().expect("commit seed write");
-}
-
-fn session_row_present(data_home: &Path, id: &str) -> bool {
-    let db = redb::Database::open(&index_db_path(data_home)).expect("open index db for read");
-    let txn = db.begin_read().expect("begin read");
-    let table = txn
-        .open_table(sessions_table())
-        .expect("open USERS for read");
-    table.get(id).expect("read session row").is_some()
+/// The token version stored for a user.
+fn version(data_home: &Path, id: &str) -> u64 {
+    entry(data_home, id)
+        .get("ver")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_default()
 }

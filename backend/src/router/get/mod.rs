@@ -18,7 +18,6 @@ pub mod invites;
 #[cfg_attr(not(test), allow(dead_code))]
 pub mod get_test_probe;
 pub mod server_info;
-pub mod sessions;
 pub mod users;
 
 /// The GET route table Rocket mounts.
@@ -69,7 +68,6 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_fs_completion::get_fs_completion,
         get_album_index::get_album_index_status,
         users::list_users_handler,
-        sessions::list_sessions_handler,
         server_info::server_info_handler,
         invites::list_invites_handler,
     ];

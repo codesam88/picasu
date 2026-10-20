@@ -37,9 +37,9 @@ pub fn list_users_handler(auth: GuardResult<GuardAuth>) -> AppResult<Json<Vec<Us
     let rows = users::list_users().map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
     Ok(Json(
         rows.into_iter()
-            .map(|(user_id, _record)| UserSummary {
-                user_id: user_id.clone(),
-                admin: users::get_admin(&user_id).ok().flatten().unwrap_or(false),
+            .map(|(user_id, record)| UserSummary {
+                user_id,
+                admin: record.admin,
             })
             .collect(),
     ))

@@ -114,6 +114,12 @@ enum UserCommand {
         #[arg(long)]
         password: Option<String>,
     },
+    /// Invalidate every outstanding token of a user. The password, role and
+    /// attributes stay; the sessions die.
+    Invalidate {
+        /// Existing user id.
+        user: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -170,12 +176,12 @@ fn run(cli: Cli) -> Result<(), String> {
         } => cmd_mod(&location, &user, home, admin, no_admin),
         UserCommand::Del { user, force } => cmd_del(&location, &user, force),
         UserCommand::Passwd { user, password } => cmd_passwd(&location, &user, password),
+        UserCommand::Invalidate { user } => cmd_invalidate(&location, &user),
     }
 }
 
-/// Resolve the store the command works on and pin the data home for this
-/// process, so the session purge on `user del` reaches the index database
-/// next to the store instead of a platform default.
+/// Resolve the store the command works on. The CLI touches one file: the
+/// identity record.
 fn locate(cli: &Cli) -> Result<UserStoreLocation, String> {
     let location = store_location::locate_user_store(cli.userdb.as_deref())
         .ok_or_else(|| LOCATION_UNKNOWN.to_string())?;
@@ -184,9 +190,6 @@ fn locate(cli: &Cli) -> Result<UserStoreLocation, String> {
             "user store path is a directory, not a file: {}",
             location.path.display()
         ));
-    }
-    if let Some(home) = &location.data_home {
-        let _ = picasu::DATA_PATH.set(home.clone());
     }
     Ok(location)
 }
@@ -333,30 +336,12 @@ fn cmd_del(location: &UserStoreLocation, user: &str, force: bool) -> Result<(), 
             ));
         }
     }
-    // The store delete runs before the session purge: a store failure must
-    // not leave sessions pointing at a deleted user, so abort first. The
-    // residual ordering consequence is the reverse — if the purge itself
-    // fails after the delete, a stale session row remains. That row is
-    // harmless: authentication reads the passwd entry, which is already
-    // gone, so the orphaned sessions can never verify.
+    // Deleting the identity record is enough: the server keeps no session
+    // list, and a token for a user that no longer exists is refused by the
+    // guard.
     let removed = picasu::auth::user_store::delete(&path, &id, force).map_err(|e| e.to_string())?;
     if !removed {
         return Err(format!("unknown user: {id}"));
-    }
-    match &location.data_home {
-        Some(_) => {
-            picasu::auth::users::purge_sessions(&id)
-                .map_err(|e| format!("deleted user '{id}' but failed to purge sessions: {e}"))?;
-        }
-        None => {
-            // No data home: the session database is out of reach. The stale
-            // rows cannot verify — authentication reads the passwd entry,
-            // which is gone.
-            eprintln!(
-                "warning: no data home resolved; sessions of '{id}' were not purged \
-                 (set PICASU_DATA_HOME to reach the session database)"
-            );
-        }
     }
     println!("deleted user '{id}'");
     Ok(())
@@ -380,11 +365,22 @@ fn cmd_passwd(
         None => prompt_twice()?,
     };
     // Same policy the server enforces; `set_password` only swaps the hash,
-    // preserving `admin` and `home`.
+    // preserving `admin` and `home`, and bumps the token version so the
+    // outstanding tokens of that user die with the old password.
     let canonical =
         picasu::auth::users::validate_new_password(&id, &password).map_err(|e| e.to_string())?;
     picasu::auth::user_store::set_password(&path, &id, &canonical).map_err(|e| e.to_string())?;
     println!("updated password for '{id}'");
+    Ok(())
+}
+
+/// Invalidate every outstanding token of a user. The password, role and
+/// attributes stay; the sessions die.
+fn cmd_invalidate(location: &UserStoreLocation, user: &str) -> Result<(), String> {
+    let path = store_for_read(location)?;
+    let id = canonical_id(user)?;
+    let ver = picasu::auth::user_store::bump_ver(&path, &id).map_err(|e| e.to_string())?;
+    println!("invalidated the tokens of '{id}' (version {ver})");
     Ok(())
 }
 

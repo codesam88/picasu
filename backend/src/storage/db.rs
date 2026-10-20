@@ -171,15 +171,16 @@ pub const ASSET_BY_ID: TableDefinition<&str, &str> = TableDefinition::new("asset
 /// but remain independently addressable.
 pub const DUPE_INDEX: TableDefinition<&str, &str> = TableDefinition::new("dupe_index");
 
-/// Maps user id → JSON-serialized [`crate::auth::users::SessionBundle`]:
-/// the live sessions of that user. One row per user. Follows the same
-/// JSON-string value pattern as [`ASSET_BY_ID`].
-pub const SESSIONS: TableDefinition<&str, &str> = TableDefinition::new("sessions");
-
 /// Maps invite id (blake3 hash hex of the token) → JSON-serialized
 /// [`crate::auth::invites::InviteRecord`]. Only the token hash is ever
 /// stored; the plaintext token exists solely in the creation response.
 pub const INVITES: TableDefinition<&str, &str> = TableDefinition::new("invites");
+
+/// Maps a revocation key → JSON-serialized [`crate::auth::revocations::Revocation`]:
+/// the capabilities that must not work any more (a logged-out session, a
+/// used invite, a revoked share), each with the expiry of the thing it
+/// revokes. Runtime state, not identity.
+pub const REVOCATIONS: TableDefinition<&str, &str> = TableDefinition::new("revocations");
 
 use anyhow::Result;
 
