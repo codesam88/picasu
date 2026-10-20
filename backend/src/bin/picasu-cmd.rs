@@ -95,8 +95,7 @@ enum UserCommand {
         #[arg(long)]
         no_admin: bool,
     },
-    /// Delete a user and purge its sessions. Refuses the last admin
-    /// unless `--force` is given.
+    /// Delete a user. Refuses the last admin unless `--force` is given.
     Del {
         /// Existing user id.
         user: String,
@@ -121,7 +120,6 @@ enum UserCommand {
         user: String,
     },
 }
-
 fn main() -> ExitCode {
     init_logger();
     match run(Cli::parse()) {
