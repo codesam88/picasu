@@ -359,9 +359,6 @@
       },
       "ConfigResponse": {
         "properties": {
-          "address": {
-            "type": "string"
-          },
           "disableImg": {
             "type": "boolean"
           },
@@ -383,16 +380,14 @@
           "normalizeUploadFilenames": {
             "type": "boolean"
           },
-          "port": {
-            "format": "int32",
-            "minimum": 0,
-            "type": "integer"
-          },
           "readOnlyMode": {
             "type": "boolean"
           },
           "uploadFolder": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "useClientTimestampInfo": {
             "type": "boolean"
@@ -402,9 +397,6 @@
           }
         },
         "required": [
-          "address",
-          "port",
-          "uploadFolder",
           "maxUploadSize",
           "readOnlyMode",
           "disableImg",
@@ -1664,7 +1656,7 @@
     },
     "/get/config": {
       "get": {
-        "description": "Returns the values a client needs to drive the other operations: address\nand port, the image library root (`imagePath`), `uploadFolder`,\n`maxUploadSize`, `readOnlyMode`, `disableImg`, `fsNotifyWatcher`,\n`normalizeUploadFilenames`, `validateUploadContent`,\n`useClientTimestampInfo`, plus `hasAuthKey`.\n\nCorner cases: secrets are never returned — `hasAuthKey` only reports\nwhether an auth key is configured. `imagePath` is\nthe absolute library root and serializes as `null` when it is unset.\n\nErrors: 400 half-supplied share credentials or an id that is not an album —\n401 no valid admin or share credentials.",
+        "description": "Returns the values a client needs to drive the other operations: the\nimage library root (`imagePath`), `uploadFolder`, `maxUploadSize`,\n`readOnlyMode`, `disableImg`, `fsNotifyWatcher`,\n`normalizeUploadFilenames`, `validateUploadContent`,\n`useClientTimestampInfo`, plus `hasAuthKey`.\n\nCorner cases: secrets are never returned — `hasAuthKey` only reports\nwhether an auth key is configured. `imagePath` is\nthe absolute library root and serializes as `null` when it is unset.\nThe endpoint stays `GuardShare`-gated so a share visitor's SPA boots\nnormally, but share credentials receive `null` for\n`imagePath`/`uploadFolder`: only the admin tier sees the real\nfilesystem paths. Non-admin sessions never reach the handler —\n`GuardShare` admits admins and shares only, so they are refused with\n401 first.\n\nErrors: 400 half-supplied share credentials or an id that is not an album —\n401 no valid admin or share credentials.",
         "operationId": "get_config_handler",
         "responses": {
           "200": {

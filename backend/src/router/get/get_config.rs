@@ -15,12 +15,11 @@ use crate::router::{AppResult, GuardResult};
 #[derive(utoipa::ToSchema)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct ConfigResponse {
-    pub address: String,
-    pub port: u16,
     #[schema(value_type = Option<String>)]
     #[serde(rename = "imagePath", alias = "imageHome")]
     pub image_home: Option<std::path::PathBuf>,
-    pub upload_folder: String,
+    #[schema(value_type = Option<String>)]
+    pub upload_folder: Option<String>,
     pub max_upload_size: String,
     pub read_only_mode: bool,
     pub disable_img: bool,
@@ -33,15 +32,21 @@ pub struct ConfigResponse {
 
 /// Serve the client-visible server configuration.
 ///
-/// Returns the values a client needs to drive the other operations: address
-/// and port, the image library root (`imagePath`), `uploadFolder`,
-/// `maxUploadSize`, `readOnlyMode`, `disableImg`, `fsNotifyWatcher`,
+/// Returns the values a client needs to drive the other operations: the
+/// image library root (`imagePath`), `uploadFolder`, `maxUploadSize`,
+/// `readOnlyMode`, `disableImg`, `fsNotifyWatcher`,
 /// `normalizeUploadFilenames`, `validateUploadContent`,
 /// `useClientTimestampInfo`, plus `hasAuthKey`.
 ///
 /// Corner cases: secrets are never returned — `hasAuthKey` only reports
 /// whether an auth key is configured. `imagePath` is
 /// the absolute library root and serializes as `null` when it is unset.
+/// The endpoint stays `GuardShare`-gated so a share visitor's SPA boots
+/// normally, but share credentials receive `null` for
+/// `imagePath`/`uploadFolder`: only the admin tier sees the real
+/// filesystem paths. Non-admin sessions never reach the handler —
+/// `GuardShare` admits admins and shares only, so they are refused with
+/// 401 first.
 ///
 /// Errors: 400 half-supplied share credentials or an id that is not an album —
 /// 401 no valid admin or share credentials.
@@ -56,17 +61,16 @@ pub struct ConfigResponse {
 ]
 #[get("/get/config")]
 pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<ConfigResponse>> {
-    let _ = auth?;
+    let auth = auth?;
+    let admin = auth.claims.is_admin();
     let config = APP_CONFIG
         .get()
         .expect("APP_CONFIG not initialized")
         .read()
         .expect("lock poisoned");
     let response = ConfigResponse {
-        address: config.address.clone(),
-        port: config.port,
-        image_home: config.image_home.clone(),
-        upload_folder: config.upload_folder.clone(),
+        image_home: admin.then(|| config.image_home.clone()).flatten(),
+        upload_folder: admin.then(|| config.upload_folder.clone()),
         max_upload_size: config.max_upload_size.clone(),
         read_only_mode: config.read_only_mode,
         disable_img: config.disable_img,

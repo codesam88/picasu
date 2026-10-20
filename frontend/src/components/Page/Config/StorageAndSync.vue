@@ -122,12 +122,13 @@
               Browse
             </v-btn>
             <v-text-field
-              v-model="uploadFolder"
+              :model-value="uploadFolder ?? ''"
               density="compact"
               variant="outlined"
               hide-details
               placeholder="(image library root)"
               style="min-width: 120px; max-width: 220px"
+              @update:model-value="uploadFolder = $event"
             ></v-text-field>
           </div>
         </template>
@@ -185,7 +186,7 @@ import {
 import ServerFilePicker from '@/components/Page/Config/ServerFilePicker.vue'
 
 const props = defineProps<{ imagePath: string | null }>()
-const uploadFolder = defineModel<string>('uploadFolder', { required: true })
+const uploadFolder = defineModel<string | null>('uploadFolder', { required: true })
 const maxUploadSize = defineModel<string>('maxUploadSize', { required: true })
 const fsNotifyWatcher = defineModel<boolean>('fsNotifyWatcher', { required: true })
 const configStore = useConfigStore('mainId')
