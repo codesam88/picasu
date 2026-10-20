@@ -25,14 +25,13 @@ the fix causes behavior change or coverage loss.
 The original 2026-10-15 table listed every finding and is preserved in
 git history. Below is the live set — everything else is fixed, struck,
 or discharged (per-verdict annotations in the verdict lines; fixed
-R1–R9, R12, R15–R26; discharged to owning plans: R10, R22, R25, R30,
+R1–R9, R12, R15–R28; discharged to owning plans: R10, R22, R25, R30,
 R31; struck as churn/no benefit: R29, R34, R35; R11+R32 closed
 `f677f67f1`).
 
 | Order | ID  | Sev | Impact | Risk | Remaining work                                                                 |
 | ----- | --- | --- | ------ | ---- | ------------------------------------------------------------------------------ |
-| 1     | R28 | S3  | MED    | MED  | Typed knob accessor, `/post/invites/create` verb alias, stringly-typed status  |
-| 2     | R14 | S3  | LOW    | LOW  | `picasu-admin` references — satisfied by H1a of `.plan/e2e-given-reshaping.md` |
+| 1     | R14 | S3  | LOW    | LOW  | `picasu-admin` references — satisfied by H1a of `.plan/e2e-given-reshaping.md` |
 
 Discharged 2026-10-19 — rows removed from the tackle order, analysis
 folded into the verdict lines below: R10, R22, R25 → owning plans
@@ -258,9 +257,21 @@ auth?;`); denial bodies now carry the guard's real `AppError`
 - R28 CONFIRMED, residual (S3/MED/MED). Re-scoped 2026-10-19: the
   `ConfigResponse` read-back/parity half is owned by
   `.plan/auth-admin-panel.md` step 1, and the R12 host-only split
-  already redefined what API-vs-host parity means. Remaining here:
-  typed knob accessor, `/post/invites/create` verb alias,
-  stringly-typed status. Ride-along in the next config/invites touch.
+  already redefined what API-vs-host parity means. Fixed 2026-10-20
+  (`4551928f2`), owner decisions taken per residual: (1) typed knob
+  accessor — all non-test `APP_CONFIG` read sites now go through a
+  single `with_config()` closure helper in `model/config.rs`
+  (behavior-neutral, no red); (2) verb alias — `POST /post/invites/create`
+  renamed to `POST /post/invites`, hard removal without a deprecation
+  window (zero SPA consumers verified; the invite UI lives in the
+  unbuilt admin panel) with a dated oasdiff entry, operationId keeps
+  `create_invite_handler`; (3) stringly-typed status — dropped from
+  wire, contract, and `serverErrorSchema`: `ErrorStatus` was dead
+  end-to-end (never read anywhere; `Temporary` ⟺ `RateLimited` ⟺ 429 +
+  `retryAfter`, so retryability was already encoded by `kind` → HTTP
+  status plus `Retry-After`), introduced pre-review in `c6e599a95`
+  without an owner decision. New pins: invites noun-path route accepts
+  admin creates; error bodies carry no `status` key.
 - R29 STRUCK 2026-10-19 (churn). Re-verified: the named 422 tests are
   one-per-struct (tracker policy), the four bare-string tests are
   distinct store-state matrix rows — there is no duplicate to delete.
@@ -354,9 +365,9 @@ inside the R11 touch: R32. R11+R32 done 2026-10-20 (`f677f67f1`).
 R13 decided 2026-10-20 (option B+C, owner-approved) and fixed the same
 day (`69d37ed37`). R27 residual executed 2026-10-20 (`bcf65697e`) —
 all bare `GuardAuth` guards propagate detail; the 422/401 catcher
-contract and `TimestampGuardModified` stand as documented. Live after
-the 2026-10-20 pass: R28 residual; R14 itself closes when H1a ships
-the CLI.
+contract and `TimestampGuardModified` stand as documented. R28 done
+2026-10-20 (`4551928f2` — knob accessor, invites verb rename, wire
+status drop). Live: R14 itself closes when H1a ships the CLI.
 
 Decision 2026-10-19 (open-mode removal, owner-approved this session):
 the `ephemeral-open-mode` structure is deleted, not just the mint.
