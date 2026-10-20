@@ -121,6 +121,18 @@ fn invite_registration_works_with_knob_off() {
     let listed = crate::auth::invites::list_invites().expect("list");
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].used_by.as_deref(), Some("s6-invited"));
+    // The registered password must verify through the login route: the
+    // entry hash lands inside `redeem_invite`, not in a later store write.
+    let resp = client
+        .post("/post/users/authenticate")
+        .header(ContentType::JSON)
+        .body(json!({ "userId": "s6-invited", "password": pw }).to_string())
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Ok,
+        "invited user must be able to log in with the registered password"
+    );
 }
 
 // ── Row: disabled ──────────────────────────────────────────────────────────
