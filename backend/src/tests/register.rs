@@ -73,7 +73,7 @@ fn open_registration_creates_non_admin_user() {
     // The record exists as non-admin, and the password verifies.
     assert_eq!(
         crate::auth::users::get_user("s6-open").expect("get user"),
-        Some(crate::auth::users::UserRecord { sessions: vec![] })
+        Some(crate::auth::users::SessionBundle { sessions: vec![] })
     );
     let resp = client
         .post("/post/users/authenticate")
@@ -116,7 +116,7 @@ fn invite_registration_works_with_knob_off() {
     assert_eq!(status, Status::Ok, "body: {body:?}");
     assert_eq!(
         crate::auth::users::get_user("s6-invited").expect("get user"),
-        Some(crate::auth::users::UserRecord { sessions: vec![] })
+        Some(crate::auth::users::SessionBundle { sessions: vec![] })
     );
     let listed = crate::auth::invites::list_invites().expect("list");
     assert_eq!(listed.len(), 1);
@@ -383,7 +383,7 @@ fn duplicate_id_is_409() {
     // The original record is untouched.
     assert_eq!(
         crate::auth::users::get_user("s6-dup").expect("get"),
-        Some(crate::auth::users::UserRecord { sessions: vec![] })
+        Some(crate::auth::users::SessionBundle { sessions: vec![] })
     );
 }
 
@@ -454,7 +454,7 @@ fn admin_session_creates_without_invite() {
     assert_eq!(created["admin"], false, "register is always non-admin");
     assert_eq!(
         crate::auth::users::get_user("s6-by-admin").expect("get user"),
-        Some(crate::auth::users::UserRecord { sessions: vec![] })
+        Some(crate::auth::users::SessionBundle { sessions: vec![] })
     );
 }
 

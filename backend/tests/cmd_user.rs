@@ -24,12 +24,45 @@ fn bin_path() -> PathBuf {
         .expect("cargo must expose the picasu-cmd binary path to integration tests")
 }
 
-fn run(data_home: &Path, args: &[&str], stdin: Option<&str>) -> Output {
+/// Environment for a CLI invocation. The location variables are optional:
+/// which one the CLI picks is part of what the tests pin.
+#[derive(Default)]
+struct Env {
+    data_home: Option<PathBuf>,
+    config_home: Option<PathBuf>,
+    vars: Vec<(String, String)>,
+}
+
+impl Env {
+    fn data_home(home: &Path) -> Self {
+        Self {
+            data_home: Some(home.to_path_buf()),
+            ..Self::default()
+        }
+    }
+}
+
+/// Run the CLI with an explicit environment. The location variables are
+/// removed first, so a value inherited from the developer's shell cannot
+/// decide the outcome.
+fn run_env(env: &Env, args: &[&str], stdin: Option<&str>) -> Output {
     let mut child = std::process::Command::new(bin_path());
     child
         .args(args)
-        .env("PICASU_DATA_HOME", data_home)
-        .env("PICASU_PBKDF_ITERATIONS", "1000")
+        .env_remove("PICASU_DATA_HOME")
+        .env_remove("PICASU_CONFIG_HOME")
+        .env_remove("PICASU_TRIVIAL_PASSWORDS")
+        .env("PICASU_PBKDF_ITERATIONS", "1000");
+    if let Some(home) = &env.data_home {
+        child.env("PICASU_DATA_HOME", home);
+    }
+    if let Some(home) = &env.config_home {
+        child.env("PICASU_CONFIG_HOME", home);
+    }
+    for (key, value) in &env.vars {
+        child.env(key, value);
+    }
+    child
         .stdin(if stdin.is_some() {
             Stdio::piped()
         } else {
@@ -47,6 +80,10 @@ fn run(data_home: &Path, args: &[&str], stdin: Option<&str>) -> Output {
             .expect("write piped stdin");
     }
     child.wait_with_output().expect("wait for picasu-cmd")
+}
+
+fn run(data_home: &Path, args: &[&str], stdin: Option<&str>) -> Output {
+    run_env(&Env::data_home(data_home), args, stdin)
 }
 
 fn store_path(data_home: &Path) -> PathBuf {
@@ -72,13 +109,13 @@ fn raw_entry(data_home: &Path, id: &str) -> Option<serde_json::Value> {
     let Some(row) = table.get(id).expect("read row") else {
         return None;
     };
-    Some(serde_json::from_slice(row.value()).expect("entry must decode as JSON"))
+    Some(serde_json::from_str(row.value()).expect("entry must decode as JSON"))
 }
 
 /// The store table as the CLI writes it: user id to JSON-encoded entry.
 /// Redeclared here because the definition lives in the lib-private store
 /// module (same pattern as `users_table` below for the index DB).
-fn store_table() -> redb::TableDefinition<'static, &'static str, &'static [u8]> {
+fn store_table() -> redb::TableDefinition<'static, &'static str, &'static str> {
     redb::TableDefinition::new("users")
 }
 
@@ -331,16 +368,275 @@ fn pin6_user_list_table_single_and_unknown() {
     );
 }
 
+// Pin 7: `--userdb` names the store file, and the CLI reports the file it
+// resolved.
+#[test]
+fn pin7_userdb_flag_selects_the_store_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = dir.path().join("elsewhere").join("users.redb");
+    let out = run_env(
+        &Env::default(),
+        &[
+            "--userdb",
+            store.to_str().expect("utf-8 path"),
+            "user",
+            "add",
+            "alice",
+            "--password",
+            ALICE_PW,
+            "--admin",
+        ],
+        None,
+    );
+    assert!(
+        out.status.success(),
+        "add must exit 0, stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        store.exists(),
+        "the store must be created at the given path, not elsewhere"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(&format!("users.redb at {}", store.display())),
+        "the CLI must report the store it works on, stderr: {stderr}"
+    );
+}
+
+// Pin 8: `PICASU_DATA_HOME` puts the store under the data home's `auth/`.
+#[test]
+fn pin8_data_home_env_selects_the_store_under_the_auth_dir() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out = run_env(
+        &Env::data_home(dir.path()),
+        &["user", "add", "alice", "--password", ALICE_PW, "--admin"],
+        None,
+    );
+    assert!(
+        out.status.success(),
+        "add must exit 0, stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let store = store_path(dir.path());
+    assert!(store.exists(), "the store must live under the data home");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(&format!("users.redb at {}", store.display())),
+        "the CLI must report the store it works on, stderr: {stderr}"
+    );
+}
+
+// Pin 9: the server's `config.toml` names the data home, so the CLI finds
+// the store the server uses — even without the environment variable.
+#[test]
+fn pin9_config_file_data_home_selects_the_store() {
+    let config_home = tempfile::tempdir().expect("tempdir");
+    let data_home = tempfile::tempdir().expect("tempdir");
+    std::fs::write(
+        config_home.path().join("config.toml"),
+        format!(
+            "[gallery]\ndata_home = {:?}\n",
+            data_home.path().to_string_lossy()
+        ),
+    )
+    .expect("write config.toml");
+    let env = Env {
+        config_home: Some(config_home.path().to_path_buf()),
+        ..Env::default()
+    };
+    let out = run_env(
+        &env,
+        &["user", "add", "alice", "--password", ALICE_PW, "--admin"],
+        None,
+    );
+    assert!(
+        out.status.success(),
+        "add must exit 0, stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let store = store_path(data_home.path());
+    assert!(
+        store.exists(),
+        "the store must land in the configured data home"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(&format!("users.redb at {}", store.display())),
+        "the CLI must report the store it works on, stderr: {stderr}"
+    );
+}
+
+// Pin 10: without a location the CLI refuses to run — it must not guess
+// one, and it must not create a store somewhere arbitrary.
+#[test]
+fn pin10_without_a_location_the_cli_refuses_to_run() {
+    let config_home = tempfile::tempdir().expect("tempdir");
+    let env = Env {
+        config_home: Some(config_home.path().to_path_buf()),
+        ..Env::default()
+    };
+    let out = run_env(
+        &env,
+        &["user", "add", "alice", "--password", ALICE_PW],
+        None,
+    );
+    assert!(
+        !out.status.success(),
+        "add must fail without a location, stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("cannot determine the user store location"),
+        "the refusal must name the missing location, stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("PICASU_DATA_HOME") && stderr.contains("--userdb"),
+        "the refusal must name both location options, stderr: {stderr}"
+    );
+}
+
+// Pin 11: a read command on a missing store fails and says where it
+// looked — an empty table would read as "no users exist".
+#[test]
+fn pin11_list_without_a_store_fails_and_names_the_location() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out = run(dir.path(), &["user", "list"], None);
+    assert!(
+        !out.status.success(),
+        "list must fail without a store, stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let store = store_path(dir.path());
+    assert!(
+        stderr.contains(&format!("could not find users.redb at {}", store.display())),
+        "the failure must name the store it looked for, stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("set location via PICASU_DATA_HOME or --userdb"),
+        "the failure must name both location options, stderr: {stderr}"
+    );
+}
+
+// Pin 12: `user add` creates the store when it is missing — the first
+// admin is provisioned before the server has ever run.
+#[test]
+fn pin12_add_creates_a_missing_store_at_the_resolved_location() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out = run(
+        dir.path(),
+        &["user", "add", "alice", "--password", ALICE_PW],
+        None,
+    );
+    assert!(
+        out.status.success(),
+        "add must exit 0, stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        store_path(dir.path()).exists(),
+        "add must create the store at the resolved location"
+    );
+}
+
+// Pin 13: the CLI mirrors the server's password policy: `PICASU_TRIVIAL_PASSWORDS`
+// switches the strength checks off, exactly as on the server.
+#[test]
+fn pin13_trivial_passwords_env_mirrors_the_server_policy() {
+    const WEAK_PW: &str = "short";
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out = run(
+        dir.path(),
+        &["user", "add", "alice", "--password", WEAK_PW],
+        None,
+    );
+    assert!(
+        !out.status.success(),
+        "a weak password must be refused by default, stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+
+    let dir2 = tempfile::tempdir().expect("tempdir");
+    let env = Env {
+        vars: vec![("PICASU_TRIVIAL_PASSWORDS".to_string(), "true".to_string())],
+        ..Env::data_home(dir2.path())
+    };
+    let out = run_env(&env, &["user", "add", "alice", "--password", WEAK_PW], None);
+    assert!(
+        out.status.success(),
+        "a weak password must be accepted with trivial passwords on, stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        entry(dir2.path(), "alice").get("hash").is_some(),
+        true,
+        "the accepted password must be hashed into the store"
+    );
+}
+
+// Pin 14: an existing store is reported with the file it works on.
+#[test]
+fn pin14_existing_store_is_reported() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out = run(
+        dir.path(),
+        &["user", "add", "alice", "--password", ALICE_PW, "--admin"],
+        None,
+    );
+    assert!(out.status.success());
+    let out = run(dir.path(), &["user", "list"], None);
+    assert!(
+        out.status.success(),
+        "list must exit 0, stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let store = store_path(dir.path());
+    assert!(
+        stderr.contains(&format!("Using users.redb at {}", store.display())),
+        "the CLI must report the store it works on, stderr: {stderr}"
+    );
+}
+
+// Pin 15: a store held by another process fails loudly. An empty table
+// would claim there are no users — the one reading it would be wrong.
+#[test]
+fn pin15_locked_store_fails_loudly_instead_of_reporting_an_empty_store() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let out = run(
+        dir.path(),
+        &["user", "add", "alice", "--password", ALICE_PW],
+        None,
+    );
+    assert!(out.status.success());
+
+    let holder = redb::Database::create(store_path(dir.path())).expect("hold the store open");
+    let out = run(dir.path(), &["user", "list"], None);
+    assert!(
+        !out.status.success(),
+        "list must fail while the store is held, stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("held by another process"),
+        "the failure must name the conflict, stderr: {stderr}"
+    );
+    drop(holder);
+}
+
 // ── redb helpers (pin 4) ────────────────────────────────────────────────
-//
 // The `USERS` table definition lives in the lib-private `storage::db`
 // module, so tests redeclare its stable shape here: on-disk name `users`
 // with JSON-string values (pinned by the `users_table_uses_json_string_values`
 // unit test). Rows serialize the public `UserRecord`; handles are opened,
 // used, and dropped inside each helper so the CLI subprocess never
 // contends for the database lock.
-fn users_table() -> redb::TableDefinition<'static, &'static str, &'static str> {
-    redb::TableDefinition::new("users")
+fn sessions_table() -> redb::TableDefinition<'static, &'static str, &'static str> {
+    redb::TableDefinition::new("sessions")
 }
 
 fn index_db_path(data_home: &Path) -> PathBuf {
@@ -351,7 +647,7 @@ fn seed_session_row(data_home: &Path, id: &str, jti: &str) {
     let db_path = index_db_path(data_home);
     std::fs::create_dir_all(db_path.parent().expect("db parent")).expect("create db dir");
     let db = redb::Database::create(&db_path).expect("open index db for seeding");
-    let record = picasu::auth::users::UserRecord {
+    let record = picasu::auth::users::SessionBundle {
         sessions: vec![picasu::auth::users::SessionRecord {
             jti: jti.to_string(),
             issued_at: 1_700_000_000,
@@ -361,7 +657,7 @@ fn seed_session_row(data_home: &Path, id: &str, jti: &str) {
     let txn = db.begin_write().expect("begin seed write");
     {
         let mut table = txn
-            .open_table(users_table())
+            .open_table(sessions_table())
             .expect("open USERS for seeding");
         table
             .insert(id, value.as_str())
@@ -373,6 +669,8 @@ fn seed_session_row(data_home: &Path, id: &str, jti: &str) {
 fn session_row_present(data_home: &Path, id: &str) -> bool {
     let db = redb::Database::open(&index_db_path(data_home)).expect("open index db for read");
     let txn = db.begin_read().expect("begin read");
-    let table = txn.open_table(users_table()).expect("open USERS for read");
+    let table = txn
+        .open_table(sessions_table())
+        .expect("open USERS for read");
     table.get(id).expect("read session row").is_some()
 }

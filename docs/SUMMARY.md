@@ -2,6 +2,7 @@
 
 - [Design Goals](design.md)
 - [Authentication](auth.md)
+- [Admin CLI](admin-cli.md)
 - [Configuration](config.md)
 - [Linux Build](linux.md)
 - [Frontend](frontend.md)

@@ -9,6 +9,52 @@ pub static CONFIG_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 const CONFIG_FILE_NAME: &str = "config.toml";
 
+/// Where a root directory comes from, before it is created.
+enum RootSource {
+    /// The environment override.
+    Env(PathBuf),
+    /// The legacy single-folder layout: the working directory.
+    LegacyCwd,
+    /// The OS-standard directory.
+    OsStandard(PathBuf),
+    /// No OS-standard directory could be determined.
+    Undetermined,
+}
+
+/// Resolve the source of a root directory. Shared by [`resolve_root`] (which
+/// creates the directory) and [`resolve_root_path`] (which does not), so the
+/// precedence cannot drift between them.
+fn resolve_root_source(env_var: &str, os_dir: impl FnOnce(&ProjectDirs) -> PathBuf) -> RootSource {
+    if let Ok(p) = std::env::var(env_var) {
+        return RootSource::Env(PathBuf::from(p));
+    }
+
+    // Legacy back-compat: every pre-existing install has `config.toml`
+    // sitting next to its `db`/`object`/`upload` folders in the working
+    // directory. Detecting that file is a more precise signal than the old
+    // "does ./db or ./object exist" sniff, and covers both roots with one
+    // check.
+    if Path::new(CONFIG_FILE_NAME).exists() {
+        return RootSource::LegacyCwd;
+    }
+
+    if let Some(proj_dirs) = ProjectDirs::from("com", "picasu", "picasu") {
+        return RootSource::OsStandard(os_dir(&proj_dirs));
+    }
+
+    RootSource::Undetermined
+}
+
+/// Resolves a root directory without touching the filesystem: environment
+/// override > legacy single-folder layout > OS-standard directory >
+/// working directory. Nothing is created and nothing is logged.
+pub fn resolve_root_path(env_var: &str, os_dir: impl FnOnce(&ProjectDirs) -> PathBuf) -> PathBuf {
+    match resolve_root_source(env_var, os_dir) {
+        RootSource::Env(dir) | RootSource::OsStandard(dir) => dir,
+        RootSource::LegacyCwd | RootSource::Undetermined => PathBuf::from("."),
+    }
+}
+
 /// Resolves a root directory using a fixed precedence:
 /// 1. `env_var`, if set — explicit override (e.g. `PICASU_DATA_HOME`).
 /// 2. The legacy single-folder layout: if `./config.toml` already exists in
@@ -24,47 +70,39 @@ pub fn resolve_root(
     kind: &str,
     os_dir: impl FnOnce(&ProjectDirs) -> PathBuf,
 ) -> PathBuf {
-    if let Ok(p) = std::env::var(env_var) {
-        let dir = PathBuf::from(p);
-        if let Err(e) = std::fs::create_dir_all(&dir) {
-            error!(
-                "Failed to create {env_var} directory {}: {e}",
+    match resolve_root_source(env_var, os_dir) {
+        RootSource::Env(dir) => {
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                error!(
+                    "Failed to create {env_var} directory {}: {e}",
+                    dir.display()
+                );
+            }
+            info!(
+                "{env_var} override detected. Using {kind} directory: {}",
                 dir.display()
             );
+            dir
         }
-        info!(
-            "{env_var} override detected. Using {kind} directory: {}",
-            dir.display()
-        );
-        return dir;
-    }
-
-    // Legacy back-compat: every pre-existing install has `config.toml`
-    // sitting next to its `db`/`object`/`upload` folders in the working
-    // directory. Detecting that file is a more precise signal than the old
-    // "does ./db or ./object exist" sniff, and covers both roots with one
-    // check.
-    if Path::new(CONFIG_FILE_NAME).exists() {
-        info!("Legacy single-folder layout detected — using cwd for {kind}");
-        return PathBuf::from(".");
-    }
-
-    if let Some(proj_dirs) = ProjectDirs::from("com", "picasu", "picasu") {
-        let dir = os_dir(&proj_dirs);
-
-        if !dir.exists()
-            && let Err(e) = std::fs::create_dir_all(&dir)
-        {
-            error!("Failed to create {kind} directory {}: {e}", dir.display());
-            return PathBuf::from(".");
+        RootSource::LegacyCwd => {
+            info!("Legacy single-folder layout detected — using cwd for {kind}");
+            PathBuf::from(".")
         }
-
-        info!("Using OS-standard {kind} directory: {}", dir.display());
-        return dir;
+        RootSource::OsStandard(dir) => {
+            if !dir.exists()
+                && let Err(e) = std::fs::create_dir_all(&dir)
+            {
+                error!("Failed to create {kind} directory {}: {e}", dir.display());
+                return PathBuf::from(".");
+            }
+            info!("Using OS-standard {kind} directory: {}", dir.display());
+            dir
+        }
+        RootSource::Undetermined => {
+            info!("Could not determine system {kind} directory. Defaulting to cwd.");
+            PathBuf::from(".")
+        }
     }
-
-    info!("Could not determine system {kind} directory. Defaulting to cwd.");
-    PathBuf::from(".")
 }
 
 /// Returns the path to `config.toml`. See [`get_config_dir`] for how the
@@ -81,6 +119,13 @@ pub fn get_config_dir() -> &'static PathBuf {
             p.config_dir().to_path_buf()
         })
     })
+}
+
+/// Path of `config.toml`, resolved like [`get_config_path`] but without
+/// creating directories: the offline CLI reads the file and must leave no
+/// trace behind.
+pub fn config_path_readonly() -> PathBuf {
+    resolve_root_path("PICASU_CONFIG_HOME", |p| p.config_dir().to_path_buf()).join(CONFIG_FILE_NAME)
 }
 
 /// Directory holding `db/` and `object/compressed/` — derived index and

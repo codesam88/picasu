@@ -51,7 +51,7 @@ fn bootstrap_user_sync(user_id: &str, password: &str) -> AppResult<UserSummary> 
     let _guard = BOOTSTRAP_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if crate::auth::passwd_store::count(&users::user_store_path()) > 0 || !bootstrap_open() {
+    if crate::auth::user_store::count(&users::user_store_path()) > 0 || !bootstrap_open() {
         return Err(AppError::new(ErrorKind::Auth, WINDOW_CLOSED_MSG));
     }
     let id = users::provision_user(user_id, password, true)?;
@@ -96,7 +96,7 @@ pub async fn bootstrap_admin_handler(
     body: Json<BootstrapRequest>,
 ) -> AppResult<Json<UserSummary>> {
     let _ = read_only?;
-    let non_empty = crate::auth::passwd_store::count(&users::user_store_path()) > 0;
+    let non_empty = crate::auth::user_store::count(&users::user_store_path()) > 0;
     // The window is flag ∧ empty store. When it is shut, unauthenticated
     // callers see the guard's own closed-401; an authenticated caller that
     // reaches a shut window (valid session, non-empty store) is refused

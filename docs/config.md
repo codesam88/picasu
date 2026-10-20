@@ -151,6 +151,12 @@ PICASU_CONFIG_HOME=/etc/picasu PICASU_DATA_HOME=/var/lib/picasu PICASU_IMAGE_HOM
 already exists in the working directory, both the config and data roots fall
 back to the working directory, so existing installs keep working unchanged.
 
+**The offline admin CLI** resolves the user store the same way, with one
+addition: `--userdb <PATH>` names the store file directly. It has no
+fallback — with neither `--userdb` nor `PICASU_DATA_HOME` set and no
+`config.toml` to read, it refuses to run instead of guessing a location.
+See [Admin CLI](admin-cli.md).
+
 ## Environment variable overrides
 
 The following env vars override the config file on every launch:

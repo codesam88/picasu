@@ -4,7 +4,7 @@ use redb::{ReadableDatabase, ReadableTable};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, ErrorKind};
-use crate::storage::db::{TREE, USERS};
+use crate::storage::db::{SESSIONS, TREE};
 
 /// How long a server-side session record lives. Matches the identity-token
 /// TTL in [`crate::router::auth::Claims::new_user`] (14 days).
@@ -16,10 +16,11 @@ pub struct SessionRecord {
     pub issued_at: u64,
 }
 
-/// A user record stored in the `USERS` redb table, keyed by user id.
-/// Deliberately minimal; extended with new optional fields later.
+/// The live sessions of one user, stored in the `sessions` redb table and
+/// keyed by user id. Deliberately minimal; extended with new optional fields
+/// later.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UserRecord {
+pub struct SessionBundle {
     #[serde(default)]
     pub sessions: Vec<SessionRecord>,
 }
@@ -39,36 +40,36 @@ pub fn create_user(id: &str, admin: bool) -> Result<()> {
     if get_user(&target)?.is_some() {
         anyhow::bail!("user already exists: {target}");
     }
-    if crate::auth::passwd_store::read(&user_store_path(), &target).is_some() {
+    if crate::auth::user_store::read(&user_store_path(), &target).is_some() {
         anyhow::bail!("user already exists: {target}");
     }
     // redb session record.
     let txn = TREE
         .in_disk
         .begin_write()
-        .context("Failed to begin write transaction for USERS")?;
+        .context("Failed to begin write transaction for SESSIONS")?;
     {
         let mut table = txn
-            .open_table(USERS)
-            .context("Failed to open USERS for write")?;
-        let value = serde_json::to_string(&UserRecord {
+            .open_table(SESSIONS)
+            .context("Failed to open SESSIONS for write")?;
+        let value = serde_json::to_string(&SessionBundle {
             sessions: Vec::new(),
         })
-        .context("Failed to serialize UserRecord")?;
+        .context("Failed to serialize SessionBundle")?;
         table
             .insert(target.as_str(), value.as_str())
-            .context("Failed to insert into USERS")?;
+            .context("Failed to insert into SESSIONS")?;
     }
-    txn.commit().context("Failed to commit USERS insert")?;
+    txn.commit().context("Failed to commit SESSIONS insert")?;
     // passwd entry with no password hash: identity exists, login impossible
     // until a password is set.
-    crate::auth::passwd_store::rmw(&user_store_path(), |users| {
+    crate::auth::user_store::rmw(&user_store_path(), |users| {
         if users.contains_key(&target) {
             return Err(AppError::new(ErrorKind::Conflict, "user already exists"));
         }
         users.insert(
             target.clone(),
-            crate::auth::password::UserEntry {
+            crate::auth::user_store::UserRecord {
                 hash: None,
                 admin,
                 home: None,
@@ -86,20 +87,20 @@ pub fn create_user(id: &str, admin: bool) -> Result<()> {
 ///
 /// # Errors
 /// Returns an error if the database cannot be read or a row is corrupt.
-pub fn get_user(id: &str) -> Result<Option<UserRecord>> {
+pub fn get_user(id: &str) -> Result<Option<SessionBundle>> {
     let txn = TREE
         .in_disk
         .begin_read()
-        .context("Failed to begin read transaction for USERS")?;
-    let table = match txn.open_table(USERS) {
+        .context("Failed to begin read transaction for SESSIONS")?;
+    let table = match txn.open_table(SESSIONS) {
         Ok(table) => table,
         Err(redb::TableError::TableDoesNotExist(_)) => return Ok(None),
-        Err(e) => return Err(e).context("Failed to open USERS")?,
+        Err(e) => return Err(e).context("Failed to open SESSIONS")?,
     };
     match table.get(id)? {
         Some(guard) => {
-            let record: UserRecord =
-                serde_json::from_str(guard.value()).context("Failed to deserialize UserRecord")?;
+            let record: SessionBundle = serde_json::from_str(guard.value())
+                .context("Failed to deserialize SessionBundle")?;
             Ok(Some(record))
         }
         None => Ok(None),
@@ -122,13 +123,13 @@ pub fn get_user(id: &str) -> Result<Option<UserRecord>> {
 pub fn set_admin_role(id: &str, admin: bool) -> Result<bool, AppError> {
     let target = validate_user_id(id)?;
     // Existence in passwd store is authoritative for identity.
-    if crate::auth::passwd_store::read(&user_store_path(), &target).is_none() {
+    if crate::auth::user_store::read(&user_store_path(), &target).is_none() {
         return Err(AppError::new(
             ErrorKind::NotFound,
             format!("unknown user: {target}"),
         ));
     }
-    crate::auth::passwd_store::set_admin(&user_store_path(), &target, admin)
+    crate::auth::user_store::set_admin(&user_store_path(), &target, admin)
 }
 
 /// Set the admin flag for an existing user. Fails for unknown ids.
@@ -137,10 +138,10 @@ pub fn set_admin_role(id: &str, admin: bool) -> Result<bool, AppError> {
 /// Returns an error if the id is unknown or the database cannot be written.
 pub fn set_admin(id: &str, admin: bool) -> Result<()> {
     let target = validate_user_id(id)?;
-    if crate::auth::passwd_store::read(&user_store_path(), &target).is_none() {
+    if crate::auth::user_store::read(&user_store_path(), &target).is_none() {
         anyhow::bail!("unknown user: {target}");
     }
-    crate::auth::passwd_store::set_admin(&user_store_path(), &target, admin)
+    crate::auth::user_store::set_admin(&user_store_path(), &target, admin)
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
     Ok(())
 }
@@ -168,7 +169,7 @@ pub fn add_session(id: &str, jti: &str) -> Result<(), AppError> {
         ));
     }
     let now = now_secs();
-    if crate::auth::passwd_store::read(&user_store_path(), &target).is_none() {
+    if crate::auth::user_store::read(&user_store_path(), &target).is_none() {
         return Err(AppError::new(
             ErrorKind::NotFound,
             format!("unknown user: {target}"),
@@ -180,16 +181,16 @@ pub fn add_session(id: &str, jti: &str) -> Result<(), AppError> {
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
     {
         let mut table = txn
-            .open_table(USERS)
+            .open_table(SESSIONS)
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        let mut record: UserRecord = match table
+        let mut record: SessionBundle = match table
             .get(target.as_str())
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
         {
             Some(guard) => serde_json::from_str(guard.value()).map_err(|e| {
                 AppError::from_err(ErrorKind::Database, Into::<anyhow::Error>::into(e))
             })?,
-            None => UserRecord {
+            None => SessionBundle {
                 sessions: Vec::new(),
             },
         };
@@ -233,7 +234,7 @@ pub fn remove_session(id: &str, jti: &str) -> Result<bool, AppError> {
     if jti.is_empty() {
         return Ok(false);
     }
-    if crate::auth::passwd_store::read(&user_store_path(), &target).is_none() {
+    if crate::auth::user_store::read(&user_store_path(), &target).is_none() {
         return Ok(false);
     }
     let txn = TREE
@@ -242,9 +243,9 @@ pub fn remove_session(id: &str, jti: &str) -> Result<bool, AppError> {
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
     let removed = {
         let mut table = txn
-            .open_table(USERS)
+            .open_table(SESSIONS)
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        let mut record: UserRecord = match table
+        let mut record: SessionBundle = match table
             .get(target.as_str())
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
         {
@@ -279,7 +280,7 @@ pub fn remove_session(id: &str, jti: &str) -> Result<bool, AppError> {
 /// [`ErrorKind::Database`] when the database cannot be read or written.
 pub fn clear_sessions(id: &str) -> Result<(), AppError> {
     let target = validate_user_id(id)?;
-    if crate::auth::passwd_store::read(&user_store_path(), &target).is_none() {
+    if crate::auth::user_store::read(&user_store_path(), &target).is_none() {
         return Err(AppError::new(
             ErrorKind::NotFound,
             format!("unknown user: {target}"),
@@ -291,9 +292,9 @@ pub fn clear_sessions(id: &str) -> Result<(), AppError> {
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
     {
         let mut table = txn
-            .open_table(USERS)
+            .open_table(SESSIONS)
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        let mut record: UserRecord = match table
+        let mut record: SessionBundle = match table
             .get(target.as_str())
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?
         {
@@ -324,21 +325,21 @@ pub fn clear_sessions(id: &str) -> Result<(), AppError> {
 ///
 /// # Errors
 /// Returns an error if the database cannot be read or a row is corrupt.
-pub fn list_users() -> Result<Vec<(String, UserRecord)>> {
+pub fn list_users() -> Result<Vec<(String, SessionBundle)>> {
     let txn = TREE
         .in_disk
         .begin_read()
-        .context("Failed to begin read transaction for USERS")?;
-    let table = match txn.open_table(USERS) {
+        .context("Failed to begin read transaction for SESSIONS")?;
+    let table = match txn.open_table(SESSIONS) {
         Ok(table) => table,
         Err(redb::TableError::TableDoesNotExist(_)) => return Ok(Vec::new()),
-        Err(e) => return Err(e).context("Failed to open USERS")?,
+        Err(e) => return Err(e).context("Failed to open SESSIONS")?,
     };
     let mut users = Vec::new();
     for entry in table.iter()? {
         let (key, guard) = entry?;
-        let record: UserRecord =
-            serde_json::from_str(guard.value()).context("Failed to deserialize UserRecord")?;
+        let record: SessionBundle =
+            serde_json::from_str(guard.value()).context("Failed to deserialize SessionBundle")?;
         users.push((key.value().to_string(), record));
     }
     users.sort_by(|a, b| a.0.cmp(&b.0));
@@ -351,7 +352,7 @@ pub fn list_users() -> Result<Vec<(String, UserRecord)>> {
 /// # Errors
 /// Returns an error if the store cannot be read.
 pub fn user_count() -> Result<usize> {
-    Ok(crate::auth::passwd_store::count(&user_store_path()))
+    Ok(crate::auth::user_store::count(&user_store_path()))
 }
 
 /// Validate a user id: trim surrounding whitespace, then require 1..=64 chars.
@@ -382,11 +383,29 @@ pub fn validate_user_id(id: &str) -> Result<String, AppError> {
 /// next to the strength check itself.
 pub use crate::auth::password::{MAX_PASSWORD_LEN, MIN_PASSWORD_LEN};
 
+/// Process-level override of the password-strength policy, for processes
+/// that do not load the server configuration (the offline CLI). `None`
+/// until set: the configuration decides.
+static TRIVIAL_PASSWORDS_OVERRIDE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// Set the password-strength policy for this process. Returns `false` when
+/// an override is already set — the first one wins.
+///
+/// The offline CLI uses it to mirror the server's policy: the
+/// `PICASU_TRIVIAL_PASSWORDS` environment variable wins over the
+/// `trivial_passwords` key in `config.toml`.
+pub fn set_trivial_passwords_override(enabled: bool) -> bool {
+    TRIVIAL_PASSWORDS_OVERRIDE.set(enabled).is_ok()
+}
+
 /// Whether password strength checks are bypassed via the
 /// `--trivial-passwords` flag / `PICASU_TRIVIAL_PASSWORDS` env / config
 /// key. Unset config reads as strict (fail secure): only an explicit
 /// opt-in disables the checks.
 pub(crate) fn trivial_passwords_enabled() -> bool {
+    if let Some(enabled) = TRIVIAL_PASSWORDS_OVERRIDE.get() {
+        return *enabled;
+    }
     if crate::model::config::APP_CONFIG.get().is_none() {
         return false;
     }
@@ -433,7 +452,7 @@ pub fn validate_new_password(user_id: &str, password: &str) -> Result<String, Ap
 /// # Errors
 /// Returns an [`AppError`] when the store cannot be written.
 pub(crate) fn store_password(id: &str, password: &str) -> Result<(), AppError> {
-    crate::auth::passwd_store::set_password(&user_store_path(), id, password)?;
+    crate::auth::user_store::set_password(&user_store_path(), id, password)?;
     Ok(())
 }
 
@@ -478,7 +497,7 @@ pub fn provision_user_with_home(
             REGISTRATION_CONFLICT_MESSAGE,
         ));
     }
-    if crate::auth::passwd_store::read(&user_store_path(), &id).is_some() {
+    if crate::auth::user_store::read(&user_store_path(), &id).is_some() {
         return Err(AppError::new(
             ErrorKind::Conflict,
             REGISTRATION_CONFLICT_MESSAGE,
@@ -491,9 +510,9 @@ pub fn provision_user_with_home(
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
     {
         let mut table = txn
-            .open_table(USERS)
+            .open_table(SESSIONS)
             .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
-        let value = serde_json::to_string(&UserRecord {
+        let value = serde_json::to_string(&SessionBundle {
             sessions: Vec::new(),
         })
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
@@ -504,13 +523,13 @@ pub fn provision_user_with_home(
     txn.commit()
         .map_err(|e| AppError::from_err(ErrorKind::Database, e.into()))?;
     // passwd entry (locked) with hash + admin + home.
-    crate::auth::passwd_store::provision(&user_store_path(), &id, &canonical, admin, home)
+    crate::auth::user_store::provision(&user_store_path(), &id, &canonical, admin, home)
         .map_err(|e| AppError::from_err(ErrorKind::IO, e.into()))?;
     Ok(id)
 }
 
 /// Path of the user store: `<DATA_HOME>/auth/users.redb`.
-/// The store itself takes an explicit path (see [`crate::auth::passwd_store`]);
+/// The store itself takes an explicit path (see [`crate::auth::user_store`]);
 /// this helper only resolves the production location.
 #[must_use]
 pub fn user_store_path() -> std::path::PathBuf {
@@ -521,12 +540,12 @@ pub fn user_store_path() -> std::path::PathBuf {
 
 /// Read the admin flag for `id` from the passwd store.
 pub fn get_admin(id: &str) -> Result<Option<bool>> {
-    Ok(crate::auth::passwd_store::read(&user_store_path(), id).map(|e| e.admin))
+    Ok(crate::auth::user_store::read(&user_store_path(), id).map(|e| e.admin))
 }
 
 /// Read the full passwd entry for `id` (identity attributes).
-pub fn get_passwd_entry(id: &str) -> Result<Option<crate::auth::password::UserEntry>> {
-    Ok(crate::auth::passwd_store::read(&user_store_path(), id))
+pub fn get_passwd_entry(id: &str) -> Result<Option<crate::auth::user_store::UserRecord>> {
+    Ok(crate::auth::user_store::read(&user_store_path(), id))
 }
 
 /// Purge all session state for `id` (removes the redb row). Used by `user del`.
@@ -535,21 +554,21 @@ pub fn purge_sessions(id: &str) -> Result<()> {
     let txn = TREE
         .in_disk
         .begin_write()
-        .context("Failed to begin write transaction for USERS")?;
+        .context("Failed to begin write transaction for SESSIONS")?;
     {
         let mut table = txn
-            .open_table(USERS)
-            .context("Failed to open USERS for write")?;
+            .open_table(SESSIONS)
+            .context("Failed to open SESSIONS for write")?;
         let _ = table.remove(target.as_str());
     }
-    txn.commit().context("Failed to commit USERS purge")
+    txn.commit().context("Failed to commit SESSIONS purge")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::db::SESSIONS;
     use crate::storage::db::TREE;
-    use crate::storage::db::USERS;
     use crate::tests::bootstrap::*;
     use crate::tests::fixtures::{test_password, test_password_padded};
     use redb::{ReadableTable, TableDefinition};
@@ -562,21 +581,21 @@ mod tests {
     fn clear_users_table() {
         let txn = TREE.in_disk.begin_write().expect("begin write for clear");
         {
-            let table = txn.open_table(USERS).expect("open USERS for clear");
+            let table = txn.open_table(SESSIONS).expect("open SESSIONS for clear");
             let keys: Vec<String> = table
                 .iter()
                 .expect("iterate")
                 .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
                 .collect();
             drop(table);
-            let mut table = txn.open_table(USERS).expect("reopen USERS for clear");
+            let mut table = txn.open_table(SESSIONS).expect("reopen SESSIONS for clear");
             for key in &keys {
                 table.remove(key.as_str()).expect("remove key");
             }
         }
         txn.commit().expect("commit clear");
         // Also clear the user store so identity state stays in sync.
-        crate::auth::passwd_store::remove_store(&crate::auth::users::user_store_path());
+        crate::auth::user_store::remove_store(&crate::auth::users::user_store_path());
     }
 
     #[test]
@@ -589,7 +608,7 @@ mod tests {
 
         crate::auth::users::create_user(ROUNDTRIP_ID, true).expect("create user");
         let found = crate::auth::users::get_user(ROUNDTRIP_ID).expect("get user");
-        assert_eq!(found, Some(UserRecord { sessions: vec![] }));
+        assert_eq!(found, Some(SessionBundle { sessions: vec![] }));
 
         clear_users_table();
     }
@@ -633,7 +652,7 @@ mod tests {
         crate::auth::users::create_user(ADMIN_ID, false).expect("create user");
         crate::auth::users::set_admin(ADMIN_ID, true).expect("set admin");
         let found = crate::auth::users::get_user(ADMIN_ID).expect("get user");
-        assert_eq!(found, Some(UserRecord { sessions: vec![] }));
+        assert_eq!(found, Some(SessionBundle { sessions: vec![] }));
         assert!(crate::auth::users::set_admin("s2a-no-such-user", true).is_err());
 
         clear_users_table();
@@ -656,8 +675,8 @@ mod tests {
         assert_eq!(
             listed,
             vec![
-                (LIST_A_ID.to_string(), UserRecord { sessions: vec![] }),
-                (LIST_B_ID.to_string(), UserRecord { sessions: vec![] }),
+                (LIST_A_ID.to_string(), SessionBundle { sessions: vec![] }),
+                (LIST_B_ID.to_string(), SessionBundle { sessions: vec![] }),
             ]
         );
 
@@ -683,10 +702,10 @@ mod tests {
     }
 
     #[test]
-    fn users_table_uses_json_string_values() {
-        // The on-disk table name is `users`; values are JSON strings like ASSET_BY_ID.
-        let def: TableDefinition<'static, &'static str, &'static str> = USERS;
-        assert_eq!(def.to_string(), "users<&str, &str>");
+    fn sessions_table_uses_json_string_values() {
+        // The on-disk table name is `sessions`; values are JSON strings like ASSET_BY_ID.
+        let def: TableDefinition<'static, &'static str, &'static str> = SESSIONS;
+        assert_eq!(def.to_string(), "sessions<&str, &str>");
     }
 
     /// Whitespace-only password, built without a string literal so
@@ -788,7 +807,7 @@ mod tests {
         // The existing record is untouched by the failed duplicate.
         assert_eq!(
             super::get_user("s3-dup").expect("get"),
-            Some(UserRecord { sessions: vec![] })
+            Some(SessionBundle { sessions: vec![] })
         );
 
         reset_backend_state();
@@ -807,12 +826,12 @@ mod tests {
         assert_eq!(id, "s3-trim");
         assert_eq!(
             super::get_user("s3-trim").expect("get"),
-            Some(UserRecord { sessions: vec![] })
+            Some(SessionBundle { sessions: vec![] })
         );
         // Login verifies the trimmed input against the stored (trimmed)
         // canonical form — write-then-login must stay consistent.
         let store =
-            crate::auth::password::PasswdFile::load(&super::user_store_path()).expect("load");
+            crate::auth::user_store::UserStore::load(&super::user_store_path()).expect("load");
         assert!(store.verify("s3-trim", &test_password("s3-trim")));
 
         reset_backend_state();
@@ -828,7 +847,7 @@ mod tests {
 
         super::provision_user("s9-pin-a", "long-enough-pw1", true).expect("provision");
         let entry =
-            crate::auth::passwd_store::read(&super::user_store_path(), "s9-pin-a").expect("entry");
+            crate::auth::user_store::read(&super::user_store_path(), "s9-pin-a").expect("entry");
         assert!(entry.admin, "admin flag must be present");
         assert_eq!(entry.home, None, "home attribute must be present as None");
         assert!(entry.hash.is_some(), "password hash must be present");
@@ -848,7 +867,7 @@ mod tests {
 
         // Arbitrary password fails.
         let store =
-            crate::auth::password::PasswdFile::load(&super::user_store_path()).expect("load");
+            crate::auth::user_store::UserStore::load(&super::user_store_path()).expect("load");
         assert!(!store.verify("s9-nopw", "anything-12345"));
 
         // Old placeholder literal also fails.
@@ -856,7 +875,7 @@ mod tests {
 
         // Entry has no password hash.
         let entry =
-            crate::auth::passwd_store::read(&super::user_store_path(), "s9-nopw").expect("entry");
+            crate::auth::user_store::read(&super::user_store_path(), "s9-nopw").expect("entry");
         assert!(
             entry.hash.is_none(),
             "hash must be absent for no-password user"
@@ -920,7 +939,7 @@ mod tests {
         assert_eq!(err.kind, crate::error::ErrorKind::Conflict);
         // Refusal leaves the flag untouched.
         let found = crate::auth::users::get_user("s5-sole").expect("get user");
-        assert_eq!(found, Some(UserRecord { sessions: vec![] }));
+        assert_eq!(found, Some(SessionBundle { sessions: vec![] }));
 
         clear_users_table();
     }
@@ -938,11 +957,11 @@ mod tests {
         assert!(super::set_admin_role("s5-a", false).expect("transfer demotion"));
         assert_eq!(
             crate::auth::users::get_user("s5-a").expect("get a"),
-            Some(UserRecord { sessions: vec![] })
+            Some(SessionBundle { sessions: vec![] })
         );
         assert_eq!(
             crate::auth::users::get_user("s5-b").expect("get b"),
-            Some(UserRecord { sessions: vec![] })
+            Some(SessionBundle { sessions: vec![] })
         );
 
         clear_users_table();
@@ -960,7 +979,7 @@ mod tests {
         assert!(super::set_admin_role("s5-c", true).expect("promote"));
         assert_eq!(
             crate::auth::users::get_user("s5-c").expect("get c"),
-            Some(UserRecord { sessions: vec![] })
+            Some(SessionBundle { sessions: vec![] })
         );
         // Same-flag write is a no-op reporting no change.
         assert!(!super::set_admin_role("s5-c", true).expect("noop promote"));
@@ -981,7 +1000,7 @@ mod tests {
         // then verify `get_user` defaults it to empty.
         let txn = TREE.in_disk.begin_write().expect("begin write");
         {
-            let mut table = txn.open_table(USERS).expect("open USERS");
+            let mut table = txn.open_table(SESSIONS).expect("open SESSIONS");
             table
                 .insert("s6-legacy", r#"{"admin":true}"#)
                 .expect("insert legacy row");
@@ -989,7 +1008,7 @@ mod tests {
         txn.commit().expect("commit");
 
         let found = super::get_user("s6-legacy").expect("get legacy");
-        assert_eq!(found, Some(UserRecord { sessions: vec![] }));
+        assert_eq!(found, Some(SessionBundle { sessions: vec![] }));
 
         clear_users_table();
     }
@@ -1103,7 +1122,7 @@ mod tests {
             let now = (chrono::Utc::now().timestamp_millis() / 1000) as u64;
             now.saturating_sub(super::SESSION_TTL_SECS + 10)
         };
-        let stale = UserRecord {
+        let stale = SessionBundle {
             sessions: vec![
                 super::SessionRecord {
                     jti: "old".to_string(),
@@ -1117,7 +1136,7 @@ mod tests {
         };
         let txn = TREE.in_disk.begin_write().expect("begin write");
         {
-            let mut table = txn.open_table(USERS).expect("open USERS");
+            let mut table = txn.open_table(SESSIONS).expect("open SESSIONS");
             let value = serde_json::to_string(&stale).expect("serialize stale");
             table
                 .insert("s6-sess-e", value.as_str())

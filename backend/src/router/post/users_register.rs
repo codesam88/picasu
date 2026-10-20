@@ -124,7 +124,7 @@ fn register_user_sync(
     // the only online path is `POST /post/users/bootstrap`; refuse before
     // consulting the gates so neither the knob nor an invite can land the
     // first user as non-admin (an admin-less store recovers only via CLI).
-    if crate::auth::passwd_store::count(&users::user_store_path()) == 0 {
+    if crate::auth::user_store::count(&users::user_store_path()) == 0 {
         return Err(AppError::new(
             ErrorKind::Auth,
             crate::router::auth::not_enrolled_message(),

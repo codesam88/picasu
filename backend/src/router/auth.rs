@@ -602,7 +602,7 @@ pub(crate) fn not_enrolled_error() -> anyhow::Error {
 /// the token expires.
 pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
     let store_non_empty =
-        !crate::auth::passwd_store::is_empty(&crate::auth::users::user_store_path());
+        !crate::auth::user_store::is_empty(&crate::auth::users::user_store_path());
     if !store_non_empty {
         return Err(not_enrolled_error());
     }

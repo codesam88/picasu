@@ -1,7 +1,8 @@
 pub mod invites;
 pub mod login_throttle;
-pub mod passwd_store;
 pub mod password;
 pub mod rate_limit;
 pub mod secret_key;
+pub mod store_location;
+pub mod user_store;
 pub mod users;

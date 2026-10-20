@@ -5,15 +5,29 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
 
 use redb::{ReadableDatabase as _, ReadableTable as _};
+use serde::{Deserialize, Serialize};
 
-use crate::auth::password::{UserEntry, hash_password, restrict_permissions, verify_password};
+use crate::auth::password::{PasswordHash, hash_password, restrict_permissions, verify_password};
 use crate::error::{AppError, ErrorKind};
 
+/// The identity record: the password hash fields plus the identity
+/// attributes, flattened into one row. Pre-change (hash-only) entries still
+/// deserialize because `admin` and `home` default.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserRecord {
+    #[serde(flatten)]
+    #[serde(default)]
+    pub hash: Option<PasswordHash>,
+    #[serde(default)]
+    pub admin: bool,
+    #[serde(default)]
+    pub home: Option<String>,
+}
+
 /// The single table of the user store: user id to the JSON encoding of
-/// [`UserEntry`]. `&[u8]` is the byte value type 4.3.0 provides (there is
-/// no `Value for Vec<u8>`); inserts pass a borrowed slice of an owned
-/// buffer.
-const USERS_TABLE: redb::TableDefinition<&str, &[u8]> = redb::TableDefinition::new("users");
+/// [`UserRecord`]. The value is JSON text, like every other table in the
+/// project — one encoding rule, no byte/text exception.
+const USERS_TABLE: redb::TableDefinition<&str, &str> = redb::TableDefinition::new("users");
 
 /// Surfaced when the store file is locked by another process. The server
 /// holds the file for its whole lifetime, so the offline CLI (or any
@@ -57,44 +71,47 @@ fn open_db(path: &Path) -> Result<Arc<redb::Database>, AppError> {
     Ok(db)
 }
 
+/// Map an arbitrary error to the store's IO error kind.
+fn io(error: impl Into<anyhow::Error>) -> AppError {
+    AppError::from_err(ErrorKind::IO, error.into())
+}
+
 /// Decode collected `(id, raw)` row pairs. Any undecodable value fails
 /// the whole load: the store fail-closes (readers report empty, `load`
 /// reports an error) instead of serving partial state.
-fn decode_pairs(pairs: Vec<(String, Vec<u8>)>) -> anyhow::Result<HashMap<String, UserEntry>> {
+fn decode_pairs(pairs: Vec<(String, String)>) -> anyhow::Result<HashMap<String, UserRecord>> {
     let mut users = HashMap::with_capacity(pairs.len());
     for (id, raw) in pairs {
-        let user: UserEntry = serde_json::from_slice(&raw)
+        let user: UserRecord = serde_json::from_str(&raw)
             .map_err(|e| anyhow::anyhow!("corrupt user entry {id:?}: {e}"))?;
         users.insert(id, user);
     }
     Ok(users)
 }
 
-fn load_users(path: &Path) -> anyhow::Result<HashMap<String, UserEntry>> {
+fn load_users(path: &Path) -> Result<HashMap<String, UserRecord>, AppError> {
     // Readers never materialize the file: a missing path is an empty
     // store, and the boot gate relies on `exists()` meaning "provisioned".
     if !path.exists() {
         return Ok(HashMap::new());
     }
-    let db = open_db(path).map_err(|e| anyhow::anyhow!(e.to_string()))?;
-    let txn = db
-        .begin_read()
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    let db = open_db(path)?;
+    let txn = db.begin_read().map_err(io)?;
     let table = match txn.open_table(USERS_TABLE) {
         Ok(table) => table,
         Err(redb::TableError::TableDoesNotExist(_)) => return Ok(HashMap::new()),
-        Err(e) => return Err(anyhow::anyhow!(e.to_string())),
+        Err(e) => return Err(io(e)),
     };
-    let pairs: Vec<(String, Vec<u8>)> = table
+    let pairs: Vec<(String, String)> = table
         .iter()
-        .map_err(|e| anyhow::anyhow!(e.to_string()))?
+        .map_err(io)?
         .map(|entry| {
             entry
-                .map_err(|e| anyhow::anyhow!(e.to_string()))
-                .map(|(key, value)| (key.value().to_owned(), value.value().to_vec()))
+                .map_err(io)
+                .map(|(key, value)| (key.value().to_owned(), value.value().to_owned()))
         })
         .collect::<Result<_, _>>()?;
-    decode_pairs(pairs)
+    decode_pairs(pairs).map_err(io)
 }
 
 /// Locked read-modify-write: one write transaction owns the whole
@@ -103,7 +120,7 @@ fn load_users(path: &Path) -> anyhow::Result<HashMap<String, UserEntry>> {
 /// without commit, publishing nothing. Commit publishes atomically.
 pub fn rmw<T, F>(path: &Path, f: F) -> Result<T, AppError>
 where
-    F: FnOnce(&mut HashMap<String, UserEntry>) -> Result<T, AppError>,
+    F: FnOnce(&mut HashMap<String, UserRecord>) -> Result<T, AppError>,
 {
     fn io(error: impl Into<anyhow::Error>) -> AppError {
         AppError::from_err(ErrorKind::IO, error.into())
@@ -113,20 +130,20 @@ where
     let mut table = write.open_table(USERS_TABLE).map_err(io)?;
     // Rows are collected into owned pairs first so no table borrow is
     // alive when the closure runs and the table is mutated below.
-    let pairs: Vec<(String, Vec<u8>)> = table
+    let pairs: Vec<(String, String)> = table
         .iter()
         .map_err(io)?
         .map(|entry| {
             entry
                 .map_err(io)
-                .map(|(key, value)| (key.value().to_owned(), value.value().to_vec()))
+                .map(|(key, value)| (key.value().to_owned(), value.value().to_owned()))
         })
         .collect::<Result<_, _>>()?;
     let mut users = decode_pairs(pairs).map_err(io)?;
     let result = f(&mut users)?;
     for (id, user) in &users {
-        let raw = serde_json::to_vec(user).map_err(io)?;
-        table.insert(id.as_str(), raw.as_slice()).map_err(io)?;
+        let raw = serde_json::to_string(user).map_err(io)?;
+        table.insert(id.as_str(), raw.as_str()).map_err(io)?;
     }
     // 4.3.0 has no table clear/drain: remove keys the closure deleted.
     let stale: Vec<String> = table
@@ -165,7 +182,7 @@ pub fn provision(
         }
         users.insert(
             id.clone(),
-            UserEntry {
+            UserRecord {
                 hash: Some(hash_password(&canonical)),
                 admin,
                 home,
@@ -185,7 +202,7 @@ pub fn set_password(path: &Path, id: &str, password: &str) -> Result<(), AppErro
         } else {
             users.insert(
                 id.clone(),
-                UserEntry {
+                UserRecord {
                     hash: Some(hash.clone()),
                     admin: false,
                     home: None,
@@ -263,11 +280,18 @@ pub fn delete(path: &Path, id: &str, force: bool) -> Result<bool, AppError> {
 }
 
 // Lockless readers.
-pub fn read(path: &Path, id: &str) -> Option<UserEntry> {
+pub fn read(path: &Path, id: &str) -> Option<UserRecord> {
     load_users(path).ok()?.get(id.trim()).cloned()
 }
 
-pub fn list(path: &Path) -> Vec<(String, UserEntry)> {
+/// Read one entry, reporting why the store could not be read. [`read`]
+/// swallows that error, which makes an unreadable store look like a
+/// missing entry — an offline admin tool must not confuse the two.
+pub fn read_checked(path: &Path, id: &str) -> Result<Option<UserRecord>, AppError> {
+    Ok(load_users(path)?.get(id.trim()).cloned())
+}
+
+pub fn list(path: &Path) -> Vec<(String, UserRecord)> {
     let mut v: Vec<_> = load_users(path)
         .ok()
         .unwrap_or_default()
@@ -275,6 +299,15 @@ pub fn list(path: &Path) -> Vec<(String, UserEntry)> {
         .collect();
     v.sort_by(|a, b| a.0.cmp(&b.0));
     v
+}
+
+/// List every entry, reporting why the store could not be read. [`list`]
+/// swallows that error, which makes an unreadable store look like an empty
+/// one — an offline admin tool must not confuse the two.
+pub fn list_checked(path: &Path) -> Result<Vec<(String, UserRecord)>, AppError> {
+    let mut v: Vec<_> = load_users(path)?.into_iter().collect();
+    v.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(v)
 }
 
 pub fn count(path: &Path) -> usize {
@@ -300,19 +333,19 @@ pub fn remove_store(path: &Path) {
 }
 
 /// The user store at an explicit file path: a dedicated redb file holding
-/// one table of user id to the JSON encoding of [`UserEntry`]
+/// one table of user id to the JSON encoding of [`UserRecord`]
 /// (`{hash?, admin, home}`; a hash-less entry cannot log in). The struct
 /// is an in-memory snapshot view; its methods write through the free
 /// functions above.
 #[derive(Debug)]
-pub struct PasswdFile {
+pub struct UserStore {
     path: PathBuf,
-    users: HashMap<String, UserEntry>,
+    users: HashMap<String, UserRecord>,
 }
 
-impl PasswdFile {
+impl UserStore {
     pub fn load(path: &Path) -> anyhow::Result<Self> {
-        let users = load_users(path)?;
+        let users = load_users(path).map_err(|e| anyhow::anyhow!(e.to_string()))?;
         Ok(Self {
             path: path.to_path_buf(),
             users,
@@ -354,19 +387,16 @@ impl PasswdFile {
     pub fn delete(&self, id: &str) -> Result<bool, AppError> {
         delete(&self.path, id, false)
     }
-    pub fn read_entry(&self, id: &str) -> Option<UserEntry> {
+    pub fn read_entry(&self, id: &str) -> Option<UserRecord> {
         read(&self.path, id)
     }
-    pub fn list_entries(&self) -> Vec<(String, UserEntry)> {
+    pub fn list_entries(&self) -> Vec<(String, UserRecord)> {
         list(&self.path)
     }
     pub fn count_entries(&self) -> usize {
         count(&self.path)
     }
 }
-
-// Alias for callers expecting the new name.
-pub type PasswdStore = PasswdFile;
 
 #[cfg(test)]
 mod tests {
@@ -390,7 +420,7 @@ mod tests {
                 .expect("iterate")
                 .map(|entry| {
                     let (key, value) = entry.expect("row");
-                    (key.value().to_owned(), value.value().to_vec())
+                    (key.value().to_owned(), value.value().to_owned())
                 })
                 .collect(),
         )
@@ -426,7 +456,7 @@ mod tests {
         let table = txn.open_table(USERS_TABLE).expect("open users table");
         let guard = table.get("alice").expect("get").expect("alice row");
         let value: serde_json::Value =
-            serde_json::from_slice(guard.value()).expect("value decodes as JSON");
+            serde_json::from_str(guard.value()).expect("value decodes as JSON");
         assert!(value.get("salt").is_some(), "salt must be present");
         assert!(value.get("hash").is_some(), "hash must be present");
         assert!(
@@ -451,7 +481,7 @@ mod tests {
         let entry = read(&path, "alice").expect("entry");
         assert!(entry.admin, "admin must be preserved");
         assert_eq!(entry.home.as_deref(), Some("/home/alice"));
-        let store = PasswdFile::load(&path).expect("reload");
+        let store = UserStore::load(&path).expect("reload");
         assert!(store.verify("alice", "new-long-pw-123"));
         assert!(!store.verify("alice", "long-enough-pw1"));
         assert_store_parses(&path);
@@ -568,7 +598,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
         provision(&path, "alice", "long-enough-pw1", false, None).expect("provision");
-        let store = PasswdFile::load(&path).expect("load");
+        let store = UserStore::load(&path).expect("load");
         assert!(store.verify("alice", "long-enough-pw1"));
         assert!(!store.verify("alice", "wrong-pw-12345"));
         assert!(!store.verify("nobody", "long-enough-pw1"));
@@ -580,7 +610,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
         assert!(!path.exists(), "precondition");
-        let store = PasswdFile::load(&path).expect("missing file loads as empty");
+        let store = UserStore::load(&path).expect("missing file loads as empty");
         assert!(store.is_empty());
         assert!(read(&path, "alice").is_none());
         assert!(list(&path).is_empty());
@@ -612,7 +642,7 @@ mod tests {
         let path = store_path(&dir);
         std::fs::write(&path, b"not a redb file").expect("write corrupt file");
         assert!(
-            PasswdFile::load(&path).is_err(),
+            UserStore::load(&path).is_err(),
             "load must report an error on a corrupt store"
         );
         assert!(read(&path, "alice").is_none(), "read fails closed");
@@ -670,7 +700,7 @@ mod tests {
         rmw(&path, |users| {
             users.insert(
                 "ghost".to_string(),
-                UserEntry {
+                UserRecord {
                     hash: None,
                     admin: false,
                     home: None,
@@ -679,7 +709,7 @@ mod tests {
             Ok(())
         })
         .expect("insert hash-less entry");
-        let store = PasswdFile::load(&path).expect("load");
+        let store = UserStore::load(&path).expect("load");
         assert!(!store.verify("ghost", "anything-at-all-1"));
         assert!(!store.verify("ghost", ""));
         assert_store_parses(&path);
@@ -699,7 +729,7 @@ mod tests {
     #[test]
     fn cross_process_lock_pin() {
         const MODE: &str = "lock-pin";
-        const THIS_TEST: &str = "auth::passwd_store::tests::cross_process_lock_pin";
+        const THIS_TEST: &str = "auth::user_store::tests::cross_process_lock_pin";
         if child_mode().as_deref() == Some(MODE) {
             match provision(&child_path(), "child-user", "long-enough-pw1", false, None) {
                 Ok(_) => std::process::exit(10),
@@ -736,8 +766,7 @@ mod tests {
     fn kill_during_write_leaves_parsable_store() {
         use std::os::unix::process::ExitStatusExt as _;
         const MODE: &str = "kill-writer";
-        const THIS_TEST: &str =
-            "auth::passwd_store::tests::kill_during_write_leaves_parsable_store";
+        const THIS_TEST: &str = "auth::user_store::tests::kill_during_write_leaves_parsable_store";
         if child_mode().as_deref() == Some(MODE) {
             let path = child_path();
             let ready =
@@ -752,13 +781,13 @@ mod tests {
                 let mut table = write.open_table(USERS_TABLE).expect("open table");
                 for i in 0..8 {
                     let id = format!("torn-row-{i}");
-                    let raw = serde_json::to_vec(&UserEntry {
+                    let raw = serde_json::to_string(&UserRecord {
                         hash: Some(hash_password("long-enough-pw1")),
                         admin: false,
                         home: None,
                     })
                     .expect("encode");
-                    table.insert(id.as_str(), raw.as_slice()).expect("insert");
+                    table.insert(id.as_str(), raw.as_str()).expect("insert");
                 }
                 std::fs::write(&ready, b"ready").expect("signal ready");
                 loop {
@@ -800,7 +829,7 @@ mod tests {
         );
         // The store must be parsable at a prefix-consistent state: the
         // committed seed is present and valid, the uncommitted rows are gone.
-        let store = PasswdFile::load(&path).expect("store must parse after kill");
+        let store = UserStore::load(&path).expect("store must parse after kill");
         assert!(store.verify("pre-user", "long-enough-pw1"));
         assert!(!store.verify("pre-user", "wrong-pw-12345"));
         let entries = list(&path);

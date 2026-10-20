@@ -59,7 +59,7 @@ fn bootstrap_window_refuses_login_and_first_user_forced_admin() {
     assert_eq!(created["admin"], true, "first user must be forced admin");
     assert_eq!(
         crate::auth::users::get_user("root").expect("get root"),
-        Some(crate::auth::users::UserRecord { sessions: vec![] })
+        Some(crate::auth::users::SessionBundle { sessions: vec![] })
     );
 
     // Companion: bootstrap is one-shot — unauthenticated bootstrap now 401.

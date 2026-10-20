@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 use tokio::task::spawn_blocking;
 
 use crate::auth::login_throttle::{LoginThrottle, select_client_ip};
-use crate::auth::password::{PasswdFile, password_iterations, verify_password};
+use crate::auth::password::{password_iterations, verify_password};
+use crate::auth::user_store::UserStore;
 use crate::auth::users::{self, validate_user_id};
 use crate::error::ResultExt;
 use crate::openapi_components::Unauthorized;
@@ -277,7 +278,7 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
             AppError::new(ErrorKind::Auth, "Invalid credentials").context("Authentication failed")
         );
     };
-    let store = PasswdFile::load(&users::user_store_path())
+    let store = UserStore::load(&users::user_store_path())
         .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
     #[cfg(test)]
     crate::auth::password::VERIFY_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

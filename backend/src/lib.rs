@@ -24,6 +24,7 @@ mod workflow;
 
 // Re-exports for integration tests that need to access the real init path.
 pub use model::config::{APP_CONFIG, AppConfig};
+pub use model::config::{configured_data_home, configured_trivial_passwords};
 pub use router::builder::build_rocket_with_config;
 pub use storage::files::DATA_PATH;
 
