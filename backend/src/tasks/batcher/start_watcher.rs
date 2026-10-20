@@ -1,6 +1,5 @@
 use crate::error::handle_error;
 use crate::model::abstract_data::AbstractData;
-use crate::model::config::APP_CONFIG;
 use crate::model::media::{MediaOutcome, classify_media_file, is_valid_media_file};
 use crate::storage::db::TREE;
 use crate::storage::files::get_resolved_image_home;
@@ -68,11 +67,7 @@ fn start_watcher_task_internal() -> Result<()> {
     }
 
     let (fs_notify_watcher_enabled, raw_image_path) = {
-        let cfg = APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned");
+        let cfg = crate::model::config::with_config(crate::model::config::AppConfig::clone);
         (cfg.fs_notify_watcher, cfg.image_home.clone())
     };
 
@@ -132,12 +127,7 @@ fn submit_to_debounce_pool(path: PathBuf) {
             }
         };
 
-        let watcher_still_enabled = APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned")
-            .fs_notify_watcher;
+        let watcher_still_enabled = crate::model::config::with_config(|c| c.fs_notify_watcher);
 
         if should_run
             && watcher_still_enabled

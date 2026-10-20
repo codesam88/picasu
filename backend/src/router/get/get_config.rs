@@ -2,7 +2,6 @@ use rocket::get;
 use rocket::http::ContentType;
 use rocket::serde::json::Json;
 
-use crate::model::config::APP_CONFIG;
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardShare;
@@ -63,12 +62,7 @@ pub struct ConfigResponse {
 pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<ConfigResponse>> {
     let auth = auth?;
     let admin = auth.claims.is_admin();
-    let config = APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned");
-    let response = ConfigResponse {
+    let response = crate::model::config::with_config(|config| ConfigResponse {
         image_home: admin.then(|| config.image_home.clone()).flatten(),
         upload_folder: admin.then(|| config.upload_folder.clone()),
         max_upload_size: config.max_upload_size.clone(),
@@ -79,7 +73,7 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
         validate_upload_content: config.validate_upload_content,
         use_client_timestamp_info: config.use_client_timestamp_info,
         has_auth_key: config.auth_key.is_some(),
-    };
+    });
     Ok(Json(response))
 }
 
@@ -103,16 +97,14 @@ pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<Confi
 #[get("/get/config/export")]
 pub fn export_config_handler(auth: GuardResult<GuardAuth>) -> AppResult<(ContentType, String)> {
     let _ = auth?;
-    let config = APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned");
-    let mut value = serde_json::to_value(&*config).expect("configuration serializes to JSON");
-    value
-        .as_object_mut()
-        .expect("configuration serializes to an object")
-        .remove("authKey");
+    let value = crate::model::config::with_config(|config| {
+        let mut value = serde_json::to_value(config).expect("configuration serializes to JSON");
+        value
+            .as_object_mut()
+            .expect("configuration serializes to an object")
+            .remove("authKey");
+        value
+    });
     let json = serde_json::to_string_pretty(&value).unwrap_or_default();
     Ok((ContentType::JSON, json))
 }

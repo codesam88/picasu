@@ -197,8 +197,7 @@ id — 405 read-only mode — 500 storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -390,8 +389,7 @@ Errors: 401 missing or invalid admin credentials — 500 storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -763,8 +761,7 @@ administrator enrolled) — 500 storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -957,8 +954,7 @@ accepted — 500 storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -992,14 +988,14 @@ This operation does not require authentication
 
 ```shell
 # You can also use wget
-curl -X POST /post/invites/create \
+curl -X POST /post/invites \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json'
 
 ```
 
 ```http
-POST /post/invites/create HTTP/1.1
+POST /post/invites HTTP/1.1
 
 Content-Type: application/json
 Accept: application/json
@@ -1015,7 +1011,7 @@ const headers = {
   'Accept':'application/json'
 };
 
-fetch('/post/invites/create',
+fetch('/post/invites',
 {
   method: 'POST',
   body: inputBody,
@@ -1038,7 +1034,7 @@ headers = {
   'Accept' => 'application/json'
 }
 
-result = RestClient.post '/post/invites/create',
+result = RestClient.post '/post/invites',
   params: {
   }, headers: headers
 
@@ -1053,7 +1049,7 @@ headers = {
   'Accept': 'application/json'
 }
 
-r = requests.post('/post/invites/create', headers = headers)
+r = requests.post('/post/invites', headers = headers)
 
 print(r.json())
 
@@ -1075,7 +1071,7 @@ $client = new \GuzzleHttp\Client();
 $request_body = array();
 
 try {
-    $response = $client->request('POST','/post/invites/create', array(
+    $response = $client->request('POST','/post/invites', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -1092,7 +1088,7 @@ try {
 ```
 
 ```java
-URL obj = new URL("/post/invites/create");
+URL obj = new URL("/post/invites");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
 con.setRequestMethod("POST");
 int responseCode = con.getResponseCode();
@@ -1124,7 +1120,7 @@ func main() {
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/post/invites/create", data)
+    req, err := http.NewRequest("POST", "/post/invites", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -1134,7 +1130,7 @@ func main() {
 
 ```
 
-`POST /post/invites/create`
+`POST /post/invites`
 
 Admin-only. The `token` field is shown exactly once: only its blake3
 hash is stored, so the value cannot be retrieved again — the admin
@@ -1188,8 +1184,7 @@ credentials — 405 read-only mode — 500 storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -1534,8 +1529,7 @@ failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -1754,8 +1748,7 @@ signature — 500 internal failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -1983,8 +1976,7 @@ throttle — for fuzzing runs — while the failure logging stays.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -2200,8 +2192,7 @@ the bootstrap window is closed (flag off, or the store is non-empty) —
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -2427,8 +2418,7 @@ or invite already used — 500 storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -2639,8 +2629,7 @@ failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -2856,8 +2845,7 @@ sessionless caller.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -3074,8 +3062,7 @@ Errors: 401 no valid admin credentials.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -3306,8 +3293,7 @@ could not be created or the album not registered.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -3531,8 +3517,7 @@ Errors: 400 unusable request body — 401 missing or invalid credentials —
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -3759,8 +3744,7 @@ mode — 500 storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -3966,8 +3950,7 @@ tokens are not accepted — 405 read-only mode — 500 storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -4190,8 +4173,7 @@ tokens are not accepted — 405 read-only mode — 500 storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -4398,8 +4380,7 @@ names no record — 405 read-only mode — 500 storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -4607,8 +4588,7 @@ credentials — 403 a share targeting an album other than its own —
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -4823,8 +4803,7 @@ mode — 500 unknown snapshot, out-of-range index, or storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -5040,8 +5019,7 @@ or invalid credentials — 404 an ID names no asset — 405 read-only mode —
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -5236,8 +5214,7 @@ composed.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -5453,8 +5430,7 @@ out-of-range index, or storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -5666,8 +5642,7 @@ mode — 500 unknown snapshot, out-of-range index, or storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -5897,8 +5872,7 @@ out-of-range index, or storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -6112,8 +6086,7 @@ decode, or storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -6320,8 +6293,7 @@ thumbnail write, or storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -6529,8 +6501,7 @@ Errors: 400 half-supplied share credentials or an id that is not an album —
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -6708,8 +6679,7 @@ Errors: 400 invalid input — 401 no valid admin credentials.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -6904,8 +6874,7 @@ matched no directory — 500 the directory could not be read.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -7089,8 +7058,7 @@ could not be stored.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -7352,8 +7320,7 @@ Errors: 400 unusable request body — 401 missing or invalid credentials —
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -7615,8 +7582,7 @@ config write failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -7815,8 +7781,7 @@ Errors: 401 no valid admin credentials.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -8018,8 +7983,7 @@ credentials — 405 read-only mode — 409 an index job is already running.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -8197,8 +8161,7 @@ Errors: 400 malformed request — 401 missing or invalid credentials —
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -8391,8 +8354,7 @@ image root or writing the tables.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -8582,8 +8544,7 @@ compressed file could not be opened.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -8768,8 +8729,7 @@ share credentials, or no image-serving token granting original access —
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -8982,8 +8942,7 @@ read.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -9174,8 +9133,7 @@ could not be opened.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -9381,8 +9339,7 @@ index is out of bounds.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -9576,8 +9533,7 @@ mismatched prefetch token.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -9773,8 +9729,7 @@ Errors: 400 invalid input — 401 no valid admin credentials.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -10016,8 +9971,7 @@ null
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -10232,8 +10186,7 @@ mode — 500 storage failure.
 {
   "context": [],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
@@ -13783,7 +13736,7 @@ _None_
 }
 ```
 
-Body for `POST /post/invites/create`.
+Body for `POST /post/invites`.
 
 ### Properties
 
@@ -13811,7 +13764,7 @@ Body for `POST /post/invites/create`.
 }
 ```
 
-Response for `POST /post/invites/create`.
+Response for `POST /post/invites`.
 
 ### Properties
 
@@ -14793,15 +14746,13 @@ Body for `PUT /put/users/password`.
 {
   "context": ["string"],
   "kind": "Auth",
-  "message": "Unauthorized",
-  "status": "Permanent"
+  "message": "Unauthorized"
 }
 ```
 
 The JSON body of the shared `401 Unauthorized` response.
 
 Every 401 carries an `AppError` serialization: `kind` is always `"Auth"`,
-`status` is always `"Permanent"` (throttling answers are 429, never 401),
 and `retryAfter` never appears on a 401. `message` is the fixed
 `"Unauthorized"` string for framework rejections answered by the 401
 catcher, and the handler's reason for credential rejections raised in a
@@ -14814,7 +14765,6 @@ handler body.
 | context | [string] | true     | none         | Empty on framework rejections; handler context otherwise.                                                                          |
 | kind    | string   | true     | none         | The error kind, always `"Auth"` on a 401.                                                                                          |
 | message | string   | true     | none         | The fixed `"Unauthorized"` string for framework rejections; the<br>handler's reason for credential rejections raised in a handler. |
-| status  | string   | true     | none         | The error status, always `"Permanent"` on a 401.                                                                                   |
 
 <h2 id="tocS_UserSummary">UserSummary</h2>
 <!-- backwards compatibility -->

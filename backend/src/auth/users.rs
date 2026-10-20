@@ -426,10 +426,10 @@ pub use crate::auth::password::{MAX_PASSWORD_LEN, MIN_PASSWORD_LEN};
 /// key. Unset config reads as strict (fail secure): only an explicit
 /// opt-in disables the checks.
 pub(crate) fn trivial_passwords_enabled() -> bool {
-    crate::model::config::APP_CONFIG
-        .get()
-        .and_then(|config| config.read().ok().map(|guard| guard.trivial_passwords))
-        .unwrap_or(false)
+    if crate::model::config::APP_CONFIG.get().is_none() {
+        return false;
+    }
+    crate::model::config::with_config(|c| c.trivial_passwords)
 }
 
 /// Validate a new password for `user_id`: trim, then enforce the default

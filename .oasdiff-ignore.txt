@@ -59,3 +59,15 @@ GET /get/config removed the required property `address` from the response with t
 GET /get/config removed the required property `port` from the response with the `200` status
 GET /get/config the response property `uploadFolder` became optional for the status `200`
 GET /get/config the response property `uploadFolder` became nullable for the status `200`
+
+# 2026-10-20 (auth-enrollment-review R28): `/post/invites/create` loses its
+# verb — the create route is now `POST /post/invites` (operationId keeps
+# `create_invite_handler`). Hard removal, no deprecation window, following
+# the `/post/authenticate` → `/post/users/authenticate` hard-removal precedent.
+POST /post/invites/create api path removed without deprecation
+
+# 2026-10-20 (auth-enrollment-review R28): the dead `status` field is dropped
+# from error bodies (`ErrorStatus` removed; HTTP status derives from `kind`,
+# retry timing from `retryAfter`). Every guarded 401 response loses the
+# required `status` property.
+removed the required property `status` from the response with the `401` status

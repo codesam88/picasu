@@ -467,6 +467,16 @@ impl From<AppConfig> for TomlFile {
 
 pub static APP_CONFIG: OnceLock<RwLock<AppConfig>> = OnceLock::new();
 
+/// Read-only accessor for the live server config: the single home of the
+/// `RwLock` ceremony (the two `expect`s) so handlers never repeat it.
+pub(crate) fn with_config<T>(f: impl FnOnce(&AppConfig) -> T) -> T {
+    let guard = APP_CONFIG
+        .get()
+        .expect("APP_CONFIG not initialized")
+        .read()
+        .expect("lock poisoned");
+    f(&guard)
+}
 /// The three login-throttle schedules with their knob names: `(names,
 /// (window_secs, max_failures, base_ban_secs, max_ban_secs))` for
 /// IP-short, IP-long, and user-long, in that order. Single assembly

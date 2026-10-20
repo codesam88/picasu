@@ -93,15 +93,9 @@ pub fn check_ffmpeg_and_ffprobe() {
     }
 }
 
-use crate::model::config::APP_CONFIG;
-
 pub fn initialize_folder() {
     let (data_home, image_home, upload_folder) = {
-        let config = APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned");
+        let config = crate::model::config::with_config(crate::model::config::AppConfig::clone);
         let data_home = config
             .data_home
             .clone()

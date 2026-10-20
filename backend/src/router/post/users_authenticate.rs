@@ -14,7 +14,6 @@ use crate::auth::login_throttle::{LoginThrottle, select_client_ip};
 use crate::auth::password::{PasswdFile, password_iterations, verify_password};
 use crate::auth::users::{self, validate_user_id};
 use crate::error::ResultExt;
-use crate::model::config::APP_CONFIG;
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::{Claims, Role, VALIDATION, decode_typed};
 use crate::router::{AppError, AppResult, ErrorKind};
@@ -87,12 +86,9 @@ struct ThrottleParams {
 }
 
 fn throttle_params() -> ThrottleParams {
-    let config = APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .unwrap_or_else(PoisonError::into_inner);
-    let [(_, ip_short), (_, ip_long), (_, user_long)] = config.login_throttle_schedules();
+    let [(_, ip_short), (_, ip_long), (_, user_long)] = crate::model::config::with_config(
+        crate::model::config::AppConfig::login_throttle_schedules,
+    );
     ThrottleParams {
         ip_short,
         ip_long,
@@ -219,12 +215,7 @@ impl<'r> FromRequest<'r> for ThrottleClientIp {
     type Error = std::convert::Infallible;
 
     async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let trust_proxy = APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("APP_CONFIG lock")
-            .trust_proxy_forwarded_for;
+        let trust_proxy = crate::model::config::with_config(|c| c.trust_proxy_forwarded_for);
         Outcome::Success(Self(select_client_ip(
             req.headers().get_one("X-Forwarded-For"),
             req.remote().map(|addr| addr.ip().to_string()).as_deref(),
@@ -397,7 +388,6 @@ pub async fn authenticate(
                 ErrorKind::RateLimited,
                 format!("Too many login attempts, try again in {ban}s"),
             )
-            .temporary()
             .retry_after(ban));
         }
     }
@@ -609,6 +599,10 @@ mod tests {
         let body = resp.into_string().expect("429 body");
         let parsed: serde_json::Value = serde_json::from_str(&body).expect("429 json");
         assert_eq!(parsed["kind"], "Rate Limited");
+        assert!(
+            parsed.get("status").is_none(),
+            "status key must be absent: {body}"
+        );
         assert_eq!(parsed["retryAfter"], secs, "body mirrors the header");
         assert!(
             parsed["message"]
@@ -1446,5 +1440,24 @@ mod tests {
                 );
             assert!(res.is_err(), "legacy without jti must fail");
         }
+    }
+
+    #[test]
+    fn error_body_carries_no_status_key() {
+        let _g = lock();
+        let client = setup();
+        seed(
+            "t7-errstatus",
+            false,
+            Some(test_password("t7-errstatus-pw").as_str()),
+        );
+        let resp = post_login(&client, "t7-errstatus", "wrong-password");
+        assert_eq!(resp.status(), Status::Unauthorized);
+        let body = resp.into_string().expect("401 body");
+        let value: serde_json::Value = serde_json::from_str(&body).expect("401 json");
+        assert!(
+            value.get("status").is_none(),
+            "status key must be absent: {body}"
+        );
     }
 }

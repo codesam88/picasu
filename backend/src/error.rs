@@ -43,17 +43,10 @@ impl ErrorKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
-pub enum ErrorStatus {
-    Permanent,
-    Temporary,
-}
-
 #[derive(Debug)]
 pub struct AppError {
     pub kind: ErrorKind,
     pub message: String,
-    pub status: ErrorStatus,
     pub context: Vec<String>,
     pub source: Option<anyhow::Error>,
     /// Seconds a client should wait before retrying (throttling answers).
@@ -70,14 +63,13 @@ impl Serialize for AppError {
     {
         use serde::ser::SerializeStruct;
         let field_count = if self.retry_after_secs.is_some() {
-            5
-        } else {
             4
+        } else {
+            3
         };
         let mut state = serializer.serialize_struct("AppError", field_count)?;
         state.serialize_field("kind", &self.kind)?;
         state.serialize_field("message", &self.message)?;
-        state.serialize_field("status", &self.status)?;
         state.serialize_field("context", &self.context)?;
         // `AppError` serializes manually (its `source` is not serializable),
         // so the `skip_serializing_if = "Option::is_none"` equivalent lives
@@ -94,16 +86,10 @@ impl AppError {
         Self {
             kind,
             message: message.into(),
-            status: ErrorStatus::Permanent,
             context: Vec::new(),
             source: None,
             retry_after_secs: None,
         }
-    }
-
-    pub fn temporary(mut self) -> Self {
-        self.status = ErrorStatus::Temporary;
-        self
     }
 
     /// Attach a `Retry-After` hint (seconds) for throttling answers.
@@ -124,7 +110,6 @@ impl AppError {
         Self {
             kind,
             message: err.to_string(),
-            status: ErrorStatus::Permanent,
             context: Vec::new(),
             source: Some(err),
             retry_after_secs: None,
@@ -221,7 +206,6 @@ where
             AppError {
                 kind,
                 message: msg.into(),
-                status: ErrorStatus::Permanent,
                 context: vec![],
                 source: Some(e.into()),
                 retry_after_secs: None,
@@ -236,7 +220,6 @@ where
         self.map_err(|e| AppError {
             kind: ErrorKind::Internal,
             message: "An unexpected error occurred".to_string(),
-            status: ErrorStatus::Permanent,
             context: vec![ctx.into()],
             source: Some(e.into()),
             retry_after_secs: None,
@@ -292,9 +275,7 @@ mod tests {
     #[test]
     fn rate_limited_kind_maps_to_429() {
         assert_eq!(
-            AppError::new(ErrorKind::RateLimited, "throttled")
-                .temporary()
-                .http_status(),
+            AppError::new(ErrorKind::RateLimited, "throttled").http_status(),
             Status::TooManyRequests
         );
     }
@@ -306,18 +287,14 @@ mod tests {
 
     #[test]
     fn retry_after_builder_sets_field() {
-        let err = AppError::new(ErrorKind::RateLimited, "throttled")
-            .temporary()
-            .retry_after(10);
+        let err = AppError::new(ErrorKind::RateLimited, "throttled").retry_after(10);
         assert_eq!(err.retry_after_secs, Some(10));
     }
 
     #[test]
     fn retry_after_defaults_to_none_in_constructors() {
         assert_eq!(
-            AppError::new(ErrorKind::RateLimited, "throttled")
-                .temporary()
-                .retry_after_secs,
+            AppError::new(ErrorKind::RateLimited, "throttled").retry_after_secs,
             None
         );
         let from_err =
@@ -327,23 +304,21 @@ mod tests {
 
     #[test]
     fn serialized_body_omits_retry_field_when_unset() {
-        let err = AppError::new(ErrorKind::RateLimited, "throttled").temporary();
+        let err = AppError::new(ErrorKind::RateLimited, "throttled");
         let serialized = serde_json::to_string(&err).expect("serialize");
         assert_eq!(
             serialized,
-            r#"{"kind":"Rate Limited","message":"throttled","status":"Temporary","context":[]}"#
+            r#"{"kind":"Rate Limited","message":"throttled","context":[]}"#
         );
     }
 
     #[test]
     fn serialized_body_carries_camel_case_retry_field_when_set() {
-        let err = AppError::new(ErrorKind::RateLimited, "throttled")
-            .temporary()
-            .retry_after(10);
+        let err = AppError::new(ErrorKind::RateLimited, "throttled").retry_after(10);
         let serialized = serde_json::to_string(&err).expect("serialize");
         assert_eq!(
             serialized,
-            r#"{"kind":"Rate Limited","message":"throttled","status":"Temporary","context":[],"retryAfter":10}"#
+            r#"{"kind":"Rate Limited","message":"throttled","context":[],"retryAfter":10}"#
         );
     }
 
@@ -357,13 +332,12 @@ mod tests {
             ErrorKind::RateLimited,
             "Too many login attempts, try again in 10s",
         )
-        .temporary()
         .retry_after(10)
     }
 
     #[rocket::get("/retry-after-probe-unset")]
     fn retry_after_probe_unset() -> AppError {
-        AppError::new(ErrorKind::RateLimited, "Too many login attempts").temporary()
+        AppError::new(ErrorKind::RateLimited, "Too many login attempts")
     }
 
     fn probe_client() -> rocket::local::blocking::Client {
@@ -383,7 +357,7 @@ mod tests {
         assert_eq!(
             resp.into_string().as_deref(),
             Some(
-                r#"{"kind":"Rate Limited","message":"Too many login attempts, try again in 10s","status":"Temporary","context":[],"retryAfter":10}"#
+                r#"{"kind":"Rate Limited","message":"Too many login attempts, try again in 10s","context":[],"retryAfter":10}"#
             )
         );
     }
@@ -396,9 +370,7 @@ mod tests {
         assert!(resp.headers().get_one("Retry-After").is_none());
         assert_eq!(
             resp.into_string().as_deref(),
-            Some(
-                r#"{"kind":"Rate Limited","message":"Too many login attempts","status":"Temporary","context":[]}"#
-            )
+            Some(r#"{"kind":"Rate Limited","message":"Too many login attempts","context":[]}"#)
         );
     }
 }

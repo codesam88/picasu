@@ -3,7 +3,6 @@
 use crate::model::album::ResolvedShare;
 #[allow(unused_imports)]
 use crate::model::album::Share;
-use crate::model::config::APP_CONFIG;
 use crate::openapi_components::Unauthorized;
 use crate::router::{AppResult, GuardError, GuardResult};
 use chrono::Utc;
@@ -86,14 +85,9 @@ impl Claims {
     }
 
     pub fn encode(&self) -> String {
-        use crate::model::config::APP_CONFIG;
-
-        let config = APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned");
-        self.encode_with_key(&config.get_jwt_secret_key())
+        crate::model::config::with_config(|config| {
+            self.encode_with_key(&config.get_jwt_secret_key())
+        })
     }
 
     pub fn encode_with_key(&self, key: &[u8]) -> String {
@@ -155,12 +149,8 @@ impl ClaimsHash {
     }
 
     pub fn encode(&self) -> String {
-        let secret_key = APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned")
-            .get_jwt_secret_key();
+        let secret_key =
+            crate::model::config::with_config(crate::model::config::AppConfig::get_jwt_secret_key);
         encode(
             &Header::default(),
             &self,
@@ -205,12 +195,8 @@ impl ClaimsTimestamp {
     }
 
     pub fn encode(&self) -> String {
-        let secret_key = APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned")
-            .get_jwt_secret_key();
+        let secret_key =
+            crate::model::config::with_config(crate::model::config::AppConfig::get_jwt_secret_key);
         encode(
             &Header::default(),
             &self,
@@ -547,12 +533,8 @@ pub fn extract_bearer_token<'a>(req: &'a Request<'_>) -> Result<&'a str> {
 
 /// Decode JWT token with given claims type and validation
 pub fn my_decode_token<T: DeserializeOwned>(token: &str, validation: &Validation) -> Result<T> {
-    let secret_key = APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned")
-        .get_jwt_secret_key();
+    let secret_key =
+        crate::model::config::with_config(crate::model::config::AppConfig::get_jwt_secret_key);
 
     match decode::<T>(token, &DecodingKey::from_secret(&secret_key), validation) {
         Ok(token_data) => Ok(token_data.claims),
@@ -588,12 +570,7 @@ where
 /// Callers combine this with their own store-emptiness check; the flag alone
 /// never opens a non-empty store.
 pub(crate) fn bootstrap_open() -> bool {
-    APP_CONFIG
-        .get()
-        .expect("APP_CONFIG not initialized")
-        .read()
-        .expect("lock poisoned")
-        .bootstrap_admin
+    crate::model::config::with_config(|c| c.bootstrap_admin)
 }
 
 /// Refusal message for an empty user store, branched once on the window
@@ -1201,13 +1178,7 @@ pub struct GuardReadOnlyMode;
 impl<'r> FromRequest<'r> for GuardReadOnlyMode {
     type Error = GuardError;
     async fn from_request(_req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        if APP_CONFIG
-            .get()
-            .expect("APP_CONFIG not initialized")
-            .read()
-            .expect("lock poisoned")
-            .read_only_mode
-        {
+        if crate::model::config::with_config(|c| c.read_only_mode) {
             return Outcome::Error((
                 Status::MethodNotAllowed,
                 AppError::new(ErrorKind::ReadOnlyMode, "Read-only mode is enabled"),
