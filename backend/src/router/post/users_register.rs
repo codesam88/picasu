@@ -102,9 +102,10 @@ pub async fn register_user_handler(
         .map(Json)
 }
 
-/// Validate the registration, create the non-admin user (directly, or by
-/// redeeming an invite in the same transaction as the insert), then store
-/// the password hash.
+/// Validate the registration, create the non-admin user (via
+/// `provision_user` on the gated path, or by redeeming an invite in the
+/// same transaction as the insert), then store the password hash on the
+/// invite path.
 ///
 /// Refuses with 401 on an empty store (bootstrap first — registration never
 /// creates the first user).
@@ -138,33 +139,29 @@ fn register_user_sync(
     if admin_session || allow_registration {
         // Gated registration: the invite is not consulted (an admin session
         // or the open knob supersedes the bearer), so a stale link neither
-        // fails nor gets burned.
-        if users::get_user(&id)
-            .map_err(|e| AppError::from_err(ErrorKind::Database, e))?
-            .is_some()
-        {
-            return Err(AppError::new(
-                ErrorKind::Conflict,
-                format!("user already exists: {id}"),
-            ));
-        }
-        users::create_user(&id, false).map_err(|e| AppError::from_err(ErrorKind::Database, e))?;
-    } else {
-        let token = req
-            .invite
-            .as_deref()
-            .map(str::trim)
-            .filter(|t| !t.is_empty())
-            .ok_or_else(|| {
-                AppError::new(
-                    ErrorKind::PermissionDenied,
-                    "registration is disabled; an invite is required",
-                )
-            })?;
-        // Atomic: marks the invite used and inserts the user record in one
-        // redb write transaction.
-        invites::redeem_invite(&id, token)?;
+        // fails nor gets burned. Delegates to `provision_user`, which
+        // validates, inserts the user record, and stores the password hash.
+        users::provision_user(&id, &canonical, false)?;
+        log::info!("enrollment: registered user {id}");
+        return Ok(UserSummary {
+            user_id: id,
+            admin: false,
+        });
     }
+    let token = req
+        .invite
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| {
+            AppError::new(
+                ErrorKind::PermissionDenied,
+                "registration is disabled; an invite is required",
+            )
+        })?;
+    // Atomic: marks the invite used and inserts the user record in one
+    // redb write transaction.
+    invites::redeem_invite(&id, token)?;
     users::store_password(&id, &canonical)?;
     log::info!("enrollment: registered user {id}");
     Ok(UserSummary {

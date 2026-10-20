@@ -485,6 +485,12 @@ pub(crate) fn store_password(id: &str, password: &str) -> Result<(), AppError> {
         .map_err(|e| AppError::from_err(ErrorKind::IO, e))
 }
 
+/// Uniform HTTP copy for every registration-conflict surface (used invite
+/// or taken userId): all sites emit this exact message so a client cannot
+/// distinguish the cause from the response, and no id is echoed.
+pub(crate) const REGISTRATION_CONFLICT_MESSAGE: &str =
+    "registration conflict: the invite or the userId is already taken";
+
 /// Provision a new user: validate the id and password, insert the redb
 /// record, and write the password hash to `passwd.json`.
 ///
@@ -508,7 +514,7 @@ pub fn provision_user(id: &str, password: &str, admin: bool) -> Result<String, A
     {
         return Err(AppError::new(
             ErrorKind::Conflict,
-            format!("user already exists: {id}"),
+            REGISTRATION_CONFLICT_MESSAGE,
         ));
     }
     create_user(&id, admin).map_err(|e| AppError::from_err(ErrorKind::Database, e))?;

@@ -15,6 +15,7 @@ use redb::{ReadableDatabase, ReadableTable};
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
 
+use crate::auth::users::REGISTRATION_CONFLICT_MESSAGE;
 use crate::error::{AppError, ErrorKind};
 use crate::storage::db::{INVITES, TREE, USERS};
 
@@ -314,7 +315,7 @@ pub fn redeem_invite(user_id: &str, token: &str) -> Result<(), AppError> {
         if record.used_by.is_some() {
             return Err(AppError::new(
                 ErrorKind::Conflict,
-                "invite has already been used",
+                REGISTRATION_CONFLICT_MESSAGE,
             ));
         }
         if let Some(deadline) = record.expires_at
@@ -335,7 +336,7 @@ pub fn redeem_invite(user_id: &str, token: &str) -> Result<(), AppError> {
         {
             return Err(AppError::new(
                 ErrorKind::Conflict,
-                format!("user already exists: {id}"),
+                REGISTRATION_CONFLICT_MESSAGE,
             ));
         }
         record.used_by = Some(id.clone());

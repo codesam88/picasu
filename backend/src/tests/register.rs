@@ -265,6 +265,65 @@ fn double_use_invite_is_409() {
     assert_eq!(listed[0].used_by.as_deref(), Some("s6-first"));
 }
 
+/// All registration-conflict surfaces answer an indistinguishable 409 body:
+/// neither the response nor any echoed userId may reveal which gate failed
+/// (the invite path is reachable without any session, so a distinguishable
+/// body would enable enrollment probing).
+#[test]
+fn registration_conflict_bodies_are_indistinguishable() {
+    let _g = lock();
+    let client = setup();
+    seed("s6-uni-root", true, None);
+    seed("s6-uni-taken", false, None);
+    let admin = cookie("s6-uni-root", true);
+    let (invite_a, _) = crate::auth::invites::create_invite("s6-uni-root").expect("invite");
+    let (invite_b, _) = crate::auth::invites::create_invite("s6-uni-root").expect("invite");
+    let pw = crate::tests::fixtures::test_password("s6-uni");
+
+    // (a) gated branch (admin session), target exists.
+    let (status_a, body_a) = {
+        let resp = client
+            .post("/post/users/register")
+            .header(ContentType::JSON)
+            .cookie(admin)
+            .body(json!({ "userId": "s6-uni-taken", "password": pw }).to_string())
+            .dispatch();
+        (resp.status(), resp.into_string())
+    };
+    // (c) invite path, target exists.
+    let (status_c, body_c) = register(
+        &client,
+        &json!({ "userId": "s6-uni-taken", "password": pw, "invite": invite_a }),
+    );
+    // (b) invite path, invite already used: burn invite_b first, then reuse.
+    let (status_ok, _) = register(
+        &client,
+        &json!({ "userId": "s6-uni-ok", "password": pw, "invite": invite_b }),
+    );
+    assert_eq!(status_ok, Status::Ok);
+    let (status_b, body_b) = register(
+        &client,
+        &json!({ "userId": "s6-uni-again", "password": pw, "invite": invite_b }),
+    );
+
+    assert_eq!(status_a, Status::Conflict);
+    assert_eq!(status_b, Status::Conflict);
+    assert_eq!(status_c, Status::Conflict);
+    assert_eq!(
+        body_a, body_b,
+        "gated vs invite-used bodies must be identical"
+    );
+    assert_eq!(
+        body_a, body_c,
+        "gated vs invite-user-taken bodies must be identical"
+    );
+    let echoed = body_a.as_deref().unwrap_or_default();
+    assert!(
+        !echoed.contains("s6-uni-taken") && !echoed.contains("s6-uni-ok"),
+        "no userId may be echoed, got: {echoed}"
+    );
+}
+
 // ── Row: revoked ───────────────────────────────────────────────────────────
 
 /// Revoking removes the row, so a later redeem finds nothing (404).
