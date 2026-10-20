@@ -1451,7 +1451,11 @@ mod tests {
             false,
             Some(test_password("t7-errstatus-pw").as_str()),
         );
-        let resp = post_login(&client, "t7-errstatus", "wrong-password");
+        let resp = post_login(
+            &client,
+            "t7-errstatus",
+            &test_password("t7-errstatus-wrong"),
+        );
         assert_eq!(resp.status(), Status::Unauthorized);
         let body = resp.into_string().expect("401 body");
         let value: serde_json::Value = serde_json::from_str(&body).expect("401 json");

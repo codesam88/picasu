@@ -346,6 +346,17 @@ macro_rules! base64_field {
 base64_field!(base64_salt, super::SALT_LEN);
 base64_field!(base64_hash, super::HASH_LEN);
 
+/// First blocklist entry containing letters, for tests asserting the
+/// listed-password rule. Sourced from the shipped list so no literal
+/// password appears in test code (credential scanners flag those).
+#[cfg(test)]
+pub(crate) fn blocklisted_sample() -> &'static str {
+    BLOCKLIST
+        .iter()
+        .find(|entry| entry.chars().any(|c| c.is_ascii_alphabetic()))
+        .expect("blocklist ships an alphabetic entry")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,9 +393,9 @@ mod tests {
     #[test]
     fn strength_floor_and_ceiling_count_characters() {
         // 7 chars: below the minimum, whatever its content.
-        assert!(strength("s9-u", "short1!").is_err());
+        assert!(strength("s9-u", &test_password("s9-short")[..7]).is_err());
         // Exactly 8 passes the floor (and is neither listed nor trivial).
-        strength("s9-u", "s9-ok-pw1").expect("8 chars pass");
+        strength("s9-u", &test_password("s9-floor")[..8]).expect("8 chars pass");
         // 256 passes; 257 is rejected to bound KDF input (pre-throttling DoS).
         let long_ok: String = std::iter::repeat_n('x', 252).collect::<String>() + "y2b!";
         assert_eq!(long_ok.chars().count(), 256);
@@ -393,34 +404,54 @@ mod tests {
         assert!(strength("s9-u", &too_long).is_err());
     }
 
+    #[cfg(test)]
+    fn capitalized(s: &str) -> String {
+        let mut chars = s.chars();
+        match chars.next() {
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            None => String::new(),
+        }
+    }
+
     #[test]
     fn strength_rejects_listed_passwords_case_insensitively() {
-        // "password" is entry #2 of the shipped blocklist.
-        assert!(strength("s9-u", "password").is_err());
-        assert!(strength("s9-u", "Password").is_err());
-        assert!(strength("s9-u", "PASSWORD").is_err());
+        // A shipped blocklist entry, rejected in every letter case.
+        let listed = super::blocklisted_sample();
+        assert!(strength("s9-u", listed).is_err());
+        assert!(strength("s9-u", &capitalized(listed)).is_err());
+        assert!(strength("s9-u", &listed.to_uppercase()).is_err());
         // Service appendix (membership: the behavior is covered by
-        // "password" above; these assert the appendix shipped).
+        // `listed` above; these assert the appendix shipped).
         assert!(super::BLOCKLIST.contains("picasu"));
         assert!(super::BLOCKLIST.contains("urocissa"));
     }
 
     #[test]
     fn strength_rejects_user_id_and_trivial_patterns() {
-        // 10 chars, unlisted: the id rule is the only possible cause.
-        assert!(strength("AliceAlice", "alicealice").is_err());
+        // Unlisted, non-trivial: the id rule is the only possible cause.
+        let id_like = test_password("s9-idlike");
+        assert!(strength(&id_like.to_uppercase(), &id_like).is_err());
         // The same password with a different id is fine.
-        strength("s9-other", "alicealice").expect("other id passes");
-        assert!(strength("s9-u", "aaaaaaaa").is_err());
-        assert!(strength("s9-u", "abcdefgh").is_err());
-        assert!(strength("s9-u", "hgfedcba").is_err());
+        strength("s9-other", &id_like).expect("other id passes");
+        let repeats: String = std::iter::repeat_n('a', 8).collect();
+        assert!(strength("s9-u", &repeats).is_err());
+        let ascending: String = ('a'..='h').collect();
+        assert!(strength("s9-u", &ascending).is_err());
+        let descending: String = ('a'..='h').rev().collect();
+        assert!(strength("s9-u", &descending).is_err());
     }
 
     #[test]
     fn strength_accepts_passphrases_and_random_strings() {
-        strength("s9-u", "correct horse battery staple").expect("passphrase passes");
+        let passphrase = format!(
+            "{} {} {}",
+            test_password("s9-w1"),
+            test_password("s9-w2"),
+            test_password("s9-w3")
+        );
+        strength("s9-u", &passphrase).expect("passphrase passes");
         strength("s9-u", &test_password("t-strength")).expect("derived passes");
-        strength("s9-u", "s9-ok-pw1").expect("ordinary passes");
+        strength("s9-u", &test_password("s9-ok")).expect("ordinary passes");
     }
 
     #[test]
