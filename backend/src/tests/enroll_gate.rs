@@ -21,8 +21,8 @@ use rocket::local::blocking::Client;
 use serde_json::json;
 
 use crate::tests::bootstrap::{
-    TEST_ENV, lock, login_status as login, make_client, reset_backend_state, set_bootstrap_admin,
-    setup, write_config,
+    TEST_ENV, cookie, lock, login_status as login, make_client, reset_backend_state, seed,
+    set_bootstrap_admin, setup, write_config,
 };
 use crate::tests::fixtures::test_password;
 
@@ -127,10 +127,7 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
     assert_eq!(created["admin"], true, "bootstrap must force admin:true");
     assert_eq!(
         crate::auth::users::get_user("root").expect("get user"),
-        Some(crate::auth::users::UserRecord {
-            admin: true,
-            sessions: vec![]
-        })
+        Some(crate::auth::users::UserRecord { sessions: vec![] })
     );
 
     // The store is non-empty now, so enrollment is closed again.
@@ -188,7 +185,13 @@ fn concurrent_first_bootstraps_enroll_exactly_one_admin() {
     assert_eq!(crate::auth::users::user_count().expect("count"), 1);
     let users = crate::auth::users::list_users().expect("list users");
     assert_eq!(users.len(), 1);
-    assert!(users[0].1.admin, "the single winner must be admin");
+    assert!(
+        crate::auth::users::get_admin(&users[0].0)
+            .ok()
+            .flatten()
+            .unwrap_or(false),
+        "the single winner must be admin"
+    );
 }
 
 // ── Row: password-PUT never enrolls ─────────────────────────────────────────
@@ -217,7 +220,7 @@ fn password_put_on_empty_store_is_403_and_creates_nothing() {
         None
     );
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
-    let store = crate::auth::password::PasswdFile::load(&crate::auth::users::passwd_file_path())
+    let store = crate::auth::password::PasswdFile::load(&crate::auth::users::user_store_path())
         .expect("load passwd");
     assert!(store.is_empty(), "no password entry may be written");
 }
@@ -238,6 +241,32 @@ fn admin_less_non_empty_store_stays_closed() {
         Status::Unauthorized
     );
     assert_eq!(crate::auth::users::user_count().expect("count"), 1);
+}
+
+// ── Row: closed-window refusal names the CLI remedy ──────────────────────────
+
+/// An authenticated bootstrap attempt against a shut window (non-empty
+/// store) is refused with the closed-window message, which must name the
+/// `picasu-cmd` CLI remedy.
+#[test]
+fn closed_window_refusal_names_cli_remedy() {
+    let _g = lock();
+    let client = setup();
+    let pw = test_password("t-closed-cli");
+    seed("closed-admin", true, Some(pw.as_str()));
+
+    let resp = client
+        .post("/post/users/bootstrap")
+        .header(ContentType::JSON)
+        .cookie(cookie("closed-admin", true))
+        .body(json!({ "userId": "second", "password": test_password("t-second") }).to_string())
+        .dispatch();
+    assert_eq!(resp.status(), Status::Unauthorized);
+    let body = resp.into_string().unwrap_or_default();
+    assert!(
+        body.contains("picasu-cmd"),
+        "closed-window refusal must name the picasu-cmd CLI remedy, got: {body}"
+    );
 }
 
 // ── Row: no legacy password concept ──────────────────────────────────────
@@ -331,7 +360,7 @@ fn bootstrap_freshness_predicate() {
     );
 }
 
-/// The boot gate against a real `passwd.json` under the test DATA_PATH: flag
+/// The boot gate against a real user store under the test DATA_PATH: flag
 /// off launches, flag on an existing store refuses with an actionable message,
 /// and removing the store re-opens.
 #[test]
@@ -340,11 +369,8 @@ fn bootstrap_boot_gate_refuses_existing_passwd_file() {
     let _ = &*TEST_ENV;
     reset_backend_state();
 
-    let path = crate::auth::users::passwd_file_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).expect("auth dir");
-    }
-    std::fs::write(&path, b"{\"users\":{}}").expect("write passwd");
+    let path = crate::auth::users::user_store_path();
+    crate::auth::passwd_store::rmw(&path, |_| Ok(())).expect("materialize empty store");
 
     // Flag off: the store is not our business, launch.
     set_bootstrap_admin(false);
@@ -359,12 +385,12 @@ fn bootstrap_boot_gate_refuses_existing_passwd_file() {
         "message names the flag: {message}"
     );
     assert!(
-        message.contains("picasu-admin"),
+        message.contains("picasu-cmd"),
         "message names the CLI remedy: {message}"
     );
 
     // Removing the store re-opens bootstrap.
-    std::fs::remove_file(&path).expect("remove passwd");
+    crate::auth::passwd_store::remove_store(&path);
     assert!(crate::bootstrap_boot_gate().is_ok());
 
     reset_backend_state();

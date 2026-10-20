@@ -145,8 +145,8 @@ pub struct AppConfig {
     /// `No administrator enrolled` (the refusal names the bootstrap
     /// endpoint while the window is open). Default
     /// off: a fresh install answers 401 everywhere until an operator opts
-    /// in (or provisions the store via the `picasu-admin` CLI). Enabling
-    /// the flag against an existing `passwd.json` makes the server refuse
+    /// in (or provisions the store via the `picasu-cmd` CLI). Enabling
+    /// the flag against an existing user store makes the server refuse
     /// to start. WARN-logged at boot whenever set.
     #[serde(default)]
     pub bootstrap_admin: bool,
@@ -611,7 +611,7 @@ impl AppConfig {
         };
         if has_legacy_password_key(&raw_content) {
             warn!(
-                "legacy single password is no longer supported and is ignored; enroll via --bootstrap-admin or the picasu-admin CLI"
+                "legacy single password is no longer supported and is ignored; enroll via --bootstrap-admin or the picasu-cmd CLI"
             );
         }
         let mut config = match toml::from_str::<TomlFile>(&raw_content) {

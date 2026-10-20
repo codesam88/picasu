@@ -184,11 +184,14 @@ mod tests {
             &json!({ "userId": "s5-a", "admin": false }),
         );
         assert_eq!(status, Status::Ok);
+        let admin = crate::auth::users::get_admin("s5-a")
+            .expect("get admin")
+            .unwrap_or(false);
+        assert!(!admin, "admin flag must be cleared");
+        // Session added by the cookie helper persists; the demotion itself must not clear it.
         let record = crate::auth::users::get_user("s5-a")
             .expect("get user")
             .expect("record");
-        assert!(!record.admin, "admin flag must be cleared");
-        // Session added by the cookie helper persists; the demotion itself must not clear it.
         assert!(
             !record.sessions.is_empty(),
             "session from the acting cookie must survive demotion"

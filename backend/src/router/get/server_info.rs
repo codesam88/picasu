@@ -157,6 +157,29 @@ mod tests {
     }
 
     #[test]
+    fn s9_pin_user_count_passwd_only_enrolled() {
+        let _g = lock();
+        let client = setup();
+        write_config(&json!({ "bootstrap_admin": false }));
+        // Construct a user that exists ONLY in the passwd store (no redb row).
+        let path = crate::auth::users::user_store_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("auth dir");
+        }
+        crate::auth::passwd_store::provision(&path, "passwd-only", "long-enough-pw1", false, None)
+            .expect("provision passwd-only");
+        let resp = client.get("/get/server-info").dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        let body: Value =
+            serde_json::from_str(&resp.into_string().expect("body")).expect("json body");
+        assert_eq!(
+            body["enrolled"],
+            Value::Bool(true),
+            "passwd-only user must count as enrolled"
+        );
+    }
+
+    #[test]
     fn non_empty_store_with_flag_closed_reports_enrolled_and_closed() {
         let _g = lock();
         let client = setup();

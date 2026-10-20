@@ -32,7 +32,7 @@ pub struct SetUserPasswordRequest {
 /// presenting the correct old password.
 /// A password change never enrolls: an unknown target is 404 even on an
 /// empty store — the bootstrap window enrolls only via
-/// `POST /post/users/bootstrap` or the `picasu-admin` CLI.
+/// `POST /post/users/bootstrap` or the `picasu-cmd` CLI.
 ///
 /// # Errors
 /// Returns 400 when the id is invalid, the new password is shorter than
@@ -75,7 +75,7 @@ pub(crate) fn set_password_sync(
     }
     if target == caller_id {
         let presented = old_password.unwrap_or_default().trim();
-        let path = users::passwd_file_path();
+        let path = users::user_store_path();
         let store = crate::auth::password::PasswdFile::load(&path)
             .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
         if !store.verify(&target, presented) {
@@ -198,9 +198,8 @@ mod tests {
             &json!({ "userId": "s4d-bob", "newPassword": test_password("t-bob-new") }),
         );
         assert_eq!(status, Status::Ok);
-        let store =
-            crate::auth::password::PasswdFile::load(&crate::auth::users::passwd_file_path())
-                .expect("load passwd");
+        let store = crate::auth::password::PasswdFile::load(&crate::auth::users::user_store_path())
+            .expect("load passwd");
         assert!(store.verify("s4d-bob", &test_password("t-bob-new")));
     }
 
@@ -401,9 +400,8 @@ mod tests {
             None
         );
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
-        let store =
-            crate::auth::password::PasswdFile::load(&crate::auth::users::passwd_file_path())
-                .expect("load passwd");
+        let store = crate::auth::password::PasswdFile::load(&crate::auth::users::user_store_path())
+            .expect("load passwd");
         assert!(store.is_empty(), "no password entry may be written");
     }
 

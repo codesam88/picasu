@@ -24,7 +24,7 @@ pub struct BootstrapRequest {
 /// Closed-window refusal, shared by the handler fast path and the
 /// authoritative locked check in [`bootstrap_user_sync`] so contenders that
 /// lose the race see the same message.
-const WINDOW_CLOSED_MSG: &str = "No administrator enrolled: the bootstrap window is closed (user store is non-empty or --bootstrap-admin is off). Enroll further users via POST /post/users/register, or provision via the picasu-admin CLI";
+const WINDOW_CLOSED_MSG: &str = "No administrator enrolled: the bootstrap window is closed (user store is non-empty or --bootstrap-admin is off). Enroll further users via POST /post/users/register, or provision via the picasu-cmd CLI";
 
 /// First-user enrollment lock: the window check and the insert must be
 /// atomic across concurrent requests. The handler's pre-check stays a fast
@@ -51,9 +51,7 @@ fn bootstrap_user_sync(user_id: &str, password: &str) -> AppResult<UserSummary> 
     let _guard = BOOTSTRAP_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))? > 0
-        || !bootstrap_open()
-    {
+    if crate::auth::passwd_store::count(&users::user_store_path()) > 0 || !bootstrap_open() {
         return Err(AppError::new(ErrorKind::Auth, WINDOW_CLOSED_MSG));
     }
     let id = users::provision_user(user_id, password, true)?;
@@ -98,8 +96,7 @@ pub async fn bootstrap_admin_handler(
     body: Json<BootstrapRequest>,
 ) -> AppResult<Json<UserSummary>> {
     let _ = read_only?;
-    let non_empty =
-        users::user_count().map_err(|e| AppError::from_err(ErrorKind::Database, e))? > 0;
+    let non_empty = crate::auth::passwd_store::count(&users::user_store_path()) > 0;
     // The window is flag ∧ empty store. When it is shut, unauthenticated
     // callers see the guard's own closed-401; an authenticated caller that
     // reaches a shut window (valid session, non-empty store) is refused

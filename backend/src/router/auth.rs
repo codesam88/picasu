@@ -362,7 +362,7 @@ mod tests {
         s3b_set_bootstrap_admin(false);
         let closed = super::not_enrolled_message();
         assert!(
-            closed.contains("picasu-admin"),
+            closed.contains("picasu-cmd"),
             "closed wording must keep naming the CLI remedy, got: {closed}"
         );
         assert!(
@@ -402,6 +402,7 @@ mod tests {
         let _g = s3b_lock();
         let client = s3b_client();
         crate::auth::users::create_user("s3b-demoted-user", true).expect("create user");
+        crate::auth::users::create_user("s3b-other-admin", true).expect("create other admin");
         let claims = super::Claims::new_user("s3b-demoted-user".to_string(), true);
         crate::auth::users::add_session("s3b-demoted-user", &claims.jti).expect("add session");
         let token = claims.encode();
@@ -581,7 +582,7 @@ pub(crate) fn not_enrolled_message() -> &'static str {
     if bootstrap_open() {
         "No administrator enrolled: enroll the first administrator via POST /post/users/bootstrap"
     } else {
-        "No administrator enrolled: start the server with --bootstrap-admin (or PICASU_BOOTSTRAP_ADMIN=true) to enroll the first admin, or provision a user with the picasu-admin CLI"
+        "No administrator enrolled: start the server with --bootstrap-admin (or PICASU_BOOTSTRAP_ADMIN=true) to enroll the first admin, or provision a user with the picasu-cmd CLI"
     }
 }
 
@@ -600,7 +601,8 @@ pub(crate) fn not_enrolled_error() -> anyhow::Error {
 /// the database on every call so demotion or removal takes effect before
 /// the token expires.
 pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
-    let store_non_empty = crate::auth::users::user_count().map(|count| count > 0)?;
+    let store_non_empty =
+        !crate::auth::passwd_store::is_empty(&crate::auth::users::user_store_path());
     if !store_non_empty {
         return Err(not_enrolled_error());
     }
@@ -614,8 +616,12 @@ pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result
         let Role::User { id, .. } = &claims.role else {
             return Err(anyhow!("User is not an admin"));
         };
+        let passwd_admin = crate::auth::users::get_admin(id)
+            .ok()
+            .flatten()
+            .unwrap_or(false);
         match crate::auth::users::get_user(id)? {
-            Some(record) if record.admin => {
+            Some(record) if passwd_admin => {
                 if !record.sessions.iter().any(|s| s.jti == claims.jti) {
                     return Err(anyhow!("User is not an admin"));
                 }
@@ -902,22 +908,26 @@ impl<'r> FromRequest<'r> for GuardUser {
             Ok(claims) => claims,
             Err(_) => return denied("Invalid token"),
         };
-        let Role::User { id, .. } = &claims.role else {
-            return denied("Share token not accepted");
+        let id = match &claims.role {
+            Role::User { id, .. } => id.clone(),
+            Role::Share(_) => return denied("Share token not accepted"),
         };
-        match crate::auth::users::get_user(id) {
+        match crate::auth::users::get_user(&id) {
             Ok(Some(record)) => {
                 if !record.sessions.iter().any(|s| s.jti == claims.jti) {
                     return denied("Unknown user");
                 }
-                // Refresh the token-embedded admin flag from the record
+                // Refresh the token-embedded admin flag from the passwd store
                 // (promotion requires re-login, demotion takes effect here),
                 // but keep the presented `jti`/`exp`: minting fresh claims
                 // would manufacture a live-looking session id that was never
                 // stored.
                 let mut claims = claims;
                 if let Role::User { admin, .. } = &mut claims.role {
-                    *admin = record.admin;
+                    *admin = crate::auth::users::get_admin(&id)
+                        .ok()
+                        .flatten()
+                        .unwrap_or(false);
                 }
                 Outcome::Success(GuardUser { claims })
             }

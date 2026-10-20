@@ -35,7 +35,8 @@ pub fn auth_cookie(_client: &Client) -> Cookie<'static> {
         .expect("read admin record")
         .is_none()
     {
-        crate::auth::users::create_user("admin", true).expect("seed fixture admin");
+        crate::auth::users::provision_user("admin", "fixture-admin-pw-123", true)
+            .expect("seed fixture admin");
     }
     crate::tests::bootstrap::cookie("admin", true)
 }

@@ -43,7 +43,7 @@ use model::metadata_record::MetadataRecord;
 /// flag is set on a store that already has a password file.
 ///
 /// `true` means "ok to launch". Bootstrap is a one-shot window: once
-/// `<DATA_HOME>/auth/passwd.json` exists the store is either provisioned or
+/// `<DATA_HOME>/auth/users.redb` exists the store is either provisioned or
 /// needs repair, and re-opening enrollment on it would silently re-expose the
 /// install. The failure is loud at boot rather than silent at request time.
 #[must_use]
@@ -68,12 +68,12 @@ pub(crate) fn bootstrap_boot_gate() -> anyhow::Result<()> {
             "bootstrap_admin is enabled: the first administrator may be enrolled online while the user store is empty"
         );
     }
-    let passwd_path = crate::auth::users::passwd_file_path();
+    let passwd_path = crate::auth::users::user_store_path();
     if bootstrap_freshness_ok(flag, passwd_path.exists()) {
         return Ok(());
     }
     anyhow::bail!(
-        "bootstrap_admin is enabled but a password store already exists at {}: bootstrap already happened or the store needs repair. Remove the flag (--bootstrap-admin / PICASU_BOOTSTRAP_ADMIN / config `bootstrap_admin`), or inspect/repair the store with the `picasu-admin` CLI.",
+        "bootstrap_admin is enabled but a password store already exists at {}: bootstrap already happened or the store needs repair. Remove the flag (--bootstrap-admin / PICASU_BOOTSTRAP_ADMIN / config `bootstrap_admin`), or inspect/repair the store with the `picasu-cmd` CLI.",
         passwd_path.display()
     );
 }
