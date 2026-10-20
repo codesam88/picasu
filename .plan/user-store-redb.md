@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: feature
 priority: high
 area: backend
@@ -36,14 +36,16 @@ safe to lose). Fresh-start, no migration.
 
 ## Status
 
-The identity move, the `picasu-cmd` CLI, and the `picasu-admin` →
-`picasu-cmd` rename (S1–S3 below) are **landed**, and the store substrate
-is **`users.redb`**: the JSON write path (flock/tmp/`.bak`) was replaced,
-not run alongside — a feature branch proposes the end state, so no
-commit carries a dual-backend store. What remains is S5 (model record +
-I5 hardening). The CLI slices are recorded here because the CLI is this
-plan's deliverable and the store API it depends on did not change across
-the substrate swap.
+All slices **landed**. The identity move, the `picasu-cmd` CLI, and the
+`picasu-admin` → `picasu-cmd` rename (S1–S3 below) shipped; the store
+substrate is **`users.redb`**: the JSON write path (flock/tmp/`.bak`) was
+replaced, not run alongside — a feature branch proposes the end state, so
+no commit carries a dual-backend store. S4 (redb substrate) and S5
+(consistency model recorded in `docs/auth.md` + I5 hardening:
+`redeem_invite` writes the identity entry with its hash, so invited
+registration is caller-ordered-proof) are done. The CLI slices are
+recorded here because the CLI is this plan's deliverable and the store
+API it depends on did not change across the substrate swap.
 
 ### Substrate decision (owner-approved 2026-10-20)
 
@@ -95,7 +97,7 @@ provisioning is the only scaling path (`.plan/e2e-given-reshaping.md`,
 problem stanza 1). The tool is therefore a deliverable of _this_ plan; its
 e2e-harness adoption is H1b–H1e of `.plan/e2e-given-reshaping.md`.
 
-## Consistency model (normative; to be recorded in `docs/auth.md`)
+## Consistency model (normative; recorded in `docs/auth.md`)
 
 The store is a **file with compare-and-swap semantics**, not a database
 with interactive transactions.
@@ -125,15 +127,15 @@ with interactive transactions.
 
 ### Invariants (derive tests from these)
 
-| ID  | Invariant                                                                                                                        | Test kind         |
-| --- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
-| I1  | Concurrent distinct-key writes both survive (no lost update)                                                                     | store concurrency |
-| I2  | Concurrent non-overlapping field edits on one user both persist                                                                  | store concurrency |
-| I3  | No operation sequence leaves zero admins; refusals are returned errors                                                           | store guard       |
-| I4  | `hash: None` (or corrupt store) never verifies a password; `verify` is total                                                     | fail-closed       |
-| I5  | Invite redeem is atomic: exactly one hash-less entry + consumed token, or neither; pre-existing id ⇒ conflict + unconsumed token | store/invite      |
-| I6  | Kill during a write leaves a parsable store at pre- or post-state                                                                | store durability  |
-| I7  | Deletion removes the entry before purging sessions; a crash never lets a deleted user log in                                     | store ordering    |
+| ID  | Invariant                                                                                                                                                                           | Test kind         |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| I1  | Concurrent distinct-key writes both survive (no lost update)                                                                                                                        | store concurrency |
+| I2  | Concurrent non-overlapping field edits on one user both persist                                                                                                                     | store concurrency |
+| I3  | No operation sequence leaves zero admins; refusals are returned errors                                                                                                              | store guard       |
+| I4  | `hash: None` (or corrupt store) never verifies a password; `verify` is total                                                                                                        | fail-closed       |
+| I5  | Invite redeem: a written entry implies the token was consumed (entry-with-hash lands after the invite commit, in the fixed M3 order); pre-existing id ⇒ conflict + unconsumed token | store/invite      |
+| I6  | Kill during a write leaves a parsable store at pre- or post-state                                                                                                                   | store durability  |
+| I7  | Deletion removes the entry before purging sessions; a crash never lets a deleted user log in                                                                                        | store ordering    |
 
 ## Implementation steps (iterative, TDD; each slice ends green + committed)
 
@@ -159,12 +161,19 @@ The store module's public surface (`provision` / `set_password` /
   (child process SIGKILLed inside an uncommitted write; store parses at
   pre-state), plus `remove_store` (handle eviction for test resets).
   `UserRecord` does not surface in the spec; no oasdiff entry needed.
-- **S5 — Model record + I5 hardening (open).** Record M1–M4 and the
-  invariants in `docs/auth.md` (the userdb storage narrative lives
-  there — `docs/design.md` does not describe the user store),
-  cross-referenced here. Close the residual I5 window where
-  `redeem_invite` and `store_password` are two store operations, by
-  writing entry + hash in one transaction.
+- **S5 — Model record + I5 hardening (landed).** M1–M4, the explicit
+  non-promises, and the test-pinned invariants are recorded in
+  `docs/auth.md` under "User store consistency model" (the userdb
+  storage narrative lives there — `docs/design.md` does not describe
+  the user store). The I5 window closed as far as two files allow:
+  `redeem_invite` takes the canonical password and writes the identity
+  entry with its hash as its own second store write, so the route can
+  no longer skip or reorder the pair. The residual cross-store crash
+  window (invite consumed, entry absent) is deliberate and documented —
+  it fails safe in the direction where the entry never exists without
+  the invite having been consumed; the reverse order would risk a
+  login-capable orphan. Pins: one-call login-capable redeem (unit) and
+  invite-registration route login (end-to-end).
 
 ## CLI slices (S1–S3 — landed)
 
