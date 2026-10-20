@@ -1,11 +1,20 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: backend
 ---
 
 # `picasu-cmd` — offline user administration CLI
+
+## Superseded (2026-10-20)
+
+The substrate decided below (passwd.json + flock) was revisited:
+`.plan/user-store-redb.md` moves the userdb to a dedicated
+`auth/users.redb` (redb already a dependency; the CLI's store API is
+unchanged, so the CLI surface and S1–S3 below stand as delivered). That
+plan carries the consistency model and the current storage decision;
+the history below records what shipped first.
 
 ## Problem
 
