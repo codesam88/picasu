@@ -9,7 +9,11 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const BACKEND_DIR = path.resolve(__dirname, '..', '..', '..', 'backend')
 
-const POLL_INTERVAL_MS = 200
+/// How often the readiness poll retries. The backend answers in ~200 ms, so a
+/// coarse interval would add its full period to every scenario's startup
+/// (one per scenario, 42 of them); 25 ms keeps the dead time negligible
+/// without a busy poll.
+const POLL_INTERVAL_MS = 25
 const STARTUP_TIMEOUT_MS = 120_000
 const SHUTDOWN_GRACE_MS = 10_000
 

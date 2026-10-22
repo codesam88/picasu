@@ -192,9 +192,89 @@ Notes:
   bumps that clear it land on a separate branch; this branch only makes the
   job cheap enough to keep running.
 
+## Adopted (2026-10-22, third pass): the CI job split
+
+`checks-n-tests` was one job that ran every gate in sequence, so its wall
+clock was the sum of the cargo work and the node work. It is now two jobs
+that run in parallel:
+
+| job        | owns                                                                      | needs                                                                               |
+| ---------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `backend`  | fmt + clippy, the backend and utils suites, the API contract check        | cargo, node (the embed-frontend build embeds the assets), nextest, ExifTool, ffmpeg |
+| `frontend` | the frontend gates, vitest, the end-to-end suite, the docs and plan gates | node, playwright, ffmpeg, the backend binary                                        |
+
+The frontend job runs the end-to-end suite against the binary the backend
+job built and uploads as an artifact, instead of compiling the backend a
+second time (a cold debug build of the whole crate).
+
+The release-profile test run moved out of the pull-request path: it now
+lives in the release workflow, where the optimized build that is about to
+ship is tested before it is packaged. The pull-request path does not pay
+for a release-profile compile of everything.
+
+The end-to-end worker count follows the runner: half the cores (a 4-core CI
+runner gets 2 workers, an 8-core dev box 4), overridable with
+`PLAYWRIGHT_WORKERS`. The readiness poll dropped from 200 ms to 25 ms —
+the backend answers in ~200 ms, so the old interval added its full period
+to every scenario's startup, and there is one startup per scenario.
+
+## Measured in CI (PR 130, 2026-10-22, warm caches)
+
+| job                                 | before (one job) | after                                                       |
+| ----------------------------------- | ---------------- | ----------------------------------------------------------- |
+| `checks-n-tests`                    | 10m08s           | split into two parallel jobs                                |
+| ├─ `backend`                        | —                | 4m03s                                                       |
+| │ setup                             | —                | 1m04s (the rust cache restore dominates)                    |
+| │ the frontend build                | —                | 12s                                                         |
+| │ clippy + utils + the API contract | —                | 1m10s                                                       |
+| │ the backend + utils suites        | —                | 1m34s                                                       |
+| └─ `frontend`                       | —                | 5m57s                                                       |
+| setup                               | —                | 1m01s                                                       |
+| the frontend + docs gates           | —                | 34s                                                         |
+| vitest + the end-to-end suite       | —                | 4m19s (of which ~2m is the backend compile the suite needs) |
+| `audit`                             | 2m06s            | **44s**                                                     |
+| `docs`                              | (inside the job) | 21s                                                         |
+| CodeQL (rust)                       | 8m39s            | 9m03s (unchanged)                                           |
+
+The pull-request gate is now the slower of the two jobs instead of their
+sum. The frontend job's gates still report at ~1.5 min, because they do not
+wait for the backend job.
+
+Two runs of the same PR, both with warm caches, differ by minutes: the
+`backend` job took 4m03s and then 8m34s, the `frontend` job 5m57s and then
+4m22s. The rust cache is the swing factor — a job that misses it pays the
+cold clippy and build — and the shared runners add their own noise. The
+honest reading: the gate is 4-6 min when the caches hit and up to ~8.5 min
+when they do not, against ~10 min for the single job it replaces.
+
+Two things the split surfaced, both fixed here: the frontend job needs
+ExifTool (the scenarios generate their fixture images through snapfab,
+which spawns it) and the end-to-end suite needs a backend binary — it
+builds one itself, in parallel with the backend job, because waiting for
+the backend job's artifact would have put the suite behind the whole
+backend run.
+
+## The main-branch pipeline (before this branch)
+
+The release-profile job ran on every push to `main` (it was skipped only for
+pull requests), so the main pipeline carried the LTO release build and the
+release test suite on every merge:
+
+| run         | `checks-n-tests` | `test-release-build` | pipeline |
+| ----------- | ---------------- | -------------------- | -------- |
+| 39719011830 | 9m22s            | 10m45s               | 20m07s   |
+| 39445584218 | 10m50s           | 9m07s                | 19m57s   |
+| 39423820490 | 8m49s            | 9m34s                | 18m23s   |
+
+The release-profile job now lives in the release workflow, where the
+optimized build that is about to ship is tested before it is packaged. The
+main pipeline is the split jobs only: ~6 min instead of ~20 min.
+
 ## Decisions
 
 - 2026-10-22: adopted candidates 1-5 (nextest, the double `npm ci`, the
   concurrent type checks, the prebuilt cargo-deny, the plan tool out of
-  CI). Candidates 6-8 stay open; candidate 9 (Biome) is assessed above and
-  not adopted for CI time.
+  CI) and the job split. Candidates 6-7 stay open (spectral pinning, the
+  release-mode job's own split); candidate 8 is partly addressed (the
+  worker count follows nproc, the poll interval shrank); candidate 9
+  (Biome) is assessed above and not adopted for CI time.

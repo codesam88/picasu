@@ -52,6 +52,43 @@ jobs:
       - name: Check the shipped binary's routes against the committed spec
         run: ./backend/target/release/picasu --check-openapi backend/openapi.json
 
+      # The production-level test run: the same suite, in the optimized build
+      # that is about to ship. It runs here and only here — a release is the
+      # moment the optimized build has to earn its keep, and the pull-request
+      # path does not pay for a release-profile compile of everything.
+      - name: Install cargo-nextest
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install-nextest
+          cargo nextest --version
+
+      # The video pipeline spawns ffprobe and ffmpeg; the runner image ships
+      # neither. (The packaged release carries its own static build.)
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffprobe -version
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+        working-directory: ./frontend
+
+      # The scenarios generate their fixture images through snapfab, which
+      # spawns ExifTool to write the metadata.
+      - name: Install ExifTool
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install-exiftool
+          exiftool -ver
+
+      - name: Test the release build
+        run: |
+          just backend-test-release
+          PICASU_BINARY=target/release/picasu just frontend-playwright
+
       - name: Prepare Release Package
         run: |
           echo "Downloading FFmpeg static build..."

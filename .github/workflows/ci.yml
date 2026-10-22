@@ -29,7 +29,12 @@ permissions:
   contents: read
 
 jobs:
-  checks-n-tests:
+  # The backend job owns the cargo work: the format and lint gates, the test
+  # suite, the utils crates and the API contract check. The frontend job
+  # owns the node work. They run in parallel, so the wall clock is the
+  # slower of the two instead of their sum.
+  backend:
+    name: Backend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,6 +52,9 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
+      # The contract check builds the backend with the embed-frontend
+      # feature, and that build embeds the built assets — so this job needs
+      # node and the frontend build, not only cargo.
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -92,27 +100,22 @@ jobs:
           sudo apt-get install -y --no-install-recommends ffmpeg
           ffprobe -version
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            playwright-
+      - name: Build the frontend assets
+        run: just frontend-build
 
-      - name: Install Playwright browsers
-        run: npx playwright install chromium
-        working-directory: frontend
+      - name: Check (backend, utils, API contract)
+        run: |
+          just backend-check
+          just utils-check
+          just openapi-check
 
-      - name: Check (format + lints)
-        run: just check
+      - name: Test (backend, utils)
+        run: |
+          just backend-test
+          just utils-test
 
-      - name: Test
-        run: just test
-
-  test-release-build:
-    if: github.event_name != 'pull_request'
-    needs: [checks-n-tests]
+  frontend:
+    name: Frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -121,6 +124,13 @@ jobs:
         uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
           tool: just
+
+      # The end-to-end suite runs against a real backend, so this job builds
+      # one. It runs in parallel with the backend job instead of waiting for
+      # it: the compile overlaps the backend's own work rather than
+      # following it.
+      - name: Add Rust
+        run: rustup component add clippy rustfmt
 
       - name: Rust cache
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -136,14 +146,6 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      # The release run uses the same test runner as the checks job.
-      - name: Install cargo-nextest
-        run: |
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          export PATH="$HOME/.local/bin:$PATH"
-          just install-nextest
-          cargo nextest --version
-
       - name: Cache Playwright browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -156,8 +158,18 @@ jobs:
         run: npx playwright install chromium
         working-directory: frontend
 
-      # Same requirements as the checks job: the release build runs the same
-      # test suite, so the pinned ExifTool has to be on PATH here too.
+      # The video pipeline spawns ffprobe and ffmpeg; the runner image ships
+      # neither.
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          ffprobe -version
+
+      # The scenarios generate their fixture images through snapfab, which
+      # spawns ExifTool to write the metadata (the backend reads metadata
+      # in-process and never spawns it). Without it the fixtures come out
+      # empty and the scenarios fail on missing media.
       - name: Install ExifTool
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
@@ -165,14 +177,15 @@ jobs:
           just install-exiftool
           exiftool -ver
 
-      # Same requirement as the checks job: the release build runs the same
-      # video pipeline and video scenarios, so ffprobe and ffmpeg have to be
-      # on PATH here too.
-      - name: Install ffmpeg
+      # The docs gates ride along with the frontend job: they need the same
+      # node_modules (prettier) and take seconds.
+      - name: Check (frontend, docs)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          ffprobe -version
+          just frontend-check
+          just docs-check
+          just plan-lint
 
-      - name: Build and test release
-        run: just test-release
+      - name: Test (frontend)
+        run: |
+          just frontend-vitest
+          just frontend-playwright
