@@ -58,8 +58,12 @@ Using users.redb at /var/lib/picasu/auth/users.redb
 or, when the file is not there:
 
 ```
-Could not find users.redb at /var/lib/picasu/auth/users.redb; set location via PICASU_DATA_HOME or --userdb
+Could not find users.redb; set location via PICASU_DATA_HOME or --userdb
 ```
+
+The message names the file and the two ways to point at it, but not the
+path that was not there: naming it reads as "I looked there and it was
+missing", which is not what happened.
 
 `user list`, `user mod`, `user del` and `user passwd` need an existing
 store and fail when it is missing — an empty table would claim that no users

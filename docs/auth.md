@@ -339,11 +339,16 @@ crash cannot leave a new password with live old tokens. The signing secret
 (`auth_key`) is the global epoch: rotating it invalidates every token at
 once, because no signature verifies any more.
 
-Everything the server no longer needs is gone with the session list: there
-is no live-session inventory, no stored invite record beyond the
-revocation that marks one used, and no server-side copy of the identity —
-existence, role and password come from the user store, so a user
-provisioned offline by `picasu-cmd` is a user like any other.
+What the session list took with it is gone: there is no live-session
+inventory, and no server-side copy of the identity — existence, role and
+password come from the user store, so a user provisioned offline by
+`picasu-cmd` is a user like any other.
+
+The **invites** and the **shares** stay memorized, on purpose. An invite is
+few and spends most of its life in the "used or revoked" state, so a list of
+them has to be maintained either way; a share token has to be listed and
+revoked by id on the admin page. Both live in the index database next to the
+revocation list, and neither is identity.
 
 ### User store consistency model
 
