@@ -18,14 +18,20 @@ Make sure the following software is installed on your system:
 
 - **ffmpeg**: Required at runtime for video files — the backend shells out to
   `ffmpeg` (thumbnail, compression) and `ffprobe` (dimensions, container
-  metadata), which ship with it. Install via your system's package manager.
-  For Ubuntu, use APT:
+  metadata), which ship with it. Install the pinned static build without
+  root; it is the same build the release package ships, so the version the
+  tests run against is the version that reaches the admin's machine:
+
+  ```bash
+  just install-ffmpeg
+  ```
+
+  A system package works too, but then the tested ffmpeg and the shipped
+  one can differ. For Ubuntu, that is:
 
   ```bash
   sudo apt update && sudo apt install -y ffmpeg
   ```
-
-  For other Linux distributions, use the appropriate package manager (e.g., `dnf`, `yum`, `pacman`) and find the corresponding package name for installation.
 
 - **ExifTool** (development and tests only): snapfab (`utils/snapfab`), the
   fixture generator behind the test suite, writes fixture metadata with

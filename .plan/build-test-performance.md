@@ -270,6 +270,28 @@ The release-profile job now lives in the release workflow, where the
 optimized build that is about to ship is tested before it is packaged. The
 main pipeline is the split jobs only: ~6 min instead of ~20 min.
 
+## The binaries the CI installs
+
+The CI used to install unpinned binaries: `cargo install cargo-deny` (a
+source build), the plan tool (a source build from git), the runner's apt
+ffmpeg, and — in the release job — the static ffmpeg from a _floating_ URL
+at packaging time. That last one put an untested binary in the admin's
+hands: CI tested the runner's ffmpeg, the package shipped whatever the URL
+served that day.
+
+Every tool is now installed from a pinned release with a checked digest:
+
+| tool       | source                                       | pinned by        |
+| ---------- | -------------------------------------------- | ---------------- |
+| nextest    | the prebuilt release                         | version + sha256 |
+| cargo-deny | the prebuilt release                         | version + sha256 |
+| exiftool   | the pinned distribution                      | version + sha256 |
+| ffmpeg     | the pinned static build (the one that ships) | version + sha256 |
+
+The ffmpeg install is the one with teeth: the release package now ships
+the very copy the release-mode tests ran against, and the floating URL is
+gone.
+
 ## Decisions
 
 - 2026-10-22: adopted candidates 1-5 (nextest, the double `npm ci`, the

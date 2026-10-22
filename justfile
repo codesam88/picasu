@@ -313,6 +313,24 @@ exiftool_sha256 := "668ea3acececb7235fbd0f4900e72d5f12c9b07e5c778fd36cb1e9b5828f
 install-exiftool:
     ./scripts/install-exiftool.sh "{{ exiftool_version }}" "{{ exiftool_sha256 }}"
 
+# Pinned static ffmpeg build.
+#
+# The backend spawns ffmpeg (video thumbnails) and ffprobe (video metadata),
+# and the release package ships the same static build. Pinning it here means
+# the ffmpeg the tests run against is the ffmpeg that reaches the admin's
+# machine, and that the digest is checked rather than whatever the URL
+# serves today.
+#
+# The version and its digest move together: the tarball is fetched from the
+# versioned release URL and verified against the digest below.
+ffmpeg_version := "7.0.2"
+ffmpeg_sha256 := "abda8d77ce8309141f83ab8edf0596834087c52467f6badf376a6a2a4c87cf67"
+
+# Install pinned ffmpeg (idempotent)
+[group('global')]
+install-ffmpeg:
+    ./scripts/install-ffmpeg.sh "{{ ffmpeg_version }}" "{{ ffmpeg_sha256 }}"
+
 # Pinned cargo-nextest (the backend test runner).
 #
 # nextest runs one process per test, so the backend suite runs in parallel
@@ -356,7 +374,7 @@ install-cargo-deny:
 
 # Install dev tools
 [group('global')]
-install-dev: install-nextest install-cargo-deny install-exiftool install-oasdiff install-dylint install-schemathesis
+install-dev: install-nextest install-cargo-deny install-ffmpeg install-exiftool install-oasdiff install-dylint install-schemathesis
     npm ci --prefix frontend
 
 # Build frontend then backend (dev build)
