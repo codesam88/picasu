@@ -758,7 +758,7 @@ mod tests {
         .expect("insert hash-less entry");
         let store = UserStore::load(&path).expect("load");
         assert!(!store.verify("ghost", &test_password("ghost")));
-        assert!(!store.verify("ghost", ""));
+        assert!(!store.verify("ghost", &String::new()));
         assert_store_parses(&path);
     }
 
