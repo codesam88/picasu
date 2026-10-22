@@ -14,38 +14,41 @@ This will create a folder called `./picasu`.
 
 ### 2. Install Dependencies
 
-Make sure the following software is installed on your system:
+**Development and tests run against pinned versions.** The external
+binaries the test suite needs are installed from a pinned release with a
+checked digest, so a test run is reproducible and the version the tests
+exercise is the version the release workflow packages:
 
-- **ffmpeg**: Required at runtime for video files — the backend shells out to
-  `ffmpeg` (thumbnail, compression) and `ffprobe` (dimensions, container
-  metadata), which ship with it. Install the pinned static build without
-  root; it is the same build the release package ships, so the version the
-  tests run against is the version that reaches the admin's machine:
+```bash
+just setup-dev    # installs every pinned tool, including ffmpeg and ExifTool
+```
+
+- **ffmpeg**: the backend shells out to `ffmpeg` (thumbnail, compression) and
+  `ffprobe` (dimensions, container metadata) for video files. Install the
+  pinned static build without root:
 
   ```bash
   just install-ffmpeg
   ```
 
-  A system package works too, but then the tested ffmpeg and the shipped
-  one can differ. For Ubuntu, that is:
-
-  ```bash
-  sudo apt update && sudo apt install -y ffmpeg
-  ```
-
-- **ExifTool** (development and tests only): snapfab (`utils/snapfab`), the
-  fixture generator behind the test suite, writes fixture metadata with
-  `exiftool`. The backend itself reads and writes metadata in-process
-  (kamadak-exif + xmpkit) and never spawns it, so running the app does not
-  need ExifTool — `cargo test -p snapfab` (part of `just test`) does.
-  Install the pinned release without root:
+- **ExifTool**: snapfab (`utils/snapfab`), the fixture generator behind the
+  test suite, writes fixture metadata with `exiftool`. The backend itself
+  reads and writes metadata in-process (kamadak-exif + xmpkit) and never
+  spawns it, so **running the app does not need ExifTool** — only
+  `cargo test -p snapfab` (part of `just test`) does. Install the pinned
+  release without root:
 
   ```bash
   just install-exiftool
   ```
 
-  or use your distribution's package (Debian/Ubuntu:
-  `sudo apt install libimage-exiftool-perl`).
+  A distribution's package works too (Debian/Ubuntu:
+  `sudo apt install libimage-exiftool-perl`), but then the tested ExifTool
+  and the developer's can differ.
+
+**A deployment does not need either of these.** The server needs ffmpeg at
+runtime and nothing else; see [Deploying a release](#deploying-a-release)
+for the recommended way to get it.
 
 - **Rust**: Install Rust using the official installer:
 
@@ -83,6 +86,48 @@ cargo run --release
 ```
 
 You can now access the app via [http://127.0.0.1:5673](http://127.0.0.1:5673) or [http://127.0.0.1](http://127.0.0.1):\<your_port> if you configured a custom port in Rocket.toml.
+
+---
+
+## Deploying a release
+
+A release publishes two packages:
+
+| artifact                             | contains                              | use it when                                   |
+| ------------------------------------ | ------------------------------------- | --------------------------------------------- |
+| `picasu-linux-<version>.tar.gz`      | the server                            | you install ffmpeg from your own distribution |
+| `picasu-linux-<version>-bundled.tgz` | the server + the pinned static ffmpeg | you want the exact build the release tested   |
+
+**The plain package is the recommended one.** The only runtime dependency
+is ffmpeg, and your distribution ships a version it supports and updates:
+
+```bash
+sudo apt update && sudo apt install -y ffmpeg   # Debian/Ubuntu
+# dnf install ffmpeg / pacman -S ffmpeg / …     # other distributions
+```
+
+Unpack the server and run it:
+
+```bash
+tar -xzf picasu-linux-<version>.tar.gz
+cd picasu-linux
+./picasu
+```
+
+The bundled package is the alternative for a host without a package manager
+for ffmpeg, or when the exact tested build matters more than the
+distribution's. It carries the pinned static ffmpeg and ffprobe in `bin/`,
+so the server finds them next to itself:
+
+```bash
+tar -xzf picasu-linux-<version>-bundled.tgz
+cd picasu-linux
+PATH="$PWD/bin:$PATH" ./picasu
+```
+
+The bundled ffmpeg is a fixed version: it does not move with your
+distribution's security updates, which is the reason the plain package is
+the default.
 
 ---
 

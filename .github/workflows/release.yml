@@ -91,27 +91,32 @@ jobs:
           just backend-test-release
           PICASU_BINARY=target/release/picasu just frontend-playwright
 
-      # The package ships the pinned static build that was just installed
-      # and tested — not a second download from a floating URL, which would
-      # put an untested binary in the admin's hands.
-      - name: Prepare Release Package
+      # Two packages:
+      #
+      # - the plain one carries the server only: ffmpeg comes from the
+      #   admin's own distribution, the version their system supports and
+      #   updates.
+      # - the bundled one adds the pinned static ffmpeg that was installed
+      #   and tested above — the same copy, not a second download from a
+      #   floating URL, which would put an untested binary in the admin's
+      #   hands.
+      - name: Prepare Release Packages
         run: |
-          mkdir -p final_package/picasu-linux/bin
+          mkdir -p package/picasu-linux/bin
 
-          cp backend/target/release/picasu final_package/picasu-linux/
+          cp backend/target/release/picasu package/picasu-linux/
+          chmod +x package/picasu-linux/picasu
 
-          cp "$HOME/.local/bin/ffmpeg" final_package/picasu-linux/bin/
-          cp "$HOME/.local/bin/ffprobe" final_package/picasu-linux/bin/
+          cp "$HOME/.local/bin/ffmpeg" package/picasu-linux/bin/
+          cp "$HOME/.local/bin/ffprobe" package/picasu-linux/bin/
+          chmod +x package/picasu-linux/bin/ffmpeg
+          chmod +x package/picasu-linux/bin/ffprobe
 
-          chmod +x final_package/picasu-linux/picasu
-          chmod +x final_package/picasu-linux/bin/ffmpeg
-          chmod +x final_package/picasu-linux/bin/ffprobe
+          ./package/picasu-linux/bin/ffmpeg -version | head -n 1
 
-          ./final_package/picasu-linux/bin/ffmpeg -version | head -n 1
-
-      - name: Create Tarball
+      - name: Create Tarballs
         run: |
-          cd final_package
+          cd package
 
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
             VERSION="${{ github.ref_name }}"
@@ -121,20 +126,29 @@ jobs:
 
           echo "Detected version: $VERSION"
 
-          TAR_NAME="picasu-linux-$VERSION.tar.gz"
+          # The plain package: the server, with ffmpeg from the distribution.
+          mkdir -p plain
+          cp picasu-linux/picasu plain/
+          tar -czf "../picasu-linux-$VERSION.tar.gz" --transform 's,^plain,picasu-linux,' plain
 
-          tar -czf "../$TAR_NAME" picasu-linux
+          # The bundled package: the server plus the pinned static ffmpeg.
+          tar -czf "../picasu-linux-$VERSION-bundled.tgz" picasu-linux
 
-          echo "ASSET_PATH=$TAR_NAME" >> $GITHUB_ENV
+          echo "ASSET_PATH=picasu-linux-$VERSION.tar.gz" >> $GITHUB_ENV
+          echo "ASSET_PATH_BUNDLED=picasu-linux-$VERSION-bundled.tgz" >> $GITHUB_ENV
 
       - name: Upload Artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: picasu-linux-package
-          path: ${{ env.ASSET_PATH }}
+          path: |
+            picasu-linux-*.tar.gz
+            picasu-linux-*-bundled.tgz
 
       - name: Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@efb35369e0ad2afab649f228072c1b0d510eae64 # v3.0.3
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ${{ env.ASSET_PATH }}
+          files: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.ASSET_PATH_BUNDLED }}

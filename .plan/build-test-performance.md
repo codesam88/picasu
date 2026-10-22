@@ -292,6 +292,18 @@ The ffmpeg install is the one with teeth: the release package now ships
 the very copy the release-mode tests ran against, and the floating URL is
 gone.
 
+## The ffmpeg strategy (dev, test, deployment)
+
+Development and tests run against a **pinned** static ffmpeg (7.0.2, digest
+checked) — the same copy the release-mode tests exercise. A deployment
+does not need it: the plain release package carries the server only, and
+ffmpeg comes from the admin's own distribution, the version their system
+supports and updates. The pinned build is offered as a separate
+`picasu-linux-<version>-bundled.tgz` for hosts without a package manager
+for ffmpeg, or where the exact tested build matters more than the
+distribution's updates. ExifTool stays development-only: the backend reads
+and writes metadata in-process and never spawns it.
+
 ## Decisions
 
 - 2026-10-22: adopted candidates 1-5 (nextest, the double `npm ci`, the
