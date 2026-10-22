@@ -22,7 +22,14 @@ based on filesystem updates. This results in a few desirable features:
 
 See [docs/linux.md](docs/linux.md).
 
-2. Docker
+2. A release package
+
+Every release publishes `picasu-linux-<version>.tar.gz` (the server; install
+ffmpeg from your own distribution) and
+`picasu-linux-<version>-bundled.tgz` (the server plus the pinned static
+ffmpeg). See [Deploying a release](docs/linux.md#deploying-a-release).
+
+3. Docker
 
 ```bash
 git clone https://github.com/tedsamhain/picasu.git
