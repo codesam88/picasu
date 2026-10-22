@@ -60,7 +60,7 @@ pub fn reset_auth_key_handler(
 #[cfg(test)]
 mod tests {
     use rocket::http::{ContentType, Cookie, Status};
-    use serde_json::{Value, json};
+    use serde_json::Value;
 
     use crate::tests::bootstrap::{cookie, lock, seed, setup};
 

@@ -336,12 +336,11 @@ pub fn cookie(id: &str, admin: bool) -> rocket::http::Cookie<'static> {
 /// directly to the passwd file. Each given password pays one PBKDF2 round.
 pub fn seed(id: &str, admin: bool, password: Option<&str>) {
     let generated;
-    let pw = match password {
-        Some(pw) => pw,
-        None => {
-            generated = crate::tests::fixtures::test_password(id);
-            generated.as_str()
-        }
+    let pw = if let Some(pw) = password {
+        pw
+    } else {
+        generated = crate::tests::fixtures::test_password(id);
+        generated.as_str()
     };
     crate::auth::users::provision_user(id, pw, admin).expect("seed user");
 }

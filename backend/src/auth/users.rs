@@ -290,11 +290,8 @@ pub fn get_admin(id: &str) -> Result<Option<bool>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::storage::db::TREE;
     use crate::tests::bootstrap::*;
     use crate::tests::fixtures::{test_password, test_password_padded};
-    use redb::{ReadableTable, TableDefinition};
 
     const ROUNDTRIP_ID: &str = "s2a-roundtrip-user";
     const ADMIN_ID: &str = "s2a-admin-user";
