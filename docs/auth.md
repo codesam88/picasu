@@ -229,6 +229,9 @@ claim and is decoded through a typed entry point that rejects a mismatched
 `typ`; the claims structs also set `deny_unknown_fields`, so the three
 cross-type decode paths fail closed (see Finding F1, now fixed).
 
+What the server remembers about each of them — and why — is in
+[Auth state model](#auth-state-model).
+
 ### Share resolution
 
 `GuardShare` tries three sources in order:
@@ -315,17 +318,59 @@ expiry.
 
 ### Auth state model
 
-Authentication keeps **no session state**. A token is a self-contained
-capability: it carries the role, the expiry, a `jti` and the user's token
-version. Two files hold what the server must remember, and they have
-different lifetimes:
+The rule: **a token is a capability, and the server remembers only what it
+must.** A credential that the server keeps no state for can be checked on
+its own; a credential whose server-side record exists can be listed and
+revoked by id.
 
-| File                           | Holds                                                                                                           | Lifetime                          |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| `<DATA_HOME>/auth/users.redb`  | the **identity record**: `username ⇒ {hash?, admin, home, ver}`                                                 | persistent — the userdb of record |
-| `<DATA_HOME>/db/index_v5.redb` | the **revocation list**: capabilities that must not work any more, each with the expiry of the thing it revokes | ephemeral — runtime state         |
+| Credential                                        | Carries                                        | Server state about it                            |
+| ------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------ |
+| identity token (`Claims` with `Role::User`, 14 d) | role, `exp`, `jti`, `ver`                      | the identity record + the revocation list        |
+| share token (`Claims` with `Role::Share`, 14 d)   | the share record and its album                 | the album's `shareList`                          |
+| snapshot token (`ClaimsTimestamp`, 300 s)         | the share policy, the timestamp, `exp`         | none                                             |
+| serving token (`ClaimsHash`, 300 s)               | the hash, the asset id, `allowOriginal`, `exp` | none                                             |
+| invite token (128-bit bearer, 7 d by default)     | nothing — it _is_ the credential               | the invite record (hash-keyed, until it expires) |
 
-The guard checks a presented token against both:
+**The identity token is stateless.** The server keeps no session list: a
+token is accepted because it carries the role, the expiry and the user's
+token version, not because the server remembers that the session exists.
+The list it would replace bought nothing. An unused device is covered by
+the token expiry; a suspected compromise is covered by a password change or
+an explicit "revoke all sessions", both of which bump the user's version.
+And a positive allowlist makes a token insufficient on its own — the `jti`
+is not a secret, so anyone able to sign a token can mint one, and the
+allowlist added bookkeeping rather than security.
+
+What is left has to stay revocable, so the server keeps the _negative_ of
+what the allowlist held: a revocation list, each entry carrying the expiry
+of the thing it revokes.
+
+**The snapshot and serving tokens are stateless.** They live for minutes and
+are scoped to one artifact. The share policy they carry is re-read from the
+album record on every request (`revalidate_share_record`), so a share that
+was disabled stops yielding refreshed capabilities.
+
+**The invite token is memorized.** An invite is a random 128-bit bearer shown
+to its bearer exactly once; only its blake3 hash is stored, keyed by the
+hash hex, so a leaked database row cannot be replayed as a token. Invites
+are few and spend most of their life in the "used or revoked" state, so a
+list of them has to be maintained either way — a revocation entry would
+hold the same ids and nothing more. The record carries what the revocation
+entry cannot: who created the invite, and which user redeemed it.
+
+**The share token is memorized.** A share binds an album to a policy
+(password, expiry, flags) and the admin page lists the shares and revokes
+them by id. The share record is the thing the admin manages; a revocation
+entry would only say that one is dead.
+
+Two files hold this state, and they have different lifetimes:
+
+| File                           | Holds                                                             | Lifetime                          |
+| ------------------------------ | ----------------------------------------------------------------- | --------------------------------- |
+| `<DATA_HOME>/auth/users.redb`  | the **identity record**: `username ⇒ {hash?, admin, home, ver}`   | persistent — the userdb of record |
+| `<DATA_HOME>/db/index_v5.redb` | the **revocation list**, the invite records and the share records | ephemeral — runtime state         |
+
+The guard checks a presented identity token against both:
 
 1. the identity record — the user must exist, and the token's `ver` must be
    the user's current version;
@@ -339,16 +384,10 @@ crash cannot leave a new password with live old tokens. The signing secret
 (`auth_key`) is the global epoch: rotating it invalidates every token at
 once, because no signature verifies any more.
 
-What the session list took with it is gone: there is no live-session
-inventory, and no server-side copy of the identity — existence, role and
-password come from the user store, so a user provisioned offline by
-`picasu-cmd` is a user like any other.
-
-The **invites** and the **shares** stay memorized, on purpose. An invite is
-few and spends most of its life in the "used or revoked" state, so a list of
-them has to be maintained either way; a share token has to be listed and
-revoked by id on the admin page. Both live in the index database next to the
-revocation list, and neither is identity.
+Identity lives in exactly one place: existence, role and password come from
+the user store, and the server keeps no second copy of them. A user
+provisioned offline by `picasu-cmd` is therefore a user like any other — it
+logs in, and it appears in the admin listing.
 
 ### User store consistency model
 
