@@ -91,14 +91,15 @@ jobs:
           exiftool -ver
 
       # Video metadata (ffprobe) and video thumbnails (ffmpeg) are external
-      # binaries the backend spawns with no in-process fallback. The runner
-      # image ships neither, and without them the video pipeline and every
-      # video scenario fail.
+      # binaries the backend spawns with no in-process fallback. The pinned
+      # static build is the one the release package ships, so the tests run
+      # against the ffmpeg that reaches the admin's machine.
       - name: Install ffmpeg
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          ffprobe -version
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install-ffmpeg
+          ffmpeg -version
 
       - name: Build the frontend assets
         run: just frontend-build
@@ -158,13 +159,14 @@ jobs:
         run: npx playwright install chromium
         working-directory: frontend
 
-      # The video pipeline spawns ffprobe and ffmpeg; the runner image ships
-      # neither.
+      # The video pipeline spawns ffprobe and ffmpeg. The pinned static build
+      # is the one the release package ships.
       - name: Install ffmpeg
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          ffprobe -version
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install-ffmpeg
+          ffmpeg -version
 
       # The scenarios generate their fixture images through snapfab, which
       # spawns ExifTool to write the metadata (the backend reads metadata

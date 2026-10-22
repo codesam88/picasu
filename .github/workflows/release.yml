@@ -63,13 +63,15 @@ jobs:
           just install-nextest
           cargo nextest --version
 
-      # The video pipeline spawns ffprobe and ffmpeg; the runner image ships
-      # neither. (The packaged release carries its own static build.)
+      # The video pipeline spawns ffprobe and ffmpeg. The pinned static build
+      # is the one the package ships, so the release-mode tests run against
+      # the ffmpeg that reaches the admin's machine.
       - name: Install ffmpeg
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg
-          ffprobe -version
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install-ffmpeg
+          ffmpeg -version
 
       - name: Install Playwright browsers
         run: npx playwright install chromium
@@ -89,19 +91,17 @@ jobs:
           just backend-test-release
           PICASU_BINARY=target/release/picasu just frontend-playwright
 
+      # The package ships the pinned static build that was just installed
+      # and tested — not a second download from a floating URL, which would
+      # put an untested binary in the admin's hands.
       - name: Prepare Release Package
         run: |
-          echo "Downloading FFmpeg static build..."
-          wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
-
-          tar -xf ffmpeg-release-amd64-static.tar.xz
-
           mkdir -p final_package/picasu-linux/bin
 
           cp backend/target/release/picasu final_package/picasu-linux/
 
-          cp ffmpeg-*-amd64-static/ffmpeg final_package/picasu-linux/bin/
-          cp ffmpeg-*-amd64-static/ffprobe final_package/picasu-linux/bin/
+          cp "$HOME/.local/bin/ffmpeg" final_package/picasu-linux/bin/
+          cp "$HOME/.local/bin/ffprobe" final_package/picasu-linux/bin/
 
           chmod +x final_package/picasu-linux/picasu
           chmod +x final_package/picasu-linux/bin/ffmpeg
