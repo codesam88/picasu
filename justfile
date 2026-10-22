@@ -20,15 +20,18 @@ backend-check:
     cd backend && cargo fmt --check
     cargo clippy -- -D warnings
 
-# cargo test (test-only PBKDF effort: full KDF cost would dominate the suite)
+# Backend tests via cargo-nextest: one process per test, so the suite runs
+# in parallel instead of serializing on the shared test data home (5x on an
+# 8-core box). The doctests run separately: nextest does not run them.
+# Test-only PBKDF effort: full KDF cost would dominate the suite.
 [group('backend')]
 backend-test: frontend-build-maybe
-    PICASU_PBKDF_ITERATIONS="1000" cd backend && cargo test
+    cd backend && PICASU_PBKDF_ITERATIONS="1000" sh -c 'command -v cargo-nextest >/dev/null || { echo "cargo-nextest is missing — run: just install-nextest" >&2; exit 1; }; cargo nextest run && cargo test --doc'
 
-# cargo test (release)
+# Backend tests in release mode (same runner as backend-test)
 [group('backend')]
 backend-test-release: frontend-build-maybe
-    cd backend && cargo test --release
+    cd backend && sh -c 'command -v cargo-nextest >/dev/null || { echo "cargo-nextest is missing — run: just install-nextest" >&2; exit 1; }; cargo nextest run --release && cargo test --doc --release'
 
 # cargo deny
 [group('backend')]
@@ -55,7 +58,7 @@ frontend-format:
 # prettier --check + vue-tsc + eslint
 [group('frontend')]
 frontend-check:
-    cd frontend && npx --no-install prettier --check . && npx --no-install vue-tsc --noEmit && npx --no-install vue-tsc --noEmit --project tsconfig.node.json && npx --no-install eslint .
+    cd frontend && npx --no-install prettier --check . && (npx --no-install vue-tsc --noEmit & p1=$!; npx --no-install vue-tsc --noEmit --project tsconfig.node.json & p2=$!; wait $p1 && wait $p2) && npx --no-install eslint .
 
 # vitest run
 [group('frontend')]
@@ -80,10 +83,10 @@ frontend-playwright: frontend-build-maybe
 [group('frontend')]
 frontend-test: frontend-vitest frontend-playwright
 
-# npm run build (npm ci + vue-tsc + vite build)
+# npm run build (vue-tsc + vite build); installs the deps only if missing
 [group('frontend')]
 frontend-build:
-    cd frontend && npm run build
+    cd frontend && (test -d node_modules || npm ci) && npm run build
 
 [private]
 frontend-build-maybe:
@@ -204,12 +207,12 @@ openapi-breakcheck:
 plan-format:
     cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../.plan/**/*.md'
 
-# Validate .plan task frontmatter structure
+# Validate .plan task frontmatter against .plan/.schema.json
 [group('tooling')]
 plan-lint:
-    plan --root {{justfile_directory()}} lint
+    node {{justfile_directory()}}/scripts/plan-lint.mjs {{justfile_directory()}}
 
-# run plan <args>
+# run plan <args> — the board view; needs `just install-plan`
 [group('tooling')]
 plan *args:
     plan --root {{justfile_directory()}} {{args}}
@@ -272,7 +275,10 @@ setup-dev: install-dev
     git config core.hooksPath .githooks
     @echo "✓ Pre-commit hook enabled — ready to develop"
 
-# Install plan tool from tablethat (pinned version)
+# Install plan tool from tablethat (pinned version).
+#
+# The tool is the board view only (`just plan`); the frontmatter gate runs
+# without it (see `plan-lint`), so CI does not install it.
 [group('global')]
 install-plan:
     cargo install --git https://github.com/tedsamhain/tablethat --rev 7853459
@@ -299,10 +305,50 @@ exiftool_sha256 := "668ea3acececb7235fbd0f4900e72d5f12c9b07e5c778fd36cb1e9b5828f
 install-exiftool:
     ./scripts/install-exiftool.sh "{{ exiftool_version }}" "{{ exiftool_sha256 }}"
 
+# Pinned cargo-nextest (the backend test runner).
+#
+# nextest runs one process per test, so the backend suite runs in parallel
+# instead of serializing on the shared test data home. It publishes prebuilt
+# binaries per platform, so the dev setup and CI install the binary rather
+# than compiling it from source (`cargo install cargo-nextest` takes
+# minutes).
+#
+# The version and its per-platform checksums move together: upstream
+# publishes the binaries and a .sha256 sidecar per platform on the GitHub
+# release.
+nextest_version := "0.9.138"
+nextest_sha256_linux_x86_64 := "3793bf0c27607b196f502c39b2108f571de89fcda7586ae6beefa11ee177b216"
+nextest_sha256_linux_aarch64 := "e1c85dbe02dcf5b963803b3f96f4f561757f5c37cab68c932411dea20d57284e"
+nextest_sha256_apple_darwin := "124baa34d160355fa8a8bed053856270cfcf132659e76a0bc8bbcdfc093266b7"
+
+# Install pinned cargo-nextest (idempotent)
+[group('global')]
+install-nextest:
+    ./scripts/install-nextest.sh "{{ nextest_version }}" "{{ nextest_sha256_linux_x86_64 }}" "{{ nextest_sha256_linux_aarch64 }}" "{{ nextest_sha256_apple_darwin }}"
+
+# Pinned cargo-deny (the dependency audit).
+#
+# The audit job used to build it from source on every run
+# (`cargo install cargo-deny` — minutes). cargo-deny publishes prebuilt
+# binaries per platform, so the binary is installed instead.
+#
+# The version and its per-platform checksums move together: upstream
+# publishes the binaries and a .sha256 sidecar per platform on the GitHub
+# release.
+cargo_deny_version := "0.20.2"
+cargo_deny_sha256_linux_x86_64 := "9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f"
+cargo_deny_sha256_linux_aarch64 := "995c82be0defc7a025cae49a2aa2644ce8245c9a3318fc4103907c6a285e8c7d"
+cargo_deny_sha256_apple_x86_64 := "248da7f581724e470071990c088ffc55c811981715f4cbdb258621fb79f8b7a6"
+cargo_deny_sha256_apple_aarch64 := "fe67d82a10d8597a3549364cb733a3f9cc1bfff9031b7ae46384a9f2a72090c3"
+
+# Install pinned cargo-deny (idempotent)
+[group('global')]
+install-cargo-deny:
+    ./scripts/install-cargo-deny.sh "{{ cargo_deny_version }}" "{{ cargo_deny_sha256_linux_x86_64 }}" "{{ cargo_deny_sha256_linux_aarch64 }}" "{{ cargo_deny_sha256_apple_x86_64 }}" "{{ cargo_deny_sha256_apple_aarch64 }}"
+
 # Install dev tools
 [group('global')]
-install-dev: install-plan install-exiftool install-oasdiff install-dylint install-schemathesis
-    cargo install cargo-deny
+install-dev: install-nextest install-cargo-deny install-exiftool install-oasdiff install-dylint install-schemathesis
     npm ci --prefix frontend
 
 # Build frontend then backend (dev build)

@@ -35,5 +35,12 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: cargo install cargo-deny
+      # cargo-deny is installed from the pinned prebuilt release: the
+      # source build (`cargo install cargo-deny`) took minutes on every run.
+      - name: Install cargo-deny
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install-cargo-deny
+          cargo deny --version
       - run: just audit

@@ -149,6 +149,7 @@ pub fn clear() -> Result<(), AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::bootstrap::{lock, setup};
 
     fn key(name: &str) -> String {
         format!("test-revocation:{name}")
@@ -156,6 +157,8 @@ mod tests {
 
     #[test]
     fn a_revoked_key_reads_as_revoked() {
+        let _g = lock();
+        let _client = setup();
         let k = key("revoked");
         revoke(&k, now_secs() + 3600).expect("revoke");
         assert!(is_revoked(&k));
@@ -163,11 +166,15 @@ mod tests {
 
     #[test]
     fn an_unknown_key_reads_as_not_revoked() {
+        let _g = lock();
+        let _client = setup();
         assert!(!is_revoked(&key("unknown")));
     }
 
     #[test]
     fn an_expired_revocation_no_longer_counts() {
+        let _g = lock();
+        let _client = setup();
         let k = key("expired");
         revoke(&k, now_secs() - 1).expect("revoke");
         assert!(

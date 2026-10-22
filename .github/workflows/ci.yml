@@ -58,8 +58,16 @@ jobs:
         run: npm ci
         working-directory: frontend
 
-      - name: Install plan tool
-        run: just install-plan
+      # The backend suite runs under cargo-nextest (one process per test, so
+      # it runs in parallel instead of serializing on the shared test data
+      # home). The prebuilt binary is installed from the pinned release, not
+      # compiled from source — `cargo install cargo-nextest` takes minutes.
+      - name: Install cargo-nextest
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install-nextest
+          cargo nextest --version
 
       # snapfab writes fixture metadata through ExifTool, an external binary
       # the backend itself never spawns (the backend reads metadata in-process).
@@ -127,6 +135,14 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
         working-directory: frontend
+
+      # The release run uses the same test runner as the checks job.
+      - name: Install cargo-nextest
+        run: |
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          just install-nextest
+          cargo nextest --version
 
       - name: Cache Playwright browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
