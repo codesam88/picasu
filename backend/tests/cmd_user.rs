@@ -388,8 +388,12 @@ fn pin7_userdb_flag_selects_the_store_file() {
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains(&format!("users.redb at {}", store.display())),
+        stderr.contains("users.redb"),
         "the CLI must report the store it works on, stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains(&store.display().to_string()),
+        "the CLI must report where it creates the store, stderr: {stderr}"
     );
 }
 
@@ -411,8 +415,12 @@ fn pin8_data_home_env_selects_the_store_under_the_auth_dir() {
     assert!(store.exists(), "the store must live under the data home");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains(&format!("users.redb at {}", store.display())),
+        stderr.contains("users.redb"),
         "the CLI must report the store it works on, stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains(&store.display().to_string()),
+        "the CLI must report where it creates the store, stderr: {stderr}"
     );
 }
 
@@ -451,8 +459,12 @@ fn pin9_config_file_data_home_selects_the_store() {
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains(&format!("users.redb at {}", store.display())),
+        stderr.contains("users.redb"),
         "the CLI must report the store it works on, stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains(&store.display().to_string()),
+        "the CLI must report where it creates the store, stderr: {stderr}"
     );
 }
 
@@ -498,14 +510,17 @@ fn pin11_list_without_a_store_fails_and_names_the_location() {
         String::from_utf8_lossy(&out.stdout)
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
-    let store = store_path(dir.path());
     assert!(
-        stderr.contains(&format!("could not find users.redb at {}", store.display())),
+        stderr.contains("could not find users.redb"),
         "the failure must name the store it looked for, stderr: {stderr}"
     );
     assert!(
         stderr.contains("set location via PICASU_DATA_HOME or --userdb"),
         "the failure must name both location options, stderr: {stderr}"
+    );
+    assert!(
+        !stderr.contains(&store_path(dir.path()).display().to_string()),
+        "the failure must not name a path that does not exist, stderr: {stderr}"
     );
 }
 

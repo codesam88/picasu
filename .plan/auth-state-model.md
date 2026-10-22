@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: backend
@@ -66,17 +66,22 @@ listing and the password-change route, so a user provisioned offline (by
 
 ## Writes
 
-| Event                    | Write                                           |
-| ------------------------ | ----------------------------------------------- |
-| login                    | none — mint the token with the record's `ver`   |
-| logout                   | revoke `session:<jti>` until the token's `exp`  |
-| password change          | bump `ver` in `users.redb`                      |
-| admin-role change        | bump `ver`                                      |
-| invalidate all tokens    | bump `ver`                                      |
-| user delete              | delete the identity row — no user, no access    |
-| invite redemption/revoke | revoke `invite:<id>` until the invite's expiry  |
-| share revoke             | revoke `share:<id>` until the share's expiry    |
-| secret rotation          | none — the new signature invalidates everything |
+| Event                 | Write                                           |
+| --------------------- | ----------------------------------------------- |
+| login                 | none — mint the token with the record's `ver`   |
+| logout                | revoke `session:<jti>` until the token's `exp`  |
+| password change       | bump `ver` in `users.redb`                      |
+| admin-role change     | bump `ver`                                      |
+| invalidate all tokens | bump `ver`                                      |
+| user delete           | delete the identity row — no user, no access    |
+| secret rotation       | none — the new signature invalidates everything |
+
+The **invites** and the **shares** stay memorized (owner decision
+2026-10-22): an invite is few and spends most of its life in the
+"used or revoked" state, so a list of them has to be maintained either
+way; a share token has to be listed and revoked by id on the admin page.
+Neither is identity, and both live in the index database next to the
+revocation list.
 
 ## Implementation steps (TDD, one slice per commit)
 
@@ -97,15 +102,16 @@ checks read the store, so a user provisioned offline can log in;
 `user invalidate <user>` bumps it alone; `user del` no longer purges
 sessions (there are none) — `--userdb` alone becomes a complete operation.
 
-**S4 — stateless invites.** The invite token becomes self-describing
-(signed); redemption and revocation write revocation entries; the stored
-invite records go; `GET /get/invites` goes.
+**S4 — stateless invites.** _Dropped (owner decision 2026-10-22):_ the
+invites stay memorized. Their storage and their redemption are unchanged;
+only the session-row write inside the redemption went with the session
+list.
 
-**S5 — stateless shares.** The album record's `share_list` goes; a revoked
-share is a revocation entry.
+**S5 — stateless shares.** _Dropped (owner decision 2026-10-22):_ the share
+tokens stay memorized — the admin page lists and revokes them by id.
 
-**S6 — docs.** `docs/auth.md` (the state model, the guard, the writes),
-`docs/design.md` (persistent record vs. ephemeral index),
+**S6 — docs.** _(done)_ `docs/auth.md` (the state model, the guard, the
+writes), `docs/design.md` (persistent record vs. ephemeral index),
 `docs/admin-cli.md` (the CLI's token control).
 
 ## Checks

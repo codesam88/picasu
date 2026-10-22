@@ -199,7 +199,7 @@ fn store_for_read(location: &UserStoreLocation) -> Result<PathBuf, String> {
         report_using(&location.path);
         Ok(location.path.clone())
     } else {
-        Err(not_found(&location.path))
+        Err(not_found())
     }
 }
 
@@ -210,7 +210,7 @@ fn store_for_write(location: &UserStoreLocation) -> PathBuf {
     if location.path.exists() {
         report_using(&location.path);
     } else {
-        eprintln!("{}", not_found(&location.path));
+        eprintln!("{}", not_found());
         eprintln!("creating a new store at {}", location.path.display());
     }
     location.path.clone()
@@ -224,11 +224,13 @@ fn report_using(path: &Path) {
     );
 }
 
-fn not_found(path: &Path) -> String {
+/// The store was not there. The message names the file and the two ways to
+/// point at it, but not the path that did not exist: naming it reads as
+/// "I looked there and it was missing", which is not what happened.
+fn not_found() -> String {
     format!(
-        "could not find {} at {}; set location via PICASU_DATA_HOME or --userdb",
+        "could not find {}; set location via PICASU_DATA_HOME or --userdb",
         store_location::USER_STORE_FILE_NAME,
-        path.display()
     )
 }
 

@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: backend
@@ -31,8 +31,9 @@ platform data dir → cwd. Two gaps follow from that:
   run — including `user add`, which would otherwise create a store in a
   guessed location.
 - The CLI reports the file it resolved: `Using users.redb at <path>` or
-  `Could not find users.redb at <path>; set location via PICASU_DATA_HOME
- or --userdb`.
+  `Could not find users.redb; set location via PICASU_DATA_HOME or
+--userdb` — the file and the two location options, without the path
+  that was not there.
 - A missing store fails the read commands (`list`, `mod`, `del`, `passwd`);
   `add` creates it (first-admin provisioning).
 

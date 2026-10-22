@@ -4,10 +4,13 @@
 //! only its blake3 hash is stored, keyed by the hash hex, so a leaked
 //! database row cannot be replayed as a token. Redemption compares the
 //! candidate hash against every stored key with [`subtle::ConstantTimeEq`]
-//! and marks the invite used in the same redb write transaction that
-//! inserts the new user record (`admin: false`). The password hash lives in
-//! the user store outside that transaction — a crash between the two halves
-//! fails safe, because login needs both.
+//! and marks the invite used in the same redb write transaction. The
+//! password hash lives in the user store, outside that transaction — a crash
+//! between the two halves fails safe, because login needs both.
+//!
+//! Invites are memorized on purpose: they are few, and they spend most of
+//! their life in the "used or revoked" state, so a list of them has to be
+//! maintained either way.
 
 use base64::{Engine as _, engine::general_purpose};
 use rand::{TryRng, rngs::SysRng};
@@ -261,10 +264,14 @@ pub fn revoke_invite(invite_id: &str) -> Result<bool, AppError> {
 
 /// Redeem `token` for `user_id` with `canonical` (already validated and
 /// trimmed password): in ONE redb write transaction, verify the token
-/// against every stored invite (constant-time compare), mark the invite
-/// used, and insert `UserRecord { admin: false, sessions: vec![] }`;
-/// then write the identity entry — hash included — to the user store in
-/// one read-modify-write.
+/// against every stored invite (constant-time compare) and mark the invite
+/// used; then write the identity entry — hash included — to the user store
+/// in one read-modify-write.
+///
+/// Invites stay memorized: they are few, and they spend most of their life
+/// in the "used or revoked" state, so a list of them has to be maintained
+/// either way. The share tokens stay memorized for the same reason — the
+/// admin page lists them and revokes them by id.
 ///
 /// The two stores are separate files, so no single transaction can span
 /// them; the order is fixed and fails safe. A crash after the redb
