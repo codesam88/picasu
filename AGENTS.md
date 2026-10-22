@@ -25,7 +25,7 @@ Picasu is a self-hosted photo gallery for millions of images. The repo has two i
 4. **Frontend sources** — `frontend/src/main.ts` (app bootstrap), `frontend/src/route/routes.ts` (URL structure), `frontend/src/store/` (Pinia stores), `frontend/src/components/` (Vue components) — see `docs/frontend.md` for the component tree.
 5. **Testing** — Review `docs/test-strategy.md` and `docs/playwright_generator.md` before extending or modifying test scenarios or test infratructure.
 
-The `.plan/` directory tracks pending and completed work. Run `plan list` to view the list of issues.
+The `.plan/` directory tracks pending and completed work. Run `plan list` to view the list of issues (the board tool is an opt-in install: `just install-plan`).
 
 ## Project Development Workflow
 

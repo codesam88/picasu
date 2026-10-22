@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm ci && vue-tsc --noEmit && vite build",
-    "build:only": "vue-tsc --noEmit && vite build",
+    "build": "vue-tsc --noEmit && vite build",
     "check": "npx vue-tsc --noEmit",
     "lint": "eslint .",
     "format:check": "prettier --check .",
