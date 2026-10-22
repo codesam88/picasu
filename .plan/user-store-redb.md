@@ -7,6 +7,15 @@ area: backend
 
 # User store: `users.redb` substrate + `picasu-cmd` admin CLI
 
+## Superseded (2026-10-22)
+
+The consistency model recorded below still describes a session list in the
+index database and a delete that purges sessions. Both are gone:
+`.plan/auth-state-model.md` replaces the session list with a token version
+in the identity record plus a revocation list, so a delete needs no purge
+and the identity lives in exactly one place. The rows below record what
+shipped then; the current model is in `docs/auth.md` (§ Auth state model).
+
 ## Problem
 
 User identity was split across two stores: the redb `USERS` table (inside

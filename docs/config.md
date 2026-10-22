@@ -211,7 +211,7 @@ The JWT signing key is managed, never set: it lives in
 `<DATA_HOME>/auth/secrets.json` (owner-only file permissions), `PICASU_AUTH_KEY`
 overrides it in memory without persisting, and the API offers only
 `POST /post/config/auth-key/reset`, which generates a new strong random key
-(invalidating every live session). `GET /get/config/export` redacts it.
+(invalidating every outstanding token). `GET /get/config/export` redacts it.
 
 API-writable knobs: `upload_folder`, `max_upload_size`, `read_only_mode`,
 `disable_img`, `fs_notify_watcher`, `normalize_upload_filenames`,

@@ -84,6 +84,11 @@ churn/no benefit.
   rotated on password change/logout. Fixed 2026-10-16: `Claims` carries
   `jti` with server-side session inventory, `POST /post/logout` revokes,
   password change clears sessions (`.plan/r6-session-revocation.md` done).
+  Re-shaped 2026-10-22 (`.plan/auth-state-model.md`): the inventory is
+  gone — the token carries the user's token version (`ver`), the guard
+  checks it against the identity record, and the server keeps only a
+  revocation list (a logged-out `jti`, until it expires). Password and
+  role changes bump `ver` in the same transaction as the change.
 - R7 CONFIRMED (S2/MED/MED). No rate-limit/lockout/429 symbols in
   `backend/`; PBKDF2-600k raises per-guess cost only. Fix: per-IP/identity
   counters with 429 on the four credential paths.
