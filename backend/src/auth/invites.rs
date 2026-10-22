@@ -408,6 +408,7 @@ pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), 
 mod tests {
     use super::*;
     use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD, reset_backend_state};
+    use crate::tests::fixtures::test_password;
 
     fn setup() -> std::sync::MutexGuard<'static, ()> {
         let guard = TEST_SERIAL_GUARD
@@ -471,7 +472,7 @@ mod tests {
         let _g = setup();
 
         let (token, _) = super::create_invite("s6-root").expect("create");
-        super::redeem_invite("s6-reg", &token, "long-enough-pw1").expect("redeem");
+        super::redeem_invite("s6-reg", &token, &test_password("s6-reg")).expect("redeem");
         let record = crate::auth::users::user_record("s6-reg")
             .expect("get user")
             .expect("the user must exist");
@@ -484,7 +485,7 @@ mod tests {
         assert_eq!(used.used_by.as_deref(), Some("s6-reg"));
 
         // Double use: rejected, and no second user is created.
-        let err = super::redeem_invite("s6-reg2", &token, "long-enough-pw2")
+        let err = super::redeem_invite("s6-reg2", &token, &test_password("s6-reg2"))
             .expect_err("double use must fail");
         assert_eq!(err.kind, ErrorKind::Conflict);
         assert_eq!(crate::auth::users::user_count().expect("count"), 1);
@@ -502,15 +503,15 @@ mod tests {
         let _g = setup();
 
         let (token, _) = super::create_invite("s6-root").expect("create");
-        super::redeem_invite("s6-i5", &token, "long-enough-pw1").expect("redeem");
+        super::redeem_invite("s6-i5", &token, &test_password("s6-i5")).expect("redeem");
         let store =
             crate::auth::user_store::UserStore::load(&crate::auth::users::user_store_path())
                 .expect("load store");
         assert!(
-            store.verify("s6-i5", "long-enough-pw1"),
+            store.verify("s6-i5", &test_password("s6-i5")),
             "the redeemed entry must verify the registered password"
         );
-        assert!(!store.verify("s6-i5", "wrong-pw-12345"));
+        assert!(!store.verify("s6-i5", &test_password("s6-i5-wrong")));
 
         reset_backend_state();
     }
@@ -541,7 +542,7 @@ mod tests {
         })
         .expect("seed passwd-only");
 
-        let err = super::redeem_invite("s6-takeover", &token, "long-enough-pw1")
+        let err = super::redeem_invite("s6-takeover", &token, &test_password("s6-takeover"))
             .expect_err("passwd-only user must refuse redeem");
         assert_eq!(err.kind, ErrorKind::Conflict);
         assert!(
@@ -563,7 +564,7 @@ mod tests {
         let _g = setup();
         let past = super::now_secs().expect("now") - 60;
         let (token, _) = super::create_invite_with_expiry("s6-root", Some(past)).expect("create");
-        let err = super::redeem_invite("s6-reg", &token, "long-enough-pw1")
+        let err = super::redeem_invite("s6-reg", &token, &test_password("s6-reg"))
             .expect_err("expired must fail");
         assert_eq!(err.kind, ErrorKind::PermissionDenied);
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
@@ -573,7 +574,7 @@ mod tests {
     #[test]
     fn redeem_rejects_unknown_token() {
         let _g = setup();
-        let err = super::redeem_invite("s6-reg", "not-a-real-token", "long-enough-pw1")
+        let err = super::redeem_invite("s6-reg", "not-a-real-token", &test_password("s6-reg"))
             .expect_err("unknown must fail");
         assert_eq!(err.kind, ErrorKind::NotFound);
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
@@ -585,7 +586,7 @@ mod tests {
         let _g = setup();
         crate::auth::users::create_user("s6-taken", false).expect("seed user");
         let (token, _) = super::create_invite("s6-root").expect("create");
-        let err = super::redeem_invite("s6-taken", &token, "long-enough-pw1")
+        let err = super::redeem_invite("s6-taken", &token, &test_password("s6-taken"))
             .expect_err("duplicate must fail");
         assert_eq!(err.kind, ErrorKind::Conflict);
         // The invite survives the failed redeem for another attempt.
@@ -600,7 +601,7 @@ mod tests {
     fn list_reports_metadata_and_never_the_token() {
         let _g = setup();
         let (token, _) = super::create_invite("s6-root").expect("create");
-        super::redeem_invite("s6-reg", &token, "long-enough-pw1").expect("redeem");
+        super::redeem_invite("s6-reg", &token, &test_password("s6-reg")).expect("redeem");
 
         let listed = super::list_invites().expect("list");
         assert_eq!(listed.len(), 1);
@@ -640,7 +641,7 @@ mod tests {
             "unknown id reports false"
         );
         assert!(super::list_invites().expect("list").is_empty());
-        let err = super::redeem_invite("s6-reg", &token, "long-enough-pw1")
+        let err = super::redeem_invite("s6-reg", &token, &test_password("s6-reg"))
             .expect_err("revoked must fail");
         assert_eq!(err.kind, ErrorKind::NotFound);
         reset_backend_state();
@@ -674,7 +675,7 @@ mod tests {
             record.expires_at.is_none(),
             "None means the invite never expires"
         );
-        super::redeem_invite("s6-reg", &token, "long-enough-pw1")
+        super::redeem_invite("s6-reg", &token, &test_password("s6-reg"))
             .expect("never-expiring invite redeems");
         reset_backend_state();
     }
