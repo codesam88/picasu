@@ -75,8 +75,16 @@ frontend-playwright: frontend-build-maybe
     [ -n "${PICASU_BINARY:-}" ] || cargo build --bin picasu
     # filter scenarios: npx playwright test --grep "onboarding"
     export PICASU_BINARY="${PICASU_BINARY:-$(pwd)/target/debug/picasu}"
-    workers=$(( $(nproc) / 2 ))
-    [ "$workers" -lt 1 ] && workers=1
+    # Each worker runs a browser and a backend, so half the cores is the
+    # ceiling that keeps the runner from thrashing; the count follows the
+    # machine (a 4-core CI runner gets 2 workers, an 8-core dev box 4).
+    # PLAYWRIGHT_WORKERS overrides it.
+    if [ -n "${PLAYWRIGHT_WORKERS:-}" ]; then
+        workers="$PLAYWRIGHT_WORKERS"
+    else
+        workers=$(( $(nproc) / 2 ))
+        [ "$workers" -lt 1 ] && workers=1
+    fi
     cd frontend && npx playwright test --workers="$workers"
 
 # all frontend tests
