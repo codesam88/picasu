@@ -35,7 +35,11 @@ in the meantime; this task replaces it with the declaration-first shape.
 2. **A documented tool that doesn't exist.** Error messages and
    `docs/openapi-reference.md` promise a `picasu-cmd` CLI for store
    provisioning; the binary has one clap surface with no subcommands
-   (`main.rs`).
+   (`main.rs`). Resolved 2026-10-22: the CLI ships with
+   `user list|add|mod|del|passwd|invalidate`, and the user it provisions
+   offline can log in — the server reads the identity store, so the
+   launcher's forced `PICASU_BOOTSTRAP_ADMIN` is no longer needed for
+   seeding.
 3. **Watchers fire on every launch.** The backend fixture starts first
    (default watcher on), then `given:` writes every photo into the
    watched tree — N debounced (1 s) `index_image` tasks racing the
