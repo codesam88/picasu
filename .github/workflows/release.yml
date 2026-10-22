@@ -12,8 +12,21 @@ permissions:
   contents: read
 
 jobs:
+  # The release gate: the static analysis runs here, not on every pull
+  # request, and a release does not get built while it is red. The
+  # analysis itself is the workflow that also runs on merges into main, so
+  # it has one definition.
+  codeql:
+    name: CodeQL
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/codeql.yml
+
   build-linux:
     name: Build Linux Binary
+    needs: [codeql]
     runs-on: ubuntu-22.04
     permissions:
       contents: write
