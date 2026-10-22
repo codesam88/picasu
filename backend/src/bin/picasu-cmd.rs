@@ -256,8 +256,8 @@ fn print_table(rows: &[(String, picasu::auth::user_store::UserRecord)]) {
     for (id, entry) in rows {
         let admin = if entry.admin { "y" } else { "n" };
         let home = entry.home.as_deref().unwrap_or("-");
-        let password = if entry.hash.is_some() { "set" } else { "none" };
-        println!("{id:<16} {admin:<5} {home:<20} {password}");
+        let password_state = if entry.hash.is_some() { "set" } else { "none" };
+        println!("{id:<16} {admin:<5} {home:<20} {password_state}");
     }
 }
 

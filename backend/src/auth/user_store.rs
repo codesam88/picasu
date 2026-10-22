@@ -439,6 +439,7 @@ impl UserStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::fixtures::test_password;
 
     fn store_path(dir: &tempfile::TempDir) -> PathBuf {
         dir.path().join("users.redb")
@@ -477,7 +478,7 @@ mod tests {
         provision(
             &path,
             "alice",
-            "long-enough-pw1",
+            &test_password("alice"),
             true,
             Some("/home/alice".to_string()),
         )
@@ -493,7 +494,7 @@ mod tests {
     fn raw_value_is_json_entry() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", false, None).expect("provision");
+        provision(&path, "alice", &test_password("alice"), false, None).expect("provision");
         let db = open_db(&path).expect("open store");
         let txn = db.begin_read().expect("begin read");
         let table = txn.open_table(USERS_TABLE).expect("open users table");
@@ -515,18 +516,18 @@ mod tests {
         provision(
             &path,
             "alice",
-            "long-enough-pw1",
+            &test_password("alice"),
             true,
             Some("/home/alice".to_string()),
         )
         .expect("provision");
-        set_password(&path, "alice", "new-long-pw-123").expect("set password");
+        set_password(&path, "alice", &test_password("alice-new")).expect("set password");
         let entry = read(&path, "alice").expect("entry");
         assert!(entry.admin, "admin must be preserved");
         assert_eq!(entry.home.as_deref(), Some("/home/alice"));
         let store = UserStore::load(&path).expect("reload");
-        assert!(store.verify("alice", "new-long-pw-123"));
-        assert!(!store.verify("alice", "long-enough-pw1"));
+        assert!(store.verify("alice", &test_password("alice-new")));
+        assert!(!store.verify("alice", &test_password("alice")));
         assert_store_parses(&path);
     }
 
@@ -534,7 +535,7 @@ mod tests {
     fn zero_admin_demotion_refused_flag_untouched() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "sole", "long-enough-pw1", true, None).expect("provision");
+        provision(&path, "sole", &test_password("sole"), true, None).expect("provision");
         let err = set_admin(&path, "sole", false).expect_err("sole admin demotion must be refused");
         assert_eq!(err.kind, ErrorKind::Conflict);
         let entry = read(&path, "sole").expect("entry");
@@ -546,7 +547,7 @@ mod tests {
     fn delete_zero_admin_refusal_and_force() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "sole", "long-enough-pw1", true, None).expect("provision");
+        provision(&path, "sole", &test_password("sole"), true, None).expect("provision");
         let err =
             delete(&path, "sole", false).expect_err("deleting the last admin must be refused");
         assert_eq!(err.kind, ErrorKind::Conflict);
@@ -561,7 +562,7 @@ mod tests {
     fn delete_unknown_returns_false() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", false, None).expect("provision");
+        provision(&path, "alice", &test_password("alice"), false, None).expect("provision");
         assert!(!delete(&path, "nobody", false).expect("delete unknown"));
         assert_store_parses(&path);
     }
@@ -573,7 +574,7 @@ mod tests {
         provision(
             &path,
             "alice",
-            "long-enough-pw1",
+            &test_password("alice"),
             true,
             Some("/home/alice".to_string()),
         )
@@ -601,7 +602,7 @@ mod tests {
     fn set_admin_noop_false() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", false, None).expect("provision");
+        provision(&path, "alice", &test_password("alice"), false, None).expect("provision");
         assert!(
             !set_admin(&path, "alice", false).expect("no-op demote"),
             "setting the same flag must report no change"
@@ -615,8 +616,8 @@ mod tests {
     fn provision_duplicate_conflict() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", false, None).expect("provision");
-        let err = provision(&path, "alice", "long-enough-pw2", false, None)
+        provision(&path, "alice", &test_password("alice"), false, None).expect("provision");
+        let err = provision(&path, "alice", &test_password("alice-2"), false, None)
             .expect_err("duplicate provision must fail");
         assert_eq!(err.kind, ErrorKind::Conflict);
         assert_eq!(count(&path), 1, "failed provision must not add a row");
@@ -627,7 +628,7 @@ mod tests {
     fn unknown_user_read_and_updates() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", false, None).expect("provision");
+        provision(&path, "alice", &test_password("alice"), false, None).expect("provision");
         assert!(read(&path, "nobody").is_none());
         let err = set_admin(&path, "nobody", true).expect_err("unknown set_admin");
         assert_eq!(err.kind, ErrorKind::NotFound);
@@ -640,11 +641,11 @@ mod tests {
     fn passwd_file_verify_round_trip() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", false, None).expect("provision");
+        provision(&path, "alice", &test_password("alice"), false, None).expect("provision");
         let store = UserStore::load(&path).expect("load");
-        assert!(store.verify("alice", "long-enough-pw1"));
-        assert!(!store.verify("alice", "wrong-pw-12345"));
-        assert!(!store.verify("nobody", "long-enough-pw1"));
+        assert!(store.verify("alice", &test_password("alice")));
+        assert!(!store.verify("alice", &test_password("alice-wrong")));
+        assert!(!store.verify("nobody", &test_password("alice")));
         assert_store_parses(&path);
     }
 
@@ -669,11 +670,11 @@ mod tests {
     fn remove_store_deletes_and_recreates_fresh() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", false, None).expect("provision");
+        provision(&path, "alice", &test_password("alice"), false, None).expect("provision");
         remove_store(&path);
         assert!(!path.exists(), "remove_store must delete the file");
         assert!(is_empty(&path), "store must read as empty after reset");
-        provision(&path, "bob", "long-enough-pw2", false, None).expect("reprovision");
+        provision(&path, "bob", &test_password("bob"), false, None).expect("reprovision");
         assert_eq!(count(&path), 1, "fresh store after reset");
         assert!(read(&path, "bob").is_some());
         assert_store_parses(&path);
@@ -700,10 +701,12 @@ mod tests {
         let path1 = path.clone();
         let path2 = path.clone();
         let t1 = std::thread::spawn(move || {
-            provision(&path1, "user-a", "long-enough-pw1", false, None).expect("provision a");
+            provision(&path1, "user-a", &test_password("user-a"), false, None)
+                .expect("provision a");
         });
         let t2 = std::thread::spawn(move || {
-            provision(&path2, "user-b", "long-enough-pw2", false, None).expect("provision b");
+            provision(&path2, "user-b", &test_password("user-b"), false, None)
+                .expect("provision b");
         });
         t1.join().expect("t1");
         t2.join().expect("t2");
@@ -719,7 +722,7 @@ mod tests {
     fn concurrent_field_edits_both_persist() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", false, None).expect("provision");
+        provision(&path, "alice", &test_password("alice"), false, None).expect("provision");
         let path1 = path.clone();
         let path2 = path.clone();
         let t1 = std::thread::spawn(move || {
@@ -754,7 +757,7 @@ mod tests {
         })
         .expect("insert hash-less entry");
         let store = UserStore::load(&path).expect("load");
-        assert!(!store.verify("ghost", "anything-at-all-1"));
+        assert!(!store.verify("ghost", &test_password("ghost")));
         assert!(!store.verify("ghost", ""));
         assert_store_parses(&path);
     }
@@ -775,7 +778,13 @@ mod tests {
         const MODE: &str = "lock-pin";
         const THIS_TEST: &str = "auth::user_store::tests::cross_process_lock_pin";
         if child_mode().as_deref() == Some(MODE) {
-            match provision(&child_path(), "child-user", "long-enough-pw1", false, None) {
+            match provision(
+                &child_path(),
+                "child-user",
+                &test_password("child-user"),
+                false,
+                None,
+            ) {
                 Ok(_) => std::process::exit(10),
                 Err(e) => {
                     if e.message.contains("held by another process") {
@@ -788,7 +797,7 @@ mod tests {
         }
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "owner", "long-enough-pw1", true, None).expect("parent provision");
+        provision(&path, "owner", &test_password("owner"), true, None).expect("parent provision");
         assert_store_parses(&path);
         let exe = std::env::current_exe().expect("current test binary");
         let status = std::process::Command::new(&exe)
@@ -815,7 +824,7 @@ mod tests {
             let path = child_path();
             let ready =
                 PathBuf::from(std::env::var("PICASU_STORE_TEST_READY").expect("child ready path"));
-            provision(&path, "pre-user", "long-enough-pw1", true, None).expect("seed");
+            provision(&path, "pre-user", &test_password("pre-user"), true, None).expect("seed");
             // Park inside an uncommitted write transaction holding partial
             // rows: the parent SIGKILLs us here, and the engine must drop
             // the transaction so the file stays at the committed state.
@@ -826,7 +835,7 @@ mod tests {
                 for i in 0..8 {
                     let id = format!("torn-row-{i}");
                     let raw = serde_json::to_string(&UserRecord {
-                        hash: Some(hash_password("long-enough-pw1")),
+                        hash: Some(hash_password(&test_password("torn-row"))),
                         admin: false,
                         home: None,
                         ver: 0,
@@ -875,8 +884,8 @@ mod tests {
         // The store must be parsable at a prefix-consistent state: the
         // committed seed is present and valid, the uncommitted rows are gone.
         let store = UserStore::load(&path).expect("store must parse after kill");
-        assert!(store.verify("pre-user", "long-enough-pw1"));
-        assert!(!store.verify("pre-user", "wrong-pw-12345"));
+        assert!(store.verify("pre-user", &test_password("pre-user")));
+        assert!(!store.verify("pre-user", &test_password("pre-user-wrong")));
         let entries = list(&path);
         assert_eq!(
             entries.len(),
@@ -894,7 +903,7 @@ mod tests {
     fn a_new_user_starts_at_version_zero() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", true, None).expect("provision");
+        provision(&path, "alice", &test_password("alice"), true, None).expect("provision");
         assert_eq!(ver_of(&path, "alice"), 0);
     }
 
@@ -902,8 +911,8 @@ mod tests {
     fn changing_the_password_bumps_the_version() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", true, None).expect("provision");
-        set_password(&path, "alice", "another-long-pw2").expect("set password");
+        provision(&path, "alice", &test_password("alice"), true, None).expect("provision");
+        set_password(&path, "alice", &test_password("alice-new")).expect("set password");
         assert_eq!(
             ver_of(&path, "alice"),
             1,
@@ -915,8 +924,8 @@ mod tests {
     fn changing_the_role_bumps_the_version() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", false, None).expect("provision");
-        provision(&path, "root", "long-enough-pw2", true, None).expect("provision");
+        provision(&path, "alice", &test_password("alice"), false, None).expect("provision");
+        provision(&path, "root", &test_password("root"), true, None).expect("provision");
         set_admin(&path, "alice", true).expect("promote");
         assert_eq!(ver_of(&path, "alice"), 1);
         set_admin(&path, "alice", false).expect("demote");
@@ -927,7 +936,7 @@ mod tests {
     fn setting_the_home_keeps_the_version() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", true, None).expect("provision");
+        provision(&path, "alice", &test_password("alice"), true, None).expect("provision");
         set_home(&path, "alice", Some("/home/alice".to_string())).expect("set home");
         assert_eq!(
             ver_of(&path, "alice"),
@@ -940,7 +949,7 @@ mod tests {
     fn bumping_the_version_invalidates_the_outstanding_tokens() {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = store_path(&dir);
-        provision(&path, "alice", "long-enough-pw1", true, None).expect("provision");
+        provision(&path, "alice", &test_password("alice"), true, None).expect("provision");
         assert_eq!(bump_ver(&path, "alice").expect("bump"), 1);
         assert_eq!(ver_of(&path, "alice"), 1);
         assert_eq!(bump_ver(&path, "alice").expect("bump"), 2);

@@ -335,7 +335,14 @@ pub fn cookie(id: &str, admin: bool) -> rocket::http::Cookie<'static> {
 /// Create the user record and, when a password is given, write its hash
 /// directly to the passwd file. Each given password pays one PBKDF2 round.
 pub fn seed(id: &str, admin: bool, password: Option<&str>) {
-    let pw = password.unwrap_or("seed-placeholder-pw-123");
+    let generated;
+    let pw = match password {
+        Some(pw) => pw,
+        None => {
+            generated = crate::tests::fixtures::test_password(id);
+            generated.as_str()
+        }
+    };
     crate::auth::users::provision_user(id, pw, admin).expect("seed user");
 }
 

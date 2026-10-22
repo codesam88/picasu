@@ -547,7 +547,7 @@ mod tests {
         let _ = &*TEST_ENV;
         reset_backend_state();
 
-        super::provision_user("s9-pin-a", "long-enough-pw1", true).expect("provision");
+        super::provision_user("s9-pin-a", &test_password("s9-pin-a"), true).expect("provision");
         let entry =
             crate::auth::user_store::read(&super::user_store_path(), "s9-pin-a").expect("entry");
         assert!(entry.admin, "admin flag must be present");
@@ -570,10 +570,10 @@ mod tests {
         // Arbitrary password fails.
         let store =
             crate::auth::user_store::UserStore::load(&super::user_store_path()).expect("load");
-        assert!(!store.verify("s9-nopw", "anything-12345"));
+        assert!(!store.verify("s9-nopw", &test_password("s9-nopw-wrong")));
 
-        // Old placeholder literal also fails.
-        assert!(!store.verify("s9-nopw", "create-user-placeholder-s9-nopw"));
+        // A derived decoy also fails.
+        assert!(!store.verify("s9-nopw", &test_password("s9-nopw-decoy")));
 
         // Entry has no password hash.
         let entry =
