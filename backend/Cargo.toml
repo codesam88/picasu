@@ -34,8 +34,19 @@ envy = "0.4.2"
 filetime = "0.2.29"
 futures = "0.3.32"
 figment = { version = "0.10", features = ["json", "toml"] }
-image = "0.25.10"
+image = { version = "0.25.10", default-features = false, features = [
+  "jpeg",
+  "png",
+  "gif",
+  "webp",
+  "tiff",
+  "bmp",
+  "rayon",
+] }
 image_hasher = "3.1.1"
+# HS256 only (the tokens are HMAC-signed), so the pure-Rust crypto backend
+# is enough: the aws-lc (BoringSSL) backend compiles megabytes of code the
+# app never calls.
 jsonwebtoken = { version = "11.0.0", default-features = false, features = ["aws_lc_rs"] }
 kamadak-exif = "0.6.1"
 log = { version = "0.4.29", features = ["kv"] }
@@ -48,7 +59,6 @@ redb = "4.1"
 libc = "0.2"
 regex = "1.12.3"
 rpassword = "7"
-ureq = { version = "3", features = ["json"] }
 rocket = { version = "0.5.1", features = ["json"] }
 rocket_seek_stream = "0.2.6"
 serde = { version = "1.0.228", features = ["derive", "rc"] }

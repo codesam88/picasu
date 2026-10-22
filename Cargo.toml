@@ -14,6 +14,14 @@ paste = { path = "utils/paste-shim" }
 [workspace.metadata.dylint]
 libraries = [{ path = "utils/dylint-lints/*" }]
 
-[profile.lto]
-inherits = "release"
-lto = true
+# The release build is what ships, so it gets the optimizations: LTO across
+# the crates, one codegen unit, and no symbol table. The old `[profile.lto]`
+# table defined a *custom* profile named "lto" that nothing used, so
+# `cargo build --release` never applied any of it.
+#
+# Thin rather than fat LTO: the shipped binary is 1 MB larger, and the
+# release build (and the release-mode test build) is a minute faster.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
