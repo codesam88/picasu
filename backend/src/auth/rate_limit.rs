@@ -45,8 +45,12 @@ pub(crate) fn ban_delay(base_secs: u64, cap_secs: u64, generation: u32) -> u64 {
     delay.min(cap_secs)
 }
 
-/// One sliding-window throttle bucket: two evaluated over-threshold
-/// failures share each ban generation (both ban).
+/// One sliding-window throttle bucket: past the threshold, bans land on
+/// every second over-threshold failure — the first, third, fifth, ...
+/// over-threshold failure opens the next ban generation (base, doubling,
+/// capped); the single failure between two bans is recorded but free, so
+/// a user who just served a ban gets one retry before the next, longer
+/// one.
 ///
 /// Times are seconds since an arbitrary epoch (callers pass wall-clock
 /// seconds); the bucket itself never reads the clock, so tests drive it
@@ -63,8 +67,9 @@ pub struct Bucket {
 
 impl Bucket {
     /// Create a bucket: `max_failures` failures within `window_secs`
-    /// open the first ban of `base_ban_secs`, doubling per two further
-    /// failures up to `max_ban_secs`.
+    /// are free; the next failure opens the first ban of
+    /// `base_ban_secs`, then one ban per level doubling up to
+    /// `max_ban_secs`, with one recorded-but-free failure between bans.
     ///
     /// # Errors
     /// Returns an error when the config is degenerate: zero window (nothing
@@ -121,13 +126,21 @@ impl Bucket {
     }
 
     /// Ban delay for an in-window count under this bucket's schedule
-    /// (0 while at or under `max_failures`).
+    /// (0 while at or under `max_failures`). Past the threshold, only
+    /// every second over-threshold failure bans — over counts 1, 3, 5, ...
+    /// open generations 0, 1, 2, ...; the count between two bans returns 0
+    /// (recorded but free, so the attempt after a served ban runs with no
+    /// ban time after it).
     fn ban_for_count(&self, count: u64) -> u64 {
         let max = u64::from(self.max_failures);
         if count <= max {
             return 0;
         }
-        let generation = (count - max - 1) / 2;
+        let over = count - max;
+        if over.is_multiple_of(2) {
+            return 0;
+        }
+        let generation = (over - 1) / 2;
         let generation = u32::try_from(generation).unwrap_or(u32::MAX);
         ban_delay(self.base_ban_secs, self.max_ban_secs, generation)
     }
@@ -282,22 +295,24 @@ mod tests {
     }
 
     #[test]
-    fn bucket_two_failures_share_each_level() {
+    fn bucket_bans_on_odd_over_threshold_with_one_free_between() {
         let mut b = ip_short_bucket();
         assert_eq!(b.record_failure(0), 0);
         assert_eq!(b.record_failure(1), 0);
         assert_eq!(b.record_failure(2), 0);
-        // Over-threshold #1-2 share the first rung (10s).
+        // 1st over-threshold failure opens rung 0 (10s).
         assert_eq!(b.record_failure(3), 10);
         assert_eq!(b.ban_remaining(4), 9);
         // Attempts during the ban are ignored, never recorded.
         assert_eq!(b.record_failure(10), 3);
-        assert_eq!(b.record_failure(14), 10);
-        // Over-threshold #3-4 share the next level (20s).
-        assert_eq!(b.record_failure(25), 20);
-        assert_eq!(b.record_failure(46), 20);
-        // Over-threshold #5-6 step up again (40s).
-        assert_eq!(b.record_failure(67), 40);
+        // One free attempt between bans: recorded, no ban.
+        assert_eq!(b.record_failure(14), 0);
+        // The next failure steps up to rung 1 (20s).
+        assert_eq!(b.record_failure(15), 20);
+        assert_eq!(b.ban_remaining(16), 19);
+        // Same one level up: one free, then rung 2 (40s).
+        assert_eq!(b.record_failure(36), 0);
+        assert_eq!(b.record_failure(37), 40);
     }
 
     #[test]
@@ -315,10 +330,10 @@ mod tests {
             assert_eq!(b.record_failure(t), 0, "failure {t} must be free");
         }
         assert_eq!(b.record_failure(16), 1800);
-        // Second failure on the same level shares it (post-expiry).
-        assert_eq!(b.record_failure(2000), 1800);
-        // Third steps up a level.
-        assert_eq!(b.record_failure(4000), 3600);
+        // One free attempt between bans: recorded, no ban.
+        assert_eq!(b.record_failure(2000), 0);
+        // The next failure steps up a level.
+        assert_eq!(b.record_failure(2001), 3600);
     }
 
     #[test]
@@ -332,18 +347,19 @@ mod tests {
 
     #[test]
     fn bucket_generation_steps_down_as_failures_age_out() {
-        // Window 100, max 2, base 5: climb to rung 1, then let all but
-        // two failures age out and confirm the next ban is rung 0's
-        // delay again (no frozen escalation).
+        // Window 100, max 2, base 5: open rung 0, serve it, burn the free
+        // attempt, open rung 1 — then let everything but two failures age
+        // out and confirm the next ban is rung 0's delay again (no frozen
+        // escalation).
         let mut b = Bucket::new(100, 2, 5, 50).expect("valid test config");
         assert_eq!(b.record_failure(0), 0);
         assert_eq!(b.record_failure(1), 0);
-        assert_eq!(b.record_failure(2), 5, "3rd failure: rung 0");
-        assert_eq!(b.record_failure(7), 5, "4th failure: still rung 0");
-        assert_eq!(b.record_failure(12), 10, "5th failure: rung 1");
-        // At t=105 the t=0,1,2 failures have aged out; only t=7 and
-        // t=12 count, so this is a rung-0 ban again.
-        assert_eq!(b.record_failure(105), 5, "demoted back to rung 0");
+        assert_eq!(b.record_failure(2), 5, "1st over-threshold: rung 0");
+        assert_eq!(b.record_failure(7), 0, "one free attempt between bans");
+        assert_eq!(b.record_failure(8), 10, "next failure steps up to rung 1");
+        // At t=102 the t=0,1,2 failures have aged out; only t=7 and
+        // t=8 count, so this is a rung-0 ban again.
+        assert_eq!(b.record_failure(102), 5, "demoted back to rung 0");
     }
 
     #[test]
