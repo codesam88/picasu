@@ -14,10 +14,12 @@ expected_sha="${2:?usage: install-exiftool.sh <version> <sha256>}"
 
 prefix="$HOME/.local/opt/Image-ExifTool-$version"
 
-# Already installed: the pinned prefix runs the pinned version and the PATH
-# entry points at it. Re-running is then a no-op.
-if reports_version "$prefix/exiftool" "$version" -ver \
-    && link_points_at exiftool "$prefix/exiftool"; then
+# Already installed: the pinned prefix runs the pinned version. The PATH
+# entry is (re)linked every run rather than required: a restored cache
+# brings the unpacked prefix but never the symlink, and re-linking is
+# what makes a cache hit a no-op instead of a re-download.
+if reports_version "$prefix/exiftool" "$version" -ver; then
+    ensure_link "$prefix/exiftool" exiftool
     echo "✓ exiftool $version already installed — $HOME/.local/bin/exiftool"
     exit 0
 fi

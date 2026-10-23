@@ -77,6 +77,21 @@ jobs:
           just install-nextest
           cargo nextest --version
 
+      # The pinned media tools unpack into ~/.local/opt; the install
+      # scripts recreate the ~/.local/bin symlinks cheaply every run, so
+      # caching the unpacked dirs turns both installs below into a
+      # relink-only no-op — no 40MB+ downloads on every push. Keyed on
+      # justfile (home of the version+digest pins); exact key, no
+      # restore-keys, so a stale build can never satisfy a new pin. A
+      # miss downloads and verifies exactly as before.
+      - name: Cache pinned media tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.local/opt/ffmpeg-*
+            ~/.local/opt/Image-ExifTool-*
+          key: media-tools-${{ runner.os }}-${{ hashFiles('justfile') }}
+
       # snapfab writes fixture metadata through ExifTool, an external binary
       # the backend itself never spawns (the backend reads metadata in-process).
       # Install the pinned distribution the dev environment uses
@@ -158,6 +173,16 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium
         working-directory: frontend
+
+      # Same media-tools cache as the backend job: the unpacked dirs keyed
+      # on justfile; the install scripts relink the bin entries.
+      - name: Cache pinned media tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.local/opt/ffmpeg-*
+            ~/.local/opt/Image-ExifTool-*
+          key: media-tools-${{ runner.os }}-${{ hashFiles('justfile') }}
 
       # The video pipeline spawns ffprobe and ffmpeg. The pinned static build
       # is the one the release package ships.

@@ -33,11 +33,14 @@ installed_version() {
     "$1" -version 2>/dev/null | head -1 | grep -q "ffmpeg version $2"
 }
 
-# Already installed: the pinned prefix runs the pinned version and the PATH
-# entries point at it. Re-running is then a no-op.
-if installed_version "$prefix/ffmpeg" "$version" \
-    && link_points_at ffmpeg "$prefix/ffmpeg" \
-    && link_points_at ffprobe "$prefix/ffprobe"; then
+# Already installed: the pinned prefix runs the pinned version. The PATH
+# entries are (re)linked every run rather than required: a restored cache
+# brings the unpacked prefix but never the symlinks, and re-linking is
+# what makes a cache hit a no-op instead of a re-download. Re-running is
+# then a no-op on a dev machine too.
+if installed_version "$prefix/ffmpeg" "$version"; then
+    ensure_link "$prefix/ffmpeg" ffmpeg
+    ensure_link "$prefix/ffprobe" ffprobe
     echo "✓ ffmpeg $version already installed — $HOME/.local/bin/ffmpeg"
     exit 0
 fi
