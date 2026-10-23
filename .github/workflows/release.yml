@@ -82,6 +82,16 @@ jobs:
           just install-nextest
           cargo nextest --version
 
+      # Same media-tools cache as CI: the unpacked dirs keyed on justfile;
+      # the install scripts relink the bin entries.
+      - name: Cache pinned media tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.local/opt/ffmpeg-*
+            ~/.local/opt/Image-ExifTool-*
+          key: media-tools-${{ runner.os }}-${{ hashFiles('justfile') }}
+
       # The video pipeline spawns ffprobe and ffmpeg. The pinned static build
       # is the one the package ships, so the release-mode tests run against
       # the ffmpeg that reaches the admin's machine.
