@@ -3,6 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import axios, { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import { setupMainAxiosInterceptor } from './axiosInterceptor'
 import { useMessageStore } from '@/store/messageStore'
+import { useModalStore } from '@/store/modalStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { useRedirectionStore } from '@/store/redirectionStore'
 import router from '@/route/routes'
@@ -188,6 +189,16 @@ describe('401 handling', () => {
     await expect(axios.get('/get/get-data')).rejects.toBeTruthy()
 
     expect(useSessionStore('mainId').profile).toBeNull()
+  })
+
+  test('a 401 closes open dialogs (revoked session must not linger under the login page)', async () => {
+    useSessionStore('mainId').setProfile({ userId: 'alice', admin: true })
+    useModalStore('mainId').showUserSettingsModal = true
+    rejectWith(401, {}, {})
+
+    await expect(axios.put('/put/users/password', { old: 'x', new: 'y' })).rejects.toBeTruthy()
+
+    expect(useModalStore('mainId').showUserSettingsModal).toBe(false)
   })
 
   test('parallel 401s navigate to login exactly once', async () => {
