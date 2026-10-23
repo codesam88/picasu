@@ -440,10 +440,23 @@ pub async fn authenticate(
                     log_safe_id(&user_id)
                 );
                 if let Some(now) = now {
-                    with_login_throttle(|throttle| {
+                    let ban = with_login_throttle(|throttle| {
                         throttle.release(&ip.0, &user_id);
-                        throttle.record_failure(&ip.0, &user_id, now);
+                        throttle.record_failure(&ip.0, &user_id, now)
                     });
+                    if ban > 0 {
+                        // The evaluated failure that opens a ban answers 429
+                        // itself: the ban is feedback on this attempt, not
+                        // just the next ones — otherwise every level would
+                        // show two free-looking 401s (the silent trip plus
+                        // the free between-ban failure) and the first
+                        // visible ban would lag one request behind the trip.
+                        return Err(AppError::new(
+                            ErrorKind::RateLimited,
+                            format!("Too many login attempts, try again in {ban}s"),
+                        )
+                        .retry_after(ban));
+                    }
                 }
             } else if now.is_some() {
                 // Non-credential errors (unreadable stores): release the
@@ -647,16 +660,17 @@ mod tests {
 
     /// The IP-short schedule (3 failures / 600s → 10s ban) as shipped in
     /// `crate::auth::rate_limit`: three evaluated failures stay under the
-    /// threshold, the fourth evaluated failure opens the 10s ban and still
-    /// answers 401 (no same-request escalation), so the attempt *after*
-    /// the ban opens is the first 429.
+    /// threshold, the fourth evaluated failure opens the 10s ban and
+    /// answers 429 itself, so exactly one free failure sits between two
+    /// ban episodes (no silent trip followed by a second free-looking
+    /// 401).
     #[test]
     fn authenticate_throttled_login_is_429_with_retry_after() {
         let _g = lock();
         let client = setup();
         seed("t7-alice", false, Some(test_password("t7-pw").as_str()));
         let wrong = test_password("t7-wrong");
-        for _ in 0..4 {
+        for _ in 0..3 {
             let resp = post_login(&client, "t7-alice", &wrong);
             assert_eq!(resp.status(), Status::Unauthorized);
         }
@@ -684,13 +698,22 @@ mod tests {
             Status::Unauthorized
         );
         assert_eq!(rounds(), before + 1);
-        // Three more failures open the ban (the fourth still answers 401).
-        for _ in 0..3 {
+        // Two more failures stay 401; the fourth evaluated failure trips
+        // the ban and answers 429 itself (its KDF still ran).
+        for _ in 0..2 {
             assert_eq!(
                 post_login(&client, "t7-fast", &wrong).status(),
                 Status::Unauthorized
             );
         }
+        let before = rounds();
+        let resp = post_login(&client, "t7-fast", &wrong);
+        assert_throttled_countdown(resp, 10);
+        assert_eq!(
+            rounds(),
+            before + 1,
+            "the tripping attempt still evaluates; the ban applies after it"
+        );
         let before = rounds();
         let resp = post_login(&client, "t7-fast", &wrong);
         assert_eq!(resp.status(), Status::TooManyRequests);
@@ -719,10 +742,9 @@ mod tests {
         }
         let resp = post_login(&client, "t7-reset", &test_password("t7-reset-pw"));
         assert_eq!(resp.status(), Status::Ok, "success clears the counters");
-        // Same-count failures again: without the success reset the second
-        // of these would already be a 429 (the pre-success failures would
-        // still count toward the ban).
-        for _ in 0..4 {
+        // Same-count failures again: the fourth trips right after the
+        // reset, proving no history survived it.
+        for _ in 0..3 {
             assert_eq!(
                 post_login(&client, "t7-reset", &wrong).status(),
                 Status::Unauthorized
@@ -740,8 +762,9 @@ mod tests {
         set_bootstrap_admin(false);
         let wrong = test_password("t7-ghost-wrong");
         // An unknown name answers exactly like a known one (401 + a KDF
-        // round, no oracle) and burns the same IP budget.
-        for _ in 0..4 {
+        // round, no oracle) and burns the same IP budget; the fourth
+        // evaluated failure trips the ban and answers 429 itself.
+        for _ in 0..3 {
             let resp = post_login(&client, "t7-ghost", &wrong);
             assert_eq!(resp.status(), Status::Unauthorized);
         }
@@ -783,9 +806,10 @@ mod tests {
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
         // The window enrolls only via bootstrap: every login takes the
         // throttled unknown-user path, so repeated failures trip the
-        // IP-short bucket exactly like a seeded store would.
+        // IP-short bucket exactly like a seeded store would — the fourth
+        // evaluated failure trips and answers 429 itself.
         let wrong = test_password("t7-open-wrong");
-        for _ in 0..4 {
+        for _ in 0..3 {
             let resp = post_login(&client, "t7-open-ghost", &wrong);
             assert_eq!(resp.status(), Status::Unauthorized);
         }
@@ -867,18 +891,17 @@ mod tests {
             attempt_login(&client, "10.9.0.2").status(),
             Status::Unauthorized
         );
-        // Third failure opens the 5s user ban (still 401); the fourth
-        // attempt arrives from an address with no history at all.
-        assert_eq!(
-            attempt_login(&client, "10.9.0.3").status(),
-            Status::Unauthorized
-        );
+        // Third failure opens the 5s user ban and answers 429 itself;
+        // the fourth attempt arrives from an address with no history at
+        // all, so only the username bucket can refuse it.
+        assert_throttled_countdown(attempt_login(&client, "10.9.0.3"), 5);
         assert_throttled_countdown(attempt_login(&client, "10.9.0.4"), 5);
     }
 
     /// With the proxy header untrusted (default), rotating
-    /// `X-Forwarded-For` values never key the buckets: five failures land
-    /// on the shared socket key and trip exactly like identical requests.
+    /// `X-Forwarded-For` values never key the buckets: four failures land
+    /// on the shared socket key, the fourth trips and answers 429 itself,
+    /// and the next attempt is still refused.
     #[test]
     fn authenticate_untrusted_forwarded_header_never_keys_buckets() {
         use rocket::http::Header;
@@ -886,7 +909,7 @@ mod tests {
         let client = setup();
         set_trust_proxy(false);
         seed("t9-rot", false, Some(test_password("t9-rot-pw").as_str()));
-        for i in 0..4 {
+        for i in 0..3 {
             let resp = client
                 .post("/post/users/authenticate")
                 .header(ContentType::JSON)
@@ -931,12 +954,10 @@ mod tests {
             post_login(&client, "t9-iplong", &wrong).status(),
             Status::Unauthorized
         );
-        // Third failure opens the 7s IP-long ban (still 401); IP-short
-        // holds 3 ≤ 3 and user-long is untouched at 3 ≤ 18.
-        assert_eq!(
-            post_login(&client, "t9-iplong", &wrong).status(),
-            Status::Unauthorized
-        );
+        // Third failure opens the 7s IP-long ban and answers 429 itself
+        // (IP-short holds 3 ≤ 3 and user-long is untouched at 3 ≤ 18);
+        // the next attempt is still refused.
+        assert_throttled_countdown(post_login(&client, "t9-iplong", &wrong), 7);
         assert_throttled_countdown(post_login(&client, "t9-iplong", &wrong), 7);
     }
 
@@ -1017,7 +1038,7 @@ mod tests {
         let trip = |client: &rocket::local::blocking::Client| {
             seed("t8-on", false, Some(test_password("t8-on-pw").as_str()));
             let wrong = test_password("t8-on-wrong");
-            for _ in 0..4 {
+            for _ in 0..3 {
                 assert_eq!(
                     post_login(client, "t8-on", &wrong).status(),
                     Status::Unauthorized

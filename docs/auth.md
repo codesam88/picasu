@@ -141,12 +141,18 @@ nothing. The env-only switch `PICASU_RATE_LIMITS=false` bypasses both
 
 - _Login_ (`POST /post/users/authenticate`) keys three sliding-window
   buckets on `(client-ip, claimed-username)`: an IP-short burst bucket
-  (3 failures per 10 min, first ban 10 s, doubling), an IP-long bucket
+  (3 failures per 10 min, first ban 10 s), an IP-long bucket
   per client address (16 failures per 24 h, first ban 30 min), and a
   user-long bucket per claimed username (18 failures per 24 h, first ban
-  30 min, capped at 2 h). A request whose ban is still active is rejected
+  30 min, capped at 2 h). Past each threshold, bans land on every second
+  over-threshold failure — the single failure between two bans is
+  recorded but free, so two attempts after a served ban run with no ban
+  time between them — and each ban doubles the previous one. The
+  evaluated failure that opens a ban answers 429 itself (with
+  `Retry-After` carrying the full rung delay); only non-tripping failures
+  answer 401. A request whose ban is still active is likewise rejected
   with 429 and a `Retry-After` header (seconds; the max remaining ban
-  across all three buckets), distinct from the 401 of a bad credential.
+  across all three buckets).
   Buckets are keyed on claimed usernames whether or not the account
   exists, so throttling behaves identically for unknown names and reveals
   nothing about which users are real. A successful login drops the

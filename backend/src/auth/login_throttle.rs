@@ -594,9 +594,11 @@ mod tests {
         assert_eq!(t.check("ip", "u", 3), 4, "original ban untouched");
         assert_eq!(t.record_failure("ip", "u", 5), 2);
         assert_eq!(t.check("ip", "u", 7), 0, "ban ends exactly at t=7");
-        // Only four failures were ever recorded (t=3, t=5 were ignored),
-        // so this one still shares the first rung instead of escalating.
-        assert_eq!(t.record_failure("ip", "u", 7), 5);
+        // Only four failures were ever recorded (t=3, t=5 were ignored):
+        // the first failure after the served ban is the free one between
+        // bans, and the next steps up a rung instead of renewing rung 0.
+        assert_eq!(t.record_failure("ip", "u", 7), 0);
+        assert_eq!(t.record_failure("ip", "u", 8), 10);
     }
 
     #[test]
@@ -623,19 +625,22 @@ mod tests {
 
     #[test]
     fn reserve_counts_other_in_flight_attempts() {
-        // Short bucket allows 2 recorded failures: three concurrent
-        // reservations still fit (only *other* slots count), the fourth
-        // sees all three and is blocked.
+        // Short bucket allows 2 recorded failures: four concurrent
+        // reservations still fit (only *other* slots count, and the peek
+        // lands on a free between-ban count), the fifth sees all four
+        // and is blocked at the projected rung-1 delay.
         let mut t = LoginThrottle::new((60, 2, 5, 50), (1000, 100, 7, 40), (1000, 100, 3, 30))
             .expect("valid test config");
         assert_eq!(t.reserve("ip", "u", 0), 0, "first reservation proceeds");
         assert_eq!(t.reserve("ip", "u", 0), 0, "second still fits the budget");
         assert_eq!(t.reserve("ip", "u", 0), 0, "third still fits");
+        assert_eq!(t.reserve("ip", "u", 0), 0, "fourth still fits");
         assert_eq!(
             t.reserve("ip", "u", 0),
-            5,
-            "fourth concurrent attempt is blocked"
+            10,
+            "fifth concurrent attempt is blocked"
         );
+        t.release("ip", "u");
         t.release("ip", "u");
         t.release("ip", "u");
         t.release("ip", "u");
@@ -653,9 +658,10 @@ mod tests {
     #[test]
     fn lone_attempt_after_ban_expiry_proceeds_to_record() {
         // IP-short 2/60s → 5s: trip the ban, wait it out, then a lone
-        // attempt must proceed (0) and record the shared rung — never
-        // renew the served ban as a fresh 429 (that would lock out until
-        // the window slides).
+        // attempt must proceed (0); the first post-expiry failure is the
+        // free one between bans and the next steps up — never renewing
+        // the served ban as a fresh same-rung 429 (that would lock out
+        // until the window slides).
         let mut t = LoginThrottle::new((60, 2, 5, 50), (1000, 100, 7, 40), (1000, 100, 3, 30))
             .expect("valid test config");
         assert_eq!(t.record_failure("ip", "u", 0), 0);
@@ -667,7 +673,8 @@ mod tests {
             "expired ban lets lone attempts through"
         );
         t.release("ip", "u");
-        assert_eq!(t.record_failure("ip", "u", 8), 5, "records the shared rung");
+        assert_eq!(t.record_failure("ip", "u", 8), 0, "free between bans");
+        assert_eq!(t.record_failure("ip", "u", 9), 10, "steps up a rung");
     }
 
     #[test]
