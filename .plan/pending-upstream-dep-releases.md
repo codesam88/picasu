@@ -23,8 +23,7 @@ the same change. Both waits are external; check upstream before starting.
   plus read-modify-write re-parse on edit endpoints); 0195 is not (xmpkit
   never uses `NsReader`). Do not vendor xmpkit — user chose to wait.
 - On release: `cargo update -p xmpkit -p quick-xml`, then delete the
-  RUSTSEC-2026-0194/0195 entries from root `osv-scanner.toml` and the matching
-  ignore entries + comments from root `deny.toml`.
+  RUSTSEC-2026-0194/0195 entries + comments from root `deny.toml`.
 
 ### 2. paste-shim removal (RUSTSEC-2024-0436)
 
@@ -34,16 +33,14 @@ the same change. Both waits are external; check upstream before starting.
   - rav1e: main has `pastey = "0.1.0"`, unreleased (latest 0.8.1, 2025-06-16,
     still has `paste ^1.0`).
 - On release: `cargo update -p pulp -p rav1e` (confirm `paste` left
-  `Cargo.lock`), delete `utils/paste-shim/`, the root
-  `[patch.crates-io] paste` line, and the RUSTSEC-2024-0436 entry from root
-  `osv-scanner.toml`.
+  `Cargo.lock`), delete `utils/paste-shim/` and the root
+  `[patch.crates-io] paste` line.
 - Note: the shim does not hide the advisory from OSV (name+version match);
   its value is compiling maintained `pastey`. deny.toml has no 2024-0436
   entry — it was removed when the shim landed; do not re-add one.
 
 ### Checks for either change
 
-`cargo deny check advisories`, `osv-scanner scan` on both lockfiles (root
-Cargo.lock + frontend/package-lock.json), `just check`, `just test`. When both
-tracks are done, root `osv-scanner.toml` should contain only RUSTSEC-2026-0258
-(h2).
+`cargo deny check advisories`, `npm audit` on `frontend/`, `just check`,
+`just test`. When both tracks are done, root `deny.toml` carries no advisory
+ignores except RUSTSEC-2026-0258 (h2).

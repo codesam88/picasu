@@ -21,4 +21,3 @@ Pick individual items from the list. Elaborate and create new 'open' issue for t
 
 - add cargo geiger report scan / eval
 - upgrade vite-pwa-plugin? https://github.com/vite-pwa/vite-plugin-pwa/issues/933
-- add ossf scorecard, cli + ci: https://scorecard.dev/
