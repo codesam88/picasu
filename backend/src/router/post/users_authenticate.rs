@@ -200,6 +200,27 @@ pub(crate) fn reset_login_throttle() {
     LAST_SWEEP.store(0, Ordering::Relaxed);
 }
 
+/// Test-only kill-switch override, shared with the password-throttle
+/// tests: forces disabled (`true`) or enabled (`false`) for the closure,
+/// then restores automatic mode even on panic. No environment mutation:
+/// `set_var` races any concurrent `env::var` reader elsewhere in the
+/// suite.
+#[cfg(test)]
+pub(crate) fn with_rate_limits_forced<R>(disabled: bool, f: impl FnOnce() -> R) -> R {
+    struct Restore;
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            RATE_LIMITS_FORCED.store(0, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    let _restore = Restore;
+    RATE_LIMITS_FORCED.store(
+        if disabled { 1 } else { 2 },
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    f()
+}
+
 /// Client-IP key for the login throttle, resolved once per request like
 /// [`ForwardedHttps`] (route handlers cannot take `&Request` directly).
 ///
@@ -937,22 +958,10 @@ mod tests {
     /// `env::var` reader elsewhere in the suite). Restores automatic mode
     /// afterwards, even on panic.
     fn with_rate_limits_forced(disabled: Option<bool>, f: impl FnOnce()) {
-        struct Restore;
-        impl Drop for Restore {
-            fn drop(&mut self) {
-                super::RATE_LIMITS_FORCED.store(0, std::sync::atomic::Ordering::Relaxed);
-            }
+        match disabled {
+            None => f(),
+            Some(d) => super::with_rate_limits_forced(d, f),
         }
-        let _restore = Restore;
-        super::RATE_LIMITS_FORCED.store(
-            match disabled {
-                Some(true) => 1,
-                Some(false) => 2,
-                None => 0,
-            },
-            std::sync::atomic::Ordering::Relaxed,
-        );
-        f();
     }
 
     /// The pure mapping behind the kill switch, exhaustively pinned

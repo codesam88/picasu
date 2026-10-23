@@ -133,14 +133,25 @@ pub(crate) fn set_password_sync(
     }
     if target == caller_id {
         let presented = old_password.unwrap_or_default().trim();
+        let path = users::user_store_path();
+        let store = crate::auth::user_store::UserStore::load(&path)
+            .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
         // The throttle counts evaluated old-password guesses only: it is
-        // contacted here, after the 400/403/404 gates above, so weak new
-        // passwords, permission refusals and unknown users record nothing.
-        // A live ban means this (ip, jti) already spent its budget: revoke
-        // the session instead of spending another KDF round.
+        // contacted here, after the store load and the 400/403/404 gates
+        // above, so store failures, weak new passwords, permission refusals
+        // and unknown users record nothing. Reserve sits immediately
+        // before the KDF: no early return between reserve and
+        // release/record can leak a slot (a leaked slot would over-count
+        // the crowded-flight check, and eviction spares in-flight
+        // entries). A live ban means this (ip, jti) already spent its
+        // budget: revoke the session instead of spending another KDF round.
         if let Some(ctx) = throttle {
             let ban = with_password_throttle(|t| t.reserve(&ctx.ip, &ctx.jti, ctx.now));
             if ban > 0 {
+                // Reap idle entries on the banned path: banned-window
+                // requests otherwise mint one entry per jti while
+                // `record_failure` (which enforces the caps) never runs.
+                with_password_throttle(|t| t.sweep(ctx.now));
                 revoke_attempt_session(&ctx.jti, ctx.exp)?;
                 return Err(AppError::new(
                     ErrorKind::Auth,
@@ -148,9 +159,6 @@ pub(crate) fn set_password_sync(
                 ));
             }
         }
-        let path = users::user_store_path();
-        let store = crate::auth::user_store::UserStore::load(&path)
-            .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
         if !store.verify(&target, presented) {
             if let Some(ctx) = throttle {
                 // Release first so `record_failure` counts this attempt
@@ -426,9 +434,133 @@ mod tests {
             put_password(&client, jar.clone(), &wrong()),
             Status::Unauthorized
         );
-        // The cookie is dead everywhere now, not just on this route.
-        let status = client.get("/get/users").cookie(jar).dispatch().status();
-        assert_eq!(status, Status::Unauthorized);
+        // The cookie is dead everywhere now, not just on this route: even
+        // a request that fails validation before the throttle (correct
+        // old password, weak new one) is refused at the guard.
+        assert_eq!(
+            put_password(
+                &client,
+                jar,
+                &json!({ "userId": "s4d-budget", "oldPassword": test_password("t-budget-old"), "newPassword": "short1!" }),
+            ),
+            Status::Unauthorized
+        );
+    }
+
+    /// Revocation lands exactly on the overstep, not earlier: the session
+    /// is still alive after the last 400, so a wrong rung (revoke on the
+    /// 3rd guess answering 400) cannot hide behind the guard's 401.
+    #[test]
+    fn session_alive_until_overstepping_attempt() {
+        let _g = lock();
+        let client = setup();
+        seed(
+            "s4d-rung",
+            false,
+            Some(test_password("t-rung-old").as_str()),
+        );
+        let jar = cookie("s4d-rung", false);
+        let wrong = || json!({ "userId": "s4d-rung", "oldPassword": "wrong-guess", "newPassword": test_password("t-rung-new") });
+        for _ in 0..3 {
+            assert_eq!(
+                put_password(&client, jar.clone(), &wrong()),
+                Status::BadRequest
+            );
+        }
+        // Still alive: the 3rd 400 revoked nothing. A correct-old /
+        // weak-new probe fails validation (400) only when the guard
+        // accepts the session — a dead session is 401 at the guard.
+        assert_eq!(
+            put_password(
+                &client,
+                jar.clone(),
+                &json!({ "userId": "s4d-rung", "oldPassword": test_password("t-rung-old"), "newPassword": "short1!" }),
+            ),
+            Status::BadRequest
+        );
+        // The 4th trips the budget.
+        assert_eq!(
+            put_password(&client, jar.clone(), &wrong()),
+            Status::Unauthorized
+        );
+    }
+
+    /// The pre-check revokes too: once the ip budget is spent by one
+    /// session, a fresh session from the same ip is refused without
+    /// spending a KDF round, even though its own jti budget is untouched.
+    #[test]
+    fn fresh_session_same_ip_refused_during_ip_ban() {
+        let _g = lock();
+        let client = setup();
+        seed(
+            "s4d-ipban",
+            false,
+            Some(test_password("t-ipban-old").as_str()),
+        );
+        let wrong = || json!({ "userId": "s4d-ipban", "oldPassword": "wrong-guess", "newPassword": test_password("t-ipban-new") });
+        // Spend the shared ip budget with session A (4th revokes A).
+        let jar_a = cookie("s4d-ipban", false);
+        for _ in 0..3 {
+            assert_eq!(
+                put_password(&client, jar_a.clone(), &wrong()),
+                Status::BadRequest
+            );
+        }
+        assert_eq!(
+            put_password(&client, jar_a.clone(), &wrong()),
+            Status::Unauthorized
+        );
+        // Session B never guessed, same ip: refused at the pre-check.
+        let jar_b = cookie("s4d-ipban", false);
+        assert_eq!(
+            put_password(&client, jar_b.clone(), &wrong()),
+            Status::Unauthorized
+        );
+        assert_eq!(
+            put_password(
+                &client,
+                jar_b,
+                &json!({ "userId": "s4d-ipban", "oldPassword": test_password("t-ipban-old"), "newPassword": "short1!" }),
+            ),
+            Status::Unauthorized
+        );
+    }
+
+    /// Kill switch bypasses the password throttle entirely: hammering past
+    /// the budget stays at plain 400s and the session survives.
+    #[test]
+    fn kill_switch_disables_password_throttle() {
+        let _g = lock();
+        crate::router::post::users_authenticate::with_rate_limits_forced(true, || {
+            let client = setup();
+            seed("s4d-off", false, Some(test_password("t-off-old").as_str()));
+            let jar = cookie("s4d-off", false);
+            let wrong = || json!({ "userId": "s4d-off", "oldPassword": "wrong-guess", "newPassword": test_password("t-off-new") });
+            for _ in 0..6 {
+                assert_eq!(
+                    put_password(&client, jar.clone(), &wrong()),
+                    Status::BadRequest
+                );
+            }
+            // Session and budget untouched: a validation probe still
+            // reaches the handler (400), and the correct password works.
+            assert_eq!(
+                put_password(
+                    &client,
+                    jar.clone(),
+                    &json!({ "userId": "s4d-off", "oldPassword": test_password("t-off-old"), "newPassword": "short1!" }),
+                ),
+                Status::BadRequest
+            );
+            assert_eq!(
+                put_password(
+                    &client,
+                    jar,
+                    &json!({ "userId": "s4d-off", "oldPassword": test_password("t-off-old"), "newPassword": test_password("t-off-new") }),
+                ),
+                Status::Ok
+            );
+        });
     }
 
     /// A wrong old-password reports the attempts left in the 24h budget,

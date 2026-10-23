@@ -1,5 +1,5 @@
 ---
-status: open
+status: done
 type: chore
 priority: high
 area: backend
@@ -381,7 +381,10 @@ contract and `TimestampGuardModified` stand as documented. R28 done
 2026-10-20 (`4551928f2` — knob accessor, invites verb rename, wire
 status drop). R14 done 2026-10-20 — the `picasu-cmd` CLI is delivered,
 so the cited tool exists. Live set empty; harness
-adoption continues in `.plan/e2e-given-reshaping.md`.
+adoption continues in `.plan/e2e-given-reshaping.md`. Closed 2026-10-23:
+all verdicts resolved and the last deferred slice (password-PUT
+throttling, PR #133) landed; remaining open work (share-password
+hardening, login-throttle polish) is owned by `.plan/auth-hardening.md`.
 
 Decision 2026-10-19 (open-mode removal, owner-approved this session):
 the `ephemeral-open-mode` structure is deleted, not just the mint.
@@ -447,7 +450,9 @@ IP-long wiring, proxy-header trust on/off, and sweep cadence; log
 `user_id` sanitized; over-cap eviction spares live bans and held
 reservations. Deliberately deferred: IPv6 /64 keying, trusted-proxy
 CIDR list, log sampling, openapi 429 body schema, named-config struct,
-share-password hardening, password-PUT throttling (separate slice).
+share-password hardening, password-PUT throttling — done 2026-10-23
+(PR #133: dedicated `(ip, jti)` instance, 3-per-24h budgets,
+revoke-on-overstep + 401, attempts-left 400s).
 
 ## Re-verification 2026-10-19 (R29–R35 critical review, standard tier)
 
