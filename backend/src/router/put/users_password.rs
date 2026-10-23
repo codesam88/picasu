@@ -2,12 +2,16 @@ use rocket::http::Status;
 use rocket::put;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
+use std::sync::PoisonError;
 use tokio::task::spawn_blocking;
 
+use crate::auth::login_throttle::LoginThrottle;
 use crate::auth::users::{self, validate_user_id};
 use crate::error::ResultExt;
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::{GuardReadOnlyMode, GuardUser};
+use crate::router::post::users_authenticate::ThrottleClientIp;
 use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 
 /// Body for `PUT /put/users/password`.
@@ -19,6 +23,58 @@ pub struct SetUserPasswordRequest {
     pub new_password: String,
 }
 
+/// Dedicated password-change throttle schedules: (`window_secs`,
+/// `max_failures`, `base_ban_secs`, `max_ban_secs`). The IP-short bucket is
+/// lenient (burst hygiene only); the IP-long and jti-long buckets each
+/// allow 3 wrong old-passwords per 24h — the 4th trips a ban, which the
+/// handler turns into session revocation. Ban durations are irrelevant
+/// past the trip signal (the session dies), so they stay short.
+const PW_IP_SHORT: (u64, u32, u64, u64) = (600, 100, 10, 60);
+const PW_IP_LONG: (u64, u32, u64, u64) = (86_400, 3, 60, 3600);
+const PW_JTI_LONG: (u64, u32, u64, u64) = (86_400, 3, 60, 3600);
+
+/// Process-wide password-change throttle, separate instance from the login
+/// throttle: password guesses must never move login budgets or vice versa.
+static PASSWORD_THROTTLE: Mutex<Option<LoginThrottle>> = Mutex::new(None);
+
+fn with_password_throttle<R>(f: impl FnOnce(&mut LoginThrottle) -> R) -> R {
+    let mut slot = PASSWORD_THROTTLE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    if slot.is_none() {
+        *slot = Some(
+            LoginThrottle::new(PW_IP_SHORT, PW_IP_LONG, PW_JTI_LONG)
+                .expect("password throttle schedules are valid"),
+        );
+    }
+    f(slot.as_mut().expect("tracker installed above"))
+}
+
+/// Drop the password-change tracker (test setup only).
+#[cfg(test)]
+pub(crate) fn reset_password_throttle() {
+    *PASSWORD_THROTTLE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner) = None;
+}
+
+/// Throttle identity for one password-change attempt: the client IP and the
+/// attempting session's (`jti`, `exp`). `None` means unthrottled (kill
+/// switch active).
+pub(crate) struct PasswordThrottleCtx {
+    pub ip: String,
+    pub jti: String,
+    pub exp: u64,
+    pub now: u64,
+}
+
+/// Revoke the attempting session: the guess budget for this (ip, jti) is
+/// spent. Revocation expiry is the token's own `exp` — the entry dies with
+/// the token it revokes.
+fn revoke_attempt_session(jti: &str, exp: u64) -> AppResult<()> {
+    crate::auth::revocations::revoke(&crate::auth::revocations::session_key(jti), exp)?;
+    Ok(())
+}
 /// Set the password for `target_user_id` on behalf of `caller_id`.
 ///
 /// The new password is trimmed once and the trimmed (canonical) form is
@@ -38,7 +94,8 @@ pub struct SetUserPasswordRequest {
 /// Returns 400 when the id is invalid, the new password is shorter than
 /// [`users::MIN_PASSWORD_LEN`] after trimming, or the old password is wrong
 /// or missing on self-change, 403 when a non-admin targets another user, 404
-/// when the target user is unknown (empty store included), and 500 when
+/// when the target user is unknown (empty store included), 401 when the
+/// (ip, jti) guess budget is spent (the session is revoked), and 500 when
 /// either store fails. Unauthenticated callers are 401 at the guard, before
 /// the handler runs.
 pub(crate) fn set_password_sync(
@@ -47,6 +104,7 @@ pub(crate) fn set_password_sync(
     target_user_id: &str,
     old_password: Option<&str>,
     new_password: &str,
+    throttle: Option<&PasswordThrottleCtx>,
 ) -> AppResult<()> {
     let target = validate_user_id(target_user_id)?;
     // Policy applies to new passwords only; the check runs before the
@@ -75,18 +133,62 @@ pub(crate) fn set_password_sync(
     }
     if target == caller_id {
         let presented = old_password.unwrap_or_default().trim();
+        // The throttle counts evaluated old-password guesses only: it is
+        // contacted here, after the 400/403/404 gates above, so weak new
+        // passwords, permission refusals and unknown users record nothing.
+        // A live ban means this (ip, jti) already spent its budget: revoke
+        // the session instead of spending another KDF round.
+        if let Some(ctx) = throttle {
+            let ban = with_password_throttle(|t| t.reserve(&ctx.ip, &ctx.jti, ctx.now));
+            if ban > 0 {
+                revoke_attempt_session(&ctx.jti, ctx.exp)?;
+                return Err(AppError::new(
+                    ErrorKind::Auth,
+                    "too many incorrect password attempts; session revoked",
+                ));
+            }
+        }
         let path = users::user_store_path();
         let store = crate::auth::user_store::UserStore::load(&path)
             .map_err(|e| AppError::from_err(ErrorKind::IO, e))?;
         if !store.verify(&target, presented) {
+            if let Some(ctx) = throttle {
+                // Release first so `record_failure` counts this attempt
+                // exactly once (mirrors the login handler).
+                let ban = with_password_throttle(|t| {
+                    t.release(&ctx.ip, &ctx.jti);
+                    t.record_failure(&ctx.ip, &ctx.jti, ctx.now)
+                });
+                if ban > 0 {
+                    revoke_attempt_session(&ctx.jti, ctx.exp)?;
+                    return Err(AppError::new(
+                        ErrorKind::Auth,
+                        "too many incorrect password attempts; session revoked",
+                    ));
+                }
+            }
             // Value-credential tier: the request's session cookie was
             // accepted, so this is input validation (400), not
             // authentication (401) — a 401 here would tear down the SPA
-            // display session although the cookie stays valid.
+            // display session although the cookie stays valid. The
+            // attempts-left count lets the UI count down from a
+            // server-provided number instead of hardcoding the policy.
+            let detail = match throttle {
+                None => "Incorrect current password".to_string(),
+                Some(ctx) => {
+                    match with_password_throttle(|t| t.remaining(&ctx.ip, &ctx.jti, ctx.now)) {
+                        0 => "Incorrect current password (no attempts remaining)".to_string(),
+                        1 => "Incorrect current password (1 attempt remaining)".to_string(),
+                        n => format!("Incorrect current password ({n} attempts remaining)"),
+                    }
+                }
+            };
             return Err(
-                AppError::new(ErrorKind::InvalidInput, "Incorrect current password")
-                    .context("Password change failed"),
+                AppError::new(ErrorKind::InvalidInput, detail).context("Password change failed")
             );
+        }
+        if let Some(ctx) = throttle {
+            with_password_throttle(|t| t.record_success(&ctx.ip, &ctx.jti, ctx.now));
         }
     }
     // The store write bumps the user's token version: every outstanding
@@ -120,9 +222,9 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::Claims) -> (String, 
 /// Errors: 400 invalid `userId`, `newPassword` violating the password
 /// policy, or a wrong/missing `oldPassword` on self-change — 403 non-admin
 /// targeting another user — 404 unknown `userId` — 405 read-only mode —
-/// 500 storage failure. 401 is session-tier only: the route's only 401
-/// source is the `GuardUser` cookie guard rejecting an unauthenticated or
-/// sessionless caller.
+/// 500 storage failure. 401 is the `GuardUser` cookie guard rejecting an
+/// unauthenticated or sessionless caller, or this route revoking the
+/// session after the (ip, jti) guess budget is spent.
 #[utoipa::path(
         tag = "auth",
         request_body = SetUserPasswordRequest,
@@ -145,12 +247,34 @@ pub async fn set_user_password_handler(
     // would lose its enrollment hint.
     user: GuardResult<GuardUser>,
     read_only: GuardResult<GuardReadOnlyMode>,
+    ip: ThrottleClientIp,
     body: Json<SetUserPasswordRequest>,
 ) -> AppResult<Status> {
     let user = user?;
     let _ = read_only?;
     let (caller_id, caller_admin) = caller_identity(&user.claims);
     let req = body.into_inner();
+    // Kill switch mirrors login: `PICASU_RATE_LIMITS=false` bypasses the
+    // throttle entirely (no check, no recording on either outcome).
+    let throttle = if crate::router::post::users_authenticate::rate_limits_disabled() {
+        None
+    } else {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs());
+        match now {
+            Ok(now) => Some(PasswordThrottleCtx {
+                ip: ip.0,
+                jti: user.claims.jti.clone(),
+                exp: user.claims.exp,
+                now,
+            }),
+            Err(e) => {
+                log::warn!("password throttle skipped for this attempt (clock error): {e}");
+                None
+            }
+        }
+    };
     spawn_blocking(move || {
         set_password_sync(
             &caller_id,
@@ -158,6 +282,7 @@ pub async fn set_user_password_handler(
             &req.user_id,
             req.old_password.as_deref(),
             &req.new_password,
+            throttle.as_ref(),
         )
     })
     .await
@@ -272,6 +397,87 @@ mod tests {
             &json!({ "userId": "s4d-dave", "oldPassword": "nope", "newPassword": "s4d-dave-new" }),
         );
         assert_eq!(status, Status::BadRequest);
+    }
+
+    /// Overstepping the password-change attempt budget revokes the session:
+    /// repeated wrong old-passwords from the same (ip, jti) trip the
+    /// dedicated throttle, the tripping request is 401, and the cookie is
+    /// dead on every route afterwards.
+    #[test]
+    fn self_change_budget_overstep_revokes_session() {
+        let _g = lock();
+        let client = setup();
+        seed(
+            "s4d-budget",
+            false,
+            Some(test_password("t-budget-old").as_str()),
+        );
+        let jar = cookie("s4d-budget", false);
+        let wrong = || json!({ "userId": "s4d-budget", "oldPassword": "wrong-guess", "newPassword": test_password("t-budget-new") });
+        // Three wrong guesses stay value-credential failures (400).
+        for _ in 0..3 {
+            assert_eq!(
+                put_password(&client, jar.clone(), &wrong()),
+                Status::BadRequest
+            );
+        }
+        // The overstepping attempt drops the session.
+        assert_eq!(
+            put_password(&client, jar.clone(), &wrong()),
+            Status::Unauthorized
+        );
+        // The cookie is dead everywhere now, not just on this route.
+        let status = client.get("/get/users").cookie(jar).dispatch().status();
+        assert_eq!(status, Status::Unauthorized);
+    }
+
+    /// A wrong old-password reports the attempts left in the 24h budget,
+    /// so the UI can count down from the server-provided number instead of
+    /// hardcoding the policy.
+    #[test]
+    fn wrong_old_password_reports_attempts_remaining() {
+        let _g = lock();
+        let client = setup();
+        seed(
+            "s4d-left",
+            false,
+            Some(test_password("t-left-old").as_str()),
+        );
+        let jar = cookie("s4d-left", false);
+        let wrong = || json!({ "userId": "s4d-left", "oldPassword": "wrong-guess", "newPassword": test_password("t-left-new") });
+        let body_for = |n: usize| {
+            let mut last = String::new();
+            for _ in 0..n {
+                last = client
+                    .put("/put/users/password")
+                    .cookie(jar.clone())
+                    .header(ContentType::JSON)
+                    .body(wrong().to_string())
+                    .dispatch()
+                    .into_string()
+                    .unwrap_or_default();
+            }
+            last
+        };
+        assert!(
+            body_for(1).contains("2 attempts remaining"),
+            "first wrong guess leaves 2 of 3"
+        );
+        // Fresh session, same ip: the ip budget spent one guess above.
+        let jar2 = cookie("s4d-left", false);
+        let resp = client
+            .put("/put/users/password")
+            .cookie(jar2)
+            .header(ContentType::JSON)
+            .body(wrong().to_string())
+            .dispatch();
+        assert_eq!(resp.status(), Status::BadRequest);
+        assert!(
+            resp.into_string()
+                .unwrap_or_default()
+                .contains("1 attempt remaining"),
+            "same ip, fresh jti: ip budget is the tighter one"
+        );
     }
 
     /// Closed install (bootstrap flag off, empty store): the GuardUser

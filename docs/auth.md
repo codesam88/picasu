@@ -131,24 +131,57 @@ Path=/; Max-Age=14d`, plus `Secure` iff the request arrived via
    empty store, forced admin); `register` always creates non-admin
    accounts — elevation is `PUT /put/users/admin` alone.
 
-**Login throttling (brute-force resistance):** `POST /post/users/authenticate`
-checks three sliding-window buckets before running the password KDF, so a
-throttled request stays cheap: an IP-short burst bucket (3 failures per
-10 min, first ban 10 s, doubling), an IP-long bucket per client address
-(16 failures per 24 h, first ban 30 min), and a user-long bucket per
-claimed username (18 failures per 24 h, first ban 30 min, capped at 2 h).
-A request whose ban is still active is rejected with 429 and a
-`Retry-After` header (seconds; the max remaining ban across all three
-buckets), distinct from the 401 of a bad credential. Buckets are keyed on
-claimed usernames whether or not the account exists, so throttling
-behaves identically for unknown names and reveals nothing about which
-users are real. A successful login drops the username entry and clears the IP burst bucket (the IP-long history is kept). All
-thresholds are knobs under `[server]` (see
-[Configuration](config.md) for the full table), the client address honors
-`trust_proxy_forwarded_for`, and the env-only switch
-`PICASU_RATE_LIMITS=false` bypasses all login throttling (e.g. for
-schema fuzzing). The login page renders the 429 as a countdown banner
-and re-enables submission when the ban expires.
+**Credential-guess throttling (brute-force resistance):** two endpoints
+verify passwords, each with its own throttle instance so guesses on one
+never move the other's budgets. Both check before running the password
+KDF, so a throttled request stays cheap, and both count evaluated guesses
+only — malformed bodies, permission refusals and unknown users record
+nothing. The env-only switch `PICASU_RATE_LIMITS=false` bypasses both
+(e.g. for schema fuzzing).
+
+- _Login_ (`POST /post/users/authenticate`) keys three sliding-window
+  buckets on `(client-ip, claimed-username)`: an IP-short burst bucket
+  (3 failures per 10 min, first ban 10 s, doubling), an IP-long bucket
+  per client address (16 failures per 24 h, first ban 30 min), and a
+  user-long bucket per claimed username (18 failures per 24 h, first ban
+  30 min, capped at 2 h). A request whose ban is still active is rejected
+  with 429 and a `Retry-After` header (seconds; the max remaining ban
+  across all three buckets), distinct from the 401 of a bad credential.
+  Buckets are keyed on claimed usernames whether or not the account
+  exists, so throttling behaves identically for unknown names and reveals
+  nothing about which users are real. A successful login drops the
+  username entry and clears the IP burst bucket (the IP-long history is
+  kept). All thresholds are knobs under `[server]` (see
+  [Configuration](config.md) for the full table) and the client address
+  honors `trust_proxy_forwarded_for`. The login page renders the 429 as a
+  countdown banner and re-enables submission when the ban expires.
+- _Password change_ (`PUT /put/users/password`, self-change branch only —
+  admin resets verify no credential and are unthrottled) keys a dedicated
+  instance on `(client-ip, session-jti)`: a lenient IP-short burst bucket
+  plus an IP-long and a jti-long bucket of 3 wrong old-passwords per 24 h
+  each. The first overstep revokes the attempting session (its `jti` joins
+  the revocation list until the token's expiry) and answers 401, so the
+  SPA logs out on that response; the cookie is dead on every route
+  afterwards. Each 400 wrong-old-password carries the server-computed
+  attempts left (`min` over the three buckets), so the UI counts down
+  from that number instead of hardcoding the policy. A correct old
+  password clears the entry; the schedules are hardcoded beside the
+  login constants, not operator knobs.
+
+**What the two throttles buy:** the login buckets cap online guessing per
+attacking host and per claimed account (including nonexistent ones, hence
+no user-enumeration oracle) while the pre-KDF check keeps throttled
+requests cheap and escalating bans slow persistent sprayers. The
+password-change buckets bound old-password oracle queries per stolen
+session (jti slot: a botnet rotating IPs against one session still shares
+one budget) and per attacking host (ip slot: one host cycling stolen
+sessions still shares one budget); revocation converts a spent budget
+into session death, killing the stolen session itself. The instances are
+separate so a login brute-force can neither lock the victim out of
+changing their password nor be extended by password guesses — the
+remediation action (change password, which bumps the token version and
+kills all sessions) stays available mid-attack — while a legit user sees
+the countdown and can stop before the session drops.
 
 **Session-denial UX (frontend):** an unauthorized response outside the
 share flow makes the axios interceptor clear the session profile and
