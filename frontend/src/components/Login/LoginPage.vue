@@ -53,6 +53,17 @@
               ></v-text-field>
 
               <v-alert
+                v-if="loginError !== null"
+                type="error"
+                density="compact"
+                variant="tonal"
+                class="mb-4"
+                role="status"
+              >
+                {{ loginError }}
+              </v-alert>
+
+              <v-alert
                 v-if="throttleSecs !== null"
                 type="warning"
                 density="compact"
@@ -108,6 +119,7 @@ import {
   throttleFallbackMessage,
   throttleMessage
 } from '@/script/utils/retryAfter'
+import { loginFailureMessage } from '@/script/utils/loginFailure'
 
 const password = ref('')
 const showPassword = ref(false)
@@ -145,6 +157,10 @@ const rules = {
 // inline either way.
 const throttleSecs = ref<number | null>(null)
 const throttleFallback = ref<string | null>(null)
+// Wrong user or password (401): the interceptor stays silent for this
+// route, so the page renders the server message inline. Cleared on the
+// next submit; a success navigates away and unmounts the page.
+const loginError = ref<string | null>(null)
 let stopCountdown: (() => void) | null = null
 
 const throttleText = computed(() =>
@@ -173,6 +189,7 @@ onUnmounted(() => {
 const handleLogin = async () => {
   if (throttleSecs.value !== null) return
   throttleFallback.value = null
+  loginError.value = null
   loading.value = true
   try {
     await tryWithMessageStore('mainId', async () => {
@@ -187,6 +204,11 @@ const handleLogin = async () => {
             return
           }
           throttleFallback.value = throttleFallbackMessage(error)
+          return
+        }
+        const failure = loginFailureMessage(error)
+        if (failure !== null) {
+          loginError.value = failure
           return
         }
         throw error
