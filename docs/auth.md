@@ -162,11 +162,12 @@ nothing. The env-only switch `PICASU_RATE_LIMITS=false` bypasses both
   each. The first overstep revokes the attempting session (its `jti` joins
   the revocation list until the token's expiry) and answers 401, so the
   SPA logs out on that response; the cookie is dead on every route
-  afterwards. Each 400 wrong-old-password carries the server-computed
-  attempts left (`min` over the three buckets), so the UI counts down
-  from that number instead of hardcoding the policy. A correct old
-  password clears the entry; the schedules are hardcoded beside the
-  login constants, not operator knobs.
+  afterwards. Outside the kill-switch / clock-error bypass, each 400
+  wrong-old-password carries the server-computed attempts left (`min`
+  over the three buckets), so the UI counts down from that number instead
+  of hardcoding the policy. A correct old password clears the session
+  entry and the IP burst (the IP-long history is kept, as on login); the
+  schedules are hardcoded beside the login constants, not operator knobs.
 
 **What the two throttles buy:** the login buckets cap online guessing per
 attacking host and per claimed account (including nonexistent ones, hence
