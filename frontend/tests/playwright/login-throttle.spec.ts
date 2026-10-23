@@ -59,21 +59,18 @@ test.describe('login throttle', () => {
       await page.getByPlaceholder('User ID').fill(ADMIN_ID)
       await page.getByPlaceholder('Password', { exact: true }).fill(WRONG_PASSWORD)
 
-      // Four failures: three pass, the 4th opens the (~2s) IP-short ban but
-      // still answers 401. Every attempt stays on /login.
-      for (let i = 0; i < 4; i++) {
+      // Three failures: all 401, still on /login.
+      for (let i = 0; i < 3; i++) {
         await loginButton.click()
         await expect(page).toHaveURL(/\/login/)
         await expect.poll(() => authResponses.map((r) => r.status())).toHaveLength(i + 1)
       }
-      expect(authResponses.map((r) => r.status())).toEqual([401, 401, 401, 401])
+      expect(authResponses.map((r) => r.status())).toEqual([401, 401, 401])
 
-      // 5th attempt lands inside the ban: 429 with a Retry-After hint.
+      // 4th attempt trips the (~2s) IP-short ban and answers 429 itself.
       await loginButton.click()
-      await expect
-        .poll(() => authResponses.map((r) => r.status()))
-        .toEqual([401, 401, 401, 401, 429])
-      const throttledResponse = authResponses[4]
+      await expect.poll(() => authResponses.map((r) => r.status())).toEqual([401, 401, 401, 429])
+      const throttledResponse = authResponses[3]
       expect(Number(throttledResponse?.headers()['retry-after'])).toBeGreaterThan(0)
 
       // The banner counts the ban down; the button is disabled and the
@@ -86,10 +83,12 @@ test.describe('login throttle', () => {
       await expect(page.getByPlaceholder('Password', { exact: true })).toHaveValue(WRONG_PASSWORD)
 
       // Ban elapses on its own: banner clears, button re-enables, and no
-      // further authenticate request was needed to make that happen.
+      // further authenticate request was needed to make that happen
+      // (the submit button stays disabled while banned, so no extra
+      // attempt could have gone out).
       await expect(banner).toHaveCount(0, { timeout: 15_000 })
       await expect(loginButton).toBeEnabled()
-      expect(authResponses).toHaveLength(5)
+      expect(authResponses).toHaveLength(4)
 
       // Correct password lands on /timeline.
       await page.getByPlaceholder('Password', { exact: true }).fill(paths.ADMIN_PASSWORD)
