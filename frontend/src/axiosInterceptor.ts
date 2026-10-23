@@ -79,7 +79,7 @@ function handleShareError(error: AxiosError, stores: ReturnType<typeof getStores
  * Handles standard application errors (Auth, Permissions, Generic).
  */
 async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof getStores>) {
-  const { messageStore, redirectionStore } = stores
+  const { messageStore, modalStore, redirectionStore } = stores
   const status = error.response?.status
 
   switch (status) {
@@ -89,6 +89,10 @@ async function handleGeneralError(error: AxiosError, stores: ReturnType<typeof g
       // the failed login itself (POST /post/users/authenticate, a wired 401),
       // which the login page owns its display for; it is caller-owned.
       if (error.config?.url === AUTHENTICATE_URL) break
+      // Dialog flags are route-independent: without an explicit close the
+      // settings modal (rendered globally in App.vue) would stay open on
+      // top of the login page the redirect below lands on.
+      modalStore.closeOpenDialog()
       // The session is gone server-side: drop the persisted display
       // profile too, so a stale admin badge can never outlive the
       // session that backed it. No snackbar here: the login page
