@@ -297,6 +297,24 @@ impl LoginThrottle {
         max_ban
     }
 
+    /// Attempts left across the three applicable buckets before the next
+    /// evaluated failure trips a ban (0 = the next failure bans). Pure
+    /// read: unknown keys report the schedule minimum, a live ban reports
+    /// 0. Callers display this so clients can count down from a
+    /// server-provided number instead of hardcoding the policy.
+    #[must_use]
+    pub fn remaining(&self, ip: &str, user: &str, now: u64) -> u64 {
+        let ip_entry = self.ip.get(ip);
+        let short = u64::from(self.ip_short.max_failures)
+            .saturating_sub(ip_entry.map_or(0, |e| e.short.failure_count(now)));
+        let long = u64::from(self.ip_long.max_failures)
+            .saturating_sub(ip_entry.map_or(0, |e| e.long.failure_count(now)));
+        let user_entry = self.user.get(user);
+        let user = u64::from(self.user_long.max_failures)
+            .saturating_sub(user_entry.map_or(0, |e| e.long.failure_count(now)));
+        short.min(long).min(user)
+    }
+
     /// Successful authentication at `now`: drop the username entry
     /// entirely, and clear the IP entry's burst bucket. The IP-long
     /// history is deliberately kept: otherwise any valid account holder
@@ -463,6 +481,19 @@ mod tests {
             last_seen,
             banned_until: 0,
         }
+    }
+
+    #[test]
+    fn remaining_reports_minimum_across_buckets() {
+        let mut t = tracker();
+        // TEST_SHORT 2, TEST_IP_LONG 4, TEST_USER_LONG 3 → fresh is 2.
+        assert_eq!(t.remaining("ip", "u", 0), 2);
+        t.record_failure("ip", "u", 0);
+        assert_eq!(t.remaining("ip", "u", 0), 1, "short bucket is tightest");
+        t.record_failure("ip", "u", 1);
+        assert_eq!(t.remaining("ip", "u", 1), 0, "next failure bans");
+        // Unknown keys still report the schedule minimum.
+        assert_eq!(t.remaining("fresh-ip", "fresh-u", 1), 2);
     }
 
     #[test]

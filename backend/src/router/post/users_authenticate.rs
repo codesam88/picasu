@@ -117,7 +117,7 @@ const SWEEP_INTERVAL_SECS: u64 = 60;
 /// it deliberately, while an operator typo must never silently disable
 /// brute-force protection. Read from the process environment at request
 /// time, mirroring `PICASU_PBKDF_ITERATIONS`.
-fn rate_limits_disabled() -> bool {
+pub(crate) fn rate_limits_disabled() -> bool {
     #[cfg(test)]
     match RATE_LIMITS_FORCED.load(Ordering::Relaxed) {
         // Test seam: deterministic override without touching the process

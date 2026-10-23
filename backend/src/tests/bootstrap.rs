@@ -274,6 +274,7 @@ pub fn reset_backend_state() {
     // Drop the shared login throttle tracker so scenarios never inherit
     // failure counts or bans from a previous scenario.
     crate::router::post::users_authenticate::reset_login_throttle();
+    crate::router::put::users_password::reset_password_throttle();
 }
 
 /// Build the test Rocket instance with the current APP_CONFIG, without a
