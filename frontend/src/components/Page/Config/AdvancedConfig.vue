@@ -7,14 +7,16 @@
       <v-list-item
         title="Read Only Mode"
         subtitle="Prevent modification of data and settings"
-        @click="readOnlyMode = !readOnlyMode"
+        @click="onReadOnlyToggle(!readOnlyMode)"
       >
         <template #append>
           <v-switch
-            v-model="readOnlyMode"
+            :model-value="readOnlyMode"
             color="primary"
             hide-details
             inset
+            :disabled="disabling"
+            @update:model-value="onReadOnlyToggle"
             @click.stop
           ></v-switch>
         </template>
@@ -59,6 +61,21 @@
         </v-btn>
       </v-card-actions>
     </v-card>
+
+    <v-dialog v-model="confirmOpen" max-width="480">
+      <v-card>
+        <v-card-title class="font-weight-bold">Disable read-only mode?</v-card-title>
+        <v-card-text>
+          This lifts the read-only kill-switch and re-enables writes. Continue?
+        </v-card-text>
+        <v-card-actions class="justify-end">
+          <v-btn variant="text" @click="cancelDisable">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="disabling" @click="confirmDisable">
+            Disable
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   </v-col>
 </template>
 
@@ -67,6 +84,7 @@ import { ref } from 'vue'
 import { useConfigStore } from '@/store/configStore'
 import { useMessageStore } from '@/store/messageStore'
 import { resetAuthKey } from '@/api/config'
+import { disableReadOnly } from '@/api/adminConfig'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import type { AppConfig } from '@/api/config'
 
@@ -78,6 +96,39 @@ const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
 const loading = ref(false)
 const resetting = ref(false)
+const disabling = ref(false)
+const confirmOpen = ref(false)
+
+const onReadOnlyToggle = (value: unknown) => {
+  const next = value === true
+  if (next) {
+    readOnlyMode.value = true
+    return
+  }
+  if (readOnlyMode.value) {
+    confirmOpen.value = true
+    return
+  }
+  readOnlyMode.value = false
+}
+
+const cancelDisable = () => {
+  confirmOpen.value = false
+}
+
+const confirmDisable = async () => {
+  confirmOpen.value = false
+  disabling.value = true
+  const success = await tryWithMessageStore('mainId', async () => {
+    await disableReadOnly()
+    readOnlyMode.value = false
+    return true
+  })
+  if (success === true) {
+    messageStore.success('Read-only mode disabled')
+  }
+  disabling.value = false
+}
 
 const resetKey = async () => {
   resetting.value = true
