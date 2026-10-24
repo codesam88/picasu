@@ -202,6 +202,7 @@ The following env vars override the config file on every launch:
 | `PICASU_READ_ONLY_MODE`                | `gallery.read_only_mode`                                              |
 | `PICASU_TRIVIAL_PASSWORDS`             | `gallery.trivial_passwords`                                           |
 | `PICASU_UPLOAD_FOLDER`                 | `gallery.upload_folder`                                               |
+| `PICASU_WEB_ROOT`                      | `gallery.web_root`                                                    |
 | `PICASU_AUTH_KEY`                      | signing key (in-memory override of the secrets file, never persisted) |
 | `PICASU_TRUST_PROXY_FORWARDED_FOR`     | `server.trust_proxy_forwarded_for`                                    |
 | `PICASU_LOGIN_IP_WINDOW_SECS`          | `server.login_ip_window_secs`                                         |
@@ -224,14 +225,17 @@ The following env vars override the config file on every launch:
 rejected with 400 when present in the body — set them via the flag, env
 var, or `config.toml` key listed, then restart:
 
-| Knob                        | Set via                                                                           |
-| --------------------------- | --------------------------------------------------------------------------------- |
-| `server.address`            | `PICASU_ADDRESS` or `server.address` in `config.toml`                             |
-| `server.port`               | `PICASU_PORT` or `server.port` in `config.toml`                                   |
-| `gallery.trivial_passwords` | `--trivial-passwords`, `PICASU_TRIVIAL_PASSWORDS`, or `gallery.trivial_passwords` |
-| `gallery.bootstrap_admin`   | `--bootstrap-admin`, `PICASU_BOOTSTRAP_ADMIN`, or `gallery.bootstrap_admin`       |
-| `gallery.data_home`         | `PICASU_DATA_HOME` (not accepted by the API at all)                               |
-| `gallery.image_home`        | `PICASU_IMAGE_HOME` (not accepted by the API at all)                              |
+| Knob                                | Set via                                                                              |
+| ----------------------------------- | ------------------------------------------------------------------------------------ |
+| `server.address`                    | `PICASU_ADDRESS` or `server.address` in `config.toml`                                |
+| `server.port`                       | `PICASU_PORT` or `server.port` in `config.toml`                                      |
+| `gallery.trivial_passwords`         | `--trivial-passwords`, `PICASU_TRIVIAL_PASSWORDS`, or `gallery.trivial_passwords`    |
+| `gallery.bootstrap_admin`           | `--bootstrap-admin`, `PICASU_BOOTSTRAP_ADMIN`, or `gallery.bootstrap_admin`          |
+| `gallery.data_home`                 | `PICASU_DATA_HOME` (not accepted by the API at all)                                  |
+| `gallery.image_home`                | `PICASU_IMAGE_HOME` (not accepted by the API at all)                                 |
+| `server.trust_proxy_forwarded_for`  | `PICASU_TRUST_PROXY_FORWARDED_FOR` or `server.trust_proxy_forwarded_for`             |
+| all `server.login_*` throttle knobs | the matching `PICASU_LOGIN_*` env var or `config.toml` key                           |
+| `auth_key` (managed)                | `PICASU_AUTH_KEY` or the secrets file; rotate via `POST /post/config/auth-key/reset` |
 
 The JWT signing key is managed, never set: it lives in
 `<DATA_HOME>/auth/secrets.json` (owner-only file permissions), `PICASU_AUTH_KEY`
@@ -243,6 +247,12 @@ API-writable knobs: `upload_folder`, `max_upload_size`, `read_only_mode`,
 `disable_img`, `fs_notify_watcher`, `normalize_upload_filenames`,
 `validate_upload_content`, `use_client_timestamp_info`, and
 `allow_registration`.
+
+Read-only mode can be lifted while it is on via
+`POST /post/admin/config/disable-read-only` (admin-only; not gated by the
+read-only guard). The runtime configuration can be exported as a versioned
+envelope via `GET /get/admin/config/export` (`version: 1`,
+`scope: "server-runtime"`).
 
 Three settings are environment-only by construction: `PICASU_CONFIG_HOME`
 (selects where `config.toml` itself lives, so it cannot come from the

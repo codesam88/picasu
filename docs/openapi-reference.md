@@ -378,7 +378,8 @@ Errors: 401 missing or invalid admin credentials — 500 storage failure.
     "expiresAt": 0,
     "id": "string",
     "prefix": "string",
-    "usedBy": "string"
+    "usedBy": "string",
+    "username": "string"
   }
 ]
 ```
@@ -413,6 +414,7 @@ Status Code **200**
 | » id        | string                            | true     | none         | Row id — blake3 hash hex of the token; identifies the invite for<br>revoke. Preimage-resistant, useless as a token.    |
 | » prefix    | string                            | true     | none         | none                                                                                                                   |
 | » usedBy    | string,null                       | false    | none         | none                                                                                                                   |
+| » username  | string,null                       | false    | none         | none                                                                                                                   |
 
 <aside class="success">
 This operation does not require authentication
@@ -996,7 +998,8 @@ Accept: application/json
 
 ```javascript
 const inputBody = '{
-  "expiresInHours": 0
+  "expiresInHours": 0,
+  "username": "string"
 }';
 const headers = {
   'Content-Type':'application/json',
@@ -1134,16 +1137,18 @@ the invite redeems once, for a single registration.
 Corner cases: Creating an invite requires a live admin session, so on
 an empty store invites are created only after the first bootstrap.
 Listing, expiry, use and revoke are handled by
-`GET /get/invites` and `DELETE /delete/invites/{invite_id}`.
+`GET /get/invites` and `DELETE /delete/invites/{invite_id}`. An optional
+`username` binds the invite to that user id (403 on mismatch at redeem).
 
-Errors: 400 negative `expiresInHours` — 401 missing or invalid admin
+Errors: 400 negative `expiresInHours` or invalid `username` — 401 missing or invalid admin
 credentials — 405 read-only mode — 500 storage failure.
 
 > Body parameter
 
 ```json
 {
-  "expiresInHours": 0
+  "expiresInHours": 0,
+  "username": "string"
 }
 ```
 
@@ -1164,7 +1169,8 @@ credentials — 405 read-only mode — 500 storage failure.
     "expiresAt": 0,
     "id": "string",
     "prefix": "string",
-    "usedBy": "string"
+    "usedBy": "string",
+    "username": "string"
   },
   "token": "string"
 }
@@ -2371,12 +2377,13 @@ burned.
 Corner cases: The password is trimmed once and must satisfy the
 default policy (see `auth::password::check_strength`); an empty `invite` string counts as absent. Invite redemption
 marks the token used and inserts the user record in one transaction, so
-a failed request never half-consumes an invite.
+a failed request never half-consumes an invite. An invite may be bound
+to a `username` at creation; redemption then requires that same id.
 
 Errors: 400 invalid `userId` or password violating the policy — 403
-registration disabled (no invite) or invite expired — 404 unknown or
-revoked invite token — 405 read-only mode — 409 `userId` already exists
-or invite already used — 500 storage failure.
+registration disabled (no invite), invite expired, or invite username
+mismatch — 404 unknown or revoked invite token — 405 read-only mode —
+409 `userId` already exists or invite already used — 500 storage failure.
 
 > Body parameter
 
@@ -13835,7 +13842,8 @@ One annotated configuration field as returned by `GET /get/admin/config`.
 
 ```json
 {
-  "expiresInHours": 0
+  "expiresInHours": 0,
+  "username": "string"
 }
 ```
 
@@ -13846,6 +13854,7 @@ Body for `POST /post/invites`.
 | Name           | Type           | Required | Restrictions | Description                                                                                                                                                      |
 | -------------- | -------------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | expiresInHours | integer(int64) | true     | none         | Lifetime of the invite in hours, required: `0` means the invite<br>never expires. Negative values are rejected. Pass 168 for the<br>conventional 7-day lifetime. |
+| username       | string,null    | false    | none         | Optional user id the invite is bound to. Trimmed; empty or<br>missing means unbound. Validated as a user id.                                                     |
 
 <h2 id="tocS_CreateInviteResponse">CreateInviteResponse</h2>
 <!-- backwards compatibility -->
@@ -13861,7 +13870,8 @@ Body for `POST /post/invites`.
     "expiresAt": 0,
     "id": "string",
     "prefix": "string",
-    "usedBy": "string"
+    "usedBy": "string",
+    "username": "string"
   },
   "token": "string"
 }
@@ -14154,7 +14164,8 @@ Response for `POST /post/invites`.
   "expiresAt": 0,
   "id": "string",
   "prefix": "string",
-  "usedBy": "string"
+  "usedBy": "string",
+  "username": "string"
 }
 ```
 
@@ -14170,6 +14181,7 @@ token hash). Never contains the token itself.
 | id        | string              | true     | none         | Row id — blake3 hash hex of the token; identifies the invite for<br>revoke. Preimage-resistant, useless as a token. |
 | prefix    | string              | true     | none         | none                                                                                                                |
 | usedBy    | string,null         | false    | none         | none                                                                                                                |
+| username  | string,null         | false    | none         | none                                                                                                                |
 
 <h2 id="tocS_LoginRequest">LoginRequest</h2>
 <!-- backwards compatibility -->
