@@ -83,6 +83,7 @@ pub struct AssetRecord {
 
 impl AssetRecord {
     /// Create a new media asset record with a generated `asset_id`.
+    #[allow(dead_code)]
     pub fn new_media(
         kind: AssetKind,
         path: String,
@@ -144,6 +145,7 @@ impl AssetRecord {
 /// - Converts to absolute path.
 /// - Resolves `.` and `..` components without following symlinks.
 /// - Preserves the trailing component exactly.
+#[allow(dead_code)]
 pub fn canonicalize_path(path: &Path, image_home: &Path) -> PathBuf {
     let abs = if path.is_absolute() {
         path.to_path_buf()
@@ -155,6 +157,7 @@ pub fn canonicalize_path(path: &Path, image_home: &Path) -> PathBuf {
 
 /// Extension trait for path cleaning (resolves `.` and `..` without following
 /// symlinks).
+#[allow(dead_code)]
 trait PathClean {
     fn clean(&self) -> PathBuf;
 }
