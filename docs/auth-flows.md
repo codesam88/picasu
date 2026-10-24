@@ -147,7 +147,9 @@ password}` → 200; the account is always `admin: false` (the body has
   `0600`, excluded from export and list responses. Pinned (list body has no
   hash/salt fields).
 - **R7 — every role change is audited** (actor, target, flag).
-- **R8 — read-only blocks all mutations** (405), including user management.
+- **R8 — read-only blocks all mutations** (405), including user management;
+  the only exception is the read-only lift itself
+  (`POST /post/admin/config/disable-read-only`).
 - **R9 — tokens are typed and bound** (`typ`, witness consumption, scope;
   see `authz-model.md` AUTH-1/4/6–8).
 

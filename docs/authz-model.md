@@ -74,7 +74,7 @@ A guard denotes a partial map from a request to the capability it establishes,
 
 | Guard               | `⟦g⟧(req)`                                                                                                   |
 | ------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `GuardAuth`         | `⊤` if the request carries a user identity with the admin role (cookie or open first-run mode)               |
+| `GuardAuth`         | `⊤` if the request carries a user identity with the admin role (cookie)                                      |
 | `GuardUser`         | the request's `User` identity (admin or not) if its record is live; rejects share tokens                     |
 | `GuardShare`        | `⊤` if admin-role user cookie; else `Share(a,F)` if it resolves a **live** share `⟨a,F,e,w⟩`                 |
 | `GuardTimestamp`    | `Snap(a,F,t)` if it decodes a snapshot token `⟨a,F,t⟩` and `t` equals the query `timestamp`                  |
@@ -192,7 +192,9 @@ outlive the share's validity for new tokens.
 role (`GuardAuth`), not merely a share holder.
 
 **AUTH-12 — Read-only blocks mutation.** If `r` has an effect (any `write_*`,
-`upload`, `manage`), then `GuardReadOnlyMode ∈ G(r)`.
+`upload`, `manage`), then `GuardReadOnlyMode ∈ G(r)`, except
+`POST /post/admin/config/disable-read-only`, which lifts the kill-switch and
+is gated by `GuardAuth` only.
 
 **AUTH-13 — Credential isolation.** `(manage, config-secrets) ∉ holds(Share(a,F))`
 for every share; bearer tokens are extracted from the `Authorization` header
@@ -207,21 +209,21 @@ The model is not executable as written; each invariant is discharged by one of
 three means. The static rules are decision procedures for a syntactic fragment;
 the tests are witnesses.
 
-| Invariant | Means       | Derived artifact                                                              |
-| --------- | ----------- | ----------------------------------------------------------------------------- |
-| AUTH-1    | static      | decode-agreement: each guard's decode target equals `expected(g)`             |
-| AUTH-2    | static      | rejection-propagation: every `GuardResult` binding consumed (`?`)             |
-| AUTH-3    | static      | no `Outcome::Forward` in a guard impl (route-variant exceptions recorded)     |
-| AUTH-4    | static+test | witness-consumption rule; principal × scope tests asserting absence of effect |
-| AUTH-5    | test        | flag-preservation tests                                                       |
-| AUTH-6    | static+test | C1 scope clause; principal × scope tests                                      |
-| AUTH-7/8  | test        | snapshot- and asset-mismatch tests                                            |
-| AUTH-9    | test        | disabled/expired-share tests, including renewal                               |
-| AUTH-10   | static+test | renewal binding rule; transition tests                                        |
-| AUTH-11   | static      | route–policy parity: `manage` routes carry `GuardAuth` and no share guard     |
-| AUTH-12   | static      | guard-completeness: every mutating route carries `GuardReadOnlyMode`          |
-| AUTH-13   | static      | secret-handling rules                                                         |
-| AUTH-14   | review      | recorded constraint; no executable check                                      |
+| Invariant | Means       | Derived artifact                                                                                                      |
+| --------- | ----------- | --------------------------------------------------------------------------------------------------------------------- |
+| AUTH-1    | static      | decode-agreement: each guard's decode target equals `expected(g)`                                                     |
+| AUTH-2    | static      | rejection-propagation: every `GuardResult` binding consumed (`?`)                                                     |
+| AUTH-3    | static      | no `Outcome::Forward` in a guard impl (route-variant exceptions recorded)                                             |
+| AUTH-4    | static+test | witness-consumption rule; principal × scope tests asserting absence of effect                                         |
+| AUTH-5    | test        | flag-preservation tests                                                                                               |
+| AUTH-6    | static+test | C1 scope clause; principal × scope tests                                                                              |
+| AUTH-7/8  | test        | snapshot- and asset-mismatch tests                                                                                    |
+| AUTH-9    | test        | disabled/expired-share tests, including renewal                                                                       |
+| AUTH-10   | static+test | renewal binding rule; transition tests                                                                                |
+| AUTH-11   | static      | route–policy parity: `manage` routes carry `GuardAuth` and no share guard                                             |
+| AUTH-12   | static      | guard-completeness: every mutating route carries `GuardReadOnlyMode`, except the read-only lift (`disable-read-only`) |
+| AUTH-13   | static      | secret-handling rules                                                                                                 |
+| AUTH-14   | review      | recorded constraint; no executable check                                                                              |
 
 A new route, guard, or token type is classified against every invariant before
 it can merge. A property is not "done" until its derived artifact exists and

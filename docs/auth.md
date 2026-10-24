@@ -322,20 +322,21 @@ expiry.
 
 ### Request guards (the authorization manifest)
 
-| Guard               | Accepts                                                                     | Used by                                                                                                                                                                                                                                                                               |
-| ------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GuardAuth`         | cookie of a user with the admin role                                        | config write/export/import (incl. password change), user management (list/set-admin), album cover/assign/create-dir, delete, index jobs, rebuild, rotate, regenerate thumbnail, tags/flags/rating, share create/edit, album/tag lists, fs completion, album-index status, test probes |
-| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected      | `PUT /put/users/password`                                                                                                                                                                                                                                                             |
-| `GuardShare`        | share headers/query, or cookie of a user with the admin role                | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                                                                                                                             |
-| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter | get-data, get-metadata, get-scroll-bar                                                                                                                                                                                                                                                |
-| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                 | `GET /object/compressed/...`                                                                                                                                                                                                                                                          |
-| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim               | `GET /object/imported/...`                                                                                                                                                                                                                                                            |
-| `GuardUpload`       | share with `showUpload` + matching `presigned_album_id`, or admin-role user | `POST /upload`                                                                                                                                                                                                                                                                        |
-| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                  | every mutating route                                                                                                                                                                                                                                                                  |
+| Guard               | Accepts                                                                     | Used by                                                                                                                                                                                                                                                                |
+| ------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GuardAuth`         | cookie of a user with the admin role                                        | config write/export, auth-key reset, user management (list/set-admin), album cover/assign/create-dir, delete, index jobs, rebuild, rotate, regenerate thumbnail, tags/flags/rating, share create/edit, album/tag lists, fs completion, album-index status, test probes |
+| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected      | `PUT /put/users/password`                                                                                                                                                                                                                                              |
+| `GuardShare`        | share headers/query, or cookie of a user with the admin role                | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                                                                                                              |
+| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter | get-data, get-metadata, get-scroll-bar                                                                                                                                                                                                                                 |
+| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                 | `GET /object/compressed/...`                                                                                                                                                                                                                                           |
+| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim               | `GET /object/imported/...`                                                                                                                                                                                                                                             |
+| `GuardUpload`       | share with `showUpload` + matching `presigned_album_id`, or admin-role user | `POST /upload`                                                                                                                                                                                                                                                         |
+| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                  | every mutating route except `POST /post/admin/config/disable-read-only` (the read-only lift)                                                                                                                                                                           |
 
 ### Configuration surface
 
-- **`read_only_mode`** — global write kill-switch (405 on all mutations).
+- **`read_only_mode`** — global write kill-switch (405 on all mutations,
+  except `POST /post/admin/config/disable-read-only`, which lifts it).
 - **`auth_key` rotation** — changing it invalidates every outstanding token of
   all three types at once.
 - **User store** — `<DATA_HOME>/auth/users.redb` is the userdb of record:
@@ -352,9 +353,11 @@ expiry.
   and token version are re-checked per request for
   `GuardAuth`/`GuardShare`/`GuardUser`, so a removal, a demotion or an
   invalidated token takes effect before token expiry.
-- **Export** (`GET /get/config/export`) returns the serialized
-  configuration to an admin. The signing key is redacted (`authKey` is
-  removed, never exported); no plaintext secret leaves via the API.
+- **Export** — `GET /get/config/export` returns the full serialized
+  configuration to an admin, and `GET /get/admin/config/export` returns the
+  runtime-tier subset as a versioned envelope (`version`, `scope`,
+  `config`). The signing key is redacted (`authKey` is removed, never
+  exported); no plaintext secret leaves via the API.
 
 ### Auth state model
 
@@ -486,18 +489,18 @@ bodies live with the work that owns them, not here:
 - open F5–F10, with transcripts and follow-up recommendations:
   `.plan/auth-hardening.md`.
 
-| Finding                         | Severity | Status                                                                 | Owner                                 |
-| ------------------------------- | -------- | ---------------------------------------------------------------------- | ------------------------------------- |
-| F1 — token type confusion       | High     | fixed                                                                  | `.plan/authz-fix.md`                  |
-| F2 — `get-metadata` unscoped    | Medium   | fixed                                                                  | `.plan/authz-fix.md`                  |
-| F3 — share writes unbound       | High     | fixed                                                                  | `.plan/authz-fix.md`                  |
-| F4 — renewal unbound            | Medium   | fixed                                                                  | `.plan/authz-fix.md`                  |
-| F5 — no rate limiting/lockout   | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
-| F6 — open installs bind 0.0.0.0 | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
-| F7 — JS-readable session cookie | Medium   | fixed (R5: HttpOnly `Set-Cookie` + profile body + `POST /post/logout`) | `.plan/r5-httponly-session-cookie.md` |
-| F8 — plaintext credentials      | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
-| F9 — read-only lift via import  | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
-| F10 — bounded issues            | Low      | open                                                                   | `.plan/auth-hardening.md`             |
+| Finding                               | Severity | Status                                                                 | Owner                                 |
+| ------------------------------------- | -------- | ---------------------------------------------------------------------- | ------------------------------------- |
+| F1 — token type confusion             | High     | fixed                                                                  | `.plan/authz-fix.md`                  |
+| F2 — `get-metadata` unscoped          | Medium   | fixed                                                                  | `.plan/authz-fix.md`                  |
+| F3 — share writes unbound             | High     | fixed                                                                  | `.plan/authz-fix.md`                  |
+| F4 — renewal unbound                  | Medium   | fixed                                                                  | `.plan/authz-fix.md`                  |
+| F5 — no rate limiting/lockout         | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
+| F6 — open installs bind 0.0.0.0       | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
+| F7 — JS-readable session cookie       | Medium   | fixed (R5: HttpOnly `Set-Cookie` + profile body + `POST /post/logout`) | `.plan/r5-httponly-session-cookie.md` |
+| F8 — plaintext credentials            | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
+| F9 — read-only lift via config import | Medium   | fixed (import endpoint removed)                                        | `.plan/auth-hardening.md`             |
+| F10 — bounded issues                  | Low      | open                                                                   | `.plan/auth-hardening.md`             |
 
 ### What holds up
 
@@ -521,4 +524,6 @@ The architecture's core decisions verify well under attack:
   cookie.
 - **Rocket `Shield` defaults** are attached (`nosniff`, `X-Frame-Options:
 SAMEORIGIN`, `Permissions-Policy`), and `GuardReadOnlyMode` blocks mutations
-  while read-only mode is on — with the import-path caveat of F9 in `.plan/auth-hardening.md`.
+  while read-only mode is on. Read-only mode is lifted only through
+  `POST /post/admin/config/disable-read-only` (admin-only, not read-only-
+  gated).
