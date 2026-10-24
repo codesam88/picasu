@@ -4,9 +4,8 @@ This document describes Picasu's authentication system: its goals, the paradigm
 it follows, and the detailed mechanism as implemented in
 `backend/src/router/auth.rs` and the route modules. The desired properties —
 the model from which enforcement rules and tests are derived — live in
-[`authz-model.md`](authz-model.md). Findings from the security assessment live
-with the work that owns them (see Security assessment below); this document
-keeps the mechanism only.
+[`authz-model.md`](authz-model.md). This document keeps the mechanism,
+its reasoning, and its known limitations.
 
 ## Goals
 
@@ -52,11 +51,10 @@ patterns:
   so a failed guard is caught and the handler propagates it with `?`; the guard
   list plus that propagation is the auditable authorization manifest of the
   API. A `GuardResult` binding whose rejection is not propagated leaves the
-  route enforcing nothing, which is why the propagation is machine-checked (see
-  `.plan/authz-check.md`). Guards that carry a resolved share (`GuardShare`,
+  route enforcing nothing, which is why the propagation is machine-checked. Guards that carry a resolved share (`GuardShare`,
   `GuardTimestamp`) are consumed as the witness: handlers derive the operation's
   target from the guard's claims rather than from the request body, so a share
-  cannot act on another album (Findings F2–F4, now fixed).
+  cannot act on another album.
 
 Guests authenticate as **capability URLs**: the share's `albumId` + `shareId`
 (traveling in headers or query parameters, plus an optional password header)
@@ -138,6 +136,8 @@ KDF, so a throttled request stays cheap, and both count evaluated guesses
 only — malformed bodies, permission refusals and unknown users record
 nothing. The env-only switch `PICASU_RATE_LIMITS=false` bypasses both
 (e.g. for schema fuzzing).
+
+Honest limits: the `register` path is not throttled; a pre-epoch system clock fails open (with a warning) instead of locking everyone out; bans are time-boxed in process memory (a restart clears them) and there is no permanent lockout; that switch disables both throttles entirely.
 
 - _Login_ (`POST /post/users/authenticate`) keys three sliding-window
   buckets on `(client-ip, claimed-username)`: an IP-short burst bucket
@@ -244,8 +244,8 @@ message names that endpoint while the window is open; with the flag off it
 names the flag/CLI remedies instead. The flag is WARN-logged at
 boot, the server refuses to start when the flag is set against an existing
 `<DATA_HOME>/auth/users.redb` (bootstrap already happened, or the store
-needs repair — provision via the CLI instead). This closes Finding F6 for the default
-path; a network-exposed install is only ever open if the operator opted in.
+needs repair — provision via the CLI instead). Installs are closed by default;
+a network-exposed install is only ever open if the operator opted in.
 
 **No legacy sign-in path:** the legacy single-password world is gone. A
 bare JSON string body to `authenticate` answers 422 (well-formed JSON of
@@ -267,7 +267,7 @@ do not decode.
 All three are plain JWTs signed with the same `auth_key`. Each carries a `typ`
 claim and is decoded through a typed entry point that rejects a mismatched
 `typ`; the claims structs also set `deny_unknown_fields`, so the three
-cross-type decode paths fail closed (see Finding F1, now fixed).
+cross-type decode paths fail closed.
 
 What the server remembers about each of them — and why — is in
 [Auth state model](#auth-state-model).
@@ -480,41 +480,51 @@ and `backend/src/tests/auth_users.rs`.
 
 ---
 
-## Security assessment
+## Known limitations
 
-A security assessment of this system produced findings F1–F10. The finding
-bodies live with the work that owns them, not here:
+Present-tense gaps against current state of the art, with the reasoning
+behind each:
 
-- remediated F1–F4, with transcripts: `.plan/authz-fix.md` appendix;
-- F5–F10, with transcripts and follow-up recommendations (remaining
-  partial/open items noted per-row below): `.plan/auth-hardening.md`.
-
-| Finding                               | Severity | Status                                                                                                                                                      | Owner                                 |
-| ------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| F1 — token type confusion             | High     | fixed                                                                                                                                                       | `.plan/authz-fix.md`                  |
-| F2 — `get-metadata` unscoped          | Medium   | fixed                                                                                                                                                       | `.plan/authz-fix.md`                  |
-| F3 — share writes unbound             | High     | fixed                                                                                                                                                       | `.plan/authz-fix.md`                  |
-| F4 — renewal unbound                  | Medium   | fixed                                                                                                                                                       | `.plan/authz-fix.md`                  |
-| F5 — login brute-force throttling     | Medium   | fixed (IP/user throttle buckets, 429 + `Retry-After`, IP-keyed and logged; bans time-boxed by design)                                                       | `.plan/auth-hardening.md`             |
-| F6 — open installs                    | Medium   | fixed (closed by default; first admin via `--bootstrap-admin` trust-on-first-use or CLI; bind default still `0.0.0.0`)                                      | `.plan/auth-hardening.md`             |
-| F7 — JS-readable session cookie       | Medium   | fixed (R5: HttpOnly `Set-Cookie` + profile body + `POST /post/logout`)                                                                                      | `.plan/r5-httponly-session-cookie.md` |
-| F8 — plaintext credentials            | Medium   | partial (user passwords are PBKDF2 hashes; share passwords remain plaintext; `auth_key` is necessarily readable — `0600` file permissions are load-bearing) | `.plan/auth-hardening.md`             |
-| F9 — read-only lift via config import | Medium   | fixed (import endpoint removed)                                                                                                                             | `.plan/auth-hardening.md`             |
-| F10 — bounded issues                  | Low      | partial (config disclosure split by role + original-denial 401 fixed; `Cache-Control: public` on `/object` and `?token=` acceptance still open)             | `.plan/auth-hardening.md`             |
+- **Share passwords are stored plaintext** and compared verbatim. Shares
+  are low-entropy, human-distributed bearer strings; rotation means
+  recreating the share. User passwords are PBKDF2 hashes and never
+  exported.
+- **Bearer tokens are accepted in the URL query** (`?token=`), because
+  media elements and embeds cannot set headers. Tokens in URLs leak
+  into proxy logs, browser history, and `Referer` headers; prefer the
+  `Authorization` header where the client controls it.
+- **Authenticated media is served `Cache-Control: public`** with a long
+  `max-age`. A caching reverse proxy in front of Picasu may retain and
+  re-serve media to later unauthenticated requests for the same URL;
+  use `private` handling downstream or keep caching proxies out of the
+  media path.
+- **Login throttling is time-boxed, not a lockout.** Bans decay and a
+  restart clears them; there is no permanent account/IP lockout. The
+  `register` path is not throttled (it creates accounts; credential
+  guessing happens at login), and `PICASU_RATE_LIMITS=false` bypasses
+  throttling entirely for fuzzing.
+- **The signing key is necessarily readable** by the server process. It
+  lives owner-only (`0600`) in the secrets file, is never exported,
+  and rotation (`POST /post/config/auth-key/reset`) invalidates every
+  outstanding token.
+- **The bind address defaults to `0.0.0.0` and is operator-configurable.**
+  A fresh install is closed regardless: with an empty user store every
+  guarded route refuses, and the first administrator enrolls via
+  `--bootstrap-admin` trust-on-first-use or the offline CLI.
 
 ### What holds up
 
 The architecture's core decisions verify well under attack:
 
 - **Algorithm pinning** — HS256-only validation with tests guarding it; no
-  algorithm-confusion path (the remediated F1 issue was claim-type, not algorithm-type).
+  algorithm-confusion path (token types are distinguished by claim, not algorithm).
 - **Snapshot binding** — `GuardTimestamp` requires the query `timestamp` to
   equal the signed claim, so a token for one snapshot cannot read another;
   cross-snapshot access did not succeed in testing.
 - **Per-asset binding** — `GuardHash` compares the URL path segment against the
   signed `hash` claim; a token minted for one asset does not serve another.
 - **Share state is re-read every request** — disabling or expiring a share takes
-  effect immediately for identity checks (though not for already-minted capabilities — see F4 in `.plan/authz-fix.md`).
+  effect immediately for identity checks (though not for already-minted capabilities).
 - **Share IDs are 64-char CSPRNG values** (~330 bits) and album filtering
   happens server-side in the query expression — a share cannot widen its
   snapshot by supplying its own filter.

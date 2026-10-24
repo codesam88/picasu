@@ -235,4 +235,4 @@ The domains, `Cap`, `holds`, the guard denotations, and the invariant ids are th
 machine-readable surface. The intended encoding is one data file under
 `backend/` (a `tags.json`-style manifest) that the static gate and the tests both
 read, so the model has a single authority and the code is checked against it in
-both directions. Encoding it is the first step of `.plan/authz-check.md`.
+both directions. Encoding it is not yet implemented.
