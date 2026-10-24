@@ -396,7 +396,7 @@ hash hex, so a leaked database row cannot be replayed as a token. Invites
 are few and spend most of their life in the "used or revoked" state, so a
 list of them has to be maintained either way — a revocation entry would
 hold the same ids and nothing more. The record carries what the revocation
-entry cannot: who created the invite, and which user redeemed it.
+entry cannot: who created the invite, and which user redeemed it. An invite may optionally be bound to a user id at creation; redemption then requires that same id, and a mismatch is rejected without consuming the invite.
 
 **The share token is memorized.** A share binds an album to a policy
 (password, expiry, flags) and the admin page lists the shares and revokes

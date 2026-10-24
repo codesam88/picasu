@@ -133,6 +133,7 @@ router.beforeEach(async (to) => {
     isShareTarget: to.name === 'share' || to.name === 'shareViewPage',
     profilePresent: useSessionStore('mainId').profile !== null,
     toName: typeof to.name === 'string' ? to.name : undefined,
+    hasInviteToken: typeof to.query.invite === 'string' && to.query.invite !== '',
     serverInfo: getServerInfo
   })
 })

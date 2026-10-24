@@ -19,8 +19,16 @@
         <v-card class="register-card mx-auto" elevation="8" rounded="lg">
           <v-card-text class="pa-8">
             <div class="text-center mb-6">
-              <h2 class="text-h4 font-weight-light mb-2">Create Admin Account</h2>
-              <p class="text-body-2">No administrator is enrolled yet. Register the first one.</p>
+              <h2 class="text-h4 font-weight-light mb-2">
+                {{ isInviteMode ? 'Create Account' : 'Create Admin Account' }}
+              </h2>
+              <p class="text-body-2">
+                {{
+                  isInviteMode
+                    ? 'You have been invited to create an account.'
+                    : 'No administrator is enrolled yet. Register the first one.'
+                }}
+              </p>
             </div>
 
             <v-form @submit.prevent="handleRegister" ref="form">
@@ -74,15 +82,15 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useMessageStore } from '@/store/messageStore'
 import { useSessionStore } from '@/store/sessionStore'
 import { errorDisplay } from '@/script/utils/errorDisplay'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
-import { bootstrapUser, login } from '@/api/users'
-import { submitRegistration } from '@/script/utils/registration'
+import { bootstrapUser, createUser, login } from '@/api/users'
+import { submitRegistration, inviteFromQuery } from '@/script/utils/registration'
 
 const password = ref('')
 const confirmPassword = ref('')
@@ -94,6 +102,9 @@ const LAST_USER_ID_KEY = 'picasu-last-user-id'
 const userId = ref(localStorage.getItem(LAST_USER_ID_KEY) ?? '')
 
 const router = useRouter()
+const route = useRoute()
+const invite = computed(() => inviteFromQuery(route.query as { invite?: unknown }))
+const isInviteMode = computed(() => invite.value !== undefined)
 const messageStore = useMessageStore('mainId')
 const constStore = useConstStore('mainId')
 const vuetifyTheme = useTheme()
@@ -118,7 +129,9 @@ const handleRegister = async () => {
   try {
     await tryWithMessageStore('mainId', async () => {
       await submitRegistration(userId.value, password.value, confirmPassword.value, {
-        create: bootstrapUser,
+        create: isInviteMode.value
+          ? (u: string, p: string) => createUser(u, p, invite.value)
+          : bootstrapUser,
         login,
         onRegistered: async (profile) => {
           // The session JWT is in an HttpOnly cookie the page never sees;

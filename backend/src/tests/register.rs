@@ -227,7 +227,7 @@ fn expired_invite_is_403() {
         .expect("clock")
         .as_secs()
         - 60;
-    let (token, _) = crate::auth::invites::create_invite_with_expiry("s6-root", Some(past))
+    let (token, _) = crate::auth::invites::create_invite_with_expiry("s6-root", Some(past), None)
         .expect("create invite");
     let pw = crate::tests::fixtures::test_password("t-reg-exp");
     let (status, _) = register(

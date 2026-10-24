@@ -14,11 +14,21 @@ export const listUsers = async (): Promise<UserSummary[]> => {
 /// Register a standard user via `POST /post/users/register`. The backend
 /// accepts no `admin` field (`deny_unknown_fields`), so only `{ userId,
 /// password }` is sent; elevation is `PUT /put/users/admin` only.
-export const createUser = async (userId: string, password: string): Promise<UserSummary> => {
-  const response = await axios.post<UserSummary>('/post/users/register', {
+export const createUser = async (
+  userId: string,
+  password: string,
+  invite?: string
+): Promise<UserSummary> => {
+  const body: { userId: string; password: string; invite?: string } = {
     userId,
     password
-  })
+  }
+  // Include the invite token only when non-empty: an empty string counts as
+  // absent on the backend (see RegisterRequest.invite).
+  if (invite !== undefined && invite !== '') {
+    body.invite = invite
+  }
+  const response = await axios.post<UserSummary>('/post/users/register', body)
   return response.data
 }
 

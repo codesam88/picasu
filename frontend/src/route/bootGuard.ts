@@ -6,6 +6,7 @@ export interface BootGuardDeps {
   isShareTarget: boolean
   profilePresent: boolean
   toName: string | undefined
+  hasInviteToken: boolean
   serverInfo: () => Promise<ServerInfo>
 }
 
@@ -30,6 +31,11 @@ export async function decideBootRoute(deps: BootGuardDeps): Promise<RouteLocatio
   }
   if (!info.enrolled && info.enrollmentOpen) {
     return deps.toName === 'register' ? true : { name: 'register' }
+  }
+  // An invite link must be able to render the registration form even on
+  // an enrolled (or closed) store: the token is validated server-side.
+  if (deps.hasInviteToken && deps.toName === 'register') {
+    return true
   }
   // Enrolled store or closed install: sessionless means login. This also
   // absorbs the deleted RegisterPage leave-redirect — a sessionless visit

@@ -43,6 +43,11 @@ pub struct InviteRecord {
     pub expires_at: Option<u64>,
     /// Set once redeemed: the user id that consumed the invite.
     pub used_by: Option<String>,
+    /// Optional user id the invite is bound to. When set, only that user
+    /// id may redeem it. `#[serde(default)]` keeps old rows (no field)
+    /// deserializing to `None`.
+    #[serde(default)]
+    pub username: Option<String>,
 }
 
 /// Listing view of an invite: the stored metadata plus the row id (the
@@ -57,6 +62,7 @@ pub struct InviteView {
     pub created_by: String,
     pub expires_at: Option<u64>,
     pub used_by: Option<String>,
+    pub username: Option<String>,
 }
 
 impl InviteRecord {
@@ -69,6 +75,7 @@ impl InviteRecord {
             created_by: self.created_by,
             expires_at: self.expires_at,
             used_by: self.used_by,
+            username: self.username,
         }
     }
 }
@@ -120,7 +127,7 @@ pub fn resolve_expiry(expires_in_hours: i64) -> Result<Option<u64>, AppError> {
 /// table cannot be used.
 pub fn create_invite(created_by: &str) -> Result<(String, InviteRecord), AppError> {
     let expires_at = resolve_expiry(DEFAULT_EXPIRY_HOURS)?;
-    create_invite_with_expiry(created_by, expires_at)
+    create_invite_with_expiry(created_by, expires_at, None)
 }
 
 /// Create an invite with an explicit deadline (`None` never expires).
@@ -131,6 +138,7 @@ pub fn create_invite(created_by: &str) -> Result<(String, InviteRecord), AppErro
 pub fn create_invite_with_expiry(
     created_by: &str,
     expires_at: Option<u64>,
+    username: Option<&str>,
 ) -> Result<(String, InviteRecord), AppError> {
     let creator = created_by.trim();
     if creator.is_empty() {
@@ -144,11 +152,23 @@ pub fn create_invite_with_expiry(
         .try_fill_bytes(&mut bytes)
         .map_err(|e| AppError::from_err(ErrorKind::Internal, e.into()))?;
     let token = general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+    let username = match username {
+        Some(u) => {
+            let trimmed = u.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(crate::auth::users::validate_user_id(trimmed)?)
+            }
+        }
+        None => None,
+    };
     let record = InviteRecord {
         prefix: token.chars().take(PREFIX_LEN).collect(),
         created_by: creator.to_string(),
         expires_at,
         used_by: None,
+        username,
     };
     let id = hash_token(&token);
     let json = serde_json::to_string(&record)
@@ -200,6 +220,7 @@ pub fn list_invites() -> Result<Vec<InviteView>, AppError> {
             created_by: record.created_by,
             expires_at: record.expires_at,
             used_by: record.used_by,
+            username: record.username,
         });
     }
     views.sort_by(|a, b| a.id.cmp(&b.id));
@@ -339,6 +360,16 @@ pub fn redeem_invite(user_id: &str, token: &str, canonical: &str) -> Result<(), 
         }
         let mut record =
             found.ok_or_else(|| AppError::new(ErrorKind::NotFound, "invite token is not valid"))?;
+        // Username binding check first: cheapest, no state change either way.
+        if let Some(expected) = record.username.clone()
+            && id != expected
+        {
+            log::warn!("invite username mismatch: bound to {expected}, redeemed as {id}");
+            return Err(AppError::new(
+                ErrorKind::PermissionDenied,
+                "invite is not valid for this user",
+            ));
+        }
         if record.used_by.is_some() {
             return Err(AppError::new(
                 ErrorKind::Conflict,
@@ -563,7 +594,8 @@ mod tests {
     fn redeem_rejects_expired_invite() {
         let _g = setup();
         let past = super::now_secs().expect("now") - 60;
-        let (token, _) = super::create_invite_with_expiry("s6-root", Some(past)).expect("create");
+        let (token, _) =
+            super::create_invite_with_expiry("s6-root", Some(past), None).expect("create");
         let err = super::redeem_invite("s6-reg", &token, &test_password("s6-reg"))
             .expect_err("expired must fail");
         assert_eq!(err.kind, ErrorKind::PermissionDenied);
@@ -670,13 +702,119 @@ mod tests {
     #[test]
     fn never_expiring_invite_redeems() {
         let _g = setup();
-        let (token, record) = super::create_invite_with_expiry("s6-root", None).expect("create");
+        let (token, record) =
+            super::create_invite_with_expiry("s6-root", None, None).expect("create");
         assert!(
             record.expires_at.is_none(),
             "None means the invite never expires"
         );
         super::redeem_invite("s6-reg", &token, &test_password("s6-reg"))
             .expect("never-expiring invite redeems");
+        reset_backend_state();
+    }
+
+    #[test]
+    fn create_invite_with_username_stores_and_lists_binding() {
+        let _g = setup();
+
+        let (token, record) =
+            super::create_invite_with_expiry("s6-root", None, Some("s6-bound")).expect("create");
+        assert_eq!(record.username.as_deref(), Some("s6-bound"));
+        let listed = super::list_invites().expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].username.as_deref(), Some("s6-bound"));
+        let rec = super::get_invite(&super::hash_token(&token))
+            .expect("get")
+            .expect("exists");
+        assert_eq!(rec.username.as_deref(), Some("s6-bound"));
+
+        reset_backend_state();
+    }
+
+    #[test]
+    fn redeem_invite_with_matching_username_succeeds() {
+        let _g = setup();
+
+        let (token, _) =
+            super::create_invite_with_expiry("s6-root", None, Some("s6-match")).expect("create");
+        super::redeem_invite("s6-match", &token, &test_password("s6-match")).expect("redeem");
+        let used = super::get_invite(&super::hash_token(&token))
+            .expect("get")
+            .expect("exists");
+        assert_eq!(used.used_by.as_deref(), Some("s6-match"));
+        assert_eq!(
+            crate::auth::users::user_record("s6-match")
+                .expect("get user")
+                .expect("user exists")
+                .hash
+                .is_some(),
+            true
+        );
+
+        reset_backend_state();
+    }
+
+    #[test]
+    fn redeem_invite_with_mismatched_username_is_403_and_unconsumed() {
+        let _g = setup();
+
+        let (token, _) =
+            super::create_invite_with_expiry("s6-root", None, Some("s6-expected")).expect("create");
+        let invite_id = super::hash_token(&token);
+        let err = super::redeem_invite("s6-other", &token, &test_password("s6-other"))
+            .expect_err("mismatch must fail");
+        assert_eq!(err.kind, ErrorKind::PermissionDenied);
+        let rec = super::get_invite(&invite_id).expect("get").expect("exists");
+        assert!(rec.used_by.is_none(), "invite must not be consumed");
+        assert!(
+            crate::auth::users::user_record("s6-other")
+                .expect("get")
+                .is_none(),
+            "no user must be created"
+        );
+
+        reset_backend_state();
+    }
+
+    #[test]
+    fn old_invite_row_without_username_deserializes_to_none() {
+        let _g = setup();
+
+        let (token, _) = super::create_invite("s6-root").expect("create");
+        let id = super::hash_token(&token);
+        let raw = r#"{"prefix":"abcdefgh","createdBy":"s6-root","expiresAt":null,"usedBy":null}"#;
+        let txn = crate::storage::db::TREE
+            .in_disk
+            .begin_write()
+            .expect("write txn");
+        {
+            let mut table = txn
+                .open_table(crate::storage::db::INVITES)
+                .expect("open INVITES");
+            table.insert(id.as_str(), raw).expect("insert");
+        }
+        txn.commit().expect("commit");
+
+        let rec = super::get_invite(&id).expect("get").expect("exists");
+        assert!(rec.username.is_none());
+
+        reset_backend_state();
+    }
+
+    #[test]
+    fn create_invite_with_invalid_username_is_invalid_input() {
+        let _g = setup();
+
+        let long = "a".repeat(65);
+        let err = super::create_invite_with_expiry("s6-root", None, Some(&long))
+            .expect_err("too-long username must fail");
+        assert_eq!(err.kind, ErrorKind::InvalidInput);
+
+        // Empty username normalizes to None rather than erroring.
+        let (_, record) =
+            super::create_invite_with_expiry("s6-root", None, Some("   ")).expect("empty ok");
+        assert!(record.username.is_none());
+
         reset_backend_state();
     }
 }

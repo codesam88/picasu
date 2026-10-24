@@ -128,17 +128,17 @@ convention when touched (`GET /get/admin/users`,
 `PUT /put/admin/users/...`); not in scope to rename in this plan unless
 the admin panel work wants it. No behavior change here.
 
-Invites hook up end to end in a later phase (recipient page is missing:
-nothing consumes `?invite=` today, `RegisterPage` is bootstrap-only):
+Invites hook up end to end (built 2026-10-24; validated server-side):
 
 - `RegisterPage` accepts an `invite` token and posts it to
   `POST /post/users/register` alongside `{ userId, password }`.
 - Minting stays `GuardAuth(admin)` (`POST /post/invites`, still
   `GuardReadOnlyMode`-gated as a mutation).
-- Invite gains an optional `username` constraint set in the admin UI
+- Invite carries an optional `username` constraint set in the admin UI
   alongside `expiresInHours`: when non-empty, redemption is limited to
-  that `userId`; an existing `userId` is refused as usual. Requires an
-  `InviteRecord` field addition (no such constraint exists today).
+  that `userId` (403 mismatch, invite unconsumed, generic message);
+  an existing `userId` is refused as usual. Old rows without the field
+  read as unbound (`serde(default)`).
 - Token stays bearer-shown-once (hash stored, `prefix…` in listings).
 
 ## Frontend representation (first sketch, built 2026-10-24)
@@ -184,8 +184,6 @@ host-only (`400`). Wiring the toggle is blocked on the tier flip to
   `imagePath`, `hasAuthKey`) to `GET /get/self/profile` or a
   share-admitted successor; then delete.
 - Config import: no endpoint in this plan (too complex right now).
-- Invite recipient page + `InviteRecord.username` constraint: phased
-  follow-up (see above).
 
 ## Documentation rule (decided 2026-10-25)
 
