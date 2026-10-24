@@ -486,21 +486,21 @@ A security assessment of this system produced findings F1–F10. The finding
 bodies live with the work that owns them, not here:
 
 - remediated F1–F4, with transcripts: `.plan/authz-fix.md` appendix;
-- open F5–F10, with transcripts and follow-up recommendations:
-  `.plan/auth-hardening.md`.
+- F5–F10, with transcripts and follow-up recommendations (remaining
+  partial/open items noted per-row below): `.plan/auth-hardening.md`.
 
-| Finding                               | Severity | Status                                                                 | Owner                                 |
-| ------------------------------------- | -------- | ---------------------------------------------------------------------- | ------------------------------------- |
-| F1 — token type confusion             | High     | fixed                                                                  | `.plan/authz-fix.md`                  |
-| F2 — `get-metadata` unscoped          | Medium   | fixed                                                                  | `.plan/authz-fix.md`                  |
-| F3 — share writes unbound             | High     | fixed                                                                  | `.plan/authz-fix.md`                  |
-| F4 — renewal unbound                  | Medium   | fixed                                                                  | `.plan/authz-fix.md`                  |
-| F5 — no rate limiting/lockout         | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
-| F6 — open installs bind 0.0.0.0       | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
-| F7 — JS-readable session cookie       | Medium   | fixed (R5: HttpOnly `Set-Cookie` + profile body + `POST /post/logout`) | `.plan/r5-httponly-session-cookie.md` |
-| F8 — plaintext credentials            | Medium   | open                                                                   | `.plan/auth-hardening.md`             |
-| F9 — read-only lift via config import | Medium   | fixed (import endpoint removed)                                        | `.plan/auth-hardening.md`             |
-| F10 — bounded issues                  | Low      | open                                                                   | `.plan/auth-hardening.md`             |
+| Finding                               | Severity | Status                                                                                                                                                      | Owner                                 |
+| ------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| F1 — token type confusion             | High     | fixed                                                                                                                                                       | `.plan/authz-fix.md`                  |
+| F2 — `get-metadata` unscoped          | Medium   | fixed                                                                                                                                                       | `.plan/authz-fix.md`                  |
+| F3 — share writes unbound             | High     | fixed                                                                                                                                                       | `.plan/authz-fix.md`                  |
+| F4 — renewal unbound                  | Medium   | fixed                                                                                                                                                       | `.plan/authz-fix.md`                  |
+| F5 — login brute-force throttling     | Medium   | fixed (IP/user throttle buckets, 429 + `Retry-After`, IP-keyed and logged; bans time-boxed by design)                                                       | `.plan/auth-hardening.md`             |
+| F6 — open installs                    | Medium   | fixed (closed by default; first admin via `--bootstrap-admin` trust-on-first-use or CLI; bind default still `0.0.0.0`)                                      | `.plan/auth-hardening.md`             |
+| F7 — JS-readable session cookie       | Medium   | fixed (R5: HttpOnly `Set-Cookie` + profile body + `POST /post/logout`)                                                                                      | `.plan/r5-httponly-session-cookie.md` |
+| F8 — plaintext credentials            | Medium   | partial (user passwords are PBKDF2 hashes; share passwords remain plaintext; `auth_key` is necessarily readable — `0600` file permissions are load-bearing) | `.plan/auth-hardening.md`             |
+| F9 — read-only lift via config import | Medium   | fixed (import endpoint removed)                                                                                                                             | `.plan/auth-hardening.md`             |
+| F10 — bounded issues                  | Low      | partial (config disclosure split by role + original-denial 401 fixed; `Cache-Control: public` on `/object` and `?token=` acceptance still open)             | `.plan/auth-hardening.md`             |
 
 ### What holds up
 
