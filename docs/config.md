@@ -224,15 +224,14 @@ The following env vars override the config file on every launch:
 rejected with 400 when present in the body — set them via the flag, env
 var, or `config.toml` key listed, then restart:
 
-| Knob                         | Set via                                                                           |
-| ---------------------------- | --------------------------------------------------------------------------------- |
-| `server.address`             | `PICASU_ADDRESS` or `server.address` in `config.toml`                             |
-| `server.port`                | `PICASU_PORT` or `server.port` in `config.toml`                                   |
-| `gallery.allow_registration` | `PICASU_ALLOW_REGISTRATION` or `gallery.allow_registration` in `config.toml`      |
-| `gallery.trivial_passwords`  | `--trivial-passwords`, `PICASU_TRIVIAL_PASSWORDS`, or `gallery.trivial_passwords` |
-| `gallery.bootstrap_admin`    | `--bootstrap-admin`, `PICASU_BOOTSTRAP_ADMIN`, or `gallery.bootstrap_admin`       |
-| `gallery.data_home`          | `PICASU_DATA_HOME` (not accepted by the API at all)                               |
-| `gallery.image_home`         | `PICASU_IMAGE_HOME` (not accepted by the API at all)                              |
+| Knob                        | Set via                                                                           |
+| --------------------------- | --------------------------------------------------------------------------------- |
+| `server.address`            | `PICASU_ADDRESS` or `server.address` in `config.toml`                             |
+| `server.port`               | `PICASU_PORT` or `server.port` in `config.toml`                                   |
+| `gallery.trivial_passwords` | `--trivial-passwords`, `PICASU_TRIVIAL_PASSWORDS`, or `gallery.trivial_passwords` |
+| `gallery.bootstrap_admin`   | `--bootstrap-admin`, `PICASU_BOOTSTRAP_ADMIN`, or `gallery.bootstrap_admin`       |
+| `gallery.data_home`         | `PICASU_DATA_HOME` (not accepted by the API at all)                               |
+| `gallery.image_home`        | `PICASU_IMAGE_HOME` (not accepted by the API at all)                              |
 
 The JWT signing key is managed, never set: it lives in
 `<DATA_HOME>/auth/secrets.json` (owner-only file permissions), `PICASU_AUTH_KEY`
@@ -242,7 +241,8 @@ overrides it in memory without persisting, and the API offers only
 
 API-writable knobs: `upload_folder`, `max_upload_size`, `read_only_mode`,
 `disable_img`, `fs_notify_watcher`, `normalize_upload_filenames`,
-`validate_upload_content`, and `use_client_timestamp_info`.
+`validate_upload_content`, `use_client_timestamp_info`, and
+`allow_registration`.
 
 Three settings are environment-only by construction: `PICASU_CONFIG_HOME`
 (selects where `config.toml` itself lives, so it cannot come from the
