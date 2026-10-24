@@ -1,5 +1,5 @@
 ---
-status: open
+status: in-progress
 type: bug
 priority: high
 area: backend
@@ -26,16 +26,16 @@ assume the self-hosted, share-guests-are-semi-trusted threat model of the
 design; in a publicly exposed deployment they should be treated one level
 higher.
 
-Transcripts below describe the single-password instance under test. User
-authentication has since replaced the single shared password (PBKDF2 store,
-per-user admin role); the open findings are assumed still present — F5 and F8
-carry inline updates where the new system already changed the picture, and
-F6's open-installation mechanism is now an empty user store rather than an
-unset password.
+Transcripts below are historical: they describe the retired single-password
+system as tested on 2026-10-04 and are not reproducible against the current
+user-based authentication. Status lines above each finding record the current
+state.
 
 ### Findings
 
 #### F5 — No rate limiting or lockout on password authentication (Medium, reproduced)
+
+Status: fixed — POST /post/users/authenticate has 3 sliding-window buckets (IP-short, IP-long, user-long) with 429 + Retry-After; IP from transport unless trust_proxy_forwarded_for; IP logged. Bypassable by PICASU_RATE_LIMITS=false (documented fuzz switch); pre-epoch clock fails open with warn; register path unthrottled; bans time-boxed in process memory (restart clears; no permanent lockout).
 
 Sixteen consecutive wrong-password attempts on `/post/authenticate` each
 returned 401 with no backoff, no 429, and no lockout. Failures are logged —
@@ -46,10 +46,11 @@ which limits forensic use, and the password comparison is a non-constant-time
 single-password system exposed to a network, online guessing is the primary
 attack and nothing throttles it. **Fix:** per-source attempt throttling,
 constant-time comparison, include the remote address in failure logs (Rocket
-has it on the request). (Update: user passwords are now PBKDF2 hashes verified
-in constant time; throttling, lockout, and client-address logging remain open.)
+has it on the request).
 
-#### F6 — Fresh installs are wide open, and bind to all interfaces by default (Medium, reproduced)
+#### F6 — Fresh installs are wide open (Medium, reproduced)
+
+Status: fixed — closed by default (empty store → GuardAuth 401 / GuardUser 403; first admin via --bootstrap-admin TOFU flag ∧ empty store, refuse-to-start on seeded store, or picasu-cmd CLI). The 0.0.0.0 bind default is accepted: binding is operator-configurable and not a risk on a closed install.
 
 With `password` unset, the instance answers `GET /get/get-albums` with 200 to
 an unauthenticated request and issues an admin JWT for any password submitted;
@@ -58,11 +59,11 @@ the default `address` is `0.0.0.0`. A freshly deployed gallery is therefore
 full-admin-open to the entire reachable network until someone sets a password.
 The no-password convenience is reasonable for first run; the default bind is
 what makes it dangerous. **Fix:** default to `127.0.0.1`, or force password
-setup before mutating routes become available. (Update: the open condition is
-now an empty user store rather than an unset password; the bind default and
-the substance of the finding are unchanged.)
+setup before mutating routes become available.
 
 #### F7 — Admin session cookie is readable by JavaScript (Medium, from source)
+
+Status: fixed — server HttpOnly/Secure-if-https/SameSite=Strict Set-Cookie, profile body, POST /post/logout; no session token in bodies.
 
 The JWT cookie is written client-side with `httpOnly: false` — the code comment
 in `LoginPage.vue` itself notes it "should be true". The SPA renders
@@ -80,19 +81,21 @@ returning the raw token in the body.
 
 #### F8 — Credentials stored and transported in plaintext (Medium, from source)
 
+Status: partial — user passwords are PBKDF2 hashes; share passwords remain plaintext (model/album.rs Share.password, == compare auth.rs); auth_key necessarily readable, owner-only 0600 test-pinned.
+
 `password` and `auth_key` sit in `config.toml` as plaintext (verified on disk),
 share passwords are stored plaintext in the album records, and passwords are
 compared verbatim. The export endpoint returns them in plaintext to any admin
 (by design, but it multiplies the value of an admin token). There is no hashing,
 so compromise of the config file or a backup is immediate and total credential
-disclosure with no time-to-rotate window. (Update: user passwords are now
-PBKDF2 hashes in a separate file, never exported; the legacy config
-`password`, `auth_key`, and share passwords remain plaintext as described.)
+disclosure with no time-to-rotate window.
 **Fix:** store a slow hash of the
 password (the comparison input is small); keep `auth_key` as-is but document
 that config-file permissions are load-bearing.
 
 #### F9 — Read-only mode can be lifted through config import (Medium, reproduced)
+
+Status: fixed — POST /post/config/import deleted; only writers of read_only_mode are PUT /put/admin/config (read-only-gated) and POST /post/admin/config/disable-read-only (GuardAuth only).
 
 Read-only mode is meant to be a kill-switch that a bare token cannot disable:
 `PUT /put/config` carries `GuardReadOnlyMode`, so while the mode is on, the
@@ -111,6 +114,8 @@ re-authentication decision recorded in the plan. **Fix:** attach
 `import_config` as well.
 
 #### F10 — Bounded issues (Low)
+
+Status: partial — config disclosure split by role + original-denial 401 fixed; Cache-Control public on /object still set (cache.rs fairing); ?token= still accepted by all bearer guards (extract_bearer_token + 4 call sites).
 
 - **Authenticated media responses are marked `Cache-Control: public,
 max-age=31536000`** (`router/cache.rs` applies it to `/object` on any 2xx).
@@ -139,11 +144,12 @@ brute-force and XSS posture; given the self-hosted, trusted-guests goal
 (`docs/auth.md`) either choice is defensible, but they should be conscious
 decisions rather than defaults.
 
-1. Throttle `/post/authenticate`, log the client address (F5; constant-time
-   comparison done via PBKDF2); default-bind to localhost or force first-run
-   password setup (F6).
-2. Move cookie issuance server-side with HttpOnly (F7); hash the remaining
-   plaintext secrets or document file permissions as load-bearing (F8);
-   `Cache-Control: private` on `/object` and drop `?token=` (F10).
-3. Guard `import_config` with `GuardReadOnlyMode` (F9) — one attribute; the
-   deeper re-auth requirement is already decided in `bug-readonly-lockout`.
+Resolved:
+
+1. F5 done (buckets + 429 + IP logging); F6 done (closed by default, bind
+   accepted as configurable); F7 done (server HttpOnly cookie).
+2. F8 partial: user passwords hashed; share passwords plaintext; `auth_key`
+   permissions load-bearing. `Cache-Control: private` on `/object` and
+   dropping `?token=` (F10) remain open.
+3. F9 done by deleting the import endpoint; the read-only lift is the
+   dedicated `POST /post/admin/config/disable-read-only` route.

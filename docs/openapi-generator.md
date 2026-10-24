@@ -283,11 +283,10 @@ them.
 
 ### What the document does not say yet
 
-One gap in the published artifact, open work tracked in
-[`.plan/openapi-annotation-checks.md`](../.plan/openapi-annotation-checks.md):
+One gap in the published artifact, open work tracked as backlog:
 
 - **Security schemes.** The document registers no `securitySchemes`, and none of
-  the 61 operations declares `security`. A generated client cannot tell that an
+  the 73 operations declares `security`. A generated client cannot tell that an
   operation requires authentication. The guards are visible in source — the
   handler signatures are what P2 reads — but nothing yet states the policy in the
   artifact.

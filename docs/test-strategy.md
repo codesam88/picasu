@@ -53,7 +53,7 @@ UI E2E can.
 
 The Contract, Property/state, Mutation, and Architecture rows describe the
 target quality pipeline. The current repository has partial checks in these
-areas; the full gates are tracked in `.plan/automated-quality-gates.md` and
+areas; the full gates are tracked as backlog and
 must not be described as active until their commands are implemented and run.
 
 Two build configurations: **developer** (debug, no `embed-frontend`, fast
@@ -138,8 +138,7 @@ the parameter and body declarations against the route, the tag vocabulary and
 the doc-comment provenance of summaries are checked by `openapi-sanity`. Still
 review-time: parameter descriptions (21 of the 22 published parameters have none),
 the security schemes (none are registered), and the semantics of string-valued
-identifiers. The first two are tracked in
-`.plan/openapi-annotation-checks.md`.
+identifiers. The first two are tracked as backlog.
 
 See `docs/openapi-generator.md` for the full design, and
 `docs/openapi-reference.md` for the rendered reference.
@@ -153,8 +152,7 @@ endpoints; this is one part of the planned contract gate.
 
 The current pipeline is strongest at example-based behavior. It does not yet
 measure whether tests detect altered behavior or whether a change increases
-implementation risk. The backlog item `.plan/automated-quality-gates.md`
-tracks the following extensions:
+implementation risk. The following extensions are tracked as backlog:
 
 - Property-based and stateful/model-based tests for indexing idempotence,
   watcher reconciliation, album membership, deletion, duplicate handling, and
