@@ -234,7 +234,7 @@ put_config`, `just backend-check`.
 /get/admin/config/export` (versioned envelope, `GuardAuth` only).
       Handler tests per Acceptance 2–3 incl. guard absence/presence
       assertions. `just openapi-gen`, `just openapi-check`.
-- [ ] S4 `GET /get/self/profile` (`GuardUser`, read-only-safe):
+- [x] S4 `GET /get/self/profile` (`GuardUser`, read-only-safe):
       `{user:{userId,admin,home},settings:{}}` from user store + empty
       settings. Handler tests (self, non-admin, share-token 401, works
       while read-only on). Frontend not rewired yet.
