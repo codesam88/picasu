@@ -18,6 +18,45 @@
       }
     },
     "schemas": {
+      "AdminConfigExportResponse": {
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/RuntimeConfigDocument"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "scope",
+          "config"
+        ],
+        "type": "object"
+      },
+      "AdminConfigUpdateResponse": {
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/RuntimeConfigDocument"
+          },
+          "restartRequired": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "config",
+          "restartRequired"
+        ],
+        "type": "object"
+      },
       "AlbumIndexState": {
         "enum": [
           "idle",
@@ -361,6 +400,38 @@
       },
       "CaptchaInfo": {
         "description": "Captcha challenge descriptor, reserved for future brute-force throttling.\n\nNever populated yet: the handler always answers `captcha: null`. Kept as\na named schema so a future challenge can extend it without reshaping the\nenrollment response.",
+        "type": "object"
+      },
+      "ConfigFieldEntry": {
+        "description": "One annotated configuration field as returned by `GET /get/admin/config`.",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "requiresRestart": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string"
+          },
+          "value": {
+            "type": "object"
+          },
+          "writable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "tier",
+          "source",
+          "requiresRestart",
+          "writable"
+        ],
         "type": "object"
       },
       "ConfigResponse": {
@@ -1182,6 +1253,50 @@
         ],
         "type": "object"
       },
+      "RuntimeConfigDocument": {
+        "description": "The runtime-tier subset of the configuration, shared by the admin PUT\nresponse and the versioned export envelope.",
+        "properties": {
+          "allowRegistration": {
+            "type": "boolean"
+          },
+          "disableImg": {
+            "type": "boolean"
+          },
+          "fsNotifyWatcher": {
+            "type": "boolean"
+          },
+          "maxUploadSize": {
+            "type": "string"
+          },
+          "normalizeUploadFilenames": {
+            "type": "boolean"
+          },
+          "readOnlyMode": {
+            "type": "boolean"
+          },
+          "uploadFolder": {
+            "type": "string"
+          },
+          "useClientTimestampInfo": {
+            "type": "boolean"
+          },
+          "validateUploadContent": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "uploadFolder",
+          "maxUploadSize",
+          "readOnlyMode",
+          "disableImg",
+          "fsNotifyWatcher",
+          "normalizeUploadFilenames",
+          "validateUploadContent",
+          "useClientTimestampInfo",
+          "allowRegistration"
+        ],
+        "type": "object"
+      },
       "ScrollBarData": {
         "properties": {
           "index": {
@@ -1610,6 +1725,57 @@
         "summary": "Serve the favicon.",
         "tags": [
           "pages"
+        ]
+      }
+    },
+    "/get/admin/config": {
+      "get": {
+        "operationId": "get_admin_config_handler",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConfigFieldEntry"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Annotated configuration"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "summary": "Full annotated view of every configuration field. Admin-only; reading is always allowed (no read-only guard).",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/get/admin/config/export": {
+      "get": {
+        "operationId": "get_admin_config_export_handler",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminConfigExportResponse"
+                }
+              }
+            },
+            "description": "Exported runtime configuration"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "summary": "Export the runtime-tier configuration as a versioned envelope.",
+        "tags": [
+          "config"
         ]
       }
     },
@@ -2272,6 +2438,26 @@
         ]
       }
     },
+    "/post/admin/config/disable-read-only": {
+      "post": {
+        "operationId": "disable_read_only_handler",
+        "responses": {
+          "200": {
+            "description": "Read-only mode disabled"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "Lift the read-only kill-switch. Admin-only and deliberately NOT gated by `GuardReadOnlyMode`: lifting the kill-switch must be callable while it is on; the L3 confirm lives client-side.",
+        "tags": [
+          "config"
+        ]
+      }
+    },
     "/post/config/auth-key/reset": {
       "post": {
         "description": "Generates a new strong random key, persists it to the owner-only\nsecrets file, and installs it in memory. All previously issued tokens\nstop verifying, so every session is invalidated by construction.\nOverrides from `PICASU_AUTH_KEY` still win at the next boot (they are\nnever persisted).\n\nErrors: 401 missing or invalid admin credentials — 500 the new key\ncould not be stored.",
@@ -2768,6 +2954,49 @@
         "summary": "Register a new user account.",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/put/admin/config": {
+      "put": {
+        "operationId": "update_admin_config_handler",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PartialUpdateConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminConfigUpdateResponse"
+                }
+              }
+            },
+            "description": "Config updated"
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "405": {
+            "description": "Read-only mode"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "Patch the runtime-tier configuration. Admin-only and read-only-gated.",
+        "tags": [
+          "config"
         ]
       }
     },

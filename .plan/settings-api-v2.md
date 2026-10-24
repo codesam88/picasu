@@ -225,7 +225,7 @@ until the frontend migrates; deletion is the last step.
       route test pins accept + persistence; old `400` tests updated.
       `docs/config.md` row flips host → runtime. Checks: `cargo test
 put_config`, `just backend-check`.
-- [ ] S3 new admin routes alongside old: `GET /get/admin/config`
+- [x] S3 new admin routes alongside old: `GET /get/admin/config`
       (annotated `{value,tier,source,requiresRestart,writable}`,
       `GuardAuth(admin)`, no read-only guard), `PUT /put/admin/config`
       (runtime patch incl. `allowRegistration`, `GuardAuth` +

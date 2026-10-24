@@ -1,6 +1,7 @@
 // src/router/put/mod.rs
 use rocket::Route;
 
+pub mod admin_config;
 pub mod assign_album;
 pub mod edit_album;
 pub mod edit_config;
@@ -26,6 +27,7 @@ pub fn generate_put_routes() -> Vec<Route> {
         edit_tag::edit_tag,
         regenerate_thumbnail::regenerate_thumbnail_with_frame,
         edit_config::update_config_handler,
+        admin_config::update_admin_config_handler,
         users_password::set_user_password_handler,
         users_admin::set_user_admin_handler,
         rotate_image::rotate_image
