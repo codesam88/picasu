@@ -1,6 +1,6 @@
-name: Upload behavior flags set via PUT /put/config are reported by GET /get/config
+name: Upload behavior flags set via PUT /put/admin/config are reported by GET /get/config
 when:
-  - call: "PUT /put/config"
+  - call: "PUT /put/admin/config"
     body:
       normalizeUploadFilenames: false
       validateUploadContent: false

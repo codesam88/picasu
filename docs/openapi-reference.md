@@ -418,6 +418,192 @@ Status Code **200**
 This operation does not require authentication
 </aside>
 
+## Read the caller's own identity from the user store.
+
+<a id="opIdget_self_profile_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/self/profile \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/self/profile HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/self/profile", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/self/profile',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/self/profile', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/self/profile', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/self/profile");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/self/profile", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/self/profile`
+
+Any logged-in user may call this; share tokens are rejected by `GuardUser`.
+Reading is allowed while read-only mode is on.
+
+Errors: 401 missing/invalid session or share token; 403 no enrolled
+users; 404 unknown user; 500 storage failure.
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "settings": {},
+  "user": {
+    "admin": true,
+    "home": "string",
+    "userId": "string"
+  }
+}
+```
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized"
+}
+```
+
+<h3 id="read-the-caller's-own-identity-from-the-user-store.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                                            |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Self profile                                                                               | [SelfProfileResponse](#schemaselfprofileresponse) |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)       |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                              |
+| 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | User not found                                                                             | None                                              |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                              |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 ## Report anonymous enrollment state for boot routing.
 
 <a id="opIdserver_info_handler"></a>
@@ -2624,9 +2810,9 @@ are rejected); unauthenticated callers are denied at dispatch.
 Errors: 400 invalid `userId`, `newPassword` violating the password
 policy, or a wrong/missing `oldPassword` on self-change — 403 non-admin
 targeting another user — 404 unknown `userId` — 405 read-only mode —
-500 storage failure. 401 is session-tier only: the route's only 401
-source is the `GuardUser` cookie guard rejecting an unauthenticated or
-sessionless caller.
+500 storage failure. 401 is the `GuardUser` cookie guard rejecting an
+unauthenticated or sessionless caller, or this route revoking the
+session after the (ip, jti) guess budget is spent.
 
 > Body parameter
 
@@ -6123,6 +6309,383 @@ This operation does not require authentication
 
 Server configuration: read, write, password, export/import, path completion
 
+## Full annotated view of every configuration field. Admin-only; reading is always allowed (no read-only guard).
+
+<a id="opIdget_admin_config_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/admin/config \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/admin/config HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/admin/config", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/admin/config',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/admin/config', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/admin/config', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/admin/config");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/admin/config", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/admin/config`
+
+> Example responses
+
+> 200 Response
+
+```json
+[
+  {
+    "name": "string",
+    "requiresRestart": true,
+    "source": "string",
+    "tier": "string",
+    "value": {},
+    "writable": true
+  }
+]
+```
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized"
+}
+```
+
+<h3 id="full-annotated-view-of-every-configuration-field.-admin-only;-reading-is-always-allowed-(no-read-only-guard).-responses">Responses</h3>
+
+| Status | Meaning                                                         | Description                                                                                | Schema                                      |
+| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | Annotated configuration                                                                    | Inline                                      |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+
+<h3 id="full-annotated-view-of-every-configuration-field.-admin-only;-reading-is-always-allowed-(no-read-only-guard).-responseschema">Response Schema</h3>
+
+Status Code **200**
+
+| Name              | Type                                          | Required | Restrictions | Description                                                                 |
+| ----------------- | --------------------------------------------- | -------- | ------------ | --------------------------------------------------------------------------- |
+| _anonymous_       | [[ConfigFieldEntry](#schemaconfigfieldentry)] | false    | none         | [One annotated configuration field as returned by `GET /get/admin/config`.] |
+| » name            | string                                        | true     | none         | none                                                                        |
+| » requiresRestart | boolean                                       | true     | none         | none                                                                        |
+| » source          | string                                        | true     | none         | none                                                                        |
+| » tier            | string                                        | true     | none         | none                                                                        |
+| » value           | object                                        | true     | none         | none                                                                        |
+| » writable        | boolean                                       | true     | none         | none                                                                        |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
+## Export the runtime-tier configuration as a versioned envelope.
+
+<a id="opIdget_admin_config_export_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X GET /get/admin/config/export \
+  -H 'Accept: application/json'
+
+```
+
+```http
+GET /get/admin/config/export HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/get/admin/config/export", {
+  method: "GET",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.get '/get/admin/config/export',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.get('/get/admin/config/export', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('GET','/get/admin/config/export', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/get/admin/config/export");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("GET");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("GET", "/get/admin/config/export", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`GET /get/admin/config/export`
+
+> Example responses
+
+> 200 Response
+
+```json
+{
+  "config": {
+    "allowRegistration": true,
+    "disableImg": true,
+    "fsNotifyWatcher": true,
+    "maxUploadSize": "string",
+    "normalizeUploadFilenames": true,
+    "readOnlyMode": true,
+    "uploadFolder": "string",
+    "useClientTimestampInfo": true,
+    "validateUploadContent": true
+  },
+  "scope": "string",
+  "version": 0
+}
+```
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized"
+}
+```
+
+<h3 id="export-the-runtime-tier-configuration-as-a-versioned-envelope.-responses">Responses</h3>
+
+| Status | Meaning                                                         | Description                                                                                | Schema                                                        |
+| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | Exported runtime configuration                                                             | [AdminConfigExportResponse](#schemaadminconfigexportresponse) |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)                   |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 ## Serve the client-visible server configuration.
 
 <a id="opIdget_config_handler"></a>
@@ -6699,6 +7262,171 @@ matched no directory — 500 the directory could not be read.
 This operation does not require authentication
 </aside>
 
+## Lift the read-only kill-switch. Admin-only and deliberately NOT gated by `GuardReadOnlyMode`: lifting the kill-switch must be callable while it is on; the L3 confirm lives client-side.
+
+<a id="opIddisable_read_only_handler"></a>
+
+> Code samples
+
+```shell
+# You can also use wget
+curl -X POST /post/admin/config/disable-read-only \
+  -H 'Accept: application/json'
+
+```
+
+```http
+POST /post/admin/config/disable-read-only HTTP/1.1
+
+Accept: application/json
+
+```
+
+```javascript
+const headers = {
+  Accept: "application/json",
+};
+
+fetch("/post/admin/config/disable-read-only", {
+  method: "POST",
+
+  headers: headers,
+})
+  .then(function (res) {
+    return res.json();
+  })
+  .then(function (body) {
+    console.log(body);
+  });
+```
+
+```ruby
+require 'rest-client'
+require 'json'
+
+headers = {
+  'Accept' => 'application/json'
+}
+
+result = RestClient.post '/post/admin/config/disable-read-only',
+  params: {
+  }, headers: headers
+
+p JSON.parse(result)
+
+```
+
+```python
+import requests
+headers = {
+  'Accept': 'application/json'
+}
+
+r = requests.post('/post/admin/config/disable-read-only', headers = headers)
+
+print(r.json())
+
+```
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+$headers = array(
+    'Accept' => 'application/json',
+);
+
+$client = new \GuzzleHttp\Client();
+
+// Define array of request body.
+$request_body = array();
+
+try {
+    $response = $client->request('POST','/post/admin/config/disable-read-only', array(
+        'headers' => $headers,
+        'json' => $request_body,
+       )
+    );
+    print_r($response->getBody()->getContents());
+ }
+ catch (\GuzzleHttp\Exception\BadResponseException $e) {
+    // handle exception or api errors.
+    print_r($e->getMessage());
+ }
+
+ // ...
+
+```
+
+```java
+URL obj = new URL("/post/admin/config/disable-read-only");
+HttpURLConnection con = (HttpURLConnection) obj.openConnection();
+con.setRequestMethod("POST");
+int responseCode = con.getResponseCode();
+BufferedReader in = new BufferedReader(
+    new InputStreamReader(con.getInputStream()));
+String inputLine;
+StringBuffer response = new StringBuffer();
+while ((inputLine = in.readLine()) != null) {
+    response.append(inputLine);
+}
+in.close();
+System.out.println(response.toString());
+
+```
+
+```go
+package main
+
+import (
+       "bytes"
+       "net/http"
+)
+
+func main() {
+
+    headers := map[string][]string{
+        "Accept": []string{"application/json"},
+    }
+
+    data := bytes.NewBuffer([]byte{jsonReq})
+    req, err := http.NewRequest("POST", "/post/admin/config/disable-read-only", data)
+    req.Header = headers
+
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    // ...
+}
+
+```
+
+`POST /post/admin/config/disable-read-only`
+
+> Example responses
+
+> 401 Response
+
+```json
+{
+  "context": [],
+  "kind": "Auth",
+  "message": "Unauthorized"
+}
+```
+
+<h3 id="lift-the-read-only-kill-switch.-admin-only-and-deliberately-not-gated-by-`guardreadonlymode`:-lifting-the-kill-switch-must-be-callable-while-it-is-on;-the-l3-confirm-lives-client-side.-responses">Responses</h3>
+
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Read-only mode disabled                                                                    | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
+
+<aside class="success">
+This operation does not require authentication
+</aside>
+
 ## Rotate the JWT signing key.
 
 <a id="opIdreset_auth_key_handler"></a>
@@ -6881,285 +7609,22 @@ could not be stored.
 This operation does not require authentication
 </aside>
 
-## Replace the server configuration with the posted one.
+## Patch the runtime-tier configuration. Admin-only and read-only-gated.
 
-<a id="opIdimport_config_handler"></a>
+<a id="opIdupdate_admin_config_handler"></a>
 
 > Code samples
 
 ```shell
 # You can also use wget
-curl -X POST /post/config/import \
+curl -X PUT /put/admin/config \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json'
 
 ```
 
 ```http
-POST /post/config/import HTTP/1.1
-
-Content-Type: application/json
-Accept: application/json
-
-```
-
-```javascript
-const inputBody = '{
-  "address": "string",
-  "allowRegistration": true,
-  "authKey": "string",
-  "bootstrapAdmin": true,
-  "dataHome": "string",
-  "disableImg": true,
-  "fsNotifyWatcher": true,
-  "imagePath": "string",
-  "loginIpBaseBanSecs": 0,
-  "loginIpLongBaseBanSecs": 0,
-  "loginIpLongMaxBanSecs": 0,
-  "loginIpLongMaxFailures": 0,
-  "loginIpLongWindowSecs": 0,
-  "loginIpMaxBanSecs": 0,
-  "loginIpMaxFailures": 0,
-  "loginIpWindowSecs": 0,
-  "loginUserLongBaseBanSecs": 0,
-  "loginUserLongMaxBanSecs": 0,
-  "loginUserLongMaxFailures": 0,
-  "loginUserLongWindowSecs": 0,
-  "maxUploadSize": "string",
-  "normalizeUploadFilenames": true,
-  "port": 0,
-  "readOnlyMode": true,
-  "trivialPasswords": true,
-  "trustProxyForwardedFor": true,
-  "uploadFolder": "string",
-  "useClientTimestampInfo": true,
-  "validateUploadContent": true
-}';
-const headers = {
-  'Content-Type':'application/json',
-  'Accept':'application/json'
-};
-
-fetch('/post/config/import',
-{
-  method: 'POST',
-  body: inputBody,
-  headers: headers
-})
-.then(function(res) {
-    return res.json();
-}).then(function(body) {
-    console.log(body);
-});
-
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Content-Type' => 'application/json',
-  'Accept' => 'application/json'
-}
-
-result = RestClient.post '/post/config/import',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Content-Type': 'application/json',
-  'Accept': 'application/json'
-}
-
-r = requests.post('/post/config/import', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Content-Type' => 'application/json',
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('POST','/post/config/import', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/post/config/import");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("POST");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Content-Type": []string{"application/json"},
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/post/config/import", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`POST /post/config/import`
-
-The body is a complete `AppConfig` rather than a patch. Before writing,
-`imagePath` is trimmed of whitespace and quotes (an empty value becomes
-`null`) and `uploadFolder` is trimmed. A posted `authKey` is ignored —
-the current signing key is kept and can only be rotated through
-`POST /post/config/auth-key/reset` — so restoring an older export never
-smuggles a key in. On success `config.toml` is rewritten, the in-memory
-configuration is replaced and the filesystem watcher reloaded.
-
-Corner cases: The posted configuration is otherwise accepted as-is:
-unlike `PUT /put/config` it applies no validation, so an `uploadFolder`
-that is absolute or contains `..` is stored here. A failed write is a
-500 and leaves the running configuration untouched.
-
-Errors: 400 unusable request body — 401 missing or invalid credentials —
-500 storage failure.
-
-> Body parameter
-
-```json
-{
-  "address": "string",
-  "allowRegistration": true,
-  "authKey": "string",
-  "bootstrapAdmin": true,
-  "dataHome": "string",
-  "disableImg": true,
-  "fsNotifyWatcher": true,
-  "imagePath": "string",
-  "loginIpBaseBanSecs": 0,
-  "loginIpLongBaseBanSecs": 0,
-  "loginIpLongMaxBanSecs": 0,
-  "loginIpLongMaxFailures": 0,
-  "loginIpLongWindowSecs": 0,
-  "loginIpMaxBanSecs": 0,
-  "loginIpMaxFailures": 0,
-  "loginIpWindowSecs": 0,
-  "loginUserLongBaseBanSecs": 0,
-  "loginUserLongMaxBanSecs": 0,
-  "loginUserLongMaxFailures": 0,
-  "loginUserLongWindowSecs": 0,
-  "maxUploadSize": "string",
-  "normalizeUploadFilenames": true,
-  "port": 0,
-  "readOnlyMode": true,
-  "trivialPasswords": true,
-  "trustProxyForwardedFor": true,
-  "uploadFolder": "string",
-  "useClientTimestampInfo": true,
-  "validateUploadContent": true
-}
-```
-
-<h3 id="replace-the-server-configuration-with-the-posted-one.-parameters">Parameters</h3>
-
-| Name | In   | Type                          | Required | Description |
-| ---- | ---- | ----------------------------- | -------- | ----------- |
-| body | body | [AppConfig](#schemaappconfig) | true     | none        |
-
-> Example responses
-
-> 401 Response
-
-```json
-{
-  "context": [],
-  "kind": "Auth",
-  "message": "Unauthorized"
-}
-```
-
-<h3 id="replace-the-server-configuration-with-the-posted-one.-responses">Responses</h3>
-
-| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Config imported                                                                            | None                                        |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Patch the server configuration with the posted fields.
-
-<a id="opIdupdate_config_handler"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X PUT /put/config \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json'
-
-```
-
-```http
-PUT /put/config HTTP/1.1
+PUT /put/admin/config HTTP/1.1
 
 Content-Type: application/json
 Accept: application/json
@@ -7201,7 +7666,7 @@ const headers = {
   'Accept':'application/json'
 };
 
-fetch('/put/config',
+fetch('/put/admin/config',
 {
   method: 'PUT',
   body: inputBody,
@@ -7224,7 +7689,7 @@ headers = {
   'Accept' => 'application/json'
 }
 
-result = RestClient.put '/put/config',
+result = RestClient.put '/put/admin/config',
   params: {
   }, headers: headers
 
@@ -7239,7 +7704,7 @@ headers = {
   'Accept': 'application/json'
 }
 
-r = requests.put('/put/config', headers = headers)
+r = requests.put('/put/admin/config', headers = headers)
 
 print(r.json())
 
@@ -7261,7 +7726,7 @@ $client = new \GuzzleHttp\Client();
 $request_body = array();
 
 try {
-    $response = $client->request('PUT','/put/config', array(
+    $response = $client->request('PUT','/put/admin/config', array(
         'headers' => $headers,
         'json' => $request_body,
        )
@@ -7278,7 +7743,7 @@ try {
 ```
 
 ```java
-URL obj = new URL("/put/config");
+URL obj = new URL("/put/admin/config");
 HttpURLConnection con = (HttpURLConnection) obj.openConnection();
 con.setRequestMethod("PUT");
 int responseCode = con.getResponseCode();
@@ -7310,7 +7775,7 @@ func main() {
     }
 
     data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("PUT", "/put/config", data)
+    req, err := http.NewRequest("PUT", "/put/admin/config", data)
     req.Header = headers
 
     client := &http.Client{}
@@ -7320,26 +7785,7 @@ func main() {
 
 ```
 
-`PUT /put/config`
-
-Every field is optional and a field absent from the body keeps its current
-value. `address`, `port`, `allowRegistration`, `trivialPasswords`,
-`bootstrapAdmin`, and the login-throttle knobs
-(`trustProxyForwardedFor`, `login*Secs`, `login*MaxFailures`) are
-host-only (env / config file, restart-required) and `authKey`
-is managed (secrets file + reset endpoint); any presence of these in the
-body is a 400. The only other validation is on
-`uploadFolder`, which must be a relative path free of `..` components;
-on success `config.toml` is rewritten, the in-memory configuration is
-replaced and the filesystem watcher is reloaded.
-
-Corner cases: `uploadFolder` and `maxUploadSize` take an empty string
-to reset to their defaults, `uploads` and `100MiB`.
-
-Errors: 400 `uploadFolder` is absolute or contains `..`, the body cannot
-be parsed, or a host-only or managed knob is present — 401 missing or invalid admin
-credentials; share tokens are not accepted — 405 read-only mode — 500
-config write failure.
+`PUT /put/admin/config`
 
 > Body parameter
 
@@ -7375,13 +7821,32 @@ config write failure.
 }
 ```
 
-<h3 id="patch-the-server-configuration-with-the-posted-fields.-parameters">Parameters</h3>
+<h3 id="patch-the-runtime-tier-configuration.-admin-only-and-read-only-gated.-parameters">Parameters</h3>
 
 | Name | In   | Type                                                            | Required | Description |
 | ---- | ---- | --------------------------------------------------------------- | -------- | ----------- |
 | body | body | [PartialUpdateConfigRequest](#schemapartialupdateconfigrequest) | true     | none        |
 
 > Example responses
+
+> 200 Response
+
+```json
+{
+  "config": {
+    "allowRegistration": true,
+    "disableImg": true,
+    "fsNotifyWatcher": true,
+    "maxUploadSize": "string",
+    "normalizeUploadFilenames": true,
+    "readOnlyMode": true,
+    "uploadFolder": "string",
+    "useClientTimestampInfo": true,
+    "validateUploadContent": true
+  },
+  "restartRequired": ["string"]
+}
+```
 
 > 401 Response
 
@@ -7393,15 +7858,15 @@ config write failure.
 }
 ```
 
-<h3 id="patch-the-server-configuration-with-the-posted-fields.-responses">Responses</h3>
+<h3 id="patch-the-runtime-tier-configuration.-admin-only-and-read-only-gated.-responses">Responses</h3>
 
-| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Config updated                                                                             | None                                        |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                                        |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Config updated                                                                             | [AdminConfigUpdateResponse](#schemaadminconfigupdateresponse) |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                                          |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody)                   |
+| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                                          |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                                          |
 
 <aside class="success">
 This operation does not require authentication
@@ -7572,6 +8037,7 @@ Errors: 401 no valid admin credentials.
 {
   "cancelRequested": true,
   "failed": 0,
+  "failedPaths": ["string"],
   "finishedAt": 0,
   "matched": 0,
   "processed": 0,
@@ -7627,7 +8093,8 @@ Accept: application/json
 
 ```javascript
 const inputBody = '{
-  "album": "string"
+  "album": "string",
+  "clear": true
 }';
 const headers = {
   'Content-Type':'application/json',
@@ -7772,7 +8239,8 @@ credentials — 405 read-only mode — 409 an index job is already running.
 
 ```json
 {
-  "album": "string"
+  "album": "string",
+  "clear": true
 }
 ```
 
@@ -7980,200 +8448,6 @@ Errors: 400 malformed request — 401 missing or invalid credentials —
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)   | No active index job                                                                        | None                                        |
-
-<aside class="success">
-This operation does not require authentication
-</aside>
-
-## Rebuild the asset tables and metadata cache from the filesystem under `IMAGE_HOME`.
-
-<a id="opIdrebuild_handler"></a>
-
-> Code samples
-
-```shell
-# You can also use wget
-curl -X POST /post/rebuild \
-  -H 'Accept: application/json'
-
-```
-
-```http
-POST /post/rebuild HTTP/1.1
-
-Accept: application/json
-
-```
-
-```javascript
-const headers = {
-  Accept: "application/json",
-};
-
-fetch("/post/rebuild", {
-  method: "POST",
-
-  headers: headers,
-})
-  .then(function (res) {
-    return res.json();
-  })
-  .then(function (body) {
-    console.log(body);
-  });
-```
-
-```ruby
-require 'rest-client'
-require 'json'
-
-headers = {
-  'Accept' => 'application/json'
-}
-
-result = RestClient.post '/post/rebuild',
-  params: {
-  }, headers: headers
-
-p JSON.parse(result)
-
-```
-
-```python
-import requests
-headers = {
-  'Accept': 'application/json'
-}
-
-r = requests.post('/post/rebuild', headers = headers)
-
-print(r.json())
-
-```
-
-```php
-<?php
-
-require 'vendor/autoload.php';
-
-$headers = array(
-    'Accept' => 'application/json',
-);
-
-$client = new \GuzzleHttp\Client();
-
-// Define array of request body.
-$request_body = array();
-
-try {
-    $response = $client->request('POST','/post/rebuild', array(
-        'headers' => $headers,
-        'json' => $request_body,
-       )
-    );
-    print_r($response->getBody()->getContents());
- }
- catch (\GuzzleHttp\Exception\BadResponseException $e) {
-    // handle exception or api errors.
-    print_r($e->getMessage());
- }
-
- // ...
-
-```
-
-```java
-URL obj = new URL("/post/rebuild");
-HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-con.setRequestMethod("POST");
-int responseCode = con.getResponseCode();
-BufferedReader in = new BufferedReader(
-    new InputStreamReader(con.getInputStream()));
-String inputLine;
-StringBuffer response = new StringBuffer();
-while ((inputLine = in.readLine()) != null) {
-    response.append(inputLine);
-}
-in.close();
-System.out.println(response.toString());
-
-```
-
-```go
-package main
-
-import (
-       "bytes"
-       "net/http"
-)
-
-func main() {
-
-    headers := map[string][]string{
-        "Accept": []string{"application/json"},
-    }
-
-    data := bytes.NewBuffer([]byte{jsonReq})
-    req, err := http.NewRequest("POST", "/post/rebuild", data)
-    req.Header = headers
-
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    // ...
-}
-
-```
-
-`POST /post/rebuild`
-
-Clears `ASSET_BY_PATH`, `ASSET_BY_ID`, `DUPE_INDEX` and `METADATA_TABLE`,
-walks the image root, and repopulates all four: identity from the walk,
-metadata through the same pipeline the incremental indexer runs. The
-response carries the rebuild stats and is returned only after an
-in-memory tree refresh, so it does not race a following prefetch or
-get-data call.
-
-Corner cases: Rows are rebuilt rather than merged: the rebuild assigns
-new `asset_id`s, so rows keyed by the previous ids must not remain. A
-file whose metadata pipeline fails keeps its identity, logs the failure,
-and does not stop the walk.
-
-Errors: 400 malformed request — 401 missing or invalid credentials —
-405 read-only mode — 500 `imagePath` unset, or a failure while walking the
-image root or writing the tables.
-
-> Example responses
-
-> 200 Response
-
-```json
-{
-  "albumsCreated": 0,
-  "hashErrors": 0,
-  "mediaCreated": 0,
-  "unsupportedSkipped": 0
-}
-```
-
-> 401 Response
-
-```json
-{
-  "context": [],
-  "kind": "Auth",
-  "message": "Unauthorized"
-}
-```
-
-<h3 id="rebuild-the-asset-tables-and-metadata-cache-from-the-filesystem-under-`image_home`.-responses">Responses</h3>
-
-| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
-| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Rebuild complete                                                                           | [RebuildStats](#schemarebuildstats)         |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
-| 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
-| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <aside class="success">
 This operation does not require authentication
@@ -13142,6 +13416,70 @@ This operation does not require authentication
 
 # Schemas
 
+<h2 id="tocS_AdminConfigExportResponse">AdminConfigExportResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemaadminconfigexportresponse"></a>
+<a id="schema_AdminConfigExportResponse"></a>
+<a id="tocSadminconfigexportresponse"></a>
+<a id="tocsadminconfigexportresponse"></a>
+
+```json
+{
+  "config": {
+    "allowRegistration": true,
+    "disableImg": true,
+    "fsNotifyWatcher": true,
+    "maxUploadSize": "string",
+    "normalizeUploadFilenames": true,
+    "readOnlyMode": true,
+    "uploadFolder": "string",
+    "useClientTimestampInfo": true,
+    "validateUploadContent": true
+  },
+  "scope": "string",
+  "version": 0
+}
+```
+
+### Properties
+
+| Name    | Type                                                  | Required | Restrictions | Description                                                                                                          |
+| ------- | ----------------------------------------------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| config  | [RuntimeConfigDocument](#schemaruntimeconfigdocument) | true     | none         | The runtime-tier subset of the configuration, shared by the admin PUT<br>response and the versioned export envelope. |
+| scope   | string                                                | true     | none         | none                                                                                                                 |
+| version | integer(int32)                                        | true     | none         | none                                                                                                                 |
+
+<h2 id="tocS_AdminConfigUpdateResponse">AdminConfigUpdateResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemaadminconfigupdateresponse"></a>
+<a id="schema_AdminConfigUpdateResponse"></a>
+<a id="tocSadminconfigupdateresponse"></a>
+<a id="tocsadminconfigupdateresponse"></a>
+
+```json
+{
+  "config": {
+    "allowRegistration": true,
+    "disableImg": true,
+    "fsNotifyWatcher": true,
+    "maxUploadSize": "string",
+    "normalizeUploadFilenames": true,
+    "readOnlyMode": true,
+    "uploadFolder": "string",
+    "useClientTimestampInfo": true,
+    "validateUploadContent": true
+  },
+  "restartRequired": ["string"]
+}
+```
+
+### Properties
+
+| Name            | Type                                                  | Required | Restrictions | Description                                                                                                          |
+| --------------- | ----------------------------------------------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------- |
+| config          | [RuntimeConfigDocument](#schemaruntimeconfigdocument) | true     | none         | The runtime-tier subset of the configuration, shared by the admin PUT<br>response and the versioned export envelope. |
+| restartRequired | [string]                                              | true     | none         | none                                                                                                                 |
+
 <h2 id="tocS_AlbumIndexState">AlbumIndexState</h2>
 <!-- backwards compatibility -->
 <a id="schemaalbumindexstate"></a>
@@ -13180,6 +13518,7 @@ This operation does not require authentication
 {
   "cancelRequested": true,
   "failed": 0,
+  "failedPaths": ["string"],
   "finishedAt": 0,
   "matched": 0,
   "processed": 0,
@@ -13192,17 +13531,18 @@ This operation does not require authentication
 
 ### Properties
 
-| Name            | Type                                      | Required | Restrictions | Description |
-| --------------- | ----------------------------------------- | -------- | ------------ | ----------- |
-| cancelRequested | boolean                                   | true     | none         | none        |
-| failed          | integer(int64)                            | true     | none         | none        |
-| finishedAt      | integer,null(int64)                       | false    | none         | none        |
-| matched         | integer(int64)                            | true     | none         | none        |
-| processed       | integer(int64)                            | true     | none         | none        |
-| root            | string,null                               | false    | none         | none        |
-| scanned         | integer(int64)                            | true     | none         | none        |
-| startedAt       | integer,null(int64)                       | false    | none         | none        |
-| state           | [AlbumIndexState](#schemaalbumindexstate) | true     | none         | none        |
+| Name            | Type                                      | Required | Restrictions | Description                                                    |
+| --------------- | ----------------------------------------- | -------- | ------------ | -------------------------------------------------------------- |
+| cancelRequested | boolean                                   | true     | none         | none                                                           |
+| failed          | integer(int64)                            | true     | none         | none                                                           |
+| failedPaths     | [string]                                  | false    | none         | Paths of files that failed to index, capped to a bounded size. |
+| finishedAt      | integer,null(int64)                       | false    | none         | none                                                           |
+| matched         | integer(int64)                            | true     | none         | none                                                           |
+| processed       | integer(int64)                            | true     | none         | none                                                           |
+| root            | string,null                               | false    | none         | none                                                           |
+| scanned         | integer(int64)                            | true     | none         | none                                                           |
+| startedAt       | integer,null(int64)                       | false    | none         | none                                                           |
+| state           | [AlbumIndexState](#schemaalbumindexstate) | true     | none         | none                                                           |
 
 <h2 id="tocS_AlbumInfo">AlbumInfo</h2>
 <!-- backwards compatibility -->
@@ -13250,81 +13590,6 @@ This operation does not require authentication
 | parentAlbumId              | string,null           | false    | none         | Album ID of the direct parent directory album, or `None` for top-level<br>dir albums and all user-created albums. |
 | shareList                  | object                | true     | none         | none                                                                                                              |
 | » **additionalProperties** | [Share](#schemashare) | false    | none         | none                                                                                                              |
-
-<h2 id="tocS_AppConfig">AppConfig</h2>
-<!-- backwards compatibility -->
-<a id="schemaappconfig"></a>
-<a id="schema_AppConfig"></a>
-<a id="tocSappconfig"></a>
-<a id="tocsappconfig"></a>
-
-```json
-{
-  "address": "string",
-  "allowRegistration": true,
-  "authKey": "string",
-  "bootstrapAdmin": true,
-  "dataHome": "string",
-  "disableImg": true,
-  "fsNotifyWatcher": true,
-  "imagePath": "string",
-  "loginIpBaseBanSecs": 0,
-  "loginIpLongBaseBanSecs": 0,
-  "loginIpLongMaxBanSecs": 0,
-  "loginIpLongMaxFailures": 0,
-  "loginIpLongWindowSecs": 0,
-  "loginIpMaxBanSecs": 0,
-  "loginIpMaxFailures": 0,
-  "loginIpWindowSecs": 0,
-  "loginUserLongBaseBanSecs": 0,
-  "loginUserLongMaxBanSecs": 0,
-  "loginUserLongMaxFailures": 0,
-  "loginUserLongWindowSecs": 0,
-  "maxUploadSize": "string",
-  "normalizeUploadFilenames": true,
-  "port": 0,
-  "readOnlyMode": true,
-  "trivialPasswords": true,
-  "trustProxyForwardedFor": true,
-  "uploadFolder": "string",
-  "useClientTimestampInfo": true,
-  "validateUploadContent": true
-}
-```
-
-### Properties
-
-| Name                     | Type           | Required | Restrictions | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ------------------------ | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| address                  | string         | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| allowRegistration        | boolean        | false    | none         | Allow self-registration via `POST /post/users/register` without an<br>invite token. Default off: registration then requires a valid invite.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| authKey                  | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| bootstrapAdmin           | boolean        | false    | none         | Enable the online first-admin bootstrap window. While set **and the<br>user store is empty**, unauthenticated `POST /post/users/bootstrap`<br>enrolls the first admin; until then `POST /post/users/authenticate` takes<br>the unknown-user path and every guarded route refuses with<br>`No administrator enrolled` (the refusal names the bootstrap<br>endpoint while the window is open). Default<br>off: a fresh install answers 401 everywhere until an operator opts<br>in (or provisions the store via the `picasu-cmd` CLI). Enabling<br>the flag against an existing user store makes the server refuse<br>to start. WARN-logged at boot whenever set.                                                                                                                                                                                                                                                                            |
-| dataHome                 | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| disableImg               | boolean        | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| fsNotifyWatcher          | boolean        | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| imagePath                | string,null    | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| loginIpBaseBanSecs       | integer(int64) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| loginIpLongBaseBanSecs   | integer(int64) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| loginIpLongMaxBanSecs    | integer(int64) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| loginIpLongMaxFailures   | integer(int32) | false    | none         | See [`Self::login_ip_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| loginIpLongWindowSecs    | integer(int64) | false    | none         | Login throttle IP-long daily bucket: paced spraying ceiling across<br>many usernames from one source. Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| loginIpMaxBanSecs        | integer(int64) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| loginIpMaxFailures       | integer(int32) | false    | none         | See [`Self::login_ip_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| loginIpWindowSecs        | integer(int64) | false    | none         | Login throttle IP-short burst bucket: `login_ip_max_failures`<br>failures within `login_ip_window_secs` open a ban of<br>`login_ip_base_ban_secs`, doubling per further pair of failures up<br>to `login_ip_max_ban_secs`. Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| loginUserLongBaseBanSecs | integer(int64) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| loginUserLongMaxBanSecs  | integer(int64) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| loginUserLongMaxFailures | integer(int32) | false    | none         | See [`Self::login_user_long_window_secs`].                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| loginUserLongWindowSecs  | integer(int64) | false    | none         | Login throttle user-long daily bucket: per-account ceiling catching<br>low-and-slow attacks, keyed on the claimed name even when unknown.<br>Host-only (restart required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| maxUploadSize            | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| normalizeUploadFilenames | boolean        | false    | none         | NFC-normalize uploaded filenames so macOS NFD names collapse onto<br>their composed form. Optional (unlike the always-on sanitization tiers).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| port                     | integer(int32) | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| readOnlyMode             | boolean        | true     | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| trivialPasswords         | boolean        | false    | none         | Disable the default password-strength checks (length floor/ceiling,<br>blocklist, user-id and pattern rules) for new passwords. Default<br>off. Only for development, throwaway installs, or tests that must<br>use weak fixtures — the bypass is warn-logged at first use.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| trustProxyForwardedFor   | boolean        | false    | none         | Trust the `X-Forwarded-For` header when keying the login throttle<br>(leftmost entry, only when it parses as an IP address). Default off:<br>the header is client-spoofable, so only a reverse-proxy deployment<br>that strips or overwrites it may enable this. Host-only (restart<br>required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| uploadFolder             | string         | false    | none         | none                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| useClientTimestampInfo   | boolean        | false    | none         | Trust the `lastModified` the upload client sends with each file. When<br>enabled, the value is used as the stored file modification time but<br>clamped to `[1970-01-01, now + 24h]` so a broken client clock cannot<br>push an undated file (e.g. a screenshot) into year 1970 or the distant<br>future. Disabled by default: the server uses `now()` instead of the<br>provided value, since a client's clock or timezone cannot be relied on.<br>Only affects files without embedded metadata: photos with a<br>`DateTimeOriginal` EXIF tag keep their EXIF-derived date regardless.<br>See `backend/src/router/post/post_upload.rs`<br>(`resolve_upload_timestamp`).                                                                                                                                                                                                                                                                   |
-| validateUploadContent    | boolean        | false    | none         | Cross-check uploaded content against the type its declared<br>`Content-Type` implies. The declared extension yields the expected<br>format from the supported-format table; the content is then identified<br>and the two are compared. See `backend/src/process/format.rs`.<br><br>Content that cannot be identified at all is always rejected, with or<br>without this setting: there is no way to tell whether such bytes are<br>what the extension claims. This setting governs only the mismatch case,<br>where the content _is_ identified but is not the type the extension<br>claims — for example a video uploaded with an image content type, or an<br>image named with the wrong extension. Enabled (the default) rejects<br>those with `400 InvalidInput`; disabling it stores the file anyway, which<br>misdescribes it and leaves the indexer trusting a wrong extension. Only<br>disable this to tolerate mislabeled files. |
 
 <h2 id="tocS_AssignAlbumData">AssignAlbumData</h2>
 <!-- backwards compatibility -->
@@ -13471,6 +13736,37 @@ enrollment response.
 ### Properties
 
 _None_
+
+<h2 id="tocS_ConfigFieldEntry">ConfigFieldEntry</h2>
+<!-- backwards compatibility -->
+<a id="schemaconfigfieldentry"></a>
+<a id="schema_ConfigFieldEntry"></a>
+<a id="tocSconfigfieldentry"></a>
+<a id="tocsconfigfieldentry"></a>
+
+```json
+{
+  "name": "string",
+  "requiresRestart": true,
+  "source": "string",
+  "tier": "string",
+  "value": {},
+  "writable": true
+}
+```
+
+One annotated configuration field as returned by `GET /get/admin/config`.
+
+### Properties
+
+| Name            | Type    | Required | Restrictions | Description |
+| --------------- | ------- | -------- | ------------ | ----------- |
+| name            | string  | true     | none         | none        |
+| requiresRestart | boolean | true     | none         | none        |
+| source          | string  | true     | none         | none        |
+| tier            | string  | true     | none         | none        |
+| value           | object  | true     | none         | none        |
+| writable        | boolean | true     | none         | none        |
 
 <h2 id="tocS_ConfigResponse">ConfigResponse</h2>
 <!-- backwards compatibility -->
@@ -13833,15 +14129,17 @@ Response for `POST /post/invites`.
 
 ```json
 {
-  "album": "string"
+  "album": "string",
+  "clear": true
 }
 ```
 
 ### Properties
 
-| Name  | Type   | Required | Restrictions | Description |
-| ----- | ------ | -------- | ------------ | ----------- |
-| album | string | true     | none         | none        |
+| Name  | Type    | Required | Restrictions | Description                                                                                                                                                                                       |
+| ----- | ------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| album | string  | true     | none         | none                                                                                                                                                                                              |
+| clear | boolean | false    | none         | When true, drop all asset tables (and clear the in-memory tree and the<br>directory-album cache) before indexing, so the scan rebuilds from an<br>empty state instead of merging into stale rows. |
 
 <h2 id="tocS_InviteView">InviteView</h2>
 <!-- backwards compatibility -->
@@ -13971,7 +14269,7 @@ existing destination untouched (the source stays put, outcome `skipped`);
 | Name                     | Type                | Required | Restrictions | Description                                                                                                                                                                                             |
 | ------------------------ | ------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | address                  | string,null         | false    | none         | Host-only (`PICASU_ADDRESS` / config `server.address`). Any presence<br>in the API body is rejected with 400 and changes nothing.                                                                       |
-| allowRegistration        | boolean,null        | false    | none         | Host-only (`PICASU_ALLOW_REGISTRATION` / config<br>`gallery.allow_registration`). Any presence in the API body is<br>rejected with 400 and changes nothing.                                             |
+| allowRegistration        | boolean,null        | false    | none         | Runtime: `None` = don't touch.                                                                                                                                                                          |
 | authKey                  | string,null         | false    | none         | Managed, never set: the signing key lives in the owner-only secrets<br>file. Any presence in the API body is rejected with 400; rotate it<br>with `POST /post/config/auth-key/reset`.                   |
 | bootstrapAdmin           | boolean,null        | false    | none         | Host-only (`--bootstrap-admin` / `PICASU_BOOTSTRAP_ADMIN` / config<br>`gallery.bootstrap_admin`). Any presence in the API body is rejected<br>with 400 and changes nothing.                             |
 | disableImg               | boolean,null        | false    | none         | none                                                                                                                                                                                                    |
@@ -14076,33 +14374,6 @@ continued
 | Name  | Type   | Required | Restrictions | Description |
 | ----- | ------ | -------- | ------------ | ----------- |
 | token | string | true     | none         | none        |
-
-<h2 id="tocS_RebuildStats">RebuildStats</h2>
-<!-- backwards compatibility -->
-<a id="schemarebuildstats"></a>
-<a id="schema_RebuildStats"></a>
-<a id="tocSrebuildstats"></a>
-<a id="tocsrebuildstats"></a>
-
-```json
-{
-  "albumsCreated": 0,
-  "hashErrors": 0,
-  "mediaCreated": 0,
-  "unsupportedSkipped": 0
-}
-```
-
-Statistics from a clean filesystem rebuild.
-
-### Properties
-
-| Name               | Type    | Required | Restrictions | Description |
-| ------------------ | ------- | -------- | ------------ | ----------- |
-| albumsCreated      | integer | true     | none         | none        |
-| hashErrors         | integer | true     | none         | none        |
-| mediaCreated       | integer | true     | none         | none        |
-| unsupportedSkipped | integer | true     | none         | none        |
 
 <h2 id="tocS_RegisterRequest">RegisterRequest</h2>
 <!-- backwards compatibility -->
@@ -14287,6 +14558,44 @@ field: registration always creates standard users; elevation is
 | rowIndex        | integer                                   | true     | none         | none        |
 | start           | integer                                   | true     | none         | none        |
 
+<h2 id="tocS_RuntimeConfigDocument">RuntimeConfigDocument</h2>
+<!-- backwards compatibility -->
+<a id="schemaruntimeconfigdocument"></a>
+<a id="schema_RuntimeConfigDocument"></a>
+<a id="tocSruntimeconfigdocument"></a>
+<a id="tocsruntimeconfigdocument"></a>
+
+```json
+{
+  "allowRegistration": true,
+  "disableImg": true,
+  "fsNotifyWatcher": true,
+  "maxUploadSize": "string",
+  "normalizeUploadFilenames": true,
+  "readOnlyMode": true,
+  "uploadFolder": "string",
+  "useClientTimestampInfo": true,
+  "validateUploadContent": true
+}
+```
+
+The runtime-tier subset of the configuration, shared by the admin PUT
+response and the versioned export envelope.
+
+### Properties
+
+| Name                     | Type    | Required | Restrictions | Description |
+| ------------------------ | ------- | -------- | ------------ | ----------- |
+| allowRegistration        | boolean | true     | none         | none        |
+| disableImg               | boolean | true     | none         | none        |
+| fsNotifyWatcher          | boolean | true     | none         | none        |
+| maxUploadSize            | string  | true     | none         | none        |
+| normalizeUploadFilenames | boolean | true     | none         | none        |
+| readOnlyMode             | boolean | true     | none         | none        |
+| uploadFolder             | string  | true     | none         | none        |
+| useClientTimestampInfo   | boolean | true     | none         | none        |
+| validateUploadContent    | boolean | true     | none         | none        |
+
 <h2 id="tocS_ScrollBarData">ScrollBarData</h2>
 <!-- backwards compatibility -->
 <a id="schemascrollbardata"></a>
@@ -14309,6 +14618,77 @@ field: registration always creates standard users; elevation is
 | index | integer | true     | none         | none        |
 | month | integer | true     | none         | none        |
 | year  | integer | true     | none         | none        |
+
+<h2 id="tocS_SelfProfileResponse">SelfProfileResponse</h2>
+<!-- backwards compatibility -->
+<a id="schemaselfprofileresponse"></a>
+<a id="schema_SelfProfileResponse"></a>
+<a id="tocSselfprofileresponse"></a>
+<a id="tocsselfprofileresponse"></a>
+
+```json
+{
+  "settings": {},
+  "user": {
+    "admin": true,
+    "home": "string",
+    "userId": "string"
+  }
+}
+```
+
+Single self resource returned by `GET /get/self/profile`.
+
+### Properties
+
+| Name     | Type                                              | Required | Restrictions | Description                                                                                                        |
+| -------- | ------------------------------------------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------ |
+| settings | [SelfProfileSettings](#schemaselfprofilesettings) | true     | none         | Reserved sub-object for future roaming preferences. Empty today: theme and<br>density stay client-only.            |
+| user     | [SelfProfileUser](#schemaselfprofileuser)         | true     | none         | The identity half of a self profile: read-only attributes owned by the<br>user store. `home` is `null` when unset. |
+
+<h2 id="tocS_SelfProfileSettings">SelfProfileSettings</h2>
+<!-- backwards compatibility -->
+<a id="schemaselfprofilesettings"></a>
+<a id="schema_SelfProfileSettings"></a>
+<a id="tocSselfprofilesettings"></a>
+<a id="tocsselfprofilesettings"></a>
+
+```json
+{}
+```
+
+Reserved sub-object for future roaming preferences. Empty today: theme and
+density stay client-only.
+
+### Properties
+
+_None_
+
+<h2 id="tocS_SelfProfileUser">SelfProfileUser</h2>
+<!-- backwards compatibility -->
+<a id="schemaselfprofileuser"></a>
+<a id="schema_SelfProfileUser"></a>
+<a id="tocSselfprofileuser"></a>
+<a id="tocsselfprofileuser"></a>
+
+```json
+{
+  "admin": true,
+  "home": "string",
+  "userId": "string"
+}
+```
+
+The identity half of a self profile: read-only attributes owned by the
+user store. `home` is `null` when unset.
+
+### Properties
+
+| Name   | Type        | Required | Restrictions | Description |
+| ------ | ----------- | -------- | ------------ | ----------- |
+| admin  | boolean     | true     | none         | none        |
+| home   | string,null | false    | none         | none        |
+| userId | string      | true     | none         | none        |
 
 <h2 id="tocS_ServerInfo">ServerInfo</h2>
 <!-- backwards compatibility -->

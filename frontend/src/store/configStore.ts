@@ -6,7 +6,9 @@
 
 import { IsolationId } from '@type/types'
 import { defineStore } from 'pinia'
-import { AppConfig, getConfig, updateConfig } from '@/api/config'
+import { AppConfig, getConfig } from '@/api/config'
+import { updateAdminConfig } from '@/api/adminConfig'
+import type { RuntimeConfigPatch } from '@/api/adminConfig'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 
 export const useConfigStore = (isolationId: IsolationId) =>
@@ -37,14 +39,34 @@ export const useConfigStore = (isolationId: IsolationId) =>
       },
       async updateConfig(newConfig: Partial<AppConfig>) {
         return await tryWithMessageStore(isolationId, async () => {
-          await updateConfig(newConfig)
+          const patch: RuntimeConfigPatch = {}
+          if (newConfig.uploadFolder !== undefined && newConfig.uploadFolder !== null) {
+            patch.uploadFolder = newConfig.uploadFolder
+          }
+          if (newConfig.maxUploadSize !== undefined) patch.maxUploadSize = newConfig.maxUploadSize
+          if (newConfig.readOnlyMode !== undefined) patch.readOnlyMode = newConfig.readOnlyMode
+          if (newConfig.disableImg !== undefined) patch.disableImg = newConfig.disableImg
+          if (newConfig.fsNotifyWatcher !== undefined)
+            patch.fsNotifyWatcher = newConfig.fsNotifyWatcher
+          if (newConfig.normalizeUploadFilenames !== undefined) {
+            patch.normalizeUploadFilenames = newConfig.normalizeUploadFilenames
+          }
+          if (newConfig.validateUploadContent !== undefined) {
+            patch.validateUploadContent = newConfig.validateUploadContent
+          }
+          if (newConfig.useClientTimestampInfo !== undefined) {
+            patch.useClientTimestampInfo = newConfig.useClientTimestampInfo
+          }
+          if (newConfig.allowRegistration !== undefined) {
+            patch.allowRegistration = newConfig.allowRegistration
+          }
+          const response = await updateAdminConfig(patch)
 
           // Merge updates into local state
           if (this.config) {
             Object.assign(this.config, newConfig)
+            if (response?.config) Object.assign(this.config, response.config)
           } else {
-            // Should verify if we need to fetch full config if it was undefined
-            // But usually updateConfig is called after fetchConfig
             const data = await getConfig()
             this.config = data
           }

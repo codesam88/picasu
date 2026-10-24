@@ -117,7 +117,7 @@ describe('429 handling', () => {
   test('429 from another route falls back to the body retryAfter field', async () => {
     rejectWith(429, {}, rateLimitBody(5))
 
-    await expect(axios.post('/put/config', {})).rejects.toBeTruthy()
+    await expect(axios.post('/put/admin/config', {})).rejects.toBeTruthy()
 
     const queue = useMessageStore('mainId').queue
     expect(queue).toHaveLength(1)
@@ -131,7 +131,7 @@ describe('429 handling', () => {
       { kind: 'Rate Limited', message: 'Too many login attempts', status: 'Temporary', context: [] }
     )
 
-    await expect(axios.post('/put/config', {})).rejects.toBeTruthy()
+    await expect(axios.post('/put/admin/config', {})).rejects.toBeTruthy()
 
     const queue = useMessageStore('mainId').queue
     expect(queue).toHaveLength(1)

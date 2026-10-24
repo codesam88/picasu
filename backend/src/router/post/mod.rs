@@ -5,7 +5,6 @@ pub mod album_index;
 pub mod config_auth_key;
 pub mod create_dir_album;
 pub mod create_share;
-pub mod import_config;
 pub mod invites;
 pub mod post_upload;
 pub mod users_authenticate;
@@ -19,7 +18,6 @@ pub fn generate_post_routes() -> Vec<Route> {
         post_upload::upload,
         create_share::create_share,
         create_dir_album::create_dir_album,
-        import_config::import_config_handler,
         admin_config::disable_read_only_handler,
         album_index::index_album_handler,
         album_index::cancel_album_index_handler,

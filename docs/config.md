@@ -163,15 +163,15 @@ Every `AppConfig` field belongs to a tier that determines how it can be
 changed. The tier table is the single source of truth in
 `backend/src/model/config.rs` (`CONFIG_FIELDS`).
 
-| Tier     | Fields                                                                                                                                                                                               | How to set                                                                                | Restart? |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------- |
-| runtime  | `upload_folder`, `max_upload_size`, `read_only_mode`, `disable_img`, `fs_notify_watcher`, `normalize_upload_filenames`, `validate_upload_content`, `use_client_timestamp_info`, `allow_registration` | `PUT /put/config` (current runtime subset) or `config.toml`; admin routes `(planned, S3)` | no       |
-| host     | `address`, `port`, `data_home`, `image_home`, `trust_proxy_forwarded_for`, `trivial_passwords`, `bootstrap_admin`, all `login_*` throttle knobs, `auth_key` (managed), `web_root`                    | env var, CLI flag, or `config.toml`                                                       | yes      |
-| env-only | `PICASU_CONFIG_HOME`, `PICASU_PBKDF_ITERATIONS`, `PICASU_RATE_LIMITS`                                                                                                                                | env var only                                                                              | yes      |
+| Tier     | Fields                                                                                                                                                                                               | How to set                                                | Restart? |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------- |
+| runtime  | `upload_folder`, `max_upload_size`, `read_only_mode`, `disable_img`, `fs_notify_watcher`, `normalize_upload_filenames`, `validate_upload_content`, `use_client_timestamp_info`, `allow_registration` | `PUT /put/admin/config` (runtime subset) or `config.toml` | no       |
+| host     | `address`, `port`, `data_home`, `image_home`, `trust_proxy_forwarded_for`, `trivial_passwords`, `bootstrap_admin`, all `login_*` throttle knobs, `auth_key` (managed), `web_root`                    | env var, CLI flag, or `config.toml`                       | yes      |
+| env-only | `PICASU_CONFIG_HOME`, `PICASU_PBKDF_ITERATIONS`, `PICASU_RATE_LIMITS`                                                                                                                                | env var only                                              | yes      |
 
 Precedence is `env > file` at boot (`apply_env_overrides_with`). API writes
 persist to `config.toml` and take effect in-session, but revert on the next
-restart while the env var is pinned (intended host override). `GET /get/admin/config` (planned, S3) will report `source: file | env` per field.
+restart while the env var is pinned (intended host override). `GET /get/admin/config` reports `source: file | env` per field.
 
 ### Overlap (runtime knobs with env pins)
 
@@ -220,7 +220,7 @@ The following env vars override the config file on every launch:
 
 ## Runtime changes via the API
 
-`PUT /put/config` accepts only runtime-safe knobs. Host-only knobs are
+`PUT /put/admin/config` accepts only runtime-safe knobs. Host-only knobs are
 rejected with 400 when present in the body — set them via the flag, env
 var, or `config.toml` key listed, then restart:
 

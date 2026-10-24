@@ -342,4 +342,28 @@ mod tests {
         );
         assert!(body.contains("server-runtime"), "scope missing: {body}");
     }
+    #[test]
+    fn get_admin_config_export_works_while_read_only() {
+        let _g = lock();
+        let client = setup();
+        seed("gac-exp-ro", true, None);
+        crate::model::config::APP_CONFIG
+            .get()
+            .expect("APP_CONFIG")
+            .write()
+            .expect("lock")
+            .read_only_mode = true;
+        let admin = cookie("gac-exp-ro", true);
+        let resp = client
+            .get("/get/admin/config/export")
+            .cookie(admin)
+            .dispatch();
+        assert_eq!(resp.status(), Status::Ok);
+        crate::model::config::APP_CONFIG
+            .get()
+            .expect("APP_CONFIG")
+            .write()
+            .expect("lock")
+            .read_only_mode = false;
+    }
 }

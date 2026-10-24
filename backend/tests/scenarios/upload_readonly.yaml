@@ -4,7 +4,7 @@ given:
     id_as: $album
   - photo: /e2e_up_roro/src/photo.jpg
 when:
-  - call: "PUT /put/config"
+  - call: "PUT /put/admin/config"
     body:
       readOnlyMode: true
   - upload:

@@ -8,6 +8,10 @@ export interface AppConfig {
   readOnlyMode: boolean
   disableImg: boolean
   fsNotifyWatcher: boolean
+  normalizeUploadFilenames?: boolean
+  validateUploadContent?: boolean
+  useClientTimestampInfo?: boolean
+  allowRegistration?: boolean
   // password is handled separately now
   authKey: string | null
   hasAuthKey: boolean
@@ -21,24 +25,10 @@ export const getConfig = async (): Promise<AppConfig> => {
   return response.data
 }
 
-export const updateConfig = async (config: Partial<AppConfig>): Promise<void> => {
-  await axios.put('/put/config', config)
-}
-
 /// Rotate the JWT signing key. The server generates a new strong random key
 /// and installs it; all sessions invalidate. The key itself is never
 /// returned — only whether one is now configured.
 export const resetAuthKey = async (): Promise<{ hasAuthKey: boolean }> => {
   const response = await axios.post('/post/config/auth-key/reset')
   return z.object({ hasAuthKey: z.boolean() }).parse(response.data)
-}
-
-export const exportConfig = async (): Promise<AppConfig> => {
-  const response = await axios.get<AppConfig>('/get/config/export')
-  return response.data
-}
-
-export const importConfig = async (config: AppConfig): Promise<void> => {
-  // Refactor: path to /post/config/import
-  await axios.post('/post/config/import', config)
 }
