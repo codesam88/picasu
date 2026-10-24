@@ -33,9 +33,7 @@ pub struct PartialUpdateConfigRequest {
     pub normalize_upload_filenames: Option<bool>,
     pub validate_upload_content: Option<bool>,
     pub use_client_timestamp_info: Option<bool>,
-    /// Host-only (`PICASU_ALLOW_REGISTRATION` / config
-    /// `gallery.allow_registration`). Any presence in the API body is
-    /// rejected with 400 and changes nothing.
+    /// Runtime: `None` = don't touch.
     pub allow_registration: Option<bool>,
     /// Host-only (`--trivial-passwords` / `PICASU_TRIVIAL_PASSWORDS` /
     /// config `gallery.trivial_passwords`). Any presence in the API body is
@@ -116,7 +114,7 @@ pub struct PartialUpdateConfigRequest {
 /// rejects loudly (naming the setters) instead of persisting a value the
 /// next boot would override or refuse. Rotation of the signing key goes
 /// through `POST /post/config/auth-key/reset`.
-fn host_only_knobs(req: &PartialUpdateConfigRequest) -> [(&'static str, bool, &'static str); 19] {
+fn host_only_knobs(req: &PartialUpdateConfigRequest) -> [(&'static str, bool, &'static str); 18] {
     [
         (
             "address",
@@ -127,11 +125,6 @@ fn host_only_knobs(req: &PartialUpdateConfigRequest) -> [(&'static str, bool, &'
             "port",
             req.port.is_some(),
             "PICASU_PORT or config `server.port`",
-        ),
-        (
-            "allowRegistration",
-            req.allow_registration.is_some(),
-            "PICASU_ALLOW_REGISTRATION or config `gallery.allow_registration`",
         ),
         (
             "trivialPasswords",
@@ -219,7 +212,7 @@ fn host_only_knobs(req: &PartialUpdateConfigRequest) -> [(&'static str, bool, &'
 /// Patch the server configuration with the posted fields.
 ///
 /// Every field is optional and a field absent from the body keeps its current
-/// value. `address`, `port`, `allowRegistration`, `trivialPasswords`,
+/// value. `address`, `port`, `trivialPasswords`,
 /// `bootstrapAdmin`, and the login-throttle knobs
 /// (`trustProxyForwardedFor`, `login*Secs`, `login*MaxFailures`) are
 /// host-only (env / config file, restart-required) and `authKey`
@@ -305,6 +298,9 @@ pub async fn update_config_handler(
         if let Some(use_client_timestamp_info) = req_data.use_client_timestamp_info {
             current_config.use_client_timestamp_info = use_client_timestamp_info;
         }
+        if let Some(allow_registration) = req_data.allow_registration {
+            current_config.allow_registration = allow_registration;
+        }
         AppConfig::update(current_config).map_err(|e| {
             error!("Failed to update config: {e}");
             AppError::from_err(ErrorKind::Internal, e)
@@ -338,7 +334,7 @@ mod tests {
             .status()
     }
 
-    /// `address`, `port`, `allowRegistration`, and `trivialPasswords` are
+    /// `address`, `port`, and `trivialPasswords` are
     /// host-only like `bootstrapAdmin`: any presence in the API body is a
     /// 400 and changes nothing.
     #[test]
@@ -352,18 +348,12 @@ mod tests {
                 .expect("APP_CONFIG")
                 .read()
                 .expect("APP_CONFIG lock");
-            (
-                cfg.address.clone(),
-                cfg.port,
-                cfg.allow_registration,
-                cfg.trivial_passwords,
-            )
+            (cfg.address.clone(), cfg.port, cfg.trivial_passwords)
         };
         let before = snapshot();
         for body in [
             json!({ "address": "10.0.0.1" }),
             json!({ "port": 8888 }),
-            json!({ "allowRegistration": true }),
             json!({ "trivialPasswords": true }),
         ] {
             let status = client
@@ -379,7 +369,7 @@ mod tests {
     }
 
     #[test]
-    fn put_config_rejects_allow_registration_as_host_only() {
+    fn put_config_accepts_allow_registration() {
         let _g = lock();
         let client = setup();
         seed("s4e-root", true, None);
@@ -399,12 +389,15 @@ mod tests {
             .body(json!({ "allowRegistration": true }).to_string())
             .dispatch()
             .status();
-        assert_eq!(
-            status,
-            Status::BadRequest,
-            "host-only knob must be rejected"
+        assert_eq!(status, Status::Ok, "runtime knob must be accepted");
+        assert!(flag(), "flag must flip on");
+        // Persisted to config.toml.
+        let contents = std::fs::read_to_string(crate::storage::files::get_config_path())
+            .expect("config.toml written");
+        assert!(
+            contents.contains("allow_registration = true"),
+            "config.toml must persist the new value: {contents}"
         );
-        assert!(!flag(), "rejected knob must not toggle on");
         // A patch that omits the field keeps the current value.
         let status = client
             .put("/put/config")
@@ -414,7 +407,7 @@ mod tests {
             .dispatch()
             .status();
         assert_eq!(status, Status::Ok);
-        assert!(!flag(), "absent field must not touch the knob");
+        assert!(flag(), "absent field must not touch the knob");
     }
 
     /// `authKey` is managed, never set: any presence in the API body is a

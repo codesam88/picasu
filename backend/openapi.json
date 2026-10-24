@@ -799,7 +799,7 @@
             ]
           },
           "allowRegistration": {
-            "description": "Host-only (`PICASU_ALLOW_REGISTRATION` / config\n`gallery.allow_registration`). Any presence in the API body is\nrejected with 400 and changes nothing.",
+            "description": "Runtime: `None` = don't touch.",
             "type": [
               "boolean",
               "null"
@@ -2817,7 +2817,7 @@
     },
     "/put/config": {
       "put": {
-        "description": "Every field is optional and a field absent from the body keeps its current\nvalue. `address`, `port`, `allowRegistration`, `trivialPasswords`,\n`bootstrapAdmin`, and the login-throttle knobs\n(`trustProxyForwardedFor`, `login*Secs`, `login*MaxFailures`) are\nhost-only (env / config file, restart-required) and `authKey`\nis managed (secrets file + reset endpoint); any presence of these in the\nbody is a 400. The only other validation is on\n`uploadFolder`, which must be a relative path free of `..` components;\non success `config.toml` is rewritten, the in-memory configuration is\nreplaced and the filesystem watcher is reloaded.\n\nCorner cases: `uploadFolder` and `maxUploadSize` take an empty string\nto reset to their defaults, `uploads` and `100MiB`.\n\nErrors: 400 `uploadFolder` is absolute or contains `..`, the body cannot\nbe parsed, or a host-only or managed knob is present — 401 missing or invalid admin\ncredentials; share tokens are not accepted — 405 read-only mode — 500\nconfig write failure.",
+        "description": "Every field is optional and a field absent from the body keeps its current\nvalue. `address`, `port`, `trivialPasswords`,\n`bootstrapAdmin`, and the login-throttle knobs\n(`trustProxyForwardedFor`, `login*Secs`, `login*MaxFailures`) are\nhost-only (env / config file, restart-required) and `authKey`\nis managed (secrets file + reset endpoint); any presence of these in the\nbody is a 400. The only other validation is on\n`uploadFolder`, which must be a relative path free of `..` components;\non success `config.toml` is rewritten, the in-memory configuration is\nreplaced and the filesystem watcher is reloaded.\n\nCorner cases: `uploadFolder` and `maxUploadSize` take an empty string\nto reset to their defaults, `uploads` and `100MiB`.\n\nErrors: 400 `uploadFolder` is absolute or contains `..`, the body cannot\nbe parsed, or a host-only or managed knob is present — 401 missing or invalid admin\ncredentials; share tokens are not accepted — 405 read-only mode — 500\nconfig write failure.",
         "operationId": "update_config_handler",
         "requestBody": {
           "content": {
