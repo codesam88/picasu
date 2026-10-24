@@ -22,4 +22,11 @@ describe('RegisterPage single-owner display', () => {
     expect(source).toMatch(/onError/)
     expect(source).toMatch(/messageStore\.error\(errorDisplay\(err\)\)/)
   })
+
+  test('invite mode selects Create Account title and invitation subtitle', () => {
+    expect(source).toContain('Create Account')
+    expect(source).toContain('invited')
+    expect(source).toContain('createUser')
+    expect(source).toContain('inviteFromQuery')
+  })
 })

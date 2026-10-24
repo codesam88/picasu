@@ -47,12 +47,13 @@ pub struct RegisterRequest {
 /// Corner cases: The password is trimmed once and must satisfy the
 /// default policy (see `auth::password::check_strength`); an empty `invite` string counts as absent. Invite redemption
 /// marks the token used and inserts the user record in one transaction, so
-/// a failed request never half-consumes an invite.
+/// a failed request never half-consumes an invite. An invite may be bound
+/// to a `username` at creation; redemption then requires that same id.
 ///
 /// Errors: 400 invalid `userId` or password violating the policy — 403
-/// registration disabled (no invite) or invite expired — 404 unknown or
-/// revoked invite token — 405 read-only mode — 409 `userId` already exists
-/// or invite already used — 500 storage failure.
+/// registration disabled (no invite), invite expired, or invite username
+/// mismatch — 404 unknown or revoked invite token — 405 read-only mode —
+/// 409 `userId` already exists or invite already used — 500 storage failure.
 #[utoipa::path(
         tag = "auth",
         request_body = RegisterRequest,

@@ -2,6 +2,16 @@ import type { UserSummary } from '@/api/users'
 import axios from 'axios'
 import { isAuthenticateThrottle } from './retryAfter'
 
+/// Extract a non-empty invite token from a route query object. Returns
+/// `undefined` when the value is missing, not a string, or empty, so callers
+/// can treat the result as a simple "invite mode?" flag.
+export const inviteFromQuery = (
+  query: { invite?: unknown } | null | undefined
+): string | undefined => {
+  const value = query?.invite
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
 export const isRegistrationSubmittable = (
   userId: string,
   password: string,

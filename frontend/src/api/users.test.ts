@@ -61,6 +61,25 @@ describe('createUser', () => {
       password: 'secret-pw'
     })
   })
+
+  test('includes invite in the body when provided and non-empty', async () => {
+    mockedAxios.post = vi.fn().mockResolvedValue({ data: { userId: 'bob', admin: false } })
+    await createUser('bob', 'secret-pw', 'tok-123')
+    expect(mockedAxios.post).toHaveBeenCalledWith('/post/users/register', {
+      userId: 'bob',
+      password: 'secret-pw',
+      invite: 'tok-123'
+    })
+  })
+
+  test('omits invite from the body when empty or missing', async () => {
+    mockedAxios.post = vi.fn().mockResolvedValue({ data: { userId: 'bob', admin: false } })
+    await createUser('bob', 'secret-pw', '')
+    expect(mockedAxios.post).toHaveBeenCalledWith('/post/users/register', {
+      userId: 'bob',
+      password: 'secret-pw'
+    })
+  })
 })
 
 describe('bootstrapUser', () => {

@@ -85,6 +85,12 @@ describe('register route', () => {
     expect(source).toContain('decideBootRoute')
   })
 
+  test('invite token is computed from the target route query', () => {
+    const source = readRoute('routes.ts')
+    expect(source).toContain('hasInviteToken')
+    expect(source).toMatch(/to\.query\.invite/)
+  })
+
   test('S10 guard never redirects share links', () => {
     // R31 rewrite candidate: source tripwire, superseded by the
     // bootGuard.test.ts behavior tests. The share exemption lives in the

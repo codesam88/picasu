@@ -45,6 +45,12 @@
 
             <div class="config-block">
               <v-row class="ma-0">
+                <InviteManagement />
+              </v-row>
+            </div>
+
+            <div class="config-block">
+              <v-row class="ma-0">
                 <v-col cols="12">
                   <v-card border flat>
                     <v-card-title class="font-weight-bold">Registration</v-card-title>
@@ -94,6 +100,7 @@ import PageTemplate from './PageLayout/PageTemplate.vue'
 import StorageAndSync from './Config/StorageAndSync.vue'
 import AdvancedConfig from './Config/AdvancedConfig.vue'
 import UserManagement from './Config/UserManagement.vue'
+import InviteManagement from './Config/InviteManagement.vue'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useCurrentUser, canSeeUserPanel } from '@/script/utils/currentUser'
 

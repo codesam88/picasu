@@ -3,6 +3,7 @@ use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::invites::{self, InviteView};
+use crate::auth::users;
 use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
@@ -17,6 +18,9 @@ pub struct CreateInviteRequest {
     /// never expires. Negative values are rejected. Pass 168 for the
     /// conventional 7-day lifetime.
     pub expires_in_hours: i64,
+    /// Optional user id the invite is bound to. Trimmed; empty or
+    /// missing means unbound. Validated as a user id.
+    pub username: Option<String>,
 }
 
 /// Response for `POST /post/invites`.
@@ -42,9 +46,10 @@ pub struct CreateInviteResponse {
 /// Corner cases: Creating an invite requires a live admin session, so on
 /// an empty store invites are created only after the first bootstrap.
 /// Listing, expiry, use and revoke are handled by
-/// `GET /get/invites` and `DELETE /delete/invites/{invite_id}`.
+/// `GET /get/invites` and `DELETE /delete/invites/{invite_id}`. An optional
+/// `username` binds the invite to that user id (403 on mismatch at redeem).
 ///
-/// Errors: 400 negative `expiresInHours` — 401 missing or invalid admin
+/// Errors: 400 negative `expiresInHours` or invalid `username` — 401 missing or invalid admin
 /// credentials — 405 read-only mode — 500 storage failure.
 #[utoipa::path(
         tag = "auth",
@@ -67,8 +72,17 @@ pub fn create_invite_handler(
     let auth = auth?;
     let _ = read_only?;
     let (creator, _) = caller_identity(&auth.claims);
-    let expires_at = invites::resolve_expiry(body.into_inner().expires_in_hours)?;
-    let (token, record) = invites::create_invite_with_expiry(&creator, expires_at)?;
+    let body = body.into_inner();
+    let expires_at = invites::resolve_expiry(body.expires_in_hours)?;
+    let username = body
+        .username
+        .as_deref()
+        .map(str::trim)
+        .filter(|u| !u.is_empty());
+    // Validate as a user id (400 on invalid) before storing.
+    let username = username.map(users::validate_user_id).transpose()?;
+    let (token, record) =
+        invites::create_invite_with_expiry(&creator, expires_at, username.as_deref())?;
     Ok(Json(CreateInviteResponse {
         invite: record.into_view(invites::hash_token(&token)),
         token,

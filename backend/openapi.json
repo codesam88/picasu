@@ -355,6 +355,13 @@
             "description": "Lifetime of the invite in hours, required: `0` means the invite\nnever expires. Negative values are rejected. Pass 168 for the\nconventional 7-day lifetime.",
             "format": "int64",
             "type": "integer"
+          },
+          "username": {
+            "description": "Optional user id the invite is bound to. Trimmed; empty or\nmissing means unbound. Validated as a user id.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -670,6 +677,12 @@
             "type": "string"
           },
           "usedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
             "type": [
               "string",
               "null"
@@ -2564,7 +2577,7 @@
     },
     "/post/invites": {
       "post": {
-        "description": "Admin-only. The `token` field is shown exactly once: only its blake3\nhash is stored, so the value cannot be retrieved again — the admin\ndistributes it out of band (for example as\n`${origin}/register?invite=${token}`). Expiry is required, in hours\n(`0` never expires — pass 168 for the conventional 7-day lifetime);\nthe invite redeems once, for a single registration.\n\nCorner cases: Creating an invite requires a live admin session, so on\nan empty store invites are created only after the first bootstrap.\nListing, expiry, use and revoke are handled by\n`GET /get/invites` and `DELETE /delete/invites/{invite_id}`.\n\nErrors: 400 negative `expiresInHours` — 401 missing or invalid admin\ncredentials — 405 read-only mode — 500 storage failure.",
+        "description": "Admin-only. The `token` field is shown exactly once: only its blake3\nhash is stored, so the value cannot be retrieved again — the admin\ndistributes it out of band (for example as\n`${origin}/register?invite=${token}`). Expiry is required, in hours\n(`0` never expires — pass 168 for the conventional 7-day lifetime);\nthe invite redeems once, for a single registration.\n\nCorner cases: Creating an invite requires a live admin session, so on\nan empty store invites are created only after the first bootstrap.\nListing, expiry, use and revoke are handled by\n`GET /get/invites` and `DELETE /delete/invites/{invite_id}`. An optional\n`username` binds the invite to that user id (403 on mismatch at redeem).\n\nErrors: 400 negative `expiresInHours` or invalid `username` — 401 missing or invalid admin\ncredentials — 405 read-only mode — 500 storage failure.",
         "operationId": "create_invite_handler",
         "requestBody": {
           "content": {
@@ -2796,7 +2809,7 @@
     },
     "/post/users/register": {
       "post": {
-        "description": "Public route (no auth guard) behind the read-only guard. Three gates, in\norder: a valid admin session registers without an invite; with\n`allowRegistration` on, anyone registers without an invite; otherwise a\nvalid, unexpired, unused invite is required. Non-admin sessions count as\nanonymous for gating. The account is always created with `admin: false` —\n`POST /post/users/bootstrap` (flag ∧ empty store) is the only online\nadmin-granting path. While an invite is not needed (admin session or open\nknob), an `invite` in the body is ignored: it neither fails nor gets\nburned.\n\nCorner cases: The password is trimmed once and must satisfy the\ndefault policy (see `auth::password::check_strength`); an empty `invite` string counts as absent. Invite redemption\nmarks the token used and inserts the user record in one transaction, so\na failed request never half-consumes an invite.\n\nErrors: 400 invalid `userId` or password violating the policy — 403\nregistration disabled (no invite) or invite expired — 404 unknown or\nrevoked invite token — 405 read-only mode — 409 `userId` already exists\nor invite already used — 500 storage failure.",
+        "description": "Public route (no auth guard) behind the read-only guard. Three gates, in\norder: a valid admin session registers without an invite; with\n`allowRegistration` on, anyone registers without an invite; otherwise a\nvalid, unexpired, unused invite is required. Non-admin sessions count as\nanonymous for gating. The account is always created with `admin: false` —\n`POST /post/users/bootstrap` (flag ∧ empty store) is the only online\nadmin-granting path. While an invite is not needed (admin session or open\nknob), an `invite` in the body is ignored: it neither fails nor gets\nburned.\n\nCorner cases: The password is trimmed once and must satisfy the\ndefault policy (see `auth::password::check_strength`); an empty `invite` string counts as absent. Invite redemption\nmarks the token used and inserts the user record in one transaction, so\na failed request never half-consumes an invite. An invite may be bound\nto a `username` at creation; redemption then requires that same id.\n\nErrors: 400 invalid `userId` or password violating the policy — 403\nregistration disabled (no invite), invite expired, or invite username\nmismatch — 404 unknown or revoked invite token — 405 read-only mode —\n409 `userId` already exists or invite already used — 500 storage failure.",
         "operationId": "register_user_handler",
         "requestBody": {
           "content": {

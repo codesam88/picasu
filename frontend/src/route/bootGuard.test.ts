@@ -7,12 +7,14 @@ function okDeps(overrides?: {
   isShareTarget?: boolean
   profilePresent?: boolean
   toName?: string | undefined
+  hasInviteToken?: boolean
   serverInfo?: () => Promise<ServerInfo>
 }) {
   return {
     isShareTarget: false,
     profilePresent: false,
     toName: 'timeline' as string | undefined,
+    hasInviteToken: false,
     serverInfo: vi.fn(async (): Promise<ServerInfo> => ({
       enrolled: true,
       enrollmentOpen: false,
@@ -75,6 +77,30 @@ describe('decideBootRoute', () => {
     await expect(decideBootRoute(okDeps({ toName: 'timeline', serverInfo }))).resolves.toEqual({
       name: 'login'
     })
+  })
+
+  test('invite token on register renders even on an enrolled store', async () => {
+    const serverInfo = vi.fn(async (): Promise<ServerInfo> => ({
+      enrolled: true,
+      enrollmentOpen: false,
+      captcha: null
+    }))
+
+    await expect(
+      decideBootRoute(okDeps({ toName: 'register', serverInfo, hasInviteToken: true }))
+    ).resolves.toBe(true)
+  })
+
+  test('no invite token on register still redirects to login on an enrolled store', async () => {
+    const serverInfo = vi.fn(async (): Promise<ServerInfo> => ({
+      enrolled: true,
+      enrollmentOpen: false,
+      captcha: null
+    }))
+
+    await expect(
+      decideBootRoute(okDeps({ toName: 'register', serverInfo, hasInviteToken: false }))
+    ).resolves.toEqual({ name: 'login' })
   })
 
   test('rejected server-info ping degrades to the login fall-through without aborting', async () => {
