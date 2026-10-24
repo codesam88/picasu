@@ -323,6 +323,16 @@ fn clear_metadata_table() -> Result<()> {
     Ok(())
 }
 
+/// Drop and recreate all four asset tables without decoding any row values.
+///
+/// See [`crate::storage::db::clear_all_asset_tables_drop`] for the rationale.
+/// Exposed here so a reset can be requested as a step before
+/// `crate::tasks::actor::album_index::index_album("/")`.
+#[allow(dead_code)]
+pub fn clear_all_asset_tables_drop() -> Result<()> {
+    crate::storage::db::clear_all_asset_tables_drop()
+}
+
 /// Returns `true` if `path` is inside an internal Picasu data directory
 /// (e.g., `object/`, `db/`).
 fn is_internal_entry(path: &Path) -> bool {
