@@ -211,6 +211,14 @@
       "required": ["click.select_first"],
       "additionalProperties": false
     },
+    "uiWhenClickSelectText": {
+      "type": "object",
+      "properties": {
+        "click.select_text": { "type": "string" }
+      },
+      "required": ["click.select_text"],
+      "additionalProperties": false
+    },
     "uiWhenClickTestId": {
       "type": "object",
       "properties": {
@@ -255,6 +263,7 @@
         { "$ref": "#/definitions/uiWhenClickIcon" },
         { "$ref": "#/definitions/uiWhenClickFirst" },
         { "$ref": "#/definitions/uiWhenClickSelectFirst" },
+        { "$ref": "#/definitions/uiWhenClickSelectText" },
         { "$ref": "#/definitions/uiWhenClickTestId" },
         { "$ref": "#/definitions/uiWhenUploadFiles" },
         { "$ref": "#/definitions/uiWhenSetAutoRename" }

@@ -19,7 +19,7 @@ steps:
       - ui.text_visible: E2e Ui Album Delete
 
   - when:
-      - click.select_first: true
+      - click.select_text: E2e Ui Album Delete
       - click.testid: batch-menu
     assert:
       - ui.text_visible: Delete
@@ -39,7 +39,7 @@ steps:
         equals: 1
 
   - when:
-      - click.select_first: true
+      - click.select_text: E2e Ui Album Delete
       - click.testid: batch-menu
     assert:
       - ui.text_visible: Permanently Delete
@@ -60,5 +60,8 @@ steps:
   - when:
       - navigate: /albums
     assert:
+      - ui.text_visible: Uploads
+      - ui.count: .parent
+        equals: 1
       - ui.count: .desktop-small-image
         equals: 0

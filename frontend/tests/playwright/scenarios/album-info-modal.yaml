@@ -22,7 +22,7 @@ steps:
 
   # Select the "child" album card and open its context menu
   - when:
-      - click.select_first: true
+      - click.select_text: child
       - click.testid: batch-menu
     assert:
       - ui.visible: main/
