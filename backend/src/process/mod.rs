@@ -5,7 +5,6 @@ pub mod hash;
 pub mod index;
 pub mod misc;
 pub mod path;
-pub mod rebuild;
 pub mod sanitize;
 pub mod sidecar_edit;
 pub mod thumbnail;

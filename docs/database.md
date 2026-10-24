@@ -319,7 +319,7 @@ decode::<MetadataRecord>(payload) // current structs, no transform
   conversions.
 - Any other version byte, or input with no `0xFF` prefix at all, panics via
   `rebuild_required`, which tells the operator to rebuild
-  (`POST /post/rebuild`) or start with a fresh `DATA_HOME`. Prefixless input
+  (`POST /post/index/album` with `{\"clear\": true}`) or start with a fresh `DATA_HOME`. Prefixless input
   is rejected rather than treated as the current version, because the current
   version means the _current_ schema — silently decoding ancient prefixless
   bytes against it would corrupt data.
@@ -354,6 +354,6 @@ opens `index_v5.redb` directly.
 
 Older formats are not supported and no migration path exists between them
 (or between per-record schema versions) — rebuild from the filesystem
-(`POST /post/rebuild`) or start with a fresh `DATA_HOME`. A stale
+(`POST /post/index/album` with `{\"clear\": true}`) or start with a fresh `DATA_HOME`. A stale
 `index_v4.redb` file, if present, is simply ignored: the app opens
 `index_v5.redb`.

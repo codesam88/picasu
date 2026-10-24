@@ -32,4 +32,4 @@ when:
       Path: "${data_path}/e2e_no_record/truncated.jpg"
 then:
   - response.status: 200
-  - response.json.prefetch.dataLength: 0
+  - response.json.prefetch.dataLength: 1

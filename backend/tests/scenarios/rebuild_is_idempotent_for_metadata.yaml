@@ -56,9 +56,14 @@ given:
       <?xpacket end="w"?>
 when:
   # First rebuild.
-  - call: POST /post/rebuild
+  - call: POST /post/index/album
+    body:
+      album: /
+      clear: true
     then:
-      - response.status: 200
+      - response.status: 202
+  - wait_index: true
+  - call: GET /get/index/status
     asset_id_as: $first_asset
     discover_path: e2e_rebuild_twice/photo.jpg
   - call: POST /get/prefetch?locate=${first_asset}
@@ -76,9 +81,14 @@ when:
       caption1: response.description
       software1: response.exifVec.Software
   # Second rebuild over the same filesystem state.
-  - call: POST /post/rebuild
+  - call: POST /post/index/album
+    body:
+      album: /
+      clear: true
     then:
-      - response.status: 200
+      - response.status: 202
+  - wait_index: true
+  - call: GET /get/index/status
     asset_id_as: $second_asset
     discover_path: e2e_rebuild_twice/photo.jpg
   - call: POST /get/prefetch?locate=${second_asset}

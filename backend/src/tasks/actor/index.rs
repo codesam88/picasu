@@ -1,7 +1,7 @@
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::anyhow;
-use log::{debug, error};
+use log::{debug, error, warn};
 use tokio_rayon::AsyncThreadPool;
 
 use crate::tasks::runtime::WORKER_RAYON_POOL;
@@ -73,6 +73,19 @@ fn index_task(mut abstract_data: AbstractData) -> Result<AbstractData> {
             "Failed {} data dump: {abstract_data:#?}",
             abstract_data.ext_type()
         );
+        // Keep the file visible as an error-marked placeholder instead of
+        // dropping it: identity + a `pending` payload are flushed through the
+        // normal store path so the row remains album-filterable and
+        // downloadable with a tooltip.
+        warn!(
+            "indexing failed for {} (hash {}, path {}): {e:#}",
+            abstract_data.ext_type(),
+            abstract_data.hash(),
+            path
+        );
+        abstract_data.set_pending(true);
+        BATCH_COORDINATOR
+            .execute_batch_detached(FlushTreeTask::insert(vec![abstract_data.clone()]));
         return Err(e).context(format!(
             "failed to process {} metadata pipeline. Hash: {}, Path: {}",
             abstract_data.ext_type(),

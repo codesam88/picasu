@@ -7,11 +7,16 @@ use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::{AppResult, GuardResult};
-use crate::tasks::actor::album_index::{cancel_album_index, index_album};
+use crate::tasks::actor::album_index::{cancel_album_index, index_album, index_album_with_options};
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct IndexAlbumRequest {
     album: String,
+    /// When true, drop all asset tables (and clear the in-memory tree and the
+    /// directory-album cache) before indexing, so the scan rebuilds from an
+    /// empty state instead of merging into stale rows.
+    #[serde(default)]
+    clear: bool,
 }
 
 /// Index every media file under a directory tree in the background.
@@ -48,7 +53,12 @@ pub fn index_album_handler(
 ) -> AppResult<Status> {
     let _ = auth?;
     let _ = read_only?;
-    index_album(&req.into_inner().album)?;
+    let req = req.into_inner();
+    if req.clear {
+        index_album_with_options(&req.album, true)?;
+    } else {
+        index_album(&req.album)?;
+    }
     Ok(Status::Accepted)
 }
 

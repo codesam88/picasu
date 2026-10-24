@@ -22,7 +22,7 @@ use redb::{TypeName, Value};
 // below are their on-disk version. Migration between schema versions is not
 // supported: a record with any other version byte — or with no [0xFF, version]
 // prefix at all — cannot be decoded, and `from_bytes` aborts with instructions
-// to rebuild (POST /post/rebuild or a fresh DATA_HOME).
+// to rebuild (POST /post/index/album or a fresh DATA_HOME).
 //
 // When the schema changes (new fields, removed fields, reordered variants):
 //   1. Increment the schema version constant.
@@ -47,7 +47,7 @@ fn rebuild_required(type_name: &str, reason: &str) -> ! {
     panic!(
         "Cannot decode {type_name} record: {reason}. \
          Migration between schema versions is not supported; \
-         rebuild the database via POST /post/rebuild, \
+         rebuild the database via POST /post/index/album with clear set to true, \
          or start with a fresh DATA_HOME."
     );
 }
@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "POST /post/rebuild")]
+    #[should_panic(expected = "POST /post/index/album")]
     fn unknown_version_requires_rebuild() {
         AbstractData::from_bytes(&[0xFF, 9, 0, 0, 0]);
     }
@@ -295,13 +295,13 @@ mod tests {
     /// rebuild instructions rather than surfacing as a bare bitcode decode
     /// failure.
     #[test]
-    #[should_panic(expected = "POST /post/rebuild")]
+    #[should_panic(expected = "POST /post/index/album")]
     fn pre_removal_object_version_requires_rebuild() {
         AbstractData::from_bytes(&[0xFF, 1, 0, 0, 0]);
     }
 
     #[test]
-    #[should_panic(expected = "POST /post/rebuild")]
+    #[should_panic(expected = "POST /post/index/album")]
     fn pre_removal_metadata_version_requires_rebuild() {
         MetadataRecord::from_bytes(&[0xFF, 1, 0, 0, 0]);
     }
@@ -318,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "POST /post/rebuild")]
+    #[should_panic(expected = "POST /post/index/album")]
     fn prefixless_record_requires_rebuild() {
         // Current-schema payload with the version prefix stripped. Must NOT
         // fall through to decoding it as one of the versioned schemas: no
@@ -334,7 +334,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "POST /post/rebuild")]
+    #[should_panic(expected = "POST /post/index/album")]
     fn magic_without_version_byte_requires_rebuild() {
         // Truncated prefix: magic marker but no version byte.
         AbstractData::from_bytes(&[0xFF]);
