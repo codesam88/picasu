@@ -1,5 +1,5 @@
 ---
-status: open
+status: in-progress
 type: feature
 priority: high
 area: backend
@@ -104,11 +104,6 @@ names the actor/scope, not the HTTP verb:
   contract); `settings` is empty until a roaming pref needs it. One
   round trip for boot; no separate `get/user/config`.
   `GuardUser` (any logged-in user). Allowed while read-only is on.
-- `GET /get/self/profile` — single user resource, two sub-objects:
-  `{ user: { id, username, isAdmin, home }, settings: {} }`. Identity
-  fields are read-only for the user; `settings` is empty until a roaming
-  pref needs it. One round trip for boot; no separate `get/user/config`.
-  `GuardUser` (any logged-in user). Allowed while read-only is on.
 - `PUT /put/self/profile/settings` — reserved for future roaming prefs.
   `GuardUser`, no re-auth, no read-only guard. Not built until a pref
   needs roaming; `theme`/density/layout stay client-only.
@@ -211,6 +206,48 @@ new status (no drift, no "to be documented later"):
   security specs (`auth.md`, throttling, invite bearer rules, reset-key
   sign-out, read-only exception). No plan chatter, no progress logs, no
   pointers at `.plan/` files in user docs.
+
+## Implementation steps (executable, in order)
+
+Each step is one worker task: TDD (failing test first), one commit,
+`docs/config.md` updated in the same commit, `just openapi-gen` +
+`just openapi-check` green where routes change. Old routes stay mounted
+until the frontend migrates; deletion is the last step.
+
+- [ ] S1 tier table: single source array in `backend/src/model/config.rs`
+      (every `AppConfig` field → `host|runtime`; `PICASU_PBKDF_ITERATIONS`,
+      `PICASU_CONFIG_HOME`, `PICASU_RATE_LIMITS` listed as out-of-schema
+      env-only). Table test fails on unlisted fields. `docs/config.md`
+      tier/precedence/overlap tables generated-or-mirrored from it.
+      Checks: `cargo test config`, `just docs-check`.
+- [ ] S2 `allowRegistration` → runtime: remove from `host_only_knobs` +
+      add `Option<bool>` to `PartialUpdateConfigRequest` with apply logic;
+      route test pins accept + persistence; old `400` tests updated.
+      `docs/config.md` row flips host → runtime. Checks: `cargo test
+put_config`, `just backend-check`.
+- [ ] S3 new admin routes alongside old: `GET /get/admin/config`
+      (annotated `{value,tier,source,requiresRestart,writable}`,
+      `GuardAuth(admin)`, no read-only guard), `PUT /put/admin/config`
+      (runtime patch incl. `allowRegistration`, `GuardAuth` +
+      `GuardReadOnlyMode`), `POST /post/admin/config/disable-read-only`
+      (`GuardAuth` only, sets `readOnlyMode=false`), `GET
+/get/admin/config/export` (versioned envelope, `GuardAuth` only).
+      Handler tests per Acceptance 2–3 incl. guard absence/presence
+      assertions. `just openapi-gen`, `just openapi-check`.
+- [ ] S4 `GET /get/self/profile` (`GuardUser`, read-only-safe):
+      `{user:{userId,admin,home},settings:{}}` from user store + empty
+      settings. Handler tests (self, non-admin, share-token 401, works
+      while read-only on). Frontend not rewired yet.
+- [ ] S5 frontend wiring: `ConfigPage` tabs call the new routes;
+      `Server`-tab R/O toggle calls disable route with `L3` confirm when
+      on; `allowRegistration` toggle in admin tab; export button.
+      `frontend/src/api/*` zod-parsed. Checks: `just frontend-check`,
+      `just frontend-vitest`.
+- [ ] S6 cutover: frontend drops old paths, old routes
+      (`PUT /put/config`, `POST /post/config/import`) unmounted, `GET
+/get/config` kept (phased boot migration). `docs/config.md` +
+      `auth.md` final pass, `just check`, `just test` (backend + frontend
+      vitest; playwright only if touched).
 
 ## Acceptance
 
