@@ -163,6 +163,12 @@ export const UiWhenClickSelectFirst = z
   })
   .strict()
 
+export const UiWhenClickSelectText = z
+  .object({
+    'click.select_text': z.string()
+  })
+  .strict()
+
 export const UiWhenClickTestId = z
   .object({
     'click.testid': z.string()
@@ -207,6 +213,7 @@ export const UiWhenItem = z.union([
   UiWhenClickIcon,
   UiWhenClickFirst,
   UiWhenClickSelectFirst,
+  UiWhenClickSelectText,
   UiWhenClickTestId,
   UiWhenKeyboard,
   UiWhenBrowserBack,

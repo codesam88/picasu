@@ -141,6 +141,28 @@ export async function executeWhen(
       })
       // Wait for the edit-mode toolbar (three-dots menu button) to appear
       await page.getByTestId('batch-menu').waitFor({ state: 'visible', timeout: 5000 })
+    } else if ('click.select_text' in step) {
+      // Same as select_first, but scoped to the `.parent` tile containing
+      // the given text. Tile order follows filesystem walk order, so with
+      // system folders (e.g. the empty `uploads` dir-album) sharing the grid,
+      // first-tile selection can hit the wrong album.
+      const text = interpolate(step['click.select_text'], ctx.vars)
+      await page.evaluate(async (label: string) => {
+        const deadline = Date.now() + 10000
+        const needle = label.toLowerCase()
+        let icon: HTMLElement | null = null
+        while (Date.now() < deadline) {
+          const tiles = Array.from(document.querySelectorAll<HTMLElement>('.parent'))
+          const tile = tiles.find((t) => t.textContent?.toLowerCase().includes(needle))
+          icon = tile?.querySelector<HTMLElement>('.icon-hover') ?? null
+          if (icon) break
+          await new Promise((resolve) => setTimeout(resolve, 100))
+        }
+        if (!icon) throw new Error(`.icon-hover not found in tile containing "${label}"`)
+        icon.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+      }, text)
+      // Wait for the edit-mode toolbar (three-dots menu button) to appear
+      await page.getByTestId('batch-menu').waitFor({ state: 'visible', timeout: 5000 })
     } else if ('upload.files' in step) {
       const spec = step['upload.files']
       const files = spec.files.map((f) => interpolate(f, ctx.vars))
@@ -160,7 +182,7 @@ export async function executeWhen(
     } else {
       throw new Error(
         `Unknown when verb in step ${JSON.stringify(step)}. ` +
-          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, upload.files, set.auto_rename`
+          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, click.select_text, upload.files, set.auto_rename`
       )
     }
   }

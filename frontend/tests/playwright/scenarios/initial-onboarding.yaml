@@ -99,8 +99,9 @@ steps:
       - ui.chip_visible: pets
       - ui.chip_visible: family
       - ui.chip_visible: misc
+      - ui.chip_visible: uploads
       - ui.count: .parent
-        equals: 5
+        equals: 6
 
   - when:
       - click.text: nature
