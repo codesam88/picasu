@@ -157,6 +157,33 @@ fallback — with neither `--userdb` nor `PICASU_DATA_HOME` set and no
 `config.toml` to read, it refuses to run instead of guessing a location.
 See [Admin CLI](admin-cli.md).
 
+## Tiers
+
+Every `AppConfig` field belongs to a tier that determines how it can be
+changed. The tier table is the single source of truth in
+`backend/src/model/config.rs` (`CONFIG_FIELDS`).
+
+| Tier     | Fields                                                                                                                                                                                               | How to set                                                                                | Restart? |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------- |
+| runtime  | `upload_folder`, `max_upload_size`, `read_only_mode`, `disable_img`, `fs_notify_watcher`, `normalize_upload_filenames`, `validate_upload_content`, `use_client_timestamp_info`, `allow_registration` | `PUT /put/config` (current runtime subset) or `config.toml`; admin routes `(planned, S3)` | no       |
+| host     | `address`, `port`, `data_home`, `image_home`, `trust_proxy_forwarded_for`, `trivial_passwords`, `bootstrap_admin`, all `login_*` throttle knobs, `auth_key` (managed), `web_root`                    | env var, CLI flag, or `config.toml`                                                       | yes      |
+| env-only | `PICASU_CONFIG_HOME`, `PICASU_PBKDF_ITERATIONS`, `PICASU_RATE_LIMITS`                                                                                                                                | env var only                                                                              | yes      |
+
+Precedence is `env > file` at boot (`apply_env_overrides_with`). API writes
+persist to `config.toml` and take effect in-session, but revert on the next
+restart while the env var is pinned (intended host override). `GET /get/admin/config` (planned, S3) will report `source: file | env` per field.
+
+### Overlap (runtime knobs with env pins)
+
+| Runtime field        | Env var                     |
+| -------------------- | --------------------------- |
+| `upload_folder`      | `PICASU_UPLOAD_FOLDER`      |
+| `max_upload_size`    | `PICASU_MAX_UPLOAD_SIZE`    |
+| `read_only_mode`     | `PICASU_READ_ONLY_MODE`     |
+| `disable_img`        | `PICASU_DISABLE_IMG`        |
+| `fs_notify_watcher`  | `PICASU_FS_NOTIFY_WATCHER`  |
+| `allow_registration` | `PICASU_ALLOW_REGISTRATION` |
+
 ## Environment variable overrides
 
 The following env vars override the config file on every launch:

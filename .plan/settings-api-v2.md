@@ -214,7 +214,7 @@ Each step is one worker task: TDD (failing test first), one commit,
 `just openapi-check` green where routes change. Old routes stay mounted
 until the frontend migrates; deletion is the last step.
 
-- [ ] S1 tier table: single source array in `backend/src/model/config.rs`
+- [x] S1 tier table: single source array in `backend/src/model/config.rs`
       (every `AppConfig` field → `host|runtime`; `PICASU_PBKDF_ITERATIONS`,
       `PICASU_CONFIG_HOME`, `PICASU_RATE_LIMITS` listed as out-of-schema
       env-only). Table test fails on unlisted fields. `docs/config.md`
