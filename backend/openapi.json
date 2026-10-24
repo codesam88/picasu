@@ -1319,6 +1319,48 @@
         ],
         "type": "object"
       },
+      "SelfProfileResponse": {
+        "description": "Single self resource returned by `GET /get/self/profile`.",
+        "properties": {
+          "settings": {
+            "$ref": "#/components/schemas/SelfProfileSettings"
+          },
+          "user": {
+            "$ref": "#/components/schemas/SelfProfileUser"
+          }
+        },
+        "required": [
+          "user",
+          "settings"
+        ],
+        "type": "object"
+      },
+      "SelfProfileSettings": {
+        "description": "Reserved sub-object for future roaming preferences. Empty today: theme and\ndensity stay client-only.",
+        "type": "object"
+      },
+      "SelfProfileUser": {
+        "description": "The identity half of a self profile: read-only attributes owned by the\nuser store. `home` is `null` when unset.",
+        "properties": {
+          "admin": {
+            "type": "boolean"
+          },
+          "home": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "userId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "admin"
+        ],
+        "type": "object"
+      },
       "ServerInfo": {
         "description": "Anonymous enrollment state for boot routing.",
         "properties": {
@@ -2276,6 +2318,40 @@
         "summary": "Evaluate a list query, snapshot its result, and return the snapshot id.",
         "tags": [
           "timeline"
+        ]
+      }
+    },
+    "/get/self/profile": {
+      "get": {
+        "description": "Any logged-in user may call this; share tokens are rejected by `GuardUser`.\nReading is allowed while read-only mode is on.\n\nErrors: 401 missing/invalid session or share token; 403 no enrolled\nusers; 404 unknown user; 500 storage failure.",
+        "operationId": "get_self_profile_handler",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelfProfileResponse"
+                }
+              }
+            },
+            "description": "Self profile"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        },
+        "summary": "Read the caller's own identity from the user store.",
+        "tags": [
+          "auth"
         ]
       }
     },
