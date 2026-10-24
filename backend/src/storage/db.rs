@@ -199,3 +199,155 @@ pub fn open_tree_snapshot_table(timestamp: i64) -> Result<MyCow> {
         "Failed to read tree snapshot for timestamp {timestamp}"
     ))
 }
+
+/// Drop and recreate all four asset tables without decoding any row values.
+///
+/// Unlike the row-by-row clear helpers, this uses `redb`'s `delete_table`,
+/// which removes a table (and all of its pages) by name without ever calling
+/// `Value::from_bytes`. That is what allows recovery from a schema bump:
+/// a `METADATA_TABLE` row written under an older (or corrupt) version cannot
+/// be iterated, so the legacy clear path panics on `from_bytes`, while this
+/// path simply discards the whole table and recreates an empty one.
+#[allow(dead_code)]
+pub fn clear_all_asset_tables_drop() -> anyhow::Result<()> {
+    let txn = TREE
+        .in_disk
+        .begin_write()
+        .context("begin write for asset table drop")?;
+    let _ = txn
+        .delete_table(ASSET_BY_PATH)
+        .context("delete ASSET_BY_PATH")?;
+    txn.open_table(ASSET_BY_PATH)
+        .context("reopen ASSET_BY_PATH")?;
+
+    let _ = txn
+        .delete_table(ASSET_BY_ID)
+        .context("delete ASSET_BY_ID")?;
+    txn.open_table(ASSET_BY_ID).context("reopen ASSET_BY_ID")?;
+
+    let _ = txn.delete_table(DUPE_INDEX).context("delete DUPE_INDEX")?;
+    txn.open_table(DUPE_INDEX).context("reopen DUPE_INDEX")?;
+
+    let _ = txn
+        .delete_table(METADATA_TABLE)
+        .context("delete METADATA_TABLE")?;
+    txn.open_table(METADATA_TABLE)
+        .context("reopen METADATA_TABLE")?;
+
+    txn.commit().context("commit asset table drop")?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::bootstrap::{TEST_ENV, TEST_SERIAL_GUARD};
+    use redb::{TableDefinition, TypeName, Value};
+
+    #[derive(Debug)]
+    struct RawMetadataValue;
+
+    impl Value for RawMetadataValue {
+        type SelfType<'a> = Vec<u8>;
+        type AsBytes<'a> = Vec<u8>;
+
+        fn fixed_width() -> Option<usize> {
+            None
+        }
+
+        fn from_bytes<'a>(data: &'a [u8]) -> Self::SelfType<'a>
+        where
+            Self: 'a,
+        {
+            data.to_vec()
+        }
+
+        fn as_bytes<'a, 'b: 'a>(value: &'a Self::SelfType<'b>) -> Self::AsBytes<'a>
+        where
+            Self: 'b,
+        {
+            value.clone()
+        }
+
+        fn type_name() -> TypeName {
+            TypeName::new("MetadataRecord")
+        }
+    }
+
+    const RAW_METADATA_TABLE: TableDefinition<&str, RawMetadataValue> =
+        TableDefinition::new("asset_metadata");
+
+    #[test]
+    fn drop_clear_handles_undecodable_metadata_row() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+
+        // Make sure all four tables exist before seeding.
+        {
+            let txn = TREE
+                .in_disk
+                .begin_write()
+                .expect("begin write for table ensure");
+            txn.open_table(ASSET_BY_PATH).expect("open ASSET_BY_PATH");
+            txn.open_table(ASSET_BY_ID).expect("open ASSET_BY_ID");
+            txn.open_table(DUPE_INDEX).expect("open DUPE_INDEX");
+            txn.open_table(METADATA_TABLE).expect("open METADATA_TABLE");
+            txn.commit().expect("commit table ensure");
+        }
+
+        // Seed an undecodable METADATA_TABLE row (version 9) plus a row in
+        // another asset table, using a raw value type that shares the stored
+        // type name so redb accepts the write.
+        {
+            let txn = TREE.in_disk.begin_write().expect("begin write for seed");
+            {
+                let mut table = txn
+                    .open_table(RAW_METADATA_TABLE)
+                    .expect("open raw metadata table for seed");
+                table
+                    .insert("undecodable", vec![0xFF, 9, 0, 0, 0])
+                    .expect("insert undecodable row");
+            }
+            {
+                let mut table = txn
+                    .open_table(ASSET_BY_PATH)
+                    .expect("open ASSET_BY_PATH for seed");
+                table.insert("p", "id").expect("insert path row");
+            }
+            txn.commit().expect("commit seed");
+        }
+
+        // The legacy row-iteration clear would panic decoding the row above;
+        // the drop-based helper must not.
+        clear_all_asset_tables_drop().expect("drop clear must succeed");
+
+        // All four tables must be readable and empty afterwards.
+        {
+            let txn = TREE.in_disk.begin_read().expect("begin read after clear");
+            let path_table = txn.open_table(ASSET_BY_PATH).expect("open ASSET_BY_PATH");
+            assert_eq!(
+                path_table.iter().expect("iter ASSET_BY_PATH").count(),
+                0,
+                "ASSET_BY_PATH must be empty after drop clear"
+            );
+            let id_table = txn.open_table(ASSET_BY_ID).expect("open ASSET_BY_ID");
+            assert_eq!(
+                id_table.iter().expect("iter ASSET_BY_ID").count(),
+                0,
+                "ASSET_BY_ID must be empty after drop clear"
+            );
+            let dupe_table = txn.open_table(DUPE_INDEX).expect("open DUPE_INDEX");
+            assert_eq!(
+                dupe_table.iter().expect("iter DUPE_INDEX").count(),
+                0,
+                "DUPE_INDEX must be empty after drop clear"
+            );
+            let metadata_table = txn.open_table(METADATA_TABLE).expect("open METADATA_TABLE");
+            assert_eq!(
+                metadata_table.iter().expect("iter METADATA_TABLE").count(),
+                0,
+                "METADATA_TABLE must be empty after drop clear"
+            );
+        }
+    }
+}
