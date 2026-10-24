@@ -38,6 +38,13 @@
             "minimum": 0,
             "type": "integer"
           },
+          "failedPaths": {
+            "description": "Paths of files that failed to index, capped to a bounded size.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "finishedAt": {
             "format": "int64",
             "type": [
