@@ -154,6 +154,45 @@ pub fn index_album(src: &str) -> AppResult<()> {
     INDEX_RUNTIME.spawn(async move {
         info!("Starting one-time album index: {}", root_clone.display());
 
+        // First, ensure a dir-album exists for every directory strictly under the
+        // root, parent-first. This covers empty
+        // directories that the file walk below would otherwise skip, bringing
+        // `index_album` to parity with the filesystem rebuild for albums.
+        let mut dir_paths: Vec<PathBuf> = Vec::new();
+        for entry in WalkDir::new(&root)
+            .follow_links(false)
+            .into_iter()
+            .filter_entry(|entry| should_walk_entry(entry, &internal_roots))
+        {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(err) => {
+                    warn!("Album index walk error: {err}");
+                    increment_failed(job_id);
+                    continue;
+                }
+            };
+            if entry.file_type().is_dir() && entry.depth() > 0 {
+                dir_paths.push(entry.into_path());
+            }
+        }
+
+        for dir in &dir_paths {
+            if cancel.load(Ordering::SeqCst) {
+                break;
+            }
+            let dir_clone = dir.clone();
+            match tokio::task::spawn_blocking(move || {
+                crate::process::dir_album::get_or_create_dir_album(dir_clone)
+            })
+            .await
+            {
+                Ok(Ok(_)) => {}
+                Ok(Err(err)) => warn!("Failed to ensure dir album for {}: {err}", dir.display()),
+                Err(err) => warn!("spawn_blocking failed in dir album pass: {err}"),
+            }
+        }
+
         let mut handles: Vec<JoinHandle<()>> = Vec::new();
         let walker = WalkDir::new(&root)
             .follow_links(false)
@@ -317,8 +356,10 @@ fn internal_subtree_roots() -> Vec<PathBuf> {
 /// once the path is gone, remove the entire record (and its compressed
 /// thumbnail).
 fn sweep_stale_asset_paths(root: &Path) {
+    use crate::model::abstract_data::AbstractData;
     use crate::process::path::normalize_asset_path;
 
+    // File assets.
     let candidates: Vec<_> = {
         let tree = TREE.in_memory.read().expect("lock poisoned");
         tree.iter()
@@ -341,6 +382,42 @@ fn sweep_stale_asset_paths(root: &Path) {
         if !has_path && had_path {
             to_remove.push(data);
         }
+    }
+
+    // Dir albums under root whose directory no longer exists on disk.
+    let album_candidates: Vec<_> = {
+        let tree = TREE.in_memory.read().expect("lock poisoned");
+        tree.iter()
+            .filter_map(|dt| match &dt.abstract_data {
+                AbstractData::Album(alb) if !alb.metadata.dir_path.is_empty() => {
+                    let dir_path = std::path::PathBuf::from(&alb.metadata.dir_path);
+                    if dir_path.starts_with(root) {
+                        Some((dir_path, alb.object.id))
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .collect()
+    };
+
+    for (dir_path, album_id) in album_candidates {
+        if dir_path.exists() {
+            continue;
+        }
+        // Remove from asset tables + metadata table.
+        let _ = crate::storage::asset_store::remove_asset_by_id(album_id.as_str());
+        let _ =
+            crate::storage::asset_store::remove_asset_by_path(dir_path.to_string_lossy().as_ref());
+        let write_txn = TREE.in_disk.begin_write();
+        if let Ok(txn) = write_txn {
+            if let Ok(mut table) = txn.open_table(crate::storage::db::METADATA_TABLE) {
+                let _ = table.remove(&*album_id);
+            }
+            let _ = txn.commit();
+        }
+        crate::process::dir_album::evict_dir_album(&dir_path);
     }
 
     if !to_remove.is_empty() {
@@ -402,5 +479,91 @@ fn finish_job(job_id: u64, state: AlbumIndexState) {
     let mut active = ACTIVE_INDEX.lock().expect("lock poisoned");
     if active.as_ref().is_some_and(|job| job.job_id == job_id) {
         *active = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::process::dir_album;
+    use crate::tests::bootstrap::{
+        TEST_ENV, TEST_SERIAL_GUARD, reset_backend_state, test_image_home,
+    };
+    use std::fs;
+    use std::time::{Duration, Instant};
+
+    fn wait_for_index_completion() {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let status = album_index_status();
+            match status.state {
+                AlbumIndexState::Running => {}
+                _ => return,
+            }
+            if Instant::now() > deadline {
+                panic!(
+                    "index did not complete within 30s (state={:?})",
+                    status.state
+                );
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    #[test]
+    fn index_album_creates_dir_album_for_empty_directory() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let empty_dir = image_home.join("empty_album");
+        fs::create_dir_all(&empty_dir).unwrap();
+
+        index_album("/").expect("index_album accepted");
+        wait_for_index_completion();
+
+        assert!(
+            dir_album::get_album_id_for_dir(&empty_dir).is_some(),
+            "empty directory must become a dir-album"
+        );
+
+        fs::remove_dir_all(&empty_dir).ok();
+        reset_backend_state();
+    }
+
+    #[test]
+    fn index_album_evicts_deleted_dir_album_after_sweep() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let doomed_dir = image_home.join("doomed_album");
+        fs::create_dir_all(&doomed_dir).unwrap();
+
+        // First pass: create the dir album.
+        index_album("/").expect("index_album accepted");
+        wait_for_index_completion();
+        assert!(
+            dir_album::get_album_id_for_dir(&doomed_dir).is_some(),
+            "dir album should exist before deletion"
+        );
+
+        // Delete the directory from disk.
+        fs::remove_dir_all(&doomed_dir).unwrap();
+
+        // Second pass: sweep should evict the stale dir album.
+        index_album("/").expect("index_album accepted");
+        wait_for_index_completion();
+
+        assert!(
+            dir_album::get_album_id_for_dir(&doomed_dir).is_none(),
+            "deleted dir's album must be evicted after sweep"
+        );
+
+        reset_backend_state();
     }
 }
