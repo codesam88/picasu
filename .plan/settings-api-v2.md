@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: backend
@@ -220,7 +220,7 @@ until the frontend migrates; deletion is the last step.
       env-only). Table test fails on unlisted fields. `docs/config.md`
       tier/precedence/overlap tables generated-or-mirrored from it.
       Checks: `cargo test config`, `just docs-check`.
-- [ ] S2 `allowRegistration` → runtime: remove from `host_only_knobs` +
+- [x] S2 `allowRegistration` → runtime: remove from `host_only_knobs` +
       add `Option<bool>` to `PartialUpdateConfigRequest` with apply logic;
       route test pins accept + persistence; old `400` tests updated.
       `docs/config.md` row flips host → runtime. Checks: `cargo test
@@ -243,7 +243,7 @@ put_config`, `just backend-check`.
       on; `allowRegistration` toggle in admin tab; export button.
       `frontend/src/api/*` zod-parsed. Checks: `just frontend-check`,
       `just frontend-vitest`.
-- [ ] S6 cutover: frontend drops old paths, old routes
+- [x] S6 cutover: frontend drops old paths, old routes
       (`PUT /put/config`, `POST /post/config/import`) unmounted, `GET
 /get/config` kept (phased boot migration). `docs/config.md` +
       `auth.md` final pass, `just check`, `just test` (backend + frontend

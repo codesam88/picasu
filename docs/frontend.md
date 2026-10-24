@@ -232,12 +232,12 @@ Filters are string expressions parsed by the Chevrotain lexer (`lexer.ts`). Each
 
 The config page at `ConfigPage.vue` contains:
 
-| Section           | Component        | Features                                                                                                                                                                                                             |
-| ----------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Display           | `FrontendConfig` | Frontend-only UI preferences (light/dark mode, chips, etc.)                                                                                                                                                          |
-| Password          | `ChangePassword` | Set or change the signed-in user's password (requires the current password)                                                                                                                                          |
-| Image Paths       | `StorageAndSync` | Monitored path display, Scan Now button, scan status with counters (scanned/matched/processed/failed), Cancel button. Also has editable `maxUploadSize` and `uploadFolder` fields. Save writes to `PUT /put/config`. |
-| Advanced Settings | `AdvancedConfig` | Read-only mode toggle, disable image processing, JWT auth key                                                                                                                                                        |
+| Section           | Component        | Features                                                                                                                                                                                                                   |
+| ----------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Display           | `FrontendConfig` | Frontend-only UI preferences (light/dark mode, chips, etc.)                                                                                                                                                                |
+| Password          | `ChangePassword` | Set or change the signed-in user's password (requires the current password)                                                                                                                                                |
+| Image Paths       | `StorageAndSync` | Monitored path display, Scan Now button, scan status with counters (scanned/matched/processed/failed), Cancel button. Also has editable `maxUploadSize` and `uploadFolder` fields. Save writes to `PUT /put/admin/config`. |
+| Advanced Settings | `AdvancedConfig` | Read-only mode toggle, disable image processing, JWT auth key                                                                                                                                                              |
 
 ---
 
@@ -246,7 +246,7 @@ The config page at `ConfigPage.vue` contains:
 | Endpoint              | Used by                             | Returns                        |
 | --------------------- | ----------------------------------- | ------------------------------ |
 | `/get/config`         | `configStore.fetchConfig()`         | Public config (camelCase JSON) |
-| `/put/config`         | `configStore.updateConfig()`        | —                              |
+| `/put/admin/config`   | `configStore.updateConfig()`        | —                              |
 | `/put/users/password` | `ChangePassword`                    | —                              |
 | `/get/get-albums`     | `albumStore.fetchAlbums()`          | All albums                     |
 | `/get/prefetch`       | `usePrefetch`                       | Row layout + dataLength        |

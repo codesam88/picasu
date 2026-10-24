@@ -10,8 +10,6 @@ use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::get::admin_config::RuntimeConfigDocument;
-use crate::router::put::edit_config::PartialUpdateConfigRequest;
-use crate::router::put::edit_config::host_only_knobs;
 use crate::router::{AppResult, GuardResult};
 use serde::{Deserialize, Serialize};
 
@@ -124,6 +122,220 @@ pub async fn update_admin_config_handler(
     .or_raise(|| (ErrorKind::Internal, "Task join error"))?
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(utoipa::ToSchema)]
+pub struct PartialUpdateConfigRequest {
+    /// Host-only (`PICASU_ADDRESS` / config `server.address`). Any presence
+    /// in the API body is rejected with 400 and changes nothing.
+    pub address: Option<String>,
+    /// Host-only (`PICASU_PORT` / config `server.port`). Any presence
+    /// in the API body is rejected with 400 and changes nothing.
+    pub port: Option<u16>,
+    /// `None` = don't touch; `Some("")` resets to the default ("uploads").
+    pub upload_folder: Option<String>,
+    /// `None` = don't touch; `Some("")` resets to the default ("100MiB").
+    pub max_upload_size: Option<String>,
+    pub read_only_mode: Option<bool>,
+    pub disable_img: Option<bool>,
+    pub fs_notify_watcher: Option<bool>,
+    pub normalize_upload_filenames: Option<bool>,
+    pub validate_upload_content: Option<bool>,
+    pub use_client_timestamp_info: Option<bool>,
+    /// Runtime: `None` = don't touch.
+    pub allow_registration: Option<bool>,
+    /// Host-only (`--trivial-passwords` / `PICASU_TRIVIAL_PASSWORDS` /
+    /// config `gallery.trivial_passwords`). Any presence in the API body is
+    /// rejected with 400 and changes nothing.
+    pub trivial_passwords: Option<bool>,
+    /// Host-only (`--bootstrap-admin` / `PICASU_BOOTSTRAP_ADMIN` / config
+    /// `gallery.bootstrap_admin`). Any presence in the API body is rejected
+    /// with 400 and changes nothing.
+    pub bootstrap_admin: Option<bool>,
+    /// Host-only (`PICASU_TRUST_PROXY_FORWARDED_FOR` / config
+    /// `server.trust_proxy_forwarded_for`). Any presence in the API body is
+    /// rejected with 400 and changes nothing.
+    pub trust_proxy_forwarded_for: Option<bool>,
+    /// Host-only login-throttle knob (`PICASU_LOGIN_IP_WINDOW_SECS` /
+    /// config `server.login_ip_window_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_ip_window_secs: Option<u64>,
+    /// Host-only login-throttle knob (`PICASU_LOGIN_IP_MAX_FAILURES` /
+    /// config `server.login_ip_max_failures`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_ip_max_failures: Option<u32>,
+    /// Host-only login-throttle knob (`PICASU_LOGIN_IP_BASE_BAN_SECS` /
+    /// config `server.login_ip_base_ban_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_ip_base_ban_secs: Option<u64>,
+    /// Host-only login-throttle knob (`PICASU_LOGIN_IP_MAX_BAN_SECS` /
+    /// config `server.login_ip_max_ban_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_ip_max_ban_secs: Option<u64>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_IP_LONG_WINDOW_SECS` / config
+    /// `server.login_ip_long_window_secs`). Any presence in the API body is
+    /// rejected with 400 and changes nothing.
+    pub login_ip_long_window_secs: Option<u64>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_IP_LONG_MAX_FAILURES` / config
+    /// `server.login_ip_long_max_failures`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_ip_long_max_failures: Option<u32>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_IP_LONG_BASE_BAN_SECS` / config
+    /// `server.login_ip_long_base_ban_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_ip_long_base_ban_secs: Option<u64>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_IP_LONG_MAX_BAN_SECS` / config
+    /// `server.login_ip_long_max_ban_secs`). Any presence in the API body is
+    /// rejected with 400 and changes nothing.
+    pub login_ip_long_max_ban_secs: Option<u64>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_USER_LONG_WINDOW_SECS` / config
+    /// `server.login_user_long_window_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_user_long_window_secs: Option<u64>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_USER_LONG_MAX_FAILURES` / config
+    /// `server.login_user_long_max_failures`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_user_long_max_failures: Option<u32>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_USER_LONG_BASE_BAN_SECS` / config
+    /// `server.login_user_long_base_ban_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_user_long_base_ban_secs: Option<u64>,
+    /// Host-only login-throttle knob
+    /// (`PICASU_LOGIN_USER_LONG_MAX_BAN_SECS` / config
+    /// `server.login_user_long_max_ban_secs`). Any presence in the API body
+    /// is rejected with 400 and changes nothing.
+    pub login_user_long_max_ban_secs: Option<u64>,
+    /// Managed, never set: the signing key lives in the owner-only secrets
+    /// file. Any presence in the API body is rejected with 400; rotate it
+    /// with `POST /post/config/auth-key/reset`.
+    pub auth_key: Option<String>,
+}
+
+pub(crate) fn host_only_knobs(
+    req: &PartialUpdateConfigRequest,
+) -> [(&'static str, bool, &'static str); 18] {
+    [
+        (
+            "address",
+            req.address.is_some(),
+            "PICASU_ADDRESS or config `server.address`",
+        ),
+        (
+            "port",
+            req.port.is_some(),
+            "PICASU_PORT or config `server.port`",
+        ),
+        (
+            "trivialPasswords",
+            req.trivial_passwords.is_some(),
+            "--trivial-passwords, PICASU_TRIVIAL_PASSWORDS, or config `gallery.trivial_passwords`",
+        ),
+        (
+            "bootstrapAdmin",
+            req.bootstrap_admin.is_some(),
+            "--bootstrap-admin, PICASU_BOOTSTRAP_ADMIN, or config `gallery.bootstrap_admin`",
+        ),
+        (
+            "trustProxyForwardedFor",
+            req.trust_proxy_forwarded_for.is_some(),
+            "PICASU_TRUST_PROXY_FORWARDED_FOR or config `server.trust_proxy_forwarded_for`",
+        ),
+        (
+            "loginIpWindowSecs",
+            req.login_ip_window_secs.is_some(),
+            "PICASU_LOGIN_IP_WINDOW_SECS or config `server.login_ip_window_secs`",
+        ),
+        (
+            "loginIpMaxFailures",
+            req.login_ip_max_failures.is_some(),
+            "PICASU_LOGIN_IP_MAX_FAILURES or config `server.login_ip_max_failures`",
+        ),
+        (
+            "loginIpBaseBanSecs",
+            req.login_ip_base_ban_secs.is_some(),
+            "PICASU_LOGIN_IP_BASE_BAN_SECS or config `server.login_ip_base_ban_secs`",
+        ),
+        (
+            "loginIpMaxBanSecs",
+            req.login_ip_max_ban_secs.is_some(),
+            "PICASU_LOGIN_IP_MAX_BAN_SECS or config `server.login_ip_max_ban_secs`",
+        ),
+        (
+            "loginIpLongWindowSecs",
+            req.login_ip_long_window_secs.is_some(),
+            "PICASU_LOGIN_IP_LONG_WINDOW_SECS or config `server.login_ip_long_window_secs`",
+        ),
+        (
+            "loginIpLongMaxFailures",
+            req.login_ip_long_max_failures.is_some(),
+            "PICASU_LOGIN_IP_LONG_MAX_FAILURES or config `server.login_ip_long_max_failures`",
+        ),
+        (
+            "loginIpLongBaseBanSecs",
+            req.login_ip_long_base_ban_secs.is_some(),
+            "PICASU_LOGIN_IP_LONG_BASE_BAN_SECS or config `server.login_ip_long_base_ban_secs`",
+        ),
+        (
+            "loginIpLongMaxBanSecs",
+            req.login_ip_long_max_ban_secs.is_some(),
+            "PICASU_LOGIN_IP_LONG_MAX_BAN_SECS or config `server.login_ip_long_max_ban_secs`",
+        ),
+        (
+            "loginUserLongWindowSecs",
+            req.login_user_long_window_secs.is_some(),
+            "PICASU_LOGIN_USER_LONG_WINDOW_SECS or config `server.login_user_long_window_secs`",
+        ),
+        (
+            "loginUserLongMaxFailures",
+            req.login_user_long_max_failures.is_some(),
+            "PICASU_LOGIN_USER_LONG_MAX_FAILURES or config `server.login_user_long_max_failures`",
+        ),
+        (
+            "loginUserLongBaseBanSecs",
+            req.login_user_long_base_ban_secs.is_some(),
+            "PICASU_LOGIN_USER_LONG_BASE_BAN_SECS or config `server.login_user_long_base_ban_secs`",
+        ),
+        (
+            "loginUserLongMaxBanSecs",
+            req.login_user_long_max_ban_secs.is_some(),
+            "PICASU_LOGIN_USER_LONG_MAX_BAN_SECS or config `server.login_user_long_max_ban_secs`",
+        ),
+        (
+            "authKey",
+            req.auth_key.is_some(),
+            "rotate it with `POST /post/config/auth-key/reset`",
+        ),
+    ]
+}
+
+/// Patch the server configuration with the posted fields.
+///
+/// Every field is optional and a field absent from the body keeps its current
+/// value. `address`, `port`, `trivialPasswords`,
+/// `bootstrapAdmin`, and the login-throttle knobs
+/// (`trustProxyForwardedFor`, `login*Secs`, `login*MaxFailures`) are
+/// host-only (env / config file, restart-required) and `authKey`
+/// is managed (secrets file + reset endpoint); any presence of these in the
+/// body is a 400. The only other validation is on
+/// `uploadFolder`, which must be a relative path free of `..` components;
+/// on success `config.toml` is rewritten, the in-memory configuration is
+/// replaced and the filesystem watcher is reloaded.
+///
+/// Corner cases: `uploadFolder` and `maxUploadSize` take an empty string
+/// to reset to their defaults, `uploads` and `100MiB`.
+///
+/// Errors: 400 `uploadFolder` is absolute or contains `..`, the body cannot
+/// be parsed, or a host-only or managed knob is present — 401 missing or invalid admin
+/// credentials; share tokens are not accepted — 405 read-only mode — 500
+/// config write failure.
+
 #[cfg(test)]
 mod tests {
     use rocket::http::{ContentType, Status};
@@ -214,5 +426,94 @@ mod tests {
             .dispatch()
             .status();
         assert_eq!(status, Status::Unauthorized);
+    }
+    #[test]
+    fn put_admin_config_rejects_auth_key_as_managed() {
+        let _g = lock();
+        let client = setup();
+        seed("pac-authkey", true, None);
+        let status = client
+            .put("/put/admin/config")
+            .cookie(cookie("pac-authkey", true))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({ "authKey": "smuggled-key" }).to_string())
+            .dispatch()
+            .status();
+        assert_eq!(status, Status::BadRequest);
+    }
+    #[test]
+    fn put_admin_config_rejects_invalid_upload_folder() {
+        let _g = lock();
+        let client = setup();
+        seed("pac-folder", true, None);
+        let before = crate::model::config::APP_CONFIG
+            .get()
+            .expect("APP_CONFIG")
+            .read()
+            .expect("lock")
+            .upload_folder
+            .clone();
+        for body in [
+            serde_json::json!({ "uploadFolder": "/abs/path" }),
+            serde_json::json!({ "uploadFolder": "../escape" }),
+        ] {
+            let status = client
+                .put("/put/admin/config")
+                .cookie(cookie("pac-folder", true))
+                .header(ContentType::JSON)
+                .body(body.to_string())
+                .dispatch()
+                .status();
+            assert_eq!(status, Status::BadRequest, "invalid folder, body {body}");
+        }
+        let after = crate::model::config::APP_CONFIG
+            .get()
+            .expect("APP_CONFIG")
+            .read()
+            .expect("lock")
+            .upload_folder
+            .clone();
+        assert_eq!(before, after, "rejected folder must change nothing");
+    }
+
+    #[test]
+    fn put_admin_config_rejects_host_only_knobs() {
+        let _g = lock();
+        let client = setup();
+        seed("pac-host", true, None);
+        crate::model::config::APP_CONFIG
+            .get()
+            .expect("APP_CONFIG")
+            .write()
+            .expect("lock")
+            .bootstrap_admin = false;
+        let snapshot = || {
+            let cfg = crate::model::config::APP_CONFIG
+                .get()
+                .expect("APP_CONFIG")
+                .read()
+                .expect("lock");
+            (
+                cfg.bootstrap_admin,
+                cfg.login_ip_window_secs,
+                cfg.trivial_passwords,
+            )
+        };
+        let before = snapshot();
+        for body in [
+            serde_json::json!({ "bootstrapAdmin": true }),
+            serde_json::json!({ "loginIpWindowSecs": 100 }),
+            serde_json::json!({ "trivialPasswords": true }),
+        ] {
+            let status = client
+                .put("/put/admin/config")
+                .cookie(cookie("pac-host", true))
+                .header(ContentType::JSON)
+                .body(body.to_string())
+                .dispatch()
+                .status();
+            assert_eq!(status, Status::BadRequest, "host-only knob, body {body}");
+        }
+        assert_eq!(snapshot(), before, "rejected knobs must change nothing");
     }
 }

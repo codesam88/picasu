@@ -81,3 +81,10 @@ GET /get/sessions api path removed without deprecation
 
 # 2026-10-24 (unify-index-rebuild): retire POST /post/rebuild in favour of POST /post/index/album with clear=true.
 POST /post/rebuild api path removed without deprecation
+
+# 2026-10-24 (settings-api-v2 S6): cutover removes the deprecated old
+# config write/import routes outright. Callers migrate to
+# `PUT /put/admin/config` (and `GET /get/admin/config/export`); there is
+# no import endpoint in the new plan.
+POST /post/config/import api path removed without deprecation
+PUT /put/config api path removed without deprecation

@@ -234,7 +234,7 @@ export async function executeGiven(
       const headers = authHeaders(token)
 
       if (cfg.config.read_only_mode !== undefined) {
-        const res = await request.fetch(`${backendUrl}/put/config`, {
+        const res = await request.fetch(`${backendUrl}/put/admin/config`, {
           method: 'PUT',
           headers,
           data: { readOnlyMode: cfg.config.read_only_mode }
@@ -245,7 +245,7 @@ export async function executeGiven(
       }
 
       if (cfg.config.fs_notify_watcher !== undefined) {
-        const res = await request.fetch(`${backendUrl}/put/config`, {
+        const res = await request.fetch(`${backendUrl}/put/admin/config`, {
           method: 'PUT',
           headers,
           data: { fsNotifyWatcher: cfg.config.fs_notify_watcher }
@@ -253,19 +253,6 @@ export async function executeGiven(
         if (!res.ok()) {
           throw new Error(`Config update failed: ${res.status()} ${await res.text()}`)
         }
-      }
-
-      if (cfg.config.auth_key !== undefined) {
-        const res = await request.fetch(`${backendUrl}/put/config`, {
-          method: 'PUT',
-          headers,
-          data: { authKey: cfg.config.auth_key }
-        })
-        if (!res.ok()) {
-          throw new Error(`Auth key update failed: ${res.status()} ${await res.text()}`)
-        }
-        knownJwtSecret = cfg.config.auth_key
-        authToken = null
       }
     }
 
