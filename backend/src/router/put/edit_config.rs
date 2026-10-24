@@ -114,7 +114,9 @@ pub struct PartialUpdateConfigRequest {
 /// rejects loudly (naming the setters) instead of persisting a value the
 /// next boot would override or refuse. Rotation of the signing key goes
 /// through `POST /post/config/auth-key/reset`.
-fn host_only_knobs(req: &PartialUpdateConfigRequest) -> [(&'static str, bool, &'static str); 18] {
+pub(crate) fn host_only_knobs(
+    req: &PartialUpdateConfigRequest,
+) -> [(&'static str, bool, &'static str); 18] {
     [
         (
             "address",

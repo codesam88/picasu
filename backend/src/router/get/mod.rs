@@ -1,6 +1,7 @@
 // src/router/get/mod.rs
 use rocket::Route;
 
+pub mod admin_config;
 pub mod get_album_index;
 pub mod get_config;
 pub mod get_data;
@@ -65,6 +66,8 @@ pub fn generate_get_routes() -> Vec<Route> {
         get_export::get_export,
         get_config::get_config_handler,
         get_config::export_config_handler,
+        admin_config::get_admin_config_handler,
+        admin_config::get_admin_config_export_handler,
         get_fs_completion::get_fs_completion,
         get_album_index::get_album_index_status,
         users::list_users_handler,
