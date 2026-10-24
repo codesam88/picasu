@@ -239,6 +239,185 @@ pub struct AppConfig {
     pub web_root: Option<PathBuf>,
 }
 
+// ── Config field tier table (single source of truth) ──────────────────────
+//
+// Every `AppConfig` field names its tier here. S3 (admin config routes)
+// and `docs/config.md` derive from this table. Unlisted fields fail the
+// table test in the `tests` module below.
+//
+// `PICASU_PBKDF_ITERATIONS`, `PICASU_CONFIG_HOME`, and `PICASU_RATE_LIMITS`
+// are out-of-schema env-only knobs: they are not `AppConfig` fields and are
+// not covered by this table (see the env-only note in `docs/config.md`).
+
+#[allow(dead_code)] // Consumer: S3 admin config routes.
+pub mod config_tier_table {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ConfigTier {
+        Host,
+        Runtime,
+    }
+
+    pub struct ConfigField {
+        pub name: &'static str,
+        pub tier: ConfigTier,
+        /// Environment variable that overrides this field at boot, if any.
+        pub env_var: Option<&'static str>,
+    }
+
+    pub const CONFIG_FIELDS: &[ConfigField] = &[
+        ConfigField {
+            name: "address",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_ADDRESS"),
+        },
+        ConfigField {
+            name: "port",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_PORT"),
+        },
+        ConfigField {
+            name: "data_home",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_DATA_HOME"),
+        },
+        ConfigField {
+            name: "image_home",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_IMAGE_HOME"),
+        },
+        ConfigField {
+            name: "upload_folder",
+            tier: ConfigTier::Runtime,
+            env_var: Some("PICASU_UPLOAD_FOLDER"),
+        },
+        ConfigField {
+            name: "max_upload_size",
+            tier: ConfigTier::Runtime,
+            env_var: Some("PICASU_MAX_UPLOAD_SIZE"),
+        },
+        ConfigField {
+            name: "read_only_mode",
+            tier: ConfigTier::Runtime,
+            env_var: Some("PICASU_READ_ONLY_MODE"),
+        },
+        ConfigField {
+            name: "disable_img",
+            tier: ConfigTier::Runtime,
+            env_var: Some("PICASU_DISABLE_IMG"),
+        },
+        ConfigField {
+            name: "fs_notify_watcher",
+            tier: ConfigTier::Runtime,
+            env_var: Some("PICASU_FS_NOTIFY_WATCHER"),
+        },
+        ConfigField {
+            name: "normalize_upload_filenames",
+            tier: ConfigTier::Runtime,
+            env_var: None,
+        },
+        ConfigField {
+            name: "validate_upload_content",
+            tier: ConfigTier::Runtime,
+            env_var: None,
+        },
+        ConfigField {
+            name: "use_client_timestamp_info",
+            tier: ConfigTier::Runtime,
+            env_var: None,
+        },
+        ConfigField {
+            name: "allow_registration",
+            tier: ConfigTier::Runtime,
+            env_var: Some("PICASU_ALLOW_REGISTRATION"),
+        },
+        ConfigField {
+            name: "trivial_passwords",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_TRIVIAL_PASSWORDS"),
+        },
+        ConfigField {
+            name: "bootstrap_admin",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_BOOTSTRAP_ADMIN"),
+        },
+        ConfigField {
+            name: "trust_proxy_forwarded_for",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_TRUST_PROXY_FORWARDED_FOR"),
+        },
+        ConfigField {
+            name: "login_ip_window_secs",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_LOGIN_IP_WINDOW_SECS"),
+        },
+        ConfigField {
+            name: "login_ip_max_failures",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_LOGIN_IP_MAX_FAILURES"),
+        },
+        ConfigField {
+            name: "login_ip_base_ban_secs",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_LOGIN_IP_BASE_BAN_SECS"),
+        },
+        ConfigField {
+            name: "login_ip_max_ban_secs",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_LOGIN_IP_MAX_BAN_SECS"),
+        },
+        ConfigField {
+            name: "login_ip_long_window_secs",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_LOGIN_IP_LONG_WINDOW_SECS"),
+        },
+        ConfigField {
+            name: "login_ip_long_max_failures",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_LOGIN_IP_LONG_MAX_FAILURES"),
+        },
+        ConfigField {
+            name: "login_ip_long_base_ban_secs",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_LOGIN_IP_LONG_BASE_BAN_SECS"),
+        },
+        ConfigField {
+            name: "login_ip_long_max_ban_secs",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_LOGIN_IP_LONG_MAX_BAN_SECS"),
+        },
+        ConfigField {
+            name: "login_user_long_window_secs",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_LOGIN_USER_LONG_WINDOW_SECS"),
+        },
+        ConfigField {
+            name: "login_user_long_max_failures",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_LOGIN_USER_LONG_MAX_FAILURES"),
+        },
+        ConfigField {
+            name: "login_user_long_base_ban_secs",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_LOGIN_USER_LONG_BASE_BAN_SECS"),
+        },
+        ConfigField {
+            name: "login_user_long_max_ban_secs",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_LOGIN_USER_LONG_MAX_BAN_SECS"),
+        },
+        ConfigField {
+            name: "auth_key",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_AUTH_KEY"),
+        },
+        ConfigField {
+            name: "web_root",
+            tier: ConfigTier::Host,
+            env_var: Some("PICASU_WEB_ROOT"),
+        },
+    ];
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -1037,6 +1216,95 @@ port = 9999
     #[test]
     fn bootstrap_admin_defaults_to_false() {
         assert!(!AppConfig::default().bootstrap_admin);
+    }
+
+    #[test]
+    fn config_field_tiers_cover_every_app_config_field() {
+        // Derive the field set from the struct itself, so an `AppConfig`
+        // field added without a `CONFIG_FIELDS` entry fails this test.
+        // Fully populate `Option` fields so `skip_serializing_if` does not
+        // drop them; `web_root` is `#[serde(skip)]` and is added manually.
+        let config = AppConfig {
+            data_home: Some(PathBuf::from("/tmp/data")),
+            image_home: Some(PathBuf::from("/tmp/images")),
+            auth_key: Some("secret".to_string()),
+            web_root: Some(PathBuf::from("/tmp/www")),
+            ..AppConfig::default()
+        };
+        let value = serde_json::to_value(&config).expect("serialize AppConfig");
+        let obj = value
+            .as_object()
+            .expect("AppConfig serializes to an object");
+
+        fn camel_to_snake(input: &str) -> String {
+            let mut out = String::new();
+            for (i, c) in input.chars().enumerate() {
+                if c.is_uppercase() {
+                    if i > 0 {
+                        out.push('_');
+                    }
+                    out.push(c.to_ascii_lowercase());
+                } else {
+                    out.push(c);
+                }
+            }
+            out
+        }
+
+        let mut derived: Vec<String> = obj
+            .keys()
+            .map(|key| {
+                if key == "imagePath" {
+                    "image_home".to_string()
+                } else {
+                    camel_to_snake(key)
+                }
+            })
+            .collect();
+        // `web_root` is `#[serde(skip)]`, so it never appears in JSON.
+        derived.push("web_root".to_string());
+        derived.sort();
+        derived.dedup();
+
+        let mut listed: Vec<String> = config_tier_table::CONFIG_FIELDS
+            .iter()
+            .map(|e| e.name.to_string())
+            .collect();
+        listed.sort();
+        listed.dedup();
+
+        assert_eq!(
+            derived, listed,
+            "CONFIG_FIELDS must list every AppConfig field (derived: {derived:?}, listed: {listed:?})"
+        );
+
+        // No duplicate entries.
+        let mut sorted = listed.clone();
+        sorted.sort_unstable();
+        for pair in sorted.windows(2) {
+            assert_ne!(pair[0], pair[1], "duplicate tier entry `{}`", pair[0]);
+        }
+
+        // Runtime set is exactly the documented one.
+        let mut runtime: Vec<&str> = config_tier_table::CONFIG_FIELDS
+            .iter()
+            .filter(|e| e.tier == config_tier_table::ConfigTier::Runtime)
+            .map(|e| e.name)
+            .collect();
+        runtime.sort_unstable();
+        let mut expected_runtime = [
+            "allow_registration",
+            "disable_img",
+            "fs_notify_watcher",
+            "max_upload_size",
+            "normalize_upload_filenames",
+            "read_only_mode",
+            "upload_folder",
+            "use_client_timestamp_info",
+            "validate_upload_content",
+        ];
+        expected_runtime.sort_unstable();
+        assert_eq!(runtime, expected_runtime.to_vec());
     }
 
     fn parse_app_config(toml_str: &str) -> AppConfig {
