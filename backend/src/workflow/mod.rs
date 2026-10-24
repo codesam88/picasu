@@ -86,6 +86,7 @@ async fn ensure_dir_albums(file_path: &std::path::Path) -> Option<ArrayString<64
 /// EXIF, but not its compressed form, which is the separate [`VideoTask`]. That
 /// matches what [`IndexTask`] does, so a rebuilt video carries the same state an
 /// indexed one does; the compressed form is left to the normal video path.
+#[allow(dead_code)]
 pub fn index_media_file(
     path: &Path,
     hash: ArrayString<64>,

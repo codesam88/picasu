@@ -210,6 +210,7 @@ pub fn get_dupe_ids(content_hash: &str) -> Result<Vec<ArrayString<64>>> {
 
 /// Add an asset ID to a content hash's duplicate group. Creates the group
 /// if it doesn't exist.
+#[allow(dead_code)]
 pub fn add_to_dupe_group(content_hash: &str, asset_id: ArrayString<64>) -> Result<()> {
     let mut ids = get_dupe_ids(content_hash)?;
     if ids.contains(&asset_id) {
@@ -262,6 +263,7 @@ pub fn remove_from_dupe_group(content_hash: &str, asset_id: ArrayString<64>) -> 
 
 /// Insert a complete asset (record + path mapping + optional dupe group).
 /// This is the primary entry point for adding a new asset to the stores.
+#[allow(dead_code)]
 pub fn insert_asset(record: &AssetRecord) -> Result<()> {
     put_asset_by_id(record)?;
     put_asset_by_path(&record.path, record.asset_id)?;

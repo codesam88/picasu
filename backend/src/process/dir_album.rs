@@ -215,8 +215,8 @@ pub fn mark_dir_albums_for_path(file_path: &Path) {
 }
 
 /// Clear `DIR_ALBUM_CACHE` and `PENDING_ALBUM_UPDATES`.
-/// Called from test teardown to avoid stale cache entries across test runs.
-#[cfg(test)]
+/// Called from test teardown and from the HTTP reset path so stale album IDs
+/// are not reused after the asset tables are dropped.
 pub fn reset_dir_album_cache() {
     let mut cache = DIR_ALBUM_CACHE.lock().expect("lock poisoned");
     cache.clear();

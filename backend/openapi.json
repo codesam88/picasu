@@ -718,6 +718,10 @@
         "properties": {
           "album": {
             "type": "string"
+          },
+          "clear": {
+            "description": "When true, drop all asset tables (and clear the in-memory tree and the\ndirectory-album cache) before indexing, so the scan rebuilds from an\nempty state instead of merging into stale rows.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1045,34 +1049,6 @@
         "required": [
           "prefetch",
           "token"
-        ],
-        "type": "object"
-      },
-      "RebuildStats": {
-        "description": "Statistics from a clean filesystem rebuild.",
-        "properties": {
-          "albumsCreated": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "hashErrors": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "mediaCreated": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "unsupportedSkipped": {
-            "minimum": 0,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "albumsCreated",
-          "mediaCreated",
-          "unsupportedSkipped",
-          "hashErrors"
         ],
         "type": "object"
       },
@@ -2566,40 +2542,6 @@
         "summary": "Clear the session cookie.",
         "tags": [
           "auth"
-        ]
-      }
-    },
-    "/post/rebuild": {
-      "post": {
-        "description": "Clears `ASSET_BY_PATH`, `ASSET_BY_ID`, `DUPE_INDEX` and `METADATA_TABLE`,\nwalks the image root, and repopulates all four: identity from the walk,\nmetadata through the same pipeline the incremental indexer runs. The\nresponse carries the rebuild stats and is returned only after an\nin-memory tree refresh, so it does not race a following prefetch or\nget-data call.\n\nCorner cases: Rows are rebuilt rather than merged: the rebuild assigns\nnew `asset_id`s, so rows keyed by the previous ids must not remain. A\nfile whose metadata pipeline fails keeps its identity, logs the failure,\nand does not stop the walk.\n\nErrors: 400 malformed request — 401 missing or invalid credentials —\n405 read-only mode — 500 `imagePath` unset, or a failure while walking the\nimage root or writing the tables.",
-        "operationId": "rebuild_handler",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RebuildStats"
-                }
-              }
-            },
-            "description": "Rebuild complete"
-          },
-          "400": {
-            "description": "Invalid input"
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          },
-          "405": {
-            "description": "Read-only mode"
-          },
-          "500": {
-            "description": "Internal error"
-          }
-        },
-        "summary": "Rebuild the asset tables and metadata cache from the filesystem under `IMAGE_HOME`.",
-        "tags": [
-          "index"
         ]
       }
     },

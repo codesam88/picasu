@@ -88,13 +88,36 @@ static INDEX_STATUS: LazyLock<Mutex<IndexStatusSlot>> = LazyLock::new(|| {
 });
 static ACTIVE_INDEX: LazyLock<Mutex<Option<ActiveIndex>>> = LazyLock::new(|| Mutex::new(None));
 
+/// Drop all asset tables and clear the in-memory tree and directory-album
+/// cache, so a following `index_album` rebuilds from an empty state instead
+/// of merging into stale rows. Used by the `clear` flag of
+/// `POST /post/index/album`.
+pub fn clear_asset_tables_and_caches() -> AppResult<()> {
+    crate::storage::db::clear_all_asset_tables_drop()
+        .map_err(|e| AppError::new(ErrorKind::Internal, format!("{e:#}")))?;
+    crate::storage::db::TREE
+        .in_memory
+        .write()
+        .expect("TREE in_memory lock")
+        .clear();
+    crate::process::dir_album::reset_dir_album_cache();
+    Ok(())
+}
+
 /// Index all media files under `src` (a directory path relative to
 /// `IMAGE_HOME`).  Walks recursively, calling `index_image` on each valid
 /// media file.  Album is always resolved from the file's parent directory.
 ///
 /// Runs as a background job; status can be polled via `album_index_status()`.
-#[allow(clippy::too_many_lines)]
 pub fn index_album(src: &str) -> AppResult<()> {
+    index_album_with_options(src, false)
+}
+
+/// Same as [`index_album`], optionally resetting to an empty state first.
+/// The reset happens after the running-job guard, keeping clear+scan atomic
+/// from the caller's perspective.
+#[allow(clippy::too_many_lines)]
+pub fn index_album_with_options(src: &str, clear: bool) -> AppResult<()> {
     let image_root = get_resolved_image_home()
         .ok_or_else(|| AppError::new(ErrorKind::InvalidInput, "No imagePath configured to scan"))?;
 
@@ -153,6 +176,10 @@ pub fn index_album(src: &str) -> AppResult<()> {
         job_id,
         cancel: cancel.clone(),
     });
+
+    if clear {
+        clear_asset_tables_and_caches()?;
+    }
 
     let image_root_clone = image_root;
     let root_clone = root.clone();
@@ -682,6 +709,67 @@ mod tests {
         drop(tree);
 
         std::fs::remove_dir_all(&dir).ok();
+        reset_backend_state();
+    }
+
+    #[test]
+    fn bug_rebuild_dir_album_cache_reset_scan_returns_rows() {
+        // Regression pin for `bug-rebuild-dir-album-cache`: after a reset +
+        // scan with no restart, an album-filtered prefetch must report the
+        // scanned rows (N), not 0. The stale `DIR_ALBUM_CACHE` entries that
+        // survived a table drop were the cause: the scan reused old album ids
+        // that no longer existed in the freshly rebuilt tables.
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let album_dir = image_home.join("bug_rebuild_cache");
+        std::fs::create_dir_all(&album_dir).unwrap();
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(album_dir.join("photo.jpg").to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+
+        // First pass populates the cache and tables.
+        index_album("/").expect("initial index accepted");
+        wait_for_index_completion();
+
+        // Reset exactly as the HTTP `clear` path does, then scan again.
+        clear_asset_tables_and_caches().expect("clear asset tables and caches");
+        index_album("/").expect("reset scan accepted");
+        wait_for_index_completion();
+
+        let album_id = dir_album::get_album_id_for_dir(&album_dir)
+            .expect("album must be registered after reset scan");
+
+        let tree = TREE.in_memory.read().expect("TREE in_memory lock");
+        let rows = tree
+            .iter()
+            .filter(|dt| match &dt.abstract_data {
+                crate::model::abstract_data::AbstractData::Image(img) => {
+                    img.metadata.album == Some(album_id)
+                }
+                crate::model::abstract_data::AbstractData::Video(vid) => {
+                    vid.metadata.album == Some(album_id)
+                }
+                _ => false,
+            })
+            .count();
+        assert_eq!(
+            rows, 1,
+            "album-filtered prefetch must return N rows after reset+scan, got {rows}"
+        );
+        drop(tree);
+
+        std::fs::remove_dir_all(&album_dir).ok();
         reset_backend_state();
     }
 }

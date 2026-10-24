@@ -78,3 +78,6 @@ removed the required property `status` from the response with the `401` status
 # capabilities that must not work (a logged-out session) are recorded as
 # revocations until they expire.
 GET /get/sessions api path removed without deprecation
+
+# 2026-10-24 (unify-index-rebuild): retire POST /post/rebuild in favour of POST /post/index/album with clear=true.
+POST /post/rebuild api path removed without deprecation
