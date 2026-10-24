@@ -7,32 +7,77 @@
   >
     <template #content>
       <div class="config-stack">
-        <div class="config-block">
-          <v-row class="ma-0">
-            <StorageAndSync
-              :image-path="localSettings.imagePath"
-              v-model:upload-folder="localSettings.uploadFolder"
-              v-model:max-upload-size="localSettings.maxUploadSize"
-              v-model:fs-notify-watcher="localSettings.fsNotifyWatcher"
-            />
-          </v-row>
-        </div>
+        <v-tabs v-model="activeTab" color="primary" class="mb-2">
+          <v-tab value="server">Server</v-tab>
+          <v-tab v-if="isAdmin" value="admin">Administration</v-tab>
+        </v-tabs>
 
-        <div class="config-block">
-          <v-row class="ma-0">
-            <AdvancedConfig
-              v-model:has-auth-key="localSettings.hasAuthKey"
-              v-model:read-only-mode="localSettings.readOnlyMode"
-              v-model:disable-img="localSettings.disableImg"
-            />
-          </v-row>
-        </div>
+        <v-tabs-window v-model="activeTab">
+          <v-tabs-window-item value="server">
+            <div class="config-block">
+              <v-row class="ma-0">
+                <StorageAndSync
+                  :image-path="localSettings.imagePath"
+                  v-model:upload-folder="localSettings.uploadFolder"
+                  v-model:max-upload-size="localSettings.maxUploadSize"
+                  v-model:fs-notify-watcher="localSettings.fsNotifyWatcher"
+                />
+              </v-row>
+            </div>
 
-        <div v-if="isAdmin" class="config-block">
-          <v-row class="ma-0">
-            <UserManagement />
-          </v-row>
-        </div>
+            <div class="config-block">
+              <v-row class="ma-0">
+                <AdvancedConfig
+                  v-model:has-auth-key="localSettings.hasAuthKey"
+                  v-model:read-only-mode="localSettings.readOnlyMode"
+                  v-model:disable-img="localSettings.disableImg"
+                />
+              </v-row>
+            </div>
+          </v-tabs-window-item>
+
+          <v-tabs-window-item v-if="isAdmin" value="admin">
+            <div class="config-block">
+              <v-row class="ma-0">
+                <UserManagement />
+              </v-row>
+            </div>
+
+            <div class="config-block">
+              <v-row class="ma-0">
+                <v-col cols="12">
+                  <v-card border flat>
+                    <v-card-title class="font-weight-bold">Registration</v-card-title>
+                    <v-divider thickness="4" variant="double"></v-divider>
+                    <v-list-item title="Allow Registration" subtitle="Permit new users to register">
+                      <template #append>
+                        <v-switch
+                          :model-value="allowRegistration"
+                          color="primary"
+                          hide-details
+                          inset
+                          :disabled="allowRegistrationSaving"
+                          @update:model-value="onAllowRegistrationChange"
+                        ></v-switch>
+                      </template>
+                    </v-list-item>
+                    <v-card-actions class="justify-end px-4 pb-4">
+                      <v-btn
+                        color="primary"
+                        variant="flat"
+                        :loading="exporting"
+                        @click="exportConfig"
+                        class="text-none"
+                      >
+                        Export Config
+                      </v-btn>
+                    </v-card-actions>
+                  </v-card>
+                </v-col>
+              </v-row>
+            </div>
+          </v-tabs-window-item>
+        </v-tabs-window>
       </div>
     </template>
   </PageTemplate>
@@ -42,7 +87,9 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useConfigStore } from '@/store/configStore'
 import { useInitializedStore } from '@/store/initializedStore'
+import { useMessageStore } from '@/store/messageStore'
 import type { AppConfig } from '@/api/config'
+import { getAdminConfig, updateAdminConfig, exportAdminConfig } from '@/api/adminConfig'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 import StorageAndSync from './Config/StorageAndSync.vue'
 import AdvancedConfig from './Config/AdvancedConfig.vue'
@@ -52,11 +99,16 @@ import { useCurrentUser, canSeeUserPanel } from '@/script/utils/currentUser'
 
 const configStore = useConfigStore('mainId')
 const initializedStore = useInitializedStore('mainId')
+const messageStore = useMessageStore('mainId')
 const currentUser = useCurrentUser()
 const isAdmin = computed(() => canSeeUserPanel(currentUser.value))
 
 // UI State
 const loading = ref(false)
+const activeTab = ref('server')
+const allowRegistration = ref(false)
+const allowRegistrationSaving = ref(false)
+const exporting = ref(false)
 
 // Local State
 const localSettings = reactive<AppConfig>({
@@ -78,6 +130,51 @@ const syncLocalWithStore = () => {
   }
 }
 
+const loadAdminConfig = async () => {
+  if (!isAdmin.value) return
+  const entries = await getAdminConfig()
+  const field = entries.find((e) => e.name === 'allow_registration')
+  if (field) {
+    allowRegistration.value = field.value === true
+  }
+}
+
+const onAllowRegistrationChange = async (value: unknown) => {
+  const next = value === true
+  const previous = allowRegistration.value
+  allowRegistration.value = next
+  allowRegistrationSaving.value = true
+  const success = await tryWithMessageStore('mainId', async () => {
+    await updateAdminConfig({ allowRegistration: next })
+    return true
+  })
+  allowRegistrationSaving.value = false
+  if (success === true) {
+    messageStore.success('Registration setting saved')
+  } else {
+    allowRegistration.value = previous
+  }
+}
+
+const exportConfig = async () => {
+  exporting.value = true
+  const result = await tryWithMessageStore('mainId', async () => {
+    const data = await exportAdminConfig()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'picasu-config.json'
+    a.click()
+    URL.revokeObjectURL(url)
+    return true
+  })
+  if (result === true) {
+    messageStore.success('Config exported')
+  }
+  exporting.value = false
+}
+
 const initData = async () => {
   loading.value = true
   const result = await tryWithMessageStore('mainId', async () => {
@@ -86,6 +183,7 @@ const initData = async () => {
     configStore.$patch({ config: undefined })
     await configStore.fetchConfig()
     syncLocalWithStore()
+    await loadAdminConfig()
     return true
   })
 

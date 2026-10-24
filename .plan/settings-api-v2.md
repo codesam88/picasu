@@ -238,7 +238,7 @@ put_config`, `just backend-check`.
       `{user:{userId,admin,home},settings:{}}` from user store + empty
       settings. Handler tests (self, non-admin, share-token 401, works
       while read-only on). Frontend not rewired yet.
-- [ ] S5 frontend wiring: `ConfigPage` tabs call the new routes;
+- [x] S5 frontend wiring: `ConfigPage` tabs call the new routes;
       `Server`-tab R/O toggle calls disable route with `L3` confirm when
       on; `allowRegistration` toggle in admin tab; export button.
       `frontend/src/api/*` zod-parsed. Checks: `just frontend-check`,
