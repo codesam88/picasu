@@ -43,6 +43,9 @@ pub struct AlbumIndexStatus {
     pub matched: u64,
     pub processed: u64,
     pub failed: u64,
+    /// Paths of files that failed to index, capped to a bounded size.
+    #[serde(default)]
+    pub failed_paths: Vec<String>,
     pub started_at: Option<i64>,
     pub finished_at: Option<i64>,
     pub cancel_requested: bool,
@@ -57,6 +60,7 @@ impl Default for AlbumIndexStatus {
             matched: 0,
             processed: 0,
             failed: 0,
+            failed_paths: Vec::new(),
             started_at: None,
             finished_at: None,
             cancel_requested: false,
@@ -138,6 +142,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
             matched: 0,
             processed: 0,
             failed: 0,
+            failed_paths: Vec::new(),
             started_at: Some(Utc::now().timestamp_millis()),
             finished_at: None,
             cancel_requested: false,
@@ -168,7 +173,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
                 Ok(entry) => entry,
                 Err(err) => {
                     warn!("Album index walk error: {err}");
-                    increment_failed(job_id);
+                    increment_failed(job_id, None);
                     continue;
                 }
             };
@@ -208,7 +213,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
                 Ok(entry) => entry,
                 Err(err) => {
                     warn!("Album index walk error: {err}");
-                    increment_failed(job_id);
+                    increment_failed(job_id, None);
                     continue;
                 }
             };
@@ -239,7 +244,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
                 r.to_path_buf()
             } else {
                 warn!("File outside IMAGE_HOME, skipping: {}", abs_path.display());
-                increment_failed(job_id);
+                increment_failed(job_id, Some(abs_path.display().to_string()));
                 continue;
             };
 
@@ -248,7 +253,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
                     Ok(()) => increment_processed(job_id),
                     Err(err) => {
                         handle_error(err);
-                        increment_failed(job_id);
+                        increment_failed(job_id, Some(abs_path.display().to_string()));
                     }
                 }
             }));
@@ -261,7 +266,7 @@ pub fn index_album(src: &str) -> AppResult<()> {
         for handle in handles {
             if let Err(err) = handle.await {
                 warn!("Album index file task join error: {err}");
-                increment_failed(job_id);
+                increment_failed(job_id, None);
             }
         }
         debug!("file handles joined (job {job_id})");
@@ -455,8 +460,15 @@ fn increment_processed(job_id: u64) {
     update_status(job_id, |status| status.processed += 1);
 }
 
-fn increment_failed(job_id: u64) {
-    update_status(job_id, |status| status.failed += 1);
+fn increment_failed(job_id: u64, path: Option<String>) {
+    update_status(job_id, |status| {
+        status.failed += 1;
+        if let Some(p) = path
+            && status.failed_paths.len() < 1000
+        {
+            status.failed_paths.push(p);
+        }
+    });
 }
 
 fn did_every_matched_file_fail(job_id: u64) -> bool {
@@ -564,6 +576,112 @@ mod tests {
             "deleted dir's album must be evicted after sweep"
         );
 
+        reset_backend_state();
+    }
+
+    #[tokio::test]
+    async fn index_image_truncated_leaves_placeholder() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let dir = image_home.join("direct_trunc");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("truncated.jpg");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(path.to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+        let bytes = std::fs::read(&path).unwrap();
+        std::fs::write(&path, &bytes[..100]).unwrap();
+
+        let rel = path.strip_prefix(&image_home).unwrap().to_path_buf();
+        let res = crate::workflow::index_image(&rel).await;
+        assert!(res.is_err(), "index_image should fail");
+
+        // drain
+        let _ = crate::tasks::BATCH_COORDINATOR
+            .execute_batch_waiting(crate::tasks::batcher::flush_tree::FlushTreeTask::insert(
+                vec![],
+            ))
+            .await;
+        let _ = crate::tasks::BATCH_COORDINATOR
+            .execute_batch_waiting(crate::tasks::batcher::update_tree::UpdateTreeTask)
+            .await;
+
+        let tree = crate::storage::db::TREE.in_memory.read().unwrap();
+        assert!(
+            tree.iter().any(|dt| dt
+                .abstract_data
+                .path()
+                .map_or(false, |p| p.file.contains("truncated.jpg"))),
+            "placeholder row must be visible"
+        );
+        drop(tree);
+
+        std::fs::remove_dir_all(&dir).ok();
+        reset_backend_state();
+    }
+
+    #[test]
+    fn index_album_failed_path_exposes_truncated_jpeg() {
+        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = &*TEST_ENV;
+        reset_backend_state();
+        dir_album::reset_dir_album_cache();
+
+        let image_home = test_image_home();
+        let dir = image_home.join("trunc_album");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("truncated.jpg");
+        snapfab::generate_batch(&[snapfab::PhotoSpec {
+            output: Some(path.to_string_lossy().into()),
+            format: Some("jpeg".into()),
+            width: Some(8),
+            height: Some(8),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }])
+        .expect("generate jpeg");
+        let bytes = std::fs::read(&path).unwrap();
+        std::fs::write(&path, &bytes[..100]).unwrap();
+
+        index_album("/").expect("index_album accepted");
+        wait_for_index_completion();
+
+        let status = album_index_status();
+        assert_eq!(status.failed, 1, "one failed file");
+        assert!(
+            status
+                .failed_paths
+                .iter()
+                .any(|p| p.contains("truncated.jpg")),
+            "failed path must be exposed: {:?}",
+            status.failed_paths
+        );
+
+        let tree = TREE.in_memory.read().unwrap();
+        assert!(
+            tree.iter().any(|dt| {
+                dt.abstract_data
+                    .path()
+                    .map_or(false, |p| p.file.contains("truncated.jpg"))
+                    && dt.abstract_data.pending()
+            }),
+            "placeholder row must be visible in tree and pending"
+        );
+        drop(tree);
+
+        std::fs::remove_dir_all(&dir).ok();
         reset_backend_state();
     }
 }
