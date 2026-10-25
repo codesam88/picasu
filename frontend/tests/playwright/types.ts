@@ -40,6 +40,20 @@ export const GivenMove = z
   })
   .strict()
 
+/// Declared backend startup options. Keys mirror the real Picasu option
+/// names (`AppConfig` field names in `backend/src/model/config.rs`
+/// `config_tier_table`): `bootstrap_admin` = `PICASU_BOOTSTRAP_ADMIN`,
+/// `login_ip_base_ban_secs` = `PICASU_LOGIN_IP_BASE_BAN_SECS`, plus
+/// env-only `pbkdf_iterations` = `PICASU_PBKDF_ITERATIONS`. Absent `server:`
+/// keeps the harness default (bootstrap open, 1000 iterations).
+export const ServerDeclaration = z
+  .object({
+    bootstrap_admin: z.boolean().optional(),
+    pbkdf_iterations: z.number().int().positive().optional(),
+    login_ip_base_ban_secs: z.number().int().nonnegative().optional()
+  })
+  .strict()
+
 export const GivenConfig = z
   .object({
     config: z.object({
@@ -202,6 +216,27 @@ export const UiWhenSetAutoRename = z
   })
   .strict()
 
+/// Explicit UI login step. `password` is inline: the step fills the login
+/// form and requires landing on `/timeline`. Keeps credentials visible in
+/// the scenario instead of a harness password lookup.
+export const UiWhenLogin = z
+  .object({
+    login: z.object({
+      user: z.string().min(1),
+      password: z.string().min(1)
+    })
+  })
+  .strict()
+
+/// Explicit index step. Runs `POST /post/index/album` for the given album
+/// (default `/`) against the scenario backend and polls
+/// `GET /get/index/status` to idle/completed.
+export const UiWhenIndex = z
+  .object({
+    index: z.string().min(1)
+  })
+  .strict()
+
 export const UiWhenItem = z.union([
   UiWhenNavigate,
   UiWhenClick,
@@ -218,7 +253,9 @@ export const UiWhenItem = z.union([
   UiWhenKeyboard,
   UiWhenBrowserBack,
   UiWhenUploadFiles,
-  UiWhenSetAutoRename
+  UiWhenSetAutoRename,
+  UiWhenLogin,
+  UiWhenIndex
 ])
 
 export const UiAssertVisible = z
@@ -271,7 +308,9 @@ export const UiAssertApiResponse = z
   .object({
     'api.response': z.object({
       url: z.string(),
-      status: z.union([z.number(), z.array(z.number())])
+      status: z.union([z.number(), z.array(z.number())]),
+      method: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional().default('GET'),
+      body: z.unknown().optional()
     })
   })
   .strict()
@@ -350,6 +389,7 @@ export const UiScenario = z
   .object({
     name: z.string(),
     covers: Covers.optional().default({ api: [], ui: [] }),
+    server: ServerDeclaration.optional(),
     given: z.array(GivenItem).optional().default([]),
     steps: z.array(UiStep).min(1).optional(),
     when: z.array(UiWhenItem).min(1).optional(),
@@ -376,5 +416,6 @@ export type UiAssertItem = z.infer<typeof UiAssertItem>
 export type UiAssertInputValue = z.infer<typeof UiAssertInputValue>
 export type UiStep = z.infer<typeof UiStep>
 export type GivenMove = z.infer<typeof GivenMove>
+export type ServerDeclaration = z.infer<typeof ServerDeclaration>
 export type GivenItem = z.infer<typeof GivenItem>
 export type Covers = z.infer<typeof Covers>

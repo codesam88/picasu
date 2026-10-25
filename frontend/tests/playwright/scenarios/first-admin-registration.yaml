@@ -1,0 +1,54 @@
+name: First admin registration enrolls and survives reload
+covers:
+  api:
+    - GET /get/server-info
+    - POST /post/users/bootstrap
+    - POST /post/users/authenticate
+  ui:
+    - route:/register
+    - route:/timeline
+    - Create Admin Account
+server:
+  bootstrap_admin: true
+  pbkdf_iterations: 1000
+session: none
+given:
+  - empty: true
+steps:
+  - when:
+      - navigate: /
+    assert:
+      - ui.route: /register
+      - ui.text_visible: Create Admin Account
+  - when:
+      - fill: textbox/User ID
+        value: first-admin
+      - fill: textbox/Password
+        value: e2e_test_pwd
+      - fill: textbox/Confirm Password
+        value: e2e_test_pwd-different
+      - click: button/Register
+    assert:
+      - ui.route: /register
+      - ui.text_visible: Create Admin Account
+      - api.response:
+          url: /get/server-info
+          status: 200
+  - when:
+      - fill: textbox/Confirm Password
+        value: e2e_test_pwd
+      - click: button/Register
+    assert:
+      - ui.route: /timeline
+  - when:
+      - login:
+          user: first-admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+  - when:
+      - index: /
+    assert:
+      - api.response:
+          url: /get/index/status
+          status: 200

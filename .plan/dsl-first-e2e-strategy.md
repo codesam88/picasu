@@ -1,5 +1,5 @@
 ---
-status: open
+status: in-progress
 type: feature
 priority: high
 area: frontend
@@ -42,6 +42,43 @@ zero hand-written browser files.
    hand-written browser file to `*.test.ts`.
 4. Update `docs/test-strategy.md` only after the port: single-track
    statement holds again, no second track to document.
+
+## Settled decisions (2026-10-25)
+
+- `server:` keys use `AppConfig` field names (`backend/src/model/config.rs`
+  `config_tier_table`): `bootstrap_admin` (= `PICASU_BOOTSTRAP_ADMIN`),
+  `login_ip_base_ban_secs` (= `PICASU_LOGIN_IP_BASE_BAN_SECS`), plus
+  env-only `pbkdf_iterations` (= `PICASU_PBKDF_ITERATIONS`). No invented names.
+- Closed-install boot check is a DSL scenario (`server.bootstrap_admin: false`,
+  `navigate: /` → `ui.route: /login`, `navigate: /register` → `ui.route: /login`).
+  Requires `api.response` extended with `method` + `body` for the anonymous
+  `POST /post/users/bootstrap → 401` probe (current verb is GET-only).
+- Slices (one worker each, TDD red-first): S1 `server:` + `login:` + `index:` +
+  `api.response` method/body + first-admin YAML; S2 `invite:` given + viewer
+  session + invite-registration YAML (expect backend/frontend bugs to surface);
+  S3 throttle knob + response observation + disabled assert + login-throttle YAML;
+  S4 docs + hand-written cleanup + full gates.
+
+## Progress (2026-10-25, S1 done)
+
+- `server:` (`bootstrap_admin`, `pbkdf_iterations`,
+  `login_ip_base_ban_secs`; absent keeps harness default), `login:`,
+  `index:` verbs + `api.response` `method`/`body` in `types.ts`,
+  `schema.json`, `interpreter.ts`, `interpreter.spec.ts` (scenario-owned
+  backend via `serverExtraEnv`); `docs/scenario-dsl.md` reference.
+- New: `scenarios/first-admin-registration.yaml`,
+  `scenarios/closed-install-boot.yaml`. RED watched (unrecognized
+  `server`/`login`/`index` keys) before GREEN.
+- E2E finds: (1) `fill: textbox/Password` strict-mode violation on
+  RegisterPage (`Password` vs `Confirm Password`) — resolver now prefers
+  the exact-name hit when it resolves to one element; (2) blanket
+  `exact: true` regressed `click: button/3` (rating stars match by
+  substring) — exact-prefer-with-substring-fallback keeps both green.
+- Gates: 2 new scenarios pass; full `npx playwright test` 45 passed;
+  eslint, `vue-tsc -p tsconfig.node.json`, prettier, `plan-lint` clean.
+  Backend untouched. Leftover: given-phase auto-index heuristic still
+  present; fixture backend still boots under `server:` scenarios (wasted,
+  torn down by fixture); `invite:`/throttle verbs open (S2/S3).
 
 ## Out of scope
 

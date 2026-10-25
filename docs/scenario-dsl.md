@@ -372,6 +372,21 @@ steps:
       - ui.route: /home
 ```
 
+### `server:` — declared backend startup options
+
+Keys mirror the real Picasu option names (`AppConfig` field names in
+`backend/src/model/config.rs`): `bootstrap_admin` (`PICASU_BOOTSTRAP_ADMIN`),
+`login_ip_base_ban_secs` (`PICASU_LOGIN_IP_BASE_BAN_SECS`), plus env-only
+`pbkdf_iterations` (`PICASU_PBKDF_ITERATIONS`). Absent `server:` keeps the
+harness default (bootstrap open, 1000 iterations). A scenario that declares
+`server:` boots its own backend with the mapped env.
+
+```yaml
+server:
+  bootstrap_admin: false
+  pbkdf_iterations: 1000
+```
+
 ### `when:` — user interactions (ordered list)
 
 Elements with ARIA labels are referenced by **role** and **accessible name**
@@ -395,6 +410,8 @@ text/icon-based verbs below.
 | `wait.ms: <milliseconds>`                 | Pause execution (use sparingly — prefer auto-waiting assertions)              |
 | `upload.files: {trigger, files}`          | Click `trigger` to open the file chooser, then attach `files`                 |
 | `set.auto_rename: <bool>`                 | Set the auto-rename switch in the upload-options dialog                       |
+| `login: {user, password}`                 | Fill the login form and require landing on `/timeline`                        |
+| `index: <album>`                          | Index `<album>` (`POST /post/index/album`) and wait for idle/completed        |
 
 New interactions → extend the vocabulary with a new verb. No raw-TypeScript
 escape hatch.
@@ -414,7 +431,7 @@ escape hatch.
 | `ui.modal: open                             | closed` — Modal dialog state                                         |
 | `ui.route: <pattern>`                       | Current URL matches pattern                                          |
 | `ui.aria_snapshot: <name>`                  | Compare ARIA role/name/state tree against committed snapshot         |
-| `api.response: url: <url>, status: <code>`  | Backend API call returns expected status code                        |
+| `api.response: url, status[, method, body]` | Backend API call returns expected status code (default `GET`)        |
 
 New assertions → extend the vocabulary with a new verb. No raw-TypeScript
 escape hatch.
