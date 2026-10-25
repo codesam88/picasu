@@ -2483,7 +2483,7 @@ mod tests {
             "-overwrite_original".to_string(),
         ] {
             assert!(
-                args.iter().any(|arg| *arg == expected),
+                args.contains(&expected),
                 "the write is missing {expected:?}: {args:?}"
             );
         }

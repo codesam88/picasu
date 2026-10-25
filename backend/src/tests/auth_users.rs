@@ -60,7 +60,7 @@ fn bootstrap_window_refuses_login_and_first_user_forced_admin() {
     let record = crate::auth::users::user_record("root")
         .expect("get user")
         .expect("the user must exist");
-    assert_eq!(record.admin, true);
+    assert!(record.admin);
     assert!(record.hash.is_some(), "the password hash must be stored");
 
     // Companion: bootstrap is one-shot — unauthenticated bootstrap now 401.

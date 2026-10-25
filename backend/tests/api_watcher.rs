@@ -20,7 +20,12 @@ use snapfab::test_image::{PhotoSpec, generate_batch};
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn make_client() -> Client {
-    let config = APP_CONFIG.get().unwrap().read().unwrap().clone();
+    let config = APP_CONFIG
+        .get()
+        .expect("APP_CONFIG installed by AppConfig::init()")
+        .read()
+        .expect("config lock not poisoned")
+        .clone();
     Client::tracked(build_rocket_with_config(config)).expect("rocket client")
 }
 
@@ -65,11 +70,12 @@ fn indexed_count(client: &Client, image_home: &Path) -> u64 {
         .body(body.to_string())
         .dispatch();
     assert_eq!(r.status(), Status::Ok, "prefetch");
-    let v: Value = serde_json::from_slice(&r.into_bytes().expect("prefetch body")).unwrap();
+    let v: Value = serde_json::from_slice(&r.into_bytes().expect("prefetch body"))
+        .expect("prefetch response must be JSON");
     v["prefetch"]["dataLength"].as_u64().unwrap_or(0)
 }
 
-/// Trigger an album index on `album_path` (relative to IMAGE_HOME, `/` = root)
+/// Trigger an album index on `album_path` (relative to `IMAGE_HOME`, `/` = root)
 /// and block until the job reaches the `completed` state.
 fn run_album_index(client: &Client, album_path: &str) {
     let cookie = auth_cookie(client);
@@ -88,7 +94,8 @@ fn run_album_index(client: &Client, album_path: &str) {
             .get("/get/index/status")
             .cookie(cookie.clone())
             .dispatch();
-        let v: Value = serde_json::from_slice(&r.into_bytes().expect("status body")).unwrap();
+        let v: Value = serde_json::from_slice(&r.into_bytes().expect("status body"))
+            .expect("index status response must be JSON");
         match v["state"].as_str().unwrap_or("unknown") {
             "completed" => return,
             "failed" => panic!("album_index({album_path}) reported failure"),
@@ -129,34 +136,51 @@ fn watcher_disabled_and_album_index_targeting() {
     let cfg_dir = dir.path().join("config");
     let image_home = dir.path().join("images");
 
-    std::fs::create_dir_all(&data_dir).unwrap();
-    std::fs::create_dir_all(&cfg_dir).unwrap();
-    std::fs::create_dir_all(&image_home).unwrap();
+    std::fs::create_dir_all(&data_dir).expect("create PICASU_DATA_HOME dir");
+    std::fs::create_dir_all(&cfg_dir).expect("create PICASU_CONFIG_HOME dir");
+    std::fs::create_dir_all(&image_home).expect("create PICASU_IMAGE_HOME dir");
 
     // Start with watcher disabled so nothing is auto-indexed via FS events.
     std::fs::write(
         cfg_dir.join("config.toml"),
         "[gallery]\nfs_notify_watcher = false\n",
     )
-    .unwrap();
+    .expect("write watcher-disabled config.toml");
 
     unsafe {
-        std::env::set_var("PICASU_CONFIG_HOME", cfg_dir.to_str().unwrap());
-        std::env::set_var("PICASU_DATA_HOME", data_dir.to_str().unwrap());
-        std::env::set_var("PICASU_IMAGE_HOME", image_home.to_str().unwrap());
+        std::env::set_var(
+            "PICASU_CONFIG_HOME",
+            cfg_dir.to_str().expect("config home path is UTF-8"),
+        );
+        std::env::set_var(
+            "PICASU_DATA_HOME",
+            data_dir.to_str().expect("data home path is UTF-8"),
+        );
+        std::env::set_var(
+            "PICASU_IMAGE_HOME",
+            image_home.to_str().expect("image home path is UTF-8"),
+        );
     }
 
-    AppConfig::init();
+    AppConfig::init().expect("test config init must succeed");
 
     // The first admin is enrolled through the bootstrap window (empty
     // store + flag); production defaults to closed.
     {
-        let mut cfg = APP_CONFIG.get().unwrap().write().unwrap();
+        let mut cfg = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG installed by AppConfig::init()")
+            .write()
+            .expect("config lock not poisoned");
         cfg.bootstrap_admin = true;
     }
 
     {
-        let cfg = APP_CONFIG.get().unwrap().read().unwrap();
+        let cfg = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG installed by AppConfig::init()")
+            .read()
+            .expect("config lock not poisoned");
         assert!(!cfg.fs_notify_watcher, "watcher should start disabled");
     }
 
@@ -188,7 +212,11 @@ fn watcher_disabled_and_album_index_targeting() {
 
     // ── Phase 4: enabling the watcher must not retroactively scan ─────────
     {
-        let mut cfg = APP_CONFIG.get().unwrap().write().unwrap();
+        let mut cfg = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG installed by AppConfig::init()")
+            .write()
+            .expect("config lock not poisoned");
         cfg.fs_notify_watcher = true;
     }
     // Give any spurious background activity a moment to settle.
@@ -201,7 +229,11 @@ fn watcher_disabled_and_album_index_targeting() {
 
     // Reset to disabled for the final scan phase.
     {
-        let mut cfg = APP_CONFIG.get().unwrap().write().unwrap();
+        let mut cfg = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG installed by AppConfig::init()")
+            .write()
+            .expect("config lock not poisoned");
         cfg.fs_notify_watcher = false;
     }
 

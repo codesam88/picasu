@@ -15,10 +15,11 @@ use std::path::PathBuf;
 
 #[cfg(test)]
 fn create_dummy_config() -> AppConfig {
-    let mut config = AppConfig::default();
-    config.address = "127.0.0.1".to_string();
-    config.port = 8000;
-    config
+    AppConfig {
+        address: "127.0.0.1".to_string(),
+        port: 8000,
+        ..AppConfig::default()
+    }
 }
 /// Handle routes for embedded frontend assets
 #[cfg(feature = "embed-frontend")]
@@ -94,33 +95,6 @@ pub fn build_rocket_with_config(mut app_config: AppConfig) -> rocket::Rocket<roc
         .register("/", generate_catchers())
 }
 
-#[cfg(test)]
-mod test_build_rocket_with_config {
-    use super::*;
-
-    #[test]
-    fn test_build_rocket_config() {
-        let mut config = create_dummy_config();
-        config.port = 9999;
-        config.address = "0.0.0.0".to_string();
-        config.max_upload_size = "500MiB".to_string();
-
-        let rocket = build_rocket_with_config(config);
-        let figment = rocket.figment();
-
-        let port: u16 = figment.extract_inner("port").expect("port not found");
-        let address: String = figment.extract_inner("address").expect("address not found");
-
-        assert_eq!(port, 9999);
-        assert_eq!(address, "0.0.0.0");
-
-        let limits: rocket::data::Limits =
-            figment.extract_inner("limits").expect("limits not found");
-        assert_eq!(limits.get("file"), Some(ByteUnit::MiB * 500));
-        assert_eq!(limits.get("data-form"), Some(ByteUnit::MiB * 500));
-    }
-}
-
 #[cfg_attr(feature = "embed-frontend", allow(unused_variables))]
 fn mount_frontend(
     app: rocket::Rocket<rocket::Build>,
@@ -146,5 +120,32 @@ fn mount_frontend(
             "/assets",
             FileServer::new(asset_path, rocket::fs::Options::Missing),
         )
+    }
+}
+
+#[cfg(test)]
+mod test_build_rocket_with_config {
+    use super::*;
+
+    #[test]
+    fn test_build_rocket_config() {
+        let mut config = create_dummy_config();
+        config.port = 9999;
+        config.address = "0.0.0.0".to_string();
+        config.max_upload_size = "500MiB".to_string();
+
+        let rocket = build_rocket_with_config(config);
+        let figment = rocket.figment();
+
+        let port: u16 = figment.extract_inner("port").expect("port not found");
+        let address: String = figment.extract_inner("address").expect("address not found");
+
+        assert_eq!(port, 9999);
+        assert_eq!(address, "0.0.0.0");
+
+        let limits: rocket::data::Limits =
+            figment.extract_inner("limits").expect("limits not found");
+        assert_eq!(limits.get("file"), Some(ByteUnit::MiB * 500));
+        assert_eq!(limits.get("data-form"), Some(ByteUnit::MiB * 500));
     }
 }

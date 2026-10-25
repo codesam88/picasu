@@ -200,7 +200,11 @@ fn a_feature_gated_operation_absent_from_this_build_is_excused() {
         enabled.unmounted,
         vec![operation(Method::Get, "/get/index/experimental")]
     );
-    assert!(enabled.excused.is_empty());
+    assert!(
+        enabled.excused.is_empty(),
+        "nothing is excused: {:?}",
+        enabled.excused
+    );
 }
 
 /// Without a marker there is nothing to excuse an operation with.
@@ -470,7 +474,11 @@ fn a_marker_naming_an_undeclared_feature_is_reported() {
             .collect::<Vec<String>>()
     };
 
-    assert!(report(&good).is_empty());
+    assert!(
+        report(&good).is_empty(),
+        "parity report for a good tree: {:?}",
+        report(&good)
+    );
     assert_eq!(
         report(&bad),
         vec![format!(

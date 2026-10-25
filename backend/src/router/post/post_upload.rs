@@ -632,31 +632,46 @@ mod resolve_filename_tests {
         // Path::file_stem("..jpg") is "." (the last dot splits the extension),
         // not "..". save_file always appends a validated extension, so the
         // final on-disk name stays inside the album dir -- never a bare ".".
-        assert_eq!(resolve_filename("..jpg", true, true).unwrap(), ".");
+        assert_eq!(
+            resolve_filename("..jpg", true, true).expect("\"..jpg\" resolves with auto-rename"),
+            "."
+        );
     }
 
     #[test]
     fn pin_triple_dot_extension_stem() {
         // Path::file_stem("...jpg") is "..". As above, save_file appends the
         // extension, so the final name is a literal "...jpg", not "..".
-        assert_eq!(resolve_filename("...jpg", true, true).unwrap(), "..");
+        assert_eq!(
+            resolve_filename("...jpg", true, true).expect("\"...jpg\" resolves with auto-rename"),
+            ".."
+        );
     }
 
     #[test]
     fn pin_leading_dot_filename() {
         // A leading dot is not an extension separator: file_stem is the full
         // name, so ".jpg" survives as-is.
-        assert_eq!(resolve_filename(".jpg", true, true).unwrap(), ".jpg");
+        assert_eq!(
+            resolve_filename(".jpg", true, true)
+                .expect("leading dot name resolves with auto-rename"),
+            ".jpg"
+        );
     }
 
     #[test]
     fn pin_trailing_dot_stem() {
-        assert_eq!(resolve_filename("foo.", true, true).unwrap(), "foo");
+        assert_eq!(
+            resolve_filename("foo.", true, true)
+                .expect("trailing dot name resolves with auto-rename"),
+            "foo"
+        );
     }
 
     #[test]
     fn auto_rename_false_rejects_forbidden_chars() {
-        let err = resolve_filename("a/b.jpg", false, false).unwrap_err();
+        let err = resolve_filename("a/b.jpg", false, false)
+            .expect_err("path separator is rejected without auto-rename");
         assert!(
             err.message.contains("forbidden"),
             "unexpected message: {err}"
@@ -665,7 +680,8 @@ mod resolve_filename_tests {
 
     #[test]
     fn auto_rename_false_rejects_reserved_windows_name() {
-        let err = resolve_filename("con.jpg", false, false).unwrap_err();
+        let err = resolve_filename("con.jpg", false, false)
+            .expect_err("reserved Windows name is rejected without auto-rename");
         assert!(
             err.message.contains("reserved Windows"),
             "unexpected message: {err}"
@@ -674,7 +690,8 @@ mod resolve_filename_tests {
 
     #[test]
     fn auto_rename_false_rejects_unicode_normalization() {
-        let err = resolve_filename("cafe\u{0301}.jpg", false, true).unwrap_err();
+        let err = resolve_filename("cafe\u{0301}.jpg", false, true)
+            .expect_err("non-NFC name is rejected without auto-rename");
         assert!(
             err.message.contains("normalization"),
             "unexpected message: {err}"
@@ -690,12 +707,17 @@ mod resolve_filename_tests {
 
     #[test]
     fn control_characters_strip_when_auto_rename_true() {
-        assert_eq!(resolve_filename("a\nb.jpg", true, false).unwrap(), "ab");
+        assert_eq!(
+            resolve_filename("a\nb.jpg", true, false)
+                .expect("control characters resolve with auto-rename"),
+            "ab"
+        );
     }
 
     #[test]
     fn control_characters_reject_when_auto_rename_false() {
-        let err = resolve_filename("a\nb.jpg", false, false).unwrap_err();
+        let err = resolve_filename("a\nb.jpg", false, false)
+            .expect_err("control characters are rejected without auto-rename");
         assert!(
             err.message.contains("forbidden"),
             "unexpected message: {err}"
@@ -704,7 +726,8 @@ mod resolve_filename_tests {
 
     #[test]
     fn separator_homoglyph_rejects_when_auto_rename_false() {
-        let err = resolve_filename("photo\u{FF0F}cat.jpg", false, false).unwrap_err();
+        let err = resolve_filename("photo\u{FF0F}cat.jpg", false, false)
+            .expect_err("homoglyph separator is rejected without auto-rename");
         assert!(
             err.message.contains("forbidden"),
             "unexpected message: {err}"
@@ -714,7 +737,8 @@ mod resolve_filename_tests {
     #[test]
     fn separator_homoglyph_strips_when_auto_rename_true() {
         assert_eq!(
-            resolve_filename("photo\u{FF0F}cat.jpg", true, false).unwrap(),
+            resolve_filename("photo\u{FF0F}cat.jpg", true, false)
+                .expect("homoglyph separator resolves with auto-rename"),
             "photocat"
         );
     }

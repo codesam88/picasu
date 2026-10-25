@@ -654,7 +654,10 @@ mod tests {
     #[test]
     fn list_on_empty_store_is_empty() {
         let _g = setup();
-        assert!(super::list_invites().expect("list").is_empty());
+        assert!(
+            super::list_invites().expect("list").is_empty(),
+            "empty store lists no invites"
+        );
         assert!(super::get_invite("anything").expect("get").is_none());
         reset_backend_state();
     }
@@ -672,7 +675,10 @@ mod tests {
             !super::revoke_invite(&id).expect("revoke again"),
             "unknown id reports false"
         );
-        assert!(super::list_invites().expect("list").is_empty());
+        assert!(
+            super::list_invites().expect("list").is_empty(),
+            "revoked invite is gone from the listing"
+        );
         let err = super::redeem_invite("s6-reg", &token, &test_password("s6-reg"))
             .expect_err("revoked must fail");
         assert_eq!(err.kind, ErrorKind::NotFound);
@@ -742,13 +748,12 @@ mod tests {
             .expect("get")
             .expect("exists");
         assert_eq!(used.used_by.as_deref(), Some("s6-match"));
-        assert_eq!(
+        assert!(
             crate::auth::users::user_record("s6-match")
                 .expect("get user")
                 .expect("user exists")
                 .hash
-                .is_some(),
-            true
+                .is_some()
         );
 
         reset_backend_state();

@@ -236,7 +236,10 @@ mod tests {
         let nfd = "u\u{0308}ber"; // ü decomposed
         let result = sanitize_tag(nfd);
         assert_eq!(result, "über"); // U+00FC composed
-        assert_eq!(result.chars().next().unwrap(), '\u{00FC}');
+        assert_eq!(
+            result.chars().next().expect("sanitized tag is non-empty"),
+            '\u{00FC}'
+        );
     }
 
     #[test]
@@ -282,7 +285,10 @@ mod tests {
         let r = s("photo.jpg", true);
         assert_eq!(r.name, "photo.jpg");
         assert!(!r.changed);
-        assert!(r.stripped.is_empty());
+        assert!(
+            r.stripped.is_empty(),
+            "plain ASCII name keeps no stripped suffix"
+        );
         assert!(!r.normalized);
         assert!(!r.reserved);
     }

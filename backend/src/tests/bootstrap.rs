@@ -33,7 +33,7 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
 
     let mut test_config = AppConfig::default();
     let image_home = data_path.join("images");
-    std::fs::create_dir_all(&image_home).unwrap();
+    std::fs::create_dir_all(&image_home).expect("create test image home");
     test_config.image_home = Some(image_home);
     // Opt the whole test binary into bootstrap mode: scenario tests start
     // with the empty-store window open (unauthenticated first create via
@@ -63,7 +63,7 @@ pub static TEST_ENV: LazyLock<TestEnv> = LazyLock::new(|| {
 });
 
 /// The image home path used by the test environment.
-/// Derived from the test config that TEST_ENV sets up.
+/// Derived from the test config that `TEST_ENV` sets up.
 pub fn test_image_home() -> PathBuf {
     let _ = &*TEST_ENV;
     get_resolved_image_home().expect("IMAGE_HOME must be configured in test config")
@@ -73,9 +73,21 @@ pub fn test_image_home() -> PathBuf {
 /// config.toml to the test directory for audit.  Affects the next call to
 /// `make_client()` (the guard reads `APP_CONFIG` at request time).
 pub fn write_config(updates: &serde_json::Value) {
-    let mut config = APP_CONFIG.get().unwrap().write().unwrap();
+    use serde::Serialize;
+    #[derive(Serialize)]
+    struct ConfigFile<'a> {
+        picasu: &'a AppConfig,
+    }
+    let mut config = APP_CONFIG
+        .get()
+        .expect("APP_CONFIG set by TEST_ENV")
+        .write()
+        .expect("APP_CONFIG lock not poisoned");
     if let Some(obj) = updates.as_object() {
-        if let Some(val) = obj.get("read_only_mode").and_then(|v| v.as_bool()) {
+        if let Some(val) = obj
+            .get("read_only_mode")
+            .and_then(serde_json::Value::as_bool)
+        {
             config.read_only_mode = val;
         }
         if let Some(val) = obj
@@ -96,44 +108,65 @@ pub fn write_config(updates: &serde_json::Value) {
         {
             config.bootstrap_admin = val;
         }
-        if let Some(val) = obj.get("fs_notify_watcher").and_then(|v| v.as_bool()) {
+        if let Some(val) = obj
+            .get("fs_notify_watcher")
+            .and_then(serde_json::Value::as_bool)
+        {
             config.fs_notify_watcher = val;
         }
-        if let Some(val) = obj.get("validate_upload_content").and_then(|v| v.as_bool()) {
+        if let Some(val) = obj
+            .get("validate_upload_content")
+            .and_then(serde_json::Value::as_bool)
+        {
             config.validate_upload_content = val;
         }
         if let Some(val) = obj
             .get("use_client_timestamp_info")
-            .and_then(|v| v.as_bool())
+            .and_then(serde_json::Value::as_bool)
         {
             config.use_client_timestamp_info = val;
         }
         if let Some(val) = obj
             .get("normalize_upload_filenames")
-            .and_then(|v| v.as_bool())
+            .and_then(serde_json::Value::as_bool)
         {
             config.normalize_upload_filenames = val;
         }
     }
     // Write a copy to disk for documentation/debugging.
-    use serde::Serialize;
-    #[derive(Serialize)]
-    struct ConfigFile<'a> {
-        picasu: &'a AppConfig,
-    }
     let data_path = DATA_PATH.get().expect("DATA_PATH set");
     let config_path = data_path.join("config.toml");
-    if let Ok(toml) = toml::to_string_pretty(&ConfigFile { picasu: &*config }) {
+    if let Ok(toml) = toml::to_string_pretty(&ConfigFile { picasu: &config }) {
         let _ = std::fs::write(&config_path, toml);
     }
 }
 
 /// Serializes all scenario tests so they run one at a time.
-/// The tests share a common DATA_PATH, TREE, and image directory.
+/// The tests share a common `DATA_PATH`, TREE, and image directory.
 /// Without this guard, parallel scenario tests collide on the indexer,
-/// TREE_SNAPSHOT timestamp keys, APP_CONFIG mutations, and filesystem
+/// `TREE_SNAPSHOT` timestamp keys, `APP_CONFIG` mutations, and filesystem
 /// state — causing non-deterministic failures.
 pub static TEST_SERIAL_GUARD: Mutex<()> = Mutex::new(());
+
+/// Reset the login-throttle knobs to the shipped defaults (canonical values
+/// live beside the schedules in `auth::rate_limit`). Split from
+/// [`reset_backend_state`] so that function stays within the line budget.
+fn reset_login_throttle_knobs(config: &mut AppConfig) {
+    use crate::auth::rate_limit as throttle;
+    config.trust_proxy_forwarded_for = false;
+    config.login_ip_window_secs = throttle::LOGIN_IP_WINDOW_SECS;
+    config.login_ip_max_failures = throttle::LOGIN_IP_MAX_FAILURES;
+    config.login_ip_base_ban_secs = throttle::LOGIN_IP_BASE_BAN_SECS;
+    config.login_ip_max_ban_secs = throttle::LOGIN_IP_MAX_BAN_SECS;
+    config.login_ip_long_window_secs = throttle::LOGIN_IP_LONG_WINDOW_SECS;
+    config.login_ip_long_max_failures = throttle::LOGIN_IP_LONG_MAX_FAILURES;
+    config.login_ip_long_base_ban_secs = throttle::LOGIN_IP_LONG_BASE_BAN_SECS;
+    config.login_ip_long_max_ban_secs = throttle::LOGIN_IP_LONG_MAX_BAN_SECS;
+    config.login_user_long_window_secs = throttle::LOGIN_USER_LONG_WINDOW_SECS;
+    config.login_user_long_max_failures = throttle::LOGIN_USER_LONG_MAX_FAILURES;
+    config.login_user_long_base_ban_secs = throttle::LOGIN_USER_LONG_BASE_BAN_SECS;
+    config.login_user_long_max_ban_secs = throttle::LOGIN_USER_LONG_MAX_BAN_SECS;
+}
 
 /// Reset all shared backend state between scenario tests.
 /// This prevents data contamination across serialized scenarios
@@ -256,20 +289,7 @@ pub fn reset_backend_state() {
     // Reset login-throttle knobs to the shipped defaults: throttle tests
     // shrink them and the tracker rebuilds from whatever is configured.
     // Canonical values live beside the schedules in `auth::rate_limit`.
-    use crate::auth::rate_limit as throttle;
-    config.trust_proxy_forwarded_for = false;
-    config.login_ip_window_secs = throttle::LOGIN_IP_WINDOW_SECS;
-    config.login_ip_max_failures = throttle::LOGIN_IP_MAX_FAILURES;
-    config.login_ip_base_ban_secs = throttle::LOGIN_IP_BASE_BAN_SECS;
-    config.login_ip_max_ban_secs = throttle::LOGIN_IP_MAX_BAN_SECS;
-    config.login_ip_long_window_secs = throttle::LOGIN_IP_LONG_WINDOW_SECS;
-    config.login_ip_long_max_failures = throttle::LOGIN_IP_LONG_MAX_FAILURES;
-    config.login_ip_long_base_ban_secs = throttle::LOGIN_IP_LONG_BASE_BAN_SECS;
-    config.login_ip_long_max_ban_secs = throttle::LOGIN_IP_LONG_MAX_BAN_SECS;
-    config.login_user_long_window_secs = throttle::LOGIN_USER_LONG_WINDOW_SECS;
-    config.login_user_long_max_failures = throttle::LOGIN_USER_LONG_MAX_FAILURES;
-    config.login_user_long_base_ban_secs = throttle::LOGIN_USER_LONG_BASE_BAN_SECS;
-    config.login_user_long_max_ban_secs = throttle::LOGIN_USER_LONG_MAX_BAN_SECS;
+    reset_login_throttle_knobs(&mut config);
 
     // Drop the shared login throttle tracker so scenarios never inherit
     // failure counts or bans from a previous scenario.
@@ -277,7 +297,7 @@ pub fn reset_backend_state() {
     crate::router::put::users_password::reset_password_throttle();
 }
 
-/// Build the test Rocket instance with the current APP_CONFIG, without a
+/// Build the test Rocket instance with the current `APP_CONFIG`, without a
 /// client. Used by tests that inspect the mounted route table.
 pub fn build_test_rocket() -> rocket::Rocket<rocket::Build> {
     let _ = &*TEST_ENV;
@@ -290,7 +310,7 @@ pub fn build_test_rocket() -> rocket::Rocket<rocket::Build> {
     build_rocket_with_config(config)
 }
 
-/// Build a Rocket test client with the current APP_CONFIG.
+/// Build a Rocket test client with the current `APP_CONFIG`.
 pub fn make_client() -> Client {
     Client::tracked(build_test_rocket()).expect("valid rocket instance")
 }
@@ -411,15 +431,18 @@ mod tests {
     /// later scenario still expects.
     #[test]
     fn reset_backend_state_wipes_data_path_residue() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         let data_path = DATA_PATH.get().expect("DATA_PATH set");
 
         let thumb = data_path.join("object/compressed/ab/abcdef0123456789.jpg");
-        std::fs::create_dir_all(thumb.parent().unwrap()).unwrap();
-        std::fs::write(&thumb, b"stale thumbnail").unwrap();
+        std::fs::create_dir_all(thumb.parent().expect("thumb has a parent dir"))
+            .expect("create stale thumbnail parent");
+        std::fs::write(&thumb, b"stale thumbnail").expect("write stale thumbnail");
         let config_file = data_path.join("config.toml");
-        std::fs::write(&config_file, b"stale config").unwrap();
+        std::fs::write(&config_file, b"stale config").expect("write stale config");
         let db_file = data_path.join("db/index_v5.redb");
         assert!(db_file.exists(), "open redb file must exist before reset");
 
@@ -436,7 +459,9 @@ mod tests {
     /// users or password hashes into later (empty-store) scenarios.
     #[test]
     fn reset_backend_state_clears_user_store() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
 
         // Establish entry state: sibling scenario tests leave user rows
@@ -461,7 +486,8 @@ mod tests {
         assert!(
             crate::auth::users::list_users()
                 .expect("list users after reset")
-                .is_empty()
+                .is_empty(),
+            "reset wipes the user store"
         );
         assert_eq!(
             crate::auth::users::user_record("s2b-reset-user").expect("get user after reset"),

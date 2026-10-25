@@ -655,9 +655,9 @@ mod tests {
         let path = store_path(&dir);
         assert!(!path.exists(), "precondition");
         let store = UserStore::load(&path).expect("missing file loads as empty");
-        assert!(store.is_empty());
+        assert!(store.is_empty(), "missing file loads as an empty store");
         assert!(read(&path, "alice").is_none());
-        assert!(list(&path).is_empty());
+        assert!(list(&path).is_empty(), "fresh store lists no users");
         assert_eq!(count(&path), 0);
         assert!(is_empty(&path));
         assert!(
@@ -758,7 +758,7 @@ mod tests {
         .expect("insert hash-less entry");
         let store = UserStore::load(&path).expect("load");
         assert!(!store.verify("ghost", &test_password("ghost")));
-        assert!(!store.verify("ghost", &String::new()));
+        assert!(!store.verify("ghost", ""));
         assert_store_parses(&path);
     }
 
@@ -845,7 +845,7 @@ mod tests {
                 }
                 std::fs::write(&ready, b"ready").expect("signal ready");
                 loop {
-                    std::thread::sleep(std::time::Duration::from_secs(60));
+                    std::thread::sleep(std::time::Duration::from_hours(1));
                 }
             }
         }
@@ -872,7 +872,7 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
-        let pid = child.id() as libc::pid_t;
+        let pid = child.id().cast_signed();
         let rc = unsafe { libc::kill(pid, libc::SIGKILL) };
         assert_eq!(rc, 0, "SIGKILL must succeed");
         let status = child.wait().expect("reap child");

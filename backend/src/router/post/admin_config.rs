@@ -56,7 +56,7 @@ mod tests {
             .post("/post/admin/config/disable-read-only")
             .cookie(cookie("dar-root", true))
             .header(ContentType::JSON)
-            .body("{}".to_string())
+            .body("{}")
             .dispatch()
             .status();
         assert_eq!(status, Status::Ok);

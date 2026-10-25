@@ -74,7 +74,7 @@ fn open_registration_creates_non_admin_user() {
     let record = crate::auth::users::user_record("s6-open")
         .expect("get user")
         .expect("the user must exist");
-    assert_eq!(record.admin, false);
+    assert!(!record.admin);
     assert!(record.hash.is_some(), "the password hash must be stored");
     let resp = client
         .post("/post/users/authenticate")
@@ -118,7 +118,7 @@ fn invite_registration_works_with_knob_off() {
     let record = crate::auth::users::user_record("s6-invited")
         .expect("get user")
         .expect("the user must exist");
-    assert_eq!(record.admin, false);
+    assert!(!record.admin);
     assert!(record.hash.is_some(), "the password hash must be stored");
     let listed = crate::auth::invites::list_invites().expect("list");
     assert_eq!(listed.len(), 1);
@@ -352,7 +352,8 @@ fn revoked_invite_is_404() {
     assert!(
         crate::auth::invites::list_invites()
             .expect("list")
-            .is_empty()
+            .is_empty(),
+        "revoked invite is gone from the listing"
     );
 
     let pw = crate::tests::fixtures::test_password("t-reg-rev");
@@ -457,7 +458,7 @@ fn admin_session_creates_without_invite() {
     let record = crate::auth::users::user_record("s6-by-admin")
         .expect("get user")
         .expect("the user must exist");
-    assert_eq!(record.admin, false);
+    assert!(!record.admin);
     assert!(record.hash.is_some(), "the password hash must be stored");
 }
 

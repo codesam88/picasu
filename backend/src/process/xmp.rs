@@ -199,10 +199,12 @@ mod tests {
     // ── Fixtures ──────────────────────────────────────────────────────────────
 
     fn xmp_full(keywords: &[&str], description: &str, rating: i32) -> String {
-        let items: String = keywords
-            .iter()
-            .map(|k| format!("<rdf:li>{k}</rdf:li>"))
-            .collect();
+        let mut items = String::new();
+        for k in keywords {
+            items.push_str("<rdf:li>");
+            items.push_str(k);
+            items.push_str("</rdf:li>");
+        }
         let desc_items = format!("<rdf:li xml:lang=\"x-default\">{description}</rdf:li>");
         format!(
             r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
@@ -231,10 +233,12 @@ mod tests {
     }
 
     fn xmp_packet_with_keywords(keywords: &[&str]) -> String {
-        let items: String = keywords
-            .iter()
-            .map(|k| format!("<rdf:li>{k}</rdf:li>"))
-            .collect();
+        let mut items = String::new();
+        for k in keywords {
+            items.push_str("<rdf:li>");
+            items.push_str(k);
+            items.push_str("</rdf:li>");
+        }
         format!(
             r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
@@ -495,8 +499,7 @@ mod tests {
         let photo = dir.path().join("photo.jpg");
         let sidecar = dir.path().join("photo.xmp");
 
-        let embedded = format!(
-            r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+        let embedded = r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
 <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/">
 <dc:subject><rdf:Bag><rdf:li>emb_one</rdf:li></rdf:Bag></dc:subject>
@@ -505,9 +508,8 @@ mod tests {
 <xmp:Rating>2</xmp:Rating>
 </rdf:Description>
 </rdf:RDF>
-</x:xmpmeta>"#
-        );
-        std::fs::write(&photo, jpeg_with_app1_xmp(&embedded)).expect("failed to write jpeg");
+</x:xmpmeta>"#;
+        std::fs::write(&photo, jpeg_with_app1_xmp(embedded)).expect("failed to write jpeg");
         std::fs::write(&sidecar, COMPACT_PACKET).expect("failed to write sidecar");
 
         // Sidecar present → its values win over the embedded packet.
@@ -566,24 +568,28 @@ mod tests {
     /// Minimal PNG carrying one XMP `iTXt` chunk with `compression_flag=1`
     /// (signature + IHDR + iTXt + IEND, valid CRCs).
     fn png_with_compressed_itxt_xmp(packet: &str) -> Vec<u8> {
-        fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
-            out.extend_from_slice(&(data.len() as u32).to_be_bytes());
-            out.extend_from_slice(kind);
+        fn chunk(out: &mut Vec<u8>, kind: [u8; 4], data: &[u8]) {
+            out.extend_from_slice(
+                &u32::try_from(data.len())
+                    .expect("PNG chunk data length fits in u32")
+                    .to_be_bytes(),
+            );
+            out.extend_from_slice(&kind);
             out.extend_from_slice(data);
             let mut crc_input = kind.to_vec();
             crc_input.extend_from_slice(data);
             out.extend_from_slice(&crc32(&crc_input).to_be_bytes());
         }
         let mut png = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
-        chunk(&mut png, b"IHDR", &[0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]);
+        chunk(&mut png, *b"IHDR", &[0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0]);
         let mut itxt = b"XML:com.adobe.xmp\0".to_vec();
         itxt.push(1); // compression_flag = 1 (compressed)
         itxt.push(0); // compression method
         itxt.push(0); // empty language tag
         itxt.push(0); // empty translated keyword
         itxt.extend_from_slice(packet.as_bytes());
-        chunk(&mut png, b"iTXt", &itxt);
-        chunk(&mut png, b"IEND", &[]);
+        chunk(&mut png, *b"iTXt", &itxt);
+        chunk(&mut png, *b"IEND", &[]);
         png
     }
 }

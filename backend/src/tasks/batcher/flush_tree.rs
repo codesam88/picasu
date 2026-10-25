@@ -450,12 +450,14 @@ mod tests {
     /// `AssetRecord`.
     #[test]
     fn stored_media_metadata_payload_excludes_identity() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_all_tables();
 
         let dir = test_image_home().join("flush_payload_slim");
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create flush test dir");
 
         let path = make_jpeg(&dir, "photo.jpg", 4);
         let hash = hash_file(&path);
@@ -468,19 +470,21 @@ mod tests {
         assert_no_identity_keys(&json, "image metadata row");
 
         clear_all_tables();
-        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&dir).expect("remove flush test dir");
     }
 
     /// The stored album metadata row is a metadata-only payload: no `dirPath`,
     /// no top-level `id`, no `isTrashed` — identity lives on `AssetRecord`.
     #[test]
     fn stored_album_metadata_payload_excludes_identity() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
-        let _ = &*TEST_ENV;
-        clear_all_tables();
-
         use crate::model::album::{AlbumCombined, AlbumMetadata};
         use crate::model::object::{ObjectSchema, ObjectType};
+
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _ = &*TEST_ENV;
+        clear_all_tables();
 
         let album_id = ArrayString::from("album_payload_slim_test_id").expect("fits");
         let data = AbstractData::Album(AlbumCombined {
@@ -507,15 +511,17 @@ mod tests {
 
     #[test]
     fn flush_identical_bytes_two_paths_two_assets() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_all_tables();
 
         let dir = test_image_home().join("flush_dup");
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create flush test dir");
 
         let path_a = make_jpeg(&dir, "a.jpg", 4);
-        std::fs::copy(&path_a, dir.join("b.jpg")).unwrap();
+        std::fs::copy(&path_a, dir.join("b.jpg")).expect("copy test photo");
         let path_b = dir.join("b.jpg");
 
         let hash_a = hash_file(&path_a);
@@ -537,23 +543,25 @@ mod tests {
         assert!(ids.contains(&id_b));
 
         clear_all_tables();
-        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&dir).expect("remove flush test dir");
     }
 
     #[test]
     fn flush_same_path_idempotent() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_all_tables();
 
         let dir = test_image_home().join("flush_idem");
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create flush test dir");
 
         let path = make_jpeg(&dir, "photo.jpg", 4);
         let hash = hash_file(&path);
         let data = AbstractData::new(&path, hash).expect("build AbstractData");
 
-        flush_tables(&[data.clone()], &[]);
+        flush_tables(std::slice::from_ref(&data), &[]);
         let id_first = asset_id_at(&path);
 
         flush_tables(&[data], &[]);
@@ -571,17 +579,19 @@ mod tests {
         );
 
         clear_all_tables();
-        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&dir).expect("remove flush test dir");
     }
 
     #[test]
     fn flush_changed_hash_moves_dupe_group() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_all_tables();
 
         let dir = test_image_home().join("flush_changed");
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create flush test dir");
 
         let path = make_jpeg(&dir, "photo.jpg", 4);
         let hash_a = hash_file(&path);
@@ -611,20 +621,22 @@ mod tests {
         );
 
         clear_all_tables();
-        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&dir).expect("remove flush test dir");
     }
 
     #[test]
     fn flush_remove_one_same_hash_leaves_other() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         clear_all_tables();
 
         let dir = test_image_home().join("flush_remove");
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create flush test dir");
 
         let path_a = make_jpeg(&dir, "a.jpg", 4);
-        std::fs::copy(&path_a, dir.join("b.jpg")).unwrap();
+        std::fs::copy(&path_a, dir.join("b.jpg")).expect("copy test photo");
         let path_b = dir.join("b.jpg");
 
         let hash = hash_file(&path_a);
@@ -670,6 +682,6 @@ mod tests {
         );
 
         clear_all_tables();
-        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&dir).expect("remove flush test dir");
     }
 }

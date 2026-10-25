@@ -286,7 +286,7 @@ mod tests {
     ) -> AbstractData {
         let id = ArrayString::from("cafe1234").expect("failed to create test ArrayString");
         let mut object = ObjectSchema::new(id, ObjectType::Image);
-        object.tags = tags.iter().map(|t| t.to_string()).collect();
+        object.tags = tags.iter().map(ToString::to_string).collect();
         object.description = description.map(str::to_owned);
         object.rating = rating;
         let mut metadata = ImageMetadata::new(0, 0, 0, "jpg".to_string());
@@ -641,6 +641,7 @@ mod tests {
     mod album_sidecar {
         use super::*;
         use crate::model::album::{AlbumCombined, AlbumMetadata};
+        use std::collections::HashMap;
 
         fn make_dir_album(dir_path: String, custom_title: Option<String>) -> AbstractData {
             let id = ArrayString::from("alb").expect("failed to create test ArrayString");
@@ -663,7 +664,7 @@ mod tests {
                     cover: None,
                     item_count: 0,
                     item_size: 0,
-                    share_list: Default::default(),
+                    share_list: HashMap::default(),
                     dir_path,
                     custom_title,
                     is_trashed: false,

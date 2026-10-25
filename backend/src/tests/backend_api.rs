@@ -252,9 +252,17 @@ fn check_status_assertions(
 ) {
     for item in then_items {
         if let Some(code) = item["response.status"].as_i64() {
-            assert_eq!(response.status(), Status::from_code(code as u16).unwrap(),);
+            assert_eq!(
+                response.status(),
+                Status::from_code(u16::try_from(code).expect("scenario status code fits in u16"))
+                    .expect("scenario status code is a valid HTTP status"),
+            );
         } else if let Some(code) = item["response.status_not"].as_i64() {
-            assert_ne!(response.status(), Status::from_code(code as u16).unwrap(),);
+            assert_ne!(
+                response.status(),
+                Status::from_code(u16::try_from(code).expect("scenario status code fits in u16"))
+                    .expect("scenario status code is a valid HTTP status"),
+            );
         } else if let Some(obj) = item.as_object() {
             for (key, val) in obj {
                 if let Some(name) = key.strip_prefix("response.header.") {
@@ -266,7 +274,7 @@ fn check_status_assertions(
                     let actual = response
                         .headers()
                         .get(name)
-                        .map(|v| v.to_string())
+                        .map(std::string::ToString::to_string)
                         .collect::<Vec<_>>()
                         .join(",");
                     assert_eq!(actual, expected, "response header {name}");
@@ -294,7 +302,7 @@ fn check_body_assertions(body_bytes: &[u8], then_items: &[Value], vars: &HashMap
                     } else if val
                         .as_object()
                         .and_then(|o| o.get("all_absolute"))
-                        .and_then(|v| v.as_bool())
+                        .and_then(serde_json::Value::as_bool)
                         == Some(true)
                     {
                         assert_all_absolute(&parsed, key);
@@ -557,7 +565,10 @@ fn execute_call<'c>(
 ) -> rocket::local::blocking::LocalResponse<'c> {
     let call_str = call["call"].as_str().expect("when.call is required");
     let body_val = call.get("body");
-    let auth = call.get("auth").and_then(|v| v.as_bool()).unwrap_or(true);
+    let auth = call
+        .get("auth")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
 
     let parts: Vec<&str> = call_str.splitn(2, ' ').collect();
     let method = parts[0];
@@ -661,16 +672,16 @@ fn execute_upload<'c>(
     let file_path = upload["file"].as_str().expect("upload.file is required");
     let file_path = interpolate(file_path, vars);
 
-    let filename = upload["filename"]
-        .as_str()
-        .map(|s| interpolate(s, vars))
-        .unwrap_or_else(|| {
+    let filename = upload["filename"].as_str().map_or_else(
+        || {
             std::path::Path::new(&file_path)
                 .file_name()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string()
-        });
+        },
+        |s| interpolate(s, vars),
+    );
 
     let image_home = test_image_home();
     let full_path = image_home.join(file_path.trim_start_matches('/'));
@@ -678,19 +689,22 @@ fn execute_upload<'c>(
         .unwrap_or_else(|e| panic!("upload.file not found at {}: {e}", full_path.display()));
 
     let last_modified = upload["last_modified"].as_u64().unwrap_or_else(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64
+        u64::try_from(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock runs after the Unix epoch")
+                .as_millis(),
+        )
+        .expect("epoch millis fit in u64")
     });
 
     // Interpolated like every other string in the harness: a randomized scenario
     // sends the capability manifest's MIME for the format it selected, and the
     // upload path derives the stored extension from this header.
-    let content_type = upload["content_type"]
-        .as_str()
-        .map(|value| interpolate(value, vars))
-        .unwrap_or_else(|| "image/jpeg".to_string());
+    let content_type = upload["content_type"].as_str().map_or_else(
+        || "image/jpeg".to_string(),
+        |value| interpolate(value, vars),
+    );
 
     let (body, boundary) =
         build_upload_multipart(&file_data, &filename, last_modified, &content_type);
@@ -718,7 +732,10 @@ fn execute_upload<'c>(
 
     let url: &'static str = Box::leak(url.into_boxed_str());
 
-    let auth = upload.get("auth").and_then(|v| v.as_bool()).unwrap_or(true);
+    let auth = upload
+        .get("auth")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(true);
 
     let mut req = client.post(url);
     if auth {
@@ -752,7 +769,7 @@ static MUTED_PATHS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
 fn remember_path_mode(path: &Path) {
     MUTED_PATHS
         .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .push(path.to_path_buf());
 }
 
@@ -760,7 +777,9 @@ fn remember_path_mode(path: &Path) {
 /// has to stay traversable for the wipe to reach into it, and a file has to be
 /// readable, which is what the scenario that muted it needed it not to be.
 fn restore_path_modes() {
-    let mut muted = MUTED_PATHS.lock().unwrap_or_else(|e| e.into_inner());
+    let mut muted = MUTED_PATHS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     for path in muted.drain(..) {
         #[cfg(unix)]
         {
@@ -1065,8 +1084,8 @@ fn seed_banner(scenario: &str, position: usize, total: usize, log_line: &str) ->
 }
 
 /// Re-raise a panic with `banner` attached.
-fn fail_with_banner(banner: &str, payload: Box<dyn std::any::Any + Send>) -> ! {
-    std::panic::panic_any(banner_panic_message(banner, &payload))
+fn fail_with_banner(banner: &str, payload: &(dyn std::any::Any + Send)) -> ! {
+    std::panic::panic_any(banner_panic_message(banner, payload))
 }
 
 /// The message a red randomized run reports: the banner, then the failure it
@@ -1123,7 +1142,7 @@ fn run_randomized_scenario(name: &str, scenario: &Value, plan: &RandomizePlan) {
             interpret_scenario(scenario, Some(selected));
         }));
         if let Err(payload) = outcome {
-            fail_with_banner(&banner, payload);
+            fail_with_banner(&banner, &payload);
         }
     }
 }
@@ -1234,23 +1253,22 @@ fn dispatch_when_item<'c>(
 // ── Process capture block ──
 
 fn process_capture(call: &Value, body_bytes: &[u8], vars: &mut HashMap<String, String>) {
-    if let Some(capture) = call.get("capture").and_then(|c| c.as_object()) {
-        if !capture.is_empty() {
-            let body: Value = serde_json::from_slice(body_bytes).expect("capture: valid JSON");
+    if let Some(capture) = call.get("capture").and_then(|c| c.as_object())
+        && !capture.is_empty()
+    {
+        let body: Value = serde_json::from_slice(body_bytes).expect("capture: valid JSON");
 
-            for (var_name, json_path_val) in capture {
-                let bare = var_name.trim_start_matches('$');
-                let field = json_path_val.as_str().unwrap_or_else(|| {
-                    panic!("capture {var_name}: value must be a string JSON path")
-                });
-                let access_path = field.strip_prefix("response.").unwrap_or(field);
-                let val = navigate_json(&body, access_path);
-                let str_val = val
-                    .as_str()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| val.to_string());
-                vars.insert(bare.to_string(), str_val);
-            }
+        for (var_name, json_path_val) in capture {
+            let bare = var_name.trim_start_matches('$');
+            let field = json_path_val
+                .as_str()
+                .unwrap_or_else(|| panic!("capture {var_name}: value must be a string JSON path"));
+            let access_path = field.strip_prefix("response.").unwrap_or(field);
+            let val = navigate_json(&body, access_path);
+            let str_val = val
+                .as_str()
+                .map_or_else(|| val.to_string(), std::string::ToString::to_string);
+            vars.insert(bare.to_string(), str_val);
         }
     }
 }
@@ -1342,324 +1360,410 @@ fn has_json_assertions(item: &Value) -> bool {
 
 // ── Interpreter main logic ──
 
-/// Interpret a scenario, optionally against a selected format.
-///
-/// `selection` is `Some` for a randomized run: it is the format the run's seed
-/// resolved to, and it is what a `random_media` given item materialises. It is
-/// `None` for a deterministic scenario, where a format never varies.
-fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) {
-    let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
-    let _ = &*TEST_ENV;
-    // Before the wipe: a scenario that panicked mid-`chmod` may have left a
-    // directory the reset could not otherwise unlink inside of.
-    restore_path_modes();
-    reset_backend_state();
-    let data = test_image_home();
-    set_image_home(data.clone());
+/// Files and follow-up work collected from a scenario's `given:` items before
+/// the scan runs. Split from [`interpret_scenario`] so the interpreter stays
+/// within the line budget; the collection loop lives in
+/// [`collect_given_materials`].
+struct GivenMaterials {
+    photo_specs: Vec<PhotoSpec>,
+    duplicate_of_pairs: Vec<(String, String)>,
+    truncations: Vec<TruncateFile>,
+    patches: Vec<PatchFile>,
+    remove_files: Vec<String>,
+    has_id_as: bool,
+    has_scan_items: bool,
+}
 
-    let given = scenario["given"].as_array();
-    let then_items = scenario["then"].as_array().expect("then must be an array");
-
-    let has_given = given.map(|items| !items.is_empty()).unwrap_or(false);
-    let needs_data = has_given
-        || then_items
-            .iter()
-            .any(|item| item.get("file_exists").is_some() || item.get("file_absent").is_some());
-
-    let mut vars: HashMap<String, String> = HashMap::new();
-
-    let has_config_item = given
-        .map(|items| items.iter().any(|item| item.get("config").is_some()))
-        .unwrap_or(false);
-
-    if needs_data {
-        if scenario.to_string().contains("${data_path}") {
-            let data_path = data.to_string_lossy().to_string();
-            vars.insert("data_path".to_string(), data_path);
+/// Materialise one `given:` `random_media` item: expose the selected format's
+/// `${ext}`/`${format}`/`${mime}` to later items and queue the photo spec
+/// (or copy the pinned fixture). Split from [`collect_given_materials`].
+fn materialize_random_media(
+    item: &Value,
+    stem: &str,
+    data: &Path,
+    selection: Option<&RandomizableFormat>,
+    vars: &mut HashMap<String, String>,
+    materials: &mut GivenMaterials,
+) {
+    let selected = selection.unwrap_or_else(|| {
+        panic!(
+            "given random_media: {stem} needs a `randomize:` block with a \
+             seed, because the format it materialises is the seed's choice"
+        )
+    });
+    if item.get("id_as").is_some() || item.get("asset_id_as").is_some() {
+        materials.has_id_as = true;
+    }
+    // The scenario reads `${ext}`, `${format}` and `${mime}`, so its
+    // assertions can name what was selected without naming a
+    // format. `mime` comes from the capability manifest because
+    // the upload path takes the stored extension from the
+    // request's Content-Type — a scenario that guessed one would
+    // store, say, MOV bytes as `.jpeg`.
+    vars.insert("format".to_string(), selected.format.clone());
+    vars.insert("ext".to_string(), selected.extension.clone());
+    vars.insert(
+        "mime".to_string(),
+        snapfab::capabilities::capabilities()
+            .capability_for_format(&selected.format)
+            .map(|entry| entry.content_signature.mime.clone())
+            .unwrap_or_default(),
+    );
+    let destination = random_media_destination(item, selected);
+    match &selected.plan {
+        FixturePlan::Generate => materials.photo_specs.push(PhotoSpec {
+            output: Some(data.join(&destination).to_string_lossy().to_string()),
+            format: Some(selected.format.clone()),
+            width: Some(RANDOM_MEDIA_WIDTH),
+            height: Some(RANDOM_MEDIA_HEIGHT),
+            tags: None,
+            exif_date: None,
+            minimal: false,
+        }),
+        FixturePlan::CopyFixture { id } => {
+            copy_pinned_fixture(id, &destination, data);
         }
+    }
+}
 
-        if let Some(items) = given {
-            let has_non_config = items.iter().any(|item| item.get("config").is_none());
-            let has_scan_items = has_given && has_non_config;
+/// Materialise one `given:` `photo` item: queue the photo spec and publish
+/// its `${photo_N}` variable. Split from [`collect_given_materials`].
+fn materialize_photo(
+    item: &Value,
+    photo: &str,
+    data: &Path,
+    vars: &mut HashMap<String, String>,
+    materials: &mut GivenMaterials,
+) {
+    let trimmed = photo.trim_start_matches('/');
 
-            let mut remove_files: Vec<String> = Vec::new();
-            let mut has_id_as = false;
+    if item.get("id_as").is_some() {
+        materials.has_id_as = true;
+    }
 
-            let mut photo_specs: Vec<PhotoSpec> = Vec::new();
-            // Pairs of (source_relative, destination_relative) for byte-identical
-            // duplicate fixture files.  Processed after photo generation so the
-            // source file exists on disk.
-            let mut duplicate_of_pairs: Vec<(String, String)> = Vec::new();
-            // Byte transforms (truncation, in-place patch) applied after the
-            // files they target exist and before the scan.
-            let mut truncations: Vec<TruncateFile> = Vec::new();
-            let mut patches: Vec<PatchFile> = Vec::new();
+    let tags: Vec<String> = item["tags"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|t| t.as_str().unwrap_or("unknown").to_string())
+                .collect()
+        })
+        .unwrap_or_default();
 
-            for item in items {
-                if let Some(dir) = item["dir_album"].as_str() {
-                    let trimmed = dir.trim_start_matches('/');
-                    std::fs::create_dir_all(&data.join(trimmed))
-                        .unwrap_or_else(|e| panic!("create dir {trimmed}: {e}"));
+    let exif_date = item["exif_date"].as_str();
+    let has_tags = !tags.is_empty();
 
-                    if item.get("id_as").is_some() {
-                        has_id_as = true;
-                        let ph = format!("{trimmed}/.__picasu_ph__.jpg");
-                        photo_specs.push(PhotoSpec {
-                            output: Some(data.join(&ph).to_string_lossy().to_string()),
-                            format: Some("jpeg".into()),
-                            width: Some(4),
-                            height: Some(4),
-                            tags: None,
-                            exif_date: None,
-                            minimal: false,
-                        });
-                    }
-                } else if let Some(raw_file) = item["raw_file"].as_str() {
-                    let trimmed = raw_file.trim_start_matches('/');
-                    let content = item["content"].as_str().unwrap_or("");
-                    let path = data.join(trimmed);
-                    if let Some(parent) = path.parent() {
-                        std::fs::create_dir_all(parent)
-                            .unwrap_or_else(|e| panic!("create dir for raw_file {trimmed}: {e}"));
-                    }
-                    std::fs::write(&path, content)
-                        .unwrap_or_else(|e| panic!("write raw_file {trimmed}: {e}"));
-                } else if item.get("fixture").is_some() {
-                    if item.get("id_as").is_some() || item.get("asset_id_as").is_some() {
-                        has_id_as = true;
-                    }
-                    place_pinned_fixture(item, &data);
-                } else if let Some(stem) = item["random_media"].as_str() {
-                    let selected = selection.unwrap_or_else(|| {
-                        panic!(
-                            "given random_media: {stem} needs a `randomize:` block with a \
-                             seed, because the format it materialises is the seed's choice"
-                        )
-                    });
-                    if item.get("id_as").is_some() || item.get("asset_id_as").is_some() {
-                        has_id_as = true;
-                    }
-                    // The scenario reads `${ext}`, `${format}` and `${mime}`, so its
-                    // assertions can name what was selected without naming a
-                    // format. `mime` comes from the capability manifest because
-                    // the upload path takes the stored extension from the
-                    // request's Content-Type — a scenario that guessed one would
-                    // store, say, MOV bytes as `.jpeg`.
-                    vars.insert("format".to_string(), selected.format.clone());
-                    vars.insert("ext".to_string(), selected.extension.clone());
-                    vars.insert(
-                        "mime".to_string(),
-                        snapfab::capabilities::capabilities()
-                            .capability_for_format(&selected.format)
-                            .map(|entry| entry.content_signature.mime.clone())
-                            .unwrap_or_default(),
-                    );
-                    let destination = random_media_destination(item, selected);
-                    match &selected.plan {
-                        FixturePlan::Generate => photo_specs.push(PhotoSpec {
-                            output: Some(data.join(&destination).to_string_lossy().to_string()),
-                            format: Some(selected.format.clone()),
-                            width: Some(RANDOM_MEDIA_WIDTH),
-                            height: Some(RANDOM_MEDIA_HEIGHT),
-                            tags: None,
-                            exif_date: None,
-                            minimal: false,
-                        }),
-                        FixturePlan::CopyFixture { id } => {
-                            copy_pinned_fixture(id, &destination, &data)
-                        }
-                    }
-                } else if let Some(photo) = item["photo"].as_str() {
-                    let trimmed = photo.trim_start_matches('/');
+    let format = item["format"]
+        .as_str()
+        .map_or_else(|| "jpeg".to_string(), std::string::ToString::to_string);
+    assert!(
+        matches!(format.as_str(), "jpeg" | "png"),
+        "given photo format must be jpeg or png, got {format}"
+    );
 
-                    if item.get("id_as").is_some() {
-                        has_id_as = true;
-                    }
+    let width = item["width"]
+        .as_u64()
+        .map_or_else(|| 4, |w| u32::try_from(w).expect("photo width fits in u32"));
+    let height = item["height"].as_u64().map_or_else(
+        || 4,
+        |h| u32::try_from(h).expect("photo height fits in u32"),
+    );
 
-                    let tags: Vec<String> = item["tags"]
-                        .as_array()
-                        .map(|arr| {
-                            arr.iter()
-                                .map(|t| t.as_str().unwrap_or("unknown").to_string())
-                                .collect()
-                        })
-                        .unwrap_or_default();
+    materials.photo_specs.push(PhotoSpec {
+        output: Some(data.join(trimmed).to_string_lossy().to_string()),
+        format: Some(format),
+        width: Some(width),
+        height: Some(height),
+        tags: if has_tags { Some(tags) } else { None },
+        exif_date: exif_date.map(std::string::ToString::to_string),
+        minimal: false,
+    });
 
-                    let exif_date = item["exif_date"].as_str();
-                    let has_tags = !tags.is_empty();
+    let idx = vars.len();
+    vars.insert(format!("photo_{idx}"), format!("photo_{idx}"));
+}
 
-                    let format = item["format"]
-                        .as_str()
-                        .map(|f| f.to_string())
-                        .unwrap_or_else(|| "jpeg".to_string());
-                    assert!(
-                        matches!(format.as_str(), "jpeg" | "png"),
-                        "given photo format must be jpeg or png, got {format}"
-                    );
-
-                    let width = item["width"].as_u64().map_or(4, |w| w as u32);
-                    let height = item["height"].as_u64().map_or(4, |h| h as u32);
-
-                    photo_specs.push(PhotoSpec {
-                        output: Some(data.join(trimmed).to_string_lossy().to_string()),
-                        format: Some(format),
-                        width: Some(width),
-                        height: Some(height),
-                        tags: if has_tags { Some(tags) } else { None },
-                        exif_date: exif_date.map(|d| d.to_string()),
-                        minimal: false,
-                    });
-
-                    let idx = vars.len();
-                    vars.insert(format!("photo_{idx}"), format!("photo_{idx}"));
-                } else if let Some(remove_path) = item["remove"].as_str() {
-                    remove_files.push(remove_path.trim_start_matches('/').to_string());
-                } else if let Some(config) = item.get("config").and_then(|c| c.as_object()) {
-                    if let Some(enabled) = config.get("read_only_mode").and_then(|v| v.as_bool()) {
-                        write_config(&serde_json::json!({"read_only_mode": enabled}));
-                    }
-                    if let Some(enabled) = config.get("fs_notify_watcher").and_then(|v| v.as_bool())
-                    {
-                        write_config(&serde_json::json!({"fs_notify_watcher": enabled}));
-                    }
-                    if let Some(enabled) = config
-                        .get("validate_upload_content")
-                        .and_then(|v| v.as_bool())
-                    {
-                        write_config(&serde_json::json!({"validate_upload_content": enabled}));
-                    }
-                    if let Some(enabled) = config
-                        .get("use_client_timestamp_info")
-                        .and_then(|v| v.as_bool())
-                    {
-                        write_config(&serde_json::json!({"use_client_timestamp_info": enabled}));
-                    }
-                    if let Some(enabled) = config
-                        .get("normalize_upload_filenames")
-                        .and_then(|v| v.as_bool())
-                    {
-                        write_config(&serde_json::json!({"normalize_upload_filenames": enabled}));
-                    }
-                } else if let Some(dup) = item.get("duplicate_of") {
-                    let src = dup["source"]
-                        .as_str()
-                        .expect("duplicate_of.source is required")
-                        .trim_start_matches('/')
-                        .to_string();
-                    let dst = dup["destination"]
-                        .as_str()
-                        .expect("duplicate_of.destination is required")
-                        .trim_start_matches('/')
-                        .to_string();
-                    duplicate_of_pairs.push((src, dst));
-                } else if item.get("truncate_file").is_some() {
-                    truncations.push(parse_truncate_file(item));
-                } else if item.get("patch_file").is_some() {
-                    patches.push(parse_patch_file(item));
-                }
+/// Resolve every `id_as`/`asset_id_as` the `given:` items declared, now that
+/// the scan indexed the materialised files. Split from [`interpret_scenario`].
+fn discover_given_ids(
+    client: &Client,
+    items: &[Value],
+    selection: Option<&RandomizableFormat>,
+    vars: &mut HashMap<String, String>,
+) {
+    for item in items {
+        if let Some(dir) = item["dir_album"].as_str() {
+            if item.get("id_as").is_some() {
+                let id_name = item["id_as"].as_str().expect("id_as must be a string");
+                let bare = id_name.trim_start_matches('$');
+                let trimmed = dir.trim_start_matches('/');
+                let id = discover_album_id(client, trimmed);
+                vars.insert(bare.to_string(), id);
             }
-
-            if !photo_specs.is_empty() {
-                generate_batch(&photo_specs).expect("generate photos");
+        } else if let Some(photo) = item["photo"].as_str() {
+            if item.get("id_as").is_some() {
+                let id_name = item["id_as"].as_str().expect("id_as must be a string");
+                let bare = id_name.trim_start_matches('$');
+                let trimmed = photo.trim_start_matches('/');
+                let hash = discover_photo_hash(client, trimmed);
+                vars.insert(bare.to_string(), hash);
             }
-
-            // Copy source files to their duplicate destinations.  Source must
-            // exist on disk (created by the photo fixtures above).  The copy
-            // is a byte-identical duplicate — not a regenerated similar image.
-            for (src_rel, dst_rel) in &duplicate_of_pairs {
-                let src_path = data.join(src_rel);
-                let dst_path = data.join(dst_rel);
-                assert!(
-                    src_path.exists(),
-                    "duplicate_of source does not exist: {src_rel}"
-                );
-                if let Some(parent) = dst_path.parent() {
-                    std::fs::create_dir_all(parent)
-                        .unwrap_or_else(|e| panic!("create dir for duplicate_of {dst_rel}: {e}"));
-                }
-                std::fs::copy(&src_path, &dst_path)
-                    .unwrap_or_else(|e| panic!("duplicate_of copy {src_rel} -> {dst_rel}: {e}"));
+            // Also discover asset_id if asset_id_as is specified.
+            if item.get("asset_id_as").is_some() {
+                let id_name = item["asset_id_as"]
+                    .as_str()
+                    .expect("asset_id_as must be a string");
+                let bare = id_name.trim_start_matches('$');
+                let trimmed = photo.trim_start_matches('/');
+                let asset_id = discover_asset_id(client, trimmed);
+                vars.insert(bare.to_string(), asset_id);
             }
-
-            // Damage the files the transforms target only now that every photo,
-            // fixture and duplicate exists on disk.
-            apply_file_transforms(&data, &truncations, &patches);
-
-            if has_scan_items {
-                let client = make_client();
-
-                let _scan_resp = client
-                    .post("/post/index/album")
-                    .cookie(auth_cookie(&client))
-                    .header(ContentType::JSON)
-                    .body(serde_json::json!({"album": "/"}).to_string())
-                    .dispatch();
-                assert_eq!(_scan_resp.status(), Status::Accepted, "scan trigger");
-                wait_for_album_index(&client, 30000);
-
-                for rp in &remove_files {
-                    std::fs::remove_file(&data.join(rp)).expect("remove file");
-                }
-
-                if has_id_as {
-                    for item in items {
-                        if let Some(dir) = item["dir_album"].as_str() {
-                            if item.get("id_as").is_some() {
-                                let id_name = item["id_as"].as_str().unwrap();
-                                let bare = id_name.trim_start_matches('$');
-                                let trimmed = dir.trim_start_matches('/');
-                                let id = discover_album_id(&client, trimmed);
-                                vars.insert(bare.to_string(), id);
-                            }
-                        } else if let Some(photo) = item["photo"].as_str() {
-                            if item.get("id_as").is_some() {
-                                let id_name = item["id_as"].as_str().unwrap();
-                                let bare = id_name.trim_start_matches('$');
-                                let trimmed = photo.trim_start_matches('/');
-                                let hash = discover_photo_hash(&client, trimmed);
-                                vars.insert(bare.to_string(), hash);
-                            }
-                            // Also discover asset_id if asset_id_as is specified.
-                            if item.get("asset_id_as").is_some() {
-                                let id_name = item["asset_id_as"].as_str().unwrap();
-                                let bare = id_name.trim_start_matches('$');
-                                let trimmed = photo.trim_start_matches('/');
-                                let asset_id = discover_asset_id(&client, trimmed);
-                                vars.insert(bare.to_string(), asset_id);
-                            }
-                        } else if item.get("fixture").is_some()
-                            || item.get("random_media").is_some()
-                        {
-                            // A placed fixture and a randomized format are
-                            // discoverable exactly like a generated photo, by
-                            // their destination path.
-                            let destination = if item.get("random_media").is_some() {
-                                let selected = selection.unwrap_or_else(|| {
-                                    panic!("given random_media without a selected format")
-                                });
-                                random_media_destination(item, selected)
-                            } else {
-                                pinned_fixture_destination(item)
-                            };
-                            if let Some(id_name) = item["id_as"].as_str() {
-                                let bare = id_name.trim_start_matches('$');
-                                let hash = discover_photo_hash(&client, &destination);
-                                vars.insert(bare.to_string(), hash);
-                            }
-                            if let Some(id_name) = item["asset_id_as"].as_str() {
-                                let bare = id_name.trim_start_matches('$');
-                                let asset_id = discover_asset_id(&client, &destination);
-                                vars.insert(bare.to_string(), asset_id);
-                            }
-                        }
-                    }
-                }
+        } else if item.get("fixture").is_some() || item.get("random_media").is_some() {
+            // A placed fixture and a randomized format are
+            // discoverable exactly like a generated photo, by
+            // their destination path.
+            let destination = if item.get("random_media").is_some() {
+                let selected = selection
+                    .unwrap_or_else(|| panic!("given random_media without a selected format"));
+                random_media_destination(item, selected)
+            } else {
+                pinned_fixture_destination(item)
+            };
+            if let Some(id_name) = item["id_as"].as_str() {
+                let bare = id_name.trim_start_matches('$');
+                let hash = discover_photo_hash(client, &destination);
+                vars.insert(bare.to_string(), hash);
+            }
+            if let Some(id_name) = item["asset_id_as"].as_str() {
+                let bare = id_name.trim_start_matches('$');
+                let asset_id = discover_asset_id(client, &destination);
+                vars.insert(bare.to_string(), asset_id);
             }
         }
     }
+}
 
-    let when = &scenario["when"];
+/// Apply one `given:` `config` item: each recognised knob is written through
+/// [`write_config`] so the next client picks it up. Split from
+/// [`collect_given_materials`].
+fn apply_config_given_item(config: &serde_json::Map<String, Value>) {
+    if let Some(enabled) = config
+        .get("read_only_mode")
+        .and_then(serde_json::Value::as_bool)
+    {
+        write_config(&serde_json::json!({"read_only_mode": enabled}));
+    }
+    if let Some(enabled) = config
+        .get("fs_notify_watcher")
+        .and_then(serde_json::Value::as_bool)
+    {
+        write_config(&serde_json::json!({"fs_notify_watcher": enabled}));
+    }
+    if let Some(enabled) = config
+        .get("validate_upload_content")
+        .and_then(serde_json::Value::as_bool)
+    {
+        write_config(&serde_json::json!({"validate_upload_content": enabled}));
+    }
+    if let Some(enabled) = config
+        .get("use_client_timestamp_info")
+        .and_then(serde_json::Value::as_bool)
+    {
+        write_config(&serde_json::json!({"use_client_timestamp_info": enabled}));
+    }
+    if let Some(enabled) = config
+        .get("normalize_upload_filenames")
+        .and_then(serde_json::Value::as_bool)
+    {
+        write_config(&serde_json::json!({"normalize_upload_filenames": enabled}));
+    }
+}
 
+/// Walk a scenario's `given:` items and collect the files to generate and the
+/// follow-up work (duplicates, transforms, removals, id discovery). Split
+/// from [`interpret_scenario`].
+fn collect_given_materials(
+    items: &[Value],
+    data: &Path,
+    has_given: bool,
+    selection: Option<&RandomizableFormat>,
+    vars: &mut HashMap<String, String>,
+) -> GivenMaterials {
+    let has_non_config = items.iter().any(|item| item.get("config").is_none());
+    let mut materials = GivenMaterials {
+        photo_specs: Vec::new(),
+        // Pairs of (source_relative, destination_relative) for byte-identical
+        // duplicate fixture files.  Processed after photo generation so the
+        // source file exists on disk.
+        duplicate_of_pairs: Vec::new(),
+        // Byte transforms (truncation, in-place patch) applied after the
+        // files they target exist and before the scan.
+        truncations: Vec::new(),
+        patches: Vec::new(),
+        remove_files: Vec::new(),
+        has_id_as: false,
+        has_scan_items: has_given && has_non_config,
+    };
+
+    for item in items {
+        if let Some(dir) = item["dir_album"].as_str() {
+            let trimmed = dir.trim_start_matches('/');
+            std::fs::create_dir_all(data.join(trimmed))
+                .unwrap_or_else(|e| panic!("create dir {trimmed}: {e}"));
+
+            if item.get("id_as").is_some() {
+                materials.has_id_as = true;
+                let ph = format!("{trimmed}/.__picasu_ph__.jpg");
+                materials.photo_specs.push(PhotoSpec {
+                    output: Some(data.join(&ph).to_string_lossy().to_string()),
+                    format: Some("jpeg".into()),
+                    width: Some(4),
+                    height: Some(4),
+                    tags: None,
+                    exif_date: None,
+                    minimal: false,
+                });
+            }
+        } else if let Some(raw_file) = item["raw_file"].as_str() {
+            let trimmed = raw_file.trim_start_matches('/');
+            let content = item["content"].as_str().unwrap_or("");
+            let path = data.join(trimmed);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .unwrap_or_else(|e| panic!("create dir for raw_file {trimmed}: {e}"));
+            }
+            std::fs::write(&path, content)
+                .unwrap_or_else(|e| panic!("write raw_file {trimmed}: {e}"));
+        } else if item.get("fixture").is_some() {
+            if item.get("id_as").is_some() || item.get("asset_id_as").is_some() {
+                materials.has_id_as = true;
+            }
+            place_pinned_fixture(item, data);
+        } else if let Some(stem) = item["random_media"].as_str() {
+            materialize_random_media(item, stem, data, selection, &mut *vars, &mut materials);
+        } else if let Some(photo) = item["photo"].as_str() {
+            materialize_photo(item, photo, data, &mut *vars, &mut materials);
+        } else if let Some(remove_path) = item["remove"].as_str() {
+            materials
+                .remove_files
+                .push(remove_path.trim_start_matches('/').to_string());
+        } else if let Some(config) = item.get("config").and_then(|c| c.as_object()) {
+            apply_config_given_item(config);
+        } else if let Some(dup) = item.get("duplicate_of") {
+            let src = dup["source"]
+                .as_str()
+                .expect("duplicate_of.source is required")
+                .trim_start_matches('/')
+                .to_string();
+            let dst = dup["destination"]
+                .as_str()
+                .expect("duplicate_of.destination is required")
+                .trim_start_matches('/')
+                .to_string();
+            materials.duplicate_of_pairs.push((src, dst));
+        } else if item.get("truncate_file").is_some() {
+            materials.truncations.push(parse_truncate_file(item));
+        } else if item.get("patch_file").is_some() {
+            materials.patches.push(parse_patch_file(item));
+        }
+    }
+    materials
+}
+
+/// Generate the collected photos, copy duplicates, apply transforms, trigger
+/// the album scan and resolve the declared ids. Split from
+/// [`interpret_scenario`].
+fn scan_materialized(
+    data: &Path,
+    items: &[Value],
+    selection: Option<&RandomizableFormat>,
+    vars: &mut HashMap<String, String>,
+    materials: &GivenMaterials,
+) {
+    if !materials.photo_specs.is_empty() {
+        generate_batch(&materials.photo_specs).expect("generate photos");
+    }
+
+    // Copy source files to their duplicate destinations.  Source must
+    // exist on disk (created by the photo fixtures above).  The copy
+    // is a byte-identical duplicate — not a regenerated similar image.
+    for (src_rel, dst_rel) in &materials.duplicate_of_pairs {
+        let src_path = data.join(src_rel);
+        let dst_path = data.join(dst_rel);
+        assert!(
+            src_path.exists(),
+            "duplicate_of source does not exist: {src_rel}"
+        );
+        if let Some(parent) = dst_path.parent() {
+            std::fs::create_dir_all(parent)
+                .unwrap_or_else(|e| panic!("create dir for duplicate_of {dst_rel}: {e}"));
+        }
+        std::fs::copy(&src_path, &dst_path)
+            .unwrap_or_else(|e| panic!("duplicate_of copy {src_rel} -> {dst_rel}: {e}"));
+    }
+
+    // Damage the files the transforms target only now that every photo,
+    // fixture and duplicate exists on disk.
+    apply_file_transforms(data, &materials.truncations, &materials.patches);
+
+    if materials.has_scan_items {
+        let client = make_client();
+
+        let scan_resp = client
+            .post("/post/index/album")
+            .cookie(auth_cookie(&client))
+            .header(ContentType::JSON)
+            .body(serde_json::json!({"album": "/"}).to_string())
+            .dispatch();
+        assert_eq!(scan_resp.status(), Status::Accepted, "scan trigger");
+        wait_for_album_index(&client, 30000);
+
+        for rp in &materials.remove_files {
+            std::fs::remove_file(data.join(rp)).expect("remove file");
+        }
+
+        if materials.has_id_as {
+            discover_given_ids(&client, items, selection, &mut *vars);
+        }
+    }
+}
+
+/// Record follow-up discoveries for a non-final `when:` call: `calc` outputs
+/// plus `id_as`/`asset_id_as` hash lookups. Split from
+/// [`dispatch_when_calls`].
+fn record_follow_up_ids(call: &Value, client: &Client, vars: &mut HashMap<String, String>) {
+    process_calc(call, &mut *vars);
+    if let Some(id_as) = call.get("id_as").and_then(|v| v.as_str()) {
+        let bare = id_as.trim_start_matches('$');
+        let discover_path = call
+            .get("discover_path")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("id_as {id_as}: requires discover_path"));
+        let path = interpolate(discover_path, vars);
+        let hash = discover_photo_hash(client, &path);
+        vars.insert(bare.to_string(), hash);
+    }
+    if let Some(asset_id_as) = call.get("asset_id_as").and_then(|v| v.as_str()) {
+        let bare = asset_id_as.trim_start_matches('$');
+        let discover_path = call
+            .get("discover_path")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("asset_id_as {asset_id_as}: requires discover_path"));
+        let path = interpolate(discover_path, vars);
+        let asset_id = discover_asset_id(client, &path);
+        vars.insert(bare.to_string(), asset_id);
+    }
+}
+
+/// Dispatch a scenario's `when:` calls and assert every response: the last
+/// call against the top-level `then:` block, every other call against its own.
+/// Split from [`interpret_scenario`].
+fn dispatch_when_calls(
+    when: &Value,
+    vars: &mut HashMap<String, String>,
+    then_items: &[Value],
+    data: &Path,
+) {
     if when.is_array() {
         let calls = when.as_array().expect("when array");
         let mut client_opt: Option<Client> = None;
@@ -1668,7 +1772,7 @@ fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) 
             // Mint items bind a token into `vars` without an HTTP call, so
             // they are handled before client dispatch. They cannot be the
             // final item: there would be no response for `then:` to assert.
-            if process_mint_timestamp_token(call, &mut vars) {
+            if process_mint_timestamp_token(call, &mut *vars) {
                 assert!(
                     i != calls.len() - 1,
                     "mint_timestamp_token cannot be the last when item — no response \
@@ -1680,7 +1784,7 @@ fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) 
                 client_opt = Some(make_client());
             }
             let client = client_opt.as_ref().expect("client");
-            let resp = dispatch_when_item(call, &vars, client);
+            let resp = dispatch_when_item(call, vars, client);
 
             let is_last = i == calls.len() - 1;
 
@@ -1709,7 +1813,7 @@ fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) 
                 .and_then(|c| c.as_object())
                 .is_some_and(|c| !c.is_empty());
 
-            check_status_assertions(&resp, call_then, &vars);
+            check_status_assertions(&resp, call_then, vars);
             // A `then:` block is asserted before this call's `capture` and
             // `calc` feed the variables, so an assertion cannot depend on a
             // value the response it is asserting produced. It fails loudly
@@ -1719,50 +1823,77 @@ fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) 
                 .then(|| resp.into_bytes().expect("response body"));
             if let Some(body) = body.as_deref() {
                 if then_needs_body(call_then) {
-                    check_body_assertions(body, call_then, &vars);
+                    check_body_assertions(body, call_then, vars);
                 }
                 if has_capture {
-                    process_capture(call, body, &mut vars);
+                    process_capture(call, body, &mut *vars);
                 }
             }
-            check_file_and_serve_assertions(call_then, &data, &vars, client);
+            check_file_and_serve_assertions(call_then, data, vars, client);
 
             if !is_last {
-                process_calc(call, &mut vars);
-                if let Some(id_as) = call.get("id_as").and_then(|v| v.as_str()) {
-                    let bare = id_as.trim_start_matches('$');
-                    let discover_path = call
-                        .get("discover_path")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_else(|| panic!("id_as {id_as}: requires discover_path"));
-                    let path = interpolate(discover_path, &vars);
-                    let hash = discover_photo_hash(client, &path);
-                    vars.insert(bare.to_string(), hash);
-                }
-                if let Some(asset_id_as) = call.get("asset_id_as").and_then(|v| v.as_str()) {
-                    let bare = asset_id_as.trim_start_matches('$');
-                    let discover_path = call
-                        .get("discover_path")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_else(|| {
-                            panic!("asset_id_as {asset_id_as}: requires discover_path")
-                        });
-                    let path = interpolate(discover_path, &vars);
-                    let asset_id = discover_asset_id(client, &path);
-                    vars.insert(bare.to_string(), asset_id);
-                }
+                record_follow_up_ids(call, client, &mut *vars);
             }
         }
     } else {
         let client = make_client();
-        let resp = dispatch_when_item(when, &vars, &client);
-        check_status_assertions(&resp, then_items, &vars);
+        let resp = dispatch_when_item(when, vars, &client);
+        check_status_assertions(&resp, then_items, vars);
         if then_needs_body(then_items) {
             let body = resp.into_bytes().expect("response body");
-            check_body_assertions(&body, then_items, &vars);
+            check_body_assertions(&body, then_items, vars);
         }
-        check_file_and_serve_assertions(then_items, &data, &vars, &client);
+        check_file_and_serve_assertions(then_items, data, vars, &client);
     }
+}
+
+/// Interpret a scenario, optionally against a selected format.
+///
+/// `selection` is `Some` for a randomized run: it is the format the run's seed
+/// resolved to, and it is what a `random_media` given item materialises. It is
+/// `None` for a deterministic scenario, where a format never varies.
+fn interpret_scenario(scenario: &Value, selection: Option<&RandomizableFormat>) {
+    let _guard = TEST_SERIAL_GUARD
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _ = &*TEST_ENV;
+    // Before the wipe: a scenario that panicked mid-`chmod` may have left a
+    // directory the reset could not otherwise unlink inside of.
+    restore_path_modes();
+    reset_backend_state();
+    let data = test_image_home();
+    set_image_home(data.clone());
+
+    let given = scenario["given"].as_array();
+    let then_items = scenario["then"].as_array().expect("then must be an array");
+
+    let has_given = given.is_some_and(|items| !items.is_empty());
+    let needs_data = has_given
+        || then_items
+            .iter()
+            .any(|item| item.get("file_exists").is_some() || item.get("file_absent").is_some());
+
+    let mut vars: HashMap<String, String> = HashMap::new();
+
+    let has_config_item =
+        given.is_some_and(|items| items.iter().any(|item| item.get("config").is_some()));
+
+    if needs_data {
+        if scenario.to_string().contains("${data_path}") {
+            let data_path = data.to_string_lossy().to_string();
+            vars.insert("data_path".to_string(), data_path);
+        }
+
+        if let Some(items) = given {
+            let materials = collect_given_materials(items, &data, has_given, selection, &mut vars);
+
+            scan_materialized(&data, items, selection, &mut vars, &materials);
+        }
+    }
+
+    let when = &scenario["when"];
+
+    dispatch_when_calls(when, &mut vars, then_items, &data);
 
     if has_config_item {
         write_config(&serde_json::json!({"read_only_mode": false, "fs_notify_watcher": true}));
@@ -1782,7 +1913,7 @@ fn load_scenario(dir: &Path, subdir: &str, name: &str) -> Value {
 
 pub fn run_backend_scenario(name: &str) {
     let dir: std::path::PathBuf = std::env::var("CARGO_MANIFEST_DIR").map_or_else(
-        |_| std::env::current_dir().unwrap(),
+        |_| std::env::current_dir().expect("current dir for scenario path"),
         std::path::PathBuf::from,
     );
     let scenario = load_scenario(&dir, "", name);
@@ -1796,7 +1927,7 @@ pub fn run_backend_scenario(name: &str) {
 
 pub fn run_selftest_scenario(name: &str) {
     let dir: std::path::PathBuf = std::env::var("CARGO_MANIFEST_DIR").map_or_else(
-        |_| std::env::current_dir().unwrap(),
+        |_| std::env::current_dir().expect("current dir for scenario path"),
         std::path::PathBuf::from,
     );
     let scenario = load_scenario(&dir, "selftest", name);
@@ -2053,7 +2184,7 @@ mod tests {
     /// here would make every generated pass test the 2x2 path instead.
     #[test]
     fn generated_random_media_is_not_degenerate() {
-        assert!(RANDOM_MEDIA_WIDTH > 4 && RANDOM_MEDIA_HEIGHT > 4);
+        const { assert!(RANDOM_MEDIA_WIDTH > 4 && RANDOM_MEDIA_HEIGHT > 4) };
         let generated: Vec<_> = randomizable_formats(capabilities::capabilities())
             .into_iter()
             .filter(|format| format.plan == FixturePlan::Generate)

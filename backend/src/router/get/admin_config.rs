@@ -251,11 +251,13 @@ mod tests {
     fn get_admin_config_fields_all_mapped() {
         use crate::model::config::AppConfig;
         use std::path::PathBuf;
-        let mut config = AppConfig::default();
-        config.data_home = Some(PathBuf::from("/tmp/data"));
-        config.image_home = Some(PathBuf::from("/tmp/images"));
-        config.web_root = Some(PathBuf::from("/tmp/web"));
-        config.auth_key = Some("key".to_string());
+        let config = AppConfig {
+            data_home: Some(PathBuf::from("/tmp/data")),
+            image_home: Some(PathBuf::from("/tmp/images")),
+            web_root: Some(PathBuf::from("/tmp/web")),
+            auth_key: Some("key".to_string()),
+            ..AppConfig::default()
+        };
         for field in crate::model::config::config_tier_table::CONFIG_FIELDS {
             let value = super::field_value(&config, field.name);
             assert_ne!(

@@ -103,7 +103,9 @@ pub fn prefetch_as_share(
     (
         body["prefetch"]["timestamp"].as_i64().expect("timestamp"),
         body["token"].as_str().expect("token").to_string(),
-        body["prefetch"]["locateTo"].as_u64().map(|v| v as usize),
+        body["prefetch"]["locateTo"]
+            .as_u64()
+            .map(|v| usize::try_from(v).expect("prefetch locateTo fits in usize")),
     )
 }
 

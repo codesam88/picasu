@@ -1,4 +1,4 @@
-//! Contract parity between the mounted Rocket routes and the public OpenAPI
+//! Contract parity between the mounted Rocket routes and the public `OpenAPI`
 //! spec.
 //!
 //! The spec is generated from two things that are not the runtime route table:
@@ -136,7 +136,9 @@ fn render(operations: &HashSet<Operation>) -> String {
 /// the route table is read.
 fn lock_state() -> MutexGuard<'static, ()> {
     let _ = &*TEST_ENV;
-    TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner())
+    TEST_SERIAL_GUARD
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 #[test]
@@ -149,10 +151,9 @@ fn every_mounted_route_is_documented() {
 
     assert!(
         undocumented.is_empty(),
-        "mounted routes missing from the public spec:\n{}\n\
+        "mounted routes missing from the public spec:\n{undocumented}\n\
          Fix: add a `#[utoipa::path]` annotation to the handler. \
-         `#[utoipauto(paths = …)]` already scans all of `backend/src/router`.",
-        undocumented
+         `#[utoipauto(paths = …)]` already scans all of `backend/src/router`."
     );
 }
 
@@ -163,10 +164,9 @@ fn every_spec_operation_is_mounted() {
 
     assert!(
         stale.is_empty(),
-        "operations documented in the public spec but not mounted:\n{}\n\
+        "operations documented in the public spec but not mounted:\n{stale}\n\
          Fix: the route was renamed or removed — regenerate the spec with \
-         `just openapi-gen` and review the diff.",
-        stale
+         `just openapi-gen` and review the diff."
     );
 }
 
@@ -351,7 +351,10 @@ fn self_check_detects_duplicate_operation_ids() {
     let unique = duplicate_operation_ids(&serde_json::json!({
         "paths": {"/get/get-data": {"get": {"operationId": "get_data"}}}
     }));
-    assert!(unique.is_empty());
+    assert!(
+        unique.is_empty(),
+        "single-operation spec has no duplicates: {unique:?}"
+    );
 }
 
 #[test]
@@ -391,7 +394,7 @@ fn is_unauthorized_probe(method: &str, path: &str) -> bool {
 }
 
 /// The `401` response entry of an operation, or `Null` when it declares none.
-fn unauthorized_response<'a>(operation: &'a serde_json::Value) -> &'a serde_json::Value {
+fn unauthorized_response(operation: &serde_json::Value) -> &serde_json::Value {
     &operation["responses"]["401"]
 }
 
@@ -581,14 +584,16 @@ fn published_parameters_agree_with_the_signature() {
                 .arguments
                 .iter()
                 .find(|(argument, _)| argument.as_str() == name)
-                .map(|(_, optional)| *optional)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "{name}: published by the document but bound by no \
+                .map_or_else(
+                    || {
+                        panic!(
+                            "{name}: published by the document but bound by no \
                          argument of {}",
-                        handler.name
-                    )
-                });
+                            handler.name
+                        )
+                    },
+                    |(_, optional)| *optional,
+                );
             assert_eq!(
                 required,
                 !optional,

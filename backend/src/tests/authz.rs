@@ -110,7 +110,9 @@ fn prefetch_as_share(
     (
         body["prefetch"]["timestamp"].as_i64().expect("timestamp"),
         body["token"].as_str().expect("token").to_string(),
-        body["prefetch"]["locateTo"].as_u64().map(|v| v as usize),
+        body["prefetch"]["locateTo"]
+            .as_u64()
+            .map(|v| usize::try_from(v).expect("prefetch locateTo fits in usize")),
     )
 }
 
@@ -126,7 +128,9 @@ fn prefetch_as_admin(client: &Client, locate: &str) -> (i64, String, Option<usiz
     (
         body["prefetch"]["timestamp"].as_i64().expect("timestamp"),
         body["token"].as_str().expect("token").to_string(),
-        body["prefetch"]["locateTo"].as_u64().map(|v| v as usize),
+        body["prefetch"]["locateTo"]
+            .as_u64()
+            .map(|v| usize::try_from(v).expect("prefetch locateTo fits in usize")),
     )
 }
 
@@ -216,7 +220,7 @@ fn asset_token_is_rejected_where_a_snapshot_token_is_required() {
 
 /// A `ClaimsTimestamp` snapshot token must not be accepted where a
 /// `ClaimsHash` asset token is required. This direction already fails closed
-/// (ClaimsHash's required fields are absent), so it is a regression pin rather
+/// (`ClaimsHash`'s required fields are absent), so it is a regression pin rather
 /// than a reproduction.
 #[test]
 fn snapshot_token_is_rejected_where_an_asset_token_is_required() {
@@ -256,7 +260,7 @@ fn original_serving_without_allow_original_is_401() {
     let hash: arrayvec::ArrayString<64> = "b".repeat(64).parse().expect("hash");
     let token = crate::router::auth::ClaimsHash::new(
         hash,
-        asset.clone(),
+        asset,
         chrono::Utc::now().timestamp_millis(),
         false,
     )
@@ -275,7 +279,7 @@ fn original_serving_without_allow_original_is_401() {
 
 // ── get-metadata is album-scoped ────────────────────────────────────
 
-/// A share on AlbumB must not read AlbumA's asset metadata by id.
+/// A share on `AlbumB` must not read `AlbumA`'s asset metadata by id.
 #[test]
 fn metadata_is_scoped_to_the_shares_album() {
     let _g = lock();
@@ -298,7 +302,7 @@ fn metadata_is_scoped_to_the_shares_album() {
 
 // ── share-guarded writes are bound to the caller ────────────────────
 
-/// A share on AlbumB must not rename AlbumA.
+/// A share on `AlbumB` must not rename `AlbumA`.
 #[test]
 fn share_cannot_rename_another_album() {
     let _g = lock();
@@ -327,8 +331,8 @@ fn share_cannot_rename_another_album() {
     );
 }
 
-/// A share on AlbumA must not write a description into AlbumB's asset by
-/// supplying AlbumB's snapshot timestamp.
+/// A share on `AlbumA` must not write a description into `AlbumB`'s asset by
+/// supplying `AlbumB`'s snapshot timestamp.
 #[test]
 fn share_cannot_write_another_albums_asset() {
     let _g = lock();
@@ -355,7 +359,7 @@ fn share_cannot_write_another_albums_asset() {
 
 // ── token renewal is bound to the presenter's share ─────────────────
 
-/// ShareA's credentials must not renew ShareB's snapshot token.
+/// `ShareA`'s credentials must not renew `ShareB`'s snapshot token.
 #[test]
 fn renewal_is_bound_to_the_presenters_share() {
     let _g = lock();

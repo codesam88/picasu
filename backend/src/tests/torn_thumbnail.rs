@@ -127,11 +127,68 @@ fn assert_round_rewrote_thumbnail(
     );
 }
 
+/// Spawn the reader threads that race thumbnail regeneration: each polls the
+/// compressed endpoint until `stop` is set, recording the first torn read.
+/// Split from
+/// [`compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated`].
+fn spawn_torn_readers(
+    url: &str,
+    token: &str,
+    cookie: &rocket::http::Cookie<'static>,
+    stop: &Arc<AtomicBool>,
+    failure: &Arc<Mutex<Option<String>>>,
+    reads: &Arc<AtomicUsize>,
+    good_reads: &Arc<AtomicUsize>,
+) -> Vec<std::thread::JoinHandle<()>> {
+    (0..READERS)
+        .map(|_| {
+            let stop = Arc::clone(stop);
+            let failure = Arc::clone(failure);
+            let reads = Arc::clone(reads);
+            let good_reads = Arc::clone(good_reads);
+            let url = url.to_string();
+            let token = token.to_string();
+            let cookie = cookie.clone();
+            std::thread::spawn(move || {
+                let client = make_client();
+                while !stop.load(Ordering::Acquire) {
+                    let resp = client
+                        .get(&url)
+                        .cookie(cookie.clone())
+                        .header(auth_header(&token))
+                        .dispatch();
+                    reads.fetch_add(1, Ordering::Relaxed);
+                    let status = resp.status();
+                    let body = resp.into_bytes().unwrap_or_default();
+                    let report = if status != Status::Ok {
+                        Some(format!("HTTP {status}"))
+                    } else if !is_complete_jpeg(&body) {
+                        Some(format!(
+                            "torn body: {} bytes, head {:02x?}, tail {:02x?}",
+                            body.len(),
+                            &body[..body.len().min(4)],
+                            &body[body.len().saturating_sub(4)..],
+                        ))
+                    } else {
+                        None
+                    };
+                    if let Some(report) = report {
+                        let mut slot = failure.lock().expect("failure lock");
+                        slot.get_or_insert(report);
+                    } else {
+                        good_reads.fetch_add(1, Ordering::Relaxed);
+                    }
+                }
+            })
+        })
+        .collect()
+}
+
 #[test]
 fn compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated() {
     let _guard = TEST_SERIAL_GUARD
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     // Force the shared test environment before touching backend state: the
     // config bootstrap sets DATA_PATH itself, so ordering matters here the
     // same way it does for scenario tests.
@@ -175,7 +232,7 @@ fn compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated() {
 
     let hash =
         blake3_hasher(std::fs::File::open(&photo_abs).expect("open photo")).expect("hash photo");
-    let token = ClaimsHash::new(hash.clone(), hash.clone(), 0, false).encode();
+    let token = ClaimsHash::new(hash, hash, 0, false).encode();
     let url = format!("/object/compressed/{}/{}.jpg", &hash[..2], hash);
 
     // ── Sanity: the endpoint must serve a complete JPEG before we race it ──
@@ -205,48 +262,7 @@ fn compressed_get_never_returns_a_torn_thumbnail_while_it_is_regenerated() {
     let reads = Arc::new(AtomicUsize::new(0));
     let good_reads = Arc::new(AtomicUsize::new(0));
 
-    let readers: Vec<_> = (0..READERS)
-        .map(|_| {
-            let stop = Arc::clone(&stop);
-            let failure = Arc::clone(&failure);
-            let reads = Arc::clone(&reads);
-            let good_reads = Arc::clone(&good_reads);
-            let url = url.clone();
-            let token = token.clone();
-            let cookie = cookie.clone();
-            std::thread::spawn(move || {
-                let client = make_client();
-                while !stop.load(Ordering::Acquire) {
-                    let resp = client
-                        .get(&url)
-                        .cookie(cookie.clone())
-                        .header(auth_header(&token))
-                        .dispatch();
-                    reads.fetch_add(1, Ordering::Relaxed);
-                    let status = resp.status();
-                    let body = resp.into_bytes().unwrap_or_default();
-                    let report = if status != Status::Ok {
-                        Some(format!("HTTP {status}"))
-                    } else if !is_complete_jpeg(&body) {
-                        Some(format!(
-                            "torn body: {} bytes, head {:02x?}, tail {:02x?}",
-                            body.len(),
-                            &body[..body.len().min(4)],
-                            &body[body.len().saturating_sub(4)..],
-                        ))
-                    } else {
-                        None
-                    };
-                    if let Some(report) = report {
-                        let mut slot = failure.lock().expect("failure lock");
-                        slot.get_or_insert(report);
-                    } else {
-                        good_reads.fetch_add(1, Ordering::Relaxed);
-                    }
-                }
-            })
-        })
-        .collect();
+    let readers = spawn_torn_readers(&url, &token, &cookie, &stop, &failure, &reads, &good_reads);
 
     for round in 1..=ROUNDS {
         let before = thumbnail_signature(&thumb_path);

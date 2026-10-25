@@ -223,6 +223,32 @@ pub fn cover_content_hash_from_data(abstract_data: &AbstractData) -> Option<Arra
     Some(record.content_hash.unwrap_or(record.asset_id))
 }
 
+pub fn abstract_data_to_timestamp_return(
+    mut abstract_data: AbstractData,
+    timestamp: i64,
+    show_download: bool,
+    show_metadata: bool,
+    asset_id: ArrayString<64>,
+    cover_content_hash: Option<ArrayString<64>>,
+) -> DataBaseTimestampReturn {
+    let result = DataBaseTimestampReturn::with_asset_id(
+        abstract_data.clone(),
+        DEFAULT_PRIORITY_LIST,
+        timestamp,
+        show_download,
+        asset_id,
+        cover_content_hash,
+    );
+    clear_abstract_data_metadata(&mut abstract_data, show_metadata);
+    DataBaseTimestampReturn {
+        abstract_data,
+        timestamp: result.timestamp,
+        token: result.token,
+        asset_id: asset_id.to_string(),
+        cover_hash: result.cover_hash,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::clear_abstract_data_metadata;
@@ -288,31 +314,5 @@ mod tests {
         let mut data = img_with_path(false);
         clear_abstract_data_metadata(&mut data, false);
         assert!(data.path().is_none());
-    }
-}
-
-pub fn abstract_data_to_timestamp_return(
-    mut abstract_data: AbstractData,
-    timestamp: i64,
-    show_download: bool,
-    show_metadata: bool,
-    asset_id: ArrayString<64>,
-    cover_content_hash: Option<ArrayString<64>>,
-) -> DataBaseTimestampReturn {
-    let result = DataBaseTimestampReturn::with_asset_id(
-        abstract_data.clone(),
-        DEFAULT_PRIORITY_LIST,
-        timestamp,
-        show_download,
-        asset_id,
-        cover_content_hash,
-    );
-    clear_abstract_data_metadata(&mut abstract_data, show_metadata);
-    DataBaseTimestampReturn {
-        abstract_data,
-        timestamp: result.timestamp,
-        token: result.token,
-        asset_id: asset_id.to_string(),
-        cover_hash: result.cover_hash,
     }
 }

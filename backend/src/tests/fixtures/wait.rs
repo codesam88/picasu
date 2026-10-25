@@ -19,7 +19,6 @@ pub fn wait_for_album_index(client: &Client, timeout_ms: u64) {
         let state = body["state"].as_str().unwrap_or("unknown");
 
         match state {
-            "idle" | "running" => {}
             "completed" => return,
             "failed" => {
                 let detail = body["detail"].as_str().unwrap_or("(no detail)");
@@ -31,9 +30,10 @@ pub fn wait_for_album_index(client: &Client, timeout_ms: u64) {
             _ => {}
         }
 
-        if std::time::Instant::now() > deadline {
-            panic!("Index did not complete within {timeout_ms} ms (state={state})",);
-        }
+        assert!(
+            std::time::Instant::now() <= deadline,
+            "Index did not complete within {timeout_ms} ms (state={state})"
+        );
 
         std::thread::sleep(std::time::Duration::from_millis(100));
     }

@@ -19,7 +19,7 @@ use redb::ReadableDatabase as _;
 fn bin_path() -> PathBuf {
     ["CARGO_BIN_EXE_picasu_cmd", "CARGO_BIN_EXE_picasu-cmd"]
         .into_iter()
-        .find_map(|key| std::env::var_os(key))
+        .find_map(std::env::var_os)
         .map(PathBuf::from)
         .expect("cargo must expose the picasu-cmd binary path to integration tests")
 }
@@ -106,9 +106,7 @@ fn raw_entry(data_home: &Path, id: &str) -> Option<serde_json::Value> {
         Err(redb::TableError::TableDoesNotExist(_)) => return None,
         Err(e) => panic!("open users table: {e}"),
     };
-    let Some(row) = table.get(id).expect("read row") else {
-        return None;
-    };
+    let row = table.get(id).expect("read row")?;
     Some(serde_json::from_str(row.value()).expect("entry must decode as JSON"))
 }
 
@@ -574,9 +572,8 @@ fn pin13_trivial_passwords_env_mirrors_the_server_policy() {
         "a weak password must be accepted with trivial passwords on, stderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(
+    assert!(
         entry(dir2.path(), "alice").get("hash").is_some(),
-        true,
         "the accepted password must be hashed into the store"
     );
 }
