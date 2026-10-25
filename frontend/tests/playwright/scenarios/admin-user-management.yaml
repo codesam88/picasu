@@ -30,6 +30,7 @@ steps:
       - ui.route: /timeline
   - when:
       - navigate: /config
+      - click: tab/Administration
     assert:
       - ui.text_visible: User Management
       - ui.text_visible: admin
