@@ -1,0 +1,62 @@
+name: Non-admin user provisioned via CLI cannot use the gallery
+covers:
+  api:
+    - GET /get/server-info
+    - POST /post/users/authenticate
+    - POST /post/index/album
+    - GET /get/index/status
+  ui:
+    - route:/timeline
+    - route:/login
+    - photo.jpg
+# F1 (plan finding): viewers currently bounce to /login seconds after
+# landing because the data path (prefetch/get-tags/get-albums) is
+# admin-gated. This scenario pins the non-admin story end to end: CLI
+# provision (no bootstrap window involved), login, timeline grid, image
+# view. It FAILS until the backend grants viewer reads (options in
+# .plan/dsl-first-e2e-strategy.md). Not invite-specific: the same bounce
+# hits users created any other way.
+server:
+  bootstrap_admin: false
+  pbkdf_iterations: 1000
+session: none
+given:
+  - empty: true
+  - cli_user:
+      user_id: admin
+      password: e2e_test_pwd
+      admin: true
+  - cli_user:
+      user_id: viewer
+      password: viewer-secret-9
+  - photo: /library/photo.jpg
+steps:
+  # Control: the same grid works for the admin, so the viewer failure
+  # below isolates the tier, not the fixture.
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+      - ui.chip_visible: photo.jpg
+  # Non-admin story: login works (identity is fine), …
+  - when:
+      - login:
+          user: viewer
+          password: viewer-secret-9
+    assert:
+      - ui.route: /timeline
+  # … but the grid never loads: prefetch is admin-gated, the chain throws,
+  # no rows arrive, and the interceptor bounces the viewer to /login.
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.route: /timeline
+      - ui.chip_visible: photo.jpg
+  - when:
+      - click.first: true
+    assert:
+      - ui.route: /view/
+      - ui.count: '#col-ref img'
+        equals: 1
