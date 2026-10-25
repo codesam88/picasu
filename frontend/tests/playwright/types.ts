@@ -117,6 +117,21 @@ export const GivenSourceFile = z
       'source_file takes either `fixture` (pinned manifest bytes) or `format` (snapfab-generated), not both'
   })
 
+/// A user provisioned offline via `picasu-cmd` before backend launch
+/// (phase A). Unlike `user:` (online bootstrap, first admin only), this can
+/// seed any number of users with any role — the only way to create the
+/// second (non-admin) user. Requires `server:` (the server must be down
+/// while the CLI holds the store).
+export const GivenCliUser = z
+  .object({
+    cli_user: z.object({
+      user_id: z.string().min(1),
+      password: z.string().min(1),
+      admin: z.boolean().optional()
+    })
+  })
+  .strict()
+
 export const GivenItem = z.union([
   GivenDirAlbum,
   GivenPhoto,
@@ -127,6 +142,7 @@ export const GivenItem = z.union([
   GivenConfig,
   GivenUser,
   GivenInvite,
+  GivenCliUser,
   GivenMove
 ])
 
@@ -452,6 +468,7 @@ export type UiAssertItem = z.infer<typeof UiAssertItem>
 export type UiAssertInputValue = z.infer<typeof UiAssertInputValue>
 export type UiStep = z.infer<typeof UiStep>
 export type GivenMove = z.infer<typeof GivenMove>
+export type GivenCliUser = z.infer<typeof GivenCliUser>
 export type ServerDeclaration = z.infer<typeof ServerDeclaration>
 export type GivenItem = z.infer<typeof GivenItem>
 export type Covers = z.infer<typeof Covers>

@@ -91,6 +91,21 @@ zero hand-written browser files.
   viewers browse-less (contradicts the invite feature's purpose — not
   recommended); (c) stop-gap: nothing ships until (a) is decided.
 
+## Confirmation (2026-10-25): not invite-specific
+
+- New `scenarios/non-admin-cmd-user.yaml` (+ `cli_user:` given verb for
+  offline `picasu-cmd` provisioning in phase A, before backend launch;
+  requires `server:` with `bootstrap_admin: false` — fail-fast otherwise).
+- Result: the CLI-seeded admin logs in and sees `photo.jpg` on the
+  timeline (control green — fixture, indexing, and CLI provisioning all
+  work); the CLI-seeded viewer logs in, reaches the `/timeline` shell, and
+  the grid stays empty — `ui.chip_visible: photo.jpg` finds nothing in
+  15 s. Same failure with zero invite involvement, so the gap is "all
+  non-admin users are untested and broken", not "invites are broken".
+- The file is committed failing (no DSL skip mechanism exists) as the F1
+  regression pin: full suite reads 43 pass + 1 fail until the tier
+  decision lands. Temp idle-probe scenarios were removed after confirming.
+
 ## Progress (2026-10-25, S1 done)
 
 - `server:` (`bootstrap_admin`, `pbkdf_iterations`,

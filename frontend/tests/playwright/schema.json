@@ -101,6 +101,23 @@
       "required": ["invite"],
       "additionalProperties": false
     },
+    "givenCliUser": {
+      "type": "object",
+      "properties": {
+        "cli_user": {
+          "type": "object",
+          "properties": {
+            "user_id": { "type": "string", "minLength": 1 },
+            "password": { "type": "string", "minLength": 1 },
+            "admin": { "type": "boolean" }
+          },
+          "required": ["user_id", "password"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["cli_user"],
+      "additionalProperties": false
+    },
     "givenPhotoRaw": {
       "type": "object",
       "properties": {
@@ -143,6 +160,7 @@
         { "$ref": "#/definitions/givenConfig" },
         { "$ref": "#/definitions/givenUser" },
         { "$ref": "#/definitions/givenInvite" },
+        { "$ref": "#/definitions/givenCliUser" },
         { "$ref": "#/definitions/givenMove" }
       ]
     },
