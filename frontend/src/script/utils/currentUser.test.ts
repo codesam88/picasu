@@ -1,6 +1,12 @@
 import { describe, expect, test, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { canSeeUserPanel, errorToMessage, selfRowState, useCurrentUser } from './currentUser'
+import {
+  canSeeUserPanel,
+  errorToMessage,
+  selfRowState,
+  shouldLoadAppConfig,
+  useCurrentUser
+} from './currentUser'
 import { useSessionStore } from '@/store/sessionStore'
 
 beforeEach(() => {
@@ -74,5 +80,16 @@ describe('errorToMessage', () => {
     const result = errorToMessage(500)
     expect(result.redirectLogin).toBe(false)
     if (!result.redirectLogin) expect(result.message.length).toBeGreaterThan(0)
+  })
+})
+
+describe('shouldLoadAppConfig', () => {
+  test('non-admin sessions skip the admin-only config endpoint', () => {
+    expect(shouldLoadAppConfig({ id: 'bob', isAdmin: false })).toBe(false)
+  })
+
+  test('admins, share visitors and logged-out boot still load config', () => {
+    expect(shouldLoadAppConfig({ id: 'alice', isAdmin: true })).toBe(true)
+    expect(shouldLoadAppConfig(null)).toBe(true)
   })
 })

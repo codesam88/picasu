@@ -90,21 +90,34 @@ import { tryWithMessageStore } from '@/script/utils/try_catch'
 import { useConstStore } from '@/store/constStore'
 import { useTheme } from 'vuetify'
 import { bootstrapUser, createUser, login } from '@/api/users'
-import { submitRegistration, inviteFromQuery } from '@/script/utils/registration'
+import {
+  initialRegisterUserId,
+  inviteFromQuery,
+  submitRegistration,
+  usernameFromQuery
+} from '@/script/utils/registration'
 
 const password = ref('')
 const confirmPassword = ref('')
 const showPassword = ref(false)
 const loading = ref(false)
 
-// Prefill from the last successful login; empty on first run.
-const LAST_USER_ID_KEY = 'picasu-last-user-id'
-const userId = ref(localStorage.getItem(LAST_USER_ID_KEY) ?? '')
-
 const router = useRouter()
 const route = useRoute()
 const invite = computed(() => inviteFromQuery(route.query as { invite?: unknown }))
+const usernameHint = computed(() => usernameFromQuery(route.query as { username?: unknown }))
 const isInviteMode = computed(() => invite.value !== undefined)
+
+// Prefill from the last successful login; empty on first run. In invite
+// mode the link's username hint wins (or empty), never the old login.
+const LAST_USER_ID_KEY = 'picasu-last-user-id'
+const userId = ref(
+  initialRegisterUserId({
+    invite: invite.value,
+    usernameParam: usernameHint.value,
+    lastUserId: localStorage.getItem(LAST_USER_ID_KEY) ?? ''
+  })
+)
 const messageStore = useMessageStore('mainId')
 const constStore = useConstStore('mainId')
 const vuetifyTheme = useTheme()

@@ -1,6 +1,12 @@
 import { describe, expect, test, vi } from 'vitest'
 import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
-import { RACE_LOST_NOTICE, isRegistrationSubmittable, submitRegistration } from './registration'
+import {
+  RACE_LOST_NOTICE,
+  initialRegisterUserId,
+  isRegistrationSubmittable,
+  submitRegistration,
+  usernameFromQuery
+} from './registration'
 
 const axiosError = (status: number) => {
   const err = new Error(`Request failed with status code ${status}`) as Error & {
@@ -231,5 +237,33 @@ describe('submitRegistration', () => {
     )
     expect(deps.login).not.toHaveBeenCalled()
     expect(deps.onError).not.toHaveBeenCalled()
+  })
+})
+
+describe('usernameFromQuery', () => {
+  test('returns the trimmed username when non-empty', () => {
+    expect(usernameFromQuery({ username: ' maria ' })).toBe('maria')
+  })
+
+  test('returns undefined for missing or empty values', () => {
+    expect(usernameFromQuery({})).toBeUndefined()
+    expect(usernameFromQuery({ username: '   ' })).toBeUndefined()
+    expect(usernameFromQuery({ username: 42 as unknown as string })).toBeUndefined()
+  })
+})
+
+describe('initialRegisterUserId', () => {
+  test('invite mode prefers the username query param over last-user-id', () => {
+    expect(
+      initialRegisterUserId({ invite: 'tok', usernameParam: 'maria', lastUserId: 'old' })
+    ).toBe('maria')
+  })
+
+  test('invite mode without a username param starts empty, not last-user-id', () => {
+    expect(initialRegisterUserId({ invite: 'tok', lastUserId: 'old' })).toBe('')
+  })
+
+  test('non-invite mode keeps the last-user-id prefill', () => {
+    expect(initialRegisterUserId({ lastUserId: 'old' })).toBe('old')
   })
 })

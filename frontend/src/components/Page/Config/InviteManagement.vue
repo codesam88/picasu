@@ -86,7 +86,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { listInvites, createInvite, revokeInvite } from '@/api/invites'
+import { listInvites, createInvite, revokeInvite, buildInviteLink } from '@/api/invites'
 import type { InviteView } from '@/api/invites'
 import { useMessageStore } from '@/store/messageStore'
 import { tryWithMessageStore } from '@/script/utils/try_catch'
@@ -120,7 +120,11 @@ const create = async () => {
   try {
     await tryWithMessageStore('mainId', async () => {
       const result = await createInvite(expiresInHours.value, usernameInput.value)
-      createdLink.value = `${window.location.origin}/register?invite=${result.token}`
+      createdLink.value = buildInviteLink(
+        window.location.origin,
+        result.token,
+        result.invite.username ?? undefined
+      )
       messageStore.success('Invite created')
       usernameInput.value = ''
       expiryInput.value = ''

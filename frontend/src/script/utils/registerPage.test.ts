@@ -29,4 +29,9 @@ describe('RegisterPage single-owner display', () => {
     expect(source).toContain('createUser')
     expect(source).toContain('inviteFromQuery')
   })
+
+  test('invite mode prefills from the link username hint, not last login', () => {
+    expect(source).toContain('usernameFromQuery')
+    expect(source).toContain('initialRegisterUserId')
+  })
 })
