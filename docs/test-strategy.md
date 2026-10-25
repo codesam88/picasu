@@ -205,6 +205,11 @@ gates — rather than inventing its own.
   link the lib without `cfg(test)`.
 - **clippy `unwrap_used`**: enforced under `-D warnings` over
   `--all-targets`, so test code is gated the same as lib and bins.
+- **pinned toolchain**: `rust-toolchain.toml` pins the exact stable release
+  (with `clippy` and `rustfmt` components) so dev machines and CI can never
+  drift apart — a new upstream lint cannot break the gate by surprise.
+  Dependabot's `rust-toolchain` updates propose the bump as a reviewable PR;
+  CI stays green on the pin until it merges.
 - **`cargo deny check`**: license and advisory audit, runs via `just audit`.
 - **`npm audit`**: runs in CI on every PR, not in precommit (too slow, some
   findings intentional via `overrides`).
