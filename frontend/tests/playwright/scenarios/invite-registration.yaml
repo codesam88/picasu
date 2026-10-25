@@ -1,0 +1,102 @@
+name: Invite registration binds, redeems once, and lands the viewer
+covers:
+  api:
+    - GET /get/server-info
+    - POST /post/users/bootstrap
+    - POST /post/users/authenticate
+    - POST /post/invites
+    - POST /post/users/register
+  ui:
+    - route:/timeline
+    - route:/login
+    - Create Account
+server:
+  bootstrap_admin: true
+  pbkdf_iterations: 1000
+session: none
+given:
+  - empty: true
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
+  - photo: /library/photo.jpg
+  - invite:
+      username: maria
+      expires_in_hours: 168
+    id_as: $bound
+  - invite:
+      expires_in_hours: 168
+    id_as: $open
+steps:
+  - when:
+      - navigate: /register?invite=${bound}&username=maria
+    assert:
+      - ui.text_visible: Create Account
+      - ui.input_value: textbox/User ID
+        contains: maria
+  - when:
+      - navigate: /login
+    assert:
+      - ui.route: /login
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: someone-else
+            password: someone-secret-9
+            invite: ${bound}
+          status: 403
+  - when:
+      - navigate: /register?invite=${bound}&username=maria
+      - fill: textbox/Password
+        value: maria-secret-9
+      - fill: textbox/Confirm Password
+        value: maria-secret-9
+      - click: button/Register
+    assert:
+      - ui.route: /timeline
+      - ui.visible: main/
+  - when:
+      - reload: true
+    assert:
+      - ui.route: /timeline
+      - ui.visible: main/
+  - when:
+      - navigate: /login
+    assert:
+      - ui.route: /login
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: maria
+            password: maria-secret-9
+            invite: ${bound}
+          status: 409
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: nobody
+            password: nobody-secret-9
+            invite: not-a-real-token
+          status: 404
+  - when:
+      - navigate: /register?invite=${open}
+      - fill: textbox/User ID
+        value: guest2
+      - fill: textbox/Password
+        value: guest2-secret-9
+      - fill: textbox/Confirm Password
+        value: guest2-secret-9
+      - click: button/Register
+    assert:
+      - ui.route: /timeline
+      - ui.visible: main/
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.route: /timeline
+      - api.response:
+          url: /get/users
+          status: 401

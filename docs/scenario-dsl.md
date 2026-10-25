@@ -46,23 +46,24 @@ Each entry in `given:` seeds state. Some forms may bind a result to
 assertions. Variables are interpolated as `${variable_name}` in string values
 across all verb blocks.
 
-| Form                     | Description                                                                                                                | Available in |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `empty: true`            | No-op; signals intent to start from clean state                                                                            | API, UI      |
-| `dir_album: <path>`      | Create a directory album on disk                                                                                           | API, UI      |
-| `photo: <path>`          | Generate a JPEG/PNG (`format:`) into the image store                                                                       | API, UI      |
-| `remove: <path>`         | Remove a file from the image store                                                                                         | API, UI      |
-| `config: { ... }`        | Set backend config (accepted fields differ per harness)                                                                    | API, UI      |
-| `user: { ... }`          | Enroll `{user_id, password}` as the first user (`POST /post/users/bootstrap`, forced admin; only while the store is empty) | UI           |
-| `raw_file: <path>`       | Write UTF-8 text (`content:`) to a path                                                                                    | API          |
-| `fixture: { ... }`       | Copy a checked-in manifest fixture into the image store                                                                    | API          |
-| `random_media: <path>`   | Write the format the run's seed selected (needs `randomize:`)                                                              | API          |
-| `duplicate_of: { ... }`  | Byte-identical copy of a file placed earlier in `given:`                                                                   | API          |
-| `truncate_file: { ... }` | Keep only the first `bytes` bytes of a given-phase file                                                                    | API          |
-| `patch_file: { ... }`    | Hex find/replace in a given-phase file (same-length patterns)                                                              | API          |
-| `photo_raw: <path>`      | Place a generated image without triggering an index scan                                                                   | UI           |
-| `source_file: <path>`    | Place a file _outside_ `IMAGE_HOME` for the browser to upload                                                              | UI           |
-| `move: <path>` + `to`    | Move a file within the image store                                                                                         | UI           |
+| Form                        | Description                                                                                                                           | Available in |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| `empty: true`               | No-op; signals intent to start from clean state                                                                                       | API, UI      |
+| `dir_album: <path>`         | Create a directory album on disk                                                                                                      | API, UI      |
+| `photo: <path>`             | Generate a JPEG/PNG (`format:`) into the image store                                                                                  | API, UI      |
+| `remove: <path>`            | Remove a file from the image store                                                                                                    | API, UI      |
+| `config: { ... }`           | Set backend config (accepted fields differ per harness)                                                                               | API, UI      |
+| `user: { ... }`             | Enroll `{user_id, password}` as the first user (`POST /post/users/bootstrap`, forced admin; only while the store is empty)            | UI           |
+| `invite: { ... }` + `id_as` | Mint a single-use invite via the admin API (`username` binds it, `expires_in_hours` defaults to 168); exposes the token as `${id_as}` | UI           |
+| `raw_file: <path>`          | Write UTF-8 text (`content:`) to a path                                                                                               | API          |
+| `fixture: { ... }`          | Copy a checked-in manifest fixture into the image store                                                                               | API          |
+| `random_media: <path>`      | Write the format the run's seed selected (needs `randomize:`)                                                                         | API          |
+| `duplicate_of: { ... }`     | Byte-identical copy of a file placed earlier in `given:`                                                                              | API          |
+| `truncate_file: { ... }`    | Keep only the first `bytes` bytes of a given-phase file                                                                               | API          |
+| `patch_file: { ... }`       | Hex find/replace in a given-phase file (same-length patterns)                                                                         | API          |
+| `photo_raw: <path>`         | Place a generated image without triggering an index scan                                                                              | UI           |
+| `source_file: <path>`       | Place a file _outside_ `IMAGE_HOME` for the browser to upload                                                                         | UI           |
+| `move: <path>` + `to`       | Move a file within the image store                                                                                                    | UI           |
 
 Optional modifier fields:
 
@@ -412,6 +413,7 @@ text/icon-based verbs below.
 | `set.auto_rename: <bool>`                 | Set the auto-rename switch in the upload-options dialog                       |
 | `login: {user, password}`                 | Fill the login form and require landing on `/timeline`                        |
 | `index: <album>`                          | Index `<album>` (`POST /post/index/album`) and wait for idle/completed        |
+| `reload: true`                            | Reload the page (proves the session survives reload)                          |
 
 New interactions → extend the vocabulary with a new verb. No raw-TypeScript
 escape hatch.
