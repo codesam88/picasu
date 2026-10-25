@@ -4,7 +4,7 @@
       v-if="
         abstractData &&
         (abstractData.type === 'image' || abstractData.type === 'video') &&
-        !configStore.disableImg
+        !constStore.disableImg
       "
       :index="index"
       :hash="abstractData.id"
@@ -16,16 +16,16 @@
 </template>
 
 <script setup lang="ts">
-import { useConfigStore } from '@/store/configStore'
+import { useConstStore } from '@/store/constStore'
 import ViewPageDisplayDatabase from './DisplayDatabase.vue'
 import type { EnrichedUnifiedData, IsolationId } from '@type/types'
 
-const props = defineProps<{
+defineProps<{
   isolationId: IsolationId
   assetId: string
   index: number
   abstractData: EnrichedUnifiedData | undefined
 }>()
 
-const configStore = useConfigStore(props.isolationId)
+const constStore = useConstStore('mainId')
 </script>

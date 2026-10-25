@@ -125,7 +125,6 @@ pub struct AppConfig {
     #[serde(default = "default_max_upload_size")]
     pub max_upload_size: String,
     pub read_only_mode: bool,
-    pub disable_img: bool,
     #[serde(default = "default_true")]
     pub fs_notify_watcher: bool,
     /// NFC-normalize uploaded filenames so macOS NFD names collapse onto
@@ -301,11 +300,6 @@ pub mod config_tier_table {
             env_var: Some("PICASU_READ_ONLY_MODE"),
         },
         ConfigField {
-            name: "disable_img",
-            tier: ConfigTier::Runtime,
-            env_var: Some("PICASU_DISABLE_IMG"),
-        },
-        ConfigField {
             name: "fs_notify_watcher",
             tier: ConfigTier::Runtime,
             env_var: Some("PICASU_FS_NOTIFY_WATCHER"),
@@ -428,7 +422,6 @@ impl Default for AppConfig {
             upload_folder: default_upload_folder(),
             max_upload_size: default_max_upload_size(),
             read_only_mode: false,
-            disable_img: false,
             fs_notify_watcher: true,
             normalize_upload_filenames: true,
             validate_upload_content: true,
@@ -545,8 +538,6 @@ pub(crate) struct TomlGallery {
     pub(crate) upload_folder: String,
     #[serde(default)]
     pub(crate) read_only_mode: bool,
-    #[serde(default)]
-    pub(crate) disable_img: bool,
     #[serde(default = "default_true")]
     pub(crate) fs_notify_watcher: bool,
     #[serde(default = "default_true")]
@@ -572,7 +563,6 @@ impl Default for TomlGallery {
             image_home: None,
             upload_folder: default_upload_folder(),
             read_only_mode: false,
-            disable_img: false,
             fs_notify_watcher: true,
             normalize_upload_filenames: true,
             validate_upload_content: true,
@@ -604,7 +594,6 @@ impl From<TomlFile> for AppConfig {
             upload_folder: t.gallery.upload_folder,
             max_upload_size: t.server.max_upload_size,
             read_only_mode: t.gallery.read_only_mode,
-            disable_img: t.gallery.disable_img,
             fs_notify_watcher: t.gallery.fs_notify_watcher,
             normalize_upload_filenames: t.gallery.normalize_upload_filenames,
             validate_upload_content: t.gallery.validate_upload_content,
@@ -659,7 +648,6 @@ impl From<AppConfig> for TomlFile {
                 image_home: c.image_home,
                 upload_folder: c.upload_folder,
                 read_only_mode: c.read_only_mode,
-                disable_img: c.disable_img,
                 fs_notify_watcher: c.fs_notify_watcher,
                 normalize_upload_filenames: c.normalize_upload_filenames,
                 validate_upload_content: c.validate_upload_content,
@@ -974,7 +962,6 @@ impl AppConfig {
             login_user_long_max_ban_secs,
             "PICASU_LOGIN_USER_LONG_MAX_BAN_SECS"
         );
-        set_parse!(disable_img, "PICASU_DISABLE_IMG");
         if let Some(val) = get("PICASU_FS_NOTIFY_WATCHER") {
             if let Ok(enabled) = val.parse() {
                 config.fs_notify_watcher = enabled;
@@ -1089,7 +1076,6 @@ mod tests {
             upload_folder: "test_uploads".to_string(),
             max_upload_size: "500MiB".to_string(),
             read_only_mode: true,
-            disable_img: false,
             fs_notify_watcher: false,
             normalize_upload_filenames: false,
             validate_upload_content: true,
@@ -1294,7 +1280,6 @@ port = 9999
         runtime.sort_unstable();
         let mut expected_runtime = [
             "allow_registration",
-            "disable_img",
             "fs_notify_watcher",
             "max_upload_size",
             "normalize_upload_filenames",
@@ -1608,7 +1593,6 @@ read_only_mode = true
         assert_eq!(config.address, "0.0.0.0");
         assert_eq!(config.max_upload_size, "100MiB");
         assert_eq!(config.upload_folder, "uploads");
-        assert!(!config.disable_img);
         assert!(!config.allow_registration);
         assert!(!config.bootstrap_admin);
     }

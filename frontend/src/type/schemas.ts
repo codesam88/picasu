@@ -214,11 +214,9 @@ export const SubRowSchema = z.object({
 
 export const PublicConfigSchema = z.object({
   limits: z.record(z.string(), z.string()), // HashMap<String, String>
-  imagePath: z.string().nullable(), // Option<PathBuf>
-  uploadFolder: z.string().nullable(), // Option<String>
+  uploadFolder: z.string(),
   maxUploadSize: z.string(),
   readOnlyMode: z.boolean(),
-  disableImg: z.boolean(),
   fsNotifyWatcher: z.boolean()
 })
 

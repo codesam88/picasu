@@ -91,6 +91,28 @@ zero hand-written browser files.
   viewers browse-less (contradicts the invite feature's purpose — not
   recommended); (c) stop-gap: nothing ships until (a) is decided.
 
+## Decisions (2026-10-26, owner — F1 direction settled, see `.plan/viewer-tier-access.md` for the build)
+
+- Viewer reads: option (a) — extend the `GuardShare`/`GuardUpload` cookie
+  fallback to any live `User`; viewer snapshots policy-free, trashed
+  exclusion stays in the query filter.
+- Content writes are user acts, not admin: any authenticated user may
+  upload, move, trash, delete, and describe photos and albums
+  (`upload` cookie leg, `assign_album`, `delete-data`, `edit_flags`,
+  `create_dir_album`, `set_album_cover`, `rotate-image`,
+  `regenerate-thumbnail`, `edit_tag`/`edit_rating`). Design doc already
+  grants moves/names/images/confirmation-gated deletes; guards catch up.
+- Share passwords stop leaving the backend: drop `password` from reads
+  (presence via `hasPassword`), `edit_share` absent/null means keep,
+  string sets. Replaces the earlier redaction-blocker idea.
+- Config cleanup (done, pending commit): `imagePath` gone from
+  `GET /get/config` (host-only, admin UI reads it from
+  `GET /get/admin/config` entries); `uploadFolder` unredacted (relative);
+  `hasAuthKey` gone (no consumer; reset POST still reports); `disableImg`
+  removed backend-wide, now a frontend-only pref (constStore +
+  FrontendConfig toggle). `GET /get/config` keeps zero admin-only fields,
+  so its gate demotion is payload-free.
+
 ## Confirmation (2026-10-25): not invite-specific
 
 - New `scenarios/non-admin-cmd-user.yaml` (+ `cli_user:` given verb for

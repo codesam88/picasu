@@ -20,7 +20,6 @@ data_home = "/home/user/.local/share/picasu"
 image_home = "/home/user/.local/share/picasu/images"
 upload_folder = "uploads"
 read_only_mode = false
-disable_img = false
 
 [secrets]
 # password, auth_key only present if configured
@@ -98,7 +97,6 @@ Gallery application settings.
 | `image_home`     | string \| null | _resolved at first launch_ | Single root directory the backend watches for new or changed media files. Set from `PICASU_IMAGE_HOME` or defaults to `<data_home>/images`. Read-only from the frontend — configure via env var or edit `config.toml` directly. |
 | `upload_folder`  | string         | `uploads`                  | Subfolder name (relative to `image_home`) that uploads with no target album land in.                                                                                                                                            |
 | `read_only_mode` | boolean        | `false`                    | If `true`, the gallery runs in read-only mode — uploads, edits, and deletions are disabled.                                                                                                                                     |
-| `disable_img`    | boolean        | `false`                    | Disables image processing in the frontend. Intended for debugging only.                                                                                                                                                         |
 
 ### `[secrets]` section
 
@@ -163,11 +161,11 @@ Every `AppConfig` field belongs to a tier that determines how it can be
 changed. The tier table is the single source of truth in
 `backend/src/model/config.rs` (`CONFIG_FIELDS`).
 
-| Tier     | Fields                                                                                                                                                                                               | How to set                                                | Restart? |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------- |
-| runtime  | `upload_folder`, `max_upload_size`, `read_only_mode`, `disable_img`, `fs_notify_watcher`, `normalize_upload_filenames`, `validate_upload_content`, `use_client_timestamp_info`, `allow_registration` | `PUT /put/admin/config` (runtime subset) or `config.toml` | no       |
-| host     | `address`, `port`, `data_home`, `image_home`, `trust_proxy_forwarded_for`, `trivial_passwords`, `bootstrap_admin`, all `login_*` throttle knobs, `auth_key` (managed), `web_root`                    | env var, CLI flag, or `config.toml`                       | yes      |
-| env-only | `PICASU_CONFIG_HOME`, `PICASU_PBKDF_ITERATIONS`, `PICASU_RATE_LIMITS`                                                                                                                                | env var only                                              | yes      |
+| Tier     | Fields                                                                                                                                                                                | How to set                                                | Restart? |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | -------- |
+| runtime  | `upload_folder`, `max_upload_size`, `read_only_mode`, `fs_notify_watcher`, `normalize_upload_filenames`, `validate_upload_content`, `use_client_timestamp_info`, `allow_registration` | `PUT /put/admin/config` (runtime subset) or `config.toml` | no       |
+| host     | `address`, `port`, `data_home`, `image_home`, `trust_proxy_forwarded_for`, `trivial_passwords`, `bootstrap_admin`, all `login_*` throttle knobs, `auth_key` (managed), `web_root`     | env var, CLI flag, or `config.toml`                       | yes      |
+| env-only | `PICASU_CONFIG_HOME`, `PICASU_PBKDF_ITERATIONS`, `PICASU_RATE_LIMITS`                                                                                                                 | env var only                                              | yes      |
 
 Precedence is `env > file` at boot (`apply_env_overrides_with`). API writes
 persist to `config.toml` and take effect in-session, but revert on the next
@@ -180,7 +178,6 @@ restart while the env var is pinned (intended host override). `GET /get/admin/co
 | `upload_folder`      | `PICASU_UPLOAD_FOLDER`      |
 | `max_upload_size`    | `PICASU_MAX_UPLOAD_SIZE`    |
 | `read_only_mode`     | `PICASU_READ_ONLY_MODE`     |
-| `disable_img`        | `PICASU_DISABLE_IMG`        |
 | `fs_notify_watcher`  | `PICASU_FS_NOTIFY_WATCHER`  |
 | `allow_registration` | `PICASU_ALLOW_REGISTRATION` |
 
@@ -196,7 +193,6 @@ The following env vars override the config file on every launch:
 | `PICASU_PORT`                          | `server.port`                                                         |
 | `PICASU_BOOTSTRAP_ADMIN`               | `gallery.bootstrap_admin`                                             |
 | `PICASU_DATA_HOME`                     | `gallery.data_home`                                                   |
-| `PICASU_DISABLE_IMG`                   | `gallery.disable_img`                                                 |
 | `PICASU_FS_NOTIFY_WATCHER`             | `gallery.fs_notify_watcher`                                           |
 | `PICASU_IMAGE_HOME`                    | `gallery.image_home`                                                  |
 | `PICASU_READ_ONLY_MODE`                | `gallery.read_only_mode`                                              |
@@ -244,7 +240,7 @@ overrides it in memory without persisting, and the API offers only
 (invalidating every outstanding token). `GET /get/config/export` redacts it.
 
 API-writable knobs: `upload_folder`, `max_upload_size`, `read_only_mode`,
-`disable_img`, `fs_notify_watcher`, `normalize_upload_filenames`,
+`fs_notify_watcher`, `normalize_upload_filenames`,
 `validate_upload_content`, `use_client_timestamp_info`, and
 `allow_registration`.
 

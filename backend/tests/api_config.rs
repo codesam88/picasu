@@ -36,13 +36,13 @@ fn ensure_config_init() -> &'static SharedSetup {
 
         // For each field type:
         //   server.*  ← address, port, max_upload_size
-        //   gallery.* ← data_home, image_home, upload_folder, read_only_mode, disable_img
+        //   gallery.* ← data_home, image_home, upload_folder, read_only_mode
         //   secrets.* ← auth_key (password was removed with legacy auth)
         //
         // Env overrides are set for port and upload_folder (verify env wins),
         // while max_upload_size and read_only_mode are left to the config file
         // (verify config wins over default).
-        // address and disable_img are left out entirely (verify default).
+        // address is left out entirely (verify default).
         std::fs::write(
             cfg_dir.join("config.toml"),
             r#"
@@ -85,7 +85,6 @@ auth_key = "jwt-key-from-toml"
 
             // Set values not in config file
             std::env::set_var("PICASU_ADDRESS", "10.0.0.55");
-            std::env::set_var("PICASU_DISABLE_IMG", "true");
             std::env::set_var("PICASU_AUTH_KEY", "jwt-key-from-env");
         }
 
@@ -190,7 +189,6 @@ fn api_config_precedence() {
 
         // ── Env sets values not in config ─────────
         assert_eq!(cfg.address, "10.0.0.55", "PICASU_ADDRESS");
-        assert!(cfg.disable_img, "PICASU_DISABLE_IMG");
 
         // ── Env overrides secrets from toml ───────
         assert_eq!(
@@ -226,13 +224,23 @@ fn api_config_precedence() {
 
         // `address`/`port` are host fields, not client config: they are
         // asserted on the in-memory struct above and must not leak into the
-        // `GET /get/config` body at any tier.
+        // `GET /get/config` body at any tier. `imagePath`, `hasAuthKey` and
+        // `disableImg` are gone entirely (host-only / never exposed /
+        // frontend-only): no tier may see the keys at all.
         assert!(json.get("address").is_none(), "address must be absent");
         assert!(json.get("port").is_none(), "port must be absent");
+        assert!(json.get("imagePath").is_none(), "imagePath must be absent");
+        assert!(
+            json.get("hasAuthKey").is_none(),
+            "hasAuthKey must be absent"
+        );
+        assert!(
+            json.get("disableImg").is_none(),
+            "disableImg must be absent"
+        );
         assert_eq!(json["readOnlyMode"].as_bool(), Some(false));
         assert_eq!(json["uploadFolder"].as_str(), Some("env_folder"));
         assert_eq!(json["maxUploadSize"].as_str(), Some("300MiB"));
-        assert_eq!(json["disableImg"].as_bool(), Some(true));
     }
 
     // ── Cleanup ───────────────────────────────────────────────────────
@@ -243,7 +251,6 @@ fn api_config_precedence() {
         std::env::remove_var("PICASU_PORT");
         std::env::remove_var("PICASU_ADDRESS");
         std::env::remove_var("PICASU_READ_ONLY_MODE");
-        std::env::remove_var("PICASU_DISABLE_IMG");
         std::env::remove_var("PICASU_UPLOAD_FOLDER");
         std::env::remove_var("PICASU_MAX_UPLOAD_SIZE");
         std::env::remove_var("PICASU_AUTH_KEY");
@@ -379,10 +386,11 @@ fn index_and_share(client: &Client, admin: &Cookie<'static>) -> (String, String)
     (album_id, share_id)
 }
 
-/// R13 (B+C): `GET /get/config` is `GuardShare`-gated, so share-tier
-/// callers must not see host fields. `address`/`port` are gone for every
-/// tier; `imagePath`/`uploadFolder` are `null` for share-credential
-/// callers while the admin tier keeps the real values. A non-admin
+/// R13 (B+C): `GET /get/config` is `GuardShare`-gated. Host paths and key
+/// presence are never client config: `imagePath`, `hasAuthKey` and
+/// `disableImg` are absent at every tier (host-only setting / never
+/// exposed / frontend-only), while `uploadFolder` is relative to the
+/// image path and visible to every admitted caller. A non-admin
 /// session never reaches the handler at all: `GuardShare` only admits
 /// admins and shares, so it is refused with 401.
 #[test]
@@ -410,7 +418,7 @@ fn share_tier_config_hides_host_fields() {
     // ── One indexed photo, so a real share can exist ─────────────────
     let (album_id, share_id) = index_and_share(&client, &admin);
 
-    // ── (a) share headers, no cookie: 200, null paths, no host keys ──
+    // ── (a) share headers, no cookie: 200, no host keys, no removed keys ──
     let share_json: Value = client
         .get("/get/config")
         .header(Header::new("x-album-id", album_id.clone()))
@@ -427,15 +435,23 @@ fn share_tier_config_hides_host_fields() {
         "share tier must not see port, got: {share_json}"
     );
     assert!(
-        share_json.get("imagePath").is_some_and(Value::is_null),
-        "share tier imagePath must be null, got: {share_json}"
+        share_json.get("imagePath").is_none(),
+        "share tier must not see imagePath at all, got: {share_json}"
     );
     assert!(
-        share_json.get("uploadFolder").is_some_and(Value::is_null),
-        "share tier uploadFolder must be null, got: {share_json}"
+        share_json.get("hasAuthKey").is_none(),
+        "share tier must not see hasAuthKey at all, got: {share_json}"
+    );
+    assert!(
+        share_json.get("disableImg").is_none(),
+        "share tier must not see disableImg at all, got: {share_json}"
+    );
+    assert!(
+        share_json.get("uploadFolder").is_some_and(Value::is_string),
+        "share tier uploadFolder is relative and visible, got: {share_json}"
     );
 
-    // ── (b) admin session: 200, real values, no host keys ────────────
+    // ── (b) admin session: 200, uploadFolder visible, removed keys absent ──
     let admin_json: Value = client
         .get("/get/config")
         .cookie(admin.clone())
@@ -451,8 +467,16 @@ fn share_tier_config_hides_host_fields() {
         "admin tier must not see port, got: {admin_json}"
     );
     assert!(
-        admin_json.get("imagePath").is_some_and(Value::is_string),
-        "admin tier imagePath must be the real path, got: {admin_json}"
+        admin_json.get("imagePath").is_none(),
+        "admin tier reads the host path via the admin config view, got: {admin_json}"
+    );
+    assert!(
+        admin_json.get("hasAuthKey").is_none(),
+        "admin tier must not see hasAuthKey at all, got: {admin_json}"
+    );
+    assert!(
+        admin_json.get("disableImg").is_none(),
+        "admin tier must not see disableImg at all, got: {admin_json}"
     );
     assert_eq!(
         admin_json["uploadFolder"].as_str(),

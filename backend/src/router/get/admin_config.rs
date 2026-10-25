@@ -32,7 +32,6 @@ pub struct RuntimeConfigDocument {
     pub upload_folder: String,
     pub max_upload_size: String,
     pub read_only_mode: bool,
-    pub disable_img: bool,
     pub fs_notify_watcher: bool,
     pub normalize_upload_filenames: bool,
     pub validate_upload_content: bool,
@@ -58,7 +57,6 @@ fn field_value(config: &crate::model::config::AppConfig, name: &str) -> serde_js
         "upload_folder" => serde_json::to_value(&config.upload_folder).unwrap_or_default(),
         "max_upload_size" => serde_json::to_value(&config.max_upload_size).unwrap_or_default(),
         "read_only_mode" => serde_json::to_value(config.read_only_mode).unwrap_or_default(),
-        "disable_img" => serde_json::to_value(config.disable_img).unwrap_or_default(),
         "fs_notify_watcher" => serde_json::to_value(config.fs_notify_watcher).unwrap_or_default(),
         "normalize_upload_filenames" => {
             serde_json::to_value(config.normalize_upload_filenames).unwrap_or_default()
@@ -154,7 +152,6 @@ fn source_for(field_name: &str, env_var: &str) -> &'static str {
             }
         }
         "read_only_mode"
-        | "disable_img"
         | "fs_notify_watcher"
         | "allow_registration"
         | "trivial_passwords"
@@ -240,7 +237,6 @@ pub fn get_admin_config_export_handler(
         upload_folder: c.upload_folder.clone(),
         max_upload_size: c.max_upload_size.clone(),
         read_only_mode: c.read_only_mode,
-        disable_img: c.disable_img,
         fs_notify_watcher: c.fs_notify_watcher,
         normalize_upload_filenames: c.normalize_upload_filenames,
         validate_upload_content: c.validate_upload_content,

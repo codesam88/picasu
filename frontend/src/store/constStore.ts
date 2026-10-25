@@ -12,7 +12,9 @@ import {
   storeTheme,
   getTheme,
   storeShowFilenameChip,
-  getShowFilenameChip
+  getShowFilenameChip,
+  storeDisableImg,
+  getDisableImg
 } from '@/db/settingsDb'
 
 export const useConstStore = (isolationId: IsolationId) =>
@@ -24,6 +26,7 @@ export const useConstStore = (isolationId: IsolationId) =>
       limitRatio: boolean
       theme: 'dark' | 'light'
       showFilenameChip: boolean
+      disableImg: boolean
     } => ({
       subRowHeightScale: 250,
       showInfo: false,
@@ -32,7 +35,8 @@ export const useConstStore = (isolationId: IsolationId) =>
       limitRatio: false,
       // default theme: dark
       theme: 'dark',
-      showFilenameChip: false
+      showFilenameChip: false,
+      disableImg: false
     }),
 
     actions: {
@@ -116,6 +120,18 @@ export const useConstStore = (isolationId: IsolationId) =>
         const stored = await getShowFilenameChip()
         if (typeof stored === 'boolean') {
           this.showFilenameChip = stored
+        }
+      },
+
+      async updateDisableImg(value: boolean): Promise<void> {
+        this.disableImg = value
+        await storeDisableImg(value)
+      },
+
+      async loadDisableImg(): Promise<void> {
+        const stored = await getDisableImg()
+        if (typeof stored === 'boolean') {
+          this.disableImg = stored
         }
       }
     }

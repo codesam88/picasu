@@ -63,6 +63,7 @@ onBeforeMount(async () => {
   await constStore.loadShowInfo()
   await constStore.loadConcurrencyNumber()
   await constStore.loadShowFilenameChip()
+  await constStore.loadDisableImg()
   configStore.isMobile = isMobile()
 })
 </script>

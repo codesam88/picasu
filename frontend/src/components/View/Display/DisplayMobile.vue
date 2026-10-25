@@ -26,7 +26,7 @@
               v-if="
                 previousAbstractData &&
                 (previousAbstractData.type === 'image' || previousAbstractData.type === 'video') &&
-                !configStore.disableImg
+                !constStore.disableImg
               "
               :index="index - 1"
               :hash="previousAbstractData.id"
@@ -45,7 +45,7 @@
               v-if="
                 abstractData &&
                 ['image', 'video'].includes(abstractData.type) &&
-                !configStore.disableImg
+                !constStore.disableImg
               "
               :index="index"
               :hash="abstractData.id"
@@ -64,7 +64,7 @@
               v-if="
                 nextAbstractData &&
                 (nextAbstractData.type === 'image' || nextAbstractData.type === 'video') &&
-                !configStore.disableImg
+                !constStore.disableImg
               "
               :index="index + 1"
               :hash="nextAbstractData.id"
@@ -96,7 +96,7 @@
             v-if="
               previousAbstractData &&
               (previousAbstractData.type === 'image' || previousAbstractData.type === 'video') &&
-              !configStore.disableImg
+              !constStore.disableImg
             "
             :index="index - 1"
             :hash="previousAbstractData.id"
@@ -113,7 +113,7 @@
             v-if="
               abstractData &&
               ['image', 'video'].includes(abstractData.type) &&
-              !configStore.disableImg
+              !constStore.disableImg
             "
             :index="index"
             :hash="abstractData.id"
@@ -130,7 +130,7 @@
             v-if="
               nextAbstractData &&
               (nextAbstractData.type === 'image' || nextAbstractData.type === 'video') &&
-              !configStore.disableImg
+              !constStore.disableImg
             "
             :index="index + 1"
             :hash="nextAbstractData.id"
@@ -150,6 +150,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useDataStore } from '@/store/dataStore'
 import ViewPageDisplayDatabase from './DisplayDatabase.vue'
 import { useConfigStore } from '@/store/configStore'
+import { useConstStore } from '@/store/constStore'
 import { useModalStore } from '@/store/modalStore'
 import { Manipulation, Zoom } from 'swiper/modules'
 import 'swiper/css'
@@ -171,6 +172,7 @@ const props = defineProps<{
 }>()
 
 const configStore = useConfigStore(props.isolationId)
+const constStore = useConstStore('mainId')
 const dataStore = useDataStore(props.isolationId)
 const route = useRoute()
 const router = useRouter()

@@ -14,38 +14,28 @@ use crate::router::{AppResult, GuardResult};
 #[derive(utoipa::ToSchema)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct ConfigResponse {
-    #[schema(value_type = Option<String>)]
-    #[serde(rename = "imagePath", alias = "imageHome")]
-    pub image_home: Option<std::path::PathBuf>,
-    #[schema(value_type = Option<String>)]
-    pub upload_folder: Option<String>,
+    pub upload_folder: String,
     pub max_upload_size: String,
     pub read_only_mode: bool,
-    pub disable_img: bool,
     pub fs_notify_watcher: bool,
     pub normalize_upload_filenames: bool,
     pub validate_upload_content: bool,
     pub use_client_timestamp_info: bool,
-    pub has_auth_key: bool,
 }
 
 /// Serve the client-visible server configuration.
 ///
-/// Returns the values a client needs to drive the other operations: the
-/// image library root (`imagePath`), `uploadFolder`, `maxUploadSize`,
-/// `readOnlyMode`, `disableImg`, `fsNotifyWatcher`,
-/// `normalizeUploadFilenames`, `validateUploadContent`,
-/// `useClientTimestampInfo`, plus `hasAuthKey`.
+/// Returns the values a client needs to drive the other operations:
+/// `uploadFolder` (relative to the image library root), `maxUploadSize`,
+/// `readOnlyMode`, `fsNotifyWatcher`, `normalizeUploadFilenames`,
+/// `validateUploadContent` and `useClientTimestampInfo`.
 ///
-/// Corner cases: secrets are never returned — `hasAuthKey` only reports
-/// whether an auth key is configured. `imagePath` is
-/// the absolute library root and serializes as `null` when it is unset.
-/// The endpoint stays `GuardShare`-gated so a share visitor's SPA boots
-/// normally, but share credentials receive `null` for
-/// `imagePath`/`uploadFolder`: only the admin tier sees the real
-/// filesystem paths. Non-admin sessions never reach the handler —
-/// `GuardShare` admits admins and shares only, so they are refused with
-/// 401 first.
+/// Corner cases: the host image path is never served here — it is a
+/// host-only setting (env/file) surfaced to admins through
+/// `GET /get/admin/config`. The signing key is never exposed in any form.
+/// `uploadFolder` is relative and visible to every admitted caller, so the
+/// response carries no per-tier fields at all and is identical for every
+/// credential that passes the gate.
 ///
 /// Errors: 400 half-supplied share credentials or an id that is not an album —
 /// 401 no valid admin or share credentials.
@@ -60,19 +50,15 @@ pub struct ConfigResponse {
 ]
 #[get("/get/config")]
 pub fn get_config_handler(auth: GuardResult<GuardShare>) -> AppResult<Json<ConfigResponse>> {
-    let auth = auth?;
-    let admin = auth.claims.is_admin();
+    let _ = auth?;
     let response = crate::model::config::with_config(|config| ConfigResponse {
-        image_home: admin.then(|| config.image_home.clone()).flatten(),
-        upload_folder: admin.then(|| config.upload_folder.clone()),
+        upload_folder: config.upload_folder.clone(),
         max_upload_size: config.max_upload_size.clone(),
         read_only_mode: config.read_only_mode,
-        disable_img: config.disable_img,
         fs_notify_watcher: config.fs_notify_watcher,
         normalize_upload_filenames: config.normalize_upload_filenames,
         validate_upload_content: config.validate_upload_content,
         use_client_timestamp_info: config.use_client_timestamp_info,
-        has_auth_key: config.auth_key.is_some(),
     });
     Ok(Json(response))
 }

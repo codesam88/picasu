@@ -86,9 +86,6 @@ pub async fn update_admin_config_handler(
             if let Some(read_only_mode) = req_data.read_only_mode {
                 current_config.read_only_mode = read_only_mode;
             }
-            if let Some(disable_img) = req_data.disable_img {
-                current_config.disable_img = disable_img;
-            }
             if let Some(fs_notify_watcher) = req_data.fs_notify_watcher {
                 current_config.fs_notify_watcher = fs_notify_watcher;
             }
@@ -113,7 +110,6 @@ pub async fn update_admin_config_handler(
                 upload_folder: c.upload_folder.clone(),
                 max_upload_size: c.max_upload_size.clone(),
                 read_only_mode: c.read_only_mode,
-                disable_img: c.disable_img,
                 fs_notify_watcher: c.fs_notify_watcher,
                 normalize_upload_filenames: c.normalize_upload_filenames,
                 validate_upload_content: c.validate_upload_content,
@@ -145,7 +141,6 @@ pub struct PartialUpdateConfigRequest {
     /// `None` = don't touch; `Some("")` resets to the default ("100MiB").
     pub max_upload_size: Option<String>,
     pub read_only_mode: Option<bool>,
-    pub disable_img: Option<bool>,
     pub fs_notify_watcher: Option<bool>,
     pub normalize_upload_filenames: Option<bool>,
     pub validate_upload_content: Option<bool>,
@@ -415,7 +410,7 @@ mod tests {
             .put("/put/admin/config")
             .cookie(cookie("pac-nonadmin", false))
             .header(ContentType::JSON)
-            .body(serde_json::json!({ "disableImg": false }).to_string())
+            .body(serde_json::json!({ "readOnlyMode": false }).to_string())
             .dispatch()
             .status();
         assert_eq!(status, Status::Unauthorized);
@@ -429,7 +424,7 @@ mod tests {
         let status = client
             .put("/put/admin/config")
             .header(ContentType::JSON)
-            .body(serde_json::json!({ "disableImg": false }).to_string())
+            .body(serde_json::json!({ "readOnlyMode": false }).to_string())
             .dispatch()
             .status();
         assert_eq!(status, Status::Unauthorized);
