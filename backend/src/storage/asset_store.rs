@@ -329,21 +329,23 @@ mod tests {
 
     #[test]
     fn roundtrip_asset_by_path() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         ensure_tables();
         clear_tables();
 
         let record = AssetRecord::new_media(
             AssetKind::Image,
             "/test/path.jpg".into(),
-            Some("abc123".parse().unwrap()),
+            Some("abc123".parse().expect("test content hash parses")),
             1024,
             "jpg".into(),
             0,
         );
 
-        put_asset_by_path(&record.path, record.asset_id).unwrap();
-        let found = get_asset_id_by_path(&record.path).unwrap();
+        put_asset_by_path(&record.path, record.asset_id).expect("put asset path mapping");
+        let found = get_asset_id_by_path(&record.path).expect("read asset id by path");
         assert_eq!(found, Some(record.asset_id));
 
         clear_tables();
@@ -351,23 +353,25 @@ mod tests {
 
     #[test]
     fn roundtrip_asset_by_id() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         ensure_tables();
         clear_tables();
 
         let record = AssetRecord::new_media(
             AssetKind::Image,
             "/test.jpg".into(),
-            Some("hash123".parse().unwrap()),
+            Some("hash123".parse().expect("test content hash parses")),
             500,
             "jpg".into(),
             0,
         );
 
-        put_asset_by_id(&record).unwrap();
-        let found = get_asset_by_id(&record.asset_id.to_string()).unwrap();
+        put_asset_by_id(&record).expect("put asset id mapping");
+        let found = get_asset_by_id(record.asset_id.as_ref()).expect("read asset by id");
         assert!(found.is_some());
-        let found = found.unwrap();
+        let found = found.expect("asset present right after put");
         assert_eq!(found.asset_id, record.asset_id);
         assert_eq!(found.path, "/test.jpg");
         assert_eq!(found.kind, AssetKind::Image);
@@ -377,18 +381,20 @@ mod tests {
 
     #[test]
     fn dupe_group_insert_and_query() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         ensure_tables();
         clear_tables();
 
-        let id1: ArrayString<64> = "asset001".parse().unwrap();
-        let id2: ArrayString<64> = "asset002".parse().unwrap();
+        let id1: ArrayString<64> = "asset001".parse().expect("test asset id parses");
+        let id2: ArrayString<64> = "asset002".parse().expect("test asset id parses");
         let hash = "deadbeef";
 
-        add_to_dupe_group(hash, id1).unwrap();
-        add_to_dupe_group(hash, id2).unwrap();
+        add_to_dupe_group(hash, id1).expect("add asset to dupe group");
+        add_to_dupe_group(hash, id2).expect("add asset to dupe group");
 
-        let ids = get_dupe_ids(hash).unwrap();
+        let ids = get_dupe_ids(hash).expect("read dupe group");
         assert_eq!(ids.len(), 2);
         assert!(ids.contains(&id1));
         assert!(ids.contains(&id2));
@@ -398,19 +404,21 @@ mod tests {
 
     #[test]
     fn dupe_group_remove_one() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         ensure_tables();
         clear_tables();
 
-        let id1: ArrayString<64> = "asset001".parse().unwrap();
-        let id2: ArrayString<64> = "asset002".parse().unwrap();
+        let id1: ArrayString<64> = "asset001".parse().expect("test asset id parses");
+        let id2: ArrayString<64> = "asset002".parse().expect("test asset id parses");
         let hash = "deadbeef";
 
-        add_to_dupe_group(hash, id1).unwrap();
-        add_to_dupe_group(hash, id2).unwrap();
-        remove_from_dupe_group(hash, id1).unwrap();
+        add_to_dupe_group(hash, id1).expect("add asset to dupe group");
+        add_to_dupe_group(hash, id2).expect("add asset to dupe group");
+        remove_from_dupe_group(hash, id1).expect("remove asset from dupe group");
 
-        let ids = get_dupe_ids(hash).unwrap();
+        let ids = get_dupe_ids(hash).expect("read dupe group");
         assert_eq!(ids.len(), 1);
         assert!(ids.contains(&id2));
         assert!(!ids.contains(&id1));
@@ -420,54 +428,61 @@ mod tests {
 
     #[test]
     fn dupe_group_remove_last_deletes_group() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         ensure_tables();
         clear_tables();
 
-        let id: ArrayString<64> = "asset001".parse().unwrap();
+        let id: ArrayString<64> = "asset001".parse().expect("test asset id parses");
         let hash = "deadbeef";
 
-        add_to_dupe_group(hash, id).unwrap();
-        remove_from_dupe_group(hash, id).unwrap();
+        add_to_dupe_group(hash, id).expect("add asset to dupe group");
+        remove_from_dupe_group(hash, id).expect("remove asset from dupe group");
 
-        let ids = get_dupe_ids(hash).unwrap();
-        assert!(ids.is_empty());
+        let ids = get_dupe_ids(hash).expect("read dupe group");
+        assert!(ids.is_empty(), "removed group reads empty");
 
         // Verify the key is actually removed from the table.
-        let txn = TREE.in_disk.begin_read().unwrap();
-        let table = txn.open_table(DUPE_INDEX).unwrap();
-        assert!(table.get(hash).unwrap().is_none());
+        let txn = TREE.in_disk.begin_read().expect("begin read txn in test");
+        let table = txn.open_table(DUPE_INDEX).expect("open dupe index in test");
+        assert!(table.get(hash).expect("read dupe entry").is_none());
 
         clear_tables();
     }
 
     #[test]
     fn insert_asset_creates_all_mappings() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         ensure_tables();
         clear_tables();
 
         let record = AssetRecord::new_media(
             AssetKind::Image,
             "/photo.jpg".into(),
-            Some("abc".parse().unwrap()),
+            Some("abc".parse().expect("test content hash parses")),
             100,
             "jpg".into(),
             0,
         );
         let asset_id = record.asset_id;
 
-        insert_asset(&record).unwrap();
+        insert_asset(&record).expect("insert test asset");
 
         // Path mapping exists.
-        assert_eq!(get_asset_id_by_path("/photo.jpg").unwrap(), Some(asset_id));
+        assert_eq!(
+            get_asset_id_by_path("/photo.jpg").expect("read asset id by photo path"),
+            Some(asset_id)
+        );
 
         // ID mapping exists.
-        let found = get_asset_by_id(&asset_id.to_string()).unwrap();
+        let found = get_asset_by_id(asset_id.as_ref()).expect("read asset by id");
         assert!(found.is_some());
 
         // Dupe group contains this asset.
-        let ids = get_dupe_ids("abc").unwrap();
+        let ids = get_dupe_ids("abc").expect("read dupe group for test hash");
         assert!(ids.contains(&asset_id));
 
         clear_tables();
@@ -475,57 +490,77 @@ mod tests {
 
     #[test]
     fn remove_asset_cleans_up_all_mappings() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         ensure_tables();
         clear_tables();
 
         let record = AssetRecord::new_media(
             AssetKind::Image,
             "/photo.jpg".into(),
-            Some("abc".parse().unwrap()),
+            Some("abc".parse().expect("test content hash parses")),
             100,
             "jpg".into(),
             0,
         );
         let asset_id = record.asset_id;
 
-        insert_asset(&record).unwrap();
-        remove_asset(&record).unwrap();
+        insert_asset(&record).expect("insert test asset");
+        remove_asset(&record).expect("remove test asset");
 
         // Path mapping is gone.
-        assert_eq!(get_asset_id_by_path("/photo.jpg").unwrap(), None);
+        assert_eq!(
+            get_asset_id_by_path("/photo.jpg").expect("read asset id by photo path"),
+            None
+        );
 
         // ID mapping is gone.
-        assert!(get_asset_by_id(&asset_id.to_string()).unwrap().is_none());
+        assert!(
+            get_asset_by_id(asset_id.as_ref())
+                .expect("read asset by id")
+                .is_none()
+        );
 
         // Dupe group is gone.
-        assert!(get_dupe_ids("abc").unwrap().is_empty());
+        assert!(
+            get_dupe_ids("abc")
+                .expect("read dupe group for test hash")
+                .is_empty(),
+            "removed group reads empty"
+        );
 
         clear_tables();
     }
 
     #[test]
     fn album_asset_has_no_dupe_group_entry() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         ensure_tables();
         clear_tables();
 
         let record = AssetRecord::new_album("/photos/vacation".into());
 
-        insert_asset(&record).unwrap();
+        insert_asset(&record).expect("insert test asset");
 
         // Path and ID mappings exist.
-        assert!(get_asset_id_by_path("/photos/vacation").unwrap().is_some());
         assert!(
-            get_asset_by_id(&record.asset_id.to_string())
-                .unwrap()
+            get_asset_id_by_path("/photos/vacation")
+                .expect("read asset id by album path")
+                .is_some()
+        );
+        assert!(
+            get_asset_by_id(record.asset_id.as_ref())
+                .expect("read asset by id")
                 .is_some()
         );
 
         // No dupe group (albums have no content hash).
         // This should not panic or error.
-        let ids = get_dupe_ids("nonexistent_hash").unwrap();
-        assert!(ids.is_empty());
+        let ids = get_dupe_ids("nonexistent_hash").expect("missing hash reads as empty");
+        assert!(ids.is_empty(), "unknown hash reads as an empty group");
 
         clear_tables();
     }
@@ -534,7 +569,9 @@ mod tests {
     /// Redb transactions provide the expected isolation and durability semantics.
     #[test]
     fn schema_initialization_and_transaction_wrapper() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
 
         // 1. Schema initialization: opening the tables must not error.
@@ -571,7 +608,7 @@ mod tests {
                 guard.is_some(),
                 "committed data must be visible to read txn"
             );
-            let val = guard.unwrap();
+            let val = guard.expect("committed row visible to read txn");
             assert_eq!(val.value(), "id_durability");
         }
 

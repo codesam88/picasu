@@ -539,26 +539,27 @@ mod tests {
                 AlbumIndexState::Running => {}
                 _ => return,
             }
-            if Instant::now() > deadline {
-                panic!(
-                    "index did not complete within 30s (state={:?})",
-                    status.state
-                );
-            }
+            assert!(
+                Instant::now() <= deadline,
+                "index did not complete within 30s (state={:?})",
+                status.state
+            );
             std::thread::sleep(Duration::from_millis(100));
         }
     }
 
     #[test]
     fn index_album_creates_dir_album_for_empty_directory() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         reset_backend_state();
         dir_album::reset_dir_album_cache();
 
         let image_home = test_image_home();
         let empty_dir = image_home.join("empty_album");
-        fs::create_dir_all(&empty_dir).unwrap();
+        fs::create_dir_all(&empty_dir).expect("create empty album dir");
 
         index_album("/").expect("index_album accepted");
         wait_for_index_completion();
@@ -574,14 +575,16 @@ mod tests {
 
     #[test]
     fn index_album_evicts_deleted_dir_album_after_sweep() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         reset_backend_state();
         dir_album::reset_dir_album_cache();
 
         let image_home = test_image_home();
         let doomed_dir = image_home.join("doomed_album");
-        fs::create_dir_all(&doomed_dir).unwrap();
+        fs::create_dir_all(&doomed_dir).expect("create doomed album dir");
 
         // First pass: create the dir album.
         index_album("/").expect("index_album accepted");
@@ -592,7 +595,7 @@ mod tests {
         );
 
         // Delete the directory from disk.
-        fs::remove_dir_all(&doomed_dir).unwrap();
+        fs::remove_dir_all(&doomed_dir).expect("remove doomed album dir");
 
         // Second pass: sweep should evict the stale dir album.
         index_album("/").expect("index_album accepted");
@@ -607,15 +610,22 @@ mod tests {
     }
 
     #[tokio::test]
+    // The serial guard must stay held across the awaits below: dropping it
+    // early would let another scenario test interleave while this test's
+    // filesystem state is mid-setup. Single-purpose test lock, never held
+    // across production awaits.
+    #[allow(clippy::await_holding_lock)]
     async fn index_image_truncated_leaves_placeholder() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         reset_backend_state();
         dir_album::reset_dir_album_cache();
 
         let image_home = test_image_home();
         let dir = image_home.join("direct_trunc");
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create album test dir");
         let path = dir.join("truncated.jpg");
         snapfab::generate_batch(&[snapfab::PhotoSpec {
             output: Some(path.to_string_lossy().into()),
@@ -627,10 +637,13 @@ mod tests {
             minimal: false,
         }])
         .expect("generate jpeg");
-        let bytes = std::fs::read(&path).unwrap();
-        std::fs::write(&path, &bytes[..100]).unwrap();
+        let bytes = std::fs::read(&path).expect("read generated test photo");
+        std::fs::write(&path, &bytes[..100]).expect("truncate test photo");
 
-        let rel = path.strip_prefix(&image_home).unwrap().to_path_buf();
+        let rel = path
+            .strip_prefix(&image_home)
+            .expect("test photo lives under the image home")
+            .to_path_buf();
         let res = crate::workflow::index_image(&rel).await;
         assert!(res.is_err(), "index_image should fail");
 
@@ -644,12 +657,15 @@ mod tests {
             .execute_batch_waiting(crate::tasks::batcher::update_tree::UpdateTreeTask)
             .await;
 
-        let tree = crate::storage::db::TREE.in_memory.read().unwrap();
+        let tree = crate::storage::db::TREE
+            .in_memory
+            .read()
+            .expect("in-memory tree lock");
         assert!(
             tree.iter().any(|dt| dt
                 .abstract_data
                 .path()
-                .map_or(false, |p| p.file.contains("truncated.jpg"))),
+                .is_some_and(|p| p.file.contains("truncated.jpg"))),
             "placeholder row must be visible"
         );
         drop(tree);
@@ -660,14 +676,16 @@ mod tests {
 
     #[test]
     fn index_album_failed_path_exposes_truncated_jpeg() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         reset_backend_state();
         dir_album::reset_dir_album_cache();
 
         let image_home = test_image_home();
         let dir = image_home.join("trunc_album");
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("create album test dir");
         let path = dir.join("truncated.jpg");
         snapfab::generate_batch(&[snapfab::PhotoSpec {
             output: Some(path.to_string_lossy().into()),
@@ -679,8 +697,8 @@ mod tests {
             minimal: false,
         }])
         .expect("generate jpeg");
-        let bytes = std::fs::read(&path).unwrap();
-        std::fs::write(&path, &bytes[..100]).unwrap();
+        let bytes = std::fs::read(&path).expect("read generated test photo");
+        std::fs::write(&path, &bytes[..100]).expect("truncate test photo");
 
         index_album("/").expect("index_album accepted");
         wait_for_index_completion();
@@ -696,12 +714,12 @@ mod tests {
             status.failed_paths
         );
 
-        let tree = TREE.in_memory.read().unwrap();
+        let tree = TREE.in_memory.read().expect("in-memory tree lock");
         assert!(
             tree.iter().any(|dt| {
                 dt.abstract_data
                     .path()
-                    .map_or(false, |p| p.file.contains("truncated.jpg"))
+                    .is_some_and(|p| p.file.contains("truncated.jpg"))
                     && dt.abstract_data.pending()
             }),
             "placeholder row must be visible in tree and pending"
@@ -719,14 +737,16 @@ mod tests {
         // scanned rows (N), not 0. The stale `DIR_ALBUM_CACHE` entries that
         // survived a table drop were the cause: the scan reused old album ids
         // that no longer existed in the freshly rebuilt tables.
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
         reset_backend_state();
         dir_album::reset_dir_album_cache();
 
         let image_home = test_image_home();
         let album_dir = image_home.join("bug_rebuild_cache");
-        std::fs::create_dir_all(&album_dir).unwrap();
+        std::fs::create_dir_all(&album_dir).expect("create album dir under test home");
         snapfab::generate_batch(&[snapfab::PhotoSpec {
             output: Some(album_dir.join("photo.jpg").to_string_lossy().into()),
             format: Some("jpeg".into()),
@@ -760,7 +780,7 @@ mod tests {
                 crate::model::abstract_data::AbstractData::Video(vid) => {
                     vid.metadata.album == Some(album_id)
                 }
-                _ => false,
+                crate::model::abstract_data::AbstractData::Album(_) => false,
             })
             .count();
         assert_eq!(

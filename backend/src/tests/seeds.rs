@@ -255,7 +255,10 @@ mod tests {
         assert_eq!(manifest.schema_version, 1);
         assert!(manifest.sets.contains_key(DEFAULT_SET));
         assert!(manifest.sets.contains_key(NIGHTLY_SET));
-        assert!(!manifest.note.trim().is_empty());
+        assert!(
+            !manifest.note.trim().is_empty(),
+            "seed manifest carries a note"
+        );
     }
 
     /// The golden table is the point of the file: a recorded seed has to
@@ -353,17 +356,17 @@ mod tests {
         let ci = manifest.sets[DEFAULT_SET].seeds.clone();
 
         assert_eq!(
-            active_seeds(&manifest, DEFAULT_SET, None).expect("ci is declared"),
+            active_seeds(manifest, DEFAULT_SET, None).expect("ci is declared"),
             ci
         );
         assert_eq!(
-            active_seeds(&manifest, NIGHTLY_SET, None).expect("nightly is declared"),
+            active_seeds(manifest, NIGHTLY_SET, None).expect("nightly is declared"),
             manifest.sets[NIGHTLY_SET].seeds
         );
         // A blank value is the same as no value: an exported-but-empty variable
         // must not change what CI runs.
         assert_eq!(
-            active_seeds(&manifest, DEFAULT_SET, Some("   ")).expect("ci is declared"),
+            active_seeds(manifest, DEFAULT_SET, Some("   ")).expect("ci is declared"),
             ci
         );
     }
@@ -374,7 +377,7 @@ mod tests {
         let manifest = seed_manifest();
 
         assert_eq!(
-            active_seeds(&manifest, DEFAULT_SET, Some(NIGHTLY_SET)).expect("nightly is declared"),
+            active_seeds(manifest, DEFAULT_SET, Some(NIGHTLY_SET)).expect("nightly is declared"),
             manifest.sets[NIGHTLY_SET].seeds
         );
     }
@@ -386,16 +389,16 @@ mod tests {
         let manifest = seed_manifest();
 
         assert_eq!(
-            active_seeds(&manifest, DEFAULT_SET, Some("0, 5")).expect("seeds parse"),
+            active_seeds(manifest, DEFAULT_SET, Some("0, 5")).expect("seeds parse"),
             vec![0, 5]
         );
         assert_eq!(
-            active_seeds(&manifest, DEFAULT_SET, Some("999999")).expect("seeds parse"),
+            active_seeds(manifest, DEFAULT_SET, Some("999999")).expect("seeds parse"),
             vec![999_999],
             "an unrecorded seed must be replayable"
         );
         assert!(
-            active_seeds(&manifest, DEFAULT_SET, Some("1,,2")).is_ok(),
+            active_seeds(manifest, DEFAULT_SET, Some("1,,2")).is_ok(),
             "blank entries are ignored so a trailing comma is not a typo that fails a run"
         );
     }
@@ -408,7 +411,7 @@ mod tests {
         let manifest = seed_manifest();
 
         for value in ["weekly", "CI", "not a seed"] {
-            let error = active_seeds(&manifest, DEFAULT_SET, Some(value))
+            let error = active_seeds(manifest, DEFAULT_SET, Some(value))
                 .expect_err("an undeclared set should be rejected");
             assert!(
                 matches!(error, SeedError::UnknownSet(ref name) if name == value),
@@ -416,7 +419,7 @@ mod tests {
             );
         }
         assert!(matches!(
-            active_seeds(&manifest, "weekly", None),
+            active_seeds(manifest, "weekly", None),
             Err(SeedError::UnknownSet(_))
         ));
     }
@@ -432,9 +435,12 @@ mod tests {
         let observed = env_override();
         if observed.is_some() {
             let manifest = seed_manifest();
-            let expected = active_seeds(&manifest, DEFAULT_SET, observed.as_deref())
+            let expected = active_seeds(manifest, DEFAULT_SET, observed.as_deref())
                 .expect("the observed override should be usable");
-            assert!(!expected.is_empty());
+            assert!(
+                !expected.is_empty(),
+                "override {observed:?} must select seeds"
+            );
         }
     }
 
@@ -532,7 +538,7 @@ mod tests {
         for input in [
             r#"{"schemaVersion": 1, "note": "x", "sets": {}}"#,
             r#"{"schemaVersion": 1, "note": "x", "sets": {"ci": {"seeds": [0]}}}"#,
-            r#"[]"#,
+            r"[]",
         ] {
             let error = parse_seed_manifest(input).expect_err("a broken file should be rejected");
             assert!(

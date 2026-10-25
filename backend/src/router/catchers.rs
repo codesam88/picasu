@@ -67,7 +67,7 @@ mod tests {
         let (status, body) = unauthorized();
         assert_eq!(status, Status::Unauthorized);
         assert_eq!(body.kind, ErrorKind::Auth);
-        assert!(!body.message.is_empty());
+        assert!(!body.message.is_empty(), "catcher carries a message string");
         assert!(body.source.is_none());
     }
 

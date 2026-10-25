@@ -805,7 +805,7 @@ mod tests {
             "zero short window"
         );
         assert_eq!(
-            LoginThrottle::new((0, 2, 5, 20), ok, ok).unwrap_err(),
+            LoginThrottle::new((0, 2, 5, 20), ok, ok).expect_err("zero short window is rejected"),
             "throttle window must be at least 1 second"
         );
         assert!(
@@ -813,7 +813,8 @@ mod tests {
             "zero long max_failures"
         );
         assert_eq!(
-            LoginThrottle::new(ok, (100, 0, 7, 40), ok).unwrap_err(),
+            LoginThrottle::new(ok, (100, 0, 7, 40), ok)
+                .expect_err("zero long max_failures is rejected"),
             "throttle must allow at least 1 failure before banning"
         );
         // IP-long / user-long tuple errors.
@@ -822,7 +823,8 @@ mod tests {
             "zero long base"
         );
         assert_eq!(
-            LoginThrottle::new(ok, ok, (100, 3, 0, 30)).unwrap_err(),
+            LoginThrottle::new(ok, ok, (100, 3, 0, 30))
+                .expect_err("zero long base ban is rejected"),
             "throttle base ban must be at least 1 second"
         );
         assert!(
@@ -830,7 +832,8 @@ mod tests {
             "user cap below base"
         );
         assert_eq!(
-            LoginThrottle::new(ok, ok, (100, 3, 40, 30)).unwrap_err(),
+            LoginThrottle::new(ok, ok, (100, 3, 40, 30))
+                .expect_err("user cap below base ban is rejected"),
             "throttle max ban must be at least the base ban"
         );
         // Minimal and full configs are accepted.

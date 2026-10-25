@@ -292,7 +292,6 @@ mod tests {
         // A token minted with the old `{"admin": ...}` role shape must fail
         // to decode as the new `Claims` (deny_unknown_fields).
         use super::decode_typed;
-        let _ = &*crate::tests::bootstrap::TEST_ENV;
         use crate::model::config::APP_CONFIG;
         use jsonwebtoken::{EncodingKey, Header, encode};
         use serde::Serialize;
@@ -309,6 +308,7 @@ mod tests {
         enum LegacyRole {
             Admin,
         }
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
         let key = APP_CONFIG
             .get()
             .expect("APP_CONFIG not initialized")
@@ -449,9 +449,6 @@ mod tests {
 
     #[test]
     fn legacy_token_without_jti_rejected() {
-        let _g = s3b_lock();
-        let _client = s3b_client();
-        let _ = &*crate::tests::bootstrap::TEST_ENV;
         use crate::model::config::APP_CONFIG;
         use jsonwebtoken::{EncodingKey, Header, encode};
         use serde::Serialize;
@@ -463,6 +460,9 @@ mod tests {
             #[serde(rename = "typ")]
             typ: super::TokenType,
         }
+        let _g = s3b_lock();
+        let _client = s3b_client();
+        let _ = &*crate::tests::bootstrap::TEST_ENV;
         let key = APP_CONFIG
             .get()
             .expect("APP_CONFIG not initialized")

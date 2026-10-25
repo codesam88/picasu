@@ -387,8 +387,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let path = dir.path().to_path_buf();
 
-        let id: ArrayString<64> = "test-album-id".parse().unwrap();
-        DIR_ALBUM_CACHE.lock().unwrap().insert(path.clone(), id);
+        let id: ArrayString<64> = "test-album-id".parse().expect("valid ArrayString<64> id");
+        DIR_ALBUM_CACHE
+            .lock()
+            .expect("cache lock is not poisoned")
+            .insert(path.clone(), id);
 
         assert_eq!(get_album_id_for_dir(&path), Some(id));
 

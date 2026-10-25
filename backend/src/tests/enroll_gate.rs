@@ -128,7 +128,7 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
     let record = crate::auth::users::user_record("root")
         .expect("get user")
         .expect("the user must exist");
-    assert_eq!(record.admin, true);
+    assert!(record.admin);
     assert!(record.hash.is_some(), "the password hash must be stored");
 
     // The store is non-empty now, so enrollment is closed again.
@@ -149,11 +149,11 @@ fn open_with_flag_on_empty_store_enrolls_first_admin() {
 /// additional admins.
 #[test]
 fn concurrent_first_bootstraps_enroll_exactly_one_admin() {
+    const CONTENDERS: usize = 6;
     let _g = lock();
     let _client = setup();
     assert_eq!(crate::auth::users::user_count().expect("count"), 0);
 
-    const CONTENDERS: usize = 6;
     let barrier = std::sync::Barrier::new(CONTENDERS);
     let barrier_ref = &barrier;
     std::thread::scope(|s| {
@@ -198,7 +198,7 @@ fn concurrent_first_bootstraps_enroll_exactly_one_admin() {
 // ── Row: password-PUT never enrolls ─────────────────────────────────────────
 
 /// A password PUT on an empty store must not enroll: no session exists
-/// pre-enrollment, so the GuardUser privilege refusal (403) fires before
+/// pre-enrollment, so the `GuardUser` privilege refusal (403) fires before
 /// the handler and no user record or password entry is written. Enrollment
 /// happens only via `POST /post/users/bootstrap` (or the CLI); the
 /// first-run flow through the settings password form is gone.
@@ -361,7 +361,7 @@ fn bootstrap_freshness_predicate() {
     );
 }
 
-/// The boot gate against a real user store under the test DATA_PATH: flag
+/// The boot gate against a real user store under the test `DATA_PATH`: flag
 /// off launches, flag on an existing store refuses with an actionable message,
 /// and removing the store re-opens.
 #[test]

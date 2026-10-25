@@ -2,8 +2,8 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use rocket::http::{ContentType, Header, Status};
-use rocket::local::blocking::Client;
+use rocket::http::{ContentType, Cookie, Header, Status};
+use rocket::local::blocking::{Client, LocalResponse};
 use serde_json::Value;
 use snapfab::test_image::{PhotoSpec, generate_batch};
 
@@ -18,7 +18,6 @@ static API_LOCK: Mutex<()> = Mutex::new(());
 /// file share the live globals.
 struct SharedSetup {
     _tmp: tempfile::TempDir,
-    cfg_dir: PathBuf,
     dat_dir: PathBuf,
 }
 
@@ -29,11 +28,11 @@ static SHARED_SETUP: OnceLock<SharedSetup> = OnceLock::new();
 /// the live `APP_CONFIG` (see [`SharedSetup`]).
 fn ensure_config_init() -> &'static SharedSetup {
     SHARED_SETUP.get_or_init(|| {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp dir for shared config setup");
         let cfg_dir = dir.path().join("config");
         let dat_dir = dir.path().join("data");
-        std::fs::create_dir_all(&cfg_dir).unwrap();
-        std::fs::create_dir_all(&dat_dir).unwrap();
+        std::fs::create_dir_all(&cfg_dir).expect("create PICASU_CONFIG_HOME dir");
+        std::fs::create_dir_all(&dat_dir).expect("create PICASU_DATA_HOME dir");
 
         // For each field type:
         //   server.*  ← address, port, max_upload_size
@@ -59,14 +58,23 @@ upload_folder = "my_uploads"
 auth_key = "jwt-key-from-toml"
 "#,
         )
-        .unwrap();
+        .expect("write precedence config.toml");
 
         unsafe {
-            std::env::set_var("PICASU_CONFIG_HOME", cfg_dir.to_str().unwrap());
-            std::env::set_var("PICASU_DATA_HOME", dat_dir.to_str().unwrap());
+            std::env::set_var(
+                "PICASU_CONFIG_HOME",
+                cfg_dir.to_str().expect("config home path is UTF-8"),
+            );
+            std::env::set_var(
+                "PICASU_DATA_HOME",
+                dat_dir.to_str().expect("data home path is UTF-8"),
+            );
             std::env::set_var(
                 "PICASU_IMAGE_HOME",
-                dat_dir.join("images").to_str().unwrap(),
+                dat_dir
+                    .join("images")
+                    .to_str()
+                    .expect("image home path is UTF-8"),
             );
 
             // Override config file values
@@ -82,23 +90,38 @@ auth_key = "jwt-key-from-toml"
         }
 
         // ── Load config ───────────────────────────────────────────────
-        std::fs::create_dir_all(dat_dir.join("db")).unwrap();
-        AppConfig::init();
+        std::fs::create_dir_all(dat_dir.join("db")).expect("create db dir under data home");
+        AppConfig::init().expect("first AppConfig::init() in the test binary must succeed");
         // Open the first-run bootstrap window for this test binary (like
         // api_watcher and the shared bootstrap harness). Without it,
         // `POST /post/users/bootstrap` would 401 on a non-empty check and
         // `POST /post/users/authenticate` would require a pre-existing user.
         {
-            let mut cfg = APP_CONFIG.get().unwrap().write().unwrap();
+            let mut cfg = APP_CONFIG
+                .get()
+                .expect("APP_CONFIG installed by AppConfig::init()")
+                .write()
+                .expect("config lock not poisoned");
             cfg.bootstrap_admin = true;
         }
 
-        SharedSetup {
-            _tmp: dir,
-            cfg_dir,
-            dat_dir,
-        }
+        SharedSetup { _tmp: dir, dat_dir }
     })
+}
+
+/// The JWT carried in the `Set-Cookie` header of an authenticate response,
+/// packaged as the request cookie the SPA would replay.
+fn jwt_cookie(res: &LocalResponse<'_>) -> Cookie<'static> {
+    let set_cookie = res
+        .headers()
+        .get_one("Set-Cookie")
+        .expect("Set-Cookie on authenticate response");
+    let pair = set_cookie.split(';').next().expect("cookie pair before ;");
+    let token = pair
+        .strip_prefix("jwt=")
+        .expect("jwt cookie carries the jwt= pair")
+        .to_owned();
+    Cookie::new("jwt", token)
 }
 
 fn auth_and_config(client: &Client) -> Value {
@@ -125,13 +148,7 @@ fn auth_and_config(client: &Client) -> Value {
         .dispatch();
     assert_eq!(auth_res.status(), Status::Ok, "authenticate should succeed");
     // Post-R5/R6 the body is a profile; the JWT travels in HttpOnly Set-Cookie.
-    let set_cookie = auth_res
-        .headers()
-        .get_one("Set-Cookie")
-        .expect("Set-Cookie");
-    let pair = set_cookie.split(';').next().expect("cookie pair");
-    let token = pair.strip_prefix("jwt=").expect("jwt cookie").to_owned();
-    let cookie = rocket::http::Cookie::new("jwt", token);
+    let cookie = jwt_cookie(&auth_res);
     let res = client.get("/get/config").cookie(cookie).dispatch();
     assert_eq!(res.status(), Status::Ok);
     res.into_json().expect("valid JSON")
@@ -140,7 +157,7 @@ fn auth_and_config(client: &Client) -> Value {
 /// API test: defaults → config.toml → env vars → API.
 ///
 /// Spins up a Rocket client in-process after loading config through the
-/// real AppConfig::init() path, then verifies via GET /get/config.
+/// real `AppConfig::init()` path, then verifies via GET /get/config.
 #[test]
 fn api_config_precedence() {
     let _lock = API_LOCK
@@ -149,12 +166,15 @@ fn api_config_precedence() {
 
     // ── Setup temp directories ────────────────────────────────────────
     let setup = ensure_config_init();
-    let cfg_dir = setup.cfg_dir.clone();
     let dat_dir = setup.dat_dir.clone();
 
     // ── Verify in-memory struct ───────────────────────────────────────
     {
-        let cfg = APP_CONFIG.get().unwrap().read().unwrap();
+        let cfg = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG installed by AppConfig::init()")
+            .read()
+            .expect("config lock not poisoned");
 
         // ── Env wins over config file ─────────────
         assert_eq!(cfg.port, 7777, "PICASU_PORT overrides config.toml");
@@ -194,8 +214,14 @@ fn api_config_precedence() {
 
     // ── Verify via API ────────────────────────────────────────────────
     {
-        let config = APP_CONFIG.get().unwrap().read().unwrap().clone();
-        let client = Client::tracked(build_rocket_with_config(config)).unwrap();
+        let config = APP_CONFIG
+            .get()
+            .expect("APP_CONFIG installed by AppConfig::init()")
+            .read()
+            .expect("config lock not poisoned")
+            .clone();
+        let client = Client::tracked(build_rocket_with_config(config))
+            .expect("rocket client for /get/config");
         let json = auth_and_config(&client);
 
         // `address`/`port` are host fields, not client config: they are
@@ -224,24 +250,9 @@ fn api_config_precedence() {
     }
 }
 
-/// R13 (B+C): `GET /get/config` is `GuardShare`-gated, so share-tier
-/// callers must not see host fields. `address`/`port` are gone for every
-/// tier; `imagePath`/`uploadFolder` are `null` for share-credential
-/// callers while the admin tier keeps the real values. A non-admin
-/// session never reaches the handler at all: `GuardShare` only admits
-/// admins and shares, so it is refused with 401.
-#[test]
-fn share_tier_config_hides_host_fields() {
-    let _lock = API_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let _setup = ensure_config_init();
-    let config = APP_CONFIG.get().unwrap().read().unwrap().clone();
-    // Untracked: every request carries exactly the credential under test —
-    // no cookie jar could upgrade the share-tier calls to the admin tier.
-    let client = Client::untracked(build_rocket_with_config(config)).unwrap();
-
-    // ── Admin session (bootstrap only the empty store) ────────────────
+/// Bootstrap the admin through the one-shot window (open only while the
+/// store is empty) and authenticate it; returns the admin's JWT cookie.
+fn admin_session(client: &Client) -> Cookie<'static> {
     let admin_body = r#"{"userId":"admin","password":"secret123"}"#;
     let bootstrap = client
         .post("/post/users/bootstrap")
@@ -259,23 +270,15 @@ fn share_tier_config_hides_host_fields() {
         .body(admin_body)
         .dispatch();
     assert_eq!(auth_res.status(), Status::Ok, "authenticate admin");
-    let set_cookie = auth_res
-        .headers()
-        .get_one("Set-Cookie")
-        .expect("Set-Cookie");
-    let admin_token = set_cookie
-        .split(';')
-        .next()
-        .expect("cookie pair")
-        .strip_prefix("jwt=")
-        .expect("jwt cookie")
-        .to_owned();
-    let admin = || rocket::http::Cookie::new("jwt", admin_token.clone());
+    jwt_cookie(&auth_res)
+}
 
-    // ── Non-admin user: an admin session registers without an invite ──
+/// Register a non-admin `viewer` through the admin session and return the
+/// viewer's JWT cookie.
+fn viewer_session(client: &Client, admin: &Cookie<'static>) -> Cookie<'static> {
     let reg = client
         .post("/post/users/register")
-        .cookie(admin())
+        .cookie(admin.clone())
         .header(ContentType::JSON)
         .body(r#"{"userId":"viewer","password":"viewer-secret-9"}"#)
         .dispatch();
@@ -286,24 +289,17 @@ fn share_tier_config_hides_host_fields() {
         .body(r#"{"userId":"viewer","password":"viewer-secret-9"}"#)
         .dispatch();
     assert_eq!(viewer_auth.status(), Status::Ok, "authenticate viewer");
-    let viewer_token = viewer_auth
-        .headers()
-        .get_one("Set-Cookie")
-        .expect("Set-Cookie")
-        .split(';')
-        .next()
-        .expect("cookie pair")
-        .strip_prefix("jwt=")
-        .expect("jwt cookie")
-        .to_owned();
-    let viewer = || rocket::http::Cookie::new("jwt", viewer_token.clone());
+    jwt_cookie(&viewer_auth)
+}
 
-    // ── One indexed photo, so a real share can exist ─────────────────
+/// Generate one photo in `sharecfg/`, index that album and create a share
+/// for it; returns `(album_id, share_id)`.
+fn index_and_share(client: &Client, admin: &Cookie<'static>) -> (String, String) {
     let image_home = APP_CONFIG
         .get()
-        .unwrap()
+        .expect("APP_CONFIG installed by AppConfig::init()")
         .read()
-        .unwrap()
+        .expect("config lock not poisoned")
         .image_home
         .clone()
         .expect("PICASU_IMAGE_HOME set by ensure_config_init");
@@ -321,14 +317,17 @@ fn share_tier_config_hides_host_fields() {
     .expect("generate photo");
     let index = client
         .post("/post/index/album")
-        .cookie(admin())
+        .cookie(admin.clone())
         .header(ContentType::JSON)
         .body(r#"{"album": "/sharecfg"}"#)
         .dispatch();
     assert_eq!(index.status(), Status::Accepted, "album_index");
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
-        let status = client.get("/get/index/status").cookie(admin()).dispatch();
+        let status = client
+            .get("/get/index/status")
+            .cookie(admin.clone())
+            .dispatch();
         assert_eq!(status.status(), Status::Ok, "index status");
         let body: Value = status.into_json().expect("status json");
         match body["state"].as_str().unwrap_or("unknown") {
@@ -345,7 +344,7 @@ fn share_tier_config_hides_host_fields() {
     }
     let albums: Value = client
         .get("/get/get-albums")
-        .cookie(admin())
+        .cookie(admin.clone())
         .dispatch()
         .into_json()
         .expect("albums json");
@@ -360,7 +359,7 @@ fn share_tier_config_hides_host_fields() {
         .to_owned();
     let share_res = client
         .post("/post/create_share")
-        .cookie(admin())
+        .cookie(admin.clone())
         .header(ContentType::JSON)
         .body(
             serde_json::json!({
@@ -377,6 +376,39 @@ fn share_tier_config_hides_host_fields() {
         .dispatch();
     assert_eq!(share_res.status(), Status::Ok, "create_share");
     let share_id = share_res.into_string().expect("share id").trim().to_owned();
+    (album_id, share_id)
+}
+
+/// R13 (B+C): `GET /get/config` is `GuardShare`-gated, so share-tier
+/// callers must not see host fields. `address`/`port` are gone for every
+/// tier; `imagePath`/`uploadFolder` are `null` for share-credential
+/// callers while the admin tier keeps the real values. A non-admin
+/// session never reaches the handler at all: `GuardShare` only admits
+/// admins and shares, so it is refused with 401.
+#[test]
+fn share_tier_config_hides_host_fields() {
+    let _lock = API_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _setup = ensure_config_init();
+    let config = APP_CONFIG
+        .get()
+        .expect("APP_CONFIG installed by AppConfig::init()")
+        .read()
+        .expect("config lock not poisoned")
+        .clone();
+    // Untracked: every request carries exactly the credential under test —
+    // no cookie jar could upgrade the share-tier calls to the admin tier.
+    let client = Client::untracked(build_rocket_with_config(config)).expect("rocket client");
+
+    // ── Admin session (bootstrap only the empty store) ────────────────
+    let admin = admin_session(&client);
+
+    // ── Non-admin user: an admin session registers without an invite ──
+    let viewer = viewer_session(&client, &admin);
+
+    // ── One indexed photo, so a real share can exist ─────────────────
+    let (album_id, share_id) = index_and_share(&client, &admin);
 
     // ── (a) share headers, no cookie: 200, null paths, no host keys ──
     let share_json: Value = client
@@ -406,7 +438,7 @@ fn share_tier_config_hides_host_fields() {
     // ── (b) admin session: 200, real values, no host keys ────────────
     let admin_json: Value = client
         .get("/get/config")
-        .cookie(admin())
+        .cookie(admin.clone())
         .dispatch()
         .into_json()
         .expect("admin config json");
@@ -432,7 +464,7 @@ fn share_tier_config_hides_host_fields() {
     // only, so a non-admin cookie is refused before the handler's tier
     // rule runs (the handler's `User { admin: false }` arm stays as
     // unreachable defense-in-depth).
-    let viewer_res = client.get("/get/config").cookie(viewer()).dispatch();
+    let viewer_res = client.get("/get/config").cookie(viewer.clone()).dispatch();
     assert_eq!(
         viewer_res.status(),
         Status::Unauthorized,

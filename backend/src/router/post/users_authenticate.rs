@@ -586,7 +586,7 @@ mod tests {
         pair.strip_prefix("jwt=").expect("jwt cookie").to_string()
     }
 
-    /// The session cookie must be HttpOnly, SameSite=Strict,
+    /// The session cookie must be `HttpOnly`, SameSite=Strict,
     /// and path-scoped; `Secure` stays off on plain-HTTP test requests.
     fn assert_session_cookie_flags(resp: &rocket::local::blocking::LocalResponse<'_>) {
         let set_cookie = resp.headers().get_one("Set-Cookie").expect("Set-Cookie");
@@ -1449,12 +1449,6 @@ mod tests {
 
         // Legacy-shaped payload without jti must fail decode.
         {
-            let key = crate::model::config::APP_CONFIG
-                .get()
-                .expect("APP_CONFIG not initialized")
-                .read()
-                .expect("lock poisoned")
-                .get_jwt_secret_key();
             #[derive(serde::Serialize)]
             #[serde(rename_all = "camelCase")]
             struct LegacyNoJti {
@@ -1463,6 +1457,12 @@ mod tests {
                 #[serde(rename = "typ")]
                 typ: crate::router::auth::TokenType,
             }
+            let key = crate::model::config::APP_CONFIG
+                .get()
+                .expect("APP_CONFIG not initialized")
+                .read()
+                .expect("lock poisoned")
+                .get_jwt_secret_key();
             let legacy = LegacyNoJti {
                 role: crate::router::auth::Role::User {
                     id: "s3c-live".to_string(),

@@ -4,7 +4,7 @@ use serde_json::json;
 use crate::tests::bootstrap::{lock, login, seed, setup};
 use crate::tests::fixtures::test_password;
 
-/// Ask a GuardUser route about a token. The body names another user, so a
+/// Ask a `GuardUser` route about a token. The body names another user, so a
 /// live non-admin token reaches the handler and is refused with 403 (it may
 /// not change another user's password), while a dead token is rejected by
 /// the guard with 401. Nothing is written either way.

@@ -29,7 +29,7 @@ pub fn discover_photo_hash(client: &Client, relative_path: &str) -> String {
 
     // Uploads update the tree snapshot through a detached batch, so a freshly
     // uploaded path may not be locatable yet. Poll until the path shows up.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(10_000);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut found: Option<String> = None;
     while std::time::Instant::now() < deadline {
         let prefetch_resp = client
@@ -77,7 +77,7 @@ pub fn discover_photo_hash(client: &Client, relative_path: &str) -> String {
             // with test assertions that check abstractData.id.
             found = data_body[0]["abstractData"]["id"]
                 .as_str()
-                .map(|s| s.to_owned());
+                .map(std::borrow::ToOwned::to_owned);
             if found.is_some() {
                 break;
             }
@@ -97,7 +97,7 @@ pub fn discover_asset_id(client: &Client, relative_path: &str) -> String {
     let cookie = auth_cookie(client);
     let body = serde_json::json!({"Path": abs_path.to_string_lossy()});
 
-    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(10_000);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut found: Option<String> = None;
     while std::time::Instant::now() < deadline {
         let prefetch_resp = client
@@ -142,7 +142,9 @@ pub fn discover_asset_id(client: &Client, relative_path: &str) -> String {
                 serde_json::from_slice(&data_resp.into_bytes().expect("get-data body"))
                     .expect("valid get-data JSON");
             // Try to get asset_id from the response (new field).
-            found = data_body[0]["assetId"].as_str().map(|s| s.to_owned());
+            found = data_body[0]["assetId"]
+                .as_str()
+                .map(std::borrow::ToOwned::to_owned);
             if found.is_some() {
                 break;
             }

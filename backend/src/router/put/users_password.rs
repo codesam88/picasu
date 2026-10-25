@@ -612,7 +612,7 @@ mod tests {
         );
     }
 
-    /// Closed install (bootstrap flag off, empty store): the GuardUser
+    /// Closed install (bootstrap flag off, empty store): the `GuardUser`
     /// no-admin-enrolled refusal is a privilege/administration condition, not
     /// a session failure — 403 with the enrollment hint, keeping the SPA's
     /// display session intact.

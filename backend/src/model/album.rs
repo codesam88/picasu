@@ -174,43 +174,43 @@ mod tests {
         file_entry.is_some_and(|a| Path::new(&a.file).parent() == Some(dir_path))
     }
 
-    fn file_info(path: &str) -> Option<FileEntry> {
-        Some(FileEntry {
+    fn file_info(path: &str) -> FileEntry {
+        FileEntry {
             file: path.to_string(),
             modified: 0,
             scan_time: 0,
             is_trashed: false,
-        })
+        }
     }
 
     #[test]
     fn dir_album_matches_file_inside_dir() {
         let a = file_info("/photos/vacation/img.jpg");
-        assert!(belongs_to_album(a.as_ref(), "/photos/vacation"));
+        assert!(belongs_to_album(Some(&a), "/photos/vacation"));
     }
 
     #[test]
     fn dir_album_does_not_match_file_in_subdirectory() {
         let a = file_info("/photos/vacation/day1/img.jpg");
-        assert!(!belongs_to_album(a.as_ref(), "/photos/vacation"));
+        assert!(!belongs_to_album(Some(&a), "/photos/vacation"));
     }
 
     #[test]
     fn child_dir_album_matches_its_own_direct_file() {
         let a = file_info("/photos/vacation/day1/img.jpg");
-        assert!(belongs_to_album(a.as_ref(), "/photos/vacation/day1"));
+        assert!(belongs_to_album(Some(&a), "/photos/vacation/day1"));
     }
 
     #[test]
     fn dir_album_does_not_match_sibling_dir() {
         let a = file_info("/photos/other/img.jpg");
-        assert!(!belongs_to_album(a.as_ref(), "/photos/vacation"));
+        assert!(!belongs_to_album(Some(&a), "/photos/vacation"));
     }
 
     #[test]
     fn dir_album_does_not_match_partial_name_prefix() {
         let a = file_info("/photos/vacation2/img.jpg");
-        assert!(!belongs_to_album(a.as_ref(), "/photos/vacation"));
+        assert!(!belongs_to_album(Some(&a), "/photos/vacation"));
     }
 
     #[test]

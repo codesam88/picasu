@@ -1196,10 +1196,10 @@ auth_key = "jwt-secret"
 
     #[test]
     fn no_legacy_password_key_absent() {
-        let toml_str = r#"
+        let toml_str = r"
 [server]
 port = 9999
-"#;
+";
         assert!(!super::has_legacy_password_key(toml_str));
     }
 
@@ -1224,18 +1224,6 @@ port = 9999
         // field added without a `CONFIG_FIELDS` entry fails this test.
         // Fully populate `Option` fields so `skip_serializing_if` does not
         // drop them; `web_root` is `#[serde(skip)]` and is added manually.
-        let config = AppConfig {
-            data_home: Some(PathBuf::from("/tmp/data")),
-            image_home: Some(PathBuf::from("/tmp/images")),
-            auth_key: Some("secret".to_string()),
-            web_root: Some(PathBuf::from("/tmp/www")),
-            ..AppConfig::default()
-        };
-        let value = serde_json::to_value(&config).expect("serialize AppConfig");
-        let obj = value
-            .as_object()
-            .expect("AppConfig serializes to an object");
-
         fn camel_to_snake(input: &str) -> String {
             let mut out = String::new();
             for (i, c) in input.chars().enumerate() {
@@ -1250,6 +1238,18 @@ port = 9999
             }
             out
         }
+
+        let config = AppConfig {
+            data_home: Some(PathBuf::from("/tmp/data")),
+            image_home: Some(PathBuf::from("/tmp/images")),
+            auth_key: Some("secret".to_string()),
+            web_root: Some(PathBuf::from("/tmp/www")),
+            ..AppConfig::default()
+        };
+        let value = serde_json::to_value(&config).expect("serialize AppConfig");
+        let obj = value
+            .as_object()
+            .expect("AppConfig serializes to an object");
 
         let mut derived: Vec<String> = obj
             .keys()
@@ -1337,7 +1337,7 @@ port = 9999
     #[test]
     fn login_throttle_knobs_honor_toml_values() {
         let config = parse_app_config(
-            r#"
+            r"
 [server]
 trust_proxy_forwarded_for = true
 login_ip_window_secs = 101
@@ -1352,7 +1352,7 @@ login_user_long_window_secs = 303
 login_user_long_max_failures = 6
 login_user_long_base_ban_secs = 13
 login_user_long_max_ban_secs = 92
-"#,
+",
         );
         assert!(config.trust_proxy_forwarded_for);
         assert_eq!(config.login_ip_window_secs, 101);
@@ -1407,7 +1407,7 @@ login_user_long_max_ban_secs = 92
 
         // TOML deliberately carries different values: env must win.
         let mut config = parse_app_config(
-            r#"
+            r"
 [server]
 trust_proxy_forwarded_for = false
 login_ip_window_secs = 999
@@ -1422,7 +1422,7 @@ login_user_long_window_secs = 997
 login_user_long_max_failures = 7
 login_user_long_base_ban_secs = 70
 login_user_long_max_ban_secs = 700
-"#,
+",
         );
         AppConfig::apply_env_overrides_with(&mut config, |name| {
             env.iter()
@@ -1446,11 +1446,12 @@ login_user_long_max_ban_secs = 700
         assert!(config.validate_login_throttle().is_ok());
     }
 
-    #[test]
-    fn login_throttle_validation_rejects_degenerate_schedules() {
-        // Zero window / zero max failures / zero base ban and a cap below
-        // the base are rejected on each of the three buckets, never clamped.
-        let cases: Vec<(&str, Box<dyn Fn() -> AppConfig>)> = vec![
+    /// One degenerate login-throttle schedule: a label plus a builder for a
+    /// config whose validation must fail.
+    type DegenerateCase = (&'static str, Box<dyn Fn() -> AppConfig>);
+
+    fn degenerate_schedule_cases() -> Vec<DegenerateCase> {
+        let cases: Vec<DegenerateCase> = vec![
             (
                 "zero IP-short window",
                 Box::new(|| AppConfig {
@@ -1539,18 +1540,12 @@ login_user_long_max_ban_secs = 700
                 }),
             ),
         ];
-        for (label, make) in cases {
-            let config = make();
-            let err = config
-                .validate_login_throttle()
-                .expect_err(&format!("{label} must fail validation"));
-            assert!(
-                err.to_string().contains("login"),
-                "error must name the login throttle: {err}"
-            );
-        }
+        cases
+    }
 
-        // Degenerate-but-valid edges still load.
+    /// The lowest schedule that still validates and a cap equal to its base:
+    /// both are degenerate but legal, so validation must accept them.
+    fn edge_schedules_that_still_load() {
         let minimal = AppConfig {
             login_ip_window_secs: 1,
             login_ip_max_failures: 1,
@@ -1578,14 +1573,33 @@ login_user_long_max_ban_secs = 700
     }
 
     #[test]
+    fn login_throttle_validation_rejects_degenerate_schedules() {
+        // Zero window / zero max failures / zero base ban and a cap below
+        // the base are rejected on each of the three buckets, never clamped.
+        for (label, make) in degenerate_schedule_cases() {
+            let config = make();
+            let err = config
+                .validate_login_throttle()
+                .expect_err(&format!("{label} must fail validation"));
+            assert!(
+                err.to_string().contains("login"),
+                "error must name the login throttle: {err}"
+            );
+        }
+
+        // Degenerate-but-valid edges still load.
+        edge_schedules_that_still_load();
+    }
+
+    #[test]
     fn toml_defaults_fill_gaps() {
-        let toml_str = r#"
+        let toml_str = r"
 [server]
 port = 9999
 
 [gallery]
 read_only_mode = true
-"#;
+";
         let parsed: TomlFile = toml::from_str(toml_str).expect("failed to deserialize toml");
         let config = AppConfig::from(parsed);
 

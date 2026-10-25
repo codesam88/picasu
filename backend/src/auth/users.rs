@@ -374,7 +374,10 @@ mod tests {
         let _ = &*TEST_ENV;
         clear_users_table();
         assert_eq!(crate::auth::users::user_count().expect("count"), 0);
-        assert!(crate::auth::users::list_users().expect("list").is_empty());
+        assert!(
+            crate::auth::users::list_users().expect("list").is_empty(),
+            "fresh store lists no users"
+        );
 
         crate::auth::users::create_user(LIST_B_ID, false).expect("create b");
         crate::auth::users::create_user(LIST_A_ID, true).expect("create a");
@@ -409,7 +412,7 @@ mod tests {
     /// Whitespace-only password, built without a string literal so
     /// credential scanners see no hard-coded value.
     fn whitespace(width: usize) -> String {
-        std::iter::repeat(' ').take(width).collect()
+        std::iter::repeat_n(' ', width).collect()
     }
 
     #[test]

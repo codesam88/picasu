@@ -193,7 +193,7 @@ mod tests {
     fn asset_kind_display_roundtrip() {
         for kind in [AssetKind::Image, AssetKind::Video, AssetKind::Album] {
             let s = kind.to_string();
-            let parsed: AssetKind = s.parse().unwrap();
+            let parsed: AssetKind = s.parse().expect("displayed AssetKind parses back");
             assert_eq!(parsed, kind);
         }
     }
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn media_with_hash_stores_hash() {
-        let hash: ArrayString<64> = "abc123".parse().unwrap();
+        let hash: ArrayString<64> = "abc123".parse().expect("valid ArrayString<64> value");
         let r = AssetRecord::new_media(
             AssetKind::Image,
             "/img.jpg".into(),

@@ -279,7 +279,9 @@ mod tests {
 
     #[test]
     fn drop_clear_handles_undecodable_metadata_row() {
-        let _guard = TEST_SERIAL_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_SERIAL_GUARD
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _ = &*TEST_ENV;
 
         // Make sure all four tables exist before seeding.

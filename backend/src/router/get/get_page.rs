@@ -612,9 +612,9 @@ mod tests {
     #[test]
     fn register_page_is_mounted() {
         let _ = &*TEST_ENV;
-        let register_mounted = build_test_rocket().routes().any(|route| {
-            route.method == rocket::http::Method::Get && route.uri.to_string() == "/register"
-        });
+        let register_mounted = build_test_rocket()
+            .routes()
+            .any(|route| route.method == rocket::http::Method::Get && route.uri == "/register");
         assert!(register_mounted, "GET /register must be mounted");
     }
 }

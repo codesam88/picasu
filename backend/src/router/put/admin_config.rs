@@ -335,7 +335,6 @@ pub(crate) fn host_only_knobs(
 /// be parsed, or a host-only or managed knob is present — 401 missing or invalid admin
 /// credentials; share tokens are not accepted — 405 read-only mode — 500
 /// config write failure.
-
 #[cfg(test)]
 mod tests {
     use rocket::http::{ContentType, Status};
