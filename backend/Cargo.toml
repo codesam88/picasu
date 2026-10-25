@@ -98,7 +98,7 @@ serde-saphyr = "2.0"
 # is off on purpose: the schema only ever uses local `#/definitions/…` JSON
 # pointers, so the crate's remote/file resolvers (and the reqwest + rustls they
 # pull in) would be dead weight in a dev-dependency.
-jsonschema = { version = "0.58", default-features = false }
+jsonschema = { version = "0.60", default-features = false }
 snapfab = { version = "0.1", path = "../utils/snapfab" }
 openapi-sanity = { version = "0.1", path = "../utils/openapi-sanity" }
 proptest = "1.11.0"
