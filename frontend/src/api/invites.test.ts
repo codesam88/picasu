@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach } from 'vitest'
 import axios from 'axios'
-import { createInvite, InviteViewSchema } from './invites'
+import { buildInviteLink, createInvite, InviteViewSchema } from './invites'
 
 vi.mock('axios')
 
@@ -87,5 +87,18 @@ describe('InviteViewSchema', () => {
       username: null
     })
     expect(parsed.username).toBeNull()
+  })
+})
+
+describe('buildInviteLink', () => {
+  test('appends the bound username so register can prefill it', () => {
+    expect(buildInviteLink('https://host', 'tok', 'maria')).toBe(
+      'https://host/register?invite=tok&username=maria'
+    )
+  })
+
+  test('omits username for open invites', () => {
+    expect(buildInviteLink('https://host', 'tok')).toBe('https://host/register?invite=tok')
+    expect(buildInviteLink('https://host', 'tok', '   ')).toBe('https://host/register?invite=tok')
   })
 })

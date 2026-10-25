@@ -12,6 +12,34 @@ export const inviteFromQuery = (
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
+/// Username hint from `?username=` on an invite link. The invite token
+/// itself carries no readable name (only its hash is stored), so the
+/// admin embeds the bound name in the link; the backend still enforces
+/// the binding server-side (403 on mismatch).
+export const usernameFromQuery = (
+  query: { username?: unknown } | null | undefined
+): string | undefined => {
+  const value = query?.username
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed !== '' ? trimmed : undefined
+}
+
+/// Initial User ID for the register form: invite mode never reuses the
+/// last-login prefill (it belongs to a different person); it starts from
+/// the link's `username` hint or empty. First-admin mode keeps the
+/// last-login prefill.
+export const initialRegisterUserId = (args: {
+  invite?: string
+  usernameParam?: string
+  lastUserId?: string
+}): string => {
+  if (args.invite !== undefined && args.invite !== '') {
+    return args.usernameParam ?? ''
+  }
+  return args.lastUserId ?? ''
+}
+
 export const isRegistrationSubmittable = (
   userId: string,
   password: string,

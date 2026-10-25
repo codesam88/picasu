@@ -3,6 +3,7 @@ import { Ref } from 'vue'
 import { IsolationId, PrefetchReturn } from '@type/types'
 import { prefetch } from '@/api/fetchPrefetch'
 import { useConfigStore } from '@/store/configStore'
+import { shouldLoadAppConfig, useCurrentUser } from '@/script/utils/currentUser'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useTagStore } from '@/store/tagStore'
@@ -58,6 +59,9 @@ export function usePrefetch(
  * Independent of prefetch data.
  */
 async function processConfigChain(isolationId: IsolationId) {
+  // Viewers skip the admin-or-share-gated endpoint; a 401 there would
+  // clear the session. Share visitors (no profile) still load it.
+  if (isolationId === 'mainId' && !shouldLoadAppConfig(useCurrentUser().value)) return
   const configStore = useConfigStore(isolationId)
   await configStore.fetchConfig()
 }
