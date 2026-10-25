@@ -54,10 +54,42 @@ zero hand-written browser files.
   Requires `api.response` extended with `method` + `body` for the anonymous
   `POST /post/users/bootstrap → 401` probe (current verb is GET-only).
 - Slices (one worker each, TDD red-first): S1 `server:` + `login:` + `index:` +
-  `api.response` method/body + first-admin YAML; S2 `invite:` given + viewer
-  session + invite-registration YAML (expect backend/frontend bugs to surface);
-  S3 throttle knob + response observation + disabled assert + login-throttle YAML;
-  S4 docs + hand-written cleanup + full gates.
+  `api.response` method/body + first-admin YAML (done); S2 `invite:` given +
+  viewer session + invite-registration YAML (DSL done, story blocked — see
+  finding F1); S3 throttle knob + response observation + disabled assert +
+  login-throttle YAML; S4 docs + hand-written cleanup + full gates.
+
+## Finding F1 (2026-10-25, blocks the story): viewers cannot load any grid
+
+- DSL proof: `invite-registration.yaml` registers via invite, lands on
+  `/timeline`, reload keeps the session — then a fresh viewer left idle on
+  `/timeline` navigates itself to `/login` within 30 s (idle-only temp
+  scenario reproduced it with zero test activity; admin idling 30 s stays
+  put). CI-green hand-written `invite-registration.ts` never observes this:
+  its assertions all complete within ~1 s of mount, before the bounce.
+- Mechanism (all verified): timeline mount fires `POST /get/prefetch` as
+  the viewer → `GuardShare` falls back to `try_jwt_cookie_auth`, which is
+  admin-only ("User is not an admin" in the backend log) → 401 → the axios
+  interceptor (`axiosInterceptor.ts` 401 branch) clears the profile and
+  pushes `/login`. Same class as the fixed config bounce (95655073), but
+  `fetchTags`/`fetchAlbums` (`GuardAuth`) and prefetch all still bounce.
+- Pinned intent: `auth_users.rs::guest_share_prefetch_get_data_and_serving`
+  asserts a non-admin without share headers is 401 on the share-guarded
+  route ("otherwise the share guard would be vacuous"); `docs/authz-model.md`
+  §4 denotes `GuardShare` as admin-cookie-or-live-share only. There is no
+  viewer read capability in the model.
+- Frontend-only fixes cannot complete the story: skipping tags/albums for
+  viewers (done in `usePrefetch.ts` behind `shouldLoadAdminLists`, unit
+  tested) removes two 401s, but the grid itself needs prefetch/get-rows/
+  get-data, which 401 for viewers. The story "invite → register → login →
+  view images" needs viewer reads at the guard level.
+- Options (owner decision needed — backend auth behavior + formal model):
+  (a) extend the data read path (prefetch/get-rows/get-data, plus serving)
+  to accept a live non-admin `User` identity alongside share/admin, with
+  `authz-model` + matrices updated and the "vacuous guard" companion
+  reworked to viewer-vs-share terms; (b) keep backend tiers and declare
+  viewers browse-less (contradicts the invite feature's purpose — not
+  recommended); (c) stop-gap: nothing ships until (a) is decided.
 
 ## Progress (2026-10-25, S1 done)
 
@@ -80,28 +112,38 @@ zero hand-written browser files.
   present; fixture backend still boots under `server:` scenarios (wasted,
   torn down by fixture); `invite:`/throttle verbs open (S2/S3).
 
-## Progress (2026-10-25, S2 done)
+## Progress (2026-10-25, S2 DSL done, story blocked by F1)
 
 - `invite:` given (bound `username` vs open, `expires_in_hours` default 168,
   token exposed as `${id_as}`) in `types.ts`, `schema.json`,
   `executeGiven.ts` (mints via admin API after the `user:` given);
-  `reload: true` verb; `api.response` body deep-interpolation.
-- New: `scenarios/invite-registration.yaml` — bound prefill, anonymous
-  mismatch 403, UI redeem → `/timeline`, reload keeps session, reuse 409,
-  unknown 404, open-invite register while holding a viewer session,
-  viewer-tier `GET /get/users → 401`.
+  `reload: true` verb; `api.response` body deep-interpolation;
+  `click.menu: <text>` verb for overlay menus (list-item roles are
+  unreliable there — hand-written specs already use `getByText`);
+  `resolveLocator` prefers the exact accessible name (waits briefly for
+  attach first: Vuetify binds names async), substring fallback kept for
+  `button/3`-style matches.
+- `scenarios/invite-registration.yaml` pins prefill, anonymous mismatch
+  403, UI redeem → `/timeline`, reload, reuse 409, unknown 404, open-invite
+  register, viewer tier (`GET /get/users → 401`). Logout/login/view-image
+  legs are staged in the file footer as comments until F1 is decided.
 - E2E finds: (3) `api.response` posted the raw body uninterpolated, so an
   invite redeem sent the literal `${bound}` text and answered 404 instead
   of the binding 403 — bodies now go through `interpolateDeep`; (4, latent)
   `assertionTarget` does not interpolate `ui.route`, so `covers.ui` cannot
-  name parameterized routes — worked around by covering only static
-  targets (advisory warnings are not gates; proper fix deferred to S4).
-- Gates: scenario passes with zero coverage warnings; full
-  `npx playwright test` 46 passed; eslint, `vue-tsc -p tsconfig.node.json`,
-  prettier, `plan-lint` clean. Backend untouched. Leftover carried: S1
-  leftovers plus pre-seeded second-user/viewer-login verb (needed for the
-  denial matrix), generic text-click (logout flows stay in hand-written
-  specs for now).
+  name parameterized routes — worked around with static targets (advisory
+  warnings are not gates); (5) `click: option/<item>` never resolves in
+  teleported `v-menu` content — `click.menu` matches exact visible text in
+  `.v-overlay` instead; (6) exact-name `count()` raced Vuetify's async
+  label binding — resolver now waits for attach before falling back.
+- Frontend viewer-skip for the admin-only tags/albums lists
+  (`shouldLoadAdminLists` in `currentUser.ts`, unit-tested, wired into
+  `usePrefetch.ts`): removes two certain 401s, but does NOT unblock the
+  story — the grid itself needs prefetch, see F1.
+- Gates: scenario passes with zero coverage warnings; eslint,
+  `vue-tsc -p tsconfig.node.json`, prettier, `plan-lint` clean. Backend
+  untouched. Leftover carried: auto-index heuristic, fixture-backend waste,
+  throttle verbs (S3), hand-written deletion + doc updates (S4).
 
 ## Out of scope
 

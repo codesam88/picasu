@@ -75,6 +75,26 @@ test.describe('UI scenarios', () => {
             tracer.recordAPI(req.method(), url.pathname)
           }
         })
+        // Failed backend calls the browser itself made (not the `api.response`
+        // probes): a viewer 401 here explains a session-clearing bounce, so
+        // log them with the page URL at response time.
+        activePage.on('response', (res) => {
+          let url: URL
+          try {
+            url = new URL(res.url())
+          } catch {
+            return // Non-HTTP(S) URLs (blob:, data:) carry no backend traffic.
+          }
+          if (
+            url.origin === activePaths.BACKEND_URL &&
+            isBackendApiPath(url.pathname) &&
+            res.status() >= 400
+          ) {
+            console.warn(
+              `[api-error] ${res.status()} ${res.request().method()} ${url.pathname} at=${activePage.url()}`
+            )
+          }
+        })
 
         if (managed) await uiLogin(activePage, resolveSessionCreds(scenario))
 

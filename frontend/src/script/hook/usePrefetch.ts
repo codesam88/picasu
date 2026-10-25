@@ -3,7 +3,11 @@ import { Ref } from 'vue'
 import { IsolationId, PrefetchReturn } from '@type/types'
 import { prefetch } from '@/api/fetchPrefetch'
 import { useConfigStore } from '@/store/configStore'
-import { shouldLoadAppConfig, useCurrentUser } from '@/script/utils/currentUser'
+import {
+  shouldLoadAdminLists,
+  shouldLoadAppConfig,
+  useCurrentUser
+} from '@/script/utils/currentUser'
 import { usePrefetchStore } from '@/store/prefetchStore'
 import { useInitializedStore } from '@/store/initializedStore'
 import { useTagStore } from '@/store/tagStore'
@@ -93,14 +97,19 @@ export async function processPrefetchChain(
   dependentPromises.push(fetchScrollbar(isolationId))
 
   if (route.meta.baseName !== 'share') {
-    const tagStore = useTagStore('mainId')
-    if (!tagStore.fetched) {
-      dependentPromises.push(tagStore.fetchTags())
-    }
+    // Tags and albums lists are admin-gated; a viewer 401 there would clear
+    // the session (same class as the config fetch above), so viewers skip
+    // them and go straight to the row fetch.
+    if (shouldLoadAdminLists(useCurrentUser().value)) {
+      const tagStore = useTagStore('mainId')
+      if (!tagStore.fetched) {
+        dependentPromises.push(tagStore.fetchTags())
+      }
 
-    const albumStore = useAlbumStore('mainId')
-    if (!albumStore.fetched) {
-      dependentPromises.push(albumStore.fetchAlbums())
+      const albumStore = useAlbumStore('mainId')
+      if (!albumStore.fetched) {
+        dependentPromises.push(albumStore.fetchAlbums())
+      }
     }
   }
 

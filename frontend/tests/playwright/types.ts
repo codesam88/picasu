@@ -262,6 +262,15 @@ export const UiWhenReload = z
   })
   .strict()
 
+/// Click a text item inside an overlay menu (`v-menu` content teleports to
+/// `body`, where list-item roles are unreliable — the hand-written specs use
+/// `getByText` for the same reason). Exact text match within `.v-overlay`.
+export const UiWhenClickMenu = z
+  .object({
+    'click.menu': z.string().min(1)
+  })
+  .strict()
+
 export const UiWhenItem = z.union([
   UiWhenNavigate,
   UiWhenClick,
@@ -281,7 +290,8 @@ export const UiWhenItem = z.union([
   UiWhenSetAutoRename,
   UiWhenLogin,
   UiWhenIndex,
-  UiWhenReload
+  UiWhenReload,
+  UiWhenClickMenu
 ])
 
 export const UiAssertVisible = z

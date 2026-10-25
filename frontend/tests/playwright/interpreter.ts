@@ -48,13 +48,19 @@ async function resolveLocator(
   // `textbox/Password` hit both `Password` and `Confirm Password` on
   // RegisterPage (strict-mode violation caught by the first-admin DSL
   // scenario), while `button/3` only matches the rating stars as a
-  // substring. Prefer the exact hit when it resolves to exactly one
-  // element; otherwise keep the historical substring behavior.
+  // substring. Vuetify attaches accessible names asynchronously after
+  // mount, so wait briefly for an exact hit before deciding; without the
+  // wait a too-early count of zero falls back to substring and throws a
+  // spurious strict-mode violation.
   const role = prefix as any
   if (!name) return page.getByRole(role)
   const exact = page.getByRole(role, { name, exact: true })
-  if ((await exact.count()) === 1) return exact
-  return page.getByRole(role, { name })
+  try {
+    await exact.first().waitFor({ state: 'attached', timeout: 2000 })
+  } catch {
+    return page.getByRole(role, { name })
+  }
+  return (await exact.count()) === 1 ? exact : page.getByRole(role, { name })
 }
 
 export async function executeWhen(
@@ -226,10 +232,16 @@ export async function executeWhen(
       if (!settled) throw new Error('Index step did not settle within 60s')
     } else if ('reload' in step) {
       await page.reload()
+    } else if ('click.menu' in step) {
+      const text = interpolate(step['click.menu'], ctx.vars)
+      // Overlay menus (v-menu/v-dialog teleport to body) expose no stable
+      // ARIA role for their items, so match the visible text exactly within
+      // the overlay layer instead of going through resolveLocator.
+      await page.locator('.v-overlay').getByText(text, { exact: true }).first().click()
     } else {
       throw new Error(
         `Unknown when verb in step ${JSON.stringify(step)}. ` +
-          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, click.select_text, upload.files, set.auto_rename, login, index, reload`
+          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, click.select_text, upload.files, set.auto_rename, login, index, reload, click.menu`
       )
     }
   }

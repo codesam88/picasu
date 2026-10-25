@@ -394,26 +394,27 @@ Elements with ARIA labels are referenced by **role** and **accessible name**
 (e.g. `button/Login`). Elements without ARIA labels use one of the
 text/icon-based verbs below.
 
-| Verb                                      | Description                                                                   |
-| ----------------------------------------- | ----------------------------------------------------------------------------- |
-| `navigate: <route>`                       | Go to a URL pattern (e.g. `/`, `/albums/<id>`)                                |
-| `click: <role>/<label>`                   | Click element by ARIA role + accessible name                                  |
-| `click.text: <text>`                      | Click an album card by its chip label (uses `.parent` container)              |
-| `click.icon: <icon-class>`                | Click a button by Material Design Icon class (e.g. `mdi-information-outline`) |
-| `click.first`                             | Click the first grid image (`.desktop-small-image`) in the active overlay     |
-| `click.select_first: true`                | Click the first grid image's hover action icon (opens the batch menu)         |
-| `click.testid: <id>`                      | Click element by Playwright `data-testid`                                     |
-| `fill: <role>/<label>, value: <value>`    | Type into an input                                                            |
-| `select: <role>/<label>, option: <label>` | Choose from listbox/select                                                    |
-| `submit`                                  | Submit the current form                                                       |
-| `keyboard: <key>`                         | Press a key (e.g. `Tab`, `Escape`)                                            |
-| `browser.back: true`                      | Browser history back                                                          |
-| `wait.ms: <milliseconds>`                 | Pause execution (use sparingly — prefer auto-waiting assertions)              |
-| `upload.files: {trigger, files}`          | Click `trigger` to open the file chooser, then attach `files`                 |
-| `set.auto_rename: <bool>`                 | Set the auto-rename switch in the upload-options dialog                       |
-| `login: {user, password}`                 | Fill the login form and require landing on `/timeline`                        |
-| `index: <album>`                          | Index `<album>` (`POST /post/index/album`) and wait for idle/completed        |
-| `reload: true`                            | Reload the page (proves the session survives reload)                          |
+| Verb                                      | Description                                                                                     |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `navigate: <route>`                       | Go to a URL pattern (e.g. `/`, `/albums/<id>`)                                                  |
+| `click: <role>/<label>`                   | Click element by ARIA role + accessible name                                                    |
+| `click.text: <text>`                      | Click an album card by its chip label (uses `.parent` container)                                |
+| `click.icon: <icon-class>`                | Click a button by Material Design Icon class (e.g. `mdi-information-outline`)                   |
+| `click.first`                             | Click the first grid image (`.desktop-small-image`) in the active overlay                       |
+| `click.select_first: true`                | Click the first grid image's hover action icon (opens the batch menu)                           |
+| `click.testid: <id>`                      | Click element by Playwright `data-testid`                                                       |
+| `fill: <role>/<label>, value: <value>`    | Type into an input                                                                              |
+| `select: <role>/<label>, option: <label>` | Choose from listbox/select                                                                      |
+| `submit`                                  | Submit the current form                                                                         |
+| `keyboard: <key>`                         | Press a key (e.g. `Tab`, `Escape`)                                                              |
+| `browser.back: true`                      | Browser history back                                                                            |
+| `wait.ms: <milliseconds>`                 | Pause execution (use sparingly — prefer auto-waiting assertions)                                |
+| `upload.files: {trigger, files}`          | Click `trigger` to open the file chooser, then attach `files`                                   |
+| `set.auto_rename: <bool>`                 | Set the auto-rename switch in the upload-options dialog                                         |
+| `login: {user, password}`                 | Fill the login form and require landing on `/timeline`                                          |
+| `index: <album>`                          | Index `<album>` (`POST /post/index/album`) and wait for idle/completed                          |
+| `reload: true`                            | Reload the page (proves the session survives reload)                                            |
+| `click.menu: <text>`                      | Click an overlay menu item by its exact visible text (roles are unreliable in teleported menus) |
 
 New interactions → extend the vocabulary with a new verb. No raw-TypeScript
 escape hatch.
