@@ -276,6 +276,14 @@
       "required": ["reload"],
       "additionalProperties": false
     },
+    "uiWhenClickMenu": {
+      "type": "object",
+      "properties": {
+        "click.menu": { "type": "string", "minLength": 1 }
+      },
+      "required": ["click.menu"],
+      "additionalProperties": false
+    },
     "uiWhenLogin": {
       "type": "object",
       "properties": {
@@ -318,7 +326,8 @@
         { "$ref": "#/definitions/uiWhenSetAutoRename" },
         { "$ref": "#/definitions/uiWhenLogin" },
         { "$ref": "#/definitions/uiWhenIndex" },
-        { "$ref": "#/definitions/uiWhenReload" }
+        { "$ref": "#/definitions/uiWhenReload" },
+        { "$ref": "#/definitions/uiWhenClickMenu" }
       ]
     },
     "uiAssertVisible": {

@@ -17,6 +17,15 @@ export function canSeeUserPanel(user: CurrentUser | null): boolean {
   return user?.isAdmin === true
 }
 
+/// Whether the SPA should load `/get/get-tags` and `/get/get-albums`: both
+/// endpoints are admin-gated, so a logged-in non-admin would get a 401 that
+/// the interceptor treats as a dead session (bounce to login). Viewers skip
+/// them; everyone else (admin, share visitor, logged-out boot) loads them.
+export function shouldLoadAdminLists(user: CurrentUser | null): boolean {
+  if (user !== null && !user.isAdmin) return false
+  return true
+}
+
 /// Whether the SPA should load `/get/config`: that endpoint is
 /// admin-or-share gated, so a logged-in non-admin would get a 401 that
 /// the interceptor treats as a dead session. Viewers skip it and use

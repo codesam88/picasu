@@ -100,3 +100,7 @@ steps:
       - api.response:
           url: /get/users
           status: 401
+  # Story legs below (logout, login-as-invitee, view images) return once
+  # finding F1 (viewer grid reads) is decided: the viewer currently bounces
+  # to /login seconds after landing, so no post-landing viewer step is
+  # stable until the guard level grants viewer reads.

@@ -4,6 +4,7 @@ import {
   canSeeUserPanel,
   errorToMessage,
   selfRowState,
+  shouldLoadAdminLists,
   shouldLoadAppConfig,
   useCurrentUser
 } from './currentUser'
@@ -80,6 +81,17 @@ describe('errorToMessage', () => {
     const result = errorToMessage(500)
     expect(result.redirectLogin).toBe(false)
     if (!result.redirectLogin) expect(result.message.length).toBeGreaterThan(0)
+  })
+})
+
+describe('shouldLoadAdminLists', () => {
+  test('non-admin sessions skip the admin-only tags/albums endpoints', () => {
+    expect(shouldLoadAdminLists({ id: 'bob', isAdmin: false })).toBe(false)
+  })
+
+  test('admins, share visitors and logged-out boot still load the lists', () => {
+    expect(shouldLoadAdminLists({ id: 'alice', isAdmin: true })).toBe(true)
+    expect(shouldLoadAdminLists(null)).toBe(true)
   })
 })
 
