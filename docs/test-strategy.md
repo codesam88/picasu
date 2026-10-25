@@ -203,10 +203,8 @@ gates — rather than inventing its own.
   the override is env-only so it cannot arrive via config. Plain
   `cargo test` pays full KDF cost only in integration tests, which
   link the lib without `cfg(test)`.
-- **clippy `unwrap_used`**: enforced under `-D warnings` for the default
-  targets (lib, bin, build script). Precommit/CI clippy does not compile
-  test targets, so test-code call sites remain ungated — see
-  `clippy-unwrap-cleanup.md` for the follow-up scope.
+- **clippy `unwrap_used`**: enforced under `-D warnings` over
+  `--all-targets`, so test code is gated the same as lib and bins.
 - **`cargo deny check`**: license and advisory audit, runs via `just audit`.
 - **`npm audit`**: runs in CI on every PR, not in precommit (too slow, some
   findings intentional via `overrides`).

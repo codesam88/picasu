@@ -14,11 +14,11 @@ help:
 backend-format:
     cd backend && cargo fmt
 
-# cargo fmt --check + cargo clippy
+# cargo fmt --check + cargo clippy (all targets: lib, bins, tests, build script)
 [group('backend')]
 backend-check:
     cd backend && cargo fmt --check
-    cargo clippy -- -D warnings
+    cargo clippy --all-targets -- -D warnings
 
 [private]
 nextest-present:
@@ -117,11 +117,11 @@ frontend-audit:
 utils-format:
     cargo fmt -p snapfab -p paste -p openapi-sanity
 
-# cargo fmt --check + cargo clippy on utils/ crates
+# cargo fmt --check + cargo clippy on utils/ crates (all targets)
 [group('utils')]
 utils-check:
     cargo fmt --check -p snapfab -p paste -p openapi-sanity
-    cargo clippy -p snapfab -p paste -p openapi-sanity -- -D warnings
+    cargo clippy --all-targets -p snapfab -p paste -p openapi-sanity -- -D warnings
 
 # cargo test on utils/ crates
 [group('utils')]
