@@ -6316,7 +6316,7 @@ This operation does not require authentication
 
 Server configuration: read, write, password, export/import, path completion
 
-## Full annotated view of every configuration field. Admin-only; reading is always allowed (no read-only guard).
+## Full annotated view of every configuration field.
 
 <a id="opIdget_admin_config_handler"></a>
 
@@ -6457,6 +6457,13 @@ func main() {
 
 `GET /get/admin/config`
 
+Returns one entry per known field with its current value, tier
+(`host` vs `runtime`), source (`env` vs `file`) and whether it is
+writable via the admin API. Admin-only; reading is always allowed
+(no read-only guard).
+
+Errors: 401 missing or invalid admin credentials.
+
 > Example responses
 
 > 200 Response
@@ -6484,14 +6491,14 @@ func main() {
 }
 ```
 
-<h3 id="full-annotated-view-of-every-configuration-field.-admin-only;-reading-is-always-allowed-(no-read-only-guard).-responses">Responses</h3>
+<h3 id="full-annotated-view-of-every-configuration-field.-responses">Responses</h3>
 
 | Status | Meaning                                                         | Description                                                                                | Schema                                      |
 | ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | Annotated configuration                                                                    | Inline                                      |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
 
-<h3 id="full-annotated-view-of-every-configuration-field.-admin-only;-reading-is-always-allowed-(no-read-only-guard).-responseschema">Response Schema</h3>
+<h3 id="full-annotated-view-of-every-configuration-field.-responseschema">Response Schema</h3>
 
 Status Code **200**
 
@@ -6649,6 +6656,12 @@ func main() {
 ```
 
 `GET /get/admin/config/export`
+
+Returns the writable runtime subset with a version and scope marker so
+backups stay safe to store alongside the data. The signing key is never
+exported. Admin-only.
+
+Errors: 401 missing or invalid admin credentials.
 
 > Example responses
 
@@ -7269,7 +7282,7 @@ matched no directory — 500 the directory could not be read.
 This operation does not require authentication
 </aside>
 
-## Lift the read-only kill-switch. Admin-only and deliberately NOT gated by `GuardReadOnlyMode`: lifting the kill-switch must be callable while it is on; the L3 confirm lives client-side.
+## Lift the read-only kill-switch.
 
 <a id="opIddisable_read_only_handler"></a>
 
@@ -7410,6 +7423,12 @@ func main() {
 
 `POST /post/admin/config/disable-read-only`
 
+Clears `readOnlyMode` and persists the change. Admin-only and deliberately
+NOT gated by `GuardReadOnlyMode`: lifting the kill-switch must be callable
+while it is on; the L3 confirm lives client-side.
+
+Errors: 401 missing or invalid admin credentials — 500 config write failure.
+
 > Example responses
 
 > 401 Response
@@ -7422,7 +7441,7 @@ func main() {
 }
 ```
 
-<h3 id="lift-the-read-only-kill-switch.-admin-only-and-deliberately-not-gated-by-`guardreadonlymode`:-lifting-the-kill-switch-must-be-callable-while-it-is-on;-the-l3-confirm-lives-client-side.-responses">Responses</h3>
+<h3 id="lift-the-read-only-kill-switch.-responses">Responses</h3>
 
 | Status | Meaning                                                                    | Description                                                                                | Schema                                      |
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
@@ -7616,7 +7635,7 @@ could not be stored.
 This operation does not require authentication
 </aside>
 
-## Patch the runtime-tier configuration. Admin-only and read-only-gated.
+## Patch the runtime-tier configuration.
 
 <a id="opIdupdate_admin_config_handler"></a>
 
@@ -7794,6 +7813,14 @@ func main() {
 
 `PUT /put/admin/config`
 
+Applies the posted runtime fields, rewrites `config.toml` and returns the
+applied subset. Host-only and managed knobs in the body are rejected.
+Admin-only and read-only-gated.
+
+Errors: 400 host-only or managed knob present, or `uploadFolder` is absolute
+or contains `..` — 401 missing or invalid admin credentials — 405 read-only
+mode — 500 config write failure.
+
 > Body parameter
 
 ```json
@@ -7828,7 +7855,7 @@ func main() {
 }
 ```
 
-<h3 id="patch-the-runtime-tier-configuration.-admin-only-and-read-only-gated.-parameters">Parameters</h3>
+<h3 id="patch-the-runtime-tier-configuration.-parameters">Parameters</h3>
 
 | Name | In   | Type                                                            | Required | Description |
 | ---- | ---- | --------------------------------------------------------------- | -------- | ----------- |
@@ -7865,7 +7892,7 @@ func main() {
 }
 ```
 
-<h3 id="patch-the-runtime-tier-configuration.-admin-only-and-read-only-gated.-responses">Responses</h3>
+<h3 id="patch-the-runtime-tier-configuration.-responses">Responses</h3>
 
 | Status | Meaning                                                                    | Description                                                                                | Schema                                                        |
 | ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |

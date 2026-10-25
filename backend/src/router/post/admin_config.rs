@@ -10,7 +10,13 @@ use crate::openapi_components::Unauthorized;
 use crate::router::auth::GuardAuth;
 use crate::router::{AppResult, GuardResult};
 
-/// Lift the read-only kill-switch. Admin-only and deliberately NOT gated by `GuardReadOnlyMode`: lifting the kill-switch must be callable while it is on; the L3 confirm lives client-side.
+/// Lift the read-only kill-switch.
+///
+/// Clears `readOnlyMode` and persists the change. Admin-only and deliberately
+/// NOT gated by `GuardReadOnlyMode`: lifting the kill-switch must be callable
+/// while it is on; the L3 confirm lives client-side.
+///
+/// Errors: 401 missing or invalid admin credentials — 500 config write failure.
 #[utoipa::path(
     tag = "config",
     responses(
