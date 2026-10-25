@@ -5,7 +5,7 @@ import { FunctionalComponent, h, PropType } from 'vue'
 import ChipsContainer from './ChipsContainer'
 import SmallImageContainer from './SmallImageContainer'
 import ThumbhashImage from './ThumbhashImage'
-import { useConfigStore } from '@/store/configStore'
+import { useConstStore } from '@/store/constStore'
 
 interface MainBlockProps {
   index: number
@@ -20,7 +20,7 @@ interface MainBlockProps {
 
 const MainBlock: FunctionalComponent<MainBlockProps> = (props) => {
   const dataStore = useDataStore(props.isolationId)
-  const configStore = useConfigStore(props.isolationId)
+  const constStore = useConstStore('mainId')
   const abstractData = dataStore.data.get(props.index)
 
   if (!abstractData) {
@@ -35,7 +35,7 @@ const MainBlock: FunctionalComponent<MainBlockProps> = (props) => {
     })
   )
 
-  if (!configStore.disableImg) {
+  if (!constStore.disableImg) {
     const thumbhashUrl = abstractData.thumbhashUrl
 
     if (typeof thumbhashUrl === 'string') {

@@ -36,9 +36,6 @@
             <v-card-title class="text-h5 font-weight-bold text-center">
               Database is empty, scan now or upload?
             </v-card-title>
-            <v-card-subtitle class="text-center text-caption text-medium-emphasis mb-6">
-              Library Path: {{ imagePath ?? '…' }}
-            </v-card-subtitle>
 
             <v-row dense>
               <v-col cols="12" sm="6">
@@ -60,7 +57,7 @@
                   style="cursor: pointer; min-height: 180px"
                   variant="outlined"
                   rounded="lg"
-                  :disabled="!imagePath"
+                  :disabled="!canScan"
                   @click="onStartScan"
                 >
                   <v-icon size="64" color="grey">mdi-folder-refresh-outline</v-icon>
@@ -153,7 +150,9 @@ const uploadStore = useUploadStore('mainId')
 const configStore = useConfigStore('mainId')
 
 const showDialog = ref(true)
-const imagePath = computed(() => configStore.config?.imagePath ?? null)
+// Scanning rewrites the shared index: admin-only. Viewers get the upload
+// card instead of a button that would only answer 401.
+const canScan = computed(() => useCurrentUser().value?.isAdmin === true)
 
 type ClickHandler = (() => void | Promise<void>) | undefined
 

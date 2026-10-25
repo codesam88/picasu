@@ -82,6 +82,18 @@ GET /get/sessions api path removed without deprecation
 # 2026-10-24 (unify-index-rebuild): retire POST /post/rebuild in favour of POST /post/index/album with clear=true.
 POST /post/rebuild api path removed without deprecation
 
+# 2026-10-26 (config field cleanup, decided): `GET /get/config` drops
+# `imagePath` (host-only; admin UI reads it from `GET /get/admin/config`),
+# `hasAuthKey` (no consumer; rotation feedback stays on the POST response)
+# and `disableImg` (frontend-only preference now, no backend setting).
+# `uploadFolder` is relative to the image path and visible to every tier,
+# so no redaction remains on the endpoint. `PUT /put/admin/config` and the
+# admin export lose the `disableImg` property the same way.
+GET /get/config removed the required property `hasAuthKey` from the response with the `200` status
+GET /get/config removed the required property `disableImg` from the response with the `200` status
+GET /get/admin/config/export removed the required property `config/disableImg` from the response with the `200` status
+PUT /put/admin/config removed the required property `config/disableImg` from the response with the `200` status
+
 # 2026-10-24 (settings-api-v2 S6): cutover removes the deprecated old
 # config write/import routes outright. Callers migrate to
 # `PUT /put/admin/config` (and `GET /get/admin/config/export`); there is

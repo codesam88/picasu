@@ -6,7 +6,6 @@ export interface AppConfig {
 
   // App settings
   readOnlyMode: boolean
-  disableImg: boolean
   fsNotifyWatcher: boolean
   normalizeUploadFilenames?: boolean
   validateUploadContent?: boolean
@@ -14,8 +13,6 @@ export interface AppConfig {
   allowRegistration?: boolean
   // password is handled separately now
   authKey: string | null
-  hasAuthKey: boolean
-  imagePath: string | null
   uploadFolder: string | null
   maxUploadSize: string
 }

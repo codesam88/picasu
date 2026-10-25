@@ -24,9 +24,7 @@ export const useConfigStore = (isolationId: IsolationId) =>
       isMobile: false,
       showFilenameChip: false
     }),
-    getters: {
-      disableImg: (state) => state.config?.disableImg ?? false
-    },
+
     actions: {
       async fetchConfig() {
         // Return if already loaded to avoid redundant calls
@@ -45,7 +43,6 @@ export const useConfigStore = (isolationId: IsolationId) =>
           }
           if (newConfig.maxUploadSize !== undefined) patch.maxUploadSize = newConfig.maxUploadSize
           if (newConfig.readOnlyMode !== undefined) patch.readOnlyMode = newConfig.readOnlyMode
-          if (newConfig.disableImg !== undefined) patch.disableImg = newConfig.disableImg
           if (newConfig.fsNotifyWatcher !== undefined)
             patch.fsNotifyWatcher = newConfig.fsNotifyWatcher
           if (newConfig.normalizeUploadFilenames !== undefined) {

@@ -17,7 +17,7 @@
             <div class="config-block">
               <v-row class="ma-0">
                 <StorageAndSync
-                  :image-path="localSettings.imagePath"
+                  :image-path="imagePath"
                   v-model:upload-folder="localSettings.uploadFolder"
                   v-model:max-upload-size="localSettings.maxUploadSize"
                   v-model:fs-notify-watcher="localSettings.fsNotifyWatcher"
@@ -27,11 +27,7 @@
 
             <div class="config-block">
               <v-row class="ma-0">
-                <AdvancedConfig
-                  v-model:has-auth-key="localSettings.hasAuthKey"
-                  v-model:read-only-mode="localSettings.readOnlyMode"
-                  v-model:disable-img="localSettings.disableImg"
-                />
+                <AdvancedConfig v-model:read-only-mode="localSettings.readOnlyMode" />
               </v-row>
             </div>
           </v-tabs-window-item>
@@ -118,13 +114,12 @@ const allowRegistrationSaving = ref(false)
 const exporting = ref(false)
 
 // Local State
+const imagePath = ref<string | null>(null)
+
 const localSettings = reactive<AppConfig>({
   readOnlyMode: false,
-  disableImg: false,
   fsNotifyWatcher: true,
-  hasAuthKey: false,
   authKey: '',
-  imagePath: null,
   uploadFolder: 'uploads',
   maxUploadSize: '100MiB',
 
@@ -143,6 +138,10 @@ const loadAdminConfig = async () => {
   const field = entries.find((e) => e.name === 'allow_registration')
   if (field) {
     allowRegistration.value = field.value === true
+  }
+  const imageHome = entries.find((e) => e.name === 'image_home')
+  if (typeof imageHome?.value === 'string') {
+    imagePath.value = imageHome.value
   }
 }
 

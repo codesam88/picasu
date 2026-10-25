@@ -23,26 +23,7 @@
       </v-list-item>
 
       <v-divider></v-divider>
-
-      <v-list-item
-        title="Disable Processing"
-        subtitle="Skip frontend image rendering for debugging"
-        @click="disableImg = !disableImg"
-      >
-        <template #append>
-          <v-switch v-model="disableImg" color="primary" inset @click.stop></v-switch>
-        </template>
-      </v-list-item>
-
-      <v-divider></v-divider>
-      <v-list-item
-        title="JWT Authentication Key"
-        :subtitle="
-          hasAuthKey
-            ? 'Configured — resetting signs everyone out'
-            : 'Not configured — random key per process restart'
-        "
-      >
+      <v-list-item title="JWT Authentication Key" subtitle="Resetting signs everyone out">
         <template #append>
           <v-btn
             color="primary"
@@ -89,8 +70,6 @@ import { tryWithMessageStore } from '@/script/utils/try_catch'
 import type { AppConfig } from '@/api/config'
 
 const readOnlyMode = defineModel<boolean>('readOnlyMode', { required: true })
-const disableImg = defineModel<boolean>('disableImg', { required: true })
-const hasAuthKey = defineModel<boolean>('hasAuthKey', { required: true })
 
 const configStore = useConfigStore('mainId')
 const messageStore = useMessageStore('mainId')
@@ -133,8 +112,7 @@ const confirmDisable = async () => {
 const resetKey = async () => {
   resetting.value = true
   const success = await tryWithMessageStore('mainId', async () => {
-    const result = await resetAuthKey()
-    hasAuthKey.value = result.hasAuthKey
+    await resetAuthKey()
     return true
   })
   if (success === true) {
@@ -147,8 +125,7 @@ const save = async () => {
   loading.value = true
 
   const payload: Partial<AppConfig> = {
-    readOnlyMode: readOnlyMode.value,
-    disableImg: disableImg.value
+    readOnlyMode: readOnlyMode.value
   }
 
   const success = await configStore.updateConfig(payload)

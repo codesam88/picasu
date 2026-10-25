@@ -467,3 +467,77 @@ export async function deleteShowFilenameChip(): Promise<void> {
     }
   })
 }
+
+export async function storeDisableImg(value: boolean): Promise<void> {
+  const db = await openSettingsDB()
+  if (!db) {
+    console.error('Failed to open database for storing disableImg')
+    return
+  }
+
+  return new Promise<void>((resolve) => {
+    const transaction = db.transaction(SETTINGS_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(SETTINGS_STORE_NAME)
+    const request = store.put(value, 'disableImg')
+
+    request.onsuccess = () => {
+      resolve()
+    }
+
+    request.onerror = () => {
+      console.error('Error storing disableImg')
+      resolve()
+    }
+  })
+}
+
+export async function getDisableImg(): Promise<boolean | null> {
+  const db = await openSettingsDB()
+  if (!db) {
+    console.error('Failed to open database for retrieving disableImg')
+    return null
+  }
+
+  return new Promise<boolean | null>((resolve) => {
+    const transaction = db.transaction(SETTINGS_STORE_NAME, 'readonly')
+    const store = transaction.objectStore(SETTINGS_STORE_NAME)
+    const request = store.get('disableImg')
+
+    request.onsuccess = () => {
+      const rawResult: unknown = request.result
+      if (typeof rawResult === 'boolean') {
+        resolve(rawResult)
+      } else {
+        resolve(null)
+      }
+    }
+
+    request.onerror = () => {
+      console.error('Error retrieving disableImg')
+      resolve(null)
+    }
+  })
+}
+
+export async function deleteDisableImg(): Promise<void> {
+  const db = await openSettingsDB()
+  if (!db) {
+    console.error('Failed to open database for deleting disableImg')
+    return
+  }
+
+  return new Promise<void>((resolve) => {
+    const transaction = db.transaction(SETTINGS_STORE_NAME, 'readwrite')
+    const store = transaction.objectStore(SETTINGS_STORE_NAME)
+    const request = store.delete('disableImg')
+
+    request.onsuccess = () => {
+      resolve()
+    }
+
+    request.onerror = () => {
+      console.error('Error deleting disableImg')
+      resolve()
+    }
+  })
+}

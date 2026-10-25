@@ -16,7 +16,6 @@ export const runtimeConfigSchema = z.object({
   uploadFolder: z.string(),
   maxUploadSize: z.string(),
   readOnlyMode: z.boolean(),
-  disableImg: z.boolean(),
   fsNotifyWatcher: z.boolean(),
   normalizeUploadFilenames: z.boolean(),
   validateUploadContent: z.boolean(),

@@ -167,7 +167,7 @@ async function checkAndFetch(index: number): Promise<boolean> {
 }
 
 async function prefetch(index: number, isolationId: IsolationId) {
-  if (configStore.disableImg) return
+  if (constStore.disableImg) return
 
   for (let i = 1; i <= 10; i++) {
     const nextIndex = index + i
@@ -194,7 +194,7 @@ watch(
   [() => props.index, () => initializedStore.initialized],
   async () => {
     if (initializedStore.initialized) {
-      if (configStore.disableImg) return
+      if (constStore.disableImg) return
       await checkAndFetch(props.index)
       await prefetch(props.index, props.isolationId)
     }

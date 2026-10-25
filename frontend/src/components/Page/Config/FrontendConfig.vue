@@ -39,6 +39,19 @@
           ></v-switch>
         </template>
       </v-list-item>
+
+      <v-list-item title="Disable images" @click="onDisableImgUpdate(!disableImgValue)">
+        <template #append>
+          <v-switch
+            :model-value="disableImgValue"
+            @update:model-value="onDisableImgUpdate"
+            color="primary"
+            inset
+            hide-details
+            @click.stop
+          ></v-switch>
+        </template>
+      </v-list-item>
     </v-card>
   </v-col>
 </template>
@@ -80,6 +93,21 @@ const onSubRowHeightScaleUpdate = (newValue: number | null) => {
 const onShowFilenameChipUpdate = (newValue: boolean | null) => {
   constStore.updateShowFilenameChip(newValue ?? true).catch((error: unknown) => {
     console.error('Failed to update showFilenameChip:', error)
+  })
+}
+
+const disableImgValue = computed<boolean>({
+  get: () => constStore.disableImg,
+  set: (newVal: boolean | null) => {
+    constStore.updateDisableImg(newVal ?? false).catch((error: unknown) => {
+      console.error('Failed to update disableImg (via setter):', error)
+    })
+  }
+})
+
+const onDisableImgUpdate = (newValue: boolean | null) => {
+  constStore.updateDisableImg(newValue ?? false).catch((error: unknown) => {
+    console.error('Failed to update disableImg:', error)
   })
 }
 </script>
