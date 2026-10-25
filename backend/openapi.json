@@ -1633,6 +1633,7 @@
     },
     "/get/admin/config": {
       "get": {
+        "description": "Returns one entry per known field with its current value, tier\n(`host` vs `runtime`), source (`env` vs `file`) and whether it is\nwritable via the admin API. Admin-only; reading is always allowed\n(no read-only guard).\n\nErrors: 401 missing or invalid admin credentials.",
         "operationId": "get_admin_config_handler",
         "responses": {
           "200": {
@@ -1652,7 +1653,7 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         },
-        "summary": "Full annotated view of every configuration field. Admin-only; reading is always allowed (no read-only guard).",
+        "summary": "Full annotated view of every configuration field.",
         "tags": [
           "config"
         ]
@@ -1660,6 +1661,7 @@
     },
     "/get/admin/config/export": {
       "get": {
+        "description": "Returns the writable runtime subset with a version and scope marker so\nbackups stay safe to store alongside the data. The signing key is never\nexported. Admin-only.\n\nErrors: 401 missing or invalid admin credentials.",
         "operationId": "get_admin_config_export_handler",
         "responses": {
           "200": {
@@ -2377,6 +2379,7 @@
     },
     "/post/admin/config/disable-read-only": {
       "post": {
+        "description": "Clears `readOnlyMode` and persists the change. Admin-only and deliberately\nNOT gated by `GuardReadOnlyMode`: lifting the kill-switch must be callable\nwhile it is on; the L3 confirm lives client-side.\n\nErrors: 401 missing or invalid admin credentials — 500 config write failure.",
         "operationId": "disable_read_only_handler",
         "responses": {
           "200": {
@@ -2389,7 +2392,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Lift the read-only kill-switch. Admin-only and deliberately NOT gated by `GuardReadOnlyMode`: lifting the kill-switch must be callable while it is on; the L3 confirm lives client-side.",
+        "summary": "Lift the read-only kill-switch.",
         "tags": [
           "config"
         ]
@@ -2862,6 +2865,7 @@
     },
     "/put/admin/config": {
       "put": {
+        "description": "Applies the posted runtime fields, rewrites `config.toml` and returns the\napplied subset. Host-only and managed knobs in the body are rejected.\nAdmin-only and read-only-gated.\n\nErrors: 400 host-only or managed knob present, or `uploadFolder` is absolute\nor contains `..` — 401 missing or invalid admin credentials — 405 read-only\nmode — 500 config write failure.",
         "operationId": "update_admin_config_handler",
         "requestBody": {
           "content": {
@@ -2897,7 +2901,7 @@
             "description": "Internal error"
           }
         },
-        "summary": "Patch the runtime-tier configuration. Admin-only and read-only-gated.",
+        "summary": "Patch the runtime-tier configuration.",
         "tags": [
           "config"
         ]

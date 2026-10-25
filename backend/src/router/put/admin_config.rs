@@ -23,7 +23,15 @@ pub struct AdminConfigUpdateResponse {
     pub restart_required: Vec<String>,
 }
 
-/// Patch the runtime-tier configuration. Admin-only and read-only-gated.
+/// Patch the runtime-tier configuration.
+///
+/// Applies the posted runtime fields, rewrites `config.toml` and returns the
+/// applied subset. Host-only and managed knobs in the body are rejected.
+/// Admin-only and read-only-gated.
+///
+/// Errors: 400 host-only or managed knob present, or `uploadFolder` is absolute
+/// or contains `..` — 401 missing or invalid admin credentials — 405 read-only
+/// mode — 500 config write failure.
 #[utoipa::path(
     tag = "config",
     request_body = PartialUpdateConfigRequest,

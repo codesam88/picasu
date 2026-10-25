@@ -170,7 +170,14 @@ fn source_for(field_name: &str, env_var: &str) -> &'static str {
     }
 }
 
-/// Full annotated view of every configuration field. Admin-only; reading is always allowed (no read-only guard).
+/// Full annotated view of every configuration field.
+///
+/// Returns one entry per known field with its current value, tier
+/// (`host` vs `runtime`), source (`env` vs `file`) and whether it is
+/// writable via the admin API. Admin-only; reading is always allowed
+/// (no read-only guard).
+///
+/// Errors: 401 missing or invalid admin credentials.
 #[utoipa::path(
     tag = "config",
     responses(
@@ -211,6 +218,12 @@ pub fn get_admin_config_handler(
 }
 
 /// Export the runtime-tier configuration as a versioned envelope.
+///
+/// Returns the writable runtime subset with a version and scope marker so
+/// backups stay safe to store alongside the data. The signing key is never
+/// exported. Admin-only.
+///
+/// Errors: 401 missing or invalid admin credentials.
 #[utoipa::path(
     tag = "config",
     responses(
