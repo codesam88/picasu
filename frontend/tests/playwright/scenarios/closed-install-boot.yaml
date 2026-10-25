@@ -1,0 +1,32 @@
+name: Closed install boots to login
+covers:
+  api:
+    - GET /get/server-info
+  ui:
+    - route:/login
+server:
+  bootstrap_admin: false
+  pbkdf_iterations: 1000
+session: none
+given:
+  - empty: true
+steps:
+  - when:
+      - navigate: /
+    assert:
+      - ui.route: /login
+  - when:
+      - navigate: /register
+    assert:
+      - ui.route: /login
+  - when:
+      - navigate: /login
+    assert:
+      - ui.route: /login
+      - api.response:
+          url: /post/users/bootstrap
+          method: POST
+          body:
+            userId: sneaky
+            password: Sneaky-secret-9
+          status: 401

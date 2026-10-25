@@ -31,7 +31,11 @@ async function assertBackendAlive(backendUrl: string): Promise<void> {
   })
 }
 
-function resolveLocator(page: Page, roleLabel: string, vars: Record<string, string>): Locator {
+async function resolveLocator(
+  page: Page,
+  roleLabel: string,
+  vars: Record<string, string>
+): Promise<Locator> {
   const resolved = interpolate(roleLabel, vars)
   const slashIdx = resolved.indexOf('/')
   const prefix = resolved.slice(0, slashIdx)
@@ -40,8 +44,17 @@ function resolveLocator(page: Page, roleLabel: string, vars: Record<string, stri
   if (prefix === 'testid' && name) {
     return page.getByTestId(name)
   }
+  // Exact accessible-name match first: substring matching makes
+  // `textbox/Password` hit both `Password` and `Confirm Password` on
+  // RegisterPage (strict-mode violation caught by the first-admin DSL
+  // scenario), while `button/3` only matches the rating stars as a
+  // substring. Prefer the exact hit when it resolves to exactly one
+  // element; otherwise keep the historical substring behavior.
   const role = prefix as any
-  return name ? page.getByRole(role, { name }) : page.getByRole(role)
+  if (!name) return page.getByRole(role)
+  const exact = page.getByRole(role, { name, exact: true })
+  if ((await exact.count()) === 1) return exact
+  return page.getByRole(role, { name })
 }
 
 export async function executeWhen(
@@ -56,13 +69,15 @@ export async function executeWhen(
     if ('navigate' in step) {
       await page.goto(interpolate(step.navigate, ctx.vars))
     } else if ('click' in step) {
-      await resolveLocator(page, step.click, ctx.vars).click()
+      await (await resolveLocator(page, step.click, ctx.vars)).click()
     } else if ('fill' in step) {
-      await resolveLocator(page, step.fill, ctx.vars).fill(interpolate(step.value, ctx.vars))
+      await (
+        await resolveLocator(page, step.fill, ctx.vars)
+      ).fill(interpolate(step.value, ctx.vars))
     } else if ('select' in step) {
-      await resolveLocator(page, step.select, ctx.vars).selectOption(
-        interpolate(step.option, ctx.vars)
-      )
+      await (
+        await resolveLocator(page, step.select, ctx.vars)
+      ).selectOption(interpolate(step.option, ctx.vars))
     } else if ('submit' in step) {
       await page.keyboard.press('Enter')
     } else if ('keyboard' in step) {
@@ -179,10 +194,40 @@ export async function executeWhen(
       if (current !== desired) {
         await page.getByTestId('upload-auto-rename').click()
       }
+    } else if ('login' in step) {
+      const spec = step['login']
+      await page.goto('/login')
+      await page.getByPlaceholder('User ID').fill(interpolate(spec.user, ctx.vars))
+      await page
+        .getByPlaceholder('Password', { exact: true })
+        .fill(interpolate(spec.password, ctx.vars))
+      await page.getByRole('button', { name: 'Login' }).click()
+      await expect(page).toHaveURL(/\/timeline/)
+    } else if ('index' in step) {
+      const album = interpolate(step['index'], ctx.vars)
+      const start = await page.request.post(`${ctx.backendUrl}/post/index/album`, {
+        data: { album }
+      })
+      if (!start.ok()) {
+        throw new Error(`Index step failed: ${start.status()} ${await start.text()}`)
+      }
+      let settled = false
+      for (let i = 0; i < 60; i++) {
+        const statusRes = await page.request.get(`${ctx.backendUrl}/get/index/status`)
+        if (statusRes.ok()) {
+          const status = await statusRes.json()
+          if (status.state === 'idle' || status.state === 'completed') {
+            settled = true
+            break
+          }
+        }
+        await page.waitForTimeout(1000)
+      }
+      if (!settled) throw new Error('Index step did not settle within 60s')
     } else {
       throw new Error(
         `Unknown when verb in step ${JSON.stringify(step)}. ` +
-          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, click.select_text, upload.files, set.auto_rename`
+          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, click.select_text, upload.files, set.auto_rename, login, index`
       )
     }
   }
@@ -216,7 +261,7 @@ async function clickTrigger(
     await page.getByTestId(trigger.slice('testid/'.length)).click()
     return
   }
-  await resolveLocator(page, trigger, vars).click()
+  await (await resolveLocator(page, trigger, vars)).click()
 }
 
 export async function executeAssert(
@@ -229,13 +274,13 @@ export async function executeAssert(
     const target = assertionTarget(assertion)
     if ('ui.visible' in assertion) {
       tracer?.recordUI('ui.visible', target)
-      await expect(resolveLocator(page, assertion['ui.visible'], ctx.vars)).toBeVisible()
+      await expect(await resolveLocator(page, assertion['ui.visible'], ctx.vars)).toBeVisible()
     } else if ('ui.hidden' in assertion) {
       tracer?.recordUI('ui.hidden', target)
-      await expect(resolveLocator(page, assertion['ui.hidden'], ctx.vars)).not.toBeVisible()
+      await expect(await resolveLocator(page, assertion['ui.hidden'], ctx.vars)).not.toBeVisible()
     } else if ('ui.text' in assertion && 'contains' in assertion) {
       tracer?.recordUI('ui.text', target)
-      await expect(resolveLocator(page, assertion['ui.text'], ctx.vars)).toContainText(
+      await expect(await resolveLocator(page, assertion['ui.text'], ctx.vars)).toContainText(
         interpolate(assertion.contains, ctx.vars)
       )
     } else if ('ui.route' in assertion) {
@@ -263,7 +308,12 @@ export async function executeAssert(
     } else if ('api.response' in assertion) {
       const spec = assertion['api.response']
       const url = interpolate(spec.url, ctx.vars)
-      const response = await page.request.fetch(url)
+      const method = spec.method ?? 'GET'
+      const full = url.startsWith('http') ? url : `${ctx.backendUrl}${url}`
+      const response =
+        method === 'GET'
+          ? await page.request.fetch(full)
+          : await page.request.fetch(full, { method, data: spec.body as any })
       const expected = Array.isArray(spec.status) ? spec.status : [spec.status]
       expect(expected).toContain(response.status())
     } else if ('ui.text_visible' in assertion) {
@@ -289,7 +339,7 @@ export async function executeAssert(
       ).toBeVisible()
     } else if ('ui.input_value' in assertion) {
       tracer?.recordUI('ui.input_value', target)
-      await expect(resolveLocator(page, assertion['ui.input_value'], ctx.vars)).toHaveValue(
+      await expect(await resolveLocator(page, assertion['ui.input_value'], ctx.vars)).toHaveValue(
         new RegExp(interpolate(assertion.contains, ctx.vars))
       )
     } else if ('file.contains' in assertion) {

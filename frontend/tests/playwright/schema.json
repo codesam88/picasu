@@ -251,6 +251,30 @@
       "required": ["set.auto_rename"],
       "additionalProperties": false
     },
+    "uiWhenLogin": {
+      "type": "object",
+      "properties": {
+        "login": {
+          "type": "object",
+          "properties": {
+            "user": { "type": "string", "minLength": 1 },
+            "password": { "type": "string", "minLength": 1 }
+          },
+          "required": ["user", "password"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["login"],
+      "additionalProperties": false
+    },
+    "uiWhenIndex": {
+      "type": "object",
+      "properties": {
+        "index": { "type": "string", "minLength": 1 }
+      },
+      "required": ["index"],
+      "additionalProperties": false
+    },
     "uiWhenItem": {
       "oneOf": [
         { "$ref": "#/definitions/uiWhenNavigate" },
@@ -266,7 +290,9 @@
         { "$ref": "#/definitions/uiWhenClickSelectText" },
         { "$ref": "#/definitions/uiWhenClickTestId" },
         { "$ref": "#/definitions/uiWhenUploadFiles" },
-        { "$ref": "#/definitions/uiWhenSetAutoRename" }
+        { "$ref": "#/definitions/uiWhenSetAutoRename" },
+        { "$ref": "#/definitions/uiWhenLogin" },
+        { "$ref": "#/definitions/uiWhenIndex" }
       ]
     },
     "uiAssertVisible": {
@@ -343,7 +369,9 @@
             "url": { "type": "string" },
             "status": {
               "oneOf": [{ "type": "integer" }, { "type": "array", "items": { "type": "integer" } }]
-            }
+            },
+            "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE"] },
+            "body": true
           },
           "required": ["url", "status"],
           "additionalProperties": false
@@ -437,6 +465,15 @@
       "properties": {
         "name": { "type": "string" },
         "covers": { "$ref": "#/definitions/covers" },
+        "server": {
+          "type": "object",
+          "properties": {
+            "bootstrap_admin": { "type": "boolean" },
+            "pbkdf_iterations": { "type": "integer", "minimum": 1 },
+            "login_ip_base_ban_secs": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
         "given": {
           "type": "array",
           "items": { "$ref": "#/definitions/givenItem" },
