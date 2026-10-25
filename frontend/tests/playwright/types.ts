@@ -64,6 +64,22 @@ export const GivenConfig = z
   })
   .strict()
 
+/// Mint a single-use invite token via the admin API. `username` binds the
+/// invite to that user id (403 on mismatch at redeem); omit it for an open
+/// invite that registers any id. `expires_in_hours` defaults to 168 (the
+/// conventional 7-day lifetime; `0` never expires). The plaintext token is
+/// exposed as `${id_as}` for link interpolation. The minting `user:` given
+/// must come first: invites exist only on a non-empty store.
+export const GivenInvite = z
+  .object({
+    invite: z.object({
+      username: z.string().min(1).optional(),
+      expires_in_hours: z.number().int().optional()
+    }),
+    id_as: VarName.optional()
+  })
+  .strict()
+
 export const GivenUser = z
   .object({
     user: z.object({
@@ -110,6 +126,7 @@ export const GivenItem = z.union([
   GivenRemove,
   GivenConfig,
   GivenUser,
+  GivenInvite,
   GivenMove
 ])
 
@@ -237,6 +254,14 @@ export const UiWhenIndex = z
   })
   .strict()
 
+/// Explicit page reload. The hand-written register specs prove the session
+/// survives reload (no bounce to `/login`); the DSL needs the same primitive.
+export const UiWhenReload = z
+  .object({
+    reload: z.literal(true)
+  })
+  .strict()
+
 export const UiWhenItem = z.union([
   UiWhenNavigate,
   UiWhenClick,
@@ -255,7 +280,8 @@ export const UiWhenItem = z.union([
   UiWhenUploadFiles,
   UiWhenSetAutoRename,
   UiWhenLogin,
-  UiWhenIndex
+  UiWhenIndex,
+  UiWhenReload
 ])
 
 export const UiAssertVisible = z

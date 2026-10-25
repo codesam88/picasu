@@ -80,6 +80,29 @@ zero hand-written browser files.
   present; fixture backend still boots under `server:` scenarios (wasted,
   torn down by fixture); `invite:`/throttle verbs open (S2/S3).
 
+## Progress (2026-10-25, S2 done)
+
+- `invite:` given (bound `username` vs open, `expires_in_hours` default 168,
+  token exposed as `${id_as}`) in `types.ts`, `schema.json`,
+  `executeGiven.ts` (mints via admin API after the `user:` given);
+  `reload: true` verb; `api.response` body deep-interpolation.
+- New: `scenarios/invite-registration.yaml` — bound prefill, anonymous
+  mismatch 403, UI redeem → `/timeline`, reload keeps session, reuse 409,
+  unknown 404, open-invite register while holding a viewer session,
+  viewer-tier `GET /get/users → 401`.
+- E2E finds: (3) `api.response` posted the raw body uninterpolated, so an
+  invite redeem sent the literal `${bound}` text and answered 404 instead
+  of the binding 403 — bodies now go through `interpolateDeep`; (4, latent)
+  `assertionTarget` does not interpolate `ui.route`, so `covers.ui` cannot
+  name parameterized routes — worked around by covering only static
+  targets (advisory warnings are not gates; proper fix deferred to S4).
+- Gates: scenario passes with zero coverage warnings; full
+  `npx playwright test` 46 passed; eslint, `vue-tsc -p tsconfig.node.json`,
+  prettier, `plan-lint` clean. Backend untouched. Leftover carried: S1
+  leftovers plus pre-seeded second-user/viewer-login verb (needed for the
+  denial matrix), generic text-click (logout flows stay in hand-written
+  specs for now).
+
 ## Out of scope
 
 Backend behavior changes. New product features. The viewer denial-matrix

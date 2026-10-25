@@ -222,6 +222,29 @@ export async function executeGiven(
       authToken = null
     }
 
+    if ('invite' in item && item.invite) {
+      const inv = item as {
+        invite: { username?: string; expires_in_hours?: number }
+        id_as?: string
+      }
+      // Mint via the admin API: the plaintext token returns exactly once and
+      // only its hash is stored, so it must be captured here for link
+      // interpolation. Requires a non-empty store (the minting `user:` given
+      // first); API writes against an empty running store are refused.
+      const token = await ensureAuthenticated(request, backendUrl, adminId, adminPassword)
+      const headers = authHeaders(token)
+      const body: Record<string, unknown> = {
+        expiresInHours: inv.invite.expires_in_hours ?? 168
+      }
+      if (inv.invite.username !== undefined) body['username'] = inv.invite.username
+      const res = await request.post(`${backendUrl}/post/invites`, { data: body, headers })
+      if (!res.ok()) {
+        throw new Error(`Invite creation failed: ${res.status()} ${await res.text()}`)
+      }
+      const created = (await res.json()) as { token: string }
+      if (inv.id_as) result.vars[inv.id_as] = created.token
+    }
+
     if ('config' in item && item.config) {
       const cfg = item as {
         config: {

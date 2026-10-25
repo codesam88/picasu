@@ -224,10 +224,12 @@ export async function executeWhen(
         await page.waitForTimeout(1000)
       }
       if (!settled) throw new Error('Index step did not settle within 60s')
+    } else if ('reload' in step) {
+      await page.reload()
     } else {
       throw new Error(
         `Unknown when verb in step ${JSON.stringify(step)}. ` +
-          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, click.select_text, upload.files, set.auto_rename, login, index`
+          `Expected one of: navigate, click, fill, select, submit, keyboard, wait.ms, browser.back, click.text, click.icon, click.first, click.testid, click.select_first, click.select_text, upload.files, set.auto_rename, login, index, reload`
       )
     }
   }
@@ -313,7 +315,10 @@ export async function executeAssert(
       const response =
         method === 'GET'
           ? await page.request.fetch(full)
-          : await page.request.fetch(full, { method, data: spec.body as any })
+          : await page.request.fetch(full, {
+              method,
+              data: interpolateDeep(spec.body, ctx.vars) as any
+            })
       const expected = Array.isArray(spec.status) ? spec.status : [spec.status]
       expect(expected).toContain(response.status())
     } else if ('ui.text_visible' in assertion) {
@@ -374,4 +379,22 @@ export async function executeSteps(
 
 function interpolate(value: string, vars: Record<string, string>): string {
   return value.replace(/\$\{(\w+)\}/g, (_, key) => vars[`$${key}`] ?? vars[key] ?? '')
+}
+
+/// Deep-interpolate `${var}` across a JSON body (objects, arrays, strings).
+/// `api.response` posts invite tokens and ids bound during `given:`; passing
+/// the body through uninterpolated sends the literal `${name}` text, which the
+/// backend reads as an unknown token (404) instead of the minted one.
+function interpolateDeep(value: unknown, vars: Record<string, string>): unknown {
+  if (typeof value === 'string') return interpolate(value, vars)
+  if (Array.isArray(value)) return value.map((item) => interpolateDeep(item, vars))
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        interpolateDeep(item, vars)
+      ])
+    )
+  }
+  return value
 }
