@@ -7,6 +7,16 @@ const isCI = !!process.env.CI
 
 export default defineConfig({
   testDir: './tests/playwright',
+  // Hand-written browser tests are plain `.ts` by convention: only the
+  // scenario-DSL runner (`interpreter.spec.ts`) is a spec. Name them
+  // explicitly so discovery does not depend on the suffix.
+  testMatch: [
+    'interpreter.spec.ts',
+    'first-admin-registration.ts',
+    'login-throttle.ts',
+    'invite-registration.ts',
+    'album-tree-refresh-after-move.ts'
+  ],
   fullyParallel: true,
   forbidOnly: isCI,
   // Debug builds pay ~10s per PBKDF2 verify, so KDF-bound scenarios
