@@ -20,18 +20,20 @@ backend-check:
     cd backend && cargo fmt --check
     cargo clippy -- -D warnings
 
-# Backend tests via cargo-nextest: one process per test, so the suite runs
-# in parallel instead of serializing on the shared test data home (5x on an
-# 8-core box). The doctests run separately: nextest does not run them.
-# Test-only PBKDF effort: full KDF cost would dominate the suite.
-[group('backend')]
-backend-test: frontend-build-maybe
-    cd backend && PICASU_PBKDF_ITERATIONS="1000" sh -c 'command -v cargo-nextest >/dev/null || { echo "cargo-nextest is missing — run: just install-nextest" >&2; exit 1; }; cargo nextest run && cargo test --doc'
+[private]
+nextest-present:
+    #!/usr/bin/env sh
+    command -v cargo-nextest >/dev/null || { echo "cargo-nextest is missing — run: just install-nextest" >&2; exit 1; }
 
-# Backend tests in release mode (same runner as backend-test)
+# Backend tests (cargo-nextest)
 [group('backend')]
-backend-test-release: frontend-build-maybe
-    cd backend && sh -c 'command -v cargo-nextest >/dev/null || { echo "cargo-nextest is missing — run: just install-nextest" >&2; exit 1; }; cargo nextest run --release && cargo test --doc --release'
+backend-test: frontend-build-maybe nextest-present
+    cd backend && PICASU_PBKDF_ITERATIONS="1000" cargo nextest run && cargo test --doc
+
+# Backend tests in release mode
+[group('backend')]
+backend-test-release: frontend-build-maybe nextest-present
+    cd backend && cargo nextest run --release && cargo test --doc --release
 
 # cargo deny
 [group('backend')]
@@ -65,15 +67,14 @@ frontend-check:
 frontend-vitest:
     cd frontend && npm test
 
-# run frontend playwright tests
+# run frontend playwright tests, with optional filter
 [group('frontend')]
-frontend-playwright: frontend-build-maybe
+frontend-playwright filter="": frontend-build-maybe
     #!/usr/bin/env bash
     set -e
     # Pre-build backend once so parallel test workers don't fight for the cargo build lock.
     # Skipped when PICASU_BINARY is already set (e.g. test-release supplies the release binary).
     [ -n "${PICASU_BINARY:-}" ] || cargo build --bin picasu
-    # filter scenarios: npx playwright test --grep "onboarding"
     export PICASU_BINARY="${PICASU_BINARY:-$(pwd)/target/debug/picasu}"
     # Each worker runs a browser and a backend, so half the cores is the
     # ceiling that keeps the runner from thrashing; the count follows the
@@ -85,13 +86,17 @@ frontend-playwright: frontend-build-maybe
         workers=$(( $(nproc) / 2 ))
         [ "$workers" -lt 1 ] && workers=1
     fi
-    cd frontend && npx playwright test --workers="$workers"
+    if [ -n "{{filter}}" ]; then
+        cd frontend && npx playwright test --workers="$workers" --grep "{{filter}}"
+    else
+        cd frontend && npx playwright test --workers="$workers"
+    fi
 
 # all frontend tests
 [group('frontend')]
 frontend-test: frontend-vitest frontend-playwright
 
-# npm run build (vue-tsc + vite build); installs the deps only if missing
+# npm run build (vue-tsc + vite build); installs deps if missing
 [group('frontend')]
 frontend-build:
     cd frontend && (test -d node_modules || npm ci) && npm run build
@@ -215,12 +220,12 @@ openapi-breakcheck:
 plan-format:
     cd frontend && npx --no-install prettier --write --no-error-on-unmatched-pattern '../.plan/**/*.md'
 
-# Validate .plan task frontmatter against .plan/.schema.json
+# check .plan task frontmatter correctness
 [group('tooling')]
 plan-lint:
     node {{justfile_directory()}}/scripts/plan-lint.mjs {{justfile_directory()}}
 
-# run plan <args> — the board view; needs `just install-plan`
+# run plan <args>, depends on `just install-plan`
 [group('tooling')]
 plan *args:
     plan --root {{justfile_directory()}} {{args}}
@@ -283,10 +288,7 @@ setup-dev: install-dev
     git config core.hooksPath .githooks
     @echo "✓ Pre-commit hook enabled — ready to develop"
 
-# Install plan tool from tablethat (pinned version).
-#
-# The tool is the board view only (`just plan`); the frontmatter gate runs
-# without it (see `plan-lint`), so CI does not install it.
+# Install 'plan' and 'gloss' tools (pinned)
 [group('global')]
 install-plan:
     cargo install --git https://github.com/tedsamhain/tablethat --rev 7853459
