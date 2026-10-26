@@ -3449,6 +3449,9 @@
           "403": {
             "description": "Share targeting another album"
           },
+          "404": {
+            "description": "Not found"
+          },
           "405": {
             "description": "Read-only mode"
           },
@@ -3491,6 +3494,9 @@
           },
           "403": {
             "description": "Share targeting another album's asset"
+          },
+          "404": {
+            "description": "Not found"
           },
           "405": {
             "description": "Read-only mode"
@@ -3808,6 +3814,9 @@
         "responses": {
           "200": {
             "description": "SPA page (HTML)"
+          },
+          "422": {
+            "description": "Unprocessable entity"
           }
         },
         "summary": "Serve the SPA shell for a trash view path resolved by the client.",

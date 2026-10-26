@@ -354,6 +354,7 @@ pub async fn trashed() -> AppResult<FrontendResponse> {
         ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
+            (status = 422, description = "Unprocessable entity"),
         )
     )
 ]
