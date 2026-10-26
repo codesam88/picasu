@@ -339,6 +339,20 @@ export async function executeAssert(
             })
       const expected = Array.isArray(spec.status) ? spec.status : [spec.status]
       expect(expected).toContain(response.status())
+      if (spec.header) {
+        const value = response.headers()[spec.header.name.toLowerCase()]
+        if (value === undefined) {
+          throw new Error(
+            `api.response: response missing header "${spec.header.name}" (url: ${url})`
+          )
+        }
+        if (spec.header.equals !== undefined) {
+          expect(String(value)).toEqual(String(spec.header.equals))
+        }
+        if (spec.header.gt !== undefined) {
+          expect(Number(value)).toBeGreaterThan(spec.header.gt)
+        }
+      }
     } else if ('api.statuses' in assertion) {
       const spec = assertion['api.statuses']
       const url = interpolate(spec.url, ctx.vars)
