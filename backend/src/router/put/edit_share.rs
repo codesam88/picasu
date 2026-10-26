@@ -26,10 +26,11 @@ pub struct EditShare {
 ///
 /// The submitted `share` object is stored under the key `share.url`, replacing
 /// any entry already held under that key, so a share is edited by posting a
-/// complete object and every capability and field takes its submitted value
-/// rather than the existing one. The payload is never checked against the
-/// album, no `.albuminfo.xmp` sidecar is written, and the in-memory tree is
-/// rebuilt before the call returns.
+/// complete object. The password is the exception to the full replace: an
+/// absent or `null` `password` keeps the stored secret, the empty string
+/// clears it, and any other string sets it. The payload is never checked
+/// against the album, no `.albuminfo.xmp` sidecar is written, and the
+/// in-memory tree is rebuilt before the call returns.
 ///
 /// Corner cases: an `albumId` that holds no album row is a silent no-op that
 /// still answers 200.
@@ -75,9 +76,23 @@ pub async fn edit_share(
                 });
 
             if let Some(mut album) = album_opt {
-                album
-                    .share_list
-                    .insert(json_data.share.url, json_data.share.clone());
+                // Password contract: absent or `null` keeps the stored
+                // secret, the empty string clears it, any other string
+                // replaces it. Album reads no longer disclose the value, so
+                // a full-object replace without keep-semantics would silently
+                // wipe every password on any other edit.
+                let mut share = json_data.share.clone();
+                match share.password.as_deref() {
+                    Some("") => share.password = None,
+                    None => {
+                        share.password = album
+                            .share_list
+                            .get(&share.url)
+                            .and_then(|existing| existing.password.clone());
+                    }
+                    Some(_) => {}
+                }
+                album.share_list.insert(share.url, share);
                 metadata_table
                     .insert(json_data.album_id.as_str(), MetadataRecord::Album(album))
                     .or_raise(|| (ErrorKind::Database, "Failed to update album"))?;

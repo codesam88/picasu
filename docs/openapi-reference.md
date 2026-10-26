@@ -3017,9 +3017,11 @@ Corner cases: `dirPath` is reported relative to the configured `imagePath`
 so clients never handle the absolute library location, falling back to the
 absolute path for albums outside that root; `parentAlbumId` names the direct
 parent directory album and is `null` for top-level dir albums and all
-manually created albums.
+manually created albums. Share entries carry `hasPassword` presence only —
+the stored password is never returned by an album read.
 
-Errors: 401 no valid admin credentials.
+Errors: 401 missing, invalid or share-role session — 403 no enrolled
+users — 500 storage failure.
 
 > Example responses
 
@@ -3036,7 +3038,7 @@ Errors: 401 no valid admin credentials.
       "property1": {
         "description": "string",
         "exp": 0,
-        "password": "string",
+        "hasPassword": true,
         "showDownload": true,
         "showMetadata": true,
         "showUpload": true,
@@ -3045,7 +3047,7 @@ Errors: 401 no valid admin credentials.
       "property2": {
         "description": "string",
         "exp": 0,
-        "password": "string",
+        "hasPassword": true,
         "showDownload": true,
         "showMetadata": true,
         "showUpload": true,
@@ -3068,10 +3070,12 @@ Errors: 401 no valid admin credentials.
 
 <h3 id="list-every-album-the-metadata-tree-knows.-responses">Responses</h3>
 
-| Status | Meaning                                                         | Description                                                                                | Schema                                      |
-| ------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)         | List of albums                                                                             | Inline                                      |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1) | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | List of albums                                                                             | Inline                                      |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <h3 id="list-every-album-the-metadata-tree-knows.-responseschema">Response Schema</h3>
 
@@ -3085,10 +3089,10 @@ Status Code **200**
 | » dirPath                   | string,null                     | false    | none         | none                                                                                                              |
 | » parentAlbumId             | string,null                     | false    | none         | Album ID of the direct parent directory album, or `None` for top-level<br>dir albums and all user-created albums. |
 | » shareList                 | object                          | true     | none         | none                                                                                                              |
-| »» **additionalProperties** | [Share](#schemashare)           | false    | none         | none                                                                                                              |
+| »» **additionalProperties** | [ShareInfo](#schemashareinfo)   | false    | none         | One album's share entry as served to clients: the policy plus presence of<br>a password, never the secret itself. |
 | »»» description             | string                          | true     | none         | none                                                                                                              |
 | »»» exp                     | integer(int64)                  | true     | none         | none                                                                                                              |
-| »»» password                | string,null                     | false    | none         | none                                                                                                              |
+| »»» hasPassword             | boolean                         | true     | none         | Whether a share password is configured; the stored secret never<br>leaves the backend through an album read.      |
 | »»» showDownload            | boolean                         | true     | none         | none                                                                                                              |
 | »»» showMetadata            | boolean                         | true     | none         | none                                                                                                              |
 | »»» showUpload              | boolean                         | true     | none         | none                                                                                                              |
@@ -3304,6 +3308,7 @@ could not be created or the album not registered.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | New album ID                                                                               | string                                      |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
@@ -3709,7 +3714,7 @@ content hash, not by path, so no derivative moves or is invalidated.
 
 Errors: 400 unknown asset or album id, a source path or album directory that
 no longer exists, or a destination album that has no directory — 401 missing
-or invalid admin credentials; share tokens are not accepted — 405 read-only
+or invalid credentials; share tokens are not accepted — 405 read-only
 mode — 500 storage failure.
 
 > Body parameter
@@ -3755,6 +3760,7 @@ mode — 500 storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Item assigned to album                                                                     | [AssignResult](#schemaassignresult)         |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input or item not found                                                            | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
@@ -4131,10 +4137,11 @@ func main() {
 
 The submitted `share` object is stored under the key `share.url`, replacing
 any entry already held under that key, so a share is edited by posting a
-complete object and every capability and field takes its submitted value
-rather than the existing one. The payload is never checked against the
-album, no `.albuminfo.xmp` sidecar is written, and the in-memory tree is
-rebuilt before the call returns.
+complete object. The password is the exception to the full replace: an
+absent or `null` `password` keeps the stored secret, the empty string
+clears it, and any other string sets it. The payload is never checked
+against the album, no `.albuminfo.xmp` sidecar is written, and the
+in-memory tree is rebuilt before the call returns.
 
 Corner cases: an `albumId` that holds no album row is a silent no-op that
 still answers 200.
@@ -4353,7 +4360,7 @@ Corner cases: the cover's kind is never checked, so any asset can serve as
 the cover, and no `.albuminfo.xmp` sidecar is written, so the new cover is
 stored in the database only.
 
-Errors: 400 `albumId` names a media record — 401 missing or invalid admin
+Errors: 400 `albumId` names a media record — 401 missing or invalid
 credentials; share tokens are not accepted — 404 `albumId` or `coverAssetId`
 names no record — 405 read-only mode — 500 storage failure.
 
@@ -4391,6 +4398,7 @@ names no record — 405 read-only mode — 500 storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Album cover updated                                                                        | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
@@ -5030,6 +5038,7 @@ or invalid credentials — 404 an ID names no asset — 405 read-only mode —
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Data deleted                                                                               | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Asset not found                                                                            | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
@@ -5402,7 +5411,7 @@ accepted and ignored rather than rejected, and an absent `isTrashed` leaves
 every flag as it was. An index whose asset record no longer exists is
 skipped and still answers 200.
 
-Errors: 400 malformed body — 401 missing or invalid admin credentials; share
+Errors: 400 malformed body — 401 missing or invalid credentials; share
 tokens are not accepted — 405 read-only mode — 500 unknown snapshot,
 out-of-range index, or storage failure.
 
@@ -5441,6 +5450,7 @@ out-of-range index, or storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Flags updated                                                                              | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
@@ -5615,7 +5625,7 @@ exists is skipped and still answers 200, and a failed sidecar write is
 logged rather than failing the request.
 
 Errors: 400 `rating` is above 5, or the body cannot be parsed — 401 missing
-or invalid admin credentials; share tokens are not accepted — 405 read-only
+or invalid credentials; share tokens are not accepted — 405 read-only
 mode — 500 unknown snapshot, out-of-range index, or storage failure.
 
 > Body parameter
@@ -5653,6 +5663,7 @@ mode — 500 unknown snapshot, out-of-range index, or storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Rating updated                                                                             | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
@@ -5832,7 +5843,7 @@ Corner cases: a tag that sanitizes to empty is skipped on add but still
 serves as the removal key, and an index whose asset record no longer exists
 is skipped and still answers 200.
 
-Errors: 400 malformed body — 401 missing or invalid admin credentials; share
+Errors: 400 malformed body — 401 missing or invalid credentials; share
 tokens are not accepted — 405 read-only mode — 500 unknown snapshot,
 out-of-range index, or storage failure.
 
@@ -5883,6 +5894,7 @@ out-of-range index, or storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Tags updated                                                                               | Inline                                      |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
@@ -6062,7 +6074,7 @@ frame, and the stored dimensions, EXIF and `.albuminfo.xmp` sidecar are
 left untouched.
 
 Errors: 400 malformed multipart body or an `asset_id` longer than 64 bytes —
-401 missing or invalid admin credentials; share tokens are not accepted —
+401 missing or invalid credentials; share tokens are not accepted —
 404 `asset_id` names no asset record — 405 read-only mode — 500 frame write,
 decode, or storage failure.
 
@@ -6097,6 +6109,7 @@ decode, or storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Thumbnail regenerated                                                                      | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
@@ -6267,7 +6280,7 @@ so the rotation is a display-level transform that accumulates across
 repeated calls.
 
 Errors: 400 an `asset_id` longer than 64 bytes, or an album or video — 401
-missing or invalid admin credentials; share tokens are not accepted — 404
+missing or invalid credentials; share tokens are not accepted — 404
 `asset_id` names no asset record — 405 read-only mode — 500 decode,
 thumbnail write, or storage failure.
 
@@ -6304,6 +6317,7 @@ thumbnail write, or storage failure.
 | 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | Image rotated                                                                              | None                                        |
 | 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
 | 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
 | 404    | [Not Found](https://tools.ietf.org/html/rfc7231#section-6.5.4)             | Not found                                                                                  | None                                        |
 | 405    | [Method Not Allowed](https://tools.ietf.org/html/rfc7231#section-6.5.5)    | Read-only mode                                                                             | None                                        |
 | 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
@@ -6671,7 +6685,6 @@ Errors: 401 missing or invalid admin credentials.
 {
   "config": {
     "allowRegistration": true,
-    "disableImg": true,
     "fsNotifyWatcher": true,
     "maxUploadSize": "string",
     "normalizeUploadFilenames": true,
@@ -6847,21 +6860,17 @@ func main() {
 
 `GET /get/config`
 
-Returns the values a client needs to drive the other operations: the
-image library root (`imagePath`), `uploadFolder`, `maxUploadSize`,
-`readOnlyMode`, `disableImg`, `fsNotifyWatcher`,
-`normalizeUploadFilenames`, `validateUploadContent`,
-`useClientTimestampInfo`, plus `hasAuthKey`.
+Returns the values a client needs to drive the other operations:
+`uploadFolder` (relative to the image library root), `maxUploadSize`,
+`readOnlyMode`, `fsNotifyWatcher`, `normalizeUploadFilenames`,
+`validateUploadContent` and `useClientTimestampInfo`.
 
-Corner cases: secrets are never returned — `hasAuthKey` only reports
-whether an auth key is configured. `imagePath` is
-the absolute library root and serializes as `null` when it is unset.
-The endpoint stays `GuardShare`-gated so a share visitor's SPA boots
-normally, but share credentials receive `null` for
-`imagePath`/`uploadFolder`: only the admin tier sees the real
-filesystem paths. Non-admin sessions never reach the handler —
-`GuardShare` admits admins and shares only, so they are refused with
-401 first.
+Corner cases: the host image path is never served here — it is a
+host-only setting (env/file) surfaced to admins through
+`GET /get/admin/config`. The signing key is never exposed in any form.
+`uploadFolder` is relative and visible to every admitted caller, so the
+response carries no per-tier fields at all and is identical for every
+credential that passes the gate.
 
 Errors: 400 half-supplied share credentials or an id that is not an album —
 401 no valid admin or share credentials.
@@ -6872,10 +6881,7 @@ Errors: 400 half-supplied share credentials or an id that is not an album —
 
 ```json
 {
-  "disableImg": true,
   "fsNotifyWatcher": true,
-  "hasAuthKey": true,
-  "imagePath": "string",
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
   "readOnlyMode": true,
@@ -7663,7 +7669,6 @@ const inputBody = '{
   "allowRegistration": true,
   "authKey": "string",
   "bootstrapAdmin": true,
-  "disableImg": true,
   "fsNotifyWatcher": true,
   "loginIpBaseBanSecs": 0,
   "loginIpLongBaseBanSecs": 0,
@@ -7829,7 +7834,6 @@ mode — 500 config write failure.
   "allowRegistration": true,
   "authKey": "string",
   "bootstrapAdmin": true,
-  "disableImg": true,
   "fsNotifyWatcher": true,
   "loginIpBaseBanSecs": 0,
   "loginIpLongBaseBanSecs": 0,
@@ -7869,7 +7873,6 @@ mode — 500 config write failure.
 {
   "config": {
     "allowRegistration": true,
-    "disableImg": true,
     "fsNotifyWatcher": true,
     "maxUploadSize": "string",
     "normalizeUploadFilenames": true,
@@ -9823,7 +9826,8 @@ to be viewing.
 Corner cases: the counts are accumulated in parallel, so the order of the
 returned list is unspecified and not stable between calls.
 
-Errors: 400 invalid input — 401 no valid admin credentials.
+Errors: 400 invalid input — 401 missing, invalid or share-role session —
+403 no enrolled users — 500 storage failure.
 
 > Example responses
 
@@ -9850,11 +9854,13 @@ Errors: 400 invalid input — 401 no valid admin credentials.
 
 <h3 id="list-every-tag-in-the-tree-with-the-number-of-assets-carrying-it.-responses">Responses</h3>
 
-| Status | Meaning                                                          | Description                                                                                | Schema                                      |
-| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)          | List of tags                                                                               | Inline                                      |
-| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1) | Invalid input                                                                              | None                                        |
-| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)  | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| Status | Meaning                                                                    | Description                                                                                | Schema                                      |
+| ------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 200    | [OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)                    | List of tags                                                                               | Inline                                      |
+| 400    | [Bad Request](https://tools.ietf.org/html/rfc7231#section-6.5.1)           | Invalid input                                                                              | None                                        |
+| 401    | [Unauthorized](https://tools.ietf.org/html/rfc7235#section-3.1)            | Authentication credentials are missing, malformed, expired, or invalid for this operation. | [UnauthorizedBody](#schemaunauthorizedbody) |
+| 403    | [Forbidden](https://tools.ietf.org/html/rfc7231#section-6.5.3)             | Forbidden                                                                                  | None                                        |
+| 500    | [Internal Server Error](https://tools.ietf.org/html/rfc7231#section-6.6.1) | Internal error                                                                             | None                                        |
 
 <h3 id="list-every-tag-in-the-tree-with-the-number-of-assets-carrying-it.-responseschema">Response Schema</h3>
 
@@ -13461,7 +13467,6 @@ This operation does not require authentication
 {
   "config": {
     "allowRegistration": true,
-    "disableImg": true,
     "fsNotifyWatcher": true,
     "maxUploadSize": "string",
     "normalizeUploadFilenames": true,
@@ -13494,7 +13499,6 @@ This operation does not require authentication
 {
   "config": {
     "allowRegistration": true,
-    "disableImg": true,
     "fsNotifyWatcher": true,
     "maxUploadSize": "string",
     "normalizeUploadFilenames": true,
@@ -13595,7 +13599,7 @@ This operation does not require authentication
     "property1": {
       "description": "string",
       "exp": 0,
-      "password": "string",
+      "hasPassword": true,
       "showDownload": true,
       "showMetadata": true,
       "showUpload": true,
@@ -13604,7 +13608,7 @@ This operation does not require authentication
     "property2": {
       "description": "string",
       "exp": 0,
-      "password": "string",
+      "hasPassword": true,
       "showDownload": true,
       "showMetadata": true,
       "showUpload": true,
@@ -13616,14 +13620,14 @@ This operation does not require authentication
 
 ### Properties
 
-| Name                       | Type                  | Required | Restrictions | Description                                                                                                       |
-| -------------------------- | --------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------- |
-| albumId                    | string                | true     | none         | none                                                                                                              |
-| albumName                  | string,null           | false    | none         | none                                                                                                              |
-| dirPath                    | string,null           | false    | none         | none                                                                                                              |
-| parentAlbumId              | string,null           | false    | none         | Album ID of the direct parent directory album, or `None` for top-level<br>dir albums and all user-created albums. |
-| shareList                  | object                | true     | none         | none                                                                                                              |
-| » **additionalProperties** | [Share](#schemashare) | false    | none         | none                                                                                                              |
+| Name                       | Type                          | Required | Restrictions | Description                                                                                                       |
+| -------------------------- | ----------------------------- | -------- | ------------ | ----------------------------------------------------------------------------------------------------------------- |
+| albumId                    | string                        | true     | none         | none                                                                                                              |
+| albumName                  | string,null                   | false    | none         | none                                                                                                              |
+| dirPath                    | string,null                   | false    | none         | none                                                                                                              |
+| parentAlbumId              | string,null                   | false    | none         | Album ID of the direct parent directory album, or `None` for top-level<br>dir albums and all user-created albums. |
+| shareList                  | object                        | true     | none         | none                                                                                                              |
+| » **additionalProperties** | [ShareInfo](#schemashareinfo) | false    | none         | One album's share entry as served to clients: the policy plus presence of<br>a password, never the secret itself. |
 
 <h2 id="tocS_AssignAlbumData">AssignAlbumData</h2>
 <!-- backwards compatibility -->
@@ -13811,10 +13815,7 @@ One annotated configuration field as returned by `GET /get/admin/config`.
 
 ```json
 {
-  "disableImg": true,
   "fsNotifyWatcher": true,
-  "hasAuthKey": true,
-  "imagePath": "string",
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
   "readOnlyMode": true,
@@ -13826,18 +13827,15 @@ One annotated configuration field as returned by `GET /get/admin/config`.
 
 ### Properties
 
-| Name                     | Type        | Required | Restrictions | Description |
-| ------------------------ | ----------- | -------- | ------------ | ----------- |
-| disableImg               | boolean     | true     | none         | none        |
-| fsNotifyWatcher          | boolean     | true     | none         | none        |
-| hasAuthKey               | boolean     | true     | none         | none        |
-| imagePath                | string,null | false    | none         | none        |
-| maxUploadSize            | string      | true     | none         | none        |
-| normalizeUploadFilenames | boolean     | true     | none         | none        |
-| readOnlyMode             | boolean     | true     | none         | none        |
-| uploadFolder             | string,null | false    | none         | none        |
-| useClientTimestampInfo   | boolean     | true     | none         | none        |
-| validateUploadContent    | boolean     | true     | none         | none        |
+| Name                     | Type    | Required | Restrictions | Description |
+| ------------------------ | ------- | -------- | ------------ | ----------- |
+| fsNotifyWatcher          | boolean | true     | none         | none        |
+| maxUploadSize            | string  | true     | none         | none        |
+| normalizeUploadFilenames | boolean | true     | none         | none        |
+| readOnlyMode             | boolean | true     | none         | none        |
+| uploadFolder             | string  | true     | none         | none        |
+| useClientTimestampInfo   | boolean | true     | none         | none        |
+| validateUploadContent    | boolean | true     | none         | none        |
 
 <h2 id="tocS_CreateDirAlbumData">CreateDirAlbumData</h2>
 <!-- backwards compatibility -->
@@ -14277,7 +14275,6 @@ existing destination untouched (the source stays put, outcome `skipped`);
   "allowRegistration": true,
   "authKey": "string",
   "bootstrapAdmin": true,
-  "disableImg": true,
   "fsNotifyWatcher": true,
   "loginIpBaseBanSecs": 0,
   "loginIpLongBaseBanSecs": 0,
@@ -14311,7 +14308,6 @@ existing destination untouched (the source stays put, outcome `skipped`);
 | allowRegistration        | boolean,null        | false    | none         | Runtime: `None` = don't touch.                                                                                                                                                                          |
 | authKey                  | string,null         | false    | none         | Managed, never set: the signing key lives in the owner-only secrets<br>file. Any presence in the API body is rejected with 400; rotate it<br>with `POST /post/config/auth-key/reset`.                   |
 | bootstrapAdmin           | boolean,null        | false    | none         | Host-only (`--bootstrap-admin` / `PICASU_BOOTSTRAP_ADMIN` / config<br>`gallery.bootstrap_admin`). Any presence in the API body is rejected<br>with 400 and changes nothing.                             |
-| disableImg               | boolean,null        | false    | none         | none                                                                                                                                                                                                    |
 | fsNotifyWatcher          | boolean,null        | false    | none         | none                                                                                                                                                                                                    |
 | loginIpBaseBanSecs       | integer,null(int64) | false    | none         | Host-only login-throttle knob (`PICASU_LOGIN_IP_BASE_BAN_SECS` /<br>config `server.login_ip_base_ban_secs`). Any presence in the API body<br>is rejected with 400 and changes nothing.                  |
 | loginIpLongBaseBanSecs   | integer,null(int64) | false    | none         | Host-only login-throttle knob<br>(`PICASU_LOGIN_IP_LONG_BASE_BAN_SECS` / config<br>`server.login_ip_long_base_ban_secs`). Any presence in the API body<br>is rejected with 400 and changes nothing.     |
@@ -14607,7 +14603,6 @@ field: registration always creates standard users; elevation is
 ```json
 {
   "allowRegistration": true,
-  "disableImg": true,
   "fsNotifyWatcher": true,
   "maxUploadSize": "string",
   "normalizeUploadFilenames": true,
@@ -14626,7 +14621,6 @@ response and the versioned export envelope.
 | Name                     | Type    | Required | Restrictions | Description |
 | ------------------------ | ------- | -------- | ------------ | ----------- |
 | allowRegistration        | boolean | true     | none         | none        |
-| disableImg               | boolean | true     | none         | none        |
 | fsNotifyWatcher          | boolean | true     | none         | none        |
 | maxUploadSize            | string  | true     | none         | none        |
 | normalizeUploadFilenames | boolean | true     | none         | none        |
@@ -14918,6 +14912,40 @@ Body for `PUT /put/users/password`.
 | showMetadata | boolean        | true     | none         | none        |
 | showUpload   | boolean        | true     | none         | none        |
 | url          | string         | true     | none         | none        |
+
+<h2 id="tocS_ShareInfo">ShareInfo</h2>
+<!-- backwards compatibility -->
+<a id="schemashareinfo"></a>
+<a id="schema_ShareInfo"></a>
+<a id="tocSshareinfo"></a>
+<a id="tocsshareinfo"></a>
+
+```json
+{
+  "description": "string",
+  "exp": 0,
+  "hasPassword": true,
+  "showDownload": true,
+  "showMetadata": true,
+  "showUpload": true,
+  "url": "string"
+}
+```
+
+One album's share entry as served to clients: the policy plus presence of
+a password, never the secret itself.
+
+### Properties
+
+| Name         | Type           | Required | Restrictions | Description                                                                                                  |
+| ------------ | -------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------ |
+| description  | string         | true     | none         | none                                                                                                         |
+| exp          | integer(int64) | true     | none         | none                                                                                                         |
+| hasPassword  | boolean        | true     | none         | Whether a share password is configured; the stored secret never<br>leaves the backend through an album read. |
+| showDownload | boolean        | true     | none         | none                                                                                                         |
+| showMetadata | boolean        | true     | none         | none                                                                                                         |
+| showUpload   | boolean        | true     | none         | none                                                                                                         |
+| url          | string         | true     | none         | none                                                                                                         |
 
 <h2 id="tocS_TagInfo">TagInfo</h2>
 <!-- backwards compatibility -->

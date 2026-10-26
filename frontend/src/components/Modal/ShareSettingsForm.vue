@@ -18,7 +18,7 @@
       v-model="model.password"
       label="Password"
       placeholder="Enter password"
-      hint="Require a password to access this link"
+      :hint="passwordHint"
       persistent-hint
       type="password"
       variant="outlined"
@@ -81,7 +81,7 @@
 </template>
 
 <script setup lang="ts">
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import { DURATIONS } from '@type/constants'
 import { ShareFormData } from '@type/types'
 
@@ -102,9 +102,23 @@ const toggleSetting = (
 // --- Logic Automation ---
 
 // 1. Password Logic
+//
+// The input starts blank on edit (reads no longer disclose the secret), so
+// three states share one field: untouched blank keeps the current password,
+// typed non-empty replaces it, and a value edited back to blank removes it.
+const passwordHint = computed(() => {
+  if (model.value.passwordSet && !model.value.passwordDirty) {
+    return 'Leave blank to keep the current password'
+  }
+  return 'Require a password to access this link'
+})
+
 watch(
   () => model.value.password,
   (newVal) => {
+    if (newVal && newVal.length > 0) {
+      model.value.passwordDirty = true
+    }
     model.value.passwordRequired = !!(newVal && newVal.length > 0)
   }
 )

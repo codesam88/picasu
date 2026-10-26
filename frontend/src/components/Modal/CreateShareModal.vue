@@ -32,6 +32,8 @@ const defaultFormState: ShareFormData = {
   description: '',
   passwordRequired: false,
   password: '',
+  passwordSet: false,
+  passwordDirty: false,
   expireEnabled: false,
   expDuration: null,
   showUpload: false,

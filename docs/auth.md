@@ -295,6 +295,16 @@ for data and metadata routes, and `prefetch` rewrites the query expression to
 the share's album (`Expression::Album`) so a share can only ever snapshot its
 own album.
 
+**Share-password exposure.** The stored secret leaves the backend in exactly
+two shapes: never through an album read (`GET /get/get-albums` reports
+`hasPassword` presence per share, for every tier), and always back to the
+share bearer, who presented it — the resolved share embedded in the snapshot
+token carries it so media requests can resend `x-share-password`. Writing
+follows the same rule: `PUT /put/edit_share` keeps the stored password when
+the submitted `password` is absent or `null`, clears it on the empty string,
+and sets it on any other string, so an edit that does not mention the secret
+cannot destroy it.
+
 ### The media-serving chain
 
 ```

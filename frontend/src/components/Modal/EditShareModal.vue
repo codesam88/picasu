@@ -34,6 +34,8 @@ const formState = ref<ShareFormData>({
   description: '',
   passwordRequired: false,
   password: '',
+  passwordSet: false,
+  passwordDirty: false,
   expireEnabled: false,
   expDuration: null,
   showUpload: false,
@@ -45,10 +47,12 @@ watchEffect(() => {
   const share = props.editShareData.share
   formState.value = {
     description: share.description || '',
-    // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
-    passwordRequired: !!share.password,
-
-    password: share.password ?? '',
+    passwordRequired: false,
+    // Blank on purpose: reads disclose presence only, and an untouched
+    // blank keeps the stored password (see ShareSettingsForm).
+    password: '',
+    passwordSet: share.hasPassword,
+    passwordDirty: false,
     expireEnabled: share.exp > 0,
     // In edit mode, default to null (unchanged)
     expDuration: null,
@@ -69,10 +73,27 @@ const saveChanges = async (formData: ShareFormData) => {
     newExp = Math.floor(Date.now() / 1000) + formData.expDuration * 60
   }
 
-  const updatedShare = {
+  // Wire password contract: typed replaces, edited-to-blank removes, an
+  // untouched blank keeps the stored secret (`null` on the request).
+  const wirePassword = formData.passwordRequired
+    ? formData.password
+    : formData.passwordDirty
+      ? ''
+      : null
+  const storedShare = {
     url: props.editShareData.share.url,
     description: formData.description,
-    password: formData.passwordRequired ? formData.password : null,
+    hasPassword:
+      wirePassword === null ? props.editShareData.share.hasPassword : wirePassword !== '',
+    showMetadata: formData.showMetadata,
+    showDownload: formData.showDownload,
+    showUpload: formData.showUpload,
+    exp: newExp
+  }
+  const wireShare = {
+    url: props.editShareData.share.url,
+    description: formData.description,
+    password: wirePassword,
     showMetadata: formData.showMetadata,
     showDownload: formData.showDownload,
     showUpload: formData.showUpload,
@@ -84,14 +105,14 @@ const saveChanges = async (formData: ShareFormData) => {
     const album = albumStore.albums.get(props.editShareData.albumId)
     if (album) {
       // eslint-disable-next-line vue/no-mutating-props
-      Object.assign(props.editShareData.share, updatedShare)
-      album.shareList.set(updatedShare.url, { ...props.editShareData.share, ...updatedShare })
+      Object.assign(props.editShareData.share, storedShare)
+      album.shareList.set(storedShare.url, storedShare)
     }
 
     await tryWithMessageStore('mainId', async () => {
       await axios.put('/put/edit_share', {
         albumId: props.editShareData.albumId,
-        share: updatedShare
+        share: wireShare
       })
       messageStore.success('Updated share settings successfully')
       modalStore.showEditShareModal = false

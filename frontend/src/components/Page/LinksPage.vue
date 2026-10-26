@@ -41,10 +41,10 @@
         </template>
 
         <!-- Password -->
-        <template #[`item.share.password`]="{ item }">
+        <template #[`item.share.hasPassword`]="{ item }">
           <v-icon
-            :icon="item.share.password ? 'mdi-check' : 'mdi-close'"
-            :color="item.share.password ? 'success' : 'grey'"
+            :icon="item.share.hasPassword ? 'mdi-check' : 'mdi-close'"
+            :color="item.share.hasPassword ? 'success' : 'grey'"
           />
         </template>
 
@@ -181,7 +181,7 @@ import { useAlbumStore } from '@/store/albumStore'
 import { useModalStore } from '@/store/modalStore'
 import { useMessageStore } from '@/store/messageStore'
 import type { EditShareData } from '@/type/types'
-import { ShareSchema } from '@/type/schemas'
+import { ShareInfoSchema } from '@/type/schemas'
 import PageTemplate from './PageLayout/PageTemplate.vue'
 
 const initializedStore = useInitializedStore('mainId')
@@ -203,7 +203,7 @@ const headers = [
     maxWidth: '200px',
     nowrap: true
   },
-  { title: 'Password', key: 'share.password' },
+  { title: 'Password', key: 'share.hasPassword' },
   { title: 'Expires', key: 'share.exp', nowrap: true },
   { title: 'Download', key: 'share.showDownload' },
   { title: 'Upload', key: 'share.showUpload' },
@@ -215,7 +215,7 @@ const tableItems = computed<EditShareData[]>(() => {
   const arr: EditShareData[] = []
   for (const album of albumStore.albums.values()) {
     for (const [, share] of album.shareList) {
-      const validatedShare = ShareSchema.parse(share)
+      const validatedShare = ShareInfoSchema.parse(share)
       arr.push({ albumId: album.albumId, displayName: album.displayName, share: validatedShare })
     }
   }
