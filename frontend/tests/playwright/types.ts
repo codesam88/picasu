@@ -369,7 +369,18 @@ export const UiAssertApiResponse = z
       url: z.string(),
       status: z.union([z.number(), z.array(z.number())]),
       method: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional().default('GET'),
-      body: z.unknown().optional()
+      body: z.unknown().optional(),
+      header: z
+        .object({
+          name: z.string().min(1),
+          gt: z.number().optional(),
+          equals: z.union([z.string(), z.number()]).optional()
+        })
+        .strict()
+        .refine((value) => value.gt !== undefined || value.equals !== undefined, {
+          message: 'header needs gt or equals'
+        })
+        .optional()
     })
   })
   .strict()

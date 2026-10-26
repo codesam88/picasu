@@ -433,7 +433,18 @@
               "oneOf": [{ "type": "integer" }, { "type": "array", "items": { "type": "integer" } }]
             },
             "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE"] },
-            "body": true
+            "body": true,
+            "header": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "gt": { "type": "number" },
+                "equals": { "type": ["string", "number"] }
+              },
+              "required": ["name"],
+              "additionalProperties": false,
+              "anyOf": [{ "required": ["gt"] }, { "required": ["equals"] }]
+            }
           },
           "required": ["url", "status"],
           "additionalProperties": false

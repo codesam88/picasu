@@ -79,6 +79,10 @@ steps:
             userId: admin
             password: e2e_test_pwd
           status: 429
+          header:
+            name: Retry-After
+            gt: 0
+          # the ban response carries Retry-After for the client countdown
       # ban beats unknown users too: no user enumeration during a ban
       - api.response:
           url: /post/users/authenticate

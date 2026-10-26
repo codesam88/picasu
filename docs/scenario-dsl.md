@@ -423,24 +423,24 @@ escape hatch.
 
 ### `assert:` — UI assertions (one or more)
 
-| Form                                        | Assertion                                                                |
-| ------------------------------------------- | ------------------------------------------------------------------------ |
-| `ui.visible: <role>/<label>`                | Element is visible                                                       |
-| `ui.hidden: <role>/<label>`                 | Element is hidden/absent                                                 |
-| `ui.text: <role>/<label>, contains: <text>` | Element text includes string                                             |
-| `ui.text_visible: <text>`                   | Text is visible anywhere on the page                                     |
-| `ui.text_hidden: <text>`                    | Text is not visible anywhere on the page                                 |
-| `ui.disabled: <role>/<label>`               | Element is disabled                                                      |
-| `ui.enabled: <role>/<label>`                | Element is enabled                                                       |
-| `ui.chip_visible: <text>`                   | Album/filename chip with given text is visible in a grid card            |
-| `ui.sidebar_visible: <text>`                | Text is visible inside the metadata sidebar (`#abstractData-col`)        |
-| `ui.count: <selector>, equals: <number>`    | Count of elements matching a CSS selector equals the given number        |
-| `ui.toast: type: <type>, contains: <text>`  | Toast of given type (`error`/`success`/`warning`) with matching text     |
-| `ui.modal: open                             | closed` — Modal dialog state                                             |
-| `ui.route: <pattern>`                       | Current URL matches pattern                                              |
-| `ui.aria_snapshot: <name>`                  | Compare ARIA role/name/state tree against committed snapshot             |
-| `api.response: url, status[, method, body]` | Backend API call returns expected status code (default `GET`)            |
-| `api.statuses: url, equals: [int,...]`      | Ordered HTTP statuses of browser-driven responses whose path matches url |
+| Form                                                         | Assertion                                                                |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| `ui.visible: <role>/<label>`                                 | Element is visible                                                       |
+| `ui.hidden: <role>/<label>`                                  | Element is hidden/absent                                                 |
+| `ui.text: <role>/<label>, contains: <text>`                  | Element text includes string                                             |
+| `ui.text_visible: <text>`                                    | Text is visible anywhere on the page                                     |
+| `ui.text_hidden: <text>`                                     | Text is not visible anywhere on the page                                 |
+| `ui.disabled: <role>/<label>`                                | Element is disabled                                                      |
+| `ui.enabled: <role>/<label>`                                 | Element is enabled                                                       |
+| `ui.chip_visible: <text>`                                    | Album/filename chip with given text is visible in a grid card            |
+| `ui.sidebar_visible: <text>`                                 | Text is visible inside the metadata sidebar (`#abstractData-col`)        |
+| `ui.count: <selector>, equals: <number>`                     | Count of elements matching a CSS selector equals the given number        |
+| `ui.toast: type: <type>, contains: <text>`                   | Toast of given type (`error`/`success`/`warning`) with matching text     |
+| `ui.modal: open                                              | closed` — Modal dialog state                                             |
+| `ui.route: <pattern>`                                        | Current URL matches pattern                                              |
+| `ui.aria_snapshot: <name>`                                   | Compare ARIA role/name/state tree against committed snapshot             |
+| `api.response: url, status[, method, body, header: {name, gt | equals}]`                                                                | Backend API call returns expected status code (default `GET`) |
+| `api.statuses: url, equals: [int,...]`                       | Ordered HTTP statuses of browser-driven responses whose path matches url |
 
 New assertions → extend the vocabulary with a new verb. No raw-TypeScript
 escape hatch.
