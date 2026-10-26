@@ -30,8 +30,8 @@ given:
       password: viewer-secret-9
   - photo: /library/photo.jpg
 steps:
-  # Control: the same grid works for the admin, so the viewer failure
-  # below isolates the tier, not the fixture.
+  # Control: the admin sees the grid, so the viewer leg below exercises the
+  # tier, not the fixture.
   - when:
       - login:
           user: admin
@@ -40,15 +40,14 @@ steps:
       - ui.route: /timeline
       - ui.count: .desktop-small-image
         equals: 1
-  # Non-admin story: login works (identity is fine), …
+  # Non-admin story: identity is fine, and the grid loads through the
+  # viewer's own session (rows arrive, no bounce to /login).
   - when:
       - login:
           user: viewer
           password: viewer-secret-9
     assert:
       - ui.route: /timeline
-  # … but the grid never loads: prefetch is admin-gated, the chain throws,
-  # no rows arrive, and the interceptor bounces the viewer to /login.
   - when:
       - navigate: /timeline
     assert:
