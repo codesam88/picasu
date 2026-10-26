@@ -17,7 +17,7 @@ existing tickets (nothing live lost).
 | ID     | Slug                              | Status      | Priority | Area     |
 | ------ | --------------------------------- | ----------- | -------- | -------- |
 | FEAT1a | `spec-reconciliation-4xx`         | done        | high     | testing  |
-| FEAT1b | `api-assurance` (gate step)       | in-progress | medium   | testing  |
+| FEAT1b | `api-assurance` (gate step)       | done        | medium   | testing  |
 | FEAT2  | `security-schemes-declaration`    | open        | medium   | backend  |
 | FEAT3  | `bug-rebuild-dir-album-cache`     | open        | high     | backend  |
 | FEAT4  | `auth-hardening`                  | in-progress | high     | backend  |
@@ -71,9 +71,10 @@ existing tickets (nothing live lost).
 - **FEAT1 — reconciliation → assurance gate (critical path).**
   FEAT1a done: `spec-reconciliation-4xx` landed (422/404 documented,
   415 normalized, export content-type corrected; exit sweep clean of
-  spec noise). FEAT1b remains: the Schemathesis campaign gate
-  (`schemathesis-campaign-config`) and the env-var config-consistency
-  lint — both now unblocked by FEAT1a.
+  spec noise). FEAT1b done: the Schemathesis campaign config shipped
+  as the two-tier harness (`just fuzz-check` / `just fuzz`, advisory
+  nightly SARIF workflow) and the env-var config-consistency lint
+  (`just env-var-check`, wired into `check`/precommit/CI).
 - **FEAT2 — security schemes in the contract.** Declare cookie/bearer/
   share-header schemes in the generator and reference them per operation;
   `just openapi-check` stays green. Unblocks Schemathesis auth

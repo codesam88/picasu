@@ -322,6 +322,12 @@ plan-format:
 plan-lint:
     node {{justfile_directory()}}/scripts/plan-lint.mjs {{justfile_directory()}}
 
+# check that the PICASU_* env vars read by the backend match the docs/config.md table
+[group('tooling')]
+env-var-check:
+    node --test {{justfile_directory()}}/scripts/env-var-lint.test.mjs
+    node {{justfile_directory()}}/scripts/env-var-lint.mjs {{justfile_directory()}}
+
 # run plan <args>, depends on `just install-plan`
 [group('tooling')]
 plan *args:
@@ -373,7 +379,7 @@ format: backend-format utils-format frontend-format docs-format
 
 # Run all linters and static checks
 [group('global')]
-check: backend-check utils-check frontend-check docs-check plan-lint openapi-check
+check: backend-check utils-check frontend-check docs-check plan-lint openapi-check env-var-check
 
 # Run tests (backend + utils + frontend)
 [group('global')]
@@ -559,4 +565,7 @@ precommit:
     fi
     if echo "$changed" | grep -q '^frontend/'; then
         just frontend-check
+    fi
+    if echo "$changed" | grep -qE '^(backend/|docs/config\.md$|README\.md$)'; then
+        just env-var-check
     fi
