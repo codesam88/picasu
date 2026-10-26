@@ -41,6 +41,8 @@ steps:
       - api.response:
           url: /get/self/profile
           status: 200
+          # the viewer's own profile shape
+          json: { 'user.userId': viewer, 'user.admin': false }
       - api.response:
           url: /get/config
           status: 200

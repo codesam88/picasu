@@ -36,6 +36,12 @@ steps:
       - click: tab/Administration
     assert:
       - ui.text_visible: Revoke # invite row renders with its Revoke control
+      # a fresh invite shows no redeemer
+      - api.response:
+          url: /get/invites
+          status: 200
+          json: { '[0].usedBy': null }
+          json_absent: '[0].token' # listings never carry token material
   - when:
       - click: button/Revoke
     assert:

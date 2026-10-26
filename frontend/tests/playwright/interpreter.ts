@@ -353,6 +353,98 @@ export async function executeAssert(
           expect(Number(value)).toBeGreaterThan(spec.header.gt)
         }
       }
+      // Lazily parse the body only when a json/json_absent check is present,
+      // so status/header-only probes never pay the parse cost or fail on a
+      // non-JSON body.
+      if (spec.json !== undefined || spec.json_absent !== undefined) {
+        let body: unknown
+        try {
+          body = await response.json()
+        } catch (err) {
+          throw new Error(`api.response: response body is not JSON (url: ${url}): ${String(err)}`, {
+            cause: err
+          })
+        }
+        // Returns found=false when any segment along the path is missing, so
+        // callers can distinguish "path absent" from "path present with value
+        // null/undefined-ish".
+        const navigate = (path: string): { found: boolean; value: unknown } => {
+          const segments = path.split('.')
+          let current: unknown = body
+          let found = true
+          for (const seg of segments) {
+            if (seg === '') continue
+            if (seg.startsWith('[') && seg.endsWith(']')) {
+              const idx = Number(seg.slice(1, -1))
+              if (!Array.isArray(current) || idx >= current.length) {
+                found = false
+                return { found, value: undefined }
+              }
+              current = current[idx]
+            } else {
+              if (
+                current === null ||
+                typeof current !== 'object' ||
+                !Object.prototype.hasOwnProperty.call(current as Record<string, unknown>, seg)
+              ) {
+                found = false
+                return { found, value: undefined }
+              }
+              current = (current as Record<string, unknown>)[seg]
+            }
+          }
+          return { found, value: current }
+        }
+        const deepEqual = (a: unknown, b: unknown): boolean => {
+          if (a === b) return true
+          if (typeof a !== typeof b) return false
+          if (a === null || b === null) return a === b
+          if (Array.isArray(a) || Array.isArray(b)) {
+            if (!Array.isArray(a) || !Array.isArray(b)) return false
+            if (a.length !== b.length) return false
+            return a.every((v, i) => deepEqual(v, b[i]))
+          }
+          if (typeof a === 'object' && typeof b === 'object') {
+            const ka = Object.keys(a as object)
+            const kb = Object.keys(b as object)
+            if (ka.length !== kb.length) return false
+            return ka.every((k) =>
+              deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k])
+            )
+          }
+          return false
+        }
+        if (spec.json) {
+          for (const [path, expected] of Object.entries(spec.json)) {
+            const resolvedPath = interpolate(path, ctx.vars)
+            const result = navigate(resolvedPath)
+            if (!result.found) {
+              throw new Error(
+                `api.response: response body missing path "${resolvedPath}" (url: ${url})`
+              )
+            }
+            const expectedValue = interpolateDeep(expected, ctx.vars)
+            if (!deepEqual(result.value, expectedValue)) {
+              throw new Error(
+                `api.response: json mismatch at "${resolvedPath}" (url: ${url}): expected ${JSON.stringify(
+                  expectedValue
+                )}, got ${JSON.stringify(result.value)}`
+              )
+            }
+          }
+        }
+        if (spec.json_absent !== undefined) {
+          const resolvedPath = interpolate(spec.json_absent, ctx.vars)
+          const result = navigate(resolvedPath)
+          if (result.found) {
+            throw new Error(
+              `api.response: path "${resolvedPath}" must be absent but was present (value: ${JSON.stringify(
+                result.value
+              )}) (url: ${url})`
+            )
+          }
+        }
+      }
     } else if ('api.statuses' in assertion) {
       const spec = assertion['api.statuses']
       const url = interpolate(spec.url, ctx.vars)

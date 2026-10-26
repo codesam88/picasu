@@ -434,6 +434,8 @@
             },
             "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE"] },
             "body": true,
+            "json": { "type": "object" },
+            "json_absent": { "type": "string" },
             "header": {
               "type": "object",
               "properties": {
