@@ -291,11 +291,11 @@ loaded by `loadScenarios`:
 6. Compare tracer records against `covers:` declarations.
 7. Write per-scenario coverage report.
 
-Each scenario starts its own backend instance via `scenarioFixtures.ts`,
-which calls `backendLauncher.startBackend()` with a per-scenario path
-set. The `page` fixture is overridden to set `baseURL` to the scenario's
-backend, so all `page.goto('/login')` calls resolve to the right
-instance.
+Each scenario starts its own backend instance in the test body via
+`backendLauncher.startBackend()` on the paths provided by
+`scenarioFixtures.ts`. The `page` fixture is overridden to set `baseURL`
+to the scenario's backend, so all `page.goto('/login')` calls resolve to
+the right instance.
 
 ### Paths (`paths.ts`)
 

@@ -6,11 +6,9 @@ import { enrollIfNeeded, resolveSessionCreds, uiLogin } from './sessionBoot'
 import { executeWhen, executeAssert, executeSteps } from './interpreter'
 import { CoverageTracer } from './tracer'
 import { test } from './scenarioFixtures'
-import { createPaths, type WorkerPaths } from './paths'
 import { startBackend } from './backendLauncher'
 import { provisionCliUsers } from './cliProvision'
 import type { ServerDeclaration } from './types'
-import type { BrowserContext } from '@playwright/test'
 
 const scenarios = loadAllScenarios()
 
@@ -40,55 +38,40 @@ function serverExtraEnv(server: ServerDeclaration | undefined): Record<string, s
 
 test.describe('UI scenarios', () => {
   for (const scenario of scenarios) {
-    test(scenario.name, async ({ page, request, backendPaths, browser }) => {
+    test(scenario.name, async ({ page, request, backendPaths }) => {
       resetAuthToken()
       // Phase A: offline CLI provisioning. `cli_user:` entries seed users
       // (any role) before launch, when the server does not hold the store.
-      // Requires `server:` (the shared fixture backend already runs) and a
-      // closed install (`bootstrap_admin: true` refuses to boot on a
-      // non-empty store).
+      // The store must be seeded against a closed install: provisioning
+      // against a bootstrap-open default would make the launcher refuse to
+      // boot on the non-empty store.
       const cliUsers = (scenario.given ?? []).filter(
         (item): item is { cli_user: { user_id: string; password: string; admin?: boolean } } =>
           'cli_user' in item && item.cli_user !== undefined
       )
-      const ownsBackend = scenario.server !== undefined
-      if (cliUsers.length > 0 && !ownsBackend) {
+      if (cliUsers.length > 0 && scenario.server?.bootstrap_admin !== false) {
         throw new Error(
-          `Scenario "${scenario.name}" declares cli_user: without server:: ` +
-            `offline provisioning needs its own backend (the fixture backend already holds the store).`
-        )
-      }
-      if (cliUsers.length > 0 && scenario.server?.bootstrap_admin === true) {
-        throw new Error(
-          `Scenario "${scenario.name}" seeds users offline with bootstrap_admin: true: ` +
-            `the server refuses to boot with the flag on a non-empty store. Use bootstrap_admin: false.`
+          `Scenario "${scenario.name}" declares cli_user but not server.bootstrap_admin: false — ` +
+            `cli_user requires an explicit closed install: the launcher default (bootstrap open) ` +
+            `refuses to boot against a provisioned store, and bootstrap_admin: true refuses too.`
         )
       }
       const given = (scenario.given ?? []).filter(
         (item) => !('cli_user' in item && item.cli_user !== undefined)
       )
-      // A `server:` declaration boots a scenario-specific backend with the
-      // declared env; otherwise the shared fixture backend (harness default:
-      // bootstrap open) serves the scenario. The fixture backend still boots
-      // underneath and is torn down by the fixture — accepted S1 cost.
-      let activePaths: WorkerPaths = backendPaths
-      let activePage = page
-      const extraEnv = serverExtraEnv(scenario.server)
-      let extraHandle: { stop(): Promise<void> } | null = null
-      let extraContext: BrowserContext | null = null
-      if (ownsBackend) {
-        activePaths = await createPaths()
-        if (cliUsers.length > 0) {
-          await provisionCliUsers(
-            activePaths,
-            cliUsers.map((item) => item.cli_user),
-            scenario.server?.pbkdf_iterations ?? 1000
-          )
-        }
-        extraHandle = await startBackend(activePaths, { extraEnv })
-        extraContext = await browser.newContext({ baseURL: activePaths.BACKEND_URL })
-        activePage = await extraContext.newPage()
+      // One backend per scenario, started here on the fixture-provided paths.
+      // `server:` maps to env via serverExtraEnv (absent -> launcher defaults).
+      const activePaths = backendPaths
+      const activePage = page
+      if (cliUsers.length > 0) {
+        await provisionCliUsers(
+          activePaths,
+          cliUsers.map((item) => item.cli_user),
+          scenario.server?.pbkdf_iterations ?? 1000
+        )
       }
+      const extraEnv = serverExtraEnv(scenario.server)
+      const backendHandle = await startBackend(activePaths, { extraEnv })
       try {
         const tracer = new CoverageTracer()
         const ctx = createGivenContext()
@@ -162,8 +145,7 @@ test.describe('UI scenarios', () => {
           }
         }
       } finally {
-        if (extraContext) await extraContext.close()
-        if (extraHandle) await extraHandle.stop()
+        await backendHandle.stop()
       }
     })
   }
