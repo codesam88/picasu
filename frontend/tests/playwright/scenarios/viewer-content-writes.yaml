@@ -1,0 +1,149 @@
+name: CLI-seeded viewer moves, trashes and deletes a photo
+covers:
+  api:
+    - PUT /put/assign_album
+    - PUT /put/edit_flags
+    - DELETE /delete/delete-data
+  ui:
+    - route:/timeline
+    - route:/view/
+    - route:/trashed
+    - .desktop-small-image
+# The write half of the non-admin story: the same offline-provisioned
+# viewer that reads the gallery also organizes it — move into an album,
+# soft-delete to trash, permanent delete — with every request authenticated
+# as the viewer cookie alone.
+server:
+  bootstrap_admin: false
+  pbkdf_iterations: 1000
+session: none
+given:
+  - empty: true
+  - cli_user:
+      user_id: admin
+      password: e2e_test_pwd
+      admin: true
+  - cli_user:
+      user_id: viewer
+      password: viewer-secret-9
+  - dir_album: writes/origin
+  - dir_album: writes/destination
+    id_as: $destination
+  - photo: writes/origin/photo.jpg
+steps:
+  - when:
+      - login:
+          user: viewer
+          password: viewer-secret-9
+    assert:
+      - ui.route: /timeline
+  - when:
+      - navigate: /albums
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.text: writes
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.text: origin
+    assert:
+      - ui.visible: main/
+
+  # Move: open the photo, assign it to the sibling album.
+  - when:
+      - click.first: true
+    assert:
+      - ui.route: /view/
+      - ui.count: '#col-ref img'
+        equals: 1
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+  - when:
+      - click: option/Assign Album
+    assert:
+      - ui.modal: open
+  - when:
+      - click: option/Destination
+      - click: button/Move
+    assert:
+      - ui.toast:
+          type: success
+          contains: Moved to album
+
+  # The destination holds its seeded cover placeholder plus the moved photo.
+  - when:
+      - navigate: /albums
+      - click.text: writes
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.text: destination
+    assert:
+      - ui.visible: main/
+      - ui.count: .desktop-small-image
+        equals: 2
+
+  # Soft delete: photo leaves the album and lands in trash.
+  - when:
+      - click.first: true
+    assert:
+      - ui.route: /view/
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+  - when:
+      - click: option/Delete
+    assert:
+      - ui.visible: main/
+  - when:
+      - navigate: /albums
+      - click.text: writes
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.text: destination
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 1
+
+  # Permanent delete: the file leaves the library for good.
+  - when:
+      - click.first: true
+    assert:
+      - ui.route: /view/
+  - when:
+      - click.icon: mdi-information-outline
+    assert:
+      - ui.visible: main/
+  - when:
+      - click.testid: photo-menu
+    assert:
+      - ui.visible: main/
+  - when:
+      - click: option/Permanently Delete
+    assert:
+      - ui.toast:
+          type: success
+          contains: Successfully deleted data
+  - when:
+      - navigate: /trashed
+    assert:
+      - ui.count: .desktop-small-image
+        equals: 0
