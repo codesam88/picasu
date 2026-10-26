@@ -42,6 +42,7 @@ steps:
       - navigate: /login
     assert:
       - ui.route: /login
+      # bound invite rejects a mismatched username
       - api.response:
           url: /post/users/register
           method: POST
@@ -69,6 +70,7 @@ steps:
       - navigate: /login
     assert:
       - ui.route: /login
+      # a consumed invite cannot be redeemed twice
       - api.response:
           url: /post/users/register
           method: POST
@@ -77,6 +79,7 @@ steps:
             password: maria-secret-9
             invite: ${bound}
           status: 409
+      # an unknown token is rejected as not found
       - api.response:
           url: /post/users/register
           method: POST
@@ -101,6 +104,7 @@ steps:
       - navigate: /timeline
     assert:
       - ui.route: /timeline
+      # viewer cannot list users
       - api.response:
           url: /get/users
           status: 401
@@ -118,6 +122,7 @@ steps:
           password: maria-secret-9
     assert:
       - ui.route: /timeline
+      # registered viewer sees the seeded photo
       - ui.count: .desktop-small-image
         equals: 1
   - when:

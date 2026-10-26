@@ -88,6 +88,7 @@ steps:
       - click.text: destination
     assert:
       - ui.visible: main/
+      # destination's cover placeholder plus the moved photo
       - ui.count: .desktop-small-image
         equals: 2
 

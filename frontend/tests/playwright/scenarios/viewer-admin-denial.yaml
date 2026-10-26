@@ -74,6 +74,7 @@ steps:
             userId: admin
             admin: false
           status: 401
+      # authenticated non-admin is forbidden (403), not unauthenticated (401)
       - api.response:
           url: /put/users/password
           method: PUT
@@ -182,5 +183,6 @@ steps:
       - navigate: /timeline
     assert:
       - ui.route: /timeline
+      # viewer still sees the seeded photo after all denials
       - ui.count: .desktop-small-image
         equals: 1

@@ -1,0 +1,145 @@
+name: Login throttle ban rejects all credentials, then resets after recovery
+covers:
+  api:
+    - POST /post/users/authenticate
+    - POST /post/logout
+    - POST /post/index/album
+    - GET /get/index/status
+    - GET /get/server-info
+  ui:
+    - route:/login
+    - route:/timeline
+server:
+  bootstrap_admin: true
+  pbkdf_iterations: 1000
+  login_ip_base_ban_secs: 2
+given:
+  - empty: true
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
+  - photo: /library/photo.jpg
+  - index: '/'
+
+steps:
+  - when:
+      - navigate: /login
+    assert:
+      - ui.visible: textbox/User ID
+  - when:
+      - fill: textbox/User ID
+        value: admin
+      - fill: textbox/Password
+        value: wrong-password-1
+    assert:
+      - ui.input_value: textbox/User ID
+        contains: admin
+      - ui.input_value: textbox/Password
+        contains: wrong-password-1
+  - when:
+      - click: button/Login
+    assert:
+      - ui.route: /login
+  - when:
+      - click: button/Login
+    assert:
+      - ui.route: /login
+  - when:
+      - click: button/Login
+    assert:
+      - ui.route: /login
+      # cumulative failures before the short ban trips
+      - api.statuses:
+          url: /post/users/authenticate
+          equals: [401, 401, 401]
+  - when:
+      - click: button/Login
+    assert:
+      # 4th failure trips the short ban
+      - api.statuses:
+          url: /post/users/authenticate
+          equals: [401, 401, 401, 429]
+  # ban beats valid and unknown credentials alike
+  - when:
+      - fill: textbox/User ID
+        value: someone-else
+      - fill: textbox/Password
+        value: wrong-anything-1
+    assert:
+      # ban state is unchanged by the probe fills
+      - api.statuses:
+          url: /post/users/authenticate
+          equals: [401, 401, 401, 429]
+      - ui.route: /login
+      # ban beats valid credentials: server must answer 429, never 200
+      - api.response:
+          url: /post/users/authenticate
+          method: POST
+          body:
+            userId: admin
+            password: e2e_test_pwd
+          status: 429
+      # ban beats unknown users too: no user enumeration during a ban
+      - api.response:
+          url: /post/users/authenticate
+          method: POST
+          body:
+            userId: someone-else
+            password: whatever-1
+          status: 429
+  - when:
+      - wait.ms: 3000
+    assert:
+      # ban window elapsed; no stray requests fired while waiting
+      - api.statuses:
+          url: /post/users/authenticate
+          equals: [401, 401, 401, 429]
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+      # successful login appends 200 and clears the short bucket
+      - api.statuses:
+          url: /post/users/authenticate
+          equals: [401, 401, 401, 429, 200]
+  - when:
+      - click.icon: mdi-account-circle
+      - click.menu: Log out
+    assert:
+      - ui.route: /login
+  # a fresh burst starts at 401: the successful login cleared the short bucket
+  - when:
+      - fill: textbox/User ID
+        value: admin
+      - fill: textbox/Password
+        value: wrong-password-2
+    assert:
+      - ui.input_value: textbox/User ID
+        contains: admin
+      - ui.input_value: textbox/Password
+        contains: wrong-password-2
+  - when:
+      - click: button/Login
+    assert:
+      - ui.route: /login
+  - when:
+      - click: button/Login
+    assert:
+      - ui.route: /login
+  - when:
+      - click: button/Login
+    assert:
+      - ui.route: /login
+      # first attempt after recovery is 401, proving the bucket was cleared
+      - api.statuses:
+          url: /post/users/authenticate
+          equals: [401, 401, 401, 429, 200, 401, 401, 401]
+  - when:
+      - click: button/Login
+    assert:
+      # re-trips the short ban
+      - api.statuses:
+          url: /post/users/authenticate
+          equals: [401, 401, 401, 429, 200, 401, 401, 401, 429]
