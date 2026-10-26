@@ -14,11 +14,11 @@ extends: "spectral:oas"
 # Baseline overrides. Each entry names a rule that does not apply to this
 # document and says why, so re-enabling it is a one-line deletion.
 rules:
-  # The `/{dynamic_album_id}` and `/{path}` SPA fallbacks template the same
-  # position. Rocket disambiguates them by rank at runtime
-  # (`router/get/get_page.rs`), but the document is genuinely ambiguous to
-  # generated clients, so this stays visible as a warning.
-  path-params: warn
+  # Deliberate 401-only diagnostic probe; the stock rule requires a 2xx/3xx response.
+  operation-success-response: off
+
+  # Visibility had no consumer; the SPA-fallback route ambiguity is documented in router/get/get_page.rs.
+  path-params: off
 
   # Picasu is self-hosted: there is no single canonical server URL to
   # advertise. Clients use the host they were served from.

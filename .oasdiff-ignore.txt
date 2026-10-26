@@ -4,83 +4,11 @@
 # would otherwise fail on (method + path + change description, backticks
 # significant). Add a dated line here — never delete the gate — when a
 # breaking spec change is approved. See `.plan/api-assurance.md` step 1.
-
-# 2026-10-10 (feat/authz): /post/authenticate moved from a bare text/plain
-# body to an application/json AuthenticateRequest body; the legacy
-# text/plain shape is rejected once any user exists.
-POST /post/authenticate removed the media type `text/plain` from the request body
-
-# 2026-10-14 (auth-enrollment legacy-password removal): the pre-user-auth
-# single-password machinery is gone entirely — no migration path preserved.
-# `hasPassword` leaves `GET /get/config`, and `POST /post/authenticate`
-# takes a `{ userId, password }` object only (the untagged bare-string
-# shape is now a 422).
-GET /get/config removed the required property `hasPassword` from the response with the `200` status
-POST /post/authenticate added the new required request property `password`
-POST /post/authenticate added the new required request property `userId`
-POST /post/authenticate removed `#/components/schemas/LoginRequest, subschema #1` from the request body `oneOf` list
-POST /post/authenticate the request's body `type` changed from `any` to `object`
-
-# 2026-10-15 (auth-enrollment step 9, decided): `POST /post/users/create`
-# is deleted outright — creation never grants admin, so the merged
-# `POST /post/users/register` (always non-admin) plus the new
-# `POST /post/users/bootstrap` (flag ∧ empty store, forced admin) replace
-# it. No deprecation window: the old route's `admin` body flag is the
-# defect being removed.
-POST /post/users/create api path removed without deprecation
-
-# 2026-10-15 (R5 HttpOnly session cookie): `POST /post/authenticate`
-# no longer returns the raw JWT in the body — the token travels in an
-# HttpOnly `Set-Cookie` and the 200 body is the `{ userId, admin }`
-# session profile. API clients parsing the body must migrate to cookies.
-POST /post/authenticate removed the media type `text/plain` for the response with the status `200`
-
-# 2026-10-17 (R26 config-password alias removal, decided): the self-only
-# `PUT /put/config/password` alias is deleted outright — hard-remove, no
-# deprecation window. Callers migrate one line to the canonical
-# `PUT /put/users/password` with `{userId, oldPassword, newPassword}`.
-PUT /put/config/password api path removed without deprecation
-
-# 2026-10-19 (auth-enrollment-review uniform naming, decided):
-# `POST /post/authenticate` becomes `POST /post/users/authenticate` so every
-# `/post/users/*` route lives in an identically named file
-# (`users_authenticate.rs`). The old path is deleted outright — hard-remove,
-# no deprecation window; login callers move one path segment.
-POST /post/authenticate api path removed without deprecation
-
-# 2026-10-20 (auth-enrollment-review R13, decided: option B+C): `GET
-# /get/config` no longer exposes host fields to any tier — `address`/`port`
-# are deleted from `ConfigResponse` (dead fields; the SPA never consumed
-# them), and `imagePath`/`uploadFolder` serialize as `null` for the share
-# tier (share credentials; non-admin sessions are still refused by
-# `GuardShare` before the handler). Share-visitor boot and the admin
-# settings page are unaffected.
-GET /get/config removed the required property `address` from the response with the `200` status
-GET /get/config removed the required property `port` from the response with the `200` status
-GET /get/config the response property `uploadFolder` became optional for the status `200`
-GET /get/config the response property `uploadFolder` became nullable for the status `200`
-
-# 2026-10-20 (auth-enrollment-review R28): `/post/invites/create` loses its
-# verb — the create route is now `POST /post/invites` (operationId keeps
-# `create_invite_handler`). Hard removal, no deprecation window, following
-# the `/post/authenticate` → `/post/users/authenticate` hard-removal precedent.
-POST /post/invites/create api path removed without deprecation
-
-# 2026-10-20 (auth-enrollment-review R28): the dead `status` field is dropped
-# from error bodies (`ErrorStatus` removed; HTTP status derives from `kind`,
-# retry timing from `retryAfter`). Every guarded 401 response loses the
-# required `status` property.
-removed the required property `status` from the response with the `401` status
-
-# 2026-10-20 (auth-state-model): `GET /get/sessions` is deleted with the
-# live session list it reported. The server keeps no session list any more
-# — a token is the session — so the inventory has no subject. The
-# capabilities that must not work (a logged-out session) are recorded as
-# revocations until they expire.
-GET /get/sessions api path removed without deprecation
-
-# 2026-10-24 (unify-index-rebuild): retire POST /post/rebuild in favour of POST /post/index/album with clear=true.
-POST /post/rebuild api path removed without deprecation
+#
+# Only findings that would FAIL the gate belong here: oasdiff prints every
+# finding regardless (including warning-class ones like request-property
+# removals), and an entry for a non-failing finding gates nothing — dead
+# lines were removed 2026-10-26 by deletion-testing each entry.
 
 # 2026-10-26 (config field cleanup, decided): `GET /get/config` drops
 # `imagePath` (host-only; admin UI reads it from `GET /get/admin/config`),
@@ -93,10 +21,3 @@ GET /get/config removed the required property `hasAuthKey` from the response wit
 GET /get/config removed the required property `disableImg` from the response with the `200` status
 GET /get/admin/config/export removed the required property `config/disableImg` from the response with the `200` status
 PUT /put/admin/config removed the required property `config/disableImg` from the response with the `200` status
-
-# 2026-10-24 (settings-api-v2 S6): cutover removes the deprecated old
-# config write/import routes outright. Callers migrate to
-# `PUT /put/admin/config` (and `GET /get/admin/config/export`); there is
-# no import endpoint in the new plan.
-POST /post/config/import api path removed without deprecation
-PUT /put/config api path removed without deprecation
