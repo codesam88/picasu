@@ -1,0 +1,70 @@
+name: A revoked invite cannot redeem and registration defaults to deny
+covers:
+  api:
+    - POST /post/users/authenticate
+    - POST /post/invites
+    - GET /get/server-info
+    - POST /post/logout
+    - GET /get/invites
+    - POST /post/index/album
+    - GET /get/index/status
+  ui:
+    - route:/timeline
+    - route:/login
+    - Revoke
+    - toast:success:Invite revoked
+given:
+  - empty: true
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
+  - photo: /library/photo.jpg
+  - invite:
+      expires_in_hours: 168
+    id_as: $token
+  - index: '/'
+
+steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+  - when:
+      - navigate: /config
+      - click: tab/Administration
+    assert:
+      - ui.text_visible: Revoke # invite row renders with its Revoke control
+  - when:
+      - click: button/Revoke
+    assert:
+      - ui.toast:
+          type: success
+          contains: Invite revoked # revoke control observable effect
+      - ui.text_hidden: Revoke # row disappears after revoke
+  - when:
+      - navigate: /timeline
+      - click.icon: mdi-account-circle
+      - click.menu: Log out
+    assert:
+      - ui.route: /login
+  - when:
+      - navigate: /login
+    assert:
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: redeemer
+            password: Redeemer-secret-9
+            invite: ${token}
+          status: 404 # revoked invite is unknown — 404, not 403 (403 = expired/bound)
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: no-invite
+            password: NoInvite-secret-9
+          status: 403 # registration defaults to deny: no invite, knob off, no admin session
+      - ui.route: /login # the session stayed dead through both refusals
