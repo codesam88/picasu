@@ -203,6 +203,7 @@ Maps `given:` entries to real backend calls:
 | `remove: ...`     | Deletes a file from `IMAGE_HOME`                                                                                                                                                  |
 | `user: { ... }`   | Enrolls `{userId, password}` as the first user via `POST /post/users/bootstrap` (forced admin; the given's optional `admin` flag is ignored). Valid only while the store is empty |
 | `config: { ... }` | Sets `readOnlyMode` and/or `fsNotifyWatcher` and/or `authKey` via PUT API                                                                                                         |
+| `index: <album>`  | After all seeding, runs `POST /post/index/album` for `<album>` and polls `GET /get/index/status` to idle/completed; absent = no index                                             |
 
 Variables bound by `id_as` are stored in `GivenContext.vars` and
 interpolated as `${name}` in when-step strings.

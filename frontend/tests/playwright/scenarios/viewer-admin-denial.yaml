@@ -26,6 +26,8 @@ given:
       user_id: viewer
       password: viewer-secret-9
   - photo: /library/photo.jpg
+  - index: '/'
+
 steps:
   - when:
       - login:

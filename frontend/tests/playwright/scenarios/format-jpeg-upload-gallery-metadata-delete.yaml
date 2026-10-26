@@ -38,6 +38,8 @@ given:
     width: 64
     height: 32
     id_as: $src_jpeg
+  - index: '/'
+
 steps:
   # ── upload ──────────────────────────────────────────────────────────────
   - when:

@@ -14,6 +14,7 @@ given:
 
   - photo: assigntest/imports/photo.jpg
     id_as: $photo
+  - index: '/'
 
 steps:
   # Navigate through albums so the data store is populated before we enter the photo view

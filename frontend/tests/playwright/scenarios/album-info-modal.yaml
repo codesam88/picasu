@@ -11,6 +11,7 @@ given:
   - dir_album: albuminfotest/parent
   - dir_album: albuminfotest/parent/child
     id_as: $child
+  - index: '/'
 
 steps:
   - when:

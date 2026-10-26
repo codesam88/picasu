@@ -10,6 +10,7 @@ given:
 
   - photo: escapetest/sunset/img01.jpg
   - photo: escapetest/sunset/img02.jpg
+  - index: '/'
 
 steps:
   - when:

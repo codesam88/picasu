@@ -22,6 +22,8 @@ given:
       user_id: admin
       password: e2e_test_pwd
   - photo: /library/photo.jpg
+  - index: '/'
+
 steps:
   - when:
       - navigate: /login

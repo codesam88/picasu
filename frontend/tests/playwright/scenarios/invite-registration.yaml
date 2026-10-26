@@ -30,6 +30,8 @@ given:
   - invite:
       expires_in_hours: 168
     id_as: $open
+  - index: '/'
+
 steps:
   - when:
       - navigate: /register?invite=${bound}&username=maria

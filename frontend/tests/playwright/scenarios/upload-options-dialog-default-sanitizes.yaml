@@ -11,6 +11,8 @@ given:
     width: 64
     height: 64
     id_as: $src_unsafe
+  - index: '/'
+
 steps:
   - when:
       - navigate: /timeline

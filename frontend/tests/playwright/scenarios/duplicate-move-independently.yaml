@@ -17,6 +17,7 @@ given:
     id_as: $duplicate
   - dir_album: /target
     id_as: $target_album
+  - index: '/'
 
 steps:
   - when:
