@@ -207,6 +207,7 @@ pub async fn timeline() -> AppResult<FrontendResponse> {
         ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
+            (status = 422, description = "Unprocessable entity"),
         )
     )
 ]
@@ -252,6 +253,7 @@ pub async fn albums() -> AppResult<FrontendResponse> {
         ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
+            (status = 422, description = "Unprocessable entity"),
         )
     )
 ]
@@ -310,6 +312,7 @@ pub async fn album_page(dynamic_album_id: String) -> AppResult<FrontendResponse>
         ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
+            (status = 422, description = "Unprocessable entity"),
         )
     )
 ]
@@ -393,6 +396,7 @@ pub async fn videos() -> AppResult<FrontendResponse> {
         ),
         responses(
             (status = 200, description = "SPA page (HTML)"),
+            (status = 422, description = "Unprocessable entity"),
         )
     )
 ]

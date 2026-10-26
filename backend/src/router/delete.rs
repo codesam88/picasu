@@ -61,6 +61,7 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
         responses(
             (status = 200, description = "Data deleted"),
             (status = 400, description = "Invalid input"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 403, description = "Forbidden"),
             (status = 404, description = "Asset not found"),

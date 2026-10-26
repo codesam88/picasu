@@ -197,7 +197,8 @@ partial (F9 pin not established). Bugs filed separately
 (`bug-rebuild-dir-album-cache`); remaining 500s (unknown snapshot
 id, create_dir_album EEXIST) and SPA-fallback 200s await triage.
 Verdict: advisory gate justified with conditions — contract
-reconciliation first (document or normalize the 4xx statuses),
+reconciliation first (DONE 2026-10-26: `spec-reconciliation-4xx` landed,
+exit sweep clean of spec noise) (document or normalize the 4xx statuses),
 harness hardening (config-write ops excluded, stable authKey),
 scoped 5-check oracle. Harness in `/tmp/opencode/schemathesis/`,
 nothing committed.

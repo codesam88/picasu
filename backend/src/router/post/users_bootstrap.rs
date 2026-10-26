@@ -82,6 +82,7 @@ fn bootstrap_user_sync(user_id: &str, password: &str) -> AppResult<UserSummary> 
         responses(
             (status = 200, description = "First administrator enrolled", body = UserSummary),
             (status = 400, description = "Invalid input"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 405, description = "Read-only mode"),
             (status = 409, description = "User already exists"),

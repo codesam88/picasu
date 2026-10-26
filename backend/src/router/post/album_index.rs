@@ -39,6 +39,7 @@ pub struct IndexAlbumRequest {
         responses(
             (status = 202, description = "Album indexing started"),
             (status = 400, description = "Invalid input"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 405, description = "Read-only mode"),
             (status = 409, description = "An index job is already running"),

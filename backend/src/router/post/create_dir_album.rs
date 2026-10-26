@@ -41,6 +41,8 @@ pub struct CreateDirAlbumData {
         responses(
             (status = 200, description = "New album ID", body = String),
             (status = 400, description = "Invalid input"),
+            (status = 404, description = "Not found"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 403, description = "Forbidden"),
             (status = 405, description = "Read-only mode"),

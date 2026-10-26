@@ -356,6 +356,7 @@ fn login_sync(user_id: &str, password: &str) -> AppResult<(String, UserSummary)>
         responses(
             (status = 200, description = "Session profile; JWT in HttpOnly Set-Cookie", body = UserSummary),
             (status = 400, description = "Invalid input"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 429, description = "Too many login attempts; see Retry-After"),
             (status = 500, description = "Internal error"),

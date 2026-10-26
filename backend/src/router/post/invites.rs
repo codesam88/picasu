@@ -57,6 +57,7 @@ pub struct CreateInviteResponse {
         responses(
             (status = 200, description = "Invite created; token returned once", body = CreateInviteResponse),
             (status = 400, description = "Invalid input"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),

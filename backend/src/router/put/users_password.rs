@@ -239,6 +239,7 @@ pub(crate) fn caller_identity(claims: &crate::router::auth::Claims) -> (String, 
         responses(
             (status = 200, description = "Password updated"),
             (status = 400, description = "Invalid input or wrong current password"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 403, description = "Forbidden"),
             (status = 404, description = "User not found"),

@@ -21,3 +21,4 @@ GET /get/config removed the required property `hasAuthKey` from the response wit
 GET /get/config removed the required property `disableImg` from the response with the `200` status
 GET /get/admin/config/export removed the required property `config/disableImg` from the response with the `200` status
 PUT /put/admin/config removed the required property `config/disableImg` from the response with the `200` status
+GET /get/config/export removed the media type `text/plain` for the response with the status `200`

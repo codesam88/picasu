@@ -57,6 +57,7 @@ fn set_admin_sync(actor_id: &str, target_user_id: &str, admin: bool) -> AppResul
         responses(
             (status = 200, description = "Admin role updated"),
             (status = 400, description = "Invalid input"),
+            (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 404, description = "User not found"),
             (status = 405, description = "Read-only mode"),

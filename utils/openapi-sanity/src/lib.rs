@@ -2682,6 +2682,16 @@ fn declared_statuses_within_universe(
     if route_binds_early_400 {
         universe.insert(400);
     }
+    // Rocket's data guards (Json<T> bodies, path/query param extraction) reject
+    // malformed input with 422 before the handler runs, so any route that reads
+    // dynamic input can answer it. Documented per the spec-reconciliation
+    // triage; see docs/briefs/rocket-guards.md.
+    let route_binds_early_422 = handler.route.as_ref().is_some_and(|route| {
+        route.data.is_some() || !route.query.is_empty() || !route.path_segments.is_empty()
+    });
+    if route_binds_early_422 {
+        universe.insert(422);
+    }
 
     for (code, line) in declared_at {
         if universe.contains(&code) {
