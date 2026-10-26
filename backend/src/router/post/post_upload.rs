@@ -305,6 +305,20 @@ pub async fn upload(
                 "Uploaded file could not be decoded as an image or video",
             ));
         }
+        // The index path only schedules its flush and tree update, so a
+        // client prefetching immediately could read a snapshot without the
+        // new row. Wait both hops — the discipline the delete path uses —
+        // so a 200 here means the row is visible.
+        crate::tasks::BATCH_COORDINATOR
+            .execute_batch_waiting(crate::tasks::batcher::flush_tree::FlushTreeTask::insert(
+                Vec::new(),
+            ))
+            .await
+            .or_raise(|| (ErrorKind::Internal, "Failed to join flush task"))?;
+        crate::tasks::BATCH_COORDINATOR
+            .execute_batch_waiting(crate::tasks::batcher::update_tree::UpdateTreeTask)
+            .await
+            .or_raise(|| (ErrorKind::Internal, "Failed to join tree update"))?;
     }
 
     Ok(())

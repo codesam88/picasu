@@ -42,17 +42,20 @@ existing tickets (nothing live lost).
   request-property entry in `.oasdiff-ignore.txt` still surfaces as a
   warning each run; verify its text against current oasdiff output and
   either correct or delete it.
-- **CLEAN3 — tracer `ui.route` interpolation.** `assertionTarget`
-  returns `route:` + the raw pattern without `${var}` substitution, so
-  parameterized routes cannot be declared in `covers.ui`. Pass the vars
-  (assertionTarget already has its call sites in `executeAssert` with
-  `ctx.vars`) and pin with one scenario using a parameterized route
-  cover.
-- **CLEAN4 — duplicate-upload flake** (`e2e-duplicate-upload-flake`).
-  Four sightings, parallel-only (`--workers=4`), serial-green; failure
-  `ui.count .desktop-small-image` expects 3, holds 2. One bounded
-  repro session with failing-run logs; if it does not isolate, leave
-  the ticket filed rather than rabbit-holing.
+- **CLEAN3 — tracer `ui.route` interpolation — closed as non-defect.**
+  Verified against the code: `tracer.compare` is raw string equality and
+  `assertionTarget` returns the raw pattern, so both sides of a
+  parameterized cover match as written (`route:/album/[a-z0-9]+$` covers
+  two scenarios today with zero warnings). No scenario uses `${}` in
+  `ui.route`; interpolating would resolve per-run random ids and break
+  the matching that works. No code change — the original leftover note
+  was a misdiagnosis.
+- **CLEAN4 — duplicate-upload flake** (`e2e-duplicate-upload-flake`) —
+  **fixed**. Root cause: upload scheduled its flush and tree-update
+  detached while the grid reads once after navigation; under parallel
+  load the flush lost and nothing re-reads. The upload handler now
+  awaits both hops (delete-path discipline), so 200 means visible.
+  Evidence: family 6/6 × 6 runs, full suite 50/50 × 2, backend 808/808.
 - **CLEAN5 — negative-DSL leftovers.** Remaining items from the
   login/register/invite negative list: `E1` `api.response` body reads
   (`json` path asserts — biggest unlock: invite-listing must-not-leak,
