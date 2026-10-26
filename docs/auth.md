@@ -398,13 +398,13 @@ prerequisite that makes the demotion safe.
 
 **Status.** Landed: viewer reads (cookie fallback accepts any live user,
 `GuardUser` on tags/albums, `GuardShare`-gated reads with zero admin-only
-payload) and the content-write demotions (`upload`, `assign`, `delete-data`,
+payload), the content-write demotions (`upload`, `assign`, `delete-data`,
 `edit_flags`, `create_dir_album`, `set_album_cover`, `rotate-image`,
-`regenerate-thumbnail`, `edit_tag`, `edit_rating`). The model denotations
-in `authz-model.md` §4/§7 carry the same boundary. Outstanding: share
-passwords must stop leaving the backend before the album list is fully
-clean (drop from reads, keep-semantics on `edit_share`), and the frontend
-viewer-skip workarounds are removed in favor of the now-open routes.
+`regenerate-thumbnail`, `edit_tag`, `edit_rating`), share passwords leaving
+the backend only as presence (see [Share resolution](#share-resolution)),
+and removal of the frontend viewer-skip workarounds in favor of the open
+routes. The model denotations in `authz-model.md` §4/§7 carry the same
+boundary; nothing else is outstanding.
 
 ### Configuration surface
 
