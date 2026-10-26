@@ -181,6 +181,30 @@ gates — rather than inventing its own.
 
 ---
 
+## API-level assurance (Schemathesis)
+
+Black-box assurance derived from `backend/openapi.json` against a seeded
+instance. Sits next to the backend API E2E scenarios and the frontend E2E
+suite: those pin hand-written flows; this one generates inputs and sequences
+from the contract.
+
+- **Oracle scope (5 checks):** `not_a_server_error`, `status_code_conformance`,
+  `content_type_conformance`, `response_schema_conformance`,
+  `response_headers_conformance` — schema conformance plus no 5xx. Acceptance
+  checks stay off until the spec claims them.
+- **Runners (advisory)** — none of these gate PRs; flipping any to gating
+  requires the contract to be reconciled and the baseline to be clean:
+  - `just dylint-check` — static auth invariants (advisory; zero-finding
+    discipline is the gating precondition).
+  - `just fuzz-check` — tier 1 single-operation sweep against a throwaway
+    seeded instance, compared to `utils/schemathesis/baseline.yaml`.
+  - `just fuzz` — tier 2 stateful campaign against a running seeded instance.
+  - `just schemathesis-run` — raw escape hatch over a running instance.
+- **Quarterly re-pin cadence** applies to Schemathesis (pinned in the
+  justfile as `schemathesis_version`) and the other pinned tools.
+- **Tool knowledge layer:** `docs/briefs/` (e.g. `docs/briefs/schemathesis.md`)
+  holds the research digests; the harness lives in `utils/schemathesis/`.
+
 ## Other notes
 
 ### What is not tested and why
