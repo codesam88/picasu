@@ -146,16 +146,18 @@ fn two_users_admin_route_distinguishes_roles() {
 
 /// Anonymous share prefetch + get-data + thumbnail serving work end-to-end
 /// with no cookie; an admin-role user passes the share-guarded prefetch
-/// without share headers; a non-admin user with share headers passes too.
+/// without share headers; a non-admin user passes with share headers or
+/// with their session cookie alone.
 ///
 /// The album + share are built first via the shared fixtures (which mint a
 /// local admin session for a fixture record); users are seeded after,
 /// since seeding does not invalidate shares. This keeps the fixture reuse
 /// exact and the hashing budget at two seeds plus two logins.
 ///
-/// Falsification companion: the same non-admin user *without* share headers
-/// is 401 on the share-guarded route — otherwise the share guard would be
-/// vacuous for any logged-in user.
+/// Falsification companion: an anonymous caller *without* share headers is
+/// 401 on the share-guarded route — with no credential at all the guard must
+/// not pass. The viewer-vs-share split (logged-in non-admin allowed without
+/// share headers) is asserted here and pinned with rows by Row 3b.
 #[test]
 fn guest_share_prefetch_get_data_and_serving() {
     let _g = lock();
@@ -191,6 +193,20 @@ fn guest_share_prefetch_get_data_and_serving() {
         .dispatch();
     assert_eq!(resp.status(), Status::Ok, "anonymous share serving");
 
+    // Companion: an anonymous caller without share headers is denied — with
+    // no credential at all the share guard must not pass. Checked before the
+    // logins below, since the tracked client's cookie jar then holds no
+    // session cookie yet.
+    let resp = client
+        .post(format!("/get/prefetch?locate={asset_id}"))
+        .header(ContentType::JSON)
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Unauthorized,
+        "anonymous without share headers"
+    );
+
     // Users afterwards: seeding does not invalidate the share above.
     seed(
         "matrix-host",
@@ -225,13 +241,104 @@ fn guest_share_prefetch_get_data_and_serving() {
         .dispatch();
     assert_eq!(resp.status(), Status::Ok, "non-admin with share headers");
 
-    // Companion: the same non-admin user without share headers is denied.
+    // The same non-admin user without share headers passes: the cookie
+    // fallback admits any live user (pinned with rows by Row 3b).
     let resp = client
         .post(format!("/get/prefetch?locate={asset_id}"))
         .cookie(cookie("matrix-guest", false))
         .header(ContentType::JSON)
         .dispatch();
-    assert_eq!(resp.status(), Status::Unauthorized);
+    assert_eq!(resp.status(), Status::Ok, "viewer without share headers");
+}
+
+// ── Row 3b: viewer reads without share headers ───────────────────────────
+
+/// A logged-in non-admin viewer without share headers reaches every gallery
+/// read: `POST /get/prefetch` (with rows via the snapshot bearer chain),
+/// `GET /get/get-tags`, `GET /get/get-albums` and `GET /get/config`.
+///
+/// Viewer-vs-share terms: the share header paths admit guests, the cookie
+/// fallback admits any live user, and anonymous callers without share
+/// headers stay denied (pinned by the Row 3 companion).
+#[test]
+fn viewer_reads_gallery_without_share_headers() {
+    let _g = lock();
+    let client = setup_image_home();
+
+    // One indexed album, so prefetch has rows and the lists have entries.
+    let (_album_id, asset_id) = create_album(&client, "/matrix_viewer/album/photo.jpg");
+
+    seed(
+        "matrix-viewer",
+        false,
+        Some(test_password("t-viewer-pw").as_str()),
+    );
+    let (status, _, _) = login(&client, "matrix-viewer", &test_password("t-viewer-pw"));
+    assert_eq!(status, Status::Ok, "viewer login must work");
+    let viewer = cookie("matrix-viewer", false);
+
+    // Prefetch: 200, and the snapshot token yields rows through get-data.
+    let resp = client
+        .post(format!("/get/prefetch?locate={asset_id}"))
+        .cookie(viewer.clone())
+        .header(ContentType::JSON)
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Ok,
+        "viewer prefetch without share headers"
+    );
+    let body: Value = resp.into_json().expect("prefetch json");
+    assert!(
+        body["prefetch"]["dataLength"].as_u64().unwrap_or_default() >= 1,
+        "prefetch must report rows, got: {body}"
+    );
+    let ts = body["prefetch"]["timestamp"].as_i64().expect("timestamp");
+    let snapshot_token = body["token"].as_str().expect("token").to_string();
+    let rows = get_data_rows(&client, ts, &snapshot_token, 1);
+    assert!(!rows.is_empty(), "viewer prefetch must yield rows");
+
+    // Tag list: 200 array.
+    let resp = client
+        .get("/get/get-tags")
+        .cookie(viewer.clone())
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Ok,
+        "viewer get-tags without share headers"
+    );
+    let tags: Value = resp.into_json().expect("tags json");
+    assert!(tags.is_array(), "tags must be an array, got: {tags}");
+
+    // Album list: 200 array carrying the indexed album.
+    let resp = client
+        .get("/get/get-albums")
+        .cookie(viewer.clone())
+        .dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Ok,
+        "viewer get-albums without share headers"
+    );
+    let albums: Value = resp.into_json().expect("albums json");
+    assert!(
+        albums.as_array().is_some_and(|list| !list.is_empty()),
+        "albums must be a non-empty array, got: {albums}"
+    );
+
+    // Config: 200 with the client fields.
+    let resp = client.get("/get/config").cookie(viewer).dispatch();
+    assert_eq!(
+        resp.status(),
+        Status::Ok,
+        "viewer config without share headers"
+    );
+    let config: Value = resp.into_json().expect("config json");
+    assert!(
+        config.get("uploadFolder").is_some_and(Value::is_string),
+        "config must carry uploadFolder, got: {config}"
+    );
 }
 
 // ── Row 4: password change + demotion liveness ───────────────────────────

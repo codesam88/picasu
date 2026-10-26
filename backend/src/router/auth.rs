@@ -669,6 +669,45 @@ pub fn try_jwt_cookie_auth(req: &Request<'_>, validation: &Validation) -> Result
     Err(anyhow!("JWT not found in cookies"))
 }
 
+/// Try to authenticate via JWT cookie as any live user, admin or not.
+///
+/// Same contract as [`try_jwt_cookie_auth`] minus the admin requirement: no
+/// session exists on an empty store, the token must carry [`Role::User`]
+/// (share-role cookies are rejected), and the identity record is re-read from
+/// the user store on every call — so a stale token version, a removal or a
+/// revoked `jti` takes effect before the token expires, and the admin flag is
+/// taken from the record rather than the token.
+pub fn try_jwt_cookie_user(req: &Request<'_>, validation: &Validation) -> Result<Claims> {
+    let store_non_empty =
+        !crate::auth::user_store::is_empty(&crate::auth::users::user_store_path());
+    if !store_non_empty {
+        return Err(not_enrolled_error());
+    }
+
+    let Some(jwt_cookie) = req.cookies().get("jwt") else {
+        return Err(anyhow!("JWT not found in cookies"));
+    };
+    let mut claims = decode_typed::<Claims>(jwt_cookie.value(), validation)?;
+    let Role::User { id, .. } = &claims.role else {
+        return Err(anyhow!("Share token not accepted"));
+    };
+    let id = id.clone();
+    match crate::auth::users::user_record(&id)? {
+        Some(record) if record.ver == claims.ver => {
+            if crate::auth::revocations::is_revoked(&crate::auth::revocations::session_key(
+                &claims.jti,
+            )) {
+                return Err(anyhow!("Session revoked"));
+            }
+            if let Role::User { admin, .. } = &mut claims.role {
+                *admin = record.admin;
+            }
+            Ok(claims)
+        }
+        _ => Err(anyhow!("User record missing or stale")),
+    }
+}
+
 /// Extract the serving ID from the request URL path (last segment before the
 /// extension).
 ///
@@ -1270,8 +1309,8 @@ impl<'r> FromRequest<'r> for GuardShare {
             }
         }
 
-        // Fall back to JWT cookie authentication (Admin)
-        match try_jwt_cookie_auth(req, &VALIDATION) {
+        // Fall back to JWT cookie authentication (any live user, admin or not)
+        match try_jwt_cookie_user(req, &VALIDATION) {
             Ok(claims) => return Outcome::Success(GuardShare { claims }),
             Err(err) => {
                 return Outcome::Error((
@@ -1458,8 +1497,8 @@ impl<'r> FromRequest<'r> for GuardUpload {
             return Outcome::Success(GuardUpload);
         }
 
-        // Fall back to JWT cookie authentication
-        match try_jwt_cookie_auth(req, &VALIDATION) {
+        // Fall back to JWT cookie authentication (any live user, admin or not)
+        match try_jwt_cookie_user(req, &VALIDATION) {
             Ok(_) => return Outcome::Success(GuardUpload),
             Err(err) => {
                 let full_err =
