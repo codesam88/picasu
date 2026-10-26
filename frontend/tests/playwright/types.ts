@@ -406,6 +406,33 @@ export const UiAssertFileContains = z
   })
   .strict()
 
+export const UiAssertApiStatuses = z
+  .object({
+    'api.statuses': z.object({
+      url: z.string(),
+      equals: z.array(z.number().int())
+    })
+  })
+  .strict()
+
+export const UiAssertDisabled = z
+  .object({
+    'ui.disabled': RoleLabel
+  })
+  .strict()
+
+export const UiAssertEnabled = z
+  .object({
+    'ui.enabled': RoleLabel
+  })
+  .strict()
+
+export const UiAssertTextHidden = z
+  .object({
+    'ui.text_hidden': z.string()
+  })
+  .strict()
+
 export const UiAssertItem = z.union([
   UiAssertVisible,
   UiAssertHidden,
@@ -415,11 +442,15 @@ export const UiAssertItem = z.union([
   UiAssertRoute,
   UiAssertAriaSnapshot,
   UiAssertApiResponse,
+  UiAssertApiStatuses,
   UiAssertTextVisible,
+  UiAssertTextHidden,
   UiAssertCount,
   UiAssertSidebarVisible,
   UiAssertChipVisible,
   UiAssertInputValue,
+  UiAssertDisabled,
+  UiAssertEnabled,
   UiAssertFileContains
 ])
 

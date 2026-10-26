@@ -63,10 +63,14 @@ export interface GivenContext {
   namespace?: string
   backendUrl: string
   imageHome: string
+  /// Browser-driven HTTP responses recorded by the page.on('response')
+  /// listener in interpreter.spec.ts (path + status). Used by the
+  /// `api.statuses` assert verb. Fresh per scenario.
+  httpStatuses: Array<{ pathname: string; status: number }>
 }
 
 export function createGivenContext(namespace?: string): GivenContext {
-  return { vars: {}, namespace, backendUrl: '', imageHome: '' }
+  return { vars: {}, namespace, backendUrl: '', imageHome: '', httpStatuses: [] }
 }
 
 function sanitizeNamespace(name: string): string {
@@ -143,7 +147,8 @@ export async function executeGiven(
     vars: { ...ctx.vars },
     namespace: ctx.namespace,
     backendUrl,
-    imageHome
+    imageHome,
+    httpStatuses: ctx.httpStatuses ?? []
   }
   const ns = ctx.namespace
 
