@@ -11,6 +11,8 @@ given:
   - dir_album: e2e_ui_album_delete/parent
   - dir_album: e2e_ui_album_delete/parent/child
   - photo: e2e_ui_album_delete/parent/child/photo.jpg
+  - index: '/'
+
 steps:
   - when:
       - navigate: /albums

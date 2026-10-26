@@ -3,7 +3,6 @@ covers:
   api:
     - POST /post/users/authenticate
     - POST /post/users/bootstrap
-    - PUT /put/config
     - POST /post/index/album
     - GET /get/index/status
 session: none
@@ -62,6 +61,7 @@ given:
     tags: [camping, adventure]
   - photo: misc/img04.jpg
     tags: [sunset, beach]
+  - index: '/'
 
 steps:
   - when:

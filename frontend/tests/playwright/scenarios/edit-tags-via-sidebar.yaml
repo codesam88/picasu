@@ -11,6 +11,7 @@ given:
 
   - photo: tagedit/pool/img01.jpg
     tags: [originaltag]
+  - index: '/'
 
 steps:
   - when:

@@ -40,6 +40,12 @@ export const GivenMove = z
   })
   .strict()
 
+export const GivenIndex = z
+  .object({
+    index: z.string().min(1)
+  })
+  .strict()
+
 /// Declared backend startup options. Keys mirror the real Picasu option
 /// names (`AppConfig` field names in `backend/src/model/config.rs`
 /// `config_tier_table`): `bootstrap_admin` = `PICASU_BOOTSTRAP_ADMIN`,
@@ -143,7 +149,8 @@ export const GivenItem = z.union([
   GivenUser,
   GivenInvite,
   GivenCliUser,
-  GivenMove
+  GivenMove,
+  GivenIndex
 ])
 
 const RoleLabel = z.string()

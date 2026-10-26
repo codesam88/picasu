@@ -29,6 +29,8 @@ given:
       user_id: viewer
       password: viewer-secret-9
   - photo: /library/photo.jpg
+  - index: '/'
+
 steps:
   # Control: the admin sees the grid, so the viewer leg below exercises the
   # tier, not the fixture.

@@ -10,6 +10,7 @@ given:
   - dir_album: ratingtest/pool
 
   - photo: ratingtest/pool/img01.jpg
+  - index: '/'
 
 steps:
   - when:

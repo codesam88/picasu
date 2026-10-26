@@ -157,6 +157,9 @@ export async function executeGiven(
   const photoManifest: PhotoManifestEntry[] = []
   const postIndexMoves: { from: string; to: string }[] = []
   let knownJwtSecret: string | undefined = undefined
+  // Declared index album (given `index:` item). When set, the index runs
+  // after all seeding, before steps. Position in the given list is irrelevant.
+  let declaredIndex: string | undefined = undefined
 
   for (const item of given) {
     if ('dir_album' in item && item.dir_album) {
@@ -209,6 +212,11 @@ export async function executeGiven(
       const fromQualified = qualifyPath(mv.move, ns)
       const toQualified = qualifyPath(mv.to, ns)
       postIndexMoves.push({ from: fromQualified, to: toQualified })
+    }
+
+    if ('index' in item && (item as { index?: string }).index) {
+      // Last encounter wins; declared index runs after all seeding (below).
+      declaredIndex = (item as { index: string }).index
     }
 
     if ('user' in item && item.user) {
@@ -333,14 +341,15 @@ export async function executeGiven(
     await runTestImageBatch(photoManifest)
   }
 
-  if (seedEntries.length > 0) {
+  if (declaredIndex !== undefined) {
+    const albumToIndex = declaredIndex
     const token = await ensureAuthenticated(request, backendUrl, adminId, adminPassword)
     const allHeaders = authHeaders(token)
 
     const indexRes = await request.fetch(`${backendUrl}/post/index/album`, {
       method: 'POST',
       headers: allHeaders,
-      data: { album: '/' }
+      data: { album: albumToIndex }
     })
     if (!indexRes.ok()) {
       throw new Error(`Index failed: ${indexRes.status()} ${await indexRes.text()}`)

@@ -6,6 +6,7 @@ covers:
 
 given:
   - photo: batch-permdelete/img01.jpg
+  - index: '/'
 
 steps:
   # Soft-delete the photo to move it to trash

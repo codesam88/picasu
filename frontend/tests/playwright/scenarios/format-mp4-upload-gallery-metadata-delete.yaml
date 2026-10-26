@@ -45,6 +45,8 @@ given:
   - source_file: 'picasu-mp4-48x32-ffprobe.mp4'
     fixture: mp4-48x32-ffprobe
     id_as: $src_mp4
+  - index: '/'
+
 steps:
   # ── upload ──────────────────────────────────────────────────────────────
   - when:

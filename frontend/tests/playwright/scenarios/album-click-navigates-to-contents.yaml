@@ -6,6 +6,8 @@ covers:
 given:
   - dir_album: navtestalbum
   - photo: navtestalbum/child.jpg
+  - index: '/'
+
 steps:
   - when:
       - navigate: /albums

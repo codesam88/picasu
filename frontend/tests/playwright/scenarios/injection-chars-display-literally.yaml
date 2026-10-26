@@ -11,6 +11,7 @@ given:
   - dir_album: injectiontest/pool
 
   - photo: injectiontest/pool/img01.jpg
+  - index: '/'
 
 steps:
   - when:

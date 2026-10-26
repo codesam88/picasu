@@ -17,6 +17,7 @@ given:
   - photo: assignbatch/imports/photo-batch-1.jpg
 
   - photo: assignbatch/imports/photo-batch-2.jpg
+  - index: '/'
 
 steps:
   # Navigate through albums so the data store is populated before we select

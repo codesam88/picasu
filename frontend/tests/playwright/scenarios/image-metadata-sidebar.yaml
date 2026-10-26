@@ -3,7 +3,6 @@ covers:
   api:
     - POST /post/users/authenticate
     - POST /post/users/bootstrap
-    - PUT /put/config
     - POST /post/index/album
     - GET /get/index/status
 session: none
@@ -16,6 +15,7 @@ given:
 
   - photo: nature/sunset/img01.jpg
     tags: [sunset, nature, landscape, golden-hour]
+  - index: '/'
 
 steps:
   - when:

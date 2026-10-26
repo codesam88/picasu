@@ -10,6 +10,8 @@ given:
     width: 64
     height: 64
     id_as: $src_cancel
+  - index: '/'
+
 steps:
   - when:
       - navigate: /timeline

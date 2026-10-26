@@ -44,6 +44,14 @@
       "required": ["move", "to"],
       "additionalProperties": false
     },
+    "givenIndex": {
+      "type": "object",
+      "properties": {
+        "index": { "type": "string", "minLength": 1 }
+      },
+      "required": ["index"],
+      "additionalProperties": false
+    },
     "givenEmpty": {
       "type": "object",
       "properties": {
@@ -161,7 +169,8 @@
         { "$ref": "#/definitions/givenUser" },
         { "$ref": "#/definitions/givenInvite" },
         { "$ref": "#/definitions/givenCliUser" },
-        { "$ref": "#/definitions/givenMove" }
+        { "$ref": "#/definitions/givenMove" },
+        { "$ref": "#/definitions/givenIndex" }
       ]
     },
     "uiWhenNavigate": {

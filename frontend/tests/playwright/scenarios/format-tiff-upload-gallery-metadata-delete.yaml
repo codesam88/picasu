@@ -35,6 +35,8 @@ given:
   - source_file: 'picasu-tiff-48x32-exif.tif'
     fixture: tiff-48x32-exif
     id_as: $src_tiff
+  - index: '/'
+
 steps:
   # ── upload ──────────────────────────────────────────────────────────────
   - when:

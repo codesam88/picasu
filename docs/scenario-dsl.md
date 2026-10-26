@@ -65,6 +65,7 @@ across all verb blocks.
 | `photo_raw: <path>`         | Place a generated image without triggering an index scan                                                                                                   | UI           |
 | `source_file: <path>`       | Place a file _outside_ `IMAGE_HOME` for the browser to upload                                                                                              | UI           |
 | `move: <path>` + `to`       | Move a file within the image store                                                                                                                         | UI           |
+| `index: <album>`            | Run `POST /post/index/album` for `<album>` (default `/`) after all seeding, polling to idle/completed; absent = no index                                   | UI           |
 
 Optional modifier fields:
 
