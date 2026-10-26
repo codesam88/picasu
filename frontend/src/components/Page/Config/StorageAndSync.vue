@@ -158,7 +158,14 @@
       </v-list-item>
 
       <v-card-actions class="justify-end px-4 pb-4">
-        <v-btn color="primary" variant="flat" :loading="saving" @click="save" class="text-none">
+        <v-btn
+          color="primary"
+          variant="flat"
+          :loading="saving"
+          @click="save"
+          class="text-none"
+          aria-label="Save storage settings"
+        >
           Save Changes
         </v-btn>
       </v-card-actions>

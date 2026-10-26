@@ -1,0 +1,123 @@
+name: Read-only mode blocks writes but allows its own lift
+covers:
+  api:
+    - POST /post/users/authenticate
+    - GET /get/server-info
+    - PUT /put/admin/config
+    - GET /get/config
+  ui:
+    - route:/timeline
+    - route:/config
+    - toast:success:Advanced settings saved successfully
+given:
+  - empty: true
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
+
+steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
+
+  - when:
+      - navigate: /config
+      - click: checkbox/Read Only Mode
+      - click: button/Save Changes
+    assert:
+      - ui.toast:
+          type: success
+          contains: Advanced settings saved successfully
+      - ui.route: /config
+
+  - when:
+      - navigate: /config
+    assert:
+      - api.response:
+          url: /put/assign_album
+          method: PUT
+          body:
+            assetId: 'x'
+            albumId: 'y'
+            onConflict: 'rename'
+          status: 405 # content writes are refused while the kill-switch is on
+      - api.response:
+          url: /delete/delete-data
+          method: DELETE
+          body:
+            assetIds:
+              - 'x'
+            timestamp: 0
+          status: 405 # deletes are writes too
+      - api.response:
+          url: /put/edit_flags
+          method: PUT
+          body:
+            indexArray:
+              - 0
+            timestamp: 0
+            isTrashed: true
+          status: 405 # flag edits are writes
+      - api.response:
+          url: /post/invites
+          method: POST
+          body:
+            expiresInHours: 1
+          status: 405 # admin mutations too, not just content
+      - api.response:
+          url: /put/users/password
+          method: PUT
+          body:
+            userId: 'admin'
+            oldPassword: 'Whatever-9x'
+            newPassword: 'Whatever-9y'
+          status: 405 # password changes are writes
+      - api.response:
+          url: /post/users/register
+          method: POST
+          body:
+            userId: 'later-user'
+            password: 'Later-secret-9'
+          status: 405 # registration is a write
+      - api.response:
+          url: /post/index/album
+          method: POST
+          body:
+            album: '/'
+          status: 405 # scans are mutations as well
+      - api.response:
+          url: /get/config
+          method: GET
+          status: 200 # reads are unaffected — only writes are gated
+
+  - when:
+      - navigate: /config
+    assert:
+      - api.response:
+          url: /post/admin/config/disable-read-only
+          method: POST
+          status: 200 # the kill-switch may always lift itself (AUTH-12 exception)
+
+  - when:
+      - navigate: /config
+    assert:
+      - api.response:
+          url: /post/invites
+          method: POST
+          body:
+            expiresInHours: -1
+          status: 400 # post-lift the handler runs again: a negative TTL is rejected at the body, not masked by 405
+      - api.response:
+          url: /post/invites
+          method: POST
+          body:
+            expiresInHours: 1
+          status: 200 # writes are re-enabled
+
+  - when:
+      - navigate: /config
+    assert:
+      - ui.route: /config # the session survived every 405
