@@ -119,11 +119,12 @@ jobs:
       - name: Build the frontend assets
         run: just frontend-build
 
-      - name: Check (backend, utils, API contract)
+      - name: Check (backend, utils, API contract, env vars)
         run: |
           just backend-check
           just utils-check
           just openapi-check
+          just env-var-check
 
       - name: Test (backend, utils)
         run: |
