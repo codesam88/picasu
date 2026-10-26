@@ -4,12 +4,21 @@ name: set as cover updates album metadata
 # test; this DSL cannot observe which image is rendered as the album cover, so
 # cover-image identity is not asserted here.
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - dir_album: coverflow/album
   - photo: coverflow/album/first.jpg
   - photo: coverflow/album/second.jpg
   - index: '/'
 
 steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /albums
     assert:

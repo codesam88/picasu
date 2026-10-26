@@ -6,9 +6,18 @@ covers:
   ui:
     - Completed
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - photo_raw: scan-status/img01.jpg
 
 steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /config
     assert:

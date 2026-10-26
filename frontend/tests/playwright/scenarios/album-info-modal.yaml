@@ -7,12 +7,21 @@ covers:
     - modal:closed
 
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - dir_album: albuminfotest/parent
   - dir_album: albuminfotest/parent/child
     id_as: $child
   - index: '/'
 
 steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /albums
       - click.text: Albuminfotest

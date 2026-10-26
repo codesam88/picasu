@@ -5,12 +5,21 @@ covers:
   ui:
     - Scan for New Files
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - photo: batch-scan/img01.jpg
   - config:
       fs_notify_watcher: false
   - index: '/'
 
 steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /timeline
       - click.select_first: true

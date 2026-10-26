@@ -4,11 +4,20 @@ covers:
     - route:/album/[a-z0-9]+$
     - .parent
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - dir_album: navtestalbum
   - photo: navtestalbum/child.jpg
   - index: '/'
 
 steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /albums
     assert:

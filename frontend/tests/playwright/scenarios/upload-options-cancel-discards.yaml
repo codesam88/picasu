@@ -4,6 +4,9 @@ covers:
     - modal:open
     - modal:closed
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - photo: seed/img01.jpg
   - source_file: 'cancel-me.jpg'
     format: jpeg
@@ -13,6 +16,12 @@ given:
   - index: '/'
 
 steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /timeline
     assert:

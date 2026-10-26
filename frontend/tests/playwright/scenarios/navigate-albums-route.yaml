@@ -3,8 +3,14 @@ covers:
   ui:
     - route:/albums
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - empty: true
 when:
+  - login:
+      user: admin
+      password: e2e_test_pwd
   - navigate: /albums
 assert:
   - ui.route: /albums

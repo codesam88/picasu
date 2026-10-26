@@ -7,7 +7,6 @@ covers:
 server:
   bootstrap_admin: false
   pbkdf_iterations: 1000
-session: none
 given:
   - empty: true
 steps:

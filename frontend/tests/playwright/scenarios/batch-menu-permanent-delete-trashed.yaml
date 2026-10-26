@@ -5,11 +5,20 @@ covers:
     - Permanently Delete
 
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - photo: batch-permdelete/img01.jpg
   - index: '/'
 
 steps:
   # Soft-delete the photo to move it to trash
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /albums
     assert:
