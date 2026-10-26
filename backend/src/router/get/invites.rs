@@ -20,6 +20,7 @@ use crate::router::{AppResult, GuardResult};
 /// Errors: 401 missing or invalid admin credentials — 500 storage failure.
 #[utoipa::path(
         tag = "auth",
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Invite metadata, never tokens", body = [InviteView]),
             (status = 401, response = Unauthorized),

@@ -41,6 +41,7 @@ pub struct EditRatingData {
 #[utoipa::path(
         tag = "assets",
         request_body = EditRatingData,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Rating updated"),
             (status = 400, description = "Invalid input"),

@@ -30,6 +30,7 @@ pub struct ExportEntry {
 /// could not be opened.
 #[utoipa::path(
         tag = "timeline",
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Export data as JSON"),
             (status = 400, description = "Invalid input"),

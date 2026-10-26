@@ -36,6 +36,7 @@ pub struct IndexAlbumRequest {
 #[utoipa::path(
         tag = "index",
         request_body = IndexAlbumRequest,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 202, description = "Album indexing started"),
             (status = 400, description = "Invalid input"),
@@ -77,6 +78,7 @@ pub fn index_album_handler(
 /// 404 no index job is active.
 #[utoipa::path(
         tag = "index",
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Album index cancelled"),
             (status = 400, description = "Invalid input"),

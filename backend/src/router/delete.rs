@@ -58,6 +58,7 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
 #[utoipa::path(
         tag = "assets",
         request_body = DeleteList,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Data deleted"),
             (status = 400, description = "Invalid input"),
@@ -320,6 +321,7 @@ fn process_deletes(asset_ids: &[String], _timestamp: i64) -> Result<DeleteResult
         params(
             ("invite_id" = &str, Path, description = "Invite id as listed by GET /get/invites"),
         ),
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Invite revoked"),
             (status = 401, response = Unauthorized),

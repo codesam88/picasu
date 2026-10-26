@@ -40,6 +40,7 @@ pub struct EditShare {
 #[utoipa::path(
         tag = "albums",
         request_body = EditShare,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Share updated"),
             (status = 400, description = "Invalid input"),
@@ -139,6 +140,7 @@ pub struct DeleteShare {
 #[utoipa::path(
         tag = "albums",
         request_body = DeleteShare,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Share deleted"),
             (status = 400, description = "Invalid input"),

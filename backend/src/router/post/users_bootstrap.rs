@@ -79,6 +79,7 @@ fn bootstrap_user_sync(user_id: &str, password: &str) -> AppResult<UserSummary> 
 #[utoipa::path(
         tag = "auth",
         request_body = BootstrapRequest,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "First administrator enrolled", body = UserSummary),
             (status = 400, description = "Invalid input"),

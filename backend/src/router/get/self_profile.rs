@@ -43,6 +43,7 @@ pub struct SelfProfileResponse {
 /// users; 404 unknown user; 500 storage failure.
 #[utoipa::path(
     tag = "auth",
+    security(("cookie_jwt" = [])),
     responses(
         (status = 200, description = "Self profile", body = SelfProfileResponse),
         (status = 401, response = Unauthorized),

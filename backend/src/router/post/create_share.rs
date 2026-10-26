@@ -48,6 +48,7 @@ pub struct CreateShare {
 #[utoipa::path(
         tag = "albums",
         request_body = CreateShare,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Share link created", body = String),
             (status = 400, description = "Invalid input"),

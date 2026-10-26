@@ -57,6 +57,7 @@ pub struct RegisterRequest {
 #[utoipa::path(
         tag = "auth",
         request_body = RegisterRequest,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Account registered (non-admin)", body = UserSummary),
             (status = 400, description = "Invalid input"),

@@ -16,6 +16,7 @@ use crate::router::{AppError, AppResult, ErrorKind, GuardResult};
 /// accepted — 500 storage failure.
 #[utoipa::path(
         tag = "auth",
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "User list", body = Vec<UserSummary>),
             (status = 401, response = Unauthorized),

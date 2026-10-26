@@ -171,6 +171,7 @@ fn resolve_upload_target_dir(album_id: Option<ArrayString<64>>) -> Result<PathBu
             ("on_conflict" = Option<String>, Query, description = "Conflict policy for an existing target file: rename (default; suffixes -001, -002, …) or skip; any other value is a 400"),
             ("auto_rename" = Option<bool>, Query, description = "When true (the default), uploaded filenames are sanitized automatically: forbidden characters are stripped, reserved Windows names are prefixed, and Unicode NFC normalization is applied; a name that degrades to empty falls back to 'upload', yielding an 'upload-{uuid}.{ext}' final name. When false, any file whose name cannot be kept as-is is rejected with a 400 error."),
         ),
+        security(("album_id" = [], "share_id" = []), ("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Upload successful"),
             (status = 400, description = "Invalid input"),

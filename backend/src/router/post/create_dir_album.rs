@@ -38,6 +38,7 @@ pub struct CreateDirAlbumData {
 #[utoipa::path(
         tag = "albums",
         request_body = CreateDirAlbumData,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "New album ID", body = String),
             (status = 400, description = "Invalid input"),

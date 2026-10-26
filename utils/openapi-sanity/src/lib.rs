@@ -534,9 +534,14 @@ impl Annotation {
                         "request_body" => {
                             read_request_body_group(&group.stream(), line, &mut annotation)
                         }
-                        // `method(GET)`, `tags([…])`, `security(…)` and the
-                        // rest: legal utoipa spellings outside the modeled
-                        // grammar, recorded for A9 rather than dropped.
+                        // `security(…)` declares the operation's security
+                        // requirements. The scheme names are not interpreted
+                        // by this checker, but the form is accepted so
+                        // annotated handlers do not trip A9.
+                        "security" => {}
+                        // `method(GET)`, `tags([…])` and the rest: legal utoipa
+                        // spellings outside the modeled grammar, recorded for
+                        // A9 rather than dropped.
                         _ => annotation.unsupported.push(Located::new(name, line)),
                     }
                 }

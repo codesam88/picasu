@@ -9,7 +9,9 @@ One module serves several runs; modes are env-gated:
 - ``FUZZ_READONLY=1``       ``readonly_405`` asserts every mutating operation
   answers 405.
 
-Auth: cookie via ``PICASU_JWT`` (the spec declares no securitySchemes yet).
+Auth: cookie via ``PICASU_JWT`` (securitySchemes are declared now, but
+Schemathesis cannot perform the login exchange, so the harness injects the
+cookie itself).
 Poison guards prevent config writes, admin demotion, share/data deletion,
 logout and password rotation from wrecking a running instance.
 """

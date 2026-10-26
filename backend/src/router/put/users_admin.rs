@@ -54,6 +54,7 @@ fn set_admin_sync(actor_id: &str, target_user_id: &str, admin: bool) -> AppResul
 #[utoipa::path(
         tag = "auth",
         request_body = SetUserAdminRequest,
+        security(("cookie_jwt" = [])),
         responses(
             (status = 200, description = "Admin role updated"),
             (status = 400, description = "Invalid input"),
