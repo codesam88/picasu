@@ -270,6 +270,12 @@ observed. Warnings are logged to stderr and written to
 
 ### Test harness (`interpreter.spec.ts`)
 
+No hand-written browser test files (`*.test.ts`) remain in
+`frontend/tests/playwright/`: every browser scenario is driven by
+`interpreter.spec.ts` over the YAML files in `scenarios/`. Any future
+hand-written browser file must be named `*.test.ts` (never `*.spec.ts`,
+which is reserved for the spec machinery).
+
 The Playwright test file that ties everything together. For each scenario
 loaded by `loadScenarios`:
 

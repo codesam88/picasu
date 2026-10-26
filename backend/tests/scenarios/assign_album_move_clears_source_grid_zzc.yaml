@@ -42,5 +42,5 @@ then:
   # should be absent from this filtered list.
   - array_where:
       where:
-        abstractData.albumId: "${child_album}"
+        abstractData.id: "${child_album}"
       expect: absent
