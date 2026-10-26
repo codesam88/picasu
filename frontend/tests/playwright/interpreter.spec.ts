@@ -117,6 +117,9 @@ test.describe('UI scenarios', () => {
           } catch {
             return // Non-HTTP(S) URLs (blob:, data:) carry no backend traffic.
           }
+          if (url.origin === activePaths.BACKEND_URL) {
+            seeded.httpStatuses.push({ pathname: url.pathname, status: res.status() })
+          }
           if (
             url.origin === activePaths.BACKEND_URL &&
             isBackendApiPath(url.pathname) &&

@@ -1,0 +1,82 @@
+name: Login throttle counts failures, bans, then recovers
+covers:
+  api:
+    - POST /post/users/authenticate
+    - POST /post/users/bootstrap
+  ui:
+    - textbox/User ID
+    - textbox/Password
+    - button/Login
+    - route:/login
+    - route:/timeline
+    - Too many attempts
+    - '#nav-search-input'
+server:
+  bootstrap_admin: true
+  pbkdf_iterations: 1000
+  login_ip_base_ban_secs: 2
+session: none
+given:
+  - empty: true
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
+  - photo: /library/photo.jpg
+steps:
+  - when:
+      - navigate: /login
+    assert:
+      - ui.visible: textbox/User ID
+  - when:
+      - fill: textbox/User ID
+        value: admin
+      - fill: textbox/Password
+        value: wrong-password-1
+    assert:
+      - ui.input_value: textbox/User ID
+        contains: admin
+      - ui.input_value: textbox/Password
+        contains: wrong-password-1
+  - when:
+      - click: button/Login
+    assert:
+      - ui.route: /login
+  - when:
+      - click: button/Login
+    assert:
+      - ui.route: /login
+  - when:
+      - click: button/Login
+    assert:
+      - ui.route: /login
+      - api.statuses:
+          url: /post/users/authenticate
+          equals: [401, 401, 401]
+  - when:
+      - click: button/Login
+    assert:
+      - api.statuses:
+          url: /post/users/authenticate
+          equals: [401, 401, 401, 429]
+      - ui.text_visible: Too many attempts
+      - ui.disabled: button/Login
+      - ui.input_value: textbox/User ID
+        contains: admin
+      - ui.input_value: textbox/Password
+        contains: wrong-password-1
+  - when:
+      - wait.ms: 3000
+    assert:
+      - ui.text_hidden: Too many attempts
+      - ui.enabled: button/Login
+      - api.statuses:
+          url: /post/users/authenticate
+          equals: [401, 401, 401, 429]
+  - when:
+      - fill: textbox/Password
+        value: e2e_test_pwd
+      - click: button/Login
+    assert:
+      - ui.route: /timeline
+      - ui.count: '#nav-search-input'
+        equals: 1

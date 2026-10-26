@@ -73,8 +73,13 @@ export function assertionTarget(assertion: UiAssertItem): string {
   }
   if ('ui.aria_snapshot' in assertion) return `snapshot:${assertion['ui.aria_snapshot']}`
   if ('ui.text_visible' in assertion) return assertion['ui.text_visible']
+  if ('ui.text_hidden' in assertion) return assertion['ui.text_hidden']
+  if ('ui.disabled' in assertion) return assertion['ui.disabled']
+  if ('ui.enabled' in assertion) return assertion['ui.enabled']
+  if ('api.statuses' in assertion) return `statuses:${assertion['api.statuses'].url}`
   if ('ui.count' in assertion) return assertion['ui.count']
   if ('ui.sidebar_visible' in assertion) return assertion['ui.sidebar_visible']
   if ('ui.chip_visible' in assertion) return assertion['ui.chip_visible']
+  if ('ui.input_value' in assertion) return assertion['ui.input_value']
   return ''
 }

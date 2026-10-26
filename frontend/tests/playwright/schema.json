@@ -466,6 +466,46 @@
       "required": ["ui.chip_visible"],
       "additionalProperties": false
     },
+    "uiAssertApiStatuses": {
+      "type": "object",
+      "properties": {
+        "api.statuses": {
+          "type": "object",
+          "properties": {
+            "url": { "type": "string" },
+            "equals": { "type": "array", "items": { "type": "integer" } }
+          },
+          "required": ["url", "equals"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["api.statuses"],
+      "additionalProperties": false
+    },
+    "uiAssertDisabled": {
+      "type": "object",
+      "properties": {
+        "ui.disabled": { "type": "string", "pattern": "^[a-z]+/" }
+      },
+      "required": ["ui.disabled"],
+      "additionalProperties": false
+    },
+    "uiAssertEnabled": {
+      "type": "object",
+      "properties": {
+        "ui.enabled": { "type": "string", "pattern": "^[a-z]+/" }
+      },
+      "required": ["ui.enabled"],
+      "additionalProperties": false
+    },
+    "uiAssertTextHidden": {
+      "type": "object",
+      "properties": {
+        "ui.text_hidden": { "type": "string" }
+      },
+      "required": ["ui.text_hidden"],
+      "additionalProperties": false
+    },
     "uiAssertItem": {
       "oneOf": [
         { "$ref": "#/definitions/uiAssertVisible" },
@@ -476,10 +516,14 @@
         { "$ref": "#/definitions/uiAssertRoute" },
         { "$ref": "#/definitions/uiAssertAriaSnapshot" },
         { "$ref": "#/definitions/uiAssertApiResponse" },
+        { "$ref": "#/definitions/uiAssertApiStatuses" },
         { "$ref": "#/definitions/uiAssertTextVisible" },
+        { "$ref": "#/definitions/uiAssertTextHidden" },
         { "$ref": "#/definitions/uiAssertCount" },
         { "$ref": "#/definitions/uiAssertSidebarVisible" },
-        { "$ref": "#/definitions/uiAssertChipVisible" }
+        { "$ref": "#/definitions/uiAssertChipVisible" },
+        { "$ref": "#/definitions/uiAssertDisabled" },
+        { "$ref": "#/definitions/uiAssertEnabled" }
       ]
     },
     "uiStep": {

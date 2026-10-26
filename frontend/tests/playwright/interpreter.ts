@@ -292,6 +292,12 @@ export async function executeAssert(
     } else if ('ui.hidden' in assertion) {
       tracer?.recordUI('ui.hidden', target)
       await expect(await resolveLocator(page, assertion['ui.hidden'], ctx.vars)).not.toBeVisible()
+    } else if ('ui.disabled' in assertion) {
+      tracer?.recordUI('ui.disabled', target)
+      await expect(await resolveLocator(page, assertion['ui.disabled'], ctx.vars)).toBeDisabled()
+    } else if ('ui.enabled' in assertion) {
+      tracer?.recordUI('ui.enabled', target)
+      await expect(await resolveLocator(page, assertion['ui.enabled'], ctx.vars)).toBeEnabled()
     } else if ('ui.text' in assertion && 'contains' in assertion) {
       tracer?.recordUI('ui.text', target)
       await expect(await resolveLocator(page, assertion['ui.text'], ctx.vars)).toContainText(
@@ -333,11 +339,28 @@ export async function executeAssert(
             })
       const expected = Array.isArray(spec.status) ? spec.status : [spec.status]
       expect(expected).toContain(response.status())
+    } else if ('api.statuses' in assertion) {
+      const spec = assertion['api.statuses']
+      const url = interpolate(spec.url, ctx.vars)
+      let targetPath: string
+      try {
+        targetPath = new URL(url, 'http://localhost').pathname
+      } catch {
+        targetPath = url
+      }
+      const readStatuses = () =>
+        (ctx.httpStatuses ?? []).filter((r) => r.pathname === targetPath).map((r) => r.status)
+      await expect.poll(() => readStatuses(), { timeout: 15000 }).toEqual(spec.equals)
     } else if ('ui.text_visible' in assertion) {
       tracer?.recordUI('ui.text_visible', target)
       await expect(
         page.getByText(interpolate(assertion['ui.text_visible'], ctx.vars)).first()
       ).toBeVisible()
+    } else if ('ui.text_hidden' in assertion) {
+      tracer?.recordUI('ui.text_hidden', target)
+      await expect(
+        page.getByText(interpolate(assertion['ui.text_hidden'], ctx.vars)).first()
+      ).not.toBeVisible()
     } else if ('ui.count' in assertion) {
       tracer?.recordUI('ui.count', target)
       await expect(page.locator(assertion['ui.count'])).toHaveCount(assertion.equals)
@@ -371,7 +394,7 @@ export async function executeAssert(
     } else {
       throw new Error(
         `Unknown assert verb in assertion ${JSON.stringify(assertion)}. ` +
-          `Expected one of: ui.visible, ui.hidden, ui.text, ui.route, ui.modal, ui.toast, ui.aria_snapshot, api.response, ui.text_visible, ui.count, ui.sidebar_visible, ui.chip_visible, ui.input_value, file.contains`
+          `Expected one of: ui.visible, ui.hidden, ui.disabled, ui.enabled, ui.text, ui.route, ui.modal, ui.toast, ui.aria_snapshot, api.response, api.statuses, ui.text_visible, ui.text_hidden, ui.count, ui.sidebar_visible, ui.chip_visible, ui.input_value, file.contains`
       )
     }
   }

@@ -239,6 +239,9 @@ Maps `assert:` verbs to Playwright `expect` assertions:
 | `ui.hidden`          | `not.toBeVisible()`                                                  |
 | `ui.text + contains` | `toContainText(value)`                                               |
 | `ui.text_visible`    | `getByText(text).first().toBeVisible()`                              |
+| `ui.text_hidden`     | `getByText(text).first().not.toBeVisible()`                          |
+| `ui.disabled`        | `resolveLocator(...).toBeDisabled()`                                 |
+| `ui.enabled`         | `resolveLocator(...).toBeEnabled()`                                  |
 | `ui.chip_visible`    | `[id="album-chip"]` or `[id="filename-chip"]` chip visible with text |
 | `ui.sidebar_visible` | `#abstractData-col` contains text                                    |
 | `ui.count + equals`  | `locator(selector).toHaveCount(n)`                                   |
@@ -247,6 +250,7 @@ Maps `assert:` verbs to Playwright `expect` assertions:
 | `ui.toast`           | Snackbar visible with matching text                                  |
 | `ui.aria_snapshot`   | `toMatchAriaSnapshot({ name })`                                      |
 | `api.response`       | Fetch URL and assert status code(s)                                  |
+| `api.statuses`       | Ordered browser-driven response statuses matching url                |
 
 The function accepts an optional `CoverageTracer` — when provided, it
 records the verb and target of every assertion.
