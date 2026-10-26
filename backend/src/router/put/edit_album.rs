@@ -244,6 +244,7 @@ pub struct SetAlbumTitle {
         responses(
             (status = 200, description = "Album title updated"),
             (status = 400, description = "Invalid input"),
+            (status = 404, description = "Not found"),
             (status = 422, description = "Unprocessable entity"),
             (status = 401, response = Unauthorized),
             (status = 403, description = "Share targeting another album"),
