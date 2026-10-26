@@ -15,6 +15,7 @@
             color="primary"
             hide-details
             inset
+            aria-label="Read Only Mode"
             :disabled="disabling"
             @update:model-value="onReadOnlyToggle"
             @click.stop
