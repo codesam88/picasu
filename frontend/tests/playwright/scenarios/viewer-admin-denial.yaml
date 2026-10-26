@@ -1,0 +1,185 @@
+name: Viewer is refused admin surfaces and keeps the gallery session
+covers:
+  api:
+    - POST /post/users/authenticate
+    - GET /get/server-info
+    - POST /post/index/album
+    - GET /get/index/status
+    - GET /get/config
+  ui:
+    - route:/timeline
+    - tab/Server
+    - tab/Administration
+    - button/Scan Now
+    - .desktop-small-image
+server:
+  bootstrap_admin: false
+  pbkdf_iterations: 1000
+session: none
+given:
+  - empty: true
+  - cli_user:
+      user_id: admin
+      password: e2e_test_pwd
+      admin: true
+  - cli_user:
+      user_id: viewer
+      password: viewer-secret-9
+  - photo: /library/photo.jpg
+steps:
+  - when:
+      - login:
+          user: viewer
+          password: viewer-secret-9
+    assert:
+      - ui.route: /timeline
+
+  - when:
+      - navigate: /timeline
+    assert:
+      - api.response:
+          url: /get/self/profile
+          status: 200
+      - api.response:
+          url: /get/config
+          status: 200
+      - api.response:
+          url: /get/get-albums
+          status: 200
+      - api.response:
+          url: /get/users
+          status: 401
+
+  - when:
+      - navigate: /timeline
+    assert:
+      - api.response:
+          url: /get/invites
+          status: 401
+      - api.response:
+          url: /post/invites
+          method: POST
+          body:
+            expiresInHours: 1
+          status: 401
+      - api.response:
+          url: /delete/invites/nonexistent
+          method: DELETE
+          status: 401
+      - api.response:
+          url: /put/users/admin
+          method: PUT
+          body:
+            userId: admin
+            admin: false
+          status: 401
+      - api.response:
+          url: /put/users/password
+          method: PUT
+          body:
+            userId: admin
+            oldPassword: Stale-pw-9!
+            newPassword: Other-pw-9!
+          status: 403
+
+  - when:
+      - navigate: /timeline
+    assert:
+      - api.response:
+          url: /put/admin/config
+          method: PUT
+          body:
+            readOnlyMode: false
+          status: 401
+      - api.response:
+          url: /get/admin/config
+          status: 401
+      - api.response:
+          url: /get/config/export
+          status: 401
+      - api.response:
+          url: /post/config/auth-key/reset
+          method: POST
+          status: 401
+      - api.response:
+          url: /post/admin/config/disable-read-only
+          method: POST
+          status: 401
+
+  - when:
+      - navigate: /timeline
+    assert:
+      - api.response:
+          url: /post/index/album
+          method: POST
+          body:
+            album: /
+          status: 401
+      - api.response:
+          url: /post/index/cancel
+          method: POST
+          status: 401
+      - api.response:
+          url: /get/index/status
+          status: 401
+      - api.response:
+          url: /post/create_share
+          method: POST
+          body:
+            albumId: x
+            description: ''
+            password: null
+            showMetadata: true
+            showDownload: true
+            showUpload: false
+            exp: 0
+          status: 401
+      - api.response:
+          url: /put/edit_share
+          method: PUT
+          body:
+            albumId: x
+            share:
+              url: u
+              description: ''
+              password: null
+              showMetadata: true
+              showDownload: true
+              showUpload: false
+              exp: 0
+          status: 401
+
+  - when:
+      - navigate: /timeline
+    assert:
+      - api.response:
+          url: /put/delete_share
+          method: PUT
+          body:
+            albumId: x
+            shareId: u
+          status: 401
+      - api.response:
+          url: /get/path-completion?path=/
+          status: 401
+      - api.response:
+          url: /post/users/bootstrap
+          method: POST
+          body:
+            userId: sneaky
+            password: Sneaky-secret-9
+          status: 401
+
+  - when:
+      - navigate: /config
+    assert:
+      - ui.visible: tab/Server
+      - ui.hidden: tab/Administration
+      - ui.hidden: button/Scan Now
+
+  - when:
+      - navigate: /timeline
+    assert:
+      - ui.route: /timeline
+      - ui.count: .desktop-small-image
+        equals: 1

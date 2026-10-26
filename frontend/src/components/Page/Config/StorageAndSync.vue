@@ -55,50 +55,52 @@
 
       <v-divider></v-divider>
 
-      <!-- Scan status -->
-      <v-list-item
-        title="Scan Status"
-        :subtitle="statusSubtitle"
-        :prepend-icon="statusIcon"
-        lines="two"
-      >
-        <template #append>
-          <div class="d-flex align-center ga-3">
-            <v-btn
-              v-if="isScanRunning"
-              variant="outlined"
-              color="warning"
-              prepend-icon="mdi-stop"
-              class="text-none"
-              :loading="cancelLoading"
-              :disabled="status.cancelRequested"
-              @click="cancelJob"
-            >
-              Cancel
-            </v-btn>
-            <v-btn
-              color="primary"
-              variant="flat"
-              prepend-icon="mdi-magnify-scan"
-              class="text-none font-weight-medium"
-              :disabled="!imagePath || isScanRunning"
-              :loading="scanLoading"
-              @click="startScan"
-            >
-              Scan Now
-            </v-btn>
-          </div>
-        </template>
-      </v-list-item>
+      <!-- Scan status (admin-only: index jobs) -->
+      <template v-if="isAdmin">
+        <v-list-item
+          title="Scan Status"
+          :subtitle="statusSubtitle"
+          :prepend-icon="statusIcon"
+          lines="two"
+        >
+          <template #append>
+            <div class="d-flex align-center ga-3">
+              <v-btn
+                v-if="isScanRunning"
+                variant="outlined"
+                color="warning"
+                prepend-icon="mdi-stop"
+                class="text-none"
+                :loading="cancelLoading"
+                :disabled="status.cancelRequested"
+                @click="cancelJob"
+              >
+                Cancel
+              </v-btn>
+              <v-btn
+                color="primary"
+                variant="flat"
+                prepend-icon="mdi-magnify-scan"
+                class="text-none font-weight-medium"
+                :disabled="!imagePath || isScanRunning"
+                :loading="scanLoading"
+                @click="startScan"
+              >
+                Scan Now
+              </v-btn>
+            </div>
+          </template>
+        </v-list-item>
 
-      <v-row class="ma-0 px-4 pb-4" dense>
-        <v-col v-for="counter in counters" :key="counter.label" cols="6" sm="3">
-          <v-sheet border rounded class="pa-3">
-            <div class="text-caption text-medium-emphasis">{{ counter.label }}</div>
-            <div class="text-h6">{{ counter.value }}</div>
-          </v-sheet>
-        </v-col>
-      </v-row>
+        <v-row class="ma-0 px-4 pb-4" dense>
+          <v-col v-for="counter in counters" :key="counter.label" cols="6" sm="3">
+            <v-sheet border rounded class="pa-3">
+              <div class="text-caption text-medium-emphasis">{{ counter.label }}</div>
+              <div class="text-h6">{{ counter.value }}</div>
+            </v-sheet>
+          </v-col>
+        </v-row>
+      </template>
 
       <v-divider></v-divider>
 
@@ -184,12 +186,14 @@ import {
   type AlbumIndexState
 } from '@/api/fs'
 import ServerFilePicker from '@/components/Page/Config/ServerFilePicker.vue'
+import { useCurrentUser } from '@/script/utils/currentUser'
 
 const props = defineProps<{ imagePath: string | null }>()
 const uploadFolder = defineModel<string | null>('uploadFolder', { required: true })
 const maxUploadSize = defineModel<string>('maxUploadSize', { required: true })
 const fsNotifyWatcher = defineModel<boolean>('fsNotifyWatcher', { required: true })
 const configStore = useConfigStore('mainId')
+const isAdmin = computed(() => useCurrentUser().value?.isAdmin === true)
 const messageStore = useMessageStore('mainId')
 
 const saving = ref(false)
@@ -332,7 +336,7 @@ async function tryWithMsg<T>(fn: () => Promise<T>): Promise<T | undefined> {
 }
 
 onMounted(() => {
-  void refreshStatus()
+  if (isAdmin.value) void refreshStatus()
 })
 
 onBeforeUnmount(() => {
