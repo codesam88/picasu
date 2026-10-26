@@ -322,24 +322,23 @@ expiry.
 
 ### Request guards (the authorization manifest)
 
-| Guard               | Accepts                                                                                 | Used by                                                                                                                                                                                                                                               |
-| ------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GuardAuth`         | cookie of a user with the admin role                                                    | config write/export, auth-key reset, user management (list/set-admin), album cover/assign/create-dir, delete, index jobs, rebuild, rotate, regenerate thumbnail, tags/flags/rating, share create/edit, fs completion, album-index status, test probes |
-| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected                  | `PUT /put/users/password`, album/tag lists (`GET /get/get-tags`, `GET /get/get-albums`)                                                                                                                                                               |
-| `GuardShare`        | share headers/query, or cookie of any live authenticated user (admin or not)            | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                                                                                             |
-| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter             | get-data, get-metadata, get-scroll-bar                                                                                                                                                                                                                |
-| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                             | `GET /object/compressed/...`                                                                                                                                                                                                                          |
-| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim                           | `GET /object/imported/...`                                                                                                                                                                                                                            |
-| `GuardUpload`       | share with `showUpload` + matching `presigned_album_id`, or any live authenticated user | `POST /upload`                                                                                                                                                                                                                                        |
-| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                              | every mutating route except `POST /post/admin/config/disable-read-only` (the read-only lift)                                                                                                                                                          |
+| Guard               | Accepts                                                                                 | Used by                                                                                                                                                                    |
+| ------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GuardAuth`         | cookie of a user with the admin role                                                    | config write/export, auth-key reset, user management (list/set-admin), invites, index jobs, shares, fs completion, album-index status, test probes                         |
+| `GuardUser`         | cookie of any authenticated user (admin or not); share tokens rejected                  | `PUT /put/users/password`, album/tag lists (`GET /get/get-tags`, `GET /get/get-albums`), content writes (upload, move, trash, delete, describe, cover, rotate, regenerate) |
+| `GuardShare`        | share headers/query, or cookie of any live authenticated user (admin or not)            | prefetch, get-config, image serving (with `GuardHash`), **set_album_title, set_user_defined_description**                                                                  |
+| `GuardTimestamp`    | `ClaimsTimestamp` bearer whose `timestamp` claim equals the query parameter             | get-data, get-metadata, get-scroll-bar                                                                                                                                     |
+| `GuardHash`         | `ClaimsHash` whose `hash` claim equals the URL path segment                             | `GET /object/compressed/...`                                                                                                                                               |
+| `GuardHashOriginal` | `ClaimsHash` with `allowOriginal` + matching `asset_id` claim                           | `GET /object/imported/...`                                                                                                                                                 |
+| `GuardUpload`       | share with `showUpload` + matching `presigned_album_id`, or any live authenticated user | `POST /upload`                                                                                                                                                             |
+| `GuardReadOnlyMode` | rejects with 405 when `readOnlyMode` is on                                              | every mutating route except `POST /post/admin/config/disable-read-only` (the read-only lift)                                                                               |
 
-### Admin-only route inventory — PROPOSAL (2026-10-26, pending owner review)
+### Admin-only route inventory (2026-10-26)
 
-> **Not enforced.** This section describes an intended end-state, not current
-> behavior. Current enforcement is the guard table above. Landing it requires
-> the checklist at the end of this section; until then the 401s it removes
-> remain the documented contract (notably the viewer bounce pinned by
-> `non-admin-cmd-user.yaml`, plan finding F1).
+The authority split for the API: manage acts stay admin-only, content and
+gallery reads/writes accept any live authenticated user. The guard table
+above is the authoritative mechanism; this section names the boundary and
+why each row sits where it does.
 
 **Principle.** Separate resources by authority: every endpoint handles one
 resource, and admin resources are separate endpoints — never one endpoint
@@ -355,7 +354,7 @@ photos and albums — the design already grants users file moves, album
 moves, pretty names, album images, and confirmation-gated deletes; the
 guards below catch the code up with it. The `/users/` hierarchy is a
 resource grouping (user identity as a resource), not an authority split,
-and stays as is — no user/self rework is part of this proposal.
+and stays as is — no user/self rework.
 
 **Stays admin-only (21 routes).** Each row names the reason.
 
@@ -375,7 +374,7 @@ prerequisite that makes the demotion safe.
 | `POST /get/prefetch` (+ `renew-timestamp-token`, which shares the guard) | `GuardShare` with the cookie fallback extended from admin-only to any live `User`                             | Grid reads are not manage acts; without this no viewer loads anything (F1). Prereq: model §4 records viewer snapshots as policy-free (unscoped, like admin snapshots today); trashed exclusion stays in the query filter. `get-data`/`get-rows`/`get-scroll-bar`/`get-metadata` need no change — the bearer chain follows. |
 | `GET /object/compressed/*`, `GET /object/imported/*`                     | same fallback fix (asset bearer + viewer cookie must accept)                                                  | Viewers present per-asset bearer tokens; the cookie leg must not 401 them. Share path unchanged.                                                                                                                                                                                                                           |
 | `GET /get/get-tags`                                                      | `GuardUser`                                                                                                   | Payload is tag counts; the tag filter UI needs it for every signed-in user.                                                                                                                                                                                                                                                |
-| `GET /get/get-albums`                                                    | `GuardUser`, **after redacting share secrets**                                                                | Viewers need the album tree to navigate. **Blocker:** `AlbumInfo.share_list` serializes full `Share` records including plaintext `password`. Redact at least `password` (share ids/urls under review) for non-admin responses before demoting — same shape as the existing `get-config` role split.                        |
+| `GET /get/get-albums`                                                    | `GuardUser`, after share passwords stop leaving the backend                                                   | Viewers need the album tree to navigate. `share_list` no longer carries `password` at any tier (presence stays visible as `hasPassword`); `edit_share` keeps the existing secret when the field is absent or `null` and sets it when a string is sent.                                                                     |
 | Config reads (`GET /get/config`)                                         | `GuardShare` with the cookie fallback extended from admin-only to any live `User` — no payload work needed    | The response now carries zero admin-only fields (`imagePath` is host-only and unreadable via the API, `uploadFolder` is relative, `hasAuthKey`/`disableImg` are deleted, the rest are operational flags). Demotion is a pure gate change; share path unchanged.                                                            |
 | `PUT /put/edit_tag`, `PUT /put/edit_rating`                              | caller-can-read (authenticated user, or share scope as today for title/description)                           | User-authored metadata on visible assets; consistent with the existing `GuardShare` precedent of `set_album_title` / `set_user_defined_description`.                                                                                                                                                                       |
 | `POST /post/upload`                                                      | `GuardUpload` with the cookie leg extended from admin-only to any live `User` (share-with-`U` path unchanged) | Users upload to the ingress flow; the share path keeps working as today. `GuardUpload` stays share-capable, so no AUTH-11 impact.                                                                                                                                                                                          |
@@ -387,7 +386,15 @@ prerequisite that makes the demotion safe.
 
 **Explicitly unchanged.** `register`/`bootstrap`/`authenticate`/`logout`/`server-info`/`self/profile`/`users/password` are already correctly tiered. Share scoping is untouched: viewer reads and writes are gallery-scoped by identity, shares stay album-scoped by bearer; the two never mix (AUTH-6). Disk-fill/deletion by any authenticated user is accepted under the self-hosted trusted-family threat model (design); the UI keeps confirmation gates and the trash-first flow.
 
-**Landing checklist.** Guard fallback changes (`GuardShare` cookie leg and `GuardUpload` cookie leg accept any live `User`; `GET /get/config` needs no payload work — zero admin-only fields remain) → share-password redaction for non-admin album reads → content-write guards moved `GuardAuth` → `GuardUser` (`assign`, `delete-data`, `edit_flags`, `create_dir_album`, `set_album_cover`, `rotate-image`, `regenerate-thumbnail`) → `authz-model.md` §4 denotation + §7 companion updates (replace the "vacuous guard" falsification row with viewer-vs-share terms; viewer `manage` boundary redrawn to admin-only acts) → backend matrices for viewer reads _and_ content writes as non-admin → `openapi.json` regen (401-matrix updates) → remove the frontend viewer skips and enable edit UI for non-admin → `non-admin-cmd-user.yaml` goes green end to end (register → login → timeline grid → image view → move/delete), then the invite story legs re-attach.
+**Status.** Landed: viewer reads (cookie fallback accepts any live user,
+`GuardUser` on tags/albums, `GuardShare`-gated reads with zero admin-only
+payload) and the content-write demotions (`upload`, `assign`, `delete-data`,
+`edit_flags`, `create_dir_album`, `set_album_cover`, `rotate-image`,
+`regenerate-thumbnail`, `edit_tag`, `edit_rating`). The model denotations
+in `authz-model.md` §4/§7 carry the same boundary. Outstanding: share
+passwords must stop leaving the backend before the album list is fully
+clean (drop from reads, keep-semantics on `edit_share`), and the frontend
+viewer-skip workarounds are removed in favor of the now-open routes.
 
 ### Configuration surface
 

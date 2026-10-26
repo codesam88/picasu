@@ -7,8 +7,8 @@ use crate::router::{AppResult, GuardResult};
 use crate::storage::asset_store;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
-use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardUser;
 use crate::tasks::INDEX_COORDINATOR;
 use anyhow::Result;
 // use anyhow::anyhow;
@@ -36,7 +36,7 @@ pub struct RotateImageRequest {
 /// repeated calls.
 ///
 /// Errors: 400 an `asset_id` longer than 64 bytes, or an album or video — 401
-/// missing or invalid admin credentials; share tokens are not accepted — 404
+/// missing or invalid credentials; share tokens are not accepted — 404
 /// `asset_id` names no asset record — 405 read-only mode — 500 decode,
 /// thumbnail write, or storage failure.
 #[utoipa::path(
@@ -46,6 +46,7 @@ pub struct RotateImageRequest {
             (status = 200, description = "Image rotated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
             (status = 404, description = "Not found"),
@@ -54,7 +55,7 @@ pub struct RotateImageRequest {
 ]
 #[put("/put/rotate-image", data = "<request>")]
 pub async fn rotate_image(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardUser>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     request: Json<RotateImageRequest>,
 ) -> AppResult<()> {

@@ -4,8 +4,8 @@ use crate::openapi_components::Unauthorized;
 use crate::process::sanitize::sanitize_tag;
 use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
 use crate::process::transitor::{compose_by_asset_id, index_to_asset_id, store_metadata_record};
-use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::TagInfo;
 use crate::storage::db::open_tree_snapshot_table;
@@ -38,7 +38,7 @@ pub struct EditTagsData {
 /// serves as the removal key, and an index whose asset record no longer exists
 /// is skipped and still answers 200.
 ///
-/// Errors: 400 malformed body — 401 missing or invalid admin credentials; share
+/// Errors: 400 malformed body — 401 missing or invalid credentials; share
 /// tokens are not accepted — 405 read-only mode — 500 unknown snapshot,
 /// out-of-range index, or storage failure.
 #[utoipa::path(
@@ -48,6 +48,7 @@ pub struct EditTagsData {
             (status = 200, description = "Tags updated", body = Vec<TagInfo>),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
         )
@@ -55,7 +56,7 @@ pub struct EditTagsData {
 ]
 #[put("/put/edit_tag", format = "json", data = "<json_data>")]
 pub async fn edit_tag(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardUser>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     json_data: Json<EditTagsData>,
 ) -> AppResult<Json<Vec<TagInfo>>> {

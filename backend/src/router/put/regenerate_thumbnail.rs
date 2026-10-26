@@ -7,8 +7,8 @@ use crate::router::{AppResult, GuardResult};
 use crate::storage::asset_store;
 use crate::tasks::batcher::flush_tree::FlushTreeTask;
 
-use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardUser;
 use crate::tasks::INDEX_COORDINATOR;
 use anyhow::Result;
 use arrayvec::ArrayString;
@@ -42,7 +42,7 @@ pub struct RegenerateThumbnailForm<'r> {
 /// left untouched.
 ///
 /// Errors: 400 malformed multipart body or an `asset_id` longer than 64 bytes —
-/// 401 missing or invalid admin credentials; share tokens are not accepted —
+/// 401 missing or invalid credentials; share tokens are not accepted —
 /// 404 `asset_id` names no asset record — 405 read-only mode — 500 frame write,
 /// decode, or storage failure.
 #[utoipa::path(
@@ -52,6 +52,7 @@ pub struct RegenerateThumbnailForm<'r> {
             (status = 200, description = "Thumbnail regenerated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
             (status = 404, description = "Not found"),
@@ -60,7 +61,7 @@ pub struct RegenerateThumbnailForm<'r> {
 ]
 #[put("/put/regenerate-thumbnail-with-frame", data = "<form>")]
 pub async fn regenerate_thumbnail_with_frame(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardUser>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     form: Result<Form<RegenerateThumbnailForm<'_>>, Errors<'_>>,
 ) -> AppResult<()> {
@@ -89,6 +90,13 @@ pub async fn regenerate_thumbnail_with_frame(
         &asset_id[0..2],
         asset_id.as_str()
     ));
+    // The asset-addressed directory need not exist yet (nothing may have
+    // served this asset's thumbnail before): create it like the thumbnail
+    // writer does instead of failing the copy below.
+    if let Some(parent) = file_path.parent() {
+        std::fs::create_dir_all(parent)
+            .or_raise(|| (ErrorKind::IO, "Failed to create thumbnail directory"))?;
+    }
 
     inner_form
         .frame
