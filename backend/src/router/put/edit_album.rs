@@ -5,9 +5,9 @@ use crate::model::asset::{AssetKind, AssetRecord};
 use crate::model::metadata_record::{compose_abstract_data, to_metadata_record};
 use crate::openapi_components::Unauthorized;
 use crate::process::sidecar_edit::{EditedItem, commit_metadata_edits};
-use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
 use crate::router::auth::GuardShare;
+use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::ASSET_BY_ID;
 use crate::storage::db::METADATA_TABLE;
@@ -113,7 +113,7 @@ pub struct SetAlbumCover {
 /// the cover, and no `.albuminfo.xmp` sidecar is written, so the new cover is
 /// stored in the database only.
 ///
-/// Errors: 400 `albumId` names a media record — 401 missing or invalid admin
+/// Errors: 400 `albumId` names a media record — 401 missing or invalid
 /// credentials; share tokens are not accepted — 404 `albumId` or `coverAssetId`
 /// names no record — 405 read-only mode — 500 storage failure.
 #[utoipa::path(
@@ -123,6 +123,7 @@ pub struct SetAlbumCover {
             (status = 200, description = "Album cover updated"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
             (status = 404, description = "Not found"),
@@ -131,7 +132,7 @@ pub struct SetAlbumCover {
 ]
 #[put("/put/set_album_cover", data = "<set_album_cover>")]
 pub async fn set_album_cover(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardUser>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     set_album_cover: Json<SetAlbumCover>,
 ) -> AppResult<()> {

@@ -12,6 +12,7 @@ use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::evict_dir_album;
 use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::{METADATA_TABLE, TREE};
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
@@ -61,6 +62,7 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
             (status = 200, description = "Data deleted"),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 404, description = "Asset not found"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
@@ -69,7 +71,7 @@ type DeleteResult = (Vec<AbstractData>, Vec<ArrayString<64>>);
 ]
 #[delete("/delete/delete-data", format = "json", data = "<json_data>")]
 pub async fn delete_data(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardUser>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     json_data: Json<DeleteList>,
 ) -> AppResult<()> {

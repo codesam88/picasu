@@ -14,6 +14,9 @@ mod capabilities;
 mod auth_users;
 
 #[cfg(test)]
+mod user_writes;
+
+#[cfg(test)]
 mod enroll_gate;
 
 #[cfg(test)]

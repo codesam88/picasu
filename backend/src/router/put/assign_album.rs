@@ -6,8 +6,8 @@ use crate::process::dir_album::{
     rewrite_dir_album_cache_prefix,
 };
 use crate::process::sanitize::find_unique_path;
-use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::storage::db::VERSION_COUNT_TIMESTAMP;
 use crate::tasks::BATCH_COORDINATOR;
@@ -88,7 +88,7 @@ pub enum AssignOutcome {
 ///
 /// Errors: 400 unknown asset or album id, a source path or album directory that
 /// no longer exists, or a destination album that has no directory — 401 missing
-/// or invalid admin credentials; share tokens are not accepted — 405 read-only
+/// or invalid credentials; share tokens are not accepted — 405 read-only
 /// mode — 500 storage failure.
 #[utoipa::path(
         tag = "albums",
@@ -97,6 +97,7 @@ pub enum AssignOutcome {
             (status = 200, description = "Item assigned to album", body = AssignResult),
             (status = 400, description = "Invalid input or item not found"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
         )
@@ -104,7 +105,7 @@ pub enum AssignOutcome {
 ]
 #[put("/put/assign_album", format = "json", data = "<json_data>")]
 pub async fn assign_album(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardUser>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     json_data: Json<AssignAlbumData>,
 ) -> AppResult<Json<AssignResult>> {

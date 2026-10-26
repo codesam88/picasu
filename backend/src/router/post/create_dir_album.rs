@@ -3,8 +3,8 @@ use crate::openapi_components::Unauthorized;
 use crate::process::dir_album::{
     get_dir_path_for_album, get_or_create_dir_album, mark_album_for_update,
 };
-use crate::router::auth::GuardAuth;
 use crate::router::auth::GuardReadOnlyMode;
+use crate::router::auth::GuardUser;
 use crate::router::{AppResult, GuardResult};
 use crate::tasks::INDEX_COORDINATOR;
 use crate::tasks::actor::album::AlbumSelfUpdateTask;
@@ -42,6 +42,7 @@ pub struct CreateDirAlbumData {
             (status = 200, description = "New album ID", body = String),
             (status = 400, description = "Invalid input"),
             (status = 401, response = Unauthorized),
+            (status = 403, description = "Forbidden"),
             (status = 405, description = "Read-only mode"),
             (status = 500, description = "Internal error"),
         )
@@ -49,7 +50,7 @@ pub struct CreateDirAlbumData {
 ]
 #[post("/post/create_dir_album", format = "json", data = "<json_data>")]
 pub async fn create_dir_album(
-    auth: GuardResult<GuardAuth>,
+    auth: GuardResult<GuardUser>,
     read_only_mode: GuardResult<GuardReadOnlyMode>,
     json_data: Json<CreateDirAlbumData>,
 ) -> AppResult<String> {
