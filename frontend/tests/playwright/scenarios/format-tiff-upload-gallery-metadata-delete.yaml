@@ -26,6 +26,9 @@ covers:
     - picasu-tiff-48x32-exif.tif
     - 48 × 32
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   # The empty-library state opens a "Database is empty, scan now or upload?"
   # dialog over the navbar, so the upload button is unreachable until something
   # is indexed. One seeded JPEG keeps the timeline non-empty, exactly as the
@@ -39,6 +42,12 @@ given:
 
 steps:
   # ── upload ──────────────────────────────────────────────────────────────
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /timeline
     assert:

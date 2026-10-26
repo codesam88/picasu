@@ -483,12 +483,7 @@ export const UiScenario = z
     given: z.array(GivenItem).optional().default([]),
     steps: z.array(UiStep).min(1).optional(),
     when: z.array(UiWhenItem).min(1).optional(),
-    assert: z.array(UiAssertItem).min(1).optional(),
-    /// Session policy. Absent = harness-managed: the harness enrolls the
-    /// resolved account (a `user:` given when present, else `admin`) and then
-    /// performs a UI login before the steps. `'none'` = the scenario drives
-    /// enrollment/login itself; the harness does nothing.
-    session: z.enum(['none']).optional()
+    assert: z.array(UiAssertItem).min(1).optional()
   })
   .strict()
   .refine(

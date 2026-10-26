@@ -7,6 +7,9 @@ covers:
     - Destination
 
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - dir_album: assigntest/imports
 
   - dir_album: assigntest/destination
@@ -18,6 +21,12 @@ given:
 
 steps:
   # Navigate through albums so the data store is populated before we enter the photo view
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /albums
     assert:

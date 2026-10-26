@@ -7,6 +7,9 @@ covers:
     - .desktop-small-image
 
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - dir_album: assignbatch/imports
 
   # id_as generates the album's seeded cover placeholder, which also makes the
@@ -21,6 +24,12 @@ given:
 
 steps:
   # Navigate through albums so the data store is populated before we select
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /albums
     assert:

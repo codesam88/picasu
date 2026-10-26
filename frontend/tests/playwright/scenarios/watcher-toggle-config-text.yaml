@@ -6,10 +6,19 @@ covers:
     - Backend filesystem watcher is unavailable / disabled.
     - Backend watches filesystem for modifications.
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - config:
       fs_notify_watcher: false
 
 steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /config
     assert:

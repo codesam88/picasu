@@ -7,6 +7,9 @@ covers:
     - .desktop-small-image
 
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - photo: duplicate-refresh/seed.jpg
   - source_file: 'duplicate-refresh.jpg'
     format: jpeg
@@ -16,6 +19,12 @@ given:
   - index: '/'
 
 steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /timeline
     assert:

@@ -6,12 +6,21 @@ covers:
     - textbox/Description
 
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - dir_album: descedit/pool
 
   - photo: descedit/pool/img01.jpg
   - index: '/'
 
 steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /albums
     assert:

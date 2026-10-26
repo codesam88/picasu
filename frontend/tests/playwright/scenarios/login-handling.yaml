@@ -11,7 +11,6 @@ covers:
     - Please log in to continue
     - .v-snackbar__content
     - snapshot:login-page
-session: none
 given:
   - empty: true
   - user:

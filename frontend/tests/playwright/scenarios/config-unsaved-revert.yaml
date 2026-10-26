@@ -5,9 +5,18 @@ covers:
   ui:
     - Backend watches filesystem for modifications.
     - Backend filesystem watcher is unavailable / disabled.
-given: []
+given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
 
 steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /config
     assert:

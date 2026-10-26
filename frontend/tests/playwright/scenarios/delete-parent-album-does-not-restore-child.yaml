@@ -8,12 +8,21 @@ covers:
     - toast:success:Successfully deleted data
     - .parent
 given:
+  - user:
+      user_id: admin
+      password: e2e_test_pwd
   - dir_album: e2e_ui_album_delete/parent
   - dir_album: e2e_ui_album_delete/parent/child
   - photo: e2e_ui_album_delete/parent/child/photo.jpg
   - index: '/'
 
 steps:
+  - when:
+      - login:
+          user: admin
+          password: e2e_test_pwd
+    assert:
+      - ui.route: /timeline
   - when:
       - navigate: /albums
     assert:
