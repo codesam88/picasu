@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 type: feature
 priority: high
 area: frontend
@@ -54,10 +54,11 @@ zero hand-written browser files.
   Requires `api.response` extended with `method` + `body` for the anonymous
   `POST /post/users/bootstrap → 401` probe (current verb is GET-only).
 - Slices (one worker each, TDD red-first): S1 `server:` + `login:` + `index:` +
-  `api.response` method/body + first-admin YAML (done); S2 `invite:` given +
-  viewer session + invite-registration YAML (DSL done, story blocked — see
-  finding F1); S3 throttle knob + response observation + disabled assert +
-  login-throttle YAML; S4 docs + hand-written cleanup + full gates.
+  `api.response` method/body + first-admin YAML (done, 4d2157b8); S2 `invite:`
+  given + invite-registration YAML (done, 78100c3a/2bc57c59); S3 throttle
+  response-observation (`api.statuses`) + `ui.disabled`/`ui.enabled`/
+  `ui.text_hidden` + login-throttle YAML (done, 20e4ed46); S4 hand-written
+  retirement + docs (done, 2e783ece). All four complete.
 
 ## Finding F1 (2026-10-25, RESOLVED 2026-10-26 by viewer-tier-access S1):
 
@@ -111,7 +112,7 @@ suite 47 green. Details below are historical.
 - Share passwords stop leaving the backend: drop `password` from reads
   (presence via `hasPassword`), `edit_share` absent/null means keep,
   string sets. Replaces the earlier redaction-blocker idea.
-- Config cleanup (done, pending commit): `imagePath` gone from
+- Config cleanup (committed 9ac1e1c7): `imagePath` gone from
   `GET /get/config` (host-only, admin UI reads it from
   `GET /get/admin/config` entries); `uploadFolder` unredacted (relative);
   `hasAuthKey` gone (no consumer; reset POST still reports); `disableImg`
@@ -198,3 +199,10 @@ suite 47 green. Details below are historical.
 Backend behavior changes. New product features. The viewer denial-matrix
 coverage from `e2e-viewer-invite-coverage.md`, which becomes YAML
 scenarios under this plan once the needed verbs exist.
+
+## Completion (2026-10-26)
+
+All four slices landed; hand-written browser files are gone (the last
+three retired in 2e783ece) and coverage declarations across the corpus
+were corrected to real assertion targets (b54bac1c). Full suite 46
+scenarios, zero coverage warnings.
