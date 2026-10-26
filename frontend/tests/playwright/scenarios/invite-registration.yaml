@@ -6,10 +6,13 @@ covers:
     - POST /post/users/authenticate
     - POST /post/invites
     - POST /post/users/register
+    - POST /post/logout
   ui:
     - route:/timeline
     - route:/login
+    - route:/view/
     - Create Account
+    - .desktop-small-image
 server:
   bootstrap_admin: true
   pbkdf_iterations: 1000
@@ -100,7 +103,25 @@ steps:
       - api.response:
           url: /get/users
           status: 401
-  # Story legs below (logout, login-as-invitee, view images) return once
-  # finding F1 (viewer grid reads) is decided: the viewer currently bounces
-  # to /login seconds after landing, so no post-landing viewer step is
-  # stable until the guard level grants viewer reads.
+  # Invite-redeemed login legs: the bound invitee signs out, signs back in
+  # through the UI, and views the seeded photo — the full register →
+  # login → view-images story.
+  - when:
+      - click.icon: mdi-account-circle
+      - click.menu: Log out
+    assert:
+      - ui.route: /login
+  - when:
+      - login:
+          user: maria
+          password: maria-secret-9
+    assert:
+      - ui.route: /timeline
+      - ui.count: .desktop-small-image
+        equals: 1
+  - when:
+      - click.first: true
+    assert:
+      - ui.route: /view/
+      - ui.count: '#col-ref img'
+        equals: 1

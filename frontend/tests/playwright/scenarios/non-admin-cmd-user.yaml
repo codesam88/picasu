@@ -1,4 +1,4 @@
-name: Non-admin user provisioned via CLI cannot use the gallery
+name: Non-admin user provisioned via CLI uses the gallery
 covers:
   api:
     - GET /get/server-info
@@ -7,15 +7,14 @@ covers:
     - GET /get/index/status
   ui:
     - route:/timeline
-    - route:/login
-    - photo.jpg
-# F1 (plan finding): viewers currently bounce to /login seconds after
-# landing because the data path (prefetch/get-tags/get-albums) is
-# admin-gated. This scenario pins the non-admin story end to end: CLI
-# provision (no bootstrap window involved), login, timeline grid, image
-# view. It FAILS until the backend grants viewer reads (options in
-# .plan/dsl-first-e2e-strategy.md). Not invite-specific: the same bounce
-# hits users created any other way.
+    - route:/view/
+    - .desktop-small-image
+# F1 regression pin (plan finding in `.plan/dsl-first-e2e-strategy.md`):
+# viewers used to bounce to /login seconds after landing because the data
+# path was admin-gated. This scenario pins the non-admin story end to end:
+# CLI provision (no bootstrap window involved), login, timeline grid,
+# image view. Not invite-specific: the same path covers users created any
+# other way.
 server:
   bootstrap_admin: false
   pbkdf_iterations: 1000
@@ -39,7 +38,8 @@ steps:
           password: e2e_test_pwd
     assert:
       - ui.route: /timeline
-      - ui.chip_visible: photo.jpg
+      - ui.count: .desktop-small-image
+        equals: 1
   # Non-admin story: login works (identity is fine), …
   - when:
       - login:
@@ -53,7 +53,8 @@ steps:
       - navigate: /timeline
     assert:
       - ui.route: /timeline
-      - ui.chip_visible: photo.jpg
+      - ui.count: .desktop-small-image
+        equals: 1
   - when:
       - click.first: true
     assert:
